@@ -1,0 +1,18 @@
+/* Phoenix Project Typography */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
+
+/* Headlines - Bold, aggressive */
+h1, h2, h3 {
+  font-family: 'Bebas Neue', 'Inter', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* Body - Clean, readable */
+body, p, span, div {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Data/Numbers - Tabular figures */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
