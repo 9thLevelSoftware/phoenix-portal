@@ -16,7 +16,7 @@ vi.mock('@/providers/AuthProvider', () => mockAuth);
 
 describe('TrainingCycles', () => {
   it('renders without crashing', () => {
-    const { container } = renderWithProviders(<TrainingCycles onCreateCycle={vi.fn()} onEditCycle={vi.fn()} />);
+    const { container } = renderWithProviders(<TrainingCycles />);
     // Component renders loading skeletons while query is pending
     expect(container.querySelector('.bg-\\[\\#0D0D0D\\]')).toBeInTheDocument();
   });

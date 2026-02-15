@@ -1,13 +1,11 @@
+import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { PhoenixLogo } from './PhoenixLogo';
 
-interface PrivacyPolicyProps {
-  onBack: () => void;
-}
-
-export function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
+export function PrivacyPolicy() {
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-[#0D0D0D] text-white">
       {/* Header */}
@@ -23,7 +21,7 @@ export function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={onBack}
+              onClick={() => navigate(-1)}
               className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -250,7 +248,7 @@ export function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
           {/* Back Button */}
           <div className="mt-12 text-center">
             <Button
-              onClick={onBack}
+              onClick={() => navigate(-1)}
               className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />

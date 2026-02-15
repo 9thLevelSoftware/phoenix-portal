@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -45,11 +46,7 @@ const signUpSchema = z.object({
 type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
-interface LandingPageProps {
-  onNavigateToPrivacy?: () => void;
-}
-
-export function LandingPage({ onNavigateToPrivacy }: LandingPageProps) {
+export function LandingPage() {
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -625,7 +622,7 @@ export function LandingPage({ onNavigateToPrivacy }: LandingPageProps) {
             <div>
               <h4 className="text-white mb-4">Legal</h4>
               <ul className="space-y-2 text-[#9CA3AF] text-sm">
-                <li className="hover:text-[#FF6B35] cursor-pointer" onClick={onNavigateToPrivacy}>Privacy</li>
+                <li><Link to="/privacy" className="hover:text-[#FF6B35] cursor-pointer">Privacy</Link></li>
                 <li className="hover:text-[#FF6B35] cursor-pointer">Terms</li>
                 <li className="hover:text-[#FF6B35] cursor-pointer">Security</li>
               </ul>

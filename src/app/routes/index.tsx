@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useParams, useNavigate } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { ProtectedRoute } from './ProtectedRoute';
 import { AppLayout } from './AppLayout';
 import { PageLoading } from '@/app/components/PageLoading';
@@ -21,77 +21,6 @@ const CycleBuilder = lazy(() => import('@/app/components/CycleBuilder').then(m =
 const CelebrationDemo = lazy(() => import('@/app/components/CelebrationDemo').then(m => ({ default: m.CelebrationDemo })));
 const Profile = lazy(() => import('@/app/components/Profile').then(m => ({ default: m.Profile })));
 
-// ---------- Route wrapper components ----------
-// These extract URL params and pass them as props to components that still
-// require them. Plan 02-03 will refactor the components to use useParams/useNavigate
-// internally, eliminating these wrappers.
-
-function LandingPageRoute() {
-  const navigate = useNavigate();
-  return <LandingPage onNavigateToPrivacy={() => navigate('/privacy')} />;
-}
-
-function PrivacyPolicyRoute() {
-  const navigate = useNavigate();
-  return <PrivacyPolicy onBack={() => navigate(-1)} />;
-}
-
-function WorkoutHistoryRoute() {
-  const navigate = useNavigate();
-  return <WorkoutHistory onViewSession={(id: string) => navigate(`/history/${id}`)} />;
-}
-
-function SessionDetailRoute() {
-  const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
-  if (!sessionId) return <Navigate to="/history" replace />;
-  return <SessionDetail sessionId={sessionId} onBack={() => navigate('/history')} />;
-}
-
-function RoutinesEnhancedRoute() {
-  const navigate = useNavigate();
-  return (
-    <RoutinesEnhanced
-      onCreateRoutine={() => navigate('/routines/new')}
-      onEditRoutine={(id: string) => navigate(`/routines/${id}`)}
-    />
-  );
-}
-
-function RoutineBuilderRoute() {
-  const { routineId } = useParams<{ routineId: string }>();
-  const navigate = useNavigate();
-  return (
-    <RoutineBuilder
-      routineId={routineId}
-      onBack={() => navigate('/routines')}
-      onSave={() => navigate('/routines')}
-    />
-  );
-}
-
-function TrainingCyclesRoute() {
-  const navigate = useNavigate();
-  return (
-    <TrainingCycles
-      onCreateCycle={() => navigate('/cycles/new')}
-      onEditCycle={(id: string) => navigate(`/cycles/${id}`)}
-    />
-  );
-}
-
-function CycleBuilderRoute() {
-  const { cycleId } = useParams<{ cycleId: string }>();
-  const navigate = useNavigate();
-  return (
-    <CycleBuilder
-      cycleId={cycleId}
-      onBack={() => navigate('/cycles')}
-      onSave={() => navigate('/cycles')}
-    />
-  );
-}
-
 // ---------- Route tree ----------
 
 export function AppRoutes() {
@@ -99,25 +28,25 @@ export function AppRoutes() {
     <Suspense fallback={<PageLoading />}>
       <Routes>
         {/* Public routes */}
-        <Route path="/" element={<LandingPageRoute />} />
-        <Route path="/privacy" element={<PrivacyPolicyRoute />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
 
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/history" element={<WorkoutHistoryRoute />} />
-            <Route path="/history/:sessionId" element={<SessionDetailRoute />} />
+            <Route path="/history" element={<WorkoutHistory />} />
+            <Route path="/history/:sessionId" element={<SessionDetail />} />
             <Route path="/records" element={<PersonalRecords />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/challenges" element={<Challenges />} />
             <Route path="/community" element={<Community />} />
-            <Route path="/routines" element={<RoutinesEnhancedRoute />} />
-            <Route path="/routines/new" element={<RoutineBuilderRoute />} />
-            <Route path="/routines/:routineId" element={<RoutineBuilderRoute />} />
-            <Route path="/cycles" element={<TrainingCyclesRoute />} />
-            <Route path="/cycles/new" element={<CycleBuilderRoute />} />
-            <Route path="/cycles/:cycleId" element={<CycleBuilderRoute />} />
+            <Route path="/routines" element={<RoutinesEnhanced />} />
+            <Route path="/routines/new" element={<RoutineBuilder />} />
+            <Route path="/routines/:routineId" element={<RoutineBuilder />} />
+            <Route path="/cycles" element={<TrainingCycles />} />
+            <Route path="/cycles/new" element={<CycleBuilder />} />
+            <Route path="/cycles/:cycleId" element={<CycleBuilder />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/celebrations" element={<CelebrationDemo />} />
             {/* Catch-all for authenticated users */}

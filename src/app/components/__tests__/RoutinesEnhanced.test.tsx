@@ -17,7 +17,7 @@ vi.mock('@/providers/AuthProvider', () => mockAuth);
 
 describe('RoutinesEnhanced', () => {
   it('renders without crashing', () => {
-    renderWithProviders(<RoutinesEnhanced onCreateRoutine={vi.fn()} onEditRoutine={vi.fn()} />);
+    renderWithProviders(<RoutinesEnhanced />);
     expect(screen.getAllByText(/my routines/i).length).toBeGreaterThan(0);
   });
 });
