@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 2 of 7 (Navigation & State Management)
-Plan: 1 of 3 in current phase -- DONE
+Plan: 2 of 3 in current phase -- DONE
 Status: In Progress
-Last activity: 2026-02-15 -- 02-01 complete (Router infrastructure & Zustand store)
+Last activity: 2026-02-15 -- 02-02 complete (Navigation UI migration to NavLink + Zustand)
 
-Progress: [███░░░░░░░] 28% (11/39 plans)
+Progress: [███░░░░░░░] 31% (12/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 3 min
-- Total execution time: 0.62 hours
+- Total execution time: 0.65 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [███░░░░░░░] 28% (11/39 plans)
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
 | 01-auth-data-layer | 7/7 | 22 min | 3 min |
-| 02-navigation-state | 1/3 | 2 min | 2 min |
+| 02-navigation-state | 2/3 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-05 (8 min), 01-06 (~est), 01-07 (~est), 02-01 (2 min)
+- Last 5 plans: 01-06 (~est), 01-07 (~est), 02-01 (2 min), 02-02 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -89,6 +89,9 @@ Recent decisions affecting current work:
 - [02-01]: Navigation/MobileBottomNav get hardcoded props until plan 02-02 migrates them
 - [02-01]: Route wrapper components bridge old prop-based nav to URL params temporarily
 - [02-01]: useRealtimeSync moved from App.tsx to AppLayout for authenticated-only execution
+- [02-02]: NavLink render-prop children pattern for layoutId animation inside NavLink
+- [02-02]: Mobile nav split: 4 primary (Home, History, Analytics, Profile) + 5 in More drawer
+- [02-02]: More button highlights when any drawer page is active via useLocation check
 
 ### Pending Todos
 
@@ -103,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 02-01-PLAN.md (Router infrastructure & Zustand store)
+Stopped at: Completed 02-02-PLAN.md (Navigation UI migration to NavLink + Zustand)
 Resume file: None
