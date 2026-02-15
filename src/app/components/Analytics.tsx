@@ -36,12 +36,11 @@ import { AnalyticsMobile } from '@/app/components/mobile/AnalyticsMobile';
 
 export function Analytics() {
   const isMobile = useIsMobile();
-  
+  const [timePeriod, setTimePeriod] = useState('30D');
+
   if (isMobile) {
     return <AnalyticsMobile />;
   }
-  
-  const [timePeriod, setTimePeriod] = useState('30D');
 
   const volumeData = [
     { date: 'Week 1', volume: 18500, workouts: 4 },
