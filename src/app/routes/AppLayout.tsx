@@ -14,15 +14,14 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
  * useRealtimeSync is mounted here so it only runs when authenticated
  * and persists across route changes.
  *
- * NOTE: Navigation and MobileBottomNav still receive hardcoded props.
- * Plan 02-02 will migrate them to use NavLink + Zustand, removing these props.
+ * Navigation and MobileBottomNav use NavLink + Zustand internally (no props needed).
  */
 export function AppLayout() {
   useRealtimeSync();
 
   return (
     <div className="min-h-screen bg-[#0D0D0D]">
-      <Navigation currentPage="" onNavigate={() => {}} streak={7} />
+      <Navigation />
 
       <ErrorBoundary FallbackComponent={PageErrorFallback}>
         <Suspense fallback={<PageLoading />}>
@@ -30,12 +29,7 @@ export function AppLayout() {
         </Suspense>
       </ErrorBoundary>
 
-      <MobileBottomNav
-        currentPage=""
-        onNavigate={() => {}}
-        streak={7}
-        notifications={{ challenges: 3, community: 5 }}
-      />
+      <MobileBottomNav />
 
       <Toaster />
     </div>
