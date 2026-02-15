@@ -61,6 +61,10 @@ Recent decisions affecting current work:
 - [01-01]: Stub types follow Supabase generated types structure (Row/Insert/Update per table)
 - [01-01]: WEIGHT_MULTIPLIER pattern will be in Zod transforms (plan 01-03), not in types
 - [01-01]: Environment validation happens at client creation time with clear error message
+- [01-02]: Auth modal overlay on landing page instead of separate login route
+- [01-02]: LandingPage calls supabase.auth directly (not via useAuth) -- state change triggers AuthProvider re-render
+- [01-02]: AuthProvider wraps QueryProvider in main.tsx so queries can access auth context
+- [01-02]: Zod validation for form inputs with react-hook-form integration
 - [01-03]: staleTime 5min with retry 1 balances freshness and API load for development
 - [01-03]: WEIGHT_MULTIPLIER=2 centralizes per-cable to total weight conversion in transforms.ts
 - [01-03]: Zod inferred types will replace inline component interfaces for consistency
@@ -78,5 +82,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-03-PLAN.md (TanStack Query & Zod transforms)
+Stopped at: Completed 01-02-PLAN.md (Auth flow with login UI and session gating)
 Resume file: None
