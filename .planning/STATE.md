@@ -10,25 +10,25 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 1 of 7 (Authentication & Data Layer) -- COMPLETE
-Plan: 6 of 6 in current phase -- DONE
+Plan: 7 of 7 in current phase -- DONE (includes gap closure plan 07)
 Status: Phase Complete
-Last activity: 2026-02-15 -- 01-06 complete (Realtime sync & SessionDetail migration)
+Last activity: 2026-02-15 -- 01-07 complete (Logout UI gap closure)
 
-Progress: [██░░░░░░░░] 24% (9/38 plans)
+Progress: [███░░░░░░░] 26% (10/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 5 min
-- Total execution time: 0.57 hours
+- Total plans completed: 10
+- Average duration: 4 min
+- Total execution time: 0.59 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
-| 01-auth-data-layer | 6/6 | 21 min | 4 min |
+| 01-auth-data-layer | 7/7 | 22 min | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-01 (8 min), 01-02 (~est), 01-03 (2 min), 01-04 (~est), 01-05 (8 min)
@@ -81,6 +81,9 @@ Recent decisions affecting current work:
 - [01-06]: Broadcast channel (not postgres_changes) for realtime sync -- matches mobile app architecture
 - [01-06]: Invalidate all 5 query domains on sync_complete -- sync could affect any data
 - [01-06]: Removed Performance Metrics from SessionDetail -- requires real sensor data (Phase 4)
+- [01-07]: Logout button in Profile settings (Account card) -- accessible from both desktop and mobile
+- [01-07]: Navigation bar gets icon-only logout button next to avatar
+- [01-07]: No MobileBottomNav changes -- mobile users reach logout via Profile page
 
 ### Pending Todos
 
@@ -95,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-06-PLAN.md (Realtime sync & SessionDetail migration) -- Phase 1 COMPLETE
+Stopped at: Completed 01-07-PLAN.md (Logout UI gap closure) -- Phase 1 COMPLETE (all gaps closed)
 Resume file: None
