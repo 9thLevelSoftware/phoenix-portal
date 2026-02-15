@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
@@ -18,12 +19,8 @@ import { useAuth } from '@/app/hooks/useAuth';
 import { cycleListOptions } from '@/queries/cycles';
 import type { TrainingCycle } from '@/schemas/transforms';
 
-interface TrainingCyclesProps {
-  onCreateCycle: () => void;
-  onEditCycle: (id: string) => void;
-}
-
-export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesProps) {
+export function TrainingCycles() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data: cycles, isPending } = useQuery(cycleListOptions(user!.id));
 
@@ -78,7 +75,7 @@ export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesPro
                 <p className="text-[#9CA3AF]">Periodize your progress</p>
               </div>
               <Button
-                onClick={onCreateCycle}
+                onClick={() => navigate('/cycles/new')}
                 className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -96,7 +93,7 @@ export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesPro
             Create your first training cycle to periodize your progress and track weekly goals.
           </p>
           <Button
-            onClick={onCreateCycle}
+            onClick={() => navigate('/cycles/new')}
             className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -127,7 +124,7 @@ export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesPro
             </div>
 
             <Button
-              onClick={onCreateCycle}
+              onClick={() => navigate('/cycles/new')}
               className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -184,7 +181,7 @@ export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesPro
                 <div className="flex gap-3 w-full sm:w-auto">
                   <Button
                     variant="outline"
-                    onClick={() => onEditCycle(activeCycle.id)}
+                    onClick={() => navigate(`/cycles/${activeCycle.id}`)}
                     className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
                   >
                     <Eye className="w-4 h-4 mr-2" />
@@ -272,7 +269,7 @@ export function TrainingCycles({ onCreateCycle, onEditCycle }: TrainingCyclesPro
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => onEditCycle(cycle.id)}
+                        onClick={() => navigate(`/cycles/${cycle.id}`)}
                         className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
                       >
                         <Edit className="w-4 h-4 mr-1" />

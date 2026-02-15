@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   DndContext,
@@ -43,13 +44,9 @@ interface Exercise {
   mode: string;
 }
 
-interface RoutineBuilderProps {
-  routineId?: string;
-  onBack: () => void;
-  onSave: (routine: any) => void;
-}
-
-export function RoutineBuilder({ routineId, onBack, onSave }: RoutineBuilderProps) {
+export function RoutineBuilder() {
+  const { routineId } = useParams<{ routineId: string }>();
+  const navigate = useNavigate();
   const [routineName, setRoutineName] = useState('Untitled Routine');
   const [exercises, setExercises] = useState<Exercise[]>([
     {
@@ -106,8 +103,9 @@ export function RoutineBuilder({ routineId, onBack, onSave }: RoutineBuilderProp
   };
 
   const handleSave = () => {
-    onSave({ name: routineName, exercises });
+    console.log('Saving routine:', { name: routineName, exercises });
     setHasUnsavedChanges(false);
+    navigate('/routines');
   };
 
   const totalDuration = exercises.reduce((sum, ex) => {
@@ -123,7 +121,7 @@ export function RoutineBuilder({ routineId, onBack, onSave }: RoutineBuilderProp
             <Button
               variant="outline"
               size="sm"
-              onClick={onBack}
+              onClick={() => navigate('/routines')}
               className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />

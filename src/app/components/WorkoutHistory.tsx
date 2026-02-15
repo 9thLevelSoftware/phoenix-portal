@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/app/hooks/useAuth';
 import { workoutListOptions } from '@/queries/workouts';
@@ -21,11 +22,8 @@ import {
   X,
 } from 'lucide-react';
 
-interface WorkoutHistoryProps {
-  onViewSession: (sessionId: string) => void;
-}
-
-export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
+export function WorkoutHistory() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data: workouts, isPending } = useQuery(workoutListOptions(user!.id));
 
@@ -383,7 +381,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                   transition={{ delay: index * 0.05 }}
                 >
                   <Card
-                    onClick={() => onViewSession(workout.id)}
+                    onClick={() => navigate(`/history/${workout.id}`)}
                     className="p-4 sm:p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all cursor-pointer group"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -515,7 +513,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                     key={workout.id}
                     onClick={() => {
                       setSelectedDay(null);
-                      onViewSession(workout.id);
+                      navigate(`/history/${workout.id}`);
                     }}
                     className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all"
                   >

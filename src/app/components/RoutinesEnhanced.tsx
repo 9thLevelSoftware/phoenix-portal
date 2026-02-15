@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
@@ -28,12 +29,8 @@ import { useAuth } from '@/app/hooks/useAuth';
 import { routineListOptions } from '@/queries/routines';
 import type { Routine } from '@/schemas/transforms';
 
-interface RoutinesEnhancedProps {
-  onCreateRoutine: () => void;
-  onEditRoutine: (id: string) => void;
-}
-
-export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnhancedProps) {
+export function RoutinesEnhanced() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data: routines, isPending } = useQuery(routineListOptions(user!.id));
 
@@ -106,7 +103,7 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
             </div>
 
             <Button
-              onClick={onCreateRoutine}
+              onClick={() => navigate('/routines/new')}
               className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -130,11 +127,11 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
 
           <TabsContent value="my-routines">
             {allRoutines.length === 0 ? (
-              <EmptyState onCreateRoutine={onCreateRoutine} />
+              <EmptyState onCreateRoutine={() => navigate('/routines/new')} />
             ) : (
               <RoutineGrid
                 routines={allRoutines}
-                onEdit={onEditRoutine}
+                onEdit={(id: string) => navigate(`/routines/${id}`)}
                 onToggleFavorite={toggleFavorite}
                 isFavorite={isFavorite}
               />
@@ -150,7 +147,7 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
             ) : (
               <RoutineGrid
                 routines={favoriteRoutines}
-                onEdit={onEditRoutine}
+                onEdit={(id: string) => navigate(`/routines/${id}`)}
                 onToggleFavorite={toggleFavorite}
                 isFavorite={isFavorite}
               />
@@ -303,7 +300,7 @@ function EmptyState({ onCreateRoutine }: { onCreateRoutine: () => void }) {
       </p>
       <div className="flex gap-4 justify-center">
         <Button
-          onClick={onCreateRoutine}
+          onClick={() => navigate('/routines/new')}
           className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
         >
           <Plus className="w-4 h-4 mr-2" />

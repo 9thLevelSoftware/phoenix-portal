@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams, useNavigate, Navigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
@@ -20,15 +21,19 @@ import {
 } from 'lucide-react';
 import { sessionDetailOptions } from '@/queries/workouts';
 
-interface SessionDetailProps {
-  sessionId: string;
-  onBack: () => void;
-}
-
-export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
-  const { data: session, isPending, error } = useQuery(sessionDetailOptions(sessionId));
+export function SessionDetail() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+  const { data: session, isPending, error } = useQuery({
+    ...sessionDetailOptions(sessionId ?? ''),
+    enabled: !!sessionId,
+  });
   const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
+
+  if (!sessionId) {
+    return <Navigate to="/history" replace />;
+  }
 
   const toggleExercise = (exerciseId: string) => {
     setExpandedExercises((prev) =>
@@ -59,7 +64,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={onBack}
+              onClick={() => navigate('/history')}
               className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -105,7 +110,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={onBack}
+              onClick={() => navigate('/history')}
               className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -120,7 +125,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
             {error ? error.message : 'This workout session could not be loaded.'}
           </p>
           <Button
-            onClick={onBack}
+            onClick={() => navigate('/history')}
             className="mt-6 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
           >
             Return to History
@@ -151,7 +156,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={onBack}
+              onClick={() => navigate('/history')}
               className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
