@@ -9,26 +9,26 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 ## Current Position
 
-Phase: 1 of 7 (Authentication & Data Layer)
-Plan: 6 of 6 in current phase
-Status: Executing
-Last activity: 2026-02-15 -- 01-05 complete (Remaining data migration)
+Phase: 1 of 7 (Authentication & Data Layer) -- COMPLETE
+Plan: 6 of 6 in current phase -- DONE
+Status: Phase Complete
+Last activity: 2026-02-15 -- 01-06 complete (Realtime sync & SessionDetail migration)
 
-Progress: [▓▓░░░░░░░░] 21% (8/38 plans)
+Progress: [██░░░░░░░░] 24% (9/38 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 5 min
-- Total execution time: 0.52 hours
+- Total execution time: 0.57 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
-| 01-auth-data-layer | 5/6 | 18 min | 4 min |
+| 01-auth-data-layer | 6/6 | 21 min | 4 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-01 (8 min), 01-02 (~est), 01-03 (2 min), 01-04 (~est), 01-05 (8 min)
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - [01-04]: WorkoutHistory computes streak from actual workout dates instead of hardcoding
 - [01-04]: DashboardMobile pull-to-refresh invalidates query cache
 - [01-04]: Test utility with vi.hoisted pattern for auth mocking across all component tests
+- [01-06]: Broadcast channel (not postgres_changes) for realtime sync -- matches mobile app architecture
+- [01-06]: Invalidate all 5 query domains on sync_complete -- sync could affect any data
+- [01-06]: Removed Performance Metrics from SessionDetail -- requires real sensor data (Phase 4)
 
 ### Pending Todos
 
@@ -92,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-04-PLAN.md (Dashboard & WorkoutHistory data migration)
+Stopped at: Completed 01-06-PLAN.md (Realtime sync & SessionDetail migration) -- Phase 1 COMPLETE
 Resume file: None
