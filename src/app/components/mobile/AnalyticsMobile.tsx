@@ -1,10 +1,22 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { Skeleton, StatCardSkeleton, ChartSkeleton } from '@/app/components/ui/skeleton';
 import { Download, TrendingUp, Target, Zap, Dumbbell, Clock } from 'lucide-react';
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { useAuth } from '@/app/hooks/useAuth';
+import { volumeTrendOptions, muscleGroupOptions, strengthProgressOptions } from '@/queries/analytics';
+
+const MUSCLE_GROUP_COLORS: Record<string, string> = {
+  Chest: '#FF6B35',
+  Back: '#F59E0B',
+  Legs: '#10B981',
+  Shoulders: '#6366F1',
+  Arms: '#EC4899',
+  Core: '#8B5CF6',
+};
 
 interface StatCardProps {
   label: string;
@@ -41,7 +53,7 @@ interface ChartCardProps {
 
 function ChartCard({ title, onTap, children }: ChartCardProps) {
   return (
-    <Card 
+    <Card
       onClick={onTap}
       className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] active:scale-[0.98] transition-transform"
     >
@@ -54,41 +66,102 @@ function ChartCard({ title, onTap, children }: ChartCardProps) {
   );
 }
 
+function periodToQuery(period: string): string {
+  switch (period) {
+    case '7D': return '1w';
+    case '30D': return '4w';
+    case '90D': return '12w';
+    default: return '4w';
+  }
+}
+
+function bucketByWeek(data: Array<{ started_at: string; total_volume: number }>) {
+  if (!data || data.length === 0) return [];
+  const weeks = new Map<string, number>();
+  for (const item of data) {
+    const date = new Date(item.started_at);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const weekStart = new Date(date);
+    weekStart.setDate(diff);
+    const key = `W${weeks.size + 1}`;
+    const weekKey = weekStart.toISOString().slice(0, 10);
+    // Use ISO date as internal key, display as W1, W2, etc.
+    weeks.set(weekKey, (weeks.get(weekKey) ?? 0) + item.total_volume);
+  }
+  let i = 1;
+  return Array.from(weeks.entries()).map(([, volume]) => ({
+    date: `W${i++}`,
+    volume: Math.round(volume),
+  }));
+}
+
 export function AnalyticsMobile() {
+  const { user } = useAuth();
   const [timePeriod, setTimePeriod] = useState('30D');
   const [activeTab, setActiveTab] = useState('overview');
 
+  const queryPeriod = periodToQuery(timePeriod);
+  const { data: volumeRaw, isPending: volumePending } = useQuery(volumeTrendOptions(user!.id, queryPeriod));
+  const { data: muscleGroupRaw, isPending: musclePending } = useQuery(muscleGroupOptions(user!.id));
+  const { data: strengthRaw, isPending: strengthPending } = useQuery(strengthProgressOptions(user!.id));
+
+  const isPending = volumePending || musclePending || strengthPending;
+
+  const volumeData = bucketByWeek(volumeRaw ?? []);
+  const muscleData = (muscleGroupRaw ?? []).map((m) => ({
+    ...m,
+    color: MUSCLE_GROUP_COLORS[m.name] ?? '#6B7280',
+  }));
+
+  // Build strength data from PR records (top exercises by value)
+  const strengthMap = new Map<string, number>();
+  for (const item of strengthRaw ?? []) {
+    const existing = strengthMap.get(item.exercise_name) ?? 0;
+    if (item.value > existing) {
+      strengthMap.set(item.exercise_name, item.value);
+    }
+  }
+  const strengthData = Array.from(strengthMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([exercise, weight]) => ({
+      exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
+      weight,
+    }));
+
+  // Derive stats
+  const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
+  const totalWorkouts = (volumeRaw ?? []).length;
+
   const stats = [
-    { label: 'Volume', value: '186K', icon: <TrendingUp className="w-5 h-5" />, trend: '+12%', trendUp: true },
-    { label: 'Workouts', value: '42', icon: <Dumbbell className="w-5 h-5" />, trend: '+5', trendUp: true },
-    { label: 'PRs', value: '11', icon: <Target className="w-5 h-5" />, trend: '+3', trendUp: true },
-    { label: 'Avg Time', value: '56m', icon: <Clock className="w-5 h-5" />, trend: '-4m', trendUp: false },
-    { label: 'Intensity', value: '8.2', icon: <Zap className="w-5 h-5" />, trend: '+0.3', trendUp: true },
+    { label: 'Volume', value: totalVolume > 1000 ? `${Math.round(totalVolume / 1000)}K` : `${totalVolume}`, icon: <TrendingUp className="w-5 h-5" />, trend: undefined, trendUp: undefined },
+    { label: 'Workouts', value: `${totalWorkouts}`, icon: <Dumbbell className="w-5 h-5" />, trend: undefined, trendUp: undefined },
+    { label: 'PRs', value: `${(strengthRaw ?? []).length}`, icon: <Target className="w-5 h-5" />, trend: undefined, trendUp: undefined },
+    { label: 'Groups', value: `${muscleData.length}`, icon: <Zap className="w-5 h-5" />, trend: undefined, trendUp: undefined },
   ];
 
-  const volumeData = [
-    { date: 'W1', volume: 42000 },
-    { date: 'W2', volume: 45000 },
-    { date: 'W3', volume: 48000 },
-    { date: 'W4', volume: 51000 },
-  ];
+  if (isPending) {
+    return (
+      <div className="min-h-screen bg-[#0D0D0D] pb-20">
+        <div className="sticky top-0 bg-[#0D0D0D]/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-[#374151]">
+          <Skeleton className="h-6 w-32" />
+        </div>
+        <div className="flex overflow-x-auto gap-3 px-4 py-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="min-w-[120px]">
+              <StatCardSkeleton />
+            </div>
+          ))}
+        </div>
+        <div className="px-4 py-4 space-y-4">
+          <ChartSkeleton />
+        </div>
+      </div>
+    );
+  }
 
-  const muscleData = [
-    { name: 'Chest', value: 22, color: '#FF6B35' },
-    { name: 'Back', value: 20, color: '#F59E0B' },
-    { name: 'Legs', value: 18, color: '#10B981' },
-    { name: 'Shoulders', value: 15, color: '#6366F1' },
-    { name: 'Arms', value: 13, color: '#EC4899' },
-    { name: 'Core', value: 12, color: '#8B5CF6' },
-  ];
-
-  const strengthData = [
-    { exercise: 'Bench', weight: 120 },
-    { exercise: 'Squat', weight: 160 },
-    { exercise: 'Deadlift', weight: 180 },
-    { exercise: 'OHP', weight: 75 },
-    { exercise: 'Row', weight: 95 },
-  ];
+  const hasData = volumeData.length > 0 || muscleData.length > 0;
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-20">
@@ -159,131 +232,160 @@ export function AnalyticsMobile() {
 
       {/* Content */}
       <div className="px-4 py-4 space-y-4">
-        {activeTab === 'overview' && (
-          <>
-            {/* Volume Chart */}
-            <ChartCard title="VOLUME OVER TIME">
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={volumeData}>
-                  <defs>
-                    <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="date"
-                    stroke="#6B7280"
-                    style={{ fontSize: '12px' }}
-                  />
-                  <YAxis
-                    stroke="#6B7280"
-                    style={{ fontSize: '12px' }}
-                    tickFormatter={(value) => `${value / 1000}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1a1a1a',
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff',
-                    }}
-                    formatter={(value: number) => [`${value.toLocaleString()} kg`, 'Volume']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="volume"
-                    stroke="#FF6B35"
-                    strokeWidth={2}
-                    fill="url(#volumeGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Muscle Distribution */}
-            <ChartCard title="MUSCLE DISTRIBUTION">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={muscleData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {muscleData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1a1a1a',
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff',
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex flex-wrap gap-2 mt-3 justify-center">
-                {muscleData.map((muscle) => (
-                  <div key={muscle.name} className="flex items-center gap-1 text-xs">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: muscle.color }}
-                    />
-                    <span className="text-[#9CA3AF]">
-                      {muscle.name} {muscle.value}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </ChartCard>
-          </>
-        )}
-
-        {activeTab === 'strength' && (
-          <ChartCard title="TOP LIFTS (1RM)">
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={strengthData} layout="vertical">
-                <XAxis type="number" stroke="#6B7280" style={{ fontSize: '12px' }} />
-                <YAxis
-                  type="category"
-                  dataKey="exercise"
-                  stroke="#6B7280"
-                  style={{ fontSize: '12px' }}
-                  width={70}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1a1a1a',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    color: '#fff',
-                  }}
-                  formatter={(value: number) => [`${value} kg`, '1RM']}
-                />
-                <Bar dataKey="weight" fill="#FF6B35" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
-
-        {activeTab === 'trends' && (
+        {!hasData ? (
           <div className="text-center py-12 text-[#6B7280]">
             <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>Trends analysis coming soon</p>
+            <p>No analytics data yet. Complete workouts to see insights.</p>
           </div>
-        )}
+        ) : (
+          <>
+            {activeTab === 'overview' && (
+              <>
+                {/* Volume Chart */}
+                <ChartCard title="VOLUME OVER TIME">
+                  {volumeData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={volumeData}>
+                        <defs>
+                          <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="date"
+                          stroke="#6B7280"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <YAxis
+                          stroke="#6B7280"
+                          style={{ fontSize: '12px' }}
+                          tickFormatter={(value) => `${value / 1000}k`}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1a1a1a',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                            color: '#fff',
+                          }}
+                          formatter={(value: number) => [`${value.toLocaleString()} kg`, 'Volume']}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="volume"
+                          stroke="#FF6B35"
+                          strokeWidth={2}
+                          fill="url(#volumeGradient)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[200px] flex items-center justify-center text-[#6B7280] text-sm">
+                      No volume data for this period
+                    </div>
+                  )}
+                </ChartCard>
 
-        {activeTab === 'body' && (
-          <div className="text-center py-12 text-[#6B7280]">
-            <Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>Body composition tracking coming soon</p>
-          </div>
+                {/* Muscle Distribution */}
+                <ChartCard title="MUSCLE DISTRIBUTION">
+                  {muscleData.length > 0 ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie
+                            data={muscleData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={2}
+                            dataKey="value"
+                          >
+                            {muscleData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1a1a1a',
+                              border: '1px solid #374151',
+                              borderRadius: '8px',
+                              color: '#fff',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="flex flex-wrap gap-2 mt-3 justify-center">
+                        {muscleData.map((muscle) => (
+                          <div key={muscle.name} className="flex items-center gap-1 text-xs">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: muscle.color }}
+                            />
+                            <span className="text-[#9CA3AF]">
+                              {muscle.name} {muscle.value}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-[200px] flex items-center justify-center text-[#6B7280] text-sm">
+                      No muscle group data yet
+                    </div>
+                  )}
+                </ChartCard>
+              </>
+            )}
+
+            {activeTab === 'strength' && (
+              <ChartCard title="TOP LIFTS (1RM)">
+                {strengthData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={strengthData} layout="vertical">
+                      <XAxis type="number" stroke="#6B7280" style={{ fontSize: '12px' }} />
+                      <YAxis
+                        type="category"
+                        dataKey="exercise"
+                        stroke="#6B7280"
+                        style={{ fontSize: '12px' }}
+                        width={70}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1a1a1a',
+                          border: '1px solid #374151',
+                          borderRadius: '8px',
+                          color: '#fff',
+                        }}
+                        formatter={(value: number) => [`${value} kg`, '1RM']}
+                      />
+                      <Bar dataKey="weight" fill="#FF6B35" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[250px] flex items-center justify-center text-[#6B7280] text-sm">
+                    No strength data yet. Set some PRs!
+                  </div>
+                )}
+              </ChartCard>
+            )}
+
+            {activeTab === 'trends' && (
+              <div className="text-center py-12 text-[#6B7280]">
+                <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Trends analysis coming soon</p>
+              </div>
+            )}
+
+            {activeTab === 'body' && (
+              <div className="text-center py-12 text-[#6B7280]">
+                <Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Body composition tracking coming soon</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
