@@ -1,22 +1,27 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
-import { LandingPage } from '@/app/components/LandingPage';
 import { Navigation } from '@/app/components/Navigation';
-import { Dashboard } from '@/app/components/Dashboard';
-import { Analytics } from '@/app/components/Analytics';
-import { Challenges } from '@/app/components/Challenges';
-import { Community } from '@/app/components/Community';
-import { Profile } from '@/app/components/Profile';
-import { PrivacyPolicy } from '@/app/components/PrivacyPolicy';
-import { WorkoutHistory } from '@/app/components/WorkoutHistory';
-import { SessionDetail } from '@/app/components/SessionDetail';
-import { PersonalRecords } from '@/app/components/PersonalRecords';
-import { RoutinesEnhanced } from '@/app/components/RoutinesEnhanced';
-import { RoutineBuilder } from '@/app/components/RoutineBuilder';
-import { TrainingCycles } from '@/app/components/TrainingCycles';
-import { CelebrationDemo } from '@/app/components/CelebrationDemo';
 import { MobileBottomNav } from '@/app/components/MobileBottomNav';
 import { Toaster } from '@/app/components/ui/sonner';
+import { PageLoading } from '@/app/components/PageLoading';
+import { PageErrorFallback } from '@/app/components/ErrorFallback';
+
+// Lazy-load all page components for code splitting
+const LandingPage = lazy(() => import('@/app/components/LandingPage').then(m => ({ default: m.LandingPage })));
+const Dashboard = lazy(() => import('@/app/components/Dashboard').then(m => ({ default: m.Dashboard })));
+const Analytics = lazy(() => import('@/app/components/Analytics').then(m => ({ default: m.Analytics })));
+const Challenges = lazy(() => import('@/app/components/Challenges').then(m => ({ default: m.Challenges })));
+const Community = lazy(() => import('@/app/components/Community').then(m => ({ default: m.Community })));
+const Profile = lazy(() => import('@/app/components/Profile').then(m => ({ default: m.Profile })));
+const PrivacyPolicy = lazy(() => import('@/app/components/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const WorkoutHistory = lazy(() => import('@/app/components/WorkoutHistory').then(m => ({ default: m.WorkoutHistory })));
+const SessionDetail = lazy(() => import('@/app/components/SessionDetail').then(m => ({ default: m.SessionDetail })));
+const PersonalRecords = lazy(() => import('@/app/components/PersonalRecords').then(m => ({ default: m.PersonalRecords })));
+const RoutinesEnhanced = lazy(() => import('@/app/components/RoutinesEnhanced').then(m => ({ default: m.RoutinesEnhanced })));
+const RoutineBuilder = lazy(() => import('@/app/components/RoutineBuilder').then(m => ({ default: m.RoutineBuilder })));
+const TrainingCycles = lazy(() => import('@/app/components/TrainingCycles').then(m => ({ default: m.TrainingCycles })));
+const CelebrationDemo = lazy(() => import('@/app/components/CelebrationDemo').then(m => ({ default: m.CelebrationDemo })));
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -89,53 +94,61 @@ export default function App() {
 
   if (showPrivacyPolicy) {
     return (
-      <>
-        <PrivacyPolicy onBack={handleBackFromPrivacy} />
-        <Toaster />
-      </>
+      <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => setShowPrivacyPolicy(false)}>
+        <Suspense fallback={<PageLoading />}>
+          <PrivacyPolicy onBack={handleBackFromPrivacy} />
+          <Toaster />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <>
-        <LandingPage onGetStarted={handleGetStarted} onNavigateToPrivacy={handleNavigateToPrivacy} />
-        <Toaster />
-      </>
+      <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => setIsAuthenticated(false)}>
+        <Suspense fallback={<PageLoading />}>
+          <LandingPage onGetStarted={handleGetStarted} onNavigateToPrivacy={handleNavigateToPrivacy} />
+          <Toaster />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0D0D0D]">
       <Navigation currentPage={currentPage} onNavigate={handleNavigate} streak={streak} />
-      
-      {currentPage === 'dashboard' && <Dashboard />}
-      {currentPage === 'history' && selectedSessionId && <SessionDetail sessionId={selectedSessionId} onBack={handleBackFromSession} />}
-      {currentPage === 'history' && !selectedSessionId && <WorkoutHistory onViewSession={handleViewSession} />}
-      {currentPage === 'records' && <PersonalRecords />}
-      {currentPage === 'analytics' && <Analytics />}
-      {currentPage === 'challenges' && <Challenges />}
-      {currentPage === 'community' && <Community />}
-      
-      {/* Routines Page */}
-      {currentPage === 'routines' && !showRoutineBuilder && (
-        <RoutinesEnhanced onCreateRoutine={handleCreateRoutine} onEditRoutine={handleEditRoutine} />
-      )}
-      {currentPage === 'routines' && showRoutineBuilder && (
-        <RoutineBuilder 
-          routineId={selectedRoutineId || undefined}
-          onBack={handleBackFromRoutineBuilder}
-          onSave={handleSaveRoutine}
-        />
-      )}
-      
-      {/* Cycles Page */}
-      {currentPage === 'cycles' && <TrainingCycles onCreateCycle={handleCreateCycle} onEditCycle={handleEditCycle} />}
-      
-      {/* Celebration Demo Page (hidden - access via /celebrations) */}
-      {currentPage === 'celebrations' && <CelebrationDemo />}
-      
-      {currentPage === 'profile' && <Profile />}
+
+      <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => setCurrentPage('dashboard')}>
+        <Suspense fallback={<PageLoading />}>
+          {currentPage === 'dashboard' && <Dashboard />}
+          {currentPage === 'history' && selectedSessionId && <SessionDetail sessionId={selectedSessionId} onBack={handleBackFromSession} />}
+          {currentPage === 'history' && !selectedSessionId && <WorkoutHistory onViewSession={handleViewSession} />}
+          {currentPage === 'records' && <PersonalRecords />}
+          {currentPage === 'analytics' && <Analytics />}
+          {currentPage === 'challenges' && <Challenges />}
+          {currentPage === 'community' && <Community />}
+
+          {/* Routines Page */}
+          {currentPage === 'routines' && !showRoutineBuilder && (
+            <RoutinesEnhanced onCreateRoutine={handleCreateRoutine} onEditRoutine={handleEditRoutine} />
+          )}
+          {currentPage === 'routines' && showRoutineBuilder && (
+            <RoutineBuilder
+              routineId={selectedRoutineId || undefined}
+              onBack={handleBackFromRoutineBuilder}
+              onSave={handleSaveRoutine}
+            />
+          )}
+
+          {/* Cycles Page */}
+          {currentPage === 'cycles' && <TrainingCycles onCreateCycle={handleCreateCycle} onEditCycle={handleEditCycle} />}
+
+          {/* Celebration Demo Page (hidden - access via /celebrations) */}
+          {currentPage === 'celebrations' && <CelebrationDemo />}
+
+          {currentPage === 'profile' && <Profile />}
+        </Suspense>
+      </ErrorBoundary>
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav
