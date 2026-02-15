@@ -1,14 +1,14 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { Skeleton, StatCardSkeleton, ChartSkeleton } from '@/app/components/ui/skeleton';
 import {
   TrendingUp,
   TrendingDown,
-  Calendar,
   Download,
-  BarChart3,
   Activity,
   Target,
   AlertCircle,
@@ -33,79 +33,166 @@ import {
 } from 'recharts';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { AnalyticsMobile } from '@/app/components/mobile/AnalyticsMobile';
+import { useAuth } from '@/app/hooks/useAuth';
+import { volumeTrendOptions, muscleGroupOptions, strengthProgressOptions } from '@/queries/analytics';
+
+const MUSCLE_GROUP_COLORS: Record<string, string> = {
+  Chest: '#FF6B35',
+  Back: '#DC2626',
+  Legs: '#F59E0B',
+  Shoulders: '#10B981',
+  Arms: '#6B7280',
+  Core: '#FBBF24',
+};
+
+// Time period to query period mapping
+function periodToDays(timePeriod: string): string {
+  switch (timePeriod) {
+    case '7D': return '1w';
+    case '30D': return '4w';
+    case '90D': return '12w';
+    default: return '4w';
+  }
+}
+
+// Bucket volume data into weekly aggregates for chart display
+function bucketByWeek(data: Array<{ started_at: string; total_volume: number }>) {
+  if (!data || data.length === 0) return [];
+  const weeks = new Map<string, { volume: number; workouts: number }>();
+  for (const item of data) {
+    const date = new Date(item.started_at);
+    // Get ISO week start (Monday)
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const weekStart = new Date(date);
+    weekStart.setDate(diff);
+    const key = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const existing = weeks.get(key) ?? { volume: 0, workouts: 0 };
+    existing.volume += item.total_volume;
+    existing.workouts += 1;
+    weeks.set(key, existing);
+  }
+  return Array.from(weeks.entries()).map(([date, { volume, workouts }]) => ({
+    date,
+    volume: Math.round(volume),
+    workouts,
+  }));
+}
+
+// Group strength progress data by exercise for line chart
+function groupStrengthByExercise(data: Array<{ exercise_name: string; value: number; achieved_at: string }>) {
+  if (!data || data.length === 0) return [];
+  // Get all unique dates and exercises
+  const dateSet = new Set<string>();
+  const exerciseMap = new Map<string, Map<string, number>>();
+
+  for (const item of data) {
+    const date = new Date(item.achieved_at).toLocaleDateString('en-US', { month: 'short' });
+    dateSet.add(date);
+    if (!exerciseMap.has(item.exercise_name)) {
+      exerciseMap.set(item.exercise_name, new Map());
+    }
+    // Keep highest value per exercise per month
+    const existing = exerciseMap.get(item.exercise_name)!.get(date) ?? 0;
+    if (item.value > existing) {
+      exerciseMap.get(item.exercise_name)!.set(date, item.value);
+    }
+  }
+
+  const dates = Array.from(dateSet);
+  // Pick top 3 exercises by latest value
+  const exercises = Array.from(exerciseMap.entries())
+    .map(([name, values]) => ({ name, latestValue: Array.from(values.values()).pop() ?? 0 }))
+    .sort((a, b) => b.latestValue - a.latestValue)
+    .slice(0, 3)
+    .map((e) => e.name);
+
+  return dates.map((date) => {
+    const point: Record<string, string | number> = { date };
+    for (const exercise of exercises) {
+      point[exercise] = exerciseMap.get(exercise)?.get(date) ?? 0;
+    }
+    return point;
+  });
+}
+
+const EXERCISE_COLORS = ['#FF6B35', '#DC2626', '#F59E0B'];
 
 export function Analytics() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const [timePeriod, setTimePeriod] = useState('30D');
+
+  const queryPeriod = periodToDays(timePeriod);
+  const { data: volumeRaw, isPending: volumePending } = useQuery(volumeTrendOptions(user!.id, queryPeriod));
+  const { data: muscleGroupRaw, isPending: musclePending } = useQuery(muscleGroupOptions(user!.id));
+  const { data: strengthRaw, isPending: strengthPending } = useQuery(strengthProgressOptions(user!.id));
 
   if (isMobile) {
     return <AnalyticsMobile />;
   }
 
-  const volumeData = [
-    { date: 'Week 1', volume: 18500, workouts: 4 },
-    { date: 'Week 2', volume: 21200, workouts: 5 },
-    { date: 'Week 3', volume: 19800, workouts: 4 },
-    { date: 'Week 4', volume: 23100, workouts: 6 },
-    { date: 'Week 5', volume: 24500, workouts: 5 },
-    { date: 'Week 6', volume: 22900, workouts: 5 },
-    { date: 'Week 7', volume: 26700, workouts: 6 },
-    { date: 'Week 8', volume: 28200, workouts: 6 },
-  ];
+  const isPending = volumePending || musclePending || strengthPending;
+  const volumeData = bucketByWeek(volumeRaw ?? []);
+  const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
+    ...m,
+    color: MUSCLE_GROUP_COLORS[m.name] ?? '#6B7280',
+  }));
+  const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []);
+  const strengthExercises = strengthProgressData.length > 0
+    ? Object.keys(strengthProgressData[0]).filter((k) => k !== 'date')
+    : [];
 
-  const muscleGroupData = [
-    { name: 'Chest', value: 22, color: '#FF6B35' },
-    { name: 'Back', value: 20, color: '#DC2626' },
-    { name: 'Legs', value: 18, color: '#F59E0B' },
-    { name: 'Shoulders', value: 15, color: '#10B981' },
-    { name: 'Arms', value: 15, color: '#6B7280' },
-    { name: 'Core', value: 10, color: '#FBBF24' },
-  ];
+  // Derive summary stats from real data
+  const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
+  const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
+  const avgDuration = totalWorkouts > 0 ? Math.round(totalVolume / totalWorkouts / 100) : 0; // rough estimate
 
-  const exerciseBreakdown = [
-    { exercise: 'Bench Press', sets: 48 },
-    { exercise: 'Squat', sets: 42 },
-    { exercise: 'Deadlift', sets: 36 },
-    { exercise: 'Rows', sets: 40 },
-    { exercise: 'Shoulder Press', sets: 32 },
-    { exercise: 'Pull-ups', sets: 28 },
-  ];
-
-  const strengthProgressData = [
-    { date: 'Jan', benchPress: 100, squat: 140, deadlift: 160 },
-    { date: 'Feb', benchPress: 105, squat: 145, deadlift: 165 },
-    { date: 'Mar', benchPress: 107, squat: 150, deadlift: 170 },
-    { date: 'Apr', benchPress: 112, squat: 155, deadlift: 175 },
-    { date: 'May', benchPress: 115, squat: 157, deadlift: 178 },
-    { date: 'Jun', benchPress: 120, squat: 160, deadlift: 180 },
-  ];
-
+  // TODO: Generate insights from real analytics data
   const insights = [
     {
-      type: 'positive',
-      title: 'Volume Trending Up',
-      description: 'Your total training volume increased by 12% this month',
+      type: 'positive' as const,
+      title: 'Volume Tracking Active',
+      description: `${totalWorkouts} workouts tracked in the selected period`,
       icon: TrendingUp,
     },
     {
-      type: 'warning',
-      title: 'Push/Pull Imbalance',
-      description: 'You\'ve trained chest 40% more than back. Consider balancing.',
-      icon: AlertCircle,
+      type: muscleGroupData.length >= 3 ? ('positive' as const) : ('warning' as const),
+      title: muscleGroupData.length >= 3 ? 'Good Variety' : 'Limited Variety',
+      description: `Training ${muscleGroupData.length} different muscle groups`,
+      icon: muscleGroupData.length >= 3 ? Target : AlertCircle,
     },
     {
-      type: 'positive',
-      title: 'Consistency Score: 87%',
-      description: 'Great work! You\'re maintaining excellent workout frequency.',
-      icon: Target,
-    },
-    {
-      type: 'neutral',
-      title: 'Squat Plateau Detected',
-      description: 'No PR in squat for 3 weeks. Consider a deload or variation.',
+      type: strengthExercises.length > 0 ? ('positive' as const) : ('neutral' as const),
+      title: 'Strength Tracking',
+      description: strengthExercises.length > 0
+        ? `Tracking progress on ${strengthExercises.join(', ')}`
+        : 'Complete more workouts to see strength trends',
       icon: Activity,
     },
   ];
+
+  if (isPending) {
+    return (
+      <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Skeleton className="h-10 w-48 mb-2" />
+          <Skeleton className="h-4 w-64 mb-8" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <StatCardSkeleton key={i} />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartSkeleton />
+            <ChartSkeleton />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const hasData = volumeData.length > 0 || muscleGroupData.length > 0;
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
@@ -140,341 +227,275 @@ export function Analytics() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Total Volume', value: '186.5K kg', change: '+12%', positive: true },
-            { label: 'Workouts', value: '42', change: '+8%', positive: true },
-            { label: 'Personal Records', value: '11', change: '+3', positive: true },
-            { label: 'Avg Duration', value: '56 min', change: '-2 min', positive: false },
-          ].map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <div className="text-sm text-[#9CA3AF] mb-1">{stat.label}</div>
-                <div className="text-2xl text-white mb-1">{stat.value}</div>
-                <div
-                  className={`text-xs flex items-center gap-1 ${
-                    stat.positive ? 'text-[#10B981]' : 'text-[#6B7280]'
-                  }`}
-                >
-                  {stat.positive ? (
-                    <TrendingUp className="w-3 h-3" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3" />
-                  )}
-                  {stat.change}
-                </div>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Main Content Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-[#FF6B35]">
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="strength" className="data-[state=active]:bg-[#FF6B35]">
-              Strength Progress
-            </TabsTrigger>
-            <TabsTrigger value="insights" className="data-[state=active]:bg-[#FF6B35]">
-              Trends & Insights
-            </TabsTrigger>
-            <TabsTrigger value="body" className="data-[state=active]:bg-[#FF6B35]">
-              Body Part Analysis
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Volume Over Time */}
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-6">Volume Over Time</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={volumeData}>
-                    <defs>
-                      <linearGradient id="volumeGradientAnalytics" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#DC2626" stopOpacity={0.1} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="date" stroke="#9CA3AF" />
-                    <YAxis stroke="#9CA3AF" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #374151',
-                        borderRadius: '8px',
-                        color: '#E5E7EB',
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="volume"
-                      stroke="#FF6B35"
-                      strokeWidth={2}
-                      fill="url(#volumeGradientAnalytics)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Muscle Group Distribution */}
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-6">Muscle Group Distribution</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={muscleGroupData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} ${value}%`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {muscleGroupData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #374151',
-                        borderRadius: '8px',
-                        color: '#E5E7EB',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Exercise Breakdown */}
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] lg:col-span-2">
-                <h3 className="text-xl text-white mb-6">Exercise Breakdown (by sets)</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={exerciseBreakdown} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis type="number" stroke="#9CA3AF" />
-                    <YAxis type="category" dataKey="exercise" stroke="#9CA3AF" width={120} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #374151',
-                        borderRadius: '8px',
-                        color: '#E5E7EB',
-                      }}
-                    />
-                    <Bar dataKey="sets" fill="#FF6B35" radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
+        {!hasData ? (
+          <div className="text-center py-16">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
+              <TrendingUp className="w-12 h-12 text-[#FF6B35]" />
             </div>
-          </TabsContent>
-
-          {/* Strength Progress Tab */}
-          <TabsContent value="strength" className="space-y-6">
-            <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-              <h3 className="text-xl text-white mb-6">1RM Progression</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={strengthProgressData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="date" stroke="#9CA3AF" />
-                  <YAxis stroke="#9CA3AF" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1a1a1a',
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#E5E7EB',
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="benchPress"
-                    name="Bench Press"
-                    stroke="#FF6B35"
-                    strokeWidth={2}
-                    dot={{ fill: '#FF6B35', r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="squat"
-                    name="Squat"
-                    stroke="#DC2626"
-                    strokeWidth={2}
-                    dot={{ fill: '#DC2626', r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="deadlift"
-                    name="Deadlift"
-                    stroke="#F59E0B"
-                    strokeWidth={2}
-                    dot={{ fill: '#F59E0B', r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <h3 className="text-2xl font-semibold text-white mb-2">No analytics data yet</h3>
+            <p className="text-[#9CA3AF] max-w-md mx-auto">
+              Complete workouts to start seeing your training analytics. Charts and insights will populate automatically.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
-                { exercise: 'Bench Press', current: '120 kg', predicted: '125 kg', weeks: 4 },
-                { exercise: 'Squat', current: '160 kg', predicted: '165 kg', weeks: 3 },
-                { exercise: 'Deadlift', current: '180 kg', predicted: '185 kg', weeks: 2 },
-              ].map((pred, index) => (
-                <Card
-                  key={pred.exercise}
-                  className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]"
-                >
-                  <h4 className="text-white mb-4">{pred.exercise}</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-sm text-[#9CA3AF] mb-1">Current 1RM</div>
-                      <div className="text-2xl text-[#FF6B35]">{pred.current}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-[#9CA3AF] mb-1">Predicted PR</div>
-                      <div className="text-xl text-[#10B981]">{pred.predicted}</div>
-                    </div>
-                    <div className="text-sm text-[#6B7280]">In ~{pred.weeks} weeks</div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* Trends & Insights Tab */}
-          <TabsContent value="insights" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {insights.map((insight, index) => (
+                { label: 'Total Volume', value: totalVolume > 1000 ? `${(totalVolume / 1000).toFixed(1)}K kg` : `${totalVolume} kg`, change: '', positive: true },
+                { label: 'Workouts', value: `${totalWorkouts}`, change: '', positive: true },
+                { label: 'Muscle Groups', value: `${muscleGroupData.length}`, change: '', positive: true },
+                { label: 'Exercises Tracked', value: `${strengthExercises.length}`, change: '', positive: true },
+              ].map((stat, index) => (
                 <motion.div
-                  key={index}
+                  key={stat.label}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
                 >
-                  <Card
-                    className={`p-6 border-2 ${
-                      insight.type === 'positive'
-                        ? 'bg-gradient-to-br from-[#10B981]/10 to-[#0D0D0D] border-[#10B981]'
-                        : insight.type === 'warning'
-                        ? 'bg-gradient-to-br from-[#FBBF24]/10 to-[#0D0D0D] border-[#FBBF24]'
-                        : 'bg-gradient-to-br from-[#6B7280]/10 to-[#0D0D0D] border-[#6B7280]'
-                    }`}
-                  >
-                    <div className="flex items-start gap-4">
+                  <Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                    <div className="text-sm text-[#9CA3AF] mb-1">{stat.label}</div>
+                    <div className="text-2xl text-white mb-1">{stat.value}</div>
+                    {stat.change && (
                       <div
-                        className={`p-3 rounded-lg ${
-                          insight.type === 'positive'
-                            ? 'bg-[#10B981]/20'
-                            : insight.type === 'warning'
-                            ? 'bg-[#FBBF24]/20'
-                            : 'bg-[#6B7280]/20'
+                        className={`text-xs flex items-center gap-1 ${
+                          stat.positive ? 'text-[#10B981]' : 'text-[#6B7280]'
                         }`}
                       >
-                        <insight.icon
-                          className={`w-6 h-6 ${
-                            insight.type === 'positive'
-                              ? 'text-[#10B981]'
-                              : insight.type === 'warning'
-                              ? 'text-[#FBBF24]'
-                              : 'text-[#6B7280]'
-                          }`}
-                        />
+                        {stat.positive ? (
+                          <TrendingUp className="w-3 h-3" />
+                        ) : (
+                          <TrendingDown className="w-3 h-3" />
+                        )}
+                        {stat.change}
                       </div>
-                      <div className="flex-1">
-                        <h4 className="text-white text-lg mb-1">{insight.title}</h4>
-                        <p className="text-[#9CA3AF]">{insight.description}</p>
-                      </div>
-                    </div>
+                    )}
                   </Card>
                 </motion.div>
               ))}
             </div>
 
-            {/* Comparative Analysis */}
-            <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-              <h3 className="text-xl text-white mb-6">This Week vs Last Week</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { metric: 'Volume', thisWeek: '26.7K kg', lastWeek: '22.9K kg', change: '+17%' },
-                  { metric: 'Workouts', thisWeek: '6', lastWeek: '5', change: '+20%' },
-                  { metric: 'Avg Duration', thisWeek: '58 min', lastWeek: '54 min', change: '+7%' },
-                  { metric: 'PRs', thisWeek: '3', lastWeek: '1', change: '+200%' },
-                ].map((comp) => (
-                  <div key={comp.metric} className="text-center">
-                    <div className="text-sm text-[#9CA3AF] mb-2">{comp.metric}</div>
-                    <div className="text-xl text-[#FF6B35] mb-1">{comp.thisWeek}</div>
-                    <div className="text-xs text-[#6B7280] mb-1">{comp.lastWeek}</div>
-                    <div className="text-xs text-[#10B981]">{comp.change}</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </TabsContent>
+            {/* Main Content Tabs */}
+            <Tabs defaultValue="overview" className="space-y-6">
+              <TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+                <TabsTrigger value="overview" className="data-[state=active]:bg-[#FF6B35]">
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="strength" className="data-[state=active]:bg-[#FF6B35]">
+                  Strength Progress
+                </TabsTrigger>
+                <TabsTrigger value="insights" className="data-[state=active]:bg-[#FF6B35]">
+                  Trends & Insights
+                </TabsTrigger>
+                <TabsTrigger value="body" className="data-[state=active]:bg-[#FF6B35]">
+                  Body Part Analysis
+                </TabsTrigger>
+              </TabsList>
 
-          {/* Body Part Analysis Tab */}
-          <TabsContent value="body" className="space-y-6">
-            <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-              <h3 className="text-xl text-white mb-6">Muscle Group Frequency Heat Map</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {muscleGroupData.map((muscle) => (
-                  <div
-                    key={muscle.name}
-                    className="p-4 rounded-lg border-2 cursor-pointer hover:scale-105 transition-transform"
-                    style={{
-                      backgroundColor: `${muscle.color}20`,
-                      borderColor: muscle.color,
-                    }}
-                  >
-                    <div className="text-white mb-2">{muscle.name}</div>
-                    <div className="text-2xl mb-1" style={{ color: muscle.color }}>
-                      {muscle.value}%
+              {/* Overview Tab */}
+              <TabsContent value="overview" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Volume Over Time */}
+                  <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                    <h3 className="text-xl text-white mb-6">Volume Over Time</h3>
+                    {volumeData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <AreaChart data={volumeData}>
+                          <defs>
+                            <linearGradient id="volumeGradientAnalytics" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.8} />
+                              <stop offset="95%" stopColor="#DC2626" stopOpacity={0.1} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis dataKey="date" stroke="#9CA3AF" />
+                          <YAxis stroke="#9CA3AF" />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1a1a1a',
+                              border: '1px solid #374151',
+                              borderRadius: '8px',
+                              color: '#E5E7EB',
+                            }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="volume"
+                            stroke="#FF6B35"
+                            strokeWidth={2}
+                            fill="url(#volumeGradientAnalytics)"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-[#6B7280]">
+                        No volume data for this period
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Muscle Group Distribution */}
+                  <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                    <h3 className="text-xl text-white mb-6">Muscle Group Distribution</h3>
+                    {muscleGroupData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={muscleGroupData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, value }) => `${name} ${value}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {muscleGroupData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1a1a1a',
+                              border: '1px solid #374151',
+                              borderRadius: '8px',
+                              color: '#E5E7EB',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-[#6B7280]">
+                        No muscle group data yet
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Strength Progress Tab */}
+              <TabsContent value="strength" className="space-y-6">
+                <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                  <h3 className="text-xl text-white mb-6">1RM Progression</h3>
+                  {strengthProgressData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart data={strengthProgressData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="date" stroke="#9CA3AF" />
+                        <YAxis stroke="#9CA3AF" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1a1a1a',
+                            border: '1px solid #374151',
+                            borderRadius: '8px',
+                            color: '#E5E7EB',
+                          }}
+                        />
+                        <Legend />
+                        {strengthExercises.map((exercise, i) => (
+                          <Line
+                            key={exercise}
+                            type="monotone"
+                            dataKey={exercise}
+                            name={exercise}
+                            stroke={EXERCISE_COLORS[i % EXERCISE_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ fill: EXERCISE_COLORS[i % EXERCISE_COLORS.length], r: 4 }}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[400px] flex items-center justify-center text-[#6B7280]">
+                      No strength progress data yet. Set some PRs to see your progression!
                     </div>
-                    <div className="text-xs text-[#9CA3AF]">of total volume</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  )}
+                </Card>
+              </TabsContent>
 
-            <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-              <h3 className="text-xl text-white mb-6">Balance Score</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[#9CA3AF]">Push vs Pull</span>
-                    <span className="text-white">52% / 48%</span>
-                  </div>
-                  <div className="h-3 bg-[#374151] rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] rounded-full" style={{ width: '52%' }} />
-                  </div>
-                  <p className="text-sm text-[#FBBF24] mt-2">Slightly imbalanced - Add more pulling</p>
+              {/* Trends & Insights Tab */}
+              <TabsContent value="insights" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {insights.map((insight, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <Card
+                        className={`p-6 border-2 ${
+                          insight.type === 'positive'
+                            ? 'bg-gradient-to-br from-[#10B981]/10 to-[#0D0D0D] border-[#10B981]'
+                            : insight.type === 'warning'
+                            ? 'bg-gradient-to-br from-[#FBBF24]/10 to-[#0D0D0D] border-[#FBBF24]'
+                            : 'bg-gradient-to-br from-[#6B7280]/10 to-[#0D0D0D] border-[#6B7280]'
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div
+                            className={`p-3 rounded-lg ${
+                              insight.type === 'positive'
+                                ? 'bg-[#10B981]/20'
+                                : insight.type === 'warning'
+                                ? 'bg-[#FBBF24]/20'
+                                : 'bg-[#6B7280]/20'
+                            }`}
+                          >
+                            <insight.icon
+                              className={`w-6 h-6 ${
+                                insight.type === 'positive'
+                                  ? 'text-[#10B981]'
+                                  : insight.type === 'warning'
+                                  ? 'text-[#FBBF24]'
+                                  : 'text-[#6B7280]'
+                              }`}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-white text-lg mb-1">{insight.title}</h4>
+                            <p className="text-[#9CA3AF]">{insight.description}</p>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  ))}
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[#9CA3AF]">Upper vs Lower</span>
-                    <span className="text-white">55% / 45%</span>
-                  </div>
-                  <div className="h-3 bg-[#374151] rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] rounded-full" style={{ width: '55%' }} />
-                  </div>
-                  <p className="text-sm text-[#10B981] mt-2">Good balance!</p>
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </TabsContent>
+
+              {/* Body Part Analysis Tab */}
+              <TabsContent value="body" className="space-y-6">
+                <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                  <h3 className="text-xl text-white mb-6">Muscle Group Frequency</h3>
+                  {muscleGroupData.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {muscleGroupData.map((muscle) => (
+                        <div
+                          key={muscle.name}
+                          className="p-4 rounded-lg border-2 cursor-pointer hover:scale-105 transition-transform"
+                          style={{
+                            backgroundColor: `${muscle.color}20`,
+                            borderColor: muscle.color,
+                          }}
+                        >
+                          <div className="text-white mb-2">{muscle.name}</div>
+                          <div className="text-2xl mb-1" style={{ color: muscle.color }}>
+                            {muscle.value}%
+                          </div>
+                          <div className="text-xs text-[#9CA3AF]">of total volume</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-[#6B7280]">
+                      No body part data yet
+                    </div>
+                  )}
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </div>
     </div>
   );
