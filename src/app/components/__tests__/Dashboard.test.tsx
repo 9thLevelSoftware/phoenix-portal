@@ -1,10 +1,23 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { renderWithProviders } from '@/test/test-utils';
 import { Dashboard } from '../Dashboard';
+
+const mockAuth = vi.hoisted(() => ({
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: { user: { id: 'test-user-id' }, access_token: 'test-token' },
+    loading: false,
+    signOut: () => Promise.resolve(),
+  }),
+}));
+
+vi.mock('@/app/hooks/useAuth', () => mockAuth);
+vi.mock('@/providers/AuthProvider', () => mockAuth);
 
 describe('Dashboard', () => {
   it('renders without crashing', () => {
-    render(<Dashboard />);
+    renderWithProviders(<Dashboard />);
     expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
   });
 });
