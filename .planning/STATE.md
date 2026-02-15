@@ -11,26 +11,26 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 Phase: 0 of 7 (Stabilization)
 Plan: 3 of 3 in current phase
-Status: Executing
-Last activity: 2026-02-15 -- Completed 00-03-PLAN.md (asset optimization)
+Status: Phase Complete
+Last activity: 2026-02-15 -- Completed 00-02-PLAN.md (test framework, code splitting, error boundaries)
 
-Progress: [▓░░░░░░░░░] 5% (2/38 plans)
+Progress: [▓░░░░░░░░░] 8% (3/38 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: 4 min
-- Total execution time: 0.12 hours
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 00-stabilization | 2/3 | 7 min | 4 min |
+| 00-stabilization | 3/3 | 13 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 00-01 (4 min), 00-03 (3 min)
+- Last 5 plans: 00-01 (4 min), 00-03 (3 min), 00-02 (6 min)
 - Trend: n/a (need more data)
 
 *Updated after each plan completion*
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - [00-03]: WebP quality 85 balances file size and visual quality
 - [00-03]: XL logo loads eagerly (landing hero), others lazy-load
 - [00-03]: Original 1.8MB PNG kept as source, just removed imports
+- [00-02]: Class-based IntersectionObserver mock required for framer-motion compatibility in tests
+- [00-02]: Navigation/MobileBottomNav/Toaster kept as static imports (always visible layout shell)
+- [00-02]: Each early-return path in App.tsx gets its own ErrorBoundary+Suspense wrapper
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 00-03-PLAN.md (asset optimization)
+Stopped at: Completed 00-02-PLAN.md (test framework, code splitting, error boundaries) -- Phase 0 complete
 Resume file: None
