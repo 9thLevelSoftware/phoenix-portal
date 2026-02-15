@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 1 - Authentication & Data Layer
+**Current focus:** Phase 2 - Navigation & State Management
 
 ## Current Position
 
-Phase: 1 of 7 (Authentication & Data Layer) -- COMPLETE
-Plan: 7 of 7 in current phase -- DONE (includes gap closure plan 07)
-Status: Phase Complete
-Last activity: 2026-02-15 -- 01-07 complete (Logout UI gap closure)
+Phase: 2 of 7 (Navigation & State Management)
+Plan: 1 of 3 in current phase -- DONE
+Status: In Progress
+Last activity: 2026-02-15 -- 02-01 complete (Router infrastructure & Zustand store)
 
-Progress: [███░░░░░░░] 26% (10/39 plans)
+Progress: [███░░░░░░░] 28% (11/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 4 min
-- Total execution time: 0.59 hours
+- Total plans completed: 11
+- Average duration: 3 min
+- Total execution time: 0.62 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [███░░░░░░░] 26% (10/39 plans)
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
 | 01-auth-data-layer | 7/7 | 22 min | 3 min |
+| 02-navigation-state | 1/3 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (8 min), 01-02 (~est), 01-03 (2 min), 01-04 (~est), 01-05 (8 min)
+- Last 5 plans: 01-05 (8 min), 01-06 (~est), 01-07 (~est), 02-01 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -84,6 +85,10 @@ Recent decisions affecting current work:
 - [01-07]: Logout button in Profile settings (Account card) -- accessible from both desktop and mobile
 - [01-07]: Navigation bar gets icon-only logout button next to avatar
 - [01-07]: No MobileBottomNav changes -- mobile users reach logout via Profile page
+- [02-01]: BrowserRouter wraps AuthProvider (outermost) so useNavigate works everywhere
+- [02-01]: Navigation/MobileBottomNav get hardcoded props until plan 02-02 migrates them
+- [02-01]: Route wrapper components bridge old prop-based nav to URL params temporarily
+- [02-01]: useRealtimeSync moved from App.tsx to AppLayout for authenticated-only execution
 
 ### Pending Todos
 
@@ -98,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-07-PLAN.md (Logout UI gap closure) -- Phase 1 COMPLETE (all gaps closed)
+Stopped at: Completed 02-01-PLAN.md (Router infrastructure & Zustand store)
 Resume file: None
