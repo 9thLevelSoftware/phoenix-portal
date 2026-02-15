@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useAuth } from '@/app/hooks/useAuth';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { Navigation } from '@/app/components/Navigation';
 import { MobileBottomNav } from '@/app/components/MobileBottomNav';
@@ -24,7 +25,7 @@ const TrainingCycles = lazy(() => import('@/app/components/TrainingCycles').then
 const CelebrationDemo = lazy(() => import('@/app/components/CelebrationDemo').then(m => ({ default: m.CelebrationDemo })));
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { user, loading, signOut } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -33,11 +34,6 @@ export default function App() {
   const [showCycleBuilder, setShowCycleBuilder] = useState(false);
   const [streak, setStreak] = useState(7);
   const isMobile = useIsMobile();
-
-  const handleGetStarted = () => {
-    setIsAuthenticated(true);
-    setCurrentPage('dashboard');
-  };
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
@@ -92,6 +88,11 @@ export default function App() {
     setShowCycleBuilder(true);
   };
 
+  // Show loading spinner while auth state is being determined (prevents content flash)
+  if (loading) {
+    return <PageLoading />;
+  }
+
   if (showPrivacyPolicy) {
     return (
       <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => setShowPrivacyPolicy(false)}>
@@ -103,11 +104,11 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     return (
-      <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => setIsAuthenticated(false)}>
+      <ErrorBoundary FallbackComponent={PageErrorFallback} onReset={() => {}}>
         <Suspense fallback={<PageLoading />}>
-          <LandingPage onGetStarted={handleGetStarted} onNavigateToPrivacy={handleNavigateToPrivacy} />
+          <LandingPage onNavigateToPrivacy={handleNavigateToPrivacy} />
           <Toaster />
         </Suspense>
       </ErrorBoundary>

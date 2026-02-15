@@ -1,8 +1,16 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { supabase } from '@/lib/supabase';
 import { EmberParticles } from './EmberParticles';
 import { PhoenixLogo } from './PhoenixLogo';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
+import { Input } from '@/app/components/ui/input';
+import { Label } from '@/app/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/app/components/ui/tabs';
 import {
   BarChart3,
   Trophy,
@@ -10,19 +18,106 @@ import {
   Users,
   Share2,
   Zap,
-  TrendingUp,
-  Target,
-  Award,
   Check,
   ArrowRight,
+  Loader2,
+  Mail,
+  Chrome,
+  Apple,
 } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Validation schemas
+const signInSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+const signUpSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(1, 'Please confirm your password'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+type SignInFormData = z.infer<typeof signInSchema>;
+type SignUpFormData = z.infer<typeof signUpSchema>;
 
 interface LandingPageProps {
-  onGetStarted: () => void;
   onNavigateToPrivacy?: () => void;
 }
 
-export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPageProps) {
+export function LandingPage({ onNavigateToPrivacy }: LandingPageProps) {
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const signInForm = useForm<SignInFormData>({
+    resolver: zodResolver(signInSchema),
+    defaultValues: { email: '', password: '' },
+  });
+
+  const signUpForm = useForm<SignUpFormData>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: { email: '', password: '', confirmPassword: '' },
+  });
+
+  const handleSignIn = async (data: SignInFormData) => {
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
+      if (error) {
+        toast.error(error.message);
+      }
+    } catch {
+      toast.error('An unexpected error occurred');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignUp = async (data: SignUpFormData) => {
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+      });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Account created! Check your email for a confirmation link.');
+      }
+    } catch {
+      toast.error('An unexpected error occurred');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleOAuthSignIn = async (provider: 'google' | 'apple') => {
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) {
+        toast.error(error.message);
+      }
+    } catch {
+      toast.error('An unexpected error occurred');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const openAuth = () => setShowAuthDialog(true);
+
   const features = [
     {
       icon: BarChart3,
@@ -97,9 +192,179 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
     },
   ];
 
+  // Auth dialog/modal overlay
+  const authDialog = showAuthDialog && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Card className="w-full max-w-md p-6 bg-[#1a1a1a] border-[#374151] relative">
+          <button
+            onClick={() => setShowAuthDialog(false)}
+            className="absolute top-4 right-4 text-[#9CA3AF] hover:text-white transition-colors text-xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <PhoenixLogo size="sm" animated={false} />
+            <span className="text-xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent font-semibold">
+              Project Phoenix
+            </span>
+          </div>
+
+          <Tabs defaultValue="signin" className="w-full">
+            <TabsList className="w-full mb-4">
+              <TabsTrigger value="signin" className="flex-1">Sign In</TabsTrigger>
+              <TabsTrigger value="signup" className="flex-1">Sign Up</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="signin">
+              <form onSubmit={signInForm.handleSubmit(handleSignIn)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signin-email" className="text-[#E5E7EB]">Email</Label>
+                  <Input
+                    id="signin-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+                    {...signInForm.register('email')}
+                  />
+                  {signInForm.formState.errors.email && (
+                    <p className="text-sm text-red-400">{signInForm.formState.errors.email.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signin-password" className="text-[#E5E7EB]">Password</Label>
+                  <Input
+                    id="signin-password"
+                    type="password"
+                    placeholder="Enter your password"
+                    className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+                    {...signInForm.register('password')}
+                  />
+                  {signInForm.formState.errors.password && (
+                    <p className="text-sm text-red-400">{signInForm.formState.errors.password.message}</p>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Mail className="w-4 h-4 mr-2" />
+                  )}
+                  Sign In
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="signup">
+              <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email" className="text-[#E5E7EB]">Email</Label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+                    {...signUpForm.register('email')}
+                  />
+                  {signUpForm.formState.errors.email && (
+                    <p className="text-sm text-red-400">{signUpForm.formState.errors.email.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password" className="text-[#E5E7EB]">Password</Label>
+                  <Input
+                    id="signup-password"
+                    type="password"
+                    placeholder="At least 6 characters"
+                    className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+                    {...signUpForm.register('password')}
+                  />
+                  {signUpForm.formState.errors.password && (
+                    <p className="text-sm text-red-400">{signUpForm.formState.errors.password.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-confirm" className="text-[#E5E7EB]">Confirm Password</Label>
+                  <Input
+                    id="signup-confirm"
+                    type="password"
+                    placeholder="Confirm your password"
+                    className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+                    {...signUpForm.register('confirmPassword')}
+                  />
+                  {signUpForm.formState.errors.confirmPassword && (
+                    <p className="text-sm text-red-400">{signUpForm.formState.errors.confirmPassword.message}</p>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Mail className="w-4 h-4 mr-2" />
+                  )}
+                  Create Account
+                </Button>
+              </form>
+            </TabsContent>
+
+            {/* OAuth divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#374151]" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-[#1a1a1a] px-2 text-[#6B7280]">or continue with</span>
+              </div>
+            </div>
+
+            {/* OAuth buttons */}
+            <div className="flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={authLoading}
+                onClick={() => handleOAuthSignIn('google')}
+                className="w-full border-[#374151] text-[#E5E7EB] hover:bg-[#374151]/50 hover:text-white"
+              >
+                <Chrome className="w-4 h-4 mr-2" />
+                Continue with Google
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={authLoading}
+                onClick={() => handleOAuthSignIn('apple')}
+                className="w-full border-[#374151] text-[#E5E7EB] hover:bg-[#374151]/50 hover:text-white"
+              >
+                <Apple className="w-4 h-4 mr-2" />
+                Continue with Apple
+              </Button>
+            </div>
+          </Tabs>
+        </Card>
+      </motion.div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#0D0D0D] text-white overflow-x-hidden">
       <EmberParticles />
+
+      {authDialog}
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -110,7 +375,7 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
           className="text-center z-10 flex flex-col items-center"
         >
           <PhoenixLogo size="xl" animated />
-          
+
           <motion.h1
             className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
             style={{ fontFamily: 'system-ui' }}
@@ -149,7 +414,7 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
           >
             <Button
               size="lg"
-              onClick={onGetStarted}
+              onClick={openAuth}
               className="relative group bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] text-white border-0 shadow-lg shadow-[#FF6B35]/50 hover:shadow-xl hover:shadow-[#FF6B35]/70 transition-all duration-300"
             >
               <span className="relative z-10 flex items-center gap-2">
@@ -278,7 +543,7 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
                   </ul>
                   <Button
                     size="lg"
-                    onClick={onGetStarted}
+                    onClick={openAuth}
                     className={
                       tier.highlight
                         ? 'w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 shadow-lg shadow-[#FF6B35]/50'
@@ -312,7 +577,7 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
             </p>
             <Button
               size="lg"
-              onClick={onGetStarted}
+              onClick={openAuth}
               className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] text-white border-0 shadow-lg shadow-[#FF6B35]/50 hover:shadow-xl hover:shadow-[#FF6B35]/70 text-lg px-8 py-6"
             >
               <span className="flex items-center gap-2">
@@ -384,7 +649,7 @@ export function LandingPage({ onGetStarted, onNavigateToPrivacy }: LandingPagePr
               </p>
             </div>
             <p className="text-[#6B7280] text-xs">
-              © 2026 9th Level Software LLC. All rights reserved.
+              &copy; 2026 9th Level Software LLC. All rights reserved.
             </p>
           </div>
         </div>
