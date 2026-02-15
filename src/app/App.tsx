@@ -1,12 +1,11 @@
 import { useState } from 'react';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { LandingPage } from '@/app/components/LandingPage';
 import { Navigation } from '@/app/components/Navigation';
 import { Dashboard } from '@/app/components/Dashboard';
-import { DashboardMobile } from '@/app/components/DashboardMobile';
 import { Analytics } from '@/app/components/Analytics';
 import { Challenges } from '@/app/components/Challenges';
 import { Community } from '@/app/components/Community';
-import { Routines } from '@/app/components/Routines';
 import { Profile } from '@/app/components/Profile';
 import { PrivacyPolicy } from '@/app/components/PrivacyPolicy';
 import { WorkoutHistory } from '@/app/components/WorkoutHistory';
@@ -28,17 +27,7 @@ export default function App() {
   const [showRoutineBuilder, setShowRoutineBuilder] = useState(false);
   const [showCycleBuilder, setShowCycleBuilder] = useState(false);
   const [streak, setStreak] = useState(7);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile on mount
-  useState(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  });
+  const isMobile = useIsMobile();
 
   const handleGetStarted = () => {
     setIsAuthenticated(true);

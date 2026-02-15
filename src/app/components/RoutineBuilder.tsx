@@ -396,21 +396,21 @@ function ExerciseDetailPanel({
                   <Input
                     type="number"
                     value={exercise.reps}
-                    onChange={(e) => onUpdate({ reps: parseInt(e.target.value) })}
+                    onChange={(e) => onUpdate({ reps: parseInt(e.target.value) || 0 })}
                     className="bg-[#0D0D0D] border-[#374151] text-white"
                     placeholder="Reps"
                   />
                   <Input
                     type="number"
                     value={exercise.weight}
-                    onChange={(e) => onUpdate({ weight: parseInt(e.target.value) })}
+                    onChange={(e) => onUpdate({ weight: parseInt(e.target.value) || 0 })}
                     className="bg-[#0D0D0D] border-[#374151] text-white"
                     placeholder="kg"
                   />
                   <Input
                     type="number"
                     value={exercise.rest}
-                    onChange={(e) => onUpdate({ rest: parseInt(e.target.value) })}
+                    onChange={(e) => onUpdate({ rest: parseInt(e.target.value) || 0 })}
                     className="bg-[#0D0D0D] border-[#374151] text-white"
                     placeholder="Rest"
                   />

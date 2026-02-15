@@ -44,6 +44,8 @@ export function EmberParticles() {
       });
     }
 
+    let animationFrameId: number;
+
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -79,12 +81,13 @@ export function EmberParticles() {
         ctx.fill();
       });
 
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
     };
 
-    animate();
+    animationFrameId = requestAnimationFrame(animate);
 
     return () => {
+      cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', setCanvasSize);
     };
   }, []);
