@@ -13,8 +13,10 @@ import {
   Award,
   Repeat,
   Dumbbell,
+  LogOut,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '@/app/hooks/useAuth';
 
 interface NavigationProps {
   currentPage: string;
@@ -23,6 +25,7 @@ interface NavigationProps {
 }
 
 export function Navigation({ currentPage, onNavigate, streak }: NavigationProps) {
+  const { signOut } = useAuth();
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'history', label: 'History', icon: History },
@@ -90,6 +93,17 @@ export function Navigation({ currentPage, onNavigate, streak }: NavigationProps)
                 JD
               </AvatarFallback>
             </Avatar>
+
+            {/* Logout */}
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Sign out"
+              className="hover:bg-[#DC2626]/10 hover:text-[#DC2626]"
+              onClick={async () => { await signOut(); }}
+            >
+              <LogOut className="w-5 h-5 text-[#E5E7EB]" />
+            </Button>
           </div>
         </div>
       </div>

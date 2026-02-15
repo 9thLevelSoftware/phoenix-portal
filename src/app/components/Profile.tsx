@@ -18,10 +18,13 @@ import {
   Smartphone,
   Download,
   Flame,
+  LogOut,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '@/app/hooks/useAuth';
 
 export function Profile() {
+  const { signOut } = useAuth();
   const userStats = [
     { label: 'Level', value: '24', icon: TrendingUp },
     { label: 'Total Workouts', value: '147', icon: Calendar },
@@ -316,6 +319,23 @@ export function Profile() {
                 <Button variant="outline" className="w-full border-[#374151] text-white hover:bg-[#374151]/50 mt-4">
                   <Download className="w-4 h-4 mr-2" />
                   Export All Data
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+              <h3 className="text-xl text-white mb-6 flex items-center gap-2">
+                <LogOut className="w-5 h-5" />
+                Account
+              </h3>
+              <div className="space-y-4">
+                <p className="text-sm text-[#9CA3AF]">Sign out of your account on this device</p>
+                <Button
+                  className="w-full bg-[#DC2626] hover:bg-[#DC2626]/80 text-white border-0"
+                  onClick={async () => { await signOut(); }}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
                 </Button>
               </div>
             </Card>
