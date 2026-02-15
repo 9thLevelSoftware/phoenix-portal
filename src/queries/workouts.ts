@@ -1,8 +1,12 @@
 import { queryOptions } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { queryKeys } from './keys';
+import { z } from 'zod';
 import {
   workoutListSchema,
+  workoutSessionSchema,
+  exerciseSchema,
+  setSchema,
   personalRecordListSchema,
 } from '@/schemas/transforms';
 
@@ -66,5 +70,60 @@ export function recentPRsOptions(userId: string) {
       if (error) throw error;
       return personalRecordListSchema.parse(data);
     },
+  });
+}
+
+/**
+ * Full session detail with exercises and sets.
+ * Fetches session metadata, exercises, and sets in three queries,
+ * then assembles them into a nested structure.
+ */
+export function sessionDetailOptions(sessionId: string) {
+  return queryOptions({
+    queryKey: queryKeys.workouts.detail(sessionId),
+    queryFn: async () => {
+      // Fetch session metadata
+      const { data: session, error: sessionError } = await supabase
+        .from('workout_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+      if (sessionError) throw sessionError;
+
+      // Fetch exercises for this session
+      const { data: exercises, error: exercisesError } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('order_index', { ascending: true });
+      if (exercisesError) throw exercisesError;
+
+      // Fetch sets for all exercises in this session
+      const exerciseIds = exercises.map((e: { id: string }) => e.id);
+      const { data: sets, error: setsError } = await supabase
+        .from('sets')
+        .select('*')
+        .in('exercise_id', exerciseIds)
+        .order('set_number', { ascending: true });
+      if (setsError) throw setsError;
+
+      // Parse with Zod and assemble
+      const parsedSession = workoutSessionSchema.parse(session);
+      const parsedExercises = z.array(exerciseSchema).parse(exercises);
+      const parsedSets = z.array(setSchema).parse(sets);
+
+      // Group sets by exercise
+      const exercisesWithSets = parsedExercises.map((exercise) => ({
+        ...exercise,
+        sets: parsedSets.filter((s) => s.exercise_id === exercise.id),
+        hasPR: parsedSets.some((s) => s.exercise_id === exercise.id && s.is_pr),
+      }));
+
+      return {
+        ...parsedSession,
+        exercises: exercisesWithSets,
+      };
+    },
+    enabled: !!sessionId,
   });
 }

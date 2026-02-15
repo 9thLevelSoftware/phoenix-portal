@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
+import { Skeleton } from '@/app/components/ui/skeleton';
 import {
   ArrowLeft,
   Clock,
@@ -14,114 +16,18 @@ import {
   Share2,
   BarChart3,
   Flame,
-  Zap,
+  AlertCircle,
 } from 'lucide-react';
+import { sessionDetailOptions } from '@/queries/workouts';
 
 interface SessionDetailProps {
   sessionId: string;
   onBack: () => void;
 }
 
-interface SetData {
-  setNumber: number;
-  target: number;
-  actual: number;
-  weight: number;
-  rpe: number;
-  notes?: string;
-  isPR?: boolean;
-}
-
-interface Exercise {
-  id: string;
-  name: string;
-  muscleGroup: string;
-  sets: SetData[];
-  hasPR: boolean;
-}
-
-// Mock session data
-const mockSession = {
-  id: '1',
-  name: 'Upper Body Power',
-  date: new Date(2026, 0, 18),
-  startTime: '6:30 AM',
-  duration: 65,
-  totalVolume: 4250,
-  totalSets: 16,
-  prCount: 2,
-  routine: 'Push/Pull/Legs',
-  exercises: [
-    {
-      id: 'ex1',
-      name: 'Bench Press',
-      muscleGroup: 'Chest',
-      hasPR: true,
-      sets: [
-        { setNumber: 1, target: 8, actual: 8, weight: 100, rpe: 7, notes: 'Warmup' },
-        { setNumber: 2, target: 6, actual: 6, weight: 110, rpe: 8 },
-        { setNumber: 3, target: 4, actual: 5, weight: 120, rpe: 9, isPR: true, notes: '🔥 NEW PR!' },
-      ],
-    },
-    {
-      id: 'ex2',
-      name: 'Overhead Press',
-      muscleGroup: 'Shoulders',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 8, actual: 8, weight: 60, rpe: 7 },
-        { setNumber: 2, target: 8, actual: 7, weight: 65, rpe: 8.5 },
-        { setNumber: 3, target: 8, actual: 6, weight: 65, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex3',
-      name: 'Incline Dumbbell Press',
-      muscleGroup: 'Chest',
-      hasPR: true,
-      sets: [
-        { setNumber: 1, target: 10, actual: 10, weight: 40, rpe: 7 },
-        { setNumber: 2, target: 10, actual: 10, weight: 45, rpe: 8 },
-        { setNumber: 3, target: 10, actual: 10, weight: 45, rpe: 8.5, isPR: true, notes: '🔥 Volume PR!' },
-        { setNumber: 4, target: 10, actual: 8, weight: 45, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex4',
-      name: 'Lateral Raises',
-      muscleGroup: 'Shoulders',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 12, actual: 12, weight: 15, rpe: 7 },
-        { setNumber: 2, target: 12, actual: 12, weight: 15, rpe: 8 },
-        { setNumber: 3, target: 12, actual: 10, weight: 15, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex5',
-      name: 'Tricep Pushdowns',
-      muscleGroup: 'Arms',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 12, actual: 12, weight: 35, rpe: 7 },
-        { setNumber: 2, target: 12, actual: 12, weight: 40, rpe: 8 },
-        { setNumber: 3, target: 12, actual: 10, weight: 40, rpe: 8.5 },
-      ],
-    },
-  ] as Exercise[],
-  metrics: {
-    peakPower: 1250,
-    avgPower: 890,
-    timeUnderTension: 245,
-    estimatedCalories: 385,
-    concentricForce: 65,
-    eccentricForce: 78,
-  },
-};
-
 export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
-  const [expandedExercises, setExpandedExercises] = useState<string[]>(['ex1']);
-  const [showMetrics, setShowMetrics] = useState(false);
+  const { data: session, isPending, error } = useQuery(sessionDetailOptions(sessionId));
+  const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
 
   const toggleExercise = (exerciseId: string) => {
@@ -144,6 +50,98 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
     return colors[muscleGroup] || 'bg-[#6B7280]';
   };
 
+  // Loading state
+  if (isPending) {
+    return (
+      <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+        <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onBack}
+              className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to History
+            </Button>
+            <Skeleton className="h-10 w-64 mb-2 bg-[#1a1a1a]" />
+            <Skeleton className="h-5 w-48 bg-[#1a1a1a]" />
+          </div>
+        </div>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="text-center space-y-2">
+                  <Skeleton className="h-4 w-20 mx-auto bg-[#1a1a1a]" />
+                  <Skeleton className="h-8 w-16 mx-auto bg-[#1a1a1a]" />
+                </div>
+              ))}
+            </div>
+          </Card>
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-lg bg-[#1a1a1a]" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-40 bg-[#1a1a1a]" />
+                  <Skeleton className="h-4 w-20 bg-[#1a1a1a]" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !session) {
+    return (
+      <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+        <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onBack}
+              className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to History
+            </Button>
+          </div>
+        </div>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <AlertCircle className="w-12 h-12 text-[#DC2626] mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Session Not Found</h2>
+          <p className="text-[#9CA3AF]">
+            {error ? error.message : 'This workout session could not be loaded.'}
+          </p>
+          <Button
+            onClick={onBack}
+            className="mt-6 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+          >
+            Return to History
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Compute summary stats from real data
+  const totalSets = session.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+  const prCount = session.exercises.reduce(
+    (sum, ex) => sum + ex.sets.filter((s) => s.is_pr).length,
+    0
+  );
+
+  // Auto-expand first exercise if none expanded
+  const effectiveExpanded = expandedExercises.length === 0 && session.exercises.length > 0
+    ? [session.exercises[0].id]
+    : expandedExercises;
+
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
       {/* Header */}
@@ -162,30 +160,42 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
 
             <h1 className="text-3xl sm:text-4xl mb-2">
               <span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
-                {mockSession.name}
+                {session.name}
               </span>
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-sm text-[#9CA3AF]">
               <span>
-                {mockSession.date.toLocaleDateString('en-US', {
+                {session.started_at.toLocaleDateString('en-US', {
                   weekday: 'long',
                   month: 'long',
                   day: 'numeric',
                   year: 'numeric',
                 })}
               </span>
-              <span>•</span>
-              <span>{mockSession.startTime}</span>
-              {mockSession.routine && (
+              <span>
+                {session.started_at.toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+              {session.routine_name && (
                 <>
-                  <span>•</span>
+                  <span>-</span>
                   <Badge
                     variant="outline"
                     className="border-[#FF6B35]/30 text-[#FF6B35]"
                   >
-                    {mockSession.routine}
+                    {session.routine_name}
                   </Badge>
                 </>
+              )}
+              {session.workout_mode && (
+                <Badge
+                  variant="outline"
+                  className="border-[#F59E0B]/30 text-[#F59E0B]"
+                >
+                  {session.workout_mode}
+                </Badge>
               )}
             </div>
           </motion.div>
@@ -208,7 +218,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                   <div className="text-sm text-[#9CA3AF]">Duration</div>
                 </div>
                 <div className="text-2xl font-semibold text-white">
-                  {mockSession.duration}m
+                  {session.duration_seconds}m
                 </div>
               </div>
               <div className="text-center">
@@ -217,7 +227,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                   <div className="text-sm text-[#9CA3AF]">Volume</div>
                 </div>
                 <div className="text-2xl font-semibold text-white">
-                  {mockSession.totalVolume.toLocaleString()} kg
+                  {session.total_volume.toLocaleString()} kg
                 </div>
               </div>
               <div className="text-center">
@@ -226,7 +236,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                   <div className="text-sm text-[#9CA3AF]">Sets</div>
                 </div>
                 <div className="text-2xl font-semibold text-white">
-                  {mockSession.totalSets}
+                  {totalSets}
                 </div>
               </div>
               <div className="text-center">
@@ -235,7 +245,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                   <div className="text-sm text-[#9CA3AF]">PRs</div>
                 </div>
                 <div className="text-2xl font-semibold bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] bg-clip-text text-transparent">
-                  {mockSession.prCount}
+                  {prCount}
                 </div>
               </div>
             </div>
@@ -250,7 +260,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
         >
           <h2 className="text-2xl font-semibold text-white mb-4">Exercise Breakdown</h2>
           <div className="space-y-3">
-            {mockSession.exercises.map((exercise, index) => (
+            {session.exercises.map((exercise, index) => (
               <motion.div
                 key={exercise.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -278,10 +288,10 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                         </div>
                         <Badge
                           className={`${getMuscleGroupColor(
-                            exercise.muscleGroup
+                            exercise.muscle_group
                           )} text-white border-0 mt-1`}
                         >
-                          {exercise.muscleGroup}
+                          {exercise.muscle_group}
                         </Badge>
                       </div>
                     </div>
@@ -289,7 +299,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                       <span className="text-sm text-[#9CA3AF]">
                         {exercise.sets.length} sets
                       </span>
-                      {expandedExercises.includes(exercise.id) ? (
+                      {effectiveExpanded.includes(exercise.id) ? (
                         <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
                       ) : (
                         <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
@@ -298,7 +308,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                   </button>
 
                   {/* Exercise Sets Table */}
-                  {expandedExercises.includes(exercise.id) && (
+                  {effectiveExpanded.includes(exercise.id) && (
                     <div className="border-t border-[#374151] p-4">
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -315,25 +325,25 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
                           <tbody>
                             {exercise.sets.map((set) => (
                               <tr
-                                key={set.setNumber}
+                                key={set.set_number}
                                 className={`border-b border-[#374151]/50 ${
-                                  set.isPR ? 'border-l-4 border-l-[#F59E0B]' : ''
+                                  set.is_pr ? 'border-l-4 border-l-[#F59E0B]' : ''
                                 }`}
                               >
                                 <td className="py-3 text-white font-semibold">
-                                  {set.setNumber}
+                                  {set.set_number}
                                 </td>
-                                <td className="py-3 text-[#E5E7EB]">{set.target}</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.actual}</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.weight} kg</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.rpe}</td>
+                                <td className="py-3 text-[#E5E7EB]">{set.target_reps}</td>
+                                <td className="py-3 text-[#E5E7EB]">{set.actual_reps}</td>
+                                <td className="py-3 text-[#E5E7EB]">{set.weight_kg} kg</td>
+                                <td className="py-3 text-[#E5E7EB]">{set.rpe ?? '-'}</td>
                                 <td className="py-3">
-                                  {set.isPR && (
+                                  {set.is_pr && (
                                     <Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
                                       NEW PR
                                     </Badge>
                                   )}
-                                  {set.notes && !set.isPR && (
+                                  {set.notes && !set.is_pr && (
                                     <span className="text-[#9CA3AF]">{set.notes}</span>
                                   )}
                                 </td>
@@ -350,115 +360,11 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
           </div>
         </motion.div>
 
-        {/* Metrics Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-            <button
-              onClick={() => setShowMetrics(!showMetrics)}
-              className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <BarChart3 className="w-5 h-5 text-[#FF6B35]" />
-                <h2 className="text-xl font-semibold text-white">
-                  Performance Metrics
-                </h2>
-              </div>
-              {showMetrics ? (
-                <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
-              )}
-            </button>
-
-            {showMetrics && (
-              <div className="border-t border-[#374151] p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap className="w-4 h-4 text-[#FBBF24]" />
-                      <div className="text-sm text-[#9CA3AF]">Peak Power</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.peakPower} W
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap className="w-4 h-4 text-[#10B981]" />
-                      <div className="text-sm text-[#9CA3AF]">Avg Power</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.avgPower} W
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="w-4 h-4 text-[#FF6B35]" />
-                      <div className="text-sm text-[#9CA3AF]">Time Under Tension</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.timeUnderTension}s
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Flame className="w-4 h-4 text-[#DC2626]" />
-                      <div className="text-sm text-[#9CA3AF]">Est. Calories</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.estimatedCalories} kcal
-                    </div>
-                  </div>
-                </div>
-
-                {/* Force Breakdown */}
-                <div className="mt-4 p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                  <h3 className="text-sm text-[#9CA3AF] mb-3">Force Distribution</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-[#E5E7EB]">Concentric</span>
-                        <span className="text-sm text-[#E5E7EB]">
-                          {mockSession.metrics.concentricForce}%
-                        </span>
-                      </div>
-                      <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626]"
-                          style={{ width: `${mockSession.metrics.concentricForce}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-[#E5E7EB]">Eccentric</span>
-                        <span className="text-sm text-[#E5E7EB]">
-                          {mockSession.metrics.eccentricForce}%
-                        </span>
-                      </div>
-                      <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#10B981] to-[#059669]"
-                          style={{ width: `${mockSession.metrics.eccentricForce}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-
         {/* Actions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.4 }}
           className="flex flex-col sm:flex-row gap-3"
         >
           <Button
@@ -480,7 +386,7 @@ export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.5 }}
         >
           <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4">
             <h3 className="text-lg font-semibold text-white mb-3">Workout Notes</h3>
