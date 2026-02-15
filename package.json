@@ -8,7 +8,8 @@
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "optimize:logo": "node scripts/optimize-logo.mjs"
+    "optimize:logo": "node scripts/optimize-logo.mjs",
+    "gen:types": "npx supabase gen types typescript --project-id \"$SUPABASE_PROJECT_REF\" --schema public > src/lib/database.types.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
