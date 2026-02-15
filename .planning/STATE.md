@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 1 of 7 (Authentication & Data Layer)
-Plan: 4 of 6 in current phase
+Plan: 6 of 6 in current phase
 Status: Executing
-Last activity: 2026-02-15 -- 01-03 complete (TanStack Query & Zod transforms)
+Last activity: 2026-02-15 -- 01-05 complete (Remaining data migration)
 
-Progress: [▓▓░░░░░░░░] 16% (6/38 plans)
+Progress: [▓▓░░░░░░░░] 21% (8/38 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 4 min
-- Total execution time: 0.38 hours
+- Total plans completed: 8
+- Average duration: 5 min
+- Total execution time: 0.52 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
-| 01-auth-data-layer | 3/6 | 10 min | 3 min |
+| 01-auth-data-layer | 5/6 | 18 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 00-03 (3 min), 00-02 (6 min), 01-01 (8 min), 01-02 (~est), 01-03 (2 min)
+- Last 5 plans: 01-01 (8 min), 01-02 (~est), 01-03 (2 min), 01-04 (~est), 01-05 (8 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -68,6 +68,11 @@ Recent decisions affecting current work:
 - [01-03]: staleTime 5min with retry 1 balances freshness and API load for development
 - [01-03]: WEIGHT_MULTIPLIER=2 centralizes per-cable to total weight conversion in transforms.ts
 - [01-03]: Zod inferred types will replace inline component interfaces for consistency
+- [01-05]: Two-step query for muscle group analytics (session IDs then exercises by session_id)
+- [01-05]: Volume data bucketed by ISO week for chart display
+- [01-05]: Strength progress chart shows top 3 exercises by latest value
+- [01-05]: Insights derived from real data counts (TODO for richer analysis)
+- [01-05]: Routine favorites toggle uses local state overlay pending mutation API
 
 ### Pending Todos
 
@@ -82,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-02-PLAN.md (Auth flow with login UI and session gating)
+Stopped at: Completed 01-05-PLAN.md (Remaining data migration for records, analytics, routines, cycles)
 Resume file: None
