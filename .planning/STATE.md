@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 1 of 7 (Authentication & Data Layer)
-Plan: 2 of 6 in current phase
+Plan: 4 of 6 in current phase
 Status: Executing
-Last activity: 2026-02-15 -- 01-01 complete (Supabase client setup)
+Last activity: 2026-02-15 -- 01-03 complete (TanStack Query & Zod transforms)
 
-Progress: [▓░░░░░░░░░] 11% (4/38 plans)
+Progress: [▓▓░░░░░░░░] 16% (6/38 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 5 min
-- Total execution time: 0.35 hours
+- Total plans completed: 6
+- Average duration: 4 min
+- Total execution time: 0.38 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 00-stabilization | 3/3 | 13 min | 4 min |
-| 01-auth-data-layer | 1/6 | 8 min | 8 min |
+| 01-auth-data-layer | 3/6 | 10 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 00-01 (4 min), 00-03 (3 min), 00-02 (6 min), 01-01 (8 min)
+- Last 5 plans: 00-03 (3 min), 00-02 (6 min), 01-01 (8 min), 01-02 (~est), 01-03 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 - [01-01]: Stub types follow Supabase generated types structure (Row/Insert/Update per table)
 - [01-01]: WEIGHT_MULTIPLIER pattern will be in Zod transforms (plan 01-03), not in types
 - [01-01]: Environment validation happens at client creation time with clear error message
+- [01-03]: staleTime 5min with retry 1 balances freshness and API load for development
+- [01-03]: WEIGHT_MULTIPLIER=2 centralizes per-cable to total weight conversion in transforms.ts
+- [01-03]: Zod inferred types will replace inline component interfaces for consistency
 
 ### Pending Todos
 
@@ -75,5 +78,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-01-PLAN.md (Supabase client setup)
+Stopped at: Completed 01-03-PLAN.md (TanStack Query & Zod transforms)
 Resume file: None
