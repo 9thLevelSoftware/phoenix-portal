@@ -73,6 +73,11 @@ Recent decisions affecting current work:
 - [01-05]: Strength progress chart shows top 3 exercises by latest value
 - [01-05]: Insights derived from real data counts (TODO for richer analysis)
 - [01-05]: Routine favorites toggle uses local state overlay pending mutation API
+- [01-04]: Dashboard derives weekly volume chart data client-side from raw query results
+- [01-04]: Challenges/badges remain as TODO mock data for future phases (3 and 5)
+- [01-04]: WorkoutHistory computes streak from actual workout dates instead of hardcoding
+- [01-04]: DashboardMobile pull-to-refresh invalidates query cache
+- [01-04]: Test utility with vi.hoisted pattern for auth mocking across all component tests
 
 ### Pending Todos
 
@@ -87,5 +92,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 01-05-PLAN.md (Remaining data migration for records, analytics, routines, cycles)
+Stopped at: Completed 01-04-PLAN.md (Dashboard & WorkoutHistory data migration)
 Resume file: None
