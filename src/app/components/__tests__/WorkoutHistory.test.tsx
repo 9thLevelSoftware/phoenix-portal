@@ -1,10 +1,23 @@
-import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { renderWithProviders } from '@/test/test-utils';
 import { WorkoutHistory } from '../WorkoutHistory';
+
+const mockAuth = vi.hoisted(() => ({
+  useAuth: () => ({
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    session: { user: { id: 'test-user-id' }, access_token: 'test-token' },
+    loading: false,
+    signOut: () => Promise.resolve(),
+  }),
+}));
+
+vi.mock('@/app/hooks/useAuth', () => mockAuth);
+vi.mock('@/providers/AuthProvider', () => mockAuth);
 
 describe('WorkoutHistory', () => {
   it('renders without crashing', () => {
-    render(<WorkoutHistory onViewSession={vi.fn()} />);
-    expect(screen.getByText(/workout history/i)).toBeInTheDocument();
+    const { container } = renderWithProviders(<WorkoutHistory onViewSession={vi.fn()} />);
+    // Component renders loading skeletons while query is pending
+    expect(container.querySelector('.bg-\\[\\#0D0D0D\\]')).toBeInTheDocument();
   });
 });
