@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -16,12 +17,6 @@ import {
 import { Switch } from '@/app/components/ui/switch';
 import { Calendar, ChevronLeft, Plus, Edit2, X, Save, Eye, AlertCircle, Dumbbell } from 'lucide-react';
 
-interface CycleBuilderProps {
-  cycleId?: string;
-  onBack: () => void;
-  onSave: (cycle: any) => void;
-}
-
 interface DayConfig {
   dayNumber: number;
   type: 'workout' | 'rest';
@@ -36,7 +31,9 @@ interface DayConfig {
   restType?: 'complete' | 'active' | 'mobility';
 }
 
-export function CycleBuilder({ cycleId, onBack, onSave }: CycleBuilderProps) {
+export function CycleBuilder() {
+  const { cycleId } = useParams<{ cycleId: string }>();
+  const navigate = useNavigate();
   const [cycleName, setCycleName] = useState('Untitled Cycle');
   const [description, setDescription] = useState('');
   const [duration, setDuration] = useState(7);
@@ -79,10 +76,10 @@ export function CycleBuilder({ cycleId, onBack, onSave }: CycleBuilderProps) {
   const handleCancel = () => {
     if (hasUnsavedChanges) {
       if (confirm('You have unsaved changes. Are you sure you want to leave?')) {
-        onBack();
+        navigate('/cycles');
       }
     } else {
-      onBack();
+      navigate('/cycles');
     }
   };
 
@@ -107,7 +104,8 @@ export function CycleBuilder({ cycleId, onBack, onSave }: CycleBuilderProps) {
         volume: deloadVolume,
       } : null,
     };
-    onSave(cycle);
+    console.log('Saving cycle:', cycle);
+    navigate('/cycles');
   };
 
   const handleDayClick = (dayNumber: number) => {
