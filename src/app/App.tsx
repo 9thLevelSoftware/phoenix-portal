@@ -7,6 +7,7 @@ import { MobileBottomNav } from '@/app/components/MobileBottomNav';
 import { Toaster } from '@/app/components/ui/sonner';
 import { PageLoading } from '@/app/components/PageLoading';
 import { PageErrorFallback } from '@/app/components/ErrorFallback';
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 
 // Lazy-load all page components for code splitting
 const LandingPage = lazy(() => import('@/app/components/LandingPage').then(m => ({ default: m.LandingPage })));
@@ -34,6 +35,7 @@ export default function App() {
   const [showCycleBuilder, setShowCycleBuilder] = useState(false);
   const [streak, setStreak] = useState(7);
   const isMobile = useIsMobile();
+  useRealtimeSync(); // Mount once in app shell -- invalidates caches on mobile sync
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
