@@ -23,6 +23,7 @@ interface FeedParams {
     difficulty?: string;
   };
   search?: string;
+  userId?: string;
 }
 
 export function communityFeedOptions(params: FeedParams) {
@@ -38,6 +39,7 @@ export function communityFeedOptions(params: FeedParams) {
       sort: params.sort,
       filters: params.filters as Record<string, string> | undefined,
       search: params.search,
+      userId: params.userId,
     }),
     queryFn: async ({ pageParam = 0 }) => {
       let query = supabase
@@ -51,6 +53,11 @@ export function communityFeedOptions(params: FeedParams) {
         query = query.order('vote_count', { ascending: false });
       } else {
         query = query.order('hot_score', { ascending: false });
+      }
+
+      // Creator filter
+      if (params.userId) {
+        query = query.eq('user_id', params.userId);
       }
 
       // Filters
