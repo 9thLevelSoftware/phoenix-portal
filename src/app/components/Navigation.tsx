@@ -15,6 +15,7 @@ import {
   Dumbbell,
   Link2,
   LogOut,
+  Activity,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '@/app/hooks/useAuth';
@@ -27,6 +28,7 @@ const navItems = [
   { path: '/history', label: 'History', icon: History },
   { path: '/records', label: 'Records', icon: Award },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { path: '/biomechanics', label: 'Biomechanics', icon: Activity },
   { path: '/challenges', label: 'Challenges', icon: Trophy },
   { path: '/community', label: 'Community', icon: Users },
   { path: '/routines', label: 'Routines', icon: Dumbbell },

@@ -12,6 +12,7 @@ import {
   Repeat,
   Dumbbell,
   Link2,
+  Activity,
   MoreHorizontal,
 } from 'lucide-react';
 import { NavLink, Link, useLocation } from 'react-router';
@@ -33,6 +34,7 @@ const primaryItems = [
 
 const moreItems = [
   { path: '/records', label: 'Records', icon: Award },
+  { path: '/biomechanics', label: 'Biomechanics', icon: Activity },
   { path: '/challenges', label: 'Challenges', icon: Trophy },
   { path: '/community', label: 'Community', icon: Users },
   { path: '/routines', label: 'Routines', icon: Dumbbell },
