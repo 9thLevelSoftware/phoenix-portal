@@ -10,13 +10,14 @@ interface CommunityFeedCardProps {
   onSelect: (id: string) => void;
   isVoted: boolean;
   onVote: (id: string) => void;
+  onAuthorClick?: (userId: string) => void;
 }
 
 function isRoutine(item: CommunityFeedItem): item is SharedRoutine {
   return 'exercise_count' in item;
 }
 
-export function CommunityFeedCard({ item, onSelect, isVoted, onVote }: CommunityFeedCardProps) {
+export function CommunityFeedCard({ item, onSelect, isVoted, onVote, onAuthorClick }: CommunityFeedCardProps) {
   const authorName = item.profiles?.display_name ?? 'Unknown';
   const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
 
@@ -32,7 +33,15 @@ export function CommunityFeedCard({ item, onSelect, isVoted, onVote }: Community
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center text-white text-xs shrink-0">
               {authorName.charAt(0).toUpperCase()}
             </div>
-            <span className="text-xs text-[#9CA3AF] truncate">{authorName}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAuthorClick?.(item.user_id);
+              }}
+              className="text-xs text-[#9CA3AF] truncate hover:text-[#FF6B35] transition-colors"
+            >
+              {authorName}
+            </button>
           </div>
           <button
             onClick={(e) => {

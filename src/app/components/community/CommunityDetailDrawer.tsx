@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import {
@@ -15,9 +17,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/app/components/ui/dialog';
-import { ArrowBigUp, Bookmark, Clock, Dumbbell, Calendar } from 'lucide-react';
+import { ArrowBigUp, Bookmark, Clock, Dumbbell, Calendar, Link2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
+import { useAuth } from '@/providers/AuthProvider';
+import { useVote } from '@/mutations/community';
+import { useSaveItem } from '@/mutations/community';
+import { savedItemsOptions } from '@/queries/community';
 import type { SharedRoutine, SharedCycle, CommunityFeedItem } from '@/schemas/community';
 
 interface CommunityDetailDrawerProps {
@@ -31,8 +37,23 @@ function isRoutine(item: CommunityFeedItem): item is SharedRoutine {
 }
 
 function DetailContent({ item }: { item: CommunityFeedItem }) {
+  const { user } = useAuth();
   const authorName = item.profiles?.display_name ?? 'Unknown';
   const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
+  const itemType = isRoutine(item) ? 'routine' : 'cycle';
+
+  const voteMutation = useVote();
+  const saveMutation = useSaveItem();
+
+  const { data: savedItems } = useQuery({
+    ...savedItemsOptions(user?.id ?? ''),
+    enabled: !!user?.id,
+  });
+
+  const isSaved = useMemo(
+    () => savedItems?.some((s) => s.shared_item_id === item.id) ?? false,
+    [savedItems, item.id]
+  );
 
   return (
     <div className="space-y-4">
@@ -114,6 +135,8 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
       <div className="flex items-center gap-3 pt-2">
         <Button
           variant="outline"
+          onClick={() => voteMutation.mutate({ itemId: item.id, itemType })}
+          disabled={voteMutation.isPending}
           className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
         >
           <ArrowBigUp className="w-5 h-5 mr-1.5" />
@@ -121,12 +144,26 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
         </Button>
         <Button
           variant="outline"
-          className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+          onClick={() => saveMutation.mutate({ sharedItemId: item.id, itemType })}
+          disabled={saveMutation.isPending}
+          className={`flex-1 border-[#374151] transition-colors ${
+            isSaved
+              ? 'text-[#FF6B35] border-[#FF6B35]/50'
+              : 'text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white'
+          }`}
         >
-          <Bookmark className="w-4 h-4 mr-1.5" />
-          Save
+          <Bookmark className="w-4 h-4 mr-1.5" fill={isSaved ? '#FF6B35' : 'none'} />
+          {isSaved ? 'Saved' : 'Save'}
         </Button>
       </div>
+
+      {/* Linked reference indicator */}
+      {isSaved && (
+        <div className="flex items-center gap-1.5 text-xs text-[#6B7280] pt-1">
+          <Link2 className="w-3 h-3" />
+          <span>Linked to original</span>
+        </div>
+      )}
     </div>
   );
 }
