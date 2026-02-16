@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 7 - Integrations & Data Export
+**Current focus:** Phase 8 - Tech Debt Cleanup
 
 ## Current Position
 
-Phase: 7 of 7 (Integrations & Data Export)
-Plan: 7 of 7 in current phase
-Status: In Progress
-Last activity: 2026-02-16 -- 07-06 complete (Sync Queue, Rate Limiting & Analytics Integration)
+Phase: 8 of 8 (Tech Debt Cleanup)
+Plan: 2 of 2 in current phase
+Status: Complete
+Last activity: 2026-02-16 -- 08-02 complete (Analytics Insights & Bundle Optimization)
 
-Progress: [██████████] 97% (38/39 plans)
+Progress: [██████████] 100% (41/41 plans)
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [██████████] 97% (38/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-01 (3 min), 07-07 (2 min), 07-03 (5 min), 07-05 (4 min), 07-06 (4 min)
+- Last 5 plans: 07-03 (5 min), 07-05 (4 min), 07-06 (4 min), 08-01 (3 min), 08-02 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -59,6 +59,8 @@ Progress: [██████████] 97% (38/39 plans)
 | Phase 07 P03 | 5 min | 2 tasks | 4 files |
 | Phase 07 P05 | 4 min | 2 tasks | 7 files |
 | Phase 07 P06 | 4 min | 2 tasks | 5 files |
+| Phase 08 P01 | 3 min | 2 tasks | 4 files |
+| Phase 08 P02 | 2 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -95,7 +97,7 @@ Recent decisions affecting current work:
 - [01-05]: Two-step query for muscle group analytics (session IDs then exercises by session_id)
 - [01-05]: Volume data bucketed by ISO week for chart display
 - [01-05]: Strength progress chart shows top 3 exercises by latest value
-- [01-05]: Insights derived from real data counts (TODO for richer analysis)
+- [01-05]: Insights derived from real data counts (resolved in 08-02 with generateInsights function)
 - [01-05]: Routine favorites toggle uses local state overlay pending mutation API
 - [01-04]: Dashboard derives weekly volume chart data client-side from raw query results
 - [01-04]: Challenges/badges remain as TODO mock data for future phases (3 and 5)
@@ -213,6 +215,10 @@ Recent decisions affecting current work:
 - [07-06]: 429 errors re-queue tasks as pending; other errors mark failed immediately
 - [07-06]: SyncStatus polls every 15s for near-realtime queue monitoring
 - [07-06]: External activities shown in dedicated Analytics tab (separate from Phoenix data)
+- [08-02]: generateInsights defined as standalone function above component to avoid re-creation on re-renders
+- [08-02]: Muscle imbalance threshold set at 3x ratio (dominant vs weakest)
+- [08-02]: Recharts excluded from manualChunks since it is already auto-split by Vite lazy loading
+- [08-02]: All Radix UI packages grouped into single vendor-radix chunk (117KB combined)
 
 ### Pending Todos
 
@@ -227,5 +233,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-06-PLAN.md (Sync Queue, Rate Limiting & Analytics Integration)
+Stopped at: Completed 08-02-PLAN.md (Analytics Insights & Bundle Optimization)
 Resume file: None
