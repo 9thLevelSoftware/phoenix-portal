@@ -47,6 +47,11 @@ export const queryKeys = {
     summary: (userId: string, period: string) =>
       [...queryKeys.progress.all, 'summary', userId, period] as const,
   },
+  replay: {
+    all: ['replay'] as const,
+    session: (sessionId: string) => [...queryKeys.replay.all, 'session', sessionId] as const,
+    telemetry: (setId: string) => [...queryKeys.replay.all, 'telemetry', setId] as const,
+  },
   community: {
     all: ['community'] as const,
     feed: (params: {
