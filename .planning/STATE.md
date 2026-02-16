@@ -219,6 +219,9 @@ Recent decisions affecting current work:
 - [08-02]: Muscle imbalance threshold set at 3x ratio (dominant vs weakest)
 - [08-02]: Recharts excluded from manualChunks since it is already auto-split by Vite lazy loading
 - [08-02]: All Radix UI packages grouped into single vendor-radix chunk (117KB combined)
+- [Phase 08-01]: Activity icon for Biomechanics nav entry; placed between Analytics and Challenges in desktop, after Records in mobile More
+- [Phase 08-01]: CycleBuilder maps tags[0] to muscleGroup (routines table has no muscle_group column)
+- [Phase 08-01]: Dashboard challenges/badges replaced with empty-state UI (icon + message + subtitle pattern)
 
 ### Pending Todos
 
@@ -233,5 +236,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 08-02-PLAN.md (Analytics Insights & Bundle Optimization)
+Stopped at: Re-executed 08-01-PLAN.md (Nav + Mock Data Cleanup) with actual code changes
 Resume file: None
