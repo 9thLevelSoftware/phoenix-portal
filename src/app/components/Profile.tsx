@@ -18,7 +18,6 @@ import {
   Shield,
   Globe,
   Smartphone,
-  Download,
   Flame,
   LogOut,
   CreditCard,
@@ -31,6 +30,7 @@ import { useAuth } from '@/app/hooks/useAuth';
 import { useSubscription } from '@/hooks/useSubscription';
 import { TierBadge } from '@/app/components/TierBadge';
 import { openCustomerPortal } from '@/lib/stripe';
+import { ExportSection } from '@/app/components/profile/ExportSection';
 
 const PLAN_LABELS = { FREE: 'Free Plan', PHOENIX: 'PHOENIX Plan', ELITE: 'ELITE Plan' } as const;
 
@@ -411,12 +411,11 @@ export function Profile() {
                   </div>
                   <Switch defaultChecked />
                 </div>
-                <Button variant="outline" className="w-full border-[#374151] text-white hover:bg-[#374151]/50 mt-4">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export All Data
-                </Button>
               </div>
             </Card>
+
+            {/* Data Export - available to all tiers (no SubscriptionGate) */}
+            <ExportSection />
 
             <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
               <h3 className="text-xl text-white mb-6 flex items-center gap-2">
