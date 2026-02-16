@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/app/hooks/useAuth';
+import { routineListOptions } from '@/queries/routines';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -64,14 +67,20 @@ export function CycleBuilder() {
   const [deloadIntensity, setDeloadIntensity] = useState(60);
   const [deloadVolume, setDeloadVolume] = useState(50);
 
-  // Mock routines for selection
-  const mockRoutines = [
-    { id: '1', name: 'Push Day A', exercises: 6, duration: 60, muscleGroup: 'Push' },
-    { id: '2', name: 'Pull Day A', exercises: 5, duration: 55, muscleGroup: 'Pull' },
-    { id: '3', name: 'Leg Day', exercises: 7, duration: 70, muscleGroup: 'Legs' },
-    { id: '4', name: 'Push Day B', exercises: 6, duration: 60, muscleGroup: 'Push' },
-    { id: '5', name: 'Upper Body', exercises: 8, duration: 65, muscleGroup: 'Upper' },
-  ];
+  // Fetch real routines from Supabase
+  const { user } = useAuth();
+  const { data: routinesRaw } = useQuery({
+    ...routineListOptions(user?.id ?? ''),
+    enabled: !!user?.id,
+  });
+
+  const routines = (routinesRaw ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    exercises: r.exercise_count,
+    duration: r.estimated_duration,
+    muscleGroup: r.tags?.[0] ?? 'General',
+  }));
 
   const handleCancel = () => {
     if (hasUnsavedChanges) {
@@ -113,7 +122,7 @@ export function CycleBuilder() {
   };
 
   const handleAssignRoutine = (dayNumber: number, routineId: string) => {
-    const routine = mockRoutines.find(r => r.id === routineId);
+    const routine = routines.find(r => r.id === routineId);
     if (routine) {
       setDays(days.map(day =>
         day.dayNumber === dayNumber
@@ -444,7 +453,7 @@ export function CycleBuilder() {
       <RoutinePickerModal
         isOpen={showRoutinePicker}
         onClose={() => setShowRoutinePicker(false)}
-        routines={mockRoutines}
+        routines={routines}
         onSelect={(routineId) => selectedDay && handleAssignRoutine(selectedDay, routineId)}
       />
 
