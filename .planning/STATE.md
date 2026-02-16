@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 5 - Community Hub
+**Current focus:** Phase 6 - Session Replay + Advanced VBT
 
 ## Current Position
 
-Phase: 5 of 7 (Community Hub) -- COMPLETE
-Plan: 5 of 5 in current phase
-Status: Phase Complete
-Last activity: 2026-02-15 -- 05-05 complete (Wire ShareContentDialog Triggers)
+Phase: 6 of 7 (Session Replay + Advanced VBT)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-02-16 -- 06-01 complete (Replay Store and Canvas Renderer)
 
-Progress: [███████░░░] 69% (27/39 plans)
+Progress: [███████░░░] 72% (28/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27
+- Total plans completed: 28
 - Average duration: 3 min
-- Total execution time: 1.03 hours
+- Total execution time: 1.06 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [███████░░░] 69% (27/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (2 min), 05-02 (3 min), 05-03 (3 min), 05-04 (4 min), 05-05 (3 min)
+- Last 5 plans: 05-02 (3 min), 05-03 (3 min), 05-04 (4 min), 05-05 (3 min), 06-01 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -48,6 +48,7 @@ Progress: [███████░░░] 69% (27/39 plans)
 | Phase 05 P03 | 3 min | 2 tasks | 4 files |
 | Phase 05 P04 | 4 min | 2 tasks | 8 files |
 | Phase 05 P05 | 3 min | 2 tasks | 4 files |
+| Phase 06 P01 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -160,6 +161,9 @@ Recent decisions affecting current work:
 - [05-04]: Save toggle state derived from savedItemsOptions query via useMemo (not local state)
 - [05-05]: ShareContentDialog supports controlled (open/onOpenChange) and uncontrolled modes via optional props
 - [05-05]: DialogTrigger conditionally rendered only in uncontrolled mode to avoid orphan buttons
+- [06-01]: Set viewMode defaults to 'set' per user decision in roadmap
+- [06-01]: nextSet does NOT clamp to max (parent handles boundary)
+- [06-01]: Canvas high-DPI handling via devicePixelRatio scaling pattern
 
 ### Pending Todos
 
@@ -173,6 +177,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-15
-Stopped at: Completed 05-05-PLAN.md (Wire ShareContentDialog Triggers) -- Phase 5 gap closure complete
+Last session: 2026-02-16
+Stopped at: Completed 06-01-PLAN.md (Replay Store and Canvas Renderer)
 Resume file: None
