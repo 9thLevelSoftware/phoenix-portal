@@ -69,13 +69,8 @@ export function normalizeStravaActivity(raw: unknown): NormalizedActivity {
   };
 }
 
-/**
- * Normalize a Fitbit activity.
- * Stub: throws until Fitbit provider is fully implemented (plan 07-03).
- */
-export function normalizeFitbitActivity(_raw: unknown): NormalizedActivity {
-  throw new Error('Fitbit normalizer not yet implemented. See plan 07-03.');
-}
+// Fitbit normalizer is now fully implemented in fitbit.ts
+export { normalizeFitbitActivity } from './fitbit';
 
 /**
  * Normalize a Garmin activity.
@@ -85,13 +80,8 @@ export function normalizeGarminActivity(_raw: unknown): NormalizedActivity {
   throw new Error('Garmin normalizer not yet implemented. See plan 07-04.');
 }
 
-/**
- * Normalize a Hevy activity.
- * Stub: throws until Hevy provider is fully implemented (plan 07-05).
- */
-export function normalizeHevyActivity(_raw: unknown): NormalizedActivity {
-  throw new Error('Hevy normalizer not yet implemented. See plan 07-05.');
-}
+// Hevy normalizer is now fully implemented in hevy.ts
+export { normalizeHevyActivity } from './hevy';
 
 /**
  * Unified normalizer dispatcher.
