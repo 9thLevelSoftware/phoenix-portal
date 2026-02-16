@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 3 of 7 (Subscriptions & Payments)
-Plan: 1 of 4 in current phase
+Plan: 2 of 4 in current phase
 Status: In Progress
-Last activity: 2026-02-15 -- 03-01 complete (Subscription infrastructure)
+Last activity: 2026-02-15 -- 03-02 complete (Client subscription infrastructure)
 
-Progress: [████░░░░░░] 36% (14/39 plans)
+Progress: [████░░░░░░] 38% (15/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: 3 min
 - Total execution time: 0.75 hours
 
@@ -30,10 +30,10 @@ Progress: [████░░░░░░] 36% (14/39 plans)
 | 00-stabilization | 3/3 | 13 min | 4 min |
 | 01-auth-data-layer | 7/7 | 22 min | 3 min |
 | 02-navigation-state | 3/3 | 8 min | 3 min |
-| 03-subscriptions-payments | 1/4 | 2 min | 2 min |
+| 03-subscriptions-payments | 2/4 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (4 min), 03-01 (2 min)
+- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (4 min), 03-01 (2 min), 03-02 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -102,6 +102,10 @@ Recent decisions affecting current work:
 - [03-01]: getTierFromPriceId reads env vars for price-to-tier mapping (not hardcoded)
 - [03-01]: invoice.paid handler retrieves full subscription to update period dates accurately
 - [03-01]: Webhook function validates Stripe-Signature header presence before body read
+- [03-02]: useSubscription uses postgres_changes Realtime (not broadcast) for instant tier updates
+- [03-02]: TIER_LEVEL map pattern (FREE=0, PHOENIX=1, ELITE=2) for numeric tier comparison
+- [03-02]: SubscriptionGate default fallback is styled placeholder (full UpgradePrompt in 03-04)
+- [03-02]: TierBadge returns null while loading for seamless appearance
 
 ### Pending Todos
 
@@ -116,5 +120,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-01-PLAN.md (Subscription infrastructure)
+Stopped at: Completed 03-02-PLAN.md (Client subscription infrastructure)
 Resume file: None
