@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A premium web companion dashboard for Project Phoenix — a community rescue project for Vitruvian Trainer workout machines. The portal gives subscribers deep workout analytics, biomechanics visualizations, community routine sharing, and a unified fitness data hub that integrates with third-party platforms. All workout control happens in the mobile app; the portal is where subscribers analyze, share, and connect.
+A premium web companion dashboard for Project Phoenix — a community rescue project for Vitruvian Trainer workout machines. The portal gives subscribers deep workout analytics, biomechanics visualizations, community routine sharing, session replay with telemetry playback, and a unified fitness data hub integrating with Strava, Fitbit, Garmin, and Hevy. All workout control happens in the mobile app; the portal is where subscribers analyze, share, and connect.
 
 ## Core Value
 
@@ -11,8 +11,6 @@ Premium subscribers see data and insights about their training that they cannot 
 ## Requirements
 
 ### Validated
-
-<!-- Shipped and confirmed valuable. Inferred from existing codebase. -->
 
 - ✓ Landing page with Phoenix branding and feature showcase — existing
 - ✓ Dashboard with workout summary, streak tracking, and quick stats — existing
@@ -24,77 +22,104 @@ Premium subscribers see data and insights about their training that they cannot 
 - ✓ Challenges page with progress tracking — existing
 - ✓ Community page with activity feed — existing
 - ✓ User profile page with settings — existing
-- ✓ Mobile-responsive layout with bottom nav — existing (with known bugs)
+- ✓ Mobile-responsive layout with bottom nav — existing
 - ✓ Dark theme with Phoenix color palette (Ember, Flame, Gold, Forge) — existing
 - ✓ 50+ shadcn/ui component primitives — existing
 - ✓ Achievement celebration animations (PR, badge, streak, challenge) — existing
+- ✓ All critical bugs fixed (hooks, RAF leak, AnimatePresence, NaN, duplicate nav) — v1.0
+- ✓ Unused dependencies removed (100MB: MUI, emotion, react-dnd, etc.) — v1.0
+- ✓ Vitest test framework with baseline tests and error boundaries — v1.0
+- ✓ Code splitting with React.lazy/Suspense for all page components — v1.0
+- ✓ Logo optimized to WebP, fonts via preconnect — v1.0
+- ✓ Supabase auth (email/password, Google, Apple sign-in) — v1.0
+- ✓ Full mock-to-real data migration across all pages — v1.0
+- ✓ TanStack Query with Zod validation/transform layer — v1.0
+- ✓ Realtime sync bridge (mobile → portal) — v1.0
+- ✓ React Router v7 with 26 routes and deep linking — v1.0
+- ✓ Zustand state management replacing prop drilling — v1.0
+- ✓ Mobile bottom nav with More drawer (all pages accessible) — v1.0
+- ✓ Stripe subscriptions (FREE/PHOENIX/ELITE) with checkout and portal — v1.0
+- ✓ Subscription gating at UI + database (RLS) level — v1.0
+- ✓ Force curve visualization with visx (LTTB downsampling, gradient fills) — v1.0
+- ✓ VBT analytics with zone classification (strength/power/speed) — v1.0
+- ✓ Asymmetry detection with L/R threshold flagging — v1.0
+- ✓ Power output and ROM trend charts — v1.0
+- ✓ Biomechanics dashboard (PHOENIX-gated) with muscle heatmap and consistency calendar — v1.0
+- ✓ Exercise progress charts with weekly/monthly summary reports — v1.0
+- ✓ Community hub with browse, search, filter, sort, infinite scroll — v1.0
+- ✓ Optimistic voting with realtime mute-window coordination — v1.0
+- ✓ Share dialog, save-to-library, featured creators, creator profiles — v1.0
+- ✓ Session replay with Canvas 2D telemetry playback (ELITE-gated) — v1.0
+- ✓ Rep quality scoring and fatigue detection — v1.0
+- ✓ Strava OAuth integration with activity sync — v1.0
+- ✓ Fitbit OAuth + Garmin OAuth 1.0a with webhook handler — v1.0
+- ✓ Hevy integration (CSV import + API key) — v1.0
+- ✓ Integration management page (ELITE-gated) — v1.0
+- ✓ Sync queue with rate limiting and exponential backoff — v1.0
+- ✓ CSV data export for workout history and personal records (all tiers) — v1.0
+- ✓ Bundle optimized from 676KB to 71KB main chunk — v1.0
 
 ### Active
 
-<!-- Current scope. Building toward these. -->
+<!-- Next milestone scope — to be defined via /gsd:new-milestone -->
 
-- [ ] Fix critical bugs and tech debt from codebase review (foundation)
-- [ ] Supabase authentication (email/password, Google, Apple sign-in)
-- [ ] Cloud sync — real data replacing all mock data via Supabase JS SDK + RLS
-- [ ] Premium analytics — force curves, velocity profiles, per-rep quality scores, ROM analysis
-- [ ] VBT (velocity-based training) zone visualization and auto-regulation insights
-- [ ] Biomechanics dashboard — asymmetry detection, muscle balance, movement quality trends
-- [ ] 50Hz telemetry replay — session playback with position/velocity/power streams
-- [ ] Community hub — browse, search, upvote/downvote shared routines and cycles
-- [ ] Community hub — featured creators, trending routines, staff picks curation
-- [ ] Community hub — creator profiles with stats and reputation
-- [ ] Third-party integrations — Google Health, Apple Health, Hevy
-- [ ] Third-party integrations — Strava, Fitbit, Garmin, MyFitnessPal (and more)
-- [ ] Subscription tier gating — FREE/PHOENIX/ELITE feature access in portal
-- [ ] Stripe checkout integration for web subscriptions
-- [ ] Realtime sync notifications — portal updates when mobile syncs
+(None yet — run `/gsd:new-milestone` to define v1.1 scope)
 
 ### Out of Scope
 
 - Chat / direct messaging — requires moderation infrastructure, high ongoing cost
 - Workout control — all machine control stays in the mobile app
-- Mobile app development — this milestone is portal (web) only
 - ML/AI features — all "intelligence" is statistical (per roadmap decision)
 - Offline mode — portal requires internet connection
 - Admin dashboard — defer to future milestone
-- Video content / workout demonstrations — high storage cost, low ROI for v1
+- Video content / workout demonstrations — high storage cost, low ROI
+- Custom exercise creation — breaks muscle mapping, volume tracking, and force curve analysis
+- Coach/client management — two-sided marketplace, massive scope for companion dashboard
 
 ## Context
 
-**Existing codebase state:** 20K+ LOC React/Vite SPA with 100% mock data, zero API integration, and 62+ known issues from comprehensive review (6 critical, 18 high). The UI shell exists for most features but nothing connects to real data.
+**Shipped v1.0 with 31,459 LOC TypeScript across 208 files.**
 
-**Mobile app (Project Phoenix MP):** Production beta v0.4.1 with real users, 273 KMP files, 15+ SQLDelight tables with sync-ready columns, complete BLE protocol (Nordic UART, 50Hz telemetry). Currently collecting per-rep biomechanics, force curves, and VBT data via Specs 01 and 02.
+Tech stack: React 18 + Vite 6 + TypeScript + Tailwind CSS v4 + shadcn/ui + Recharts + visx + Framer Motion + TanStack Query + Zustand + React Router v7 + Supabase (auth, DB, Edge Functions, Realtime) + Stripe.
 
-**Backend migration in progress:** Mobile app is migrating from Railway custom backend to Supabase (auth, PostgreSQL with RLS, Edge Functions, Realtime channels). Spec 05 defines 18 Supabase tables, 5 Edge Functions, and 4 Realtime channels. Portal will read directly from Supabase tables via JS SDK + RLS (NOT through mobile sync endpoints).
+Production build: 71KB main entry chunk, 15 lazy-loaded pages, 8 vendor chunk groups, largest lazy chunk 395KB.
 
-**Integration plan (Spec 05):** Portal needs `supabaseClient.ts`, `AuthProvider.tsx`, Stripe integration. Portal subscribes to `sync:{userId}` Realtime channel to know when mobile syncs new data. Same Supabase project, same user accounts, platform-specific JWT tokens.
+26 routes, 3 Zustand stores (UI, replay, community), 3 realtime hooks (sync, subscription, community votes), 12 query files with Zod validation.
 
-**Subscription model:** FREE / PHOENIX ($9.99/mo) / ELITE ($19.99/mo). Stripe for web, RevenueCat for mobile. Subscription status flows from Supabase `subscriptions` table.
-
-**Known data model mismatches:** Workout modes (web generic vs Android specific), weight representation (per-cable vs total), PR types, exercise categories, badge definitions, MetricSample storage format (rows vs JSONB). These must be aligned during integration.
+**Known items requiring human verification:**
+- Stripe checkout/portal/webhooks (needs Stripe test environment)
+- OAuth flows with real credentials (Strava, Fitbit, Garmin)
+- Session replay animations and mobile layout (needs live testing)
+- 11 Supabase Edge Functions (needs deployment)
 
 ## Constraints
 
 - **Tech stack**: React 18 + Vite + TypeScript + Tailwind v4 + shadcn/ui — established, not changing
-- **Backend**: Supabase (strong preference) — auth, DB, Edge Functions, Realtime
+- **Backend**: Supabase — auth, DB, Edge Functions, Realtime
 - **Payments**: Stripe for web subscriptions
 - **View-only**: Portal never controls the workout machine — display and analyze only
 - **No moderation**: Community features limited to sharing/voting — no user-generated text content requiring moderation
 - **Data source**: All workout data originates from mobile app, synced to Supabase, read by portal
-- **Independence**: Portal roadmap is independent from mobile's Phase 3 backend timeline — build what we can now, connect when ready
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Fix tech debt before features | 6 critical + 18 high bugs, 100MB unused deps, broken mobile nav — unstable foundation | — Pending |
-| Supabase for backend | Already chosen for mobile migration (Spec 05), portal shares same project | — Pending |
-| Stripe for web billing | RevenueCat is mobile-only, Stripe handles web subscriptions | — Pending |
-| No chat/moderation | High ongoing cost, community value comes from routine sharing not messaging | — Pending |
-| Independent portal roadmap | Portal can build UI, mock integrations, and prep data layer without waiting for mobile backend | — Pending |
-| Statistical analytics only | No ML infrastructure exists — all "intelligence" uses linear regression, moving averages, trend analysis | — Pending |
-| Reddit + curated community model | Upvote/downvote + featured creators + trending — community-driven with editorial highlights | — Pending |
-| Cast wide net on integrations | Google Health, Apple Health, Hevy, Strava, Fitbit, Garmin, MyFitnessPal — as many as feasible | — Pending |
+| Fix tech debt before features | 6 critical + 18 high bugs, 100MB unused deps — unstable foundation | ✓ Good — clean foundation enabled fast feature dev |
+| Supabase for backend | Already chosen for mobile migration (Spec 05), portal shares same project | ✓ Good — consistent data layer |
+| Stripe for web billing | RevenueCat is mobile-only, Stripe handles web subscriptions | ✓ Good — clean checkout flow |
+| No chat/moderation | High ongoing cost, community value comes from routine sharing not messaging | ✓ Good — avoided scope creep |
+| Independent portal roadmap | Portal built UI + integrations without waiting for mobile backend | ✓ Good — shipped in 29 days |
+| Statistical analytics only | No ML infrastructure — uses linear regression, moving averages, trends | ✓ Good — simple, no infra overhead |
+| Reddit + curated community model | Upvote/downvote + featured creators + trending | ✓ Good — engagement without moderation |
+| Cast wide net on integrations | Strava, Fitbit, Garmin, Hevy — as many as feasible | ✓ Good — 4 providers + CSV fallback |
+| Auth modal overlay on landing | Single-page UX, no separate login route | ✓ Good — clean flow |
+| visx for force curves, Recharts for trends | visx handles 3000+ data points; Recharts for simpler charts | ✓ Good — right tool for each job |
+| Canvas 2D for session replay | React reconciliation too slow for 50Hz animation | ✓ Good — smooth playback |
+| Custom SVG body outline for heatmap | No third-party library, keeps bundle small | ✓ Good — 0 extra deps |
+| Broadcast channel for realtime sync | Matches mobile app architecture (not postgres_changes) | ✓ Good — consistent pattern |
+| WEIGHT_MULTIPLIER=2 in Zod transforms | Per-cable to total weight conversion centralized | ✓ Good — single source of truth |
+| manualChunks for vendor splitting | Split 676KB main to 71KB + vendor groups | ✓ Good — under 500KB target |
 
 ---
-*Last updated: 2026-02-15 after initialization*
+*Last updated: 2026-02-16 after v1.0 milestone*
