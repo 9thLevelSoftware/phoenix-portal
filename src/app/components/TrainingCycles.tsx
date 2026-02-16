@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -5,6 +6,12 @@ import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Progress } from '@/app/components/ui/progress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/app/components/ui/dropdown-menu';
 import { CardSkeleton } from '@/app/components/ui/skeleton';
 import {
   Plus,
@@ -14,9 +21,11 @@ import {
   MoreVertical,
   Dumbbell,
   BedDouble,
+  Share2,
 } from 'lucide-react';
 import { useAuth } from '@/app/hooks/useAuth';
 import { cycleListOptions } from '@/queries/cycles';
+import { ShareContentDialog } from '@/app/components/community/ShareContentDialog';
 import type { TrainingCycle } from '@/schemas/transforms';
 
 export function TrainingCycles() {
@@ -24,6 +33,7 @@ export function TrainingCycles() {
   const { user } = useAuth();
   const { data: cycles, isPending } = useQuery(cycleListOptions(user!.id));
 
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const allCycles = cycles ?? [];
   const activeCycle = allCycles.find((c) => c.status === 'active');
 
@@ -228,9 +238,29 @@ export function TrainingCycles() {
                           {cycle.status.toUpperCase()}
                         </Badge>
                       </div>
-                      <button className="text-[#9CA3AF] hover:text-white transition-colors">
-                        <MoreVertical className="w-5 h-5" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="text-[#9CA3AF] hover:text-white transition-colors">
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="bg-[#1a1a1a] border-[#374151]">
+                          <DropdownMenuItem
+                            className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer"
+                            onClick={() => navigate(`/cycles/${cycle.id}`)}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer"
+                            onClick={() => setShareDialogOpen(true)}
+                          >
+                            <Share2 className="w-4 h-4 mr-2" />
+                            Share to Community
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     <div className="space-y-3 mb-4">
@@ -291,6 +321,16 @@ export function TrainingCycles() {
           </div>
         </div>
       </div>
+
+      <ShareContentDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        cycles={allCycles.map((c) => ({
+          id: c.id,
+          name: c.name,
+          duration_weeks: c.duration_weeks,
+        }))}
+      />
     </div>
   );
 }
