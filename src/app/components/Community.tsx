@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Card } from '@/app/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
@@ -20,6 +20,8 @@ import { CommunityFeedCard } from '@/app/components/community/CommunityFeedCard'
 import { CommunitySearch } from '@/app/components/community/CommunitySearch';
 import { CommunityFilterPanel } from '@/app/components/community/CommunityFilterPanel';
 import { CommunityDetailDrawer } from '@/app/components/community/CommunityDetailDrawer';
+import { FeaturedCreators } from '@/app/components/community/FeaturedCreators';
+import { CreatorProfile } from '@/app/components/community/CreatorProfile';
 import { CommunityMobile } from '@/app/components/mobile/CommunityMobile';
 import type { CommunityFeedItem } from '@/schemas/community';
 
@@ -41,6 +43,7 @@ export function Community() {
 
 function CommunityDesktop() {
   const { user } = useAuth();
+  const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null);
   const activeTab = useCommunityStore((s) => s.activeTab);
   const sort = useCommunityStore((s) => s.sort);
   const search = useCommunityStore((s) => s.search);
@@ -141,68 +144,84 @@ function CommunityDesktop() {
           </TabsList>
         </Tabs>
 
-        {/* Toolbar: Search + Sort + Filter */}
-        <div className="flex items-center gap-3 mb-6">
-          <CommunitySearch />
-
-          <Select value={sort} onValueChange={(v) => setSort(v as 'hot' | 'top' | 'new')}>
-            <SelectTrigger className="w-[120px] bg-[#1a1a1a] border-[#374151] text-white">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-[#1a1a1a] border-[#374151]">
-              {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <CommunityFilterPanel />
-        </div>
-
-        {/* Feed grid */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-48" />
-            ))}
-          </div>
-        ) : isError ? (
-          <div className="text-center py-16 text-[#6B7280]">
-            <p className="text-lg mb-2">Something went wrong</p>
-            <p className="text-sm">Failed to load community feed. Please try again.</p>
-          </div>
-        ) : allItems.length === 0 ? (
-          <div className="text-center py-16 text-[#6B7280]">
-            <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-lg">
-              No {activeTab === 'routines' ? 'routines' : 'cycles'} found
-            </p>
-            {debouncedSearch && (
-              <p className="text-sm mt-1">Try adjusting your search or filters</p>
-            )}
-          </div>
+        {viewingCreatorId ? (
+          /* Creator profile view */
+          <CreatorProfile
+            userId={viewingCreatorId}
+            onBack={() => setViewingCreatorId(null)}
+            onSelectItem={(id) => setSelectedItemId(id)}
+            onVote={handleVote}
+          />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {allItems.map((item) => (
-              <CommunityFeedCard
-                key={item.id}
-                item={item}
-                onSelect={(id) => setSelectedItemId(id)}
-                isVoted={votedIds?.has(item.id) ?? false}
-                onVote={handleVote}
-              />
-            ))}
-          </div>
-        )}
+          <>
+            {/* Toolbar: Search + Sort + Filter */}
+            <div className="flex items-center gap-3 mb-6">
+              <CommunitySearch />
 
-        {/* Infinite scroll sentinel */}
-        <div ref={sentinelRef} className="h-4" />
-        {isFetchingNextPage && (
-          <div className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
-          </div>
+              <Select value={sort} onValueChange={(v) => setSort(v as 'hot' | 'top' | 'new')}>
+                <SelectTrigger className="w-[120px] bg-[#1a1a1a] border-[#374151] text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1a1a1a] border-[#374151]">
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <CommunityFilterPanel />
+            </div>
+
+            {/* Featured creators */}
+            <FeaturedCreators onSelectCreator={setViewingCreatorId} />
+
+            {/* Feed grid */}
+            {isLoading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Card key={i} className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-48" />
+                ))}
+              </div>
+            ) : isError ? (
+              <div className="text-center py-16 text-[#6B7280]">
+                <p className="text-lg mb-2">Something went wrong</p>
+                <p className="text-sm">Failed to load community feed. Please try again.</p>
+              </div>
+            ) : allItems.length === 0 ? (
+              <div className="text-center py-16 text-[#6B7280]">
+                <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="text-lg">
+                  No {activeTab === 'routines' ? 'routines' : 'cycles'} found
+                </p>
+                {debouncedSearch && (
+                  <p className="text-sm mt-1">Try adjusting your search or filters</p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {allItems.map((item) => (
+                  <CommunityFeedCard
+                    key={item.id}
+                    item={item}
+                    onSelect={(id) => setSelectedItemId(id)}
+                    isVoted={votedIds?.has(item.id) ?? false}
+                    onVote={handleVote}
+                    onAuthorClick={setViewingCreatorId}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <div className="w-6 h-6 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </>
         )}
 
         {/* Detail drawer/dialog */}
