@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 4 - Premium Analytics
+**Current focus:** Phase 5 - Community Hub
 
 ## Current Position
 
-Phase: 4 of 7 (Premium Analytics)
-Plan: 6 of 6 in current phase
-Status: Phase 4 Complete
-Last activity: 2026-02-16 -- 04-05 complete (Biomechanics Dashboard)
+Phase: 5 of 7 (Community Hub)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-02-16 -- 05-01 complete (Community Data Layer)
 
-Progress: [██████░░░░] 56% (22/39 plans)
+Progress: [██████░░░░] 59% (23/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: 3 min
-- Total execution time: 0.95 hours
+- Total execution time: 0.98 hours
 
 **By Phase:**
 
@@ -34,7 +34,7 @@ Progress: [██████░░░░] 56% (22/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (3 min), 04-03 (2 min), 04-04 (3 min), 04-06 (3 min), 04-05 (4 min)
+- Last 5 plans: 04-03 (2 min), 04-04 (3 min), 04-06 (3 min), 04-05 (4 min), 05-01 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -44,6 +44,7 @@ Progress: [██████░░░░] 56% (22/39 plans)
 | Phase 04 P04 | 3 min | 2 tasks | 2 files |
 | Phase 04 P06 | 3 min | 2 tasks | 2 files |
 | Phase 04 P05 | 4 min | 2 tasks | 5 files |
+| Phase 05 P01 | 2 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,10 @@ Recent decisions affecting current work:
 - [04-05]: Custom SVG body outline for MuscleHeatmap (no third-party library, keeps bundle small)
 - [04-05]: Telemetry fetched on-demand per selected set (avoids loading all session data upfront)
 - [04-05]: Session/exercise/set cascade selectors auto-select first available item
+- [05-01]: Added display_name and avatar_url to profiles table stub for community author display
+- [05-01]: Profiles field optional in Zod schemas (present when joined, absent in raw queries)
+- [05-01]: 300ms default debounce for search input, 2500ms for realtime vote invalidation
+- [05-01]: Muted parameter on realtime hook to skip invalidation during optimistic votes
 
 ### Pending Todos
 
@@ -152,5 +157,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 04-05-PLAN.md (Biomechanics Dashboard) -- Phase 4 complete
+Stopped at: Completed 05-01-PLAN.md (Community Data Layer)
 Resume file: None
