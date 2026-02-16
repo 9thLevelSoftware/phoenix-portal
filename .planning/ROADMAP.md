@@ -185,16 +185,16 @@ Plans:
   3. Apple Health and Google Health Connect sync paths are documented as mobile-only flows, with data visible in the portal after mobile sync
   4. Third-party data is normalized to Phoenix format and displayed in analytics charts without format inconsistencies
   5. Any user (all tiers) can export workout history and personal records as CSV files from their profile
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 07-01: Integration management page and data normalization layer
-- [ ] 07-02: Strava OAuth Edge Function and workout sync
-- [ ] 07-03: Hevy integration (API or CSV import)
-- [ ] 07-04: Fitbit and Garmin OAuth Edge Functions and sync
-- [ ] 07-05: Apple Health and Google Health Connect documentation and display
-- [ ] 07-06: Rate limit tracking, sync queue, and ELITE tier gating
-- [ ] 07-07: CSV data export (workout history and personal records, all tiers)
+- [ ] 07-01-PLAN.md -- Database schema (user_integrations, sync_queue, rate_limit_tracking, external_activities), integration types, normalization layer, and query infrastructure
+- [ ] 07-02-PLAN.md -- Strava OAuth Edge Function, activity sync, and client-side connection
+- [ ] 07-03-PLAN.md -- Hevy integration with API sync and CSV import fallback
+- [ ] 07-04-PLAN.md -- Fitbit and Garmin OAuth Edge Functions, sync functions, and webhook handler
+- [ ] 07-05-PLAN.md -- Integration management page, provider cards, mobile-only documentation, and external activity display
+- [ ] 07-06-PLAN.md -- Sync queue processor, rate limit tracking, and ELITE tier gating
+- [ ] 07-07-PLAN.md -- CSV export for workout history and personal records (all tiers)
 
 ## Progress
 
@@ -208,6 +208,6 @@ Phases 0 through 3 execute sequentially. After Phase 3 completes, Phases 4, 5, a
 | 2. Navigation & State Management | 0/3 | Not started | - |
 | 3. Subscriptions & Payments | 0/4 | Not started | - |
 | 4. Premium Analytics | 0/6 | Not started | - |
-| 5. Community Hub | 0/4 | Planned | - |
+| 5. Community Hub | 0/5 | Planned | - |
 | 6. Session Replay & Advanced VBT | 0/4 | Not started | - |
-| 7. Integrations & Data Export | 0/7 | Not started | - |
+| 7. Integrations & Data Export | 0/7 | Planned | - |
