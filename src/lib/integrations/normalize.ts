@@ -72,13 +72,8 @@ export function normalizeStravaActivity(raw: unknown): NormalizedActivity {
 // Fitbit normalizer is now fully implemented in fitbit.ts
 export { normalizeFitbitActivity } from './fitbit';
 
-/**
- * Normalize a Garmin activity.
- * Stub: throws until Garmin provider is fully implemented (plan 07-04).
- */
-export function normalizeGarminActivity(_raw: unknown): NormalizedActivity {
-  throw new Error('Garmin normalizer not yet implemented. See plan 07-04.');
-}
+// Garmin normalizer is now fully implemented in garmin.ts
+export { normalizeGarminActivity } from './garmin';
 
 // Hevy normalizer is now fully implemented in hevy.ts
 export { normalizeHevyActivity } from './hevy';
