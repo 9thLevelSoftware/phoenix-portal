@@ -53,6 +53,7 @@ Progress: [█████████░] 87% (34/39 plans)
 | Phase 06 P03 | 2 min | 2 tasks | 4 files |
 | Phase 06 P04 | 3 min | 4 tasks | 7 files |
 | Phase 07 P01 | 3 min | 2 tasks | 7 files |
+| Phase 07 P02 | 3 min | 2 tasks | 5 files |
 | Phase 07 P07 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
@@ -184,6 +185,11 @@ Recent decisions affecting current work:
 - [07-01]: Rate limit tracking read-only for auth users; service role writes via Edge Functions
 - [07-01]: useConnectIntegration uses upsert with onConflict for reconnection support
 - [07-01]: External activities UNIQUE(user_id, provider, external_id) for deduplication
+- [07-02]: OAuth callback uses service role client (not anon key) since no user JWT is present during redirect
+- [07-02]: Sync function duplicates normalizer logic for Deno runtime independence from Vite app
+- [07-02]: Token refresh has 60-second buffer before expiry to prevent mid-request expiration
+- [07-02]: Initial sync queued as non-fatal in OAuth callback - tokens saved even if queue fails
+- [07-02]: StravaConnect uses Strava brand color (#FC4C02) for visual identity
 - [07-07]: Used papaparse directly (not react-papaparse) for CSV generation -- no React bindings needed
 - [07-07]: Reuse Zod-transformed types from schemas/transforms.ts for export (no duplicate interfaces)
 - [07-07]: ExportSection in Profile Settings tab, not gated by subscription tier
