@@ -5,7 +5,6 @@ import type { WorkoutSession, PersonalRecord } from '@/schemas/transforms';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { Progress } from '@/app/components/ui/progress';
 import { Skeleton, ChartSkeleton, WorkoutCardSkeleton } from '@/app/components/ui/skeleton';
 import { SyncStatus } from './SyncStatus';
 import { PortalBanner } from './PortalBanner';
@@ -21,6 +20,7 @@ import {
   Target,
   Eye,
 } from 'lucide-react';
+import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -68,20 +68,6 @@ export function Dashboard() {
   const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
   const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
-  // TODO(phase-5): Replace with real challenges data from community tables
-  const activeChallenges = [
-    { name: 'January Volume Challenge', progress: 68, rank: 12, total: 150 },
-    { name: 'PR Hunter', progress: 45, rank: 8, total: 50 },
-    { name: '30-Day Streak', progress: 87, rank: 25, total: 100 },
-  ];
-
-  // TODO(phase-3): Replace with real badges data from subscription/gamification tables
-  const badges = [
-    { name: 'Week Warrior', icon: '\u{1F525}', rarity: 'gold' },
-    { name: 'PR Crusher', icon: '\u{1F4AA}', rarity: 'platinum' },
-    { name: 'Consistency King', icon: '\u{1F451}', rarity: 'gold' },
-    { name: '100 Workouts', icon: '\u{1F4AF}', rarity: 'silver' },
-  ];
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
@@ -391,7 +377,6 @@ export function Dashboard() {
             </motion.div>
 
             {/* Active Challenges */}
-            {/* TODO(phase-5): Replace with real challenges data */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -399,33 +384,22 @@ export function Dashboard() {
             >
               <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
                 <h3 className="text-xl text-white mb-4">Active Challenges</h3>
-                <div className="space-y-4">
-                  {activeChallenges.map((challenge, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-white">{challenge.name}</span>
-                        <span className="text-[#9CA3AF]">
-                          Rank {challenge.rank}/{challenge.total}
-                        </span>
-                      </div>
-                      <Progress value={challenge.progress} className="h-2" />
-                      <div className="flex items-center justify-between text-xs text-[#9CA3AF]">
-                        <span>{challenge.progress}% complete</span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Trophy className="w-8 h-8 text-[#374151] mb-2" />
+                  <p className="text-sm text-[#9CA3AF]">No active challenges yet</p>
+                  <p className="text-xs text-[#6B7280] mt-1">Join challenges from the Challenges page to track your progress here</p>
                 </div>
                 <Button
                   variant="outline"
                   className="w-full mt-4 border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+                  asChild
                 >
-                  View All Challenges
+                  <Link to="/challenges">Browse Challenges</Link>
                 </Button>
               </Card>
             </motion.div>
 
             {/* Badge Showcase */}
-            {/* TODO(phase-3): Replace with real badges data */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -433,22 +407,10 @@ export function Dashboard() {
             >
               <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
                 <h3 className="text-xl text-white mb-4">Recent Badges</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {badges.map((badge, index) => (
-                    <div
-                      key={index}
-                      className={`p-3 rounded-lg text-center border-2 cursor-pointer hover:scale-105 transition-transform ${
-                        badge.rarity === 'platinum'
-                          ? 'bg-gradient-to-br from-[#E5E7EB]/20 to-[#9CA3AF]/20 border-[#E5E7EB]'
-                          : badge.rarity === 'gold'
-                          ? 'bg-gradient-to-br from-[#F59E0B]/20 to-[#FBBF24]/20 border-[#F59E0B]'
-                          : 'bg-gradient-to-br from-[#6B7280]/20 to-[#374151]/20 border-[#6B7280]'
-                      }`}
-                    >
-                      <div className="text-3xl mb-1">{badge.icon}</div>
-                      <div className="text-xs text-white">{badge.name}</div>
-                    </div>
-                  ))}
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Award className="w-8 h-8 text-[#374151] mb-2" />
+                  <p className="text-sm text-[#9CA3AF]">No badges earned yet</p>
+                  <p className="text-xs text-[#6B7280] mt-1">Complete challenges and hit milestones to earn badges</p>
                 </div>
               </Card>
             </motion.div>
