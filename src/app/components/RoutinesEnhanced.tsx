@@ -27,12 +27,15 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/app/hooks/useAuth';
 import { routineListOptions } from '@/queries/routines';
+import { ShareContentDialog } from '@/app/components/community/ShareContentDialog';
 import type { Routine } from '@/schemas/transforms';
 
 export function RoutinesEnhanced() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: routines, isPending } = useQuery(routineListOptions(user!.id));
+
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   // Local state for UI-only operations (these would need mutations for persistence)
   const [localFavorites, setLocalFavorites] = useState<Set<string>>(new Set());
@@ -134,6 +137,7 @@ export function RoutinesEnhanced() {
                 onEdit={(id: string) => navigate(`/routines/${id}`)}
                 onToggleFavorite={toggleFavorite}
                 isFavorite={isFavorite}
+                onShare={() => setShareDialogOpen(true)}
               />
             )}
           </TabsContent>
@@ -150,11 +154,23 @@ export function RoutinesEnhanced() {
                 onEdit={(id: string) => navigate(`/routines/${id}`)}
                 onToggleFavorite={toggleFavorite}
                 isFavorite={isFavorite}
+                onShare={() => setShareDialogOpen(true)}
               />
             )}
           </TabsContent>
         </Tabs>
       </div>
+
+      <ShareContentDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        routines={allRoutines.map((r) => ({
+          id: r.id,
+          name: r.name,
+          exercise_count: r.exercise_count,
+          estimated_duration: r.estimated_duration,
+        }))}
+      />
     </div>
   );
 }
@@ -164,11 +180,13 @@ function RoutineGrid({
   onEdit,
   onToggleFavorite,
   isFavorite,
+  onShare,
 }: {
   routines: Routine[];
   onEdit: (id: string) => void;
   onToggleFavorite: (id: string) => void;
   isFavorite: (routine: Routine) => boolean;
+  onShare: () => void;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -215,7 +233,7 @@ function RoutineGrid({
                         <Copy className="w-4 h-4 mr-2" />
                         Duplicate
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer">
+                      <DropdownMenuItem className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer" onClick={onShare}>
                         <Share2 className="w-4 h-4 mr-2" />
                         Share
                       </DropdownMenuItem>

@@ -2,7 +2,7 @@ import { ArrowBigUp } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { useVote } from '@/mutations/community';
-import { cn } from '@/lib/utils';
+import { cn } from '@/app/components/ui/utils';
 
 interface VoteButtonProps {
   itemId: string;
