@@ -12,9 +12,9 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 Phase: 7 of 7 (Integrations & Data Export)
 Plan: 7 of 7 in current phase
 Status: In Progress
-Last activity: 2026-02-16 -- 07-07 complete (CSV Export)
+Last activity: 2026-02-16 -- 07-03 complete (Hevy Integration)
 
-Progress: [█████████░] 87% (34/39 plans)
+Progress: [█████████░] 90% (35/39 plans)
 
 ## Performance Metrics
 
@@ -55,6 +55,8 @@ Progress: [█████████░] 87% (34/39 plans)
 | Phase 07 P01 | 3 min | 2 tasks | 7 files |
 | Phase 07 P02 | 3 min | 2 tasks | 5 files |
 | Phase 07 P07 | 2 min | 2 tasks | 3 files |
+| Phase 07 P04 | 4min | 2 tasks | 7 files |
+| Phase 07 P03 | 5 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -193,6 +195,14 @@ Recent decisions affecting current work:
 - [07-07]: Used papaparse directly (not react-papaparse) for CSV generation -- no React bindings needed
 - [07-07]: Reuse Zod-transformed types from schemas/transforms.ts for export (no duplicate interfaces)
 - [07-07]: ExportSection in Profile Settings tab, not gated by subscription tier
+- [Phase 07-04]: Fitbit uses Basic auth header (base64 client_id:client_secret) for token exchange, not JSON body
+- [Phase 07-04]: Garmin OAuth 1.0a implemented with HMAC-SHA1 signatures via Web Crypto API
+- [Phase 07-04]: Garmin webhook always returns 200 OK to prevent retry storms; errors logged internally
+- [Phase 07-04]: Garmin relies on webhook push rather than initial sync queue (unlike Fitbit/Strava)
+- [07-03]: CSV import is default tab (accessible to all); API key tab secondary (Hevy PRO only)
+- [07-03]: Weight conversion from lbs to kg applied during CSV parsing (Hevy exports in imperial)
+- [07-03]: Native FileReader + parseHevyCSV instead of CSVReader component for simpler integration
+- [07-03]: Import preview shows count, date range, total duration before confirming
 
 ### Pending Todos
 
@@ -207,5 +217,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-07-PLAN.md (CSV Export)
+Stopped at: Completed 07-03-PLAN.md (Hevy Integration)
 Resume file: None
