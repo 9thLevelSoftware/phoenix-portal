@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/app/hooks/useAuth';
 import { routineListOptions } from '@/queries/routines';
+import { RoutinePickerModal } from '@/app/components/modals/RoutinePickerModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -727,10 +728,6 @@ function ProgressionRules({ ...props }: any) {
   );
 }
 
-// Routine Picker Modal stub
-function RoutinePickerModal({ isOpen, onClose, routines, onSelect }: any) {
-  return null; // Will implement in next file
-}
 
 // Preview Modal stub
 function PreviewModal({ isOpen, onClose, cycle }: any) {
