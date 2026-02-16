@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 ## Current Position
 
-Phase: 5 of 7 (Community Hub)
-Plan: 3 of 4 in current phase
-Status: In Progress
-Last activity: 2026-02-16 -- 05-03 complete (Community Voting & Sharing)
+Phase: 5 of 7 (Community Hub) -- COMPLETE
+Plan: 4 of 4 in current phase
+Status: Phase Complete
+Last activity: 2026-02-16 -- 05-04 complete (Featured Creators & Save-to-Library)
 
-Progress: [██████░░░░] 64% (25/39 plans)
+Progress: [██████░░░░] 67% (26/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25
+- Total plans completed: 26
 - Average duration: 3 min
 - Total execution time: 1.03 hours
 
@@ -34,7 +34,7 @@ Progress: [██████░░░░] 64% (25/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-06 (3 min), 04-05 (4 min), 05-01 (2 min), 05-02 (3 min), 05-03 (3 min)
+- Last 5 plans: 04-05 (4 min), 05-01 (2 min), 05-02 (3 min), 05-03 (3 min), 05-04 (4 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -46,6 +46,7 @@ Progress: [██████░░░░] 64% (25/39 plans)
 | Phase 04 P05 | 4 min | 2 tasks | 5 files |
 | Phase 05 P01 | 2 min | 2 tasks | 7 files |
 | Phase 05 P03 | 3 min | 2 tasks | 4 files |
+| Phase 05 P04 | 4 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,9 @@ Recent decisions affecting current work:
 - [05-02]: Detail view uses Drawer (vaul) on mobile, Dialog (Radix) on desktop via useIsMobile
 - [05-02]: Feed state resets on mount via store.resetAll() in useEffect with empty deps
 - [05-02]: Vote handler placeholder pending 05-03 optimistic vote mutations
+- [05-04]: userId filter added to existing communityFeedOptions (avoids separate query function)
+- [05-04]: CreatorProfile fetches both routines and cycles tabs for complete creator content
+- [05-04]: Save toggle state derived from savedItemsOptions query via useMemo (not local state)
 
 ### Pending Todos
 
@@ -167,5 +171,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 05-02-PLAN.md (Community Feed Page)
+Stopped at: Completed 05-04-PLAN.md (Featured Creators & Save-to-Library) -- Phase 5 complete
 Resume file: None
