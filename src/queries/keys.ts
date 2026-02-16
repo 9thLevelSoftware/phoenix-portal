@@ -27,4 +27,24 @@ export const queryKeys = {
     byUser: (userId: string) => [...queryKeys.cycles.all, userId] as const,
     detail: (cycleId: string) => [...queryKeys.cycles.all, 'detail', cycleId] as const,
   },
+  telemetry: {
+    all: ['telemetry'] as const,
+    bySet: (setId: string) => [...queryKeys.telemetry.all, 'set', setId] as const,
+    repSummaries: (setId: string) =>
+      [...queryKeys.telemetry.all, 'rep-summaries', setId] as const,
+  },
+  biomechanics: {
+    all: ['biomechanics'] as const,
+    asymmetry: (sessionId: string) =>
+      [...queryKeys.biomechanics.all, 'asymmetry', sessionId] as const,
+    rom: (exerciseId: string) =>
+      [...queryKeys.biomechanics.all, 'rom', exerciseId] as const,
+  },
+  progress: {
+    all: ['progress'] as const,
+    byExercise: (userId: string, exerciseName: string) =>
+      [...queryKeys.progress.all, userId, exerciseName] as const,
+    summary: (userId: string, period: string) =>
+      [...queryKeys.progress.all, 'summary', userId, period] as const,
+  },
 } as const;
