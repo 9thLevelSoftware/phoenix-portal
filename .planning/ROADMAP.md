@@ -30,9 +30,11 @@ Phase 3 (Subscriptions & Payments)
     +--> Phase 5 (Community Hub)
     |
     +--> Phase 7 (Integrations & Export)
+    |
+    +----+----+----+--> Phase 8 (Tech Debt Cleanup) [after all phases]
 ```
 
-Phases 4, 5, and 7 can execute in parallel after Phase 3 completes. Phase 6 depends on Phase 4.
+Phases 4, 5, and 7 can execute in parallel after Phase 3 completes. Phase 6 depends on Phase 4. Phase 8 runs after all prior phases (gap closure from audit).
 
 - [x] **Phase 0: Stabilization** - Fix 62+ bugs, remove dead dependencies, add test framework and error boundaries (completed 2026-02-15)
 - [ ] **Phase 1: Authentication & Data Layer** - Supabase auth, real data replacing all mocks, realtime sync bridge
@@ -42,6 +44,7 @@ Phases 4, 5, and 7 can execute in parallel after Phase 3 completes. Phase 6 depe
 - [ ] **Phase 5: Community Hub** - Browse, share, vote on routines; creator profiles; trending content
 - [ ] **Phase 6: Session Replay & Advanced VBT** - 50Hz telemetry playback, rep quality scoring, fatigue detection
 - [ ] **Phase 7: Integrations & Data Export** - Third-party fitness service connections, CSV export, integration management
+- [ ] **Phase 8: Tech Debt Cleanup** - Biomechanics navigation, mock data removal, analytics insights, bundle optimization (gap closure from audit)
 
 ## Phase Details
 
@@ -196,6 +199,23 @@ Plans:
 - [ ] 07-06-PLAN.md -- Sync queue processor, rate limit tracking, and ELITE tier gating
 - [ ] 07-07-PLAN.md -- CSV export for workout history and personal records (all tiers)
 
+### Phase 8: Tech Debt Cleanup
+**Goal**: All audit tech debt resolved — premium features are discoverable via navigation, remaining mock data is removed, analytics generate real insights, and bundle size is optimized
+**Depends on**: All prior phases (gap closure from v1 audit)
+**Requirements**: BIO-09 (navigation discoverability)
+**Gap Closure:** Closes integration gap + 5 tech debt items from v1-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. Biomechanics page is accessible from both desktop Navigation sidebar and MobileBottomNav More drawer without typing the URL
+  2. CycleBuilder routine picker loads real user routines from Supabase instead of hardcoded mockRoutines array
+  3. Dashboard challenges and badges sections show proper empty/placeholder states instead of hardcoded mock arrays
+  4. Analytics page generates at least basic insights from real query data (not a static TODO comment)
+  5. Production bundle has no chunk exceeding 500KB (down from 674KB)
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01-PLAN.md -- Biomechanics navigation entry, CycleBuilder mock routine replacement, Dashboard mock data cleanup
+- [ ] 08-02-PLAN.md -- Analytics insights generation and bundle size optimization
+
 ## Progress
 
 **Execution Order:**
@@ -211,3 +231,4 @@ Phases 0 through 3 execute sequentially. After Phase 3 completes, Phases 4, 5, a
 | 5. Community Hub | 0/5 | Planned | - |
 | 6. Session Replay & Advanced VBT | 0/4 | Not started | - |
 | 7. Integrations & Data Export | 0/7 | Planned | - |
+| 8. Tech Debt Cleanup | 0/2 | Not started | - |
