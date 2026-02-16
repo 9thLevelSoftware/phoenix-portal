@@ -121,6 +121,119 @@ function groupStrengthByExercise(data: Array<{ exercise_name: string; value: num
 
 const EXERCISE_COLORS = ['#FF6B35', '#DC2626', '#F59E0B'];
 
+interface Insight {
+  type: 'positive' | 'warning' | 'neutral';
+  title: string;
+  description: string;
+  icon: typeof TrendingUp;
+}
+
+function generateInsights(
+  volumeData: Array<{ date: string; volume: number; workouts: number }>,
+  muscleGroupData: Array<{ name: string; value: number; color: string }>,
+  strengthExercises: string[],
+  totalWorkouts: number,
+): Insight[] {
+  const insights: Insight[] = [];
+
+  // 1. Volume Trend (requires >= 2 data points)
+  if (volumeData.length >= 2) {
+    const current = volumeData[volumeData.length - 1].volume;
+    const previous = volumeData[volumeData.length - 2].volume;
+    if (previous > 0) {
+      const changeRaw = ((current - previous) / previous) * 100;
+      const change = Math.abs(Math.round(changeRaw));
+      if (changeRaw > 0) {
+        insights.push({
+          type: 'positive',
+          title: 'Volume Trending Up',
+          description: `${change}% increase vs previous week`,
+          icon: TrendingUp,
+        });
+      } else if (changeRaw <= -20) {
+        insights.push({
+          type: 'warning',
+          title: 'Volume Drop Detected',
+          description: `${change}% decrease -- consider if this is an intentional deload or missed sessions`,
+          icon: TrendingDown,
+        });
+      } else {
+        insights.push({
+          type: 'neutral',
+          title: 'Volume Stable',
+          description: `Slight ${change}% decrease -- within normal variation`,
+          icon: Activity,
+        });
+      }
+    }
+  }
+
+  // 2. Muscle Balance (requires >= 2 muscle groups)
+  if (muscleGroupData.length >= 2) {
+    const sorted = [...muscleGroupData].sort((a, b) => b.value - a.value);
+    const dominant = sorted[0];
+    const weakest = sorted[sorted.length - 1];
+    if (weakest.value > 0 && dominant.value > 3 * weakest.value) {
+      insights.push({
+        type: 'warning',
+        title: 'Muscle Imbalance',
+        description: `${dominant.name} at ${dominant.value}% vs ${weakest.name} at ${weakest.value}% -- consider more ${weakest.name} work`,
+        icon: AlertCircle,
+      });
+    } else {
+      insights.push({
+        type: 'positive',
+        title: 'Balanced Training',
+        description: `Good distribution across ${muscleGroupData.length} muscle groups`,
+        icon: Target,
+      });
+    }
+  }
+
+  // 3. Consistency (requires workouts > 0)
+  if (totalWorkouts > 0) {
+    const avgPerWeek = Math.round(totalWorkouts / Math.max(volumeData.length, 1));
+    if (avgPerWeek >= 3) {
+      insights.push({
+        type: 'positive',
+        title: 'Great Consistency',
+        description: `Averaging ${avgPerWeek} workouts per week`,
+        icon: Activity,
+      });
+    } else {
+      insights.push({
+        type: 'neutral',
+        title: 'Room to Grow',
+        description: `Averaging ${avgPerWeek} workouts per week -- 3+ is ideal for progress`,
+        icon: Activity,
+      });
+    }
+  }
+
+  // 4. Strength Tracking (requires exercises)
+  if (strengthExercises.length > 0) {
+    const displayNames = strengthExercises.slice(0, 3).join(', ');
+    insights.push({
+      type: 'positive',
+      title: 'Strength Tracking Active',
+      description: `Tracking progress on ${strengthExercises.length} exercises: ${displayNames}`,
+      icon: TrendingUp,
+    });
+  }
+
+  // 5. Fallback -- guaranteed at least one insight
+  if (insights.length === 0) {
+    insights.push({
+      type: 'neutral',
+      title: 'Building Your Profile',
+      description: 'Complete more workouts to unlock personalized training insights',
+      icon: Activity,
+    });
+  }
+
+  return insights;
+}
+
 export function Analytics() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -165,29 +278,7 @@ export function Analytics() {
   const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
   const avgDuration = totalWorkouts > 0 ? Math.round(totalVolume / totalWorkouts / 100) : 0; // rough estimate
 
-  // TODO: Generate insights from real analytics data
-  const insights = [
-    {
-      type: 'positive' as const,
-      title: 'Volume Tracking Active',
-      description: `${totalWorkouts} workouts tracked in the selected period`,
-      icon: TrendingUp,
-    },
-    {
-      type: muscleGroupData.length >= 3 ? ('positive' as const) : ('warning' as const),
-      title: muscleGroupData.length >= 3 ? 'Good Variety' : 'Limited Variety',
-      description: `Training ${muscleGroupData.length} different muscle groups`,
-      icon: muscleGroupData.length >= 3 ? Target : AlertCircle,
-    },
-    {
-      type: strengthExercises.length > 0 ? ('positive' as const) : ('neutral' as const),
-      title: 'Strength Tracking',
-      description: strengthExercises.length > 0
-        ? `Tracking progress on ${strengthExercises.join(', ')}`
-        : 'Complete more workouts to see strength trends',
-      icon: Activity,
-    },
-  ];
+  const insights = generateInsights(volumeData, muscleGroupData, strengthExercises, totalWorkouts);
 
   if (isPending) {
     return (
