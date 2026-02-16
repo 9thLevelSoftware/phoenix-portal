@@ -426,6 +426,167 @@ export type Database = {
           saved_at?: string;
         };
       };
+      user_integrations: {
+        Row: {
+          id: string;
+          user_id: string;
+          provider: string;
+          provider_user_id: string | null;
+          access_token: string | null;
+          refresh_token: string | null;
+          token_expires_at: string | null;
+          api_key: string | null;
+          connected_at: string;
+          last_sync_at: string | null;
+          status: string;
+          error_message: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          provider: string;
+          provider_user_id?: string | null;
+          access_token?: string | null;
+          refresh_token?: string | null;
+          token_expires_at?: string | null;
+          api_key?: string | null;
+          connected_at?: string;
+          last_sync_at?: string | null;
+          status?: string;
+          error_message?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          provider?: string;
+          provider_user_id?: string | null;
+          access_token?: string | null;
+          refresh_token?: string | null;
+          token_expires_at?: string | null;
+          api_key?: string | null;
+          connected_at?: string;
+          last_sync_at?: string | null;
+          status?: string;
+          error_message?: string | null;
+        };
+      };
+      sync_queue: {
+        Row: {
+          id: string;
+          user_id: string;
+          provider: string;
+          sync_type: string;
+          status: string;
+          created_at: string;
+          started_at: string | null;
+          completed_at: string | null;
+          retry_count: number;
+          error_message: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          provider: string;
+          sync_type?: string;
+          status?: string;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          retry_count?: number;
+          error_message?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          provider?: string;
+          sync_type?: string;
+          status?: string;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          retry_count?: number;
+          error_message?: string | null;
+        };
+      };
+      rate_limit_tracking: {
+        Row: {
+          id: string;
+          provider: string;
+          requests_this_window: number;
+          window_started_at: string;
+          last_request_at: string | null;
+          last_reset_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          provider: string;
+          requests_this_window?: number;
+          window_started_at?: string;
+          last_request_at?: string | null;
+          last_reset_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          provider?: string;
+          requests_this_window?: number;
+          window_started_at?: string;
+          last_request_at?: string | null;
+          last_reset_at?: string | null;
+        };
+      };
+      external_activities: {
+        Row: {
+          id: string;
+          user_id: string;
+          external_id: string;
+          provider: string;
+          name: string;
+          activity_type: string | null;
+          started_at: string;
+          duration_seconds: number | null;
+          distance_meters: number | null;
+          calories: number | null;
+          avg_heart_rate: number | null;
+          max_heart_rate: number | null;
+          elevation_gain_meters: number | null;
+          raw_data: unknown;
+          synced_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          external_id: string;
+          provider: string;
+          name: string;
+          activity_type?: string | null;
+          started_at: string;
+          duration_seconds?: number | null;
+          distance_meters?: number | null;
+          calories?: number | null;
+          avg_heart_rate?: number | null;
+          max_heart_rate?: number | null;
+          elevation_gain_meters?: number | null;
+          raw_data?: unknown;
+          synced_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          external_id?: string;
+          provider?: string;
+          name?: string;
+          activity_type?: string | null;
+          started_at?: string;
+          duration_seconds?: number | null;
+          distance_meters?: number | null;
+          calories?: number | null;
+          avg_heart_rate?: number | null;
+          max_heart_rate?: number | null;
+          elevation_gain_meters?: number | null;
+          raw_data?: unknown;
+          synced_at?: string;
+        };
+      };
       analytics_summaries: {
         Row: {
           id: string;
