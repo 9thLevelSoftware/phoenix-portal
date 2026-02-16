@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 6 - Session Replay + Advanced VBT
+**Current focus:** Phase 7 - Integrations & Data Export
 
 ## Current Position
 
-Phase: 6 of 7 (Session Replay + Advanced VBT)
-Plan: 4 of 4 in current phase
-Status: Phase Complete
-Last activity: 2026-02-16 -- 06-04 complete (Playback Controls + Session Replay Integration)
+Phase: 7 of 7 (Integrations & Data Export)
+Plan: 1 of 7 in current phase
+Status: In Progress
+Last activity: 2026-02-16 -- 07-01 complete (Integration Foundation Schema + Types)
 
-Progress: [████████░░] 79% (31/39 plans)
+Progress: [████████░░] 82% (32/39 plans)
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [████████░░] 79% (31/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-05 (3 min), 06-01 (2 min), 06-02 (2 min), 06-03 (2 min), 06-04 (3 min)
+- Last 5 plans: 06-01 (2 min), 06-02 (2 min), 06-03 (2 min), 06-04 (3 min), 07-01 (3 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -52,6 +52,7 @@ Progress: [████████░░] 79% (31/39 plans)
 | Phase 06 P02 | 2 min | 2 tasks | 2 files |
 | Phase 06 P03 | 2 min | 2 tasks | 4 files |
 | Phase 06 P04 | 3 min | 4 tasks | 7 files |
+| Phase 07 P01 | 3 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,10 @@ Recent decisions affecting current work:
 - [06-04]: Fatigue region overlay uses severity-based colors (red for high, amber for moderate)
 - [06-04]: Rep boundaries derived from cumulative TUT with 500ms inter-rep gap estimate
 - [06-04]: Paused stats overlay shows rep number, timestamp, and quality score
+- [07-01]: Strava normalizer fully implemented with Zod; Fitbit/Garmin/Hevy as stubs pending provider plans
+- [07-01]: Rate limit tracking read-only for auth users; service role writes via Edge Functions
+- [07-01]: useConnectIntegration uses upsert with onConflict for reconnection support
+- [07-01]: External activities UNIQUE(user_id, provider, external_id) for deduplication
 
 ### Pending Todos
 
@@ -192,5 +197,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 06-04-PLAN.md (Playback Controls + Session Replay Integration) - Phase 06 Complete
+Stopped at: Completed 07-01-PLAN.md (Integration Foundation Schema + Types)
 Resume file: None
