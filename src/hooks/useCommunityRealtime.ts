@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { queryKeys } from '@/queries/keys';
+import { voteMutedRef } from '@/mutations/community';
 
 const DEBOUNCE_MS = 2500;
 
@@ -9,9 +10,10 @@ const DEBOUNCE_MS = 2500;
  * Subscribes to Supabase Realtime postgres_changes on the community_votes table.
  * Debounces query invalidation to avoid excessive refetches during vote bursts.
  *
- * @param muted - When true (e.g., during optimistic vote), skip invalidation entirely
+ * Checks voteMutedRef to skip invalidation during the mute window after an
+ * optimistic vote update, preventing double-update flicker.
  */
-export function useCommunityRealtime(muted = false) {
+export function useCommunityRealtime() {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -26,7 +28,8 @@ export function useCommunityRealtime(muted = false) {
           table: 'community_votes',
         },
         () => {
-          if (muted) return;
+          // Skip invalidation during optimistic vote mute window
+          if (Date.now() < voteMutedRef.current) return;
 
           // Clear existing debounce timer
           if (timerRef.current) {
@@ -51,5 +54,5 @@ export function useCommunityRealtime(muted = false) {
         timerRef.current = null;
       }
     };
-  }, [queryClient, muted]);
+  }, [queryClient]);
 }
