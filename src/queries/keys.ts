@@ -47,4 +47,23 @@ export const queryKeys = {
     summary: (userId: string, period: string) =>
       [...queryKeys.progress.all, 'summary', userId, period] as const,
   },
+  community: {
+    all: ['community'] as const,
+    feed: (params: {
+      tab: string;
+      sort: string;
+      filters?: Record<string, string>;
+      search?: string;
+    }) => [...queryKeys.community.all, 'feed', params] as const,
+    creators: {
+      all: [...['community'], 'creators'] as const,
+      featured: () => [...queryKeys.community.creators.all, 'featured'] as const,
+      profile: (userId: string) =>
+        [...queryKeys.community.creators.all, userId] as const,
+    },
+    saves: (userId: string) =>
+      [...queryKeys.community.all, 'saves', userId] as const,
+    votes: (userId: string) =>
+      [...queryKeys.community.all, 'votes', userId] as const,
+  },
 } as const;
