@@ -1,0 +1,544 @@
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card } from '@/app/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { Skeleton } from '@/app/components/ui/skeleton';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  ResponsiveContainer,
+} from 'recharts';
+import {
+  Dumbbell,
+  Calendar,
+  Trophy,
+  Flame,
+  TrendingUp,
+  TrendingDown,
+  Zap,
+  Target,
+} from 'lucide-react';
+import { motion } from 'motion/react';
+import { weeklySummaryOptions } from '@/queries/progress';
+import type { ExerciseProgress } from '@/schemas/telemetry';
+
+export interface SummaryReportProps {
+  userId: string;
+}
+
+const DEFAULT_TARGET_DAYS = 5;
+
+interface PeriodSummary {
+  totalVolume: number;
+  workoutDays: number;
+  prs: Array<{ exercise: string; improvement: number }>;
+  consistencyScore: number;
+  dailyVolume: Array<{ day: string; volume: number }>;
+  dailyWorkouts: Array<{ day: string; worked: number }>;
+  bestSessionVolume: number;
+  bestSessionDate: string;
+  mostImprovedExercise: string;
+  mostImprovedAmount: number;
+  longestStreak: number;
+  previousVolume: number;
+  previousWorkoutDays: number;
+}
+
+function computeSummary(
+  data: ExerciseProgress[],
+  period: 'week' | 'month',
+): PeriodSummary {
+  if (data.length === 0) {
+    return {
+      totalVolume: 0,
+      workoutDays: 0,
+      prs: [],
+      consistencyScore: 0,
+      dailyVolume: [],
+      dailyWorkouts: [],
+      bestSessionVolume: 0,
+      bestSessionDate: '',
+      mostImprovedExercise: '',
+      mostImprovedAmount: 0,
+      longestStreak: 0,
+      previousVolume: 0,
+      previousWorkoutDays: 0,
+    };
+  }
+
+  const daysInPeriod = period === 'week' ? 7 : 30;
+  const now = new Date();
+  const midpoint = new Date();
+  midpoint.setDate(now.getDate() - daysInPeriod);
+
+  // Split data into current and previous half for comparison
+  const current = data.filter((d) => d.recorded_at >= midpoint);
+  const previous = data.filter((d) => d.recorded_at < midpoint);
+
+  // Total volume
+  const totalVolume = Math.round(current.reduce((sum, d) => sum + d.total_volume_kg, 0));
+  const previousVolume = Math.round(previous.reduce((sum, d) => sum + d.total_volume_kg, 0));
+
+  // Workout days (unique dates)
+  const workoutDateSet = new Set(
+    current.map((d) => d.recorded_at.toISOString().slice(0, 10)),
+  );
+  const workoutDays = workoutDateSet.size;
+  const previousWorkoutDays = new Set(
+    previous.map((d) => d.recorded_at.toISOString().slice(0, 10)),
+  ).size;
+
+  // Consistency
+  const consistencyScore = Math.min(
+    100,
+    Math.round((workoutDays / DEFAULT_TARGET_DAYS) * 100),
+  );
+
+  // PRs: exercises where current max weight > previous max weight
+  const exerciseMaxCurrent = new Map<string, number>();
+  const exerciseMaxPrevious = new Map<string, number>();
+  for (const d of current) {
+    const existing = exerciseMaxCurrent.get(d.exercise_name) ?? 0;
+    if (d.max_weight_kg > existing) exerciseMaxCurrent.set(d.exercise_name, d.max_weight_kg);
+  }
+  for (const d of previous) {
+    const existing = exerciseMaxPrevious.get(d.exercise_name) ?? 0;
+    if (d.max_weight_kg > existing) exerciseMaxPrevious.set(d.exercise_name, d.max_weight_kg);
+  }
+  const prs: Array<{ exercise: string; improvement: number }> = [];
+  for (const [name, maxWeight] of exerciseMaxCurrent) {
+    const prevMax = exerciseMaxPrevious.get(name) ?? 0;
+    if (maxWeight > prevMax && prevMax > 0) {
+      prs.push({
+        exercise: name,
+        improvement: Math.round((maxWeight - prevMax) * 10) / 10,
+      });
+    }
+  }
+  prs.sort((a, b) => b.improvement - a.improvement);
+
+  // Daily volume sparkline
+  const dailyVolumeMap = new Map<string, number>();
+  const dailyWorkoutMap = new Map<string, number>();
+  for (const d of current) {
+    const dayKey = d.recorded_at.toLocaleDateString('en-US', { weekday: 'short' });
+    dailyVolumeMap.set(dayKey, (dailyVolumeMap.get(dayKey) ?? 0) + d.total_volume_kg);
+    dailyWorkoutMap.set(dayKey, 1);
+  }
+  const dailyVolume = Array.from(dailyVolumeMap.entries()).map(([day, volume]) => ({
+    day,
+    volume: Math.round(volume),
+  }));
+  const dailyWorkouts = Array.from(dailyWorkoutMap.entries()).map(([day, worked]) => ({
+    day,
+    worked,
+  }));
+
+  // Best session by volume
+  const sessionVolumes = new Map<string, { volume: number; date: Date }>();
+  for (const d of current) {
+    const key = d.session_id;
+    const existing = sessionVolumes.get(key) ?? { volume: 0, date: d.recorded_at };
+    existing.volume += d.total_volume_kg;
+    sessionVolumes.set(key, existing);
+  }
+  let bestSessionVolume = 0;
+  let bestSessionDate = '';
+  for (const [, { volume, date }] of sessionVolumes) {
+    if (volume > bestSessionVolume) {
+      bestSessionVolume = Math.round(volume);
+      bestSessionDate = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+  }
+
+  // Most improved exercise
+  let mostImprovedExercise = '';
+  let mostImprovedAmount = 0;
+  for (const pr of prs) {
+    if (pr.improvement > mostImprovedAmount) {
+      mostImprovedExercise = pr.exercise;
+      mostImprovedAmount = pr.improvement;
+    }
+  }
+
+  // Longest streak
+  const sortedDates = [...workoutDateSet].sort();
+  let longestStreak = 0;
+  let currentStreak = 1;
+  for (let i = 1; i < sortedDates.length; i++) {
+    const prev = new Date(sortedDates[i - 1]);
+    const curr = new Date(sortedDates[i]);
+    const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+    if (diff === 1) {
+      currentStreak++;
+    } else {
+      longestStreak = Math.max(longestStreak, currentStreak);
+      currentStreak = 1;
+    }
+  }
+  longestStreak = Math.max(longestStreak, currentStreak);
+  if (sortedDates.length === 0) longestStreak = 0;
+
+  return {
+    totalVolume,
+    workoutDays,
+    prs,
+    consistencyScore,
+    dailyVolume,
+    dailyWorkouts,
+    bestSessionVolume,
+    bestSessionDate,
+    mostImprovedExercise,
+    mostImprovedAmount,
+    longestStreak,
+    previousVolume,
+    previousWorkoutDays,
+  };
+}
+
+function percentChange(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function ConsistencyRing({ score }: { score: number }) {
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+  const color = score > 80 ? '#10B981' : score >= 50 ? '#F59E0B' : '#DC2626';
+
+  return (
+    <svg width="68" height="68" viewBox="0 0 68 68">
+      <circle
+        cx="34"
+        cy="34"
+        r={radius}
+        fill="none"
+        stroke="#2D2D44"
+        strokeWidth="5"
+      />
+      <circle
+        cx="34"
+        cy="34"
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth="5"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform="rotate(-90 34 34)"
+      />
+      <text
+        x="34"
+        y="38"
+        textAnchor="middle"
+        fill={color}
+        fontSize="14"
+        fontWeight="bold"
+      >
+        {score}
+      </text>
+    </svg>
+  );
+}
+
+function SkeletonCards() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i} className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+          <Skeleton className="h-4 w-20 mb-3" />
+          <Skeleton className="h-8 w-24 mb-2" />
+          <Skeleton className="h-12 w-full mb-2" />
+          <Skeleton className="h-3 w-28" />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+export function SummaryReport({ userId }: SummaryReportProps) {
+  const [period, setPeriod] = useState<'week' | 'month'>('week');
+
+  const { data: rawData, isPending } = useQuery(weeklySummaryOptions(userId, period));
+
+  const summary = useMemo(() => computeSummary(rawData ?? [], period), [rawData, period]);
+
+  const volumeChange = percentChange(summary.totalVolume, summary.previousVolume);
+  const frequencyChange = percentChange(summary.workoutDays, summary.previousWorkoutDays);
+
+  if (isPending) {
+    return (
+      <div className="space-y-6">
+        <Tabs value={period}>
+          <TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+            <TabsTrigger value="week" className="data-[state=active]:bg-[#FF6B35]">
+              This Week
+            </TabsTrigger>
+            <TabsTrigger value="month" className="data-[state=active]:bg-[#FF6B35]">
+              This Month
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <SkeletonCards />
+      </div>
+    );
+  }
+
+  const hasData = (rawData ?? []).length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="space-y-6">
+        <Tabs value={period} onValueChange={(v) => setPeriod(v as 'week' | 'month')}>
+          <TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+            <TabsTrigger value="week" className="data-[state=active]:bg-[#FF6B35]">
+              This Week
+            </TabsTrigger>
+            <TabsTrigger value="month" className="data-[state=active]:bg-[#FF6B35]">
+              This Month
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="text-center py-12">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
+            <Dumbbell className="w-10 h-10 text-[#FF6B35]" />
+          </div>
+          <h3 className="text-xl font-semibold text-white mb-2">No summary data yet</h3>
+          <p className="text-[#9CA3AF] max-w-sm mx-auto">
+            Complete some workouts to see your {period === 'week' ? 'weekly' : 'monthly'} summary report.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Period selector */}
+      <Tabs value={period} onValueChange={(v) => setPeriod(v as 'week' | 'month')}>
+        <TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+          <TabsTrigger value="week" className="data-[state=active]:bg-[#FF6B35]">
+            This Week
+          </TabsTrigger>
+          <TabsTrigger value="month" className="data-[state=active]:bg-[#FF6B35]">
+            This Month
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Summary cards grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card A: Total Volume */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
+          <Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-[#FF6B35]/20">
+                <Dumbbell className="w-4 h-4 text-[#FF6B35]" />
+              </div>
+              <span className="text-sm text-[#9CA3AF]">Total Volume</span>
+            </div>
+            <div className="text-2xl font-semibold text-white mb-2">
+              {summary.totalVolume > 1000
+                ? `${(summary.totalVolume / 1000).toFixed(1)}K`
+                : summary.totalVolume}{' '}
+              <span className="text-sm text-[#9CA3AF]">kg</span>
+            </div>
+            {summary.dailyVolume.length > 0 && (
+              <div className="mb-2">
+                <ResponsiveContainer width="100%" height={40}>
+                  <LineChart data={summary.dailyVolume}>
+                    <Line
+                      type="monotone"
+                      dataKey="volume"
+                      stroke="#FF6B35"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div className="flex items-center gap-1 text-xs">
+              {volumeChange >= 0 ? (
+                <TrendingUp className="w-3 h-3 text-[#10B981]" />
+              ) : (
+                <TrendingDown className="w-3 h-3 text-[#DC2626]" />
+              )}
+              <span className={volumeChange >= 0 ? 'text-[#10B981]' : 'text-[#DC2626]'}>
+                {volumeChange > 0 ? '+' : ''}
+                {volumeChange}% vs last {period}
+              </span>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Card B: Workout Frequency */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-[#F59E0B]/20">
+                <Calendar className="w-4 h-4 text-[#F59E0B]" />
+              </div>
+              <span className="text-sm text-[#9CA3AF]">Frequency</span>
+            </div>
+            <div className="text-2xl font-semibold text-white mb-2">
+              {summary.workoutDays}{' '}
+              <span className="text-sm text-[#9CA3AF]">
+                of {DEFAULT_TARGET_DAYS} target
+              </span>
+            </div>
+            {summary.dailyWorkouts.length > 0 && (
+              <div className="mb-2">
+                <ResponsiveContainer width="100%" height={40}>
+                  <BarChart data={summary.dailyWorkouts}>
+                    <Bar dataKey="worked" fill="#F59E0B" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div className="flex items-center gap-1 text-xs">
+              {frequencyChange >= 0 ? (
+                <TrendingUp className="w-3 h-3 text-[#10B981]" />
+              ) : (
+                <TrendingDown className="w-3 h-3 text-[#DC2626]" />
+              )}
+              <span className={frequencyChange >= 0 ? 'text-[#10B981]' : 'text-[#DC2626]'}>
+                {frequencyChange > 0 ? '+' : ''}
+                {frequencyChange}% vs last {period}
+              </span>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Card C: Personal Records */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-[#10B981]/20">
+                <Trophy className="w-4 h-4 text-[#10B981]" />
+              </div>
+              <span className="text-sm text-[#9CA3AF]">Personal Records</span>
+            </div>
+            <div className="text-2xl font-semibold text-white mb-2">
+              {summary.prs.length}{' '}
+              <span className="text-sm text-[#9CA3AF]">PRs hit</span>
+            </div>
+            {summary.prs.length > 0 ? (
+              <div className="space-y-1">
+                {summary.prs.slice(0, 3).map((pr) => (
+                  <div
+                    key={pr.exercise}
+                    className="text-xs text-[#9CA3AF] truncate"
+                  >
+                    {pr.exercise}{' '}
+                    <span className="text-[#10B981]">+{pr.improvement}kg</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-[#6B7280]">No new PRs this {period}</div>
+            )}
+          </Card>
+        </motion.div>
+
+        {/* Card D: Consistency Score */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-[#DC2626]/20">
+                <Flame className="w-4 h-4 text-[#DC2626]" />
+              </div>
+              <span className="text-sm text-[#9CA3AF]">Consistency</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <ConsistencyRing score={summary.consistencyScore} />
+              <div>
+                <div
+                  className="text-2xl font-semibold"
+                  style={{
+                    color:
+                      summary.consistencyScore > 80
+                        ? '#10B981'
+                        : summary.consistencyScore >= 50
+                        ? '#F59E0B'
+                        : '#DC2626',
+                  }}
+                >
+                  {summary.consistencyScore}%
+                </div>
+                <div className="text-xs text-[#9CA3AF]">
+                  {summary.workoutDays}/{DEFAULT_TARGET_DAYS} days
+                </div>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Highlights section */}
+      {(summary.bestSessionVolume > 0 ||
+        summary.mostImprovedExercise ||
+        summary.longestStreak > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+            <h4 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-[#F59E0B]" />
+              Highlights
+            </h4>
+            <div className="space-y-3">
+              {summary.bestSessionVolume > 0 && (
+                <div className="flex items-start gap-3">
+                  <Target className="w-4 h-4 text-[#FF6B35] mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-white text-sm">Best session by volume: </span>
+                    <span className="text-[#FF6B35] text-sm font-medium">
+                      {summary.bestSessionVolume} kg
+                    </span>
+                    {summary.bestSessionDate && (
+                      <span className="text-[#6B7280] text-xs ml-1">
+                        on {summary.bestSessionDate}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {summary.mostImprovedExercise && (
+                <div className="flex items-start gap-3">
+                  <TrendingUp className="w-4 h-4 text-[#10B981] mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-white text-sm">Most improved: </span>
+                    <span className="text-[#10B981] text-sm font-medium">
+                      {summary.mostImprovedExercise} (+{summary.mostImprovedAmount}kg)
+                    </span>
+                  </div>
+                </div>
+              )}
+              {summary.longestStreak > 0 && (
+                <div className="flex items-start gap-3">
+                  <Flame className="w-4 h-4 text-[#F59E0B] mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-white text-sm">Longest streak: </span>
+                    <span className="text-[#F59E0B] text-sm font-medium">
+                      {summary.longestStreak} consecutive days
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+    </div>
+  );
+}
