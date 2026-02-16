@@ -52,6 +52,11 @@ export const queryKeys = {
     session: (sessionId: string) => [...queryKeys.replay.all, 'session', sessionId] as const,
     telemetry: (setId: string) => [...queryKeys.replay.all, 'telemetry', setId] as const,
   },
+  integrations: {
+    all: ['integrations'] as const,
+    byUser: (userId: string) => [...queryKeys.integrations.all, userId] as const,
+    external: (userId: string) => [...queryKeys.integrations.all, 'external', userId] as const,
+  },
   community: {
     all: ['community'] as const,
     feed: (params: {
