@@ -12,9 +12,9 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 Phase: 7 of 7 (Integrations & Data Export)
 Plan: 7 of 7 in current phase
 Status: In Progress
-Last activity: 2026-02-16 -- 07-05 complete (Integration Management Page)
+Last activity: 2026-02-16 -- 07-06 complete (Sync Queue, Rate Limiting & Analytics Integration)
 
-Progress: [██████████] 95% (37/39 plans)
+Progress: [██████████] 97% (38/39 plans)
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [██████████] 95% (37/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-04 (3 min), 07-01 (3 min), 07-07 (2 min), 07-03 (5 min), 07-05 (4 min)
+- Last 5 plans: 07-01 (3 min), 07-07 (2 min), 07-03 (5 min), 07-05 (4 min), 07-06 (4 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -58,6 +58,7 @@ Progress: [██████████] 95% (37/39 plans)
 | Phase 07 P04 | 4min | 2 tasks | 7 files |
 | Phase 07 P03 | 5 min | 2 tasks | 4 files |
 | Phase 07 P05 | 4 min | 2 tasks | 7 files |
+| Phase 07 P06 | 4 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,10 @@ Recent decisions affecting current work:
 - [07-05]: ProviderCard uses dynamic icon mapping from PROVIDER_METADATA icon strings to lucide components
 - [07-05]: ExternalActivityList uses client-side provider filtering with Select dropdown
 - [07-05]: Integrations link added to both desktop Navigation and MobileBottomNav More drawer
+- [07-06]: Rate limits set at 80% of documented API maximums (20% safety margin) to prevent bans
+- [07-06]: 429 errors re-queue tasks as pending; other errors mark failed immediately
+- [07-06]: SyncStatus polls every 15s for near-realtime queue monitoring
+- [07-06]: External activities shown in dedicated Analytics tab (separate from Phoenix data)
 
 ### Pending Todos
 
@@ -222,5 +227,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-05-PLAN.md (Integration Management Page)
+Stopped at: Completed 07-06-PLAN.md (Sync Queue, Rate Limiting & Analytics Integration)
 Resume file: None
