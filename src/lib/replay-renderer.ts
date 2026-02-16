@@ -158,17 +158,37 @@ export function renderVelocityBars(
   // Filter data up to currentTimeMs
   const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
 
-  // Calculate bar width based on data density
-  const barWidth = Math.max(1, (plotArea.width / data.length) * 0.8);
+  if (visibleData.length === 0) {
+    drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+    return;
+  }
 
-  // Draw velocity bars
-  ctx.fillStyle = EMBER_COLOR;
-  visibleData.forEach((d) => {
-    const x = plotArea.x + d.timestamp_ms * xScale - barWidth / 2;
-    const barHeight = d.velocity_mps * yScale;
-    const y = plotArea.y + plotArea.height - barHeight;
-    ctx.fillRect(x, y, barWidth, barHeight);
-  });
+  // Build path points for continuous line (consistent with force curve style)
+  const points = visibleData.map((d) => ({
+    x: plotArea.x + d.timestamp_ms * xScale,
+    y: plotArea.y + plotArea.height - d.velocity_mps * yScale,
+  }));
+
+  // Draw lighter opacity fill under the line
+  const gradient = ctx.createLinearGradient(0, plotArea.y, 0, plotArea.y + plotArea.height);
+  gradient.addColorStop(0, 'rgba(255, 107, 53, 0.2)');
+  gradient.addColorStop(1, 'transparent');
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, plotArea.y + plotArea.height);
+  points.forEach((p) => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(points[points.length - 1].x, plotArea.y + plotArea.height);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Draw stroke line at 2px width
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = EMBER_COLOR;
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
   // Draw playhead
   drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
