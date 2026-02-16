@@ -13,6 +13,7 @@ import {
   Award,
   Repeat,
   Dumbbell,
+  Link2,
   LogOut,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -30,6 +31,7 @@ const navItems = [
   { path: '/community', label: 'Community', icon: Users },
   { path: '/routines', label: 'Routines', icon: Dumbbell },
   { path: '/cycles', label: 'Cycles', icon: Repeat },
+  { path: '/integrations', label: 'Integrations', icon: Link2 },
   { path: '/profile', label: 'Profile', icon: User },
 ];
 
