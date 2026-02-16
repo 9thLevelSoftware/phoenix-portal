@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 7 of 7 (Integrations & Data Export)
-Plan: 1 of 7 in current phase
+Plan: 7 of 7 in current phase
 Status: In Progress
-Last activity: 2026-02-16 -- 07-01 complete (Integration Foundation Schema + Types)
+Last activity: 2026-02-16 -- 07-07 complete (CSV Export)
 
-Progress: [████████░░] 82% (32/39 plans)
+Progress: [█████████░] 87% (34/39 plans)
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [████████░░] 82% (32/39 plans)
 | 04-premium-analytics | 6/6 | 18 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-01 (2 min), 06-02 (2 min), 06-03 (2 min), 06-04 (3 min), 07-01 (3 min)
+- Last 5 plans: 06-03 (2 min), 06-04 (3 min), 07-01 (3 min), 07-07 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -53,6 +53,7 @@ Progress: [████████░░] 82% (32/39 plans)
 | Phase 06 P03 | 2 min | 2 tasks | 4 files |
 | Phase 06 P04 | 3 min | 4 tasks | 7 files |
 | Phase 07 P01 | 3 min | 2 tasks | 7 files |
+| Phase 07 P07 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,9 @@ Recent decisions affecting current work:
 - [07-01]: Rate limit tracking read-only for auth users; service role writes via Edge Functions
 - [07-01]: useConnectIntegration uses upsert with onConflict for reconnection support
 - [07-01]: External activities UNIQUE(user_id, provider, external_id) for deduplication
+- [07-07]: Used papaparse directly (not react-papaparse) for CSV generation -- no React bindings needed
+- [07-07]: Reuse Zod-transformed types from schemas/transforms.ts for export (no duplicate interfaces)
+- [07-07]: ExportSection in Profile Settings tab, not gated by subscription tier
 
 ### Pending Todos
 
@@ -197,5 +201,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 07-01-PLAN.md (Integration Foundation Schema + Types)
+Stopped at: Completed 07-07-PLAN.md (CSV Export)
 Resume file: None
