@@ -210,7 +210,7 @@ Plans:
   3. Dashboard challenges and badges sections show proper empty/placeholder states instead of hardcoded mock arrays
   4. Analytics page generates at least basic insights from real query data (not a static TODO comment)
   5. Production bundle has no chunk exceeding 500KB (down from 674KB)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 08-01-PLAN.md -- Biomechanics navigation entry, CycleBuilder mock routine replacement, Dashboard mock data cleanup
