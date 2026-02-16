@@ -18,6 +18,10 @@ export const queryKeys = {
     byUser: (userId: string) => [...queryKeys.routines.all, userId] as const,
     detail: (routineId: string) => [...queryKeys.routines.all, 'detail', routineId] as const,
   },
+  subscription: {
+    all: ['subscription'] as const,
+    byUser: (userId: string) => [...queryKeys.subscription.all, userId] as const,
+  },
   cycles: {
     all: ['cycles'] as const,
     byUser: (userId: string) => [...queryKeys.cycles.all, userId] as const,
