@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/app/hooks/useAuth';
+import { routineListOptions } from '@/queries/routines';
 import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -48,14 +51,21 @@ export function CycleBuilderMain({ cycleId, onSave, onCancel }: CycleBuilderProp
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Mock routines
-  const mockRoutines: Routine[] = [
-    { id: '1', name: 'Push Day A', exercises: 6, duration: 60, muscleGroup: 'Push', lastUsed: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
-    { id: '2', name: 'Pull Day A', exercises: 5, duration: 55, muscleGroup: 'Pull', lastUsed: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
-    { id: '3', name: 'Leg Day', exercises: 7, duration: 70, muscleGroup: 'Legs' },
-    { id: '4', name: 'Push Day B', exercises: 6, duration: 60, muscleGroup: 'Push' },
-    { id: '5', name: 'Upper Power', exercises: 8, duration: 65, muscleGroup: 'Upper' },
-  ];
+  // Fetch real routines from Supabase
+  const { user } = useAuth();
+  const { data: routinesRaw } = useQuery({
+    ...routineListOptions(user?.id ?? ''),
+    enabled: !!user?.id,
+  });
+
+  const routines: Routine[] = (routinesRaw ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    exercises: r.exercise_count,
+    duration: r.estimated_duration,
+    muscleGroup: r.tags?.[0] ?? 'General',
+    lastUsed: r.last_used_at ?? undefined,
+  }));
 
   // Auto-adjust days when duration changes
   useEffect(() => {
@@ -127,7 +137,7 @@ export function CycleBuilderMain({ cycleId, onSave, onCancel }: CycleBuilderProp
   };
 
   const handleAssignRoutine = (routineId: string) => {
-    const routine = mockRoutines.find((r) => r.id === routineId);
+    const routine = routines.find((r) => r.id === routineId);
     if (routine && selectedDay) {
       setDays(days.map((d) =>
         d.dayNumber === selectedDay
@@ -305,7 +315,7 @@ export function CycleBuilderMain({ cycleId, onSave, onCancel }: CycleBuilderProp
       <RoutinePicker
         isOpen={showRoutinePicker}
         onClose={() => setShowRoutinePicker(false)}
-        routines={mockRoutines}
+        routines={routines}
         onSelect={handleAssignRoutine}
         onCreateNew={() => {
           setShowRoutinePicker(false);
