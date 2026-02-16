@@ -37,6 +37,7 @@ Progress: [████░░░░░░] 41% (16/39 plans)
 - Trend: stable velocity
 
 *Updated after each plan completion*
+| Phase 03 P03 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,9 @@ Recent decisions affecting current work:
 - [03-04]: UpgradePrompt uses Link to /pricing (declarative navigation consistent with codebase)
 - [03-04]: Checkout return useEffect runs on mount only to avoid re-triggering on tier changes
 - [03-04]: Portal loading state uses local useState (component-scoped, not global)
+- [Phase 03-03]: Annual billing shows per-month equivalent with annual total below
+- [Phase 03-03]: TierBadge in desktop nav only; mobile gets it via Profile page
+- [Phase 03-03]: Loading state on clicked CTA only, other buttons disabled during checkout redirect
 
 ### Pending Todos
 
@@ -123,5 +127,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-04-PLAN.md (Subscription UI integration)
+Stopped at: Completed 03-03-PLAN.md (PricingPlans page with checkout)
 Resume file: None
