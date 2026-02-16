@@ -145,16 +145,17 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Any user can browse the community feed, search by name, and filter by muscle group, goal, or difficulty
   2. PHOENIX+ subscribers can share their routines/cycles to the community and see them appear in the feed
-  3. Users can upvote/downvote shared content, and vote counts update in realtime without page refresh
-  4. Community feed supports hot/top/new sorting, and a featured creators section highlights staff picks and trending routines
+  3. Users can upvote shared content, and vote counts update in realtime without page refresh
+  4. Community feed supports hot/top/new sorting, and a featured creators section highlights auto-calculated trending routines
   5. User can view creator profiles (total shares, upvotes, featured count) and save community routines to their own library
-**Plans**: 4 plans
+**Plans**: 5 plans
 
 Plans:
 - [ ] 05-01-PLAN.md -- Community data layer (types, schemas, queries, store, realtime hook, debounce hook)
 - [ ] 05-02-PLAN.md -- Feed page with cards, tabs, search, filter, sort, detail drawer (desktop + mobile)
 - [ ] 05-03-PLAN.md -- Vote mutations with optimistic updates, share dialog, save mutations, realtime mute window
 - [ ] 05-04-PLAN.md -- Featured creators horizontal scroll, creator profiles, save-to-library integration
+- [ ] 05-05-PLAN.md -- Gap closure: Wire ShareContentDialog to RoutinesEnhanced and TrainingCycles pages
 
 ### Phase 6: Session Replay & Advanced VBT
 **Goal**: ELITE subscribers can replay workout sessions with synchronized 50Hz telemetry visualization, rep quality scores, and fatigue detection
@@ -166,13 +167,13 @@ Plans:
   3. Individual rep boundaries are visually highlighted during playback, and each rep shows a composite quality score
   4. Fatigue detection flags sets where velocity drops more than 20%, with a visible indicator on the timeline
   5. Session replay is gated behind ELITE tier and renders via Canvas 2D (no browser jank on mobile devices)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01: Zustand replay store and Canvas 2D rendering pipeline
-- [ ] 06-02: Telemetry playback with synchronized force/velocity scrubbing
-- [ ] 06-03: Rep boundary detection, quality scoring, and fatigue detection
-- [ ] 06-04: Playback controls, ELITE tier gating, and mobile optimization
+- [ ] 06-01-PLAN.md -- Zustand replay store and Canvas 2D rendering pipeline
+- [ ] 06-02-PLAN.md -- Telemetry playback with synchronized force/velocity scrubbing
+- [ ] 06-03-PLAN.md -- Rep quality scoring and fatigue detection utilities with display components
+- [ ] 06-04-PLAN.md -- Playback controls, session replay page, ELITE tier gating, and mobile optimization
 
 ### Phase 7: Integrations & Data Export
 **Goal**: Users connect third-party fitness services and export their data, with all synced data displayed alongside Phoenix workouts
