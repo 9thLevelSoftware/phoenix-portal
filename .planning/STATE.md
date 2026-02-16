@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 3 - Subscriptions & Payments
+**Current focus:** Phase 4 - Premium Analytics
 
 ## Current Position
 
-Phase: 3 of 7 (Subscriptions & Payments)
-Plan: 4 of 4 in current phase
+Phase: 4 of 7 (Premium Analytics)
+Plan: 1 of 6 in current phase
 Status: In Progress
-Last activity: 2026-02-15 -- 03-04 complete (Subscription UI integration)
+Last activity: 2026-02-15 -- 04-01 complete (Data foundation utilities + queries)
 
-Progress: [████░░░░░░] 41% (16/39 plans)
+Progress: [████░░░░░░] 44% (17/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 17
 - Average duration: 3 min
-- Total execution time: 0.75 hours
+- Total execution time: 0.80 hours
 
 **By Phase:**
 
@@ -30,14 +30,15 @@ Progress: [████░░░░░░] 41% (16/39 plans)
 | 00-stabilization | 3/3 | 13 min | 4 min |
 | 01-auth-data-layer | 7/7 | 22 min | 3 min |
 | 02-navigation-state | 3/3 | 8 min | 3 min |
-| 03-subscriptions-payments | 3/4 | 6 min | 2 min |
+| 03-subscriptions-payments | 4/4 | 8 min | 2 min |
+| 04-premium-analytics | 1/6 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (2 min), 02-03 (4 min), 03-01 (2 min), 03-02 (2 min), 03-04 (2 min)
+- Last 5 plans: 02-03 (4 min), 03-01 (2 min), 03-02 (2 min), 03-04 (2 min), 04-01 (3 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
-| Phase 03 P03 | 2 min | 2 tasks | 3 files |
+| Phase 04 P01 | 3 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,10 @@ Recent decisions affecting current work:
 - [Phase 03-03]: Annual billing shows per-month equivalent with annual total below
 - [Phase 03-03]: TierBadge in desktop nav only; mobile gets it via Profile page
 - [Phase 03-03]: Loading state on clicked CTA only, other buttons disabled during checkout redirect
+- [04-01]: Used downsample library's createLTTB for typed LTTB (proven algorithm, typed accessors)
+- [04-01]: Independent WEIGHT_MULTIPLIER in telemetry schemas for module independence
+- [04-01]: Two-step query pattern for biomechanics consistent with analytics.ts approach
+- [04-01]: Client-side aggregation for weekly summary consistent with volume bucketing pattern
 
 ### Pending Todos
 
@@ -121,11 +126,11 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 1]: Supabase schema not yet finalized on mobile side -- data model mapping may need revision
-- [Phase 4]: VBT zone thresholds need sports science research during planning
+- [Phase 4]: VBT zone thresholds implemented using Dr. Bryan Mann's research (resolved in 04-01)
 - [Phase 7]: Hevy API access uncertain (may need CSV import fallback)
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-03-PLAN.md (PricingPlans page with checkout)
+Stopped at: Completed 04-01-PLAN.md (Data foundation utilities + queries)
 Resume file: None
