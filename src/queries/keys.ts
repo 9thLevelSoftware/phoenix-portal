@@ -54,6 +54,7 @@ export const queryKeys = {
       sort: string;
       filters?: Record<string, string>;
       search?: string;
+      userId?: string;
     }) => [...queryKeys.community.all, 'feed', params] as const,
     creators: {
       all: [...['community'], 'creators'] as const,
