@@ -148,14 +148,13 @@ Plans:
   3. Users can upvote/downvote shared content, and vote counts update in realtime without page refresh
   4. Community feed supports hot/top/new sorting, and a featured creators section highlights staff picks and trending routines
   5. User can view creator profiles (total shares, upvotes, featured count) and save community routines to their own library
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: Community data service and feed page (browse, search, filter, sort)
-- [ ] 05-02: Share and vote mutations with optimistic updates and realtime sync
-- [ ] 05-03: Featured creators, trending content, and staff picks curation
-- [ ] 05-04: Creator profiles and save-to-library functionality
-- [ ] 05-05: Subscription gating (browsing FREE, sharing/saving PHOENIX+)
+- [ ] 05-01-PLAN.md -- Community data layer (types, schemas, queries, store, realtime hook, debounce hook)
+- [ ] 05-02-PLAN.md -- Feed page with cards, tabs, search, filter, sort, detail drawer (desktop + mobile)
+- [ ] 05-03-PLAN.md -- Vote mutations with optimistic updates, share dialog, save mutations, realtime mute window
+- [ ] 05-04-PLAN.md -- Featured creators horizontal scroll, creator profiles, save-to-library integration
 
 ### Phase 6: Session Replay & Advanced VBT
 **Goal**: ELITE subscribers can replay workout sessions with synchronized 50Hz telemetry visualization, rep quality scores, and fatigue detection
@@ -208,6 +207,6 @@ Phases 0 through 3 execute sequentially. After Phase 3 completes, Phases 4, 5, a
 | 2. Navigation & State Management | 0/3 | Not started | - |
 | 3. Subscriptions & Payments | 0/4 | Not started | - |
 | 4. Premium Analytics | 0/6 | Not started | - |
-| 5. Community Hub | 0/5 | Not started | - |
+| 5. Community Hub | 0/4 | Planned | - |
 | 6. Session Replay & Advanced VBT | 0/4 | Not started | - |
 | 7. Integrations & Data Export | 0/7 | Not started | - |

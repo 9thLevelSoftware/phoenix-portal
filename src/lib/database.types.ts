@@ -213,18 +213,24 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
+          display_name: string;
+          avatar_url: string | null;
           stripe_customer_id: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
+          display_name: string;
+          avatar_url?: string | null;
           stripe_customer_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
+          display_name?: string;
+          avatar_url?: string | null;
           stripe_customer_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -274,6 +280,152 @@ export type Database = {
           updated_at?: string;
         };
       };
+      shared_routines: {
+        Row: {
+          id: string;
+          user_id: string;
+          routine_id: string;
+          name: string;
+          description: string;
+          exercise_count: number;
+          estimated_duration: number;
+          exercises_snapshot: unknown;
+          tags: string[];
+          difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count: number;
+          save_count: number;
+          hot_score: number;
+          shared_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          routine_id: string;
+          name: string;
+          description: string;
+          exercise_count: number;
+          estimated_duration: number;
+          exercises_snapshot: unknown;
+          tags: string[];
+          difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count?: number;
+          save_count?: number;
+          hot_score?: number;
+          shared_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          routine_id?: string;
+          name?: string;
+          description?: string;
+          exercise_count?: number;
+          estimated_duration?: number;
+          exercises_snapshot?: unknown;
+          tags?: string[];
+          difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count?: number;
+          save_count?: number;
+          hot_score?: number;
+          shared_at?: string;
+          updated_at?: string;
+        };
+      };
+      shared_cycles: {
+        Row: {
+          id: string;
+          user_id: string;
+          cycle_id: string;
+          name: string;
+          description: string;
+          duration_weeks: number;
+          tags: string[];
+          difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count: number;
+          save_count: number;
+          hot_score: number;
+          shared_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          cycle_id: string;
+          name: string;
+          description: string;
+          duration_weeks: number;
+          tags: string[];
+          difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count?: number;
+          save_count?: number;
+          hot_score?: number;
+          shared_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          cycle_id?: string;
+          name?: string;
+          description?: string;
+          duration_weeks?: number;
+          tags?: string[];
+          difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
+          vote_count?: number;
+          save_count?: number;
+          hot_score?: number;
+          shared_at?: string;
+          updated_at?: string;
+        };
+      };
+      community_votes: {
+        Row: {
+          id: string;
+          user_id: string;
+          item_id: string;
+          item_type: 'routine' | 'cycle';
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          item_id: string;
+          item_type: 'routine' | 'cycle';
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          item_id?: string;
+          item_type?: 'routine' | 'cycle';
+          created_at?: string;
+        };
+      };
+      saved_community_items: {
+        Row: {
+          id: string;
+          user_id: string;
+          shared_item_id: string;
+          item_type: 'routine' | 'cycle';
+          saved_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          shared_item_id: string;
+          item_type: 'routine' | 'cycle';
+          saved_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          shared_item_id?: string;
+          item_type?: 'routine' | 'cycle';
+          saved_at?: string;
+        };
+      };
       analytics_summaries: {
         Row: {
           id: string;
@@ -307,6 +459,18 @@ export type Database = {
           avg_session_duration?: number;
           streak_days?: number;
           computed_at?: string;
+        };
+      };
+    };
+    Views: {
+      creator_stats: {
+        Row: {
+          user_id: string;
+          display_name: string;
+          avatar_url: string | null;
+          total_shares: number;
+          total_upvotes: number;
+          featured_count: number;
         };
       };
     };
