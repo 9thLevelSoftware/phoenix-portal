@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 2 - Navigation & State Management
+**Current focus:** Phase 3 - Subscriptions & Payments
 
 ## Current Position
 
-Phase: 2 of 7 (Navigation & State Management)
-Plan: 3 of 3 in current phase -- DONE
-Status: Phase 2 Complete
-Last activity: 2026-02-15 -- 02-03 complete (Navigation prop elimination)
+Phase: 3 of 7 (Subscriptions & Payments)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-02-15 -- 03-01 complete (Subscription infrastructure)
 
-Progress: [███░░░░░░░] 33% (13/39 plans)
+Progress: [████░░░░░░] 36% (14/39 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 3 min
-- Total execution time: 0.72 hours
+- Total execution time: 0.75 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [███░░░░░░░] 33% (13/39 plans)
 | 00-stabilization | 3/3 | 13 min | 4 min |
 | 01-auth-data-layer | 7/7 | 22 min | 3 min |
 | 02-navigation-state | 3/3 | 8 min | 3 min |
+| 03-subscriptions-payments | 1/4 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-07 (~est), 02-01 (2 min), 02-02 (2 min), 02-03 (4 min)
+- Last 5 plans: 02-01 (2 min), 02-02 (2 min), 02-03 (4 min), 03-01 (2 min)
 - Trend: stable velocity
 
 *Updated after each plan completion*
@@ -97,6 +98,10 @@ Recent decisions affecting current work:
 - [02-03]: PrivacyPolicy uses navigate(-1) for browser-native back behavior
 - [02-03]: LandingPage uses Link component for privacy nav (declarative over imperative)
 - [02-03]: RoutineBuilder/CycleBuilder save handlers use console.log placeholder + navigate
+- [03-01]: Profiles table created with IF NOT EXISTS for idempotent migration
+- [03-01]: getTierFromPriceId reads env vars for price-to-tier mapping (not hardcoded)
+- [03-01]: invoice.paid handler retrieves full subscription to update period dates accurately
+- [03-01]: Webhook function validates Stripe-Signature header presence before body read
 
 ### Pending Todos
 
@@ -111,5 +116,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 02-03-PLAN.md (Navigation prop elimination) -- Phase 2 complete
+Stopped at: Completed 03-01-PLAN.md (Subscription infrastructure)
 Resume file: None
