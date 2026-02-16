@@ -20,6 +20,7 @@ const TrainingCycles = lazy(() => import('@/app/components/TrainingCycles').then
 const CycleBuilder = lazy(() => import('@/app/components/CycleBuilder').then(m => ({ default: m.CycleBuilder })));
 const CelebrationDemo = lazy(() => import('@/app/components/CelebrationDemo').then(m => ({ default: m.CelebrationDemo })));
 const Profile = lazy(() => import('@/app/components/Profile').then(m => ({ default: m.Profile })));
+const PricingPlans = lazy(() => import('@/app/components/PricingPlans').then(m => ({ default: m.PricingPlans })));
 
 // ---------- Route tree ----------
 
@@ -48,6 +49,7 @@ export function AppRoutes() {
             <Route path="/cycles/new" element={<CycleBuilder />} />
             <Route path="/cycles/:cycleId" element={<CycleBuilder />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/pricing" element={<PricingPlans />} />
             <Route path="/celebrations" element={<CelebrationDemo />} />
             {/* Catch-all for authenticated users */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

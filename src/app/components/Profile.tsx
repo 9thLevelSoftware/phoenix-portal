@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -19,12 +21,46 @@ import {
   Download,
   Flame,
   LogOut,
+  CreditCard,
+  Loader2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { useAuth } from '@/app/hooks/useAuth';
+import { useSubscription } from '@/hooks/useSubscription';
+import { TierBadge } from '@/app/components/TierBadge';
+import { openCustomerPortal } from '@/lib/stripe';
+
+const PLAN_LABELS = { FREE: 'Free Plan', PHOENIX: 'PHOENIX Plan', ELITE: 'ELITE Plan' } as const;
 
 export function Profile() {
   const { signOut } = useAuth();
+  const { tier, currentPeriodEnd, cancelAtPeriodEnd } = useSubscription();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  // Handle checkout return query params
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success') {
+      toast.success(`Subscription activated! Welcome to ${tier}.`);
+      setSearchParams({}, { replace: true });
+    } else if (checkout === 'cancel') {
+      toast('Checkout cancelled.');
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleManageSubscription() {
+    setPortalLoading(true);
+    try {
+      await openCustomerPortal();
+    } catch {
+      toast.error('Could not open subscription portal. Please try again.');
+      setPortalLoading(false);
+    }
+  }
   const userStats = [
     { label: 'Level', value: '24', icon: TrendingUp },
     { label: 'Total Workouts', value: '147', icon: Calendar },
@@ -106,6 +142,65 @@ export function Profile() {
                     <div className="text-xs text-[#9CA3AF]">{stat.label}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Subscription Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8"
+        >
+          <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+            <h3 className="text-xl text-white mb-4 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-[#FF6B35]" />
+              Subscription
+            </h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <TierBadge />
+                <div>
+                  <div className="text-white font-medium">{PLAN_LABELS[tier]}</div>
+                  {tier !== 'FREE' && currentPeriodEnd && (
+                    <div className="text-sm text-[#9CA3AF]">
+                      {cancelAtPeriodEnd ? 'Cancels' : 'Renews'}{' '}
+                      {format(new Date(currentPeriodEnd), 'MMM d, yyyy')}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {tier === 'FREE' ? (
+                  <Button
+                    asChild
+                    className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 text-white"
+                  >
+                    <Link to="/pricing">Upgrade</Link>
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="border-[#374151] text-white hover:bg-[#374151]/50"
+                      onClick={handleManageSubscription}
+                      disabled={portalLoading}
+                    >
+                      {portalLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Manage Subscription
+                    </Button>
+                    {tier === 'PHOENIX' && (
+                      <Button
+                        asChild
+                        className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] hover:from-[#FBBF24] hover:to-[#F59E0B] border-0 text-[#0D0D0D]"
+                      >
+                        <Link to="/pricing">Upgrade to ELITE</Link>
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </Card>

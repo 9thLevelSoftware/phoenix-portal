@@ -19,6 +19,7 @@ import { motion } from 'motion/react';
 import { useAuth } from '@/app/hooks/useAuth';
 import { NavLink, Link } from 'react-router';
 import { useUIStore } from '@/stores/useUIStore';
+import { TierBadge } from '@/app/components/TierBadge';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -89,6 +90,9 @@ export function Navigation() {
               <Flame className="w-4 h-4 text-[#F59E0B]" fill="#FF6B35" />
               <span className="text-sm text-white">{streak} day streak</span>
             </div>
+
+            {/* Tier Badge */}
+            <TierBadge />
 
             {/* User Avatar */}
             <Link to="/profile">
