@@ -21,7 +21,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Share2, Check, X } from 'lucide-react';
 import { useShareContent } from '@/mutations/community';
-import { cn } from '@/lib/utils';
+import { cn } from '@/app/components/ui/utils';
 
 const MUSCLE_GROUP_TAGS = [
   'Chest',
@@ -52,14 +52,22 @@ interface ShareContentDialogProps {
   cycles?: SourceItem[];
   /** Optional trigger element (defaults to Share button) */
   trigger?: React.ReactNode;
+  /** Controlled open state (optional - falls back to internal state) */
+  open?: boolean;
+  /** Controlled open change handler (optional - falls back to internal state) */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ShareContentDialog({
   routines = [],
   cycles = [],
   trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: ShareContentDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [contentType, setContentType] = useState<'routine' | 'cycle'>('routine');
   const [selectedSourceId, setSelectedSourceId] = useState('');
   const [name, setName] = useState('');
@@ -129,14 +137,16 @@ export function ShareContentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button variant="outline" size="sm" className="gap-2">
-            <Share2 className="h-4 w-4" />
-            Share
-          </Button>
-        )}
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline" size="sm" className="gap-2">
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Share to Community</DialogTitle>
