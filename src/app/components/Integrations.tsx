@@ -1,0 +1,113 @@
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/app/hooks/useAuth';
+import { integrationsOptions, externalActivitiesOptions } from '@/queries/integrations';
+import { useDisconnectIntegration, useManualSync } from '@/mutations/integrations';
+import { SubscriptionGate } from '@/app/components/SubscriptionGate';
+import { ProviderCard } from '@/app/components/integrations/ProviderCard';
+import { MobileOnlyProvider } from '@/app/components/integrations/MobileOnlyProvider';
+import { HevyConnect } from '@/app/components/integrations/HevyConnect';
+import { ExternalActivityList } from '@/app/components/integrations/ExternalActivityList';
+import { initiateStravaConnect } from '@/lib/integrations/strava';
+import { initiateFitbitConnect } from '@/lib/integrations/fitbit';
+import { initiateGarminConnect } from '@/lib/integrations/garmin';
+import type { IntegrationProvider, ExternalActivity } from '@/lib/integrations/types';
+
+export function Integrations() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
+  const { data: integrations, isLoading } = useQuery({
+    ...integrationsOptions(userId),
+    enabled: !!userId,
+  });
+  const { data: activities } = useQuery({
+    ...externalActivitiesOptions(userId),
+    enabled: !!userId,
+  });
+
+  const disconnectMutation = useDisconnectIntegration();
+  const syncMutation = useManualSync();
+
+  // Helper to find a user's integration by provider
+  const getIntegration = (provider: IntegrationProvider) =>
+    integrations?.find((i) => i.provider === provider) ?? null;
+
+  return (
+    <SubscriptionGate requiredTier="ELITE">
+      <div className="container mx-auto p-6 space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold">Integrations</h1>
+          <p className="text-muted-foreground">
+            Connect your fitness services to see all your data in one place
+          </p>
+        </div>
+
+        {/* OAuth Providers */}
+        <section>
+          <h2 className="text-xl font-semibold mb-4">Fitness Services</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <ProviderCard
+              provider="strava"
+              integration={getIntegration('strava')}
+              onConnect={() => initiateStravaConnect(userId)}
+              onDisconnect={() =>
+                disconnectMutation.mutate({ userId, provider: 'strava' })
+              }
+              onSync={() => syncMutation.mutate({ userId, provider: 'strava' })}
+              isLoading={disconnectMutation.isPending || syncMutation.isPending}
+            />
+            <ProviderCard
+              provider="fitbit"
+              integration={getIntegration('fitbit')}
+              onConnect={() => initiateFitbitConnect(userId)}
+              onDisconnect={() =>
+                disconnectMutation.mutate({ userId, provider: 'fitbit' })
+              }
+              onSync={() => syncMutation.mutate({ userId, provider: 'fitbit' })}
+              isLoading={disconnectMutation.isPending || syncMutation.isPending}
+            />
+            <ProviderCard
+              provider="garmin"
+              integration={getIntegration('garmin')}
+              onConnect={() => initiateGarminConnect(userId)}
+              onDisconnect={() =>
+                disconnectMutation.mutate({ userId, provider: 'garmin' })
+              }
+              onSync={() => syncMutation.mutate({ userId, provider: 'garmin' })}
+              isLoading={disconnectMutation.isPending || syncMutation.isPending}
+            />
+            {/* HevyConnect from 07-03 - handles both API and CSV import */}
+            <HevyConnect
+              userId={userId}
+              isConnected={getIntegration('hevy')?.status === 'connected'}
+              onDisconnect={() =>
+                disconnectMutation.mutate({ userId, provider: 'hevy' })
+              }
+            />
+          </div>
+        </section>
+
+        {/* Mobile-Only Providers */}
+        <section>
+          <h2 className="text-xl font-semibold mb-4">Mobile Health Apps</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <MobileOnlyProvider
+              provider="apple_health"
+              integration={getIntegration('apple_health')}
+            />
+            <MobileOnlyProvider
+              provider="google_health"
+              integration={getIntegration('google_health')}
+            />
+          </div>
+        </section>
+
+        {/* External Activities */}
+        <section>
+          <h2 className="text-xl font-semibold mb-4">Synced Activities</h2>
+          <ExternalActivityList activities={(activities as ExternalActivity[]) ?? []} />
+        </section>
+      </div>
+    </SubscriptionGate>
+  );
+}

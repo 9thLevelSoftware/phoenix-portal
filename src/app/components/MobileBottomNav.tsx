@@ -11,6 +11,7 @@ import {
   Award,
   Repeat,
   Dumbbell,
+  Link2,
   MoreHorizontal,
 } from 'lucide-react';
 import { NavLink, Link, useLocation } from 'react-router';
@@ -36,6 +37,7 @@ const moreItems = [
   { path: '/community', label: 'Community', icon: Users },
   { path: '/routines', label: 'Routines', icon: Dumbbell },
   { path: '/cycles', label: 'Cycles', icon: Repeat },
+  { path: '/integrations', label: 'Integrations', icon: Link2 },
 ];
 
 export function MobileBottomNav() {

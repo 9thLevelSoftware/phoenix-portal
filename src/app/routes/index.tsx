@@ -23,6 +23,7 @@ const Profile = lazy(() => import('@/app/components/Profile').then(m => ({ defau
 const PricingPlans = lazy(() => import('@/app/components/PricingPlans').then(m => ({ default: m.PricingPlans })));
 const Biomechanics = lazy(() => import('@/app/components/Biomechanics').then(m => ({ default: m.Biomechanics })));
 const SessionReplay = lazy(() => import('@/app/components/session-replay/SessionReplay').then(m => ({ default: m.SessionReplay })));
+const Integrations = lazy(() => import('@/app/components/Integrations').then(m => ({ default: m.Integrations })));
 
 // ---------- Route tree ----------
 
@@ -52,6 +53,7 @@ export function AppRoutes() {
             <Route path="/cycles" element={<TrainingCycles />} />
             <Route path="/cycles/new" element={<CycleBuilder />} />
             <Route path="/cycles/:cycleId" element={<CycleBuilder />} />
+            <Route path="/integrations" element={<Integrations />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/pricing" element={<PricingPlans />} />
             <Route path="/celebrations" element={<CelebrationDemo />} />
