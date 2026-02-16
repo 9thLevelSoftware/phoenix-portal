@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
+import { toast } from 'sonner';
 import { useAuth } from '@/app/hooks/useAuth';
 import { integrationsOptions, externalActivitiesOptions } from '@/queries/integrations';
 import { useDisconnectIntegration, useManualSync } from '@/mutations/integrations';
@@ -7,6 +10,7 @@ import { ProviderCard } from '@/app/components/integrations/ProviderCard';
 import { MobileOnlyProvider } from '@/app/components/integrations/MobileOnlyProvider';
 import { HevyConnect } from '@/app/components/integrations/HevyConnect';
 import { ExternalActivityList } from '@/app/components/integrations/ExternalActivityList';
+import { SyncStatus } from '@/app/components/integrations/SyncStatus';
 import { initiateStravaConnect } from '@/lib/integrations/strava';
 import { initiateFitbitConnect } from '@/lib/integrations/fitbit';
 import { initiateGarminConnect } from '@/lib/integrations/garmin';
@@ -15,6 +19,23 @@ import type { IntegrationProvider, ExternalActivity } from '@/lib/integrations/t
 export function Integrations() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle OAuth callback URL params (?connected=provider or ?error=type)
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+
+    if (connected) {
+      toast.success(`Successfully connected ${connected}`);
+      // Clean up URL params
+      setSearchParams({}, { replace: true });
+    }
+    if (error) {
+      toast.error(`Connection failed: ${error}`);
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // Run on mount only
 
   const { data: integrations, isLoading } = useQuery({
     ...integrationsOptions(userId),
@@ -35,11 +56,16 @@ export function Integrations() {
   return (
     <SubscriptionGate requiredTier="ELITE">
       <div className="container mx-auto p-6 space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold">Integrations</h1>
-          <p className="text-muted-foreground">
-            Connect your fitness services to see all your data in one place
-          </p>
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-bold">Integrations</h1>
+            <p className="text-muted-foreground">
+              Connect your fitness services to see all your data in one place
+            </p>
+          </div>
+          <div className="w-full md:w-80 shrink-0">
+            <SyncStatus userId={userId} />
+          </div>
         </div>
 
         {/* OAuth Providers */}

@@ -35,6 +35,9 @@ import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { AnalyticsMobile } from '@/app/components/mobile/AnalyticsMobile';
 import { useAuth } from '@/app/hooks/useAuth';
 import { volumeTrendOptions, muscleGroupOptions, strengthProgressOptions } from '@/queries/analytics';
+import { externalActivitiesOptions } from '@/queries/integrations';
+import { Badge } from '@/app/components/ui/badge';
+import { Globe } from 'lucide-react';
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
   Chest: '#FF6B35',
@@ -127,12 +130,26 @@ export function Analytics() {
   const { data: volumeRaw, isPending: volumePending } = useQuery(volumeTrendOptions(user!.id, queryPeriod));
   const { data: muscleGroupRaw, isPending: musclePending } = useQuery(muscleGroupOptions(user!.id));
   const { data: strengthRaw, isPending: strengthPending } = useQuery(strengthProgressOptions(user!.id));
+  const { data: externalActivities } = useQuery({
+    ...externalActivitiesOptions(user!.id),
+    enabled: !!user,
+  });
 
   if (isMobile) {
     return <AnalyticsMobile />;
   }
 
   const isPending = volumePending || musclePending || strengthPending;
+
+  // Convert external activities to chart-compatible format
+  const externalChartData = (externalActivities ?? []).map((activity) => ({
+    date: activity.started_at,
+    provider: activity.provider,
+    duration: activity.duration_seconds ? activity.duration_seconds / 60 : 0, // minutes
+    calories: activity.calories ?? 0,
+    type: activity.activity_type,
+    isExternal: true,
+  }));
   const volumeData = bucketByWeek(volumeRaw ?? []);
   const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
     ...m,
@@ -192,7 +209,8 @@ export function Analytics() {
     );
   }
 
-  const hasData = volumeData.length > 0 || muscleGroupData.length > 0;
+  const externalCount = externalActivities?.length ?? 0;
+  const hasData = volumeData.length > 0 || muscleGroupData.length > 0 || externalCount > 0;
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
@@ -290,10 +308,54 @@ export function Analytics() {
                 <TabsTrigger value="body" className="data-[state=active]:bg-[#FF6B35]">
                   Body Part Analysis
                 </TabsTrigger>
+                <TabsTrigger value="external" className="data-[state=active]:bg-[#FF6B35]">
+                  External
+                </TabsTrigger>
               </TabsList>
 
               {/* Overview Tab */}
               <TabsContent value="overview" className="space-y-6">
+                {/* Activity Sources Breakdown */}
+                {(totalWorkouts > 0 || externalCount > 0) && (
+                  <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                    <h3 className="text-xl text-white mb-4">Activity Sources</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-2xl font-bold text-[#FF6B35]">{totalWorkouts}</p>
+                        <p className="text-sm text-muted-foreground">Phoenix Workouts</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-blue-400">{externalCount}</p>
+                        <p className="text-sm text-muted-foreground">External Activities</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-white">{totalWorkouts + externalCount}</p>
+                        <p className="text-sm text-muted-foreground">Total Activities</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-emerald-400">
+                          {externalChartData.reduce((sum, a) => sum + a.calories, 0).toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">External Calories</p>
+                      </div>
+                    </div>
+                    {/* Provider badges */}
+                    {externalCount > 0 && (
+                      <div className="flex gap-2 mt-4 pt-4 border-t border-[#374151]">
+                        {Array.from(new Set(externalChartData.map((a) => a.provider))).map((provider) => {
+                          const count = externalChartData.filter((a) => a.provider === provider).length;
+                          return (
+                            <Badge key={provider} variant="outline" className="capitalize text-xs">
+                              <Globe className="w-3 h-3 mr-1" />
+                              {provider} ({count})
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Volume Over Time */}
                   <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
@@ -492,6 +554,99 @@ export function Analytics() {
                     </div>
                   )}
                 </Card>
+              </TabsContent>
+
+              {/* External Activities Tab */}
+              <TabsContent value="external" className="space-y-6">
+                {externalCount > 0 ? (
+                  <>
+                    {/* External Activity Duration Chart */}
+                    <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                      <h3 className="text-xl text-white mb-6">External Activity Duration</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart
+                          data={externalChartData.slice(0, 20).reverse()}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis
+                            dataKey="date"
+                            stroke="#9CA3AF"
+                            tickFormatter={(val: string) =>
+                              new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                            }
+                          />
+                          <YAxis stroke="#9CA3AF" label={{ value: 'min', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1a1a1a',
+                              border: '1px solid #374151',
+                              borderRadius: '8px',
+                              color: '#E5E7EB',
+                            }}
+                            labelFormatter={(val: string) =>
+                              new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                            }
+                            formatter={(value: number, name: string) => [
+                              `${Math.round(value)} min`,
+                              name === 'duration' ? 'Duration' : name,
+                            ]}
+                          />
+                          <Bar dataKey="duration" fill="#60A5FA" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
+
+                    {/* Recent External Activities List */}
+                    <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                      <h3 className="text-xl text-white mb-4">Recent External Activities</h3>
+                      <div className="space-y-3">
+                        {externalChartData.slice(0, 10).map((activity, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 rounded-lg bg-[#111] border border-[#374151]"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 rounded-lg bg-blue-500/20">
+                                <Globe className="w-4 h-4 text-blue-400" />
+                              </div>
+                              <div>
+                                <p className="text-sm text-white capitalize">{activity.type}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(activity.date).toLocaleDateString(undefined, {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-sm text-white">{Math.round(activity.duration)} min</p>
+                                {activity.calories > 0 && (
+                                  <p className="text-xs text-muted-foreground">{activity.calories} kcal</p>
+                                )}
+                              </div>
+                              <Badge variant="outline" className="capitalize text-xs">
+                                {activity.provider}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </>
+                ) : (
+                  <div className="text-center py-16">
+                    <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-400/20 flex items-center justify-center">
+                      <Globe className="w-12 h-12 text-blue-400" />
+                    </div>
+                    <h3 className="text-2xl font-semibold text-white mb-2">No external activities</h3>
+                    <p className="text-[#9CA3AF] max-w-md mx-auto">
+                      Connect fitness services in the Integrations page to see external activities here.
+                    </p>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </>
