@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 10 — Wire-Up & Mock Purge
+**Current focus:** Phase 11 — New Features
 
 ## Current Position
 
-Phase: 10 of 12 (Wire-Up & Mock Purge)
-Plan: 5 of 5 in current phase (PHASE COMPLETE)
-Status: Phase 10 complete
-Last activity: 2026-02-17 — Plan 10-05 complete (Dead code removal, error handler fix)
+Phase: 11 of 13 (New Features)
+Plan: 4 of 5 in current phase
+Status: Executing phase 11
+Last activity: 2026-02-17 — Plan 11-04 complete (Community comments)
 
-Progress: [████░░░░░░] 39% (10 of 13 phases complete, 51/59 total plans)
+Progress: [█████░░░░░] 45% (10 of 13 phases complete, 55/59 total plans)
 
 ## Performance Metrics
 
@@ -29,6 +29,7 @@ Progress: [████░░░░░░] 39% (10 of 13 phases complete, 51/59 
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
+| 11-new-features | 4/5 | 11 min | 2.8 min |
 
 *Updated after each plan completion*
 
@@ -77,6 +78,13 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 10, Plan 4]: EmptyState pattern: shared component from @/app/components/ui/empty-state deployed across 6+ feature pages.
 - [Phase 10, Plan 4]: Dashboard zero-session welcome view gates on hasNoWorkouts (loading complete + empty array).
 - [Phase 10, Plan 5]: No decisions required -- plan executed exactly as written (dead code deletion + toast.error fix).
+- [Phase 11, Plan 2]: Onboarding detection uses 4-scenario tree: new user (no row + no workouts), v1.0 mobile user (no row + has workouts), v1.0 web user (row + old version), v1.1 user (row + current version).
+- [Phase 11, Plan 2]: WhatsNewBanner auto-creates onboarding row on dismiss (v1.0 mobile users never had one). Both complete and dismiss use upsert with version_seen='1.1'.
+- [Phase 11, Plan 2]: FeatureHint is passive reusable component -- no hints placed in onboarding plan; feature plans add them to their UI elements.
+- [Phase 11, Plan 4]: Flat-list comments (no nesting) per locked research decision. Soft-delete via deleted_at column.
+- [Phase 11, Plan 4]: 1-second debounce on comment realtime (faster than 2.5s votes debounce for chat-like UX).
+- [Phase 11, Plan 4]: comment_count as denormalized column with trigger auto-update (avoids COUNT query on every feed render).
+- [Phase 11, Plan 4]: Client+server edit window enforcement: UI hides edit button AND RLS blocks update after 5 minutes.
 
 ### Pending Todos
 
@@ -97,5 +105,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 10-05-PLAN.md (Dead code removal, error handler fix) -- Phase 10 FULLY COMPLETE (all verification gaps closed)
-Resume file: Next phase (11)
+Stopped at: Completed 11-04-PLAN.md (Community comments)
+Resume file: .planning/phases/11-new-features/11-05-PLAN.md
