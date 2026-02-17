@@ -5,6 +5,13 @@ export const queryKeys = {
 			[...queryKeys.workouts.all, "list", userId] as const,
 		detail: (sessionId: string) =>
 			[...queryKeys.workouts.all, "detail", sessionId] as const,
+		comparison: (sessionAId: string, sessionBId: string) =>
+			[
+				...queryKeys.workouts.all,
+				"comparison",
+				sessionAId,
+				sessionBId,
+			] as const,
 	},
 	records: {
 		all: ["records"] as const,
@@ -67,6 +74,10 @@ export const queryKeys = {
 		external: (userId: string) =>
 			[...queryKeys.integrations.all, "external", userId] as const,
 	},
+	comments: {
+		all: ["comments"] as const,
+		byItem: (itemId: string) => [...queryKeys.comments.all, itemId] as const,
+	},
 	community: {
 		all: ["community"] as const,
 		feed: (params: {
@@ -92,6 +103,17 @@ export const queryKeys = {
 		all: ["challenges"] as const,
 		list: () => [...queryKeys.challenges.all, "list"] as const,
 		detail: (id: string) => [...queryKeys.challenges.all, id] as const,
+	},
+	onboarding: {
+		all: ["onboarding"] as const,
+		byUser: (userId: string) =>
+			[...queryKeys.onboarding.all, userId] as const,
+	},
+	goals: {
+		all: ["goals"] as const,
+		byUser: (userId: string) => [...queryKeys.goals.all, userId] as const,
+		progress: (userId: string) =>
+			[...queryKeys.goals.all, "progress", userId] as const,
 	},
 	profile: {
 		all: ["profile"] as const,

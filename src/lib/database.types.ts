@@ -14,6 +14,230 @@ export type Database = {
   }
   public: {
     Tables: {
+      community_comments: {
+        Row: {
+          id: string
+          item_id: string
+          item_type: string
+          user_id: string
+          body: string
+          created_at: string
+          updated_at: string
+          deleted_at: string | null
+        }
+        Insert: {
+          id?: string
+          item_id: string
+          item_type: string
+          user_id?: string
+          body: string
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: {
+          id?: string
+          item_id?: string
+          item_type?: string
+          user_id?: string
+          body?: string
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      shared_routines: {
+        Row: {
+          id: string
+          user_id: string
+          routine_id: string
+          name: string
+          description: string
+          exercise_count: number
+          estimated_duration: number
+          exercises_snapshot: Json | null
+          tags: string[]
+          difficulty: string
+          vote_count: number
+          save_count: number
+          hot_score: number
+          comment_count: number
+          shared_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          routine_id: string
+          name: string
+          description: string
+          exercise_count?: number
+          estimated_duration?: number
+          exercises_snapshot?: Json | null
+          tags?: string[]
+          difficulty?: string
+          vote_count?: number
+          save_count?: number
+          hot_score?: number
+          comment_count?: number
+          shared_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          routine_id?: string
+          name?: string
+          description?: string
+          exercise_count?: number
+          estimated_duration?: number
+          exercises_snapshot?: Json | null
+          tags?: string[]
+          difficulty?: string
+          vote_count?: number
+          save_count?: number
+          hot_score?: number
+          comment_count?: number
+          shared_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      shared_cycles: {
+        Row: {
+          id: string
+          user_id: string
+          cycle_id: string
+          name: string
+          description: string
+          duration_weeks: number
+          tags: string[]
+          difficulty: string
+          vote_count: number
+          save_count: number
+          hot_score: number
+          comment_count: number
+          shared_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          cycle_id: string
+          name: string
+          description: string
+          duration_weeks?: number
+          tags?: string[]
+          difficulty?: string
+          vote_count?: number
+          save_count?: number
+          hot_score?: number
+          comment_count?: number
+          shared_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          cycle_id?: string
+          name?: string
+          description?: string
+          duration_weeks?: number
+          tags?: string[]
+          difficulty?: string
+          vote_count?: number
+          save_count?: number
+          hot_score?: number
+          comment_count?: number
+          shared_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_onboarding: {
+        Row: {
+          id: string
+          user_id: string
+          completed_at: string | null
+          version_seen: string | null
+          dismissed_hints: Json
+          dismissed_whats_new: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          completed_at?: string | null
+          version_seen?: string | null
+          dismissed_hints?: Json
+          dismissed_whats_new?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          completed_at?: string | null
+          version_seen?: string | null
+          dismissed_hints?: Json
+          dismissed_whats_new?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      user_goals: {
+        Row: {
+          id: string
+          user_id: string
+          goal_type: "frequency" | "volume" | "pr"
+          target_value: number
+          target_unit: string
+          exercise_name: string | null
+          deadline: string | null
+          period: "weekly" | "monthly"
+          status: "active" | "completed" | "archived"
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          goal_type: "frequency" | "volume" | "pr"
+          target_value: number
+          target_unit: string
+          exercise_name?: string | null
+          deadline?: string | null
+          period?: "weekly" | "monthly"
+          status?: "active" | "completed" | "archived"
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          goal_type?: "frequency" | "volume" | "pr"
+          target_value?: number
+          target_unit?: string
+          exercise_name?: string | null
+          deadline?: string | null
+          period?: "weekly" | "monthly"
+          status?: "active" | "completed" | "archived"
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_subscriptions: {
         Row: {
           created_at: string | null
