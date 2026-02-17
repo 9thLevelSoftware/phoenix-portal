@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
 	BedDouble,
+	Calendar,
 	Dumbbell,
 	Edit,
 	Eye,
@@ -25,6 +26,7 @@ import {
 import { Progress } from "@/app/components/ui/progress";
 import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { cycleListOptions } from "@/queries/cycles";
 
 export function TrainingCycles() {
@@ -93,24 +95,14 @@ export function TrainingCycles() {
 						</motion.div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
-						<Flame className="w-12 h-12 text-primary" />
-					</div>
-					<h3 className="text-2xl font-semibold text-white mb-2">
-						No training cycles yet
-					</h3>
-					<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-						Create your first training cycle to periodize your progress and
-						track weekly goals.
-					</p>
-					<Button
-						onClick={() => navigate("/cycles/new")}
-						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-					>
-						<Plus className="w-4 h-4 mr-2" />
-						Create Cycle
-					</Button>
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+					<EmptyState
+						icon={Calendar}
+						title="Plan your training cycle"
+						description="Design a structured training program with progressive overload and scheduled deload weeks."
+						actionLabel="Create Cycle"
+						actionHref="/cycles/new"
+					/>
 				</div>
 			</div>
 		);

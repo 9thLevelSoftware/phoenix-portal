@@ -23,6 +23,7 @@ import {
 	StatCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { personalRecordsOptions } from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 
@@ -196,17 +197,12 @@ export function PersonalRecords() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-accent/20 to-warning/20 flex items-center justify-center">
-						<Trophy className="w-12 h-12 text-accent" />
-					</div>
-					<h3 className="text-2xl font-semibold text-white mb-2">
-						No personal records yet
-					</h3>
-					<p className="text-muted-foreground max-w-md mx-auto">
-						Complete workouts to start tracking your personal records. Every new
-						best is a victory!
-					</p>
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+					<EmptyState
+						icon={Trophy}
+						title="No personal records yet"
+						description="Your PRs will appear here as you push your limits. Every new best is worth celebrating."
+					/>
 				</div>
 			</div>
 		);

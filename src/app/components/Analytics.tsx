@@ -52,6 +52,7 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PHOENIX } from "@/lib/colors";
 import { downloadCSV } from "@/lib/export/csv";
 import {
@@ -413,18 +414,11 @@ export function Analytics() {
 				</div>
 
 				{!hasData ? (
-					<div className="text-center py-16">
-						<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-							<TrendingUp className="w-12 h-12 text-primary" />
-						</div>
-						<h3 className="text-2xl font-semibold text-white mb-2">
-							No analytics data yet
-						</h3>
-						<p className="text-muted-foreground max-w-md mx-auto">
-							Complete workouts to start seeing your training analytics. Charts
-							and insights will populate automatically.
-						</p>
-					</div>
+					<EmptyState
+						icon={TrendingUp}
+						title="Your analytics await"
+						description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
+					/>
 				) : (
 					<>
 						{/* Summary Cards */}
