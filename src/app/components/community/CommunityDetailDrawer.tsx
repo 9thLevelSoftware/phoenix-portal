@@ -9,6 +9,7 @@ import {
 	Link2,
 } from "lucide-react";
 import { useMemo } from "react";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -32,7 +33,6 @@ import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
-import { FeatureHint } from "@/app/components/FeatureHint";
 import { CommentThread } from "./CommentThread";
 
 interface CommunityDetailDrawerProps {
