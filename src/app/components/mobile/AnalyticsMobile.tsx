@@ -29,12 +29,12 @@ import {
 	StatCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { PHOENIX } from "@/lib/colors";
 import {
 	muscleGroupOptions,
 	strengthProgressOptions,
 	volumeTrendOptions,
 } from "@/queries/analytics";
-import { PHOENIX } from "@/lib/colors";
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
 	Chest: PHOENIX.ember,
@@ -89,9 +89,7 @@ function ChartCard({ title, onTap, children }: ChartCardProps) {
 			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
 			{children}
 			{onTap && (
-				<p className="text-xs text-muted text-center mt-2">
-					Tap for details
-				</p>
+				<p className="text-xs text-muted text-center mt-2">Tap for details</p>
 			)}
 		</Card>
 	);

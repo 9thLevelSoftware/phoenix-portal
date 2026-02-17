@@ -30,6 +30,7 @@ import {
 	WorkoutCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { PHOENIX } from "@/lib/colors";
 import {
 	dashboardStatsOptions,
 	recentPRsOptions,
@@ -38,7 +39,6 @@ import {
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { PortalBanner } from "./PortalBanner";
 import { SyncStatus } from "./SyncStatus";
-import { PHOENIX } from "@/lib/colors";
 
 /** Derive weekly volume chart data from dashboard stats */
 function deriveWeeklyVolume(
@@ -248,7 +248,10 @@ export function Dashboard() {
 														strokeDasharray="3 3"
 														stroke={PHOENIX.moltenSteel}
 													/>
-													<XAxis dataKey="day" stroke={PHOENIX.mutedForeground} />
+													<XAxis
+														dataKey="day"
+														stroke={PHOENIX.mutedForeground}
+													/>
 													<YAxis stroke={PHOENIX.mutedForeground} />
 													<Tooltip
 														contentStyle={{
@@ -268,7 +271,9 @@ export function Dashboard() {
 												</AreaChart>
 											</ResponsiveContainer>
 											<div className="mt-4 flex items-center justify-between text-sm">
-												<span className="text-muted-foreground">Total this week</span>
+												<span className="text-muted-foreground">
+													Total this week
+												</span>
 												<span className="text-primary font-semibold">
 													{weeklyTotal.toLocaleString()} kg
 												</span>
@@ -305,7 +310,9 @@ export function Dashboard() {
 								) : recentWorkouts.length === 0 ? (
 									<div className="flex flex-col items-center justify-center py-8 text-center">
 										<Dumbbell className="w-10 h-10 text-secondary mb-3" />
-										<p className="text-muted-foreground mb-1">No workouts yet</p>
+										<p className="text-muted-foreground mb-1">
+											No workouts yet
+										</p>
 										<p className="text-sm text-muted">
 											Sync your first workout from the Vitruvian mobile app
 										</p>
@@ -508,7 +515,9 @@ export function Dashboard() {
 								<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Award className="w-8 h-8 text-secondary mb-2" />
-									<p className="text-sm text-muted-foreground">No badges earned yet</p>
+									<p className="text-sm text-muted-foreground">
+										No badges earned yet
+									</p>
 									<p className="text-xs text-muted mt-1">
 										Complete challenges and hit milestones to earn badges
 									</p>

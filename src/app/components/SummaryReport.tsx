@@ -15,9 +15,9 @@ import { Bar, BarChart, Line, LineChart, ResponsiveContainer } from "recharts";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { PHOENIX } from "@/lib/colors";
 import { weeklySummaryOptions } from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
-import { PHOENIX } from "@/lib/colors";
 
 export interface SummaryReportProps {
 	userId: string;
@@ -223,7 +223,12 @@ function ConsistencyRing({ score }: { score: number }) {
 	const radius = 28;
 	const circumference = 2 * Math.PI * radius;
 	const offset = circumference - (score / 100) * circumference;
-	const color = score > 80 ? PHOENIX.forgeGreen : score >= 50 ? PHOENIX.gold : PHOENIX.flameRed;
+	const color =
+		score > 80
+			? PHOENIX.forgeGreen
+			: score >= 50
+				? PHOENIX.gold
+				: PHOENIX.flameRed;
 
 	return (
 		<svg width="68" height="68" viewBox="0 0 68 68">
@@ -369,16 +374,10 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 				onValueChange={(v) => setPeriod(v as "week" | "month")}
 			>
 				<TabsList className="bg-surface-2 border border-secondary">
-					<TabsTrigger
-						value="week"
-						className="data-[state=active]:bg-primary"
-					>
+					<TabsTrigger value="week" className="data-[state=active]:bg-primary">
 						This Week
 					</TabsTrigger>
-					<TabsTrigger
-						value="month"
-						className="data-[state=active]:bg-primary"
-					>
+					<TabsTrigger value="month" className="data-[state=active]:bg-primary">
 						This Month
 					</TabsTrigger>
 				</TabsList>
@@ -397,7 +396,9 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							<div className="p-2 rounded-lg bg-primary/20">
 								<Dumbbell className="w-4 h-4 text-primary" />
 							</div>
-							<span className="text-sm text-muted-foreground">Total Volume</span>
+							<span className="text-sm text-muted-foreground">
+								Total Volume
+							</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.totalVolume > 1000
@@ -427,9 +428,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<TrendingDown className="w-3 h-3 text-chart-2" />
 							)}
 							<span
-								className={
-									volumeChange >= 0 ? "text-success" : "text-chart-2"
-								}
+								className={volumeChange >= 0 ? "text-success" : "text-chart-2"}
 							>
 								{volumeChange > 0 ? "+" : ""}
 								{volumeChange}% vs last {period}
@@ -499,7 +498,9 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							<div className="p-2 rounded-lg bg-success/20">
 								<Trophy className="w-4 h-4 text-success" />
 							</div>
-							<span className="text-sm text-muted-foreground">Personal Records</span>
+							<span className="text-sm text-muted-foreground">
+								Personal Records
+							</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.prs.length}{" "}
@@ -518,9 +519,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								))}
 							</div>
 						) : (
-							<div className="text-xs text-muted">
-								No new PRs this {period}
-							</div>
+							<div className="text-xs text-muted">No new PRs this {period}</div>
 						)}
 					</Card>
 				</motion.div>

@@ -18,9 +18,9 @@ import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { PHOENIX } from "@/lib/colors";
 import { dashboardStatsOptions, workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
-import { PHOENIX } from "@/lib/colors";
 
 /** Format a relative time string from a Date */
 function formatRelativeTime(date: Date): string {
@@ -127,7 +127,10 @@ export function DashboardMobile() {
 									ease: "easeInOut",
 								}}
 							>
-								<Flame className="w-16 h-16 text-primary" fill={PHOENIX.ember} />
+								<Flame
+									className="w-16 h-16 text-primary"
+									fill={PHOENIX.ember}
+								/>
 							</motion.div>
 							<div className="flex-1">
 								<div className="text-4xl font-bold text-white mb-1">7 Days</div>
@@ -249,7 +252,9 @@ export function DashboardMobile() {
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex flex-col items-center justify-center py-8 text-center">
 								<Dumbbell className="w-10 h-10 text-secondary mb-3" />
-								<p className="text-muted-foreground mb-1">No workouts this week</p>
+								<p className="text-muted-foreground mb-1">
+									No workouts this week
+								</p>
 								<p className="text-sm text-muted">
 									Complete a workout in the mobile app to see your stats here
 								</p>

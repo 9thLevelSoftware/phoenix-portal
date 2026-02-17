@@ -73,7 +73,9 @@ export function DayEditor({
 						<>
 							{/* Assigned Routine */}
 							<div>
-								<Label className="text-secondary-foreground mb-2">Assigned Routine</Label>
+								<Label className="text-secondary-foreground mb-2">
+									Assigned Routine
+								</Label>
 								{day.routineName ? (
 									<div className="flex items-center gap-2">
 										<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
@@ -336,7 +338,9 @@ export function DayEditor({
 
 							{/* Rest Type */}
 							<div>
-								<Label className="text-secondary-foreground mb-3">Rest Type</Label>
+								<Label className="text-secondary-foreground mb-3">
+									Rest Type
+								</Label>
 								<div className="space-y-2">
 									<label className="flex items-start gap-3 p-3 bg-background border border-secondary rounded-lg cursor-pointer hover:border-primary transition-colors">
 										<input

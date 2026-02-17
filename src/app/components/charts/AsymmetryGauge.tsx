@@ -8,8 +8,8 @@ import { Text } from "@visx/text";
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
 import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
-import type { RepSummary } from "@/schemas/telemetry";
 import { PHOENIX } from "@/lib/colors";
+import type { RepSummary } from "@/schemas/telemetry";
 
 // -- Colors --
 const COLOR_BALANCED = PHOENIX.forgeGreen; // Forge Green

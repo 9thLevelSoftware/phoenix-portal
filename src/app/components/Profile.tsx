@@ -32,8 +32,8 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
-import { openCustomerPortal } from "@/lib/stripe";
 import { PHOENIX } from "@/lib/colors";
+import { openCustomerPortal } from "@/lib/stripe";
 
 const PLAN_LABELS = {
 	FREE: "Free Plan",
@@ -201,7 +201,9 @@ export function Profile() {
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
 										<div className="text-2xl text-white mb-1">{stat.value}</div>
-										<div className="text-xs text-muted-foreground">{stat.label}</div>
+										<div className="text-xs text-muted-foreground">
+											{stat.label}
+										</div>
 									</div>
 								))}
 							</div>
@@ -379,7 +381,9 @@ export function Profile() {
 									>
 										<div className="text-5xl mb-2">{badge.icon}</div>
 										<div className="text-white mb-1">{badge.name}</div>
-										<div className="text-xs text-muted-foreground">{badge.earned}</div>
+										<div className="text-xs text-muted-foreground">
+											{badge.earned}
+										</div>
 										<Badge
 											className={`mt-2 text-xs ${
 												badge.rarity === "platinum"

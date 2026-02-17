@@ -302,7 +302,9 @@ export function Routines() {
 
 											<div className="space-y-3 mb-4">
 												<div className="flex items-center justify-between text-sm">
-													<span className="text-muted-foreground">Duration</span>
+													<span className="text-muted-foreground">
+														Duration
+													</span>
 													<span className="text-white">
 														{cycle.weeks} weeks
 													</span>
@@ -318,7 +320,9 @@ export function Routines() {
 															</span>
 														</div>
 														<div className="flex items-center justify-between text-sm">
-															<span className="text-muted-foreground">Progress</span>
+															<span className="text-muted-foreground">
+																Progress
+															</span>
 															<span className="text-primary">
 																{cycle.progress}%
 															</span>

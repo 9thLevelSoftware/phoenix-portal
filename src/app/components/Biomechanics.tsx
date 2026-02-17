@@ -34,9 +34,9 @@ import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 
 import { useAuth } from "@/app/hooks/useAuth";
+import { PHOENIX } from "@/lib/colors";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
-import { PHOENIX } from "@/lib/colors";
 
 // -- Section wrapper --
 function Section({
@@ -363,7 +363,10 @@ function BiomechanicsContent() {
 									checked={overlayAll}
 									onCheckedChange={setOverlayAll}
 								/>
-								<Label htmlFor="overlay" className="text-sm text-muted-foreground">
+								<Label
+									htmlFor="overlay"
+									className="text-sm text-muted-foreground"
+								>
 									Overlay All Reps
 								</Label>
 							</div>
@@ -373,7 +376,10 @@ function BiomechanicsContent() {
 									checked={normalized}
 									onCheckedChange={setNormalized}
 								/>
-								<Label htmlFor="normalized" className="text-sm text-muted-foreground">
+								<Label
+									htmlFor="normalized"
+									className="text-sm text-muted-foreground"
+								>
 									Normalized Time
 								</Label>
 							</div>
@@ -435,7 +441,7 @@ function BiomechanicsContent() {
 												color:
 													parseFloat(avgAsymmetry) <= 10
 														? PHOENIX.forgeGreen
-															: PHOENIX.flameRed,
+														: PHOENIX.flameRed,
 												border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
 											}}
 										>
@@ -503,7 +509,9 @@ export function Biomechanics() {
 		<div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 max-w-7xl mx-auto">
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold text-white">Biomechanics</h1>
-				<p className="text-muted-foreground mt-1">Advanced training analytics</p>
+				<p className="text-muted-foreground mt-1">
+					Advanced training analytics
+				</p>
 			</div>
 
 			<SubscriptionGate requiredTier="PHOENIX">

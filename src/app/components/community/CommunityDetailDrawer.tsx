@@ -27,11 +27,11 @@ import {
 	DrawerTitle,
 } from "@/app/components/ui/drawer";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { PHOENIX } from "@/lib/colors";
 import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
-import { PHOENIX } from "@/lib/colors";
 
 interface CommunityDetailDrawerProps {
 	item: CommunityFeedItem | null;

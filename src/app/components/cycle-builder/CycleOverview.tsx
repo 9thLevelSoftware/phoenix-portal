@@ -50,7 +50,9 @@ export function CycleOverview({
 
 				{/* Description */}
 				<div className="md:col-span-2">
-					<Label className="text-secondary-foreground mb-2">Description (optional)</Label>
+					<Label className="text-secondary-foreground mb-2">
+						Description (optional)
+					</Label>
 					<Textarea
 						value={description}
 						onChange={(e) => onDescriptionChange(e.target.value)}
@@ -61,7 +63,9 @@ export function CycleOverview({
 
 				{/* Cycle Duration */}
 				<div className="md:col-span-2">
-					<Label className="text-secondary-foreground mb-2">Cycle Duration</Label>
+					<Label className="text-secondary-foreground mb-2">
+						Cycle Duration
+					</Label>
 					<div className="flex flex-wrap items-center gap-2">
 						{durationPresets.map((days) => (
 							<Button
@@ -106,13 +110,17 @@ export function CycleOverview({
 								max="365"
 							/>
 						)}
-						<span className="text-sm text-muted-foreground ml-2">days per cycle</span>
+						<span className="text-sm text-muted-foreground ml-2">
+							days per cycle
+						</span>
 					</div>
 				</div>
 
 				{/* Start Date */}
 				<div className="md:col-span-2">
-					<Label className="text-secondary-foreground mb-2">Start Date (optional)</Label>
+					<Label className="text-secondary-foreground mb-2">
+						Start Date (optional)
+					</Label>
 					<Input
 						type="date"
 						value={startDate}

@@ -168,7 +168,9 @@ export function WorkoutComplete({
 													<Clock className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
-													<div className="text-xs text-muted-foreground">Duration</div>
+													<div className="text-xs text-muted-foreground">
+														Duration
+													</div>
 													<div className="text-lg font-bold text-white">
 														{duration}
 													</div>

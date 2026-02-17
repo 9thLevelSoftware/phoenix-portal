@@ -74,7 +74,9 @@ export function RoutinesEnhanced() {
 										My Routines
 									</span>
 								</h1>
-								<p className="text-muted-foreground">Build your perfect workout</p>
+								<p className="text-muted-foreground">
+									Build your perfect workout
+								</p>
 							</div>
 						</div>
 					</div>
@@ -106,7 +108,9 @@ export function RoutinesEnhanced() {
 									My Routines
 								</span>
 							</h1>
-							<p className="text-muted-foreground">Build your perfect workout</p>
+							<p className="text-muted-foreground">
+								Build your perfect workout
+							</p>
 						</div>
 
 						<Button

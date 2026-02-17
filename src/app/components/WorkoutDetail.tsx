@@ -26,12 +26,12 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import {
-import { PHOENIX } from "@/lib/colors";
 	Tabs,
 	TabsContent,
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { PHOENIX } from "@/lib/colors";
 
 interface WorkoutDetailProps {
 	onClose: () => void;
@@ -181,7 +181,9 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 									Push Day A
 								</span>
 							</h1>
-							<p className="text-muted-foreground">January 18, 2026 • 2:34 PM</p>
+							<p className="text-muted-foreground">
+								January 18, 2026 • 2:34 PM
+							</p>
 						</div>
 						<div className="flex items-center gap-2">
 							<Button
@@ -383,7 +385,9 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 								{/* Notes */}
 								{exercise.notes && (
 									<div className="mt-4 p-4 bg-background rounded-lg border border-secondary">
-										<div className="text-sm text-muted-foreground mb-1">Notes</div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Notes
+										</div>
 										<div className="text-white">{exercise.notes}</div>
 									</div>
 								)}
@@ -397,7 +401,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 							<h3 className="text-xl text-white mb-6">Power Output by Set</h3>
 							<ResponsiveContainer width="100%" height={300}>
 								<LineChart data={powerOutputData}>
-									<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
+									<CartesianGrid
+										strokeDasharray="3 3"
+										stroke={PHOENIX.moltenSteel}
+									/>
 									<XAxis
 										dataKey="set"
 										stroke={PHOENIX.mutedForeground}
@@ -492,7 +499,11 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											x2="0"
 											y2="1"
 										>
-											<stop offset="5%" stopColor={PHOENIX.ember} stopOpacity={0.8} />
+											<stop
+												offset="5%"
+												stopColor={PHOENIX.ember}
+												stopOpacity={0.8}
+											/>
 											<stop
 												offset="95%"
 												stopColor={PHOENIX.flameRed}
@@ -506,7 +517,11 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											x2="0"
 											y2="1"
 										>
-											<stop offset="5%" stopColor={PHOENIX.forgeGreen} stopOpacity={0.8} />
+											<stop
+												offset="5%"
+												stopColor={PHOENIX.forgeGreen}
+												stopOpacity={0.8}
+											/>
 											<stop
 												offset="95%"
 												stopColor="#059669"
@@ -514,7 +529,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											/>
 										</linearGradient>
 									</defs>
-									<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
+									<CartesianGrid
+										strokeDasharray="3 3"
+										stroke={PHOENIX.moltenSteel}
+									/>
 									<XAxis
 										dataKey="time"
 										stroke={PHOENIX.mutedForeground}
