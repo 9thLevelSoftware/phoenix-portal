@@ -8,7 +8,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConsistencyCalendar } from "@/app/components/ConsistencyCalendar";
 import { AsymmetryGauge } from "@/app/components/charts/AsymmetryGauge";
 import { ForceCurve } from "@/app/components/charts/ForceCurve";
@@ -125,16 +125,13 @@ function BiomechanicsContent() {
 		refetch: refetchWorkouts,
 	} = useQuery({ ...workoutListOptions(userId), enabled: !!userId });
 
-	// Auto-select first session
+	// Auto-select first session (via useEffect to avoid setState during render)
 	const effectiveSessionId = selectedSessionId || (workouts?.[0]?.id ?? "");
-	if (
-		effectiveSessionId &&
-		!selectedSessionId &&
-		workouts &&
-		workouts.length > 0
-	) {
-		setSelectedSessionId(effectiveSessionId);
-	}
+	useEffect(() => {
+		if (!selectedSessionId && workouts && workouts.length > 0) {
+			setSelectedSessionId(workouts[0].id);
+		}
+	}, [workouts, selectedSessionId]);
 
 	// Fetch session detail
 	const {
@@ -146,22 +143,26 @@ function BiomechanicsContent() {
 		enabled: !!effectiveSessionId,
 	});
 
-	// Auto-select first exercise
+	// Auto-select first exercise (via useEffect to avoid setState during render)
 	const exercises = session?.exercises ?? [];
 	const effectiveExerciseId = selectedExerciseId || (exercises[0]?.id ?? "");
-	if (effectiveExerciseId && !selectedExerciseId && exercises.length > 0) {
-		setSelectedExerciseId(effectiveExerciseId);
-	}
+	useEffect(() => {
+		if (!selectedExerciseId && exercises && exercises.length > 0) {
+			setSelectedExerciseId(exercises[0].id);
+		}
+	}, [exercises, selectedExerciseId]);
 
 	// Get sets for selected exercise
 	const selectedExercise = exercises.find((e) => e.id === effectiveExerciseId);
 	const sets = selectedExercise?.sets ?? [];
 
-	// Auto-select first set
+	// Auto-select first set (via useEffect to avoid setState during render)
 	const effectiveSetId = selectedSetId || (sets[0]?.id ?? "");
-	if (effectiveSetId && !selectedSetId && sets.length > 0) {
-		setSelectedSetId(effectiveSetId);
-	}
+	useEffect(() => {
+		if (!selectedSetId && sets && sets.length > 0) {
+			setSelectedSetId(sets[0].id);
+		}
+	}, [sets, selectedSetId]);
 
 	// ---- Telemetry queries (per selected set) ----
 	const { data: telemetry, isPending: telemetryLoading } = useQuery({

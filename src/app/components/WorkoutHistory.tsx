@@ -29,6 +29,34 @@ export function WorkoutHistory() {
 
 	const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
 	const [dateRange, setDateRange] = useState("Last 30 days");
+
+	// Filter workouts based on dateRange selection
+	const filteredWorkouts = useMemo(() => {
+		if (!workouts) return [];
+		const now = new Date();
+		let cutoffDays: number | null = null;
+		switch (dateRange) {
+			case "Last 7 days":
+				cutoffDays = 7;
+				break;
+			case "Last 30 days":
+				cutoffDays = 30;
+				break;
+			case "Last 90 days":
+				cutoffDays = 90;
+				break;
+			case "Last 6 months":
+				cutoffDays = 180;
+				break;
+			case "All Time":
+			default:
+				cutoffDays = null;
+				break;
+		}
+		if (cutoffDays === null) return workouts;
+		const cutoff = new Date(now.getTime() - cutoffDays * 24 * 60 * 60 * 1000);
+		return workouts.filter((w) => w.started_at >= cutoff);
+	}, [workouts, dateRange]);
 	const [currentMonth, setCurrentMonth] = useState(() => {
 		const now = new Date();
 		return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -222,9 +250,10 @@ export function WorkoutHistory() {
 								onChange={(e) => setDateRange(e.target.value)}
 								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 							>
+								<option>Last 7 days</option>
 								<option>Last 30 days</option>
 								<option>Last 90 days</option>
-								<option>This Year</option>
+								<option>Last 6 months</option>
 								<option>All Time</option>
 							</select>
 						</div>
@@ -373,7 +402,7 @@ export function WorkoutHistory() {
 							transition={{ duration: 0.3 }}
 							className="space-y-4"
 						>
-							{workouts.map((workout, index) => (
+							{filteredWorkouts.map((workout, index) => (
 								<motion.div
 									key={workout.id}
 									initial={{ opacity: 0, y: 20 }}

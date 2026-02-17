@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	Area,
 	AreaChart,
@@ -165,17 +165,13 @@ export function ExerciseProgress({
 		enabled: !!selectedExercise,
 	});
 
-	// Auto-select first exercise if none selected
+	// Auto-select first exercise if none selected (via useEffect to avoid setState during render)
 	const effectiveExercise = selectedExercise || (exercises?.[0] ?? "");
-	if (
-		effectiveExercise &&
-		!selectedExercise &&
-		exercises &&
-		exercises.length > 0
-	) {
-		// Using setState in render is fine for initialization
-		setSelectedExercise(effectiveExercise);
-	}
+	useEffect(() => {
+		if (!selectedExercise && exercises && exercises.length > 0) {
+			setSelectedExercise(exercises[0]);
+		}
+	}, [exercises, selectedExercise]);
 
 	const days = TIME_RANGES.find((r) => r.label === timeRange)?.days ?? 90;
 	const filteredData = useMemo(
