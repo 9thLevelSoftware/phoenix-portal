@@ -102,6 +102,9 @@ const ComparisonView = lazy(() =>
 		default: m.ComparisonView,
 	})),
 );
+const Goals = lazy(() =>
+	import("@/app/components/Goals").then((m) => ({ default: m.Goals })),
+);
 
 // ---------- Route tree ----------
 
@@ -127,6 +130,7 @@ export function AppRoutes() {
 						<Route path="/records" element={<PersonalRecords />} />
 						<Route path="/analytics" element={<Analytics />} />
 						<Route path="/biomechanics" element={<Biomechanics />} />
+						<Route path="/goals" element={<Goals />} />
 						<Route path="/challenges" element={<Challenges />} />
 						<Route path="/community" element={<Community />} />
 						<Route path="/routines" element={<RoutinesEnhanced />} />
