@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { computeReadinessScore, type RecoveryResult } from "@/lib/recovery";
 import { useAuth } from "@/providers/AuthProvider";
-import {
-	computeReadinessScore,
-	type RecoveryResult,
-} from "@/lib/recovery";
 import {
 	activeCyclePositionOptions,
 	recoverySessionsOptions,

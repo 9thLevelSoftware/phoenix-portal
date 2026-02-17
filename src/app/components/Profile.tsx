@@ -57,10 +57,7 @@ const PLAN_LABELS = {
 } as const;
 
 /** Provider display config for integrations tab */
-const PROVIDER_META: Record<
-	string,
-	{ label: string; logo: string }
-> = {
+const PROVIDER_META: Record<string, { label: string; logo: string }> = {
 	strava: { label: "Strava", logo: "S" },
 	fitbit: { label: "Fitbit", logo: "F" },
 	garmin: { label: "Garmin Connect", logo: "G" },
@@ -137,9 +134,7 @@ export function Profile() {
 			setStreakReminders(profile.streak_reminders ?? true);
 			setChallengeUpdates(profile.challenge_updates ?? true);
 			setProfileVisible(profile.profile_visible ?? true);
-			setLeaderboardParticipation(
-				profile.leaderboard_participation ?? true,
-			);
+			setLeaderboardParticipation(profile.leaderboard_participation ?? true);
 		}
 	}, [profile]);
 
@@ -160,9 +155,7 @@ export function Profile() {
 		try {
 			await openCustomerPortal();
 		} catch {
-			toast.error(
-				"Could not open subscription portal. Please try again.",
-			);
+			toast.error("Could not open subscription portal. Please try again.");
 			setPortalLoading(false);
 		}
 	}
@@ -196,9 +189,7 @@ export function Profile() {
 		},
 		{
 			label: "Total Volume",
-			value: statsLoading
-				? "..."
-				: formatVolume(stats?.totalVolume ?? 0),
+			value: statsLoading ? "..." : formatVolume(stats?.totalVolume ?? 0),
 			icon: Dumbbell,
 		},
 	];
@@ -220,10 +211,7 @@ export function Profile() {
 							{/* Avatar */}
 							<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
 								{profile?.avatar_url ? (
-									<AvatarImage
-										src={profile.avatar_url}
-										alt={displayName}
-									/>
+									<AvatarImage src={profile.avatar_url} alt={displayName} />
 								) : null}
 								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
 									{profileLoading ? "..." : initials}
@@ -239,24 +227,15 @@ export function Profile() {
 									</>
 								) : (
 									<>
-										<h1 className="text-3xl text-white mb-2">
-											{displayName}
-										</h1>
+										<h1 className="text-3xl text-white mb-2">{displayName}</h1>
 										<p className="text-muted-foreground mb-4">
-											{memberSince
-												? `Member since ${memberSince}`
-												: "Member"}
+											{memberSince ? `Member since ${memberSince}` : "Member"}
 										</p>
 									</>
 								)}
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-									<Flame
-										className="w-5 h-5 text-accent"
-										fill={PHOENIX.ember}
-									/>
-									<span className="text-white">
-										{streak} day streak
-									</span>
+									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
+									<span className="text-white">{streak} day streak</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
 									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
@@ -273,9 +252,7 @@ export function Profile() {
 										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-										<div className="text-2xl text-white mb-1">
-											{stat.value}
-										</div>
+										<div className="text-2xl text-white mb-1">{stat.value}</div>
 										<div className="text-xs text-muted-foreground">
 											{stat.label}
 										</div>
@@ -307,13 +284,8 @@ export function Profile() {
 									</div>
 									{tier !== "FREE" && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
-											{cancelAtPeriodEnd
-												? "Cancels"
-												: "Renews"}{" "}
-											{format(
-												new Date(currentPeriodEnd),
-												"MMM d, yyyy",
-											)}
+											{cancelAtPeriodEnd ? "Cancels" : "Renews"}{" "}
+											{format(new Date(currentPeriodEnd), "MMM d, yyyy")}
 										</div>
 									)}
 								</div>
@@ -344,9 +316,7 @@ export function Profile() {
 												asChild
 												className="bg-gradient-to-r from-accent to-warning hover:from-warning hover:to-accent border-0 text-background"
 											>
-												<Link to="/pricing">
-													Upgrade to ELITE
-												</Link>
+												<Link to="/pricing">Upgrade to ELITE</Link>
 											</Button>
 										)}
 									</>
@@ -390,69 +360,56 @@ export function Profile() {
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Top Exercises */}
 							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h3 className="text-xl text-white mb-6">
-									Top Exercises
-								</h3>
+								<h3 className="text-xl text-white mb-6">Top Exercises</h3>
 								{exercisesLoading ? (
 									<div className="space-y-4">
-										{Array.from({ length: 5 }).map(
-											(_, i) => (
-												<div
-													key={i}
-													className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
-												>
-													<Skeleton className="h-5 w-32" />
-													<Skeleton className="h-5 w-16" />
-												</div>
-											),
-										)}
+										{Array.from({ length: 5 }).map((_, i) => (
+											<div
+												key={i}
+												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
+											>
+												<Skeleton className="h-5 w-32" />
+												<Skeleton className="h-5 w-16" />
+											</div>
+										))}
 									</div>
-								) : !topExercises ||
-									topExercises.length === 0 ? (
+								) : !topExercises || topExercises.length === 0 ? (
 									<div className="flex flex-col items-center justify-center py-8 text-center">
 										<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 										<p className="text-muted-foreground mb-1">
 											No exercises yet
 										</p>
 										<p className="text-sm text-muted">
-											Complete workouts to see your top
-											exercises here
+											Complete workouts to see your top exercises here
 										</p>
 									</div>
 								) : (
 									<div className="space-y-4">
-										{topExercises.map(
-											(exercise, index) => (
-												<div
-													key={exercise.name}
-													className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
-												>
-													<div className="flex items-center gap-3">
-														<span className="text-sm text-muted-foreground w-5">
-															#{index + 1}
-														</span>
-														<div className="text-white">
-															{exercise.name}
-														</div>
-													</div>
-													<div className="text-right">
-														<div className="text-primary">
-															{exercise.count}{" "}
-															times
-														</div>
+										{topExercises.map((exercise, index) => (
+											<div
+												key={exercise.name}
+												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
+											>
+												<div className="flex items-center gap-3">
+													<span className="text-sm text-muted-foreground w-5">
+														#{index + 1}
+													</span>
+													<div className="text-white">{exercise.name}</div>
+												</div>
+												<div className="text-right">
+													<div className="text-primary">
+														{exercise.count} times
 													</div>
 												</div>
-											),
-										)}
+											</div>
+										))}
 									</div>
 								)}
 							</Card>
 
 							{/* Achievement Summary */}
 							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h3 className="text-xl text-white mb-6">
-									Achievement Summary
-								</h3>
+								<h3 className="text-xl text-white mb-6">Achievement Summary</h3>
 								<div className="space-y-4">
 									<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
@@ -461,10 +418,7 @@ export function Profile() {
 										<div className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 											{statsLoading
 												? "..."
-												: formatVolume(
-														stats?.totalVolume ??
-															0,
-													)}
+												: formatVolume(stats?.totalVolume ?? 0)}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-success/10 to-[#059669]/10 border border-success/30 rounded-lg">
@@ -472,9 +426,7 @@ export function Profile() {
 											Best Streak
 										</div>
 										<div className="text-3xl text-success">
-											{statsLoading
-												? "..."
-												: `${stats?.bestStreak ?? 0} days`}
+											{statsLoading ? "..." : `${stats?.bestStreak ?? 0} days`}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-accent/10 to-warning/10 border border-accent/30 rounded-lg">
@@ -482,9 +434,7 @@ export function Profile() {
 											Personal Records
 										</div>
 										<div className="text-3xl text-accent">
-											{statsLoading
-												? "..."
-												: (stats?.prCount ?? 0)}
+											{statsLoading ? "..." : (stats?.prCount ?? 0)}
 										</div>
 									</div>
 								</div>
@@ -496,144 +446,109 @@ export function Profile() {
 					<TabsContent value="badges" className="space-y-6">
 						<div className="flex flex-col items-center justify-center py-16 text-center">
 							<Award className="w-16 h-16 text-secondary mb-4" />
-							<h3 className="text-xl text-white mb-2">
-								Badges Coming Soon
-							</h3>
+							<h3 className="text-xl text-white mb-2">Badges Coming Soon</h3>
 							<p className="text-muted-foreground max-w-md mb-4">
-								Earn badges by completing challenges, hitting
-								milestones, and maintaining streaks
+								Earn badges by completing challenges, hitting milestones, and
+								maintaining streaks
 							</p>
 							<Button
 								variant="outline"
 								className="border-primary text-primary hover:bg-primary/10"
 								asChild
 							>
-								<Link to="/challenges">
-									Browse Challenges
-								</Link>
+								<Link to="/challenges">Browse Challenges</Link>
 							</Button>
 						</div>
 					</TabsContent>
 
 					{/* Integrations Tab */}
-					<TabsContent
-						value="integrations"
-						className="space-y-6"
-					>
+					<TabsContent value="integrations" className="space-y-6">
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-							<h3 className="text-xl text-white mb-6">
-								Connected Apps
-							</h3>
+							<h3 className="text-xl text-white mb-6">Connected Apps</h3>
 							{integrationsLoading ? (
 								<div className="space-y-4">
-									{Array.from({ length: 3 }).map(
-										(_, i) => (
-											<div
-												key={i}
-												className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
-											>
-												<div className="flex items-center gap-4">
-													<Skeleton className="w-12 h-12 rounded-lg" />
-													<div>
-														<Skeleton className="h-5 w-24 mb-1" />
-														<Skeleton className="h-4 w-32" />
-													</div>
+									{Array.from({ length: 3 }).map((_, i) => (
+										<div
+											key={i}
+											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
+										>
+											<div className="flex items-center gap-4">
+												<Skeleton className="w-12 h-12 rounded-lg" />
+												<div>
+													<Skeleton className="h-5 w-24 mb-1" />
+													<Skeleton className="h-4 w-32" />
 												</div>
-												<Skeleton className="h-9 w-24" />
 											</div>
-										),
-									)}
+											<Skeleton className="h-9 w-24" />
+										</div>
+									))}
 								</div>
-							) : !integrations ||
-								integrations.length === 0 ? (
+							) : !integrations || integrations.length === 0 ? (
 								<div className="flex flex-col items-center justify-center py-8 text-center">
 									<Globe className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
 										No connected apps
 									</p>
 									<p className="text-sm text-muted mb-4">
-										Connect your fitness apps to sync
-										data
+										Connect your fitness apps to sync data
 									</p>
 									<Button
 										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 										asChild
 									>
-										<Link to="/integrations">
-											Manage Integrations
-										</Link>
+										<Link to="/integrations">Manage Integrations</Link>
 									</Button>
 								</div>
 							) : (
 								<>
 									<div className="space-y-4">
-										{integrations.map(
-											(integration) => {
-												const meta =
-													PROVIDER_META[
-														integration.provider
-													] ?? {
-														label: integration.provider,
-														logo: integration.provider[0]?.toUpperCase() ??
-															"?",
-													};
-												const isConnected =
-													integration.status ===
-													"connected";
-												return (
-													<div
-														key={
-															integration.id
-														}
-														className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
-													>
-														<div className="flex items-center gap-4">
-															<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-xl font-bold text-white">
-																{
-																	meta.logo
-																}
-															</div>
-															<div>
-																<div className="text-white">
-																	{
-																		meta.label
-																	}
-																</div>
-																<div className="text-sm text-muted-foreground">
-																	{isConnected
-																		? `Connected${
-																				integration.last_sync_at
-																					? ` - Last sync: ${format(new Date(integration.last_sync_at), "MMM d, h:mm a")}`
-																					: ""
-																			}`
-																		: "Disconnected"}
-																</div>
+										{integrations.map((integration) => {
+											const meta = PROVIDER_META[integration.provider] ?? {
+												label: integration.provider,
+												logo: integration.provider[0]?.toUpperCase() ?? "?",
+											};
+											const isConnected = integration.status === "connected";
+											return (
+												<div
+													key={integration.id}
+													className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
+												>
+													<div className="flex items-center gap-4">
+														<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-xl font-bold text-white">
+															{meta.logo}
+														</div>
+														<div>
+															<div className="text-white">{meta.label}</div>
+															<div className="text-sm text-muted-foreground">
+																{isConnected
+																	? `Connected${
+																			integration.last_sync_at
+																				? ` - Last sync: ${format(new Date(integration.last_sync_at), "MMM d, h:mm a")}`
+																				: ""
+																		}`
+																	: "Disconnected"}
 															</div>
 														</div>
-														<Badge
-															className={
-																isConnected
-																	? "bg-success/20 text-success border-success/30"
-																	: "bg-secondary text-muted-foreground border-secondary"
-															}
-														>
-															{isConnected
-																? "Connected"
-																: "Disconnected"}
-														</Badge>
 													</div>
-												);
-											},
-										)}
+													<Badge
+														className={
+															isConnected
+																? "bg-success/20 text-success border-success/30"
+																: "bg-secondary text-muted-foreground border-secondary"
+														}
+													>
+														{isConnected ? "Connected" : "Disconnected"}
+													</Badge>
+												</div>
+											);
+										})}
 									</div>
 									<Button
 										variant="outline"
 										className="w-full mt-4 border-primary text-primary hover:bg-primary/10"
 										asChild
 									>
-										<Link to="/integrations">
-											Manage All Integrations
-										</Link>
+										<Link to="/integrations">Manage All Integrations</Link>
 									</Button>
 								</>
 							)}
@@ -641,10 +556,7 @@ export function Profile() {
 					</TabsContent>
 
 					{/* Settings Tab */}
-					<TabsContent
-						value="settings"
-						className="space-y-6"
-					>
+					<TabsContent value="settings" className="space-y-6">
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Bell className="w-5 h-5" />
@@ -653,22 +565,15 @@ export function Profile() {
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Email digests
-										</div>
+										<div className="text-white">Email digests</div>
 										<div className="text-sm text-muted-foreground">
-											Weekly summary of your
-											progress
+											Weekly summary of your progress
 										</div>
 									</div>
 									<Switch
 										checked={emailDigests}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
 											setEmailDigests(checked);
 											updateProfile.mutate({
 												email_digests: checked,
@@ -678,83 +583,54 @@ export function Profile() {
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Push notifications
-										</div>
+										<div className="text-white">Push notifications</div>
 										<div className="text-sm text-muted-foreground">
-											Get notified of challenges
-											and PRs
+											Get notified of challenges and PRs
 										</div>
 									</div>
 									<Switch
 										checked={pushNotifications}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
-											setPushNotifications(
-												checked,
-											);
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
+											setPushNotifications(checked);
 											updateProfile.mutate({
-												push_notifications:
-													checked,
+												push_notifications: checked,
 											});
 										}}
 									/>
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Streak reminders
-										</div>
+										<div className="text-white">Streak reminders</div>
 										<div className="text-sm text-muted-foreground">
 											Don't break your streak!
 										</div>
 									</div>
 									<Switch
 										checked={streakReminders}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
-											setStreakReminders(
-												checked,
-											);
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
+											setStreakReminders(checked);
 											updateProfile.mutate({
-												streak_reminders:
-													checked,
+												streak_reminders: checked,
 											});
 										}}
 									/>
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Challenge updates
-										</div>
+										<div className="text-white">Challenge updates</div>
 										<div className="text-sm text-muted-foreground">
-											Updates on active
-											challenges
+											Updates on active challenges
 										</div>
 									</div>
 									<Switch
 										checked={challengeUpdates}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
-											setChallengeUpdates(
-												checked,
-											);
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
+											setChallengeUpdates(checked);
 											updateProfile.mutate({
-												challenge_updates:
-													checked,
+												challenge_updates: checked,
 											});
 										}}
 									/>
@@ -769,9 +645,7 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<Label className="text-white mb-2 block">
-										Weight Unit
-									</Label>
+									<Label className="text-white mb-2 block">Weight Unit</Label>
 									<div className="flex gap-2">
 										<Button
 											className={
@@ -779,14 +653,8 @@ export function Profile() {
 													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
 													: "flex-1 border-secondary text-muted-foreground"
 											}
-											variant={
-												weightUnit === "kg"
-													? "default"
-													: "outline"
-											}
-											disabled={
-												updateProfile.isPending
-											}
+											variant={weightUnit === "kg" ? "default" : "outline"}
+											disabled={updateProfile.isPending}
 											onClick={() => {
 												setWeightUnit("kg");
 												updateProfile.mutate({
@@ -802,14 +670,8 @@ export function Profile() {
 													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
 													: "flex-1 border-secondary text-muted-foreground"
 											}
-											variant={
-												weightUnit === "lbs"
-													? "default"
-													: "outline"
-											}
-											disabled={
-												updateProfile.isPending
-											}
+											variant={weightUnit === "lbs" ? "default" : "outline"}
+											disabled={updateProfile.isPending}
 											onClick={() => {
 												setWeightUnit("lbs");
 												updateProfile.mutate({
@@ -832,58 +694,36 @@ export function Profile() {
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Profile visibility
-										</div>
+										<div className="text-white">Profile visibility</div>
 										<div className="text-sm text-muted-foreground">
-											Make your profile visible
-											to others
+											Make your profile visible to others
 										</div>
 									</div>
 									<Switch
 										checked={profileVisible}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
-											setProfileVisible(
-												checked,
-											);
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
+											setProfileVisible(checked);
 											updateProfile.mutate({
-												profile_visible:
-													checked,
+												profile_visible: checked,
 											});
 										}}
 									/>
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">
-											Leaderboard participation
-										</div>
+										<div className="text-white">Leaderboard participation</div>
 										<div className="text-sm text-muted-foreground">
-											Appear on public
-											leaderboards
+											Appear on public leaderboards
 										</div>
 									</div>
 									<Switch
-										checked={
-											leaderboardParticipation
-										}
-										disabled={
-											updateProfile.isPending
-										}
-										onCheckedChange={(
-											checked,
-										) => {
-											setLeaderboardParticipation(
-												checked,
-											);
+										checked={leaderboardParticipation}
+										disabled={updateProfile.isPending}
+										onCheckedChange={(checked) => {
+											setLeaderboardParticipation(checked);
 											updateProfile.mutate({
-												leaderboard_participation:
-													checked,
+												leaderboard_participation: checked,
 											});
 										}}
 									/>
@@ -901,8 +741,7 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<p className="text-sm text-muted-foreground">
-									Sign out of your account on this
-									device
+									Sign out of your account on this device
 								</p>
 								<Button
 									className="w-full bg-chart-2 hover:bg-chart-2/80 text-white border-0"

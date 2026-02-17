@@ -65,8 +65,7 @@ export function useCompleteChallenge() {
 
 	return useMutation({
 		mutationFn: async (challengeId: string) => {
-			if (!user)
-				throw new Error("Must be logged in to complete a challenge");
+			if (!user) throw new Error("Must be logged in to complete a challenge");
 
 			const { error } = await supabase
 				.from("challenge_participants")

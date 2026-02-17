@@ -1,5 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
 import {
 	BarChart3,
 	Flame,
@@ -8,6 +6,8 @@ import {
 	Trophy,
 	Users,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import {
 	Dialog,
@@ -159,9 +159,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 											<p className="text-sm font-medium text-white">
 												{feature.label}
 											</p>
-											<p className="text-xs text-[#9CA3AF]">
-												{feature.detail}
-											</p>
+											<p className="text-xs text-[#9CA3AF]">{feature.detail}</p>
 										</div>
 									</div>
 								))}

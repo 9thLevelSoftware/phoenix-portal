@@ -64,7 +64,10 @@ const WEIGHT_CYCLE = 0.2;
 // --- Helpers ---
 
 /** Count unique calendar days with at least one session in the last N days */
-function countTrainingDaysInWindow(sessions: RecoverySession[], days: number): number {
+function countTrainingDaysInWindow(
+	sessions: RecoverySession[],
+	days: number,
+): number {
 	const now = new Date();
 	const cutoff = new Date(now);
 	cutoff.setDate(cutoff.getDate() - days);
@@ -126,13 +129,15 @@ function scoreACWR(acwr: number): number {
 	// Transition zones
 	if (acwr > ACWR_SWEET_SPOT.max && acwr <= ACWR_DANGER_HIGH) {
 		// Linearly decrease from 70 to 20
-		const t = (acwr - ACWR_SWEET_SPOT.max) / (ACWR_DANGER_HIGH - ACWR_SWEET_SPOT.max);
+		const t =
+			(acwr - ACWR_SWEET_SPOT.max) / (ACWR_DANGER_HIGH - ACWR_SWEET_SPOT.max);
 		return Math.round(70 - t * 50);
 	}
 
 	if (acwr >= ACWR_DANGER_LOW && acwr < ACWR_SWEET_SPOT.min) {
 		// Linearly increase from 40 to 70
-		const t = (acwr - ACWR_DANGER_LOW) / (ACWR_SWEET_SPOT.min - ACWR_DANGER_LOW);
+		const t =
+			(acwr - ACWR_DANGER_LOW) / (ACWR_SWEET_SPOT.min - ACWR_DANGER_LOW);
 		return Math.round(40 + t * 30);
 	}
 
@@ -226,8 +231,8 @@ export function computeReadinessScore(input: RecoveryInput): RecoveryResult {
 	// Weighted composite
 	let rawScore = Math.round(
 		acwrScore * WEIGHT_ACWR +
-		restScore * WEIGHT_REST +
-		cycleResult.score * WEIGHT_CYCLE,
+			restScore * WEIGHT_REST +
+			cycleResult.score * WEIGHT_CYCLE,
 	);
 
 	// Clamping for 14-29 day users

@@ -1,12 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-	Clock,
-	Flame,
-	Loader2,
-	Target,
-	Trophy,
-	Users,
-} from "lucide-react";
+import { Clock, Flame, Loader2, Target, Trophy, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -49,9 +42,7 @@ function ChallengesDesktop() {
 	const { data: challenges, isPending: challengesLoading } = useQuery(
 		challengeListOptions(),
 	);
-	const { data: userChallenges } = useQuery(
-		userChallengesOptions(userId),
-	);
+	const { data: userChallenges } = useQuery(userChallengesOptions(userId));
 
 	const joinMutation = useJoinChallenge();
 	const leaveMutation = useLeaveChallenge();
@@ -171,9 +162,7 @@ function ChallengesDesktop() {
 									userId={userId}
 									onToggleExpand={() =>
 										setExpandedId(
-											expandedId === challenge.id
-												? null
-												: challenge.id,
+											expandedId === challenge.id ? null : challenge.id,
 										)
 									}
 									onJoin={() => joinMutation.mutate(challenge.id)}
@@ -281,9 +270,7 @@ function ChallengeCard({
 										<Flame className="w-6 h-6 text-white" />
 									</div>
 									<div>
-										<h3 className="text-xl text-white">
-											{challenge.name}
-										</h3>
+										<h3 className="text-xl text-white">{challenge.name}</h3>
 										<p className="text-sm text-muted-foreground">
 											{challenge.description}
 										</p>
@@ -312,9 +299,7 @@ function ChallengeCard({
 						{/* Stats Grid */}
 						<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 							<div>
-								<div className="text-xs text-muted-foreground mb-1">
-									Target
-								</div>
+								<div className="text-xs text-muted-foreground mb-1">Target</div>
 								<div className="text-xl text-white">
 									{challenge.target_value.toLocaleString()}{" "}
 									{challenge.target_unit}
@@ -324,14 +309,10 @@ function ChallengeCard({
 								<div className="text-xs text-muted-foreground mb-1">
 									Time Left
 								</div>
-								<div className="text-xl text-warning">
-									{daysRemaining} days
-								</div>
+								<div className="text-xl text-warning">{daysRemaining} days</div>
 							</div>
 							<div>
-								<div className="text-xs text-muted-foreground mb-1">
-									Type
-								</div>
+								<div className="text-xs text-muted-foreground mb-1">Type</div>
 								<div className="text-xl text-white capitalize">
 									{challenge.challenge_type}
 								</div>
@@ -343,9 +324,7 @@ function ChallengeCard({
 					<div className="lg:w-64 flex flex-col justify-between gap-3">
 						{challenge.prize && (
 							<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
-								<div className="text-xs text-muted-foreground mb-2">
-									Prize
-								</div>
+								<div className="text-xs text-muted-foreground mb-2">Prize</div>
 								<div className="text-white">{challenge.prize}</div>
 							</div>
 						)}
@@ -413,9 +392,7 @@ function ChallengeCard({
 						<Button
 							variant="outline"
 							className="mt-4 border-secondary text-muted-foreground"
-							onClick={() =>
-								toast("Leaderboard coming in a future update")
-							}
+							onClick={() => toast("Leaderboard coming in a future update")}
 						>
 							<Users className="w-4 h-4 mr-2" />
 							View Leaderboard
@@ -464,7 +441,8 @@ function ChallengeProgressBar({
 			<Progress value={percentage} className="h-3" />
 			{progress && (
 				<div className="text-xs text-muted-foreground mt-1">
-					{progress.current.toLocaleString()} / {progress.target.toLocaleString()}
+					{progress.current.toLocaleString()} /{" "}
+					{progress.target.toLocaleString()}
 				</div>
 			)}
 		</div>

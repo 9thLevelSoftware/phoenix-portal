@@ -23,10 +23,11 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import {
 	ACWR_SWEET_SPOT,
-	GATING_THRESHOLD_DAYS,
 	CLAMPING_THRESHOLD_DAYS,
+	GATING_THRESHOLD_DAYS,
 } from "@/lib/recovery";
 import { workoutListOptions } from "@/queries/workouts";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { RecoveryScore } from "./RecoveryScore";
 
 const DISCLAIMER_KEY = "phoenix_recovery_disclaimer_dismissed";
@@ -128,9 +129,7 @@ function FreeRecoveryView() {
 						</div>
 
 						<div className="flex items-center gap-6">
-							<div className="text-5xl font-bold text-primary">
-								{restDays}
-							</div>
+							<div className="text-5xl font-bold text-primary">{restDays}</div>
 							<div>
 								<p className="text-white mb-1">
 									{restDays >= 2
@@ -156,14 +155,12 @@ function FreeRecoveryView() {
 					<Card className="p-6 bg-gradient-to-br from-primary/10 to-chart-2/10 border-primary/30">
 						<div className="flex items-center gap-3 mb-3">
 							<TrendingUp className="w-5 h-5 text-primary" />
-							<h3 className="text-white">
-								Unlock Full Recovery Insights
-							</h3>
+							<h3 className="text-white">Unlock Full Recovery Insights</h3>
 						</div>
 						<p className="text-sm text-muted-foreground mb-4">
 							Premium subscribers get a detailed readiness score based on
-							training load analysis, including ACWR ratio, volume trends,
-							and wearable data integration.
+							training load analysis, including ACWR ratio, volume trends, and
+							wearable data integration.
 						</p>
 						<Button
 							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
@@ -240,10 +237,10 @@ export function Recovery() {
 										Data Source Transparency
 									</p>
 									<p className="text-xs text-muted-foreground">
-										This score is based on your training volume
-										patterns. It is not medical advice. Individual
-										recovery varies based on sleep, nutrition,
-										stress, and other factors not tracked here.
+										This score is based on your training volume patterns. It is
+										not medical advice. Individual recovery varies based on
+										sleep, nutrition, stress, and other factors not tracked
+										here.
 									</p>
 								</div>
 								<Button
@@ -251,10 +248,7 @@ export function Recovery() {
 									size="sm"
 									className="text-muted-foreground hover:text-white"
 									onClick={() => {
-										localStorage.setItem(
-											DISCLAIMER_KEY,
-											"dismissed",
-										);
+										localStorage.setItem(DISCLAIMER_KEY, "dismissed");
 										setShowDisclaimer(false);
 									}}
 								>
@@ -279,26 +273,20 @@ export function Recovery() {
 									Building Your Recovery Baseline
 								</h2>
 								<p className="text-muted-foreground mb-6 max-w-md">
-									Recovery insights require at least{" "}
-									{GATING_THRESHOLD_DAYS} days of training data. You
-									have {daysSinceFirstSession} day
+									Recovery insights require at least {GATING_THRESHOLD_DAYS}{" "}
+									days of training data. You have {daysSinceFirstSession} day
 									{daysSinceFirstSession !== 1 ? "s" : ""} so far.
 								</p>
 								<div className="w-full max-w-xs">
 									<Progress
 										value={
-											(daysSinceFirstSession /
-												GATING_THRESHOLD_DAYS) *
-											100
+											(daysSinceFirstSession / GATING_THRESHOLD_DAYS) * 100
 										}
 										className="h-3"
 									/>
 									<p className="text-xs text-muted-foreground mt-2">
-										{GATING_THRESHOLD_DAYS - daysSinceFirstSession}{" "}
-										day
-										{GATING_THRESHOLD_DAYS -
-											daysSinceFirstSession !==
-										1
+										{GATING_THRESHOLD_DAYS - daysSinceFirstSession} day
+										{GATING_THRESHOLD_DAYS - daysSinceFirstSession !== 1
 											? "s"
 											: ""}{" "}
 										remaining
@@ -323,9 +311,9 @@ export function Recovery() {
 									<div className="flex items-center gap-2 text-sm">
 										<Info className="w-4 h-4 text-accent" />
 										<p className="text-muted-foreground">
-											Your score range is limited while we build a
-											baseline. Full range unlocks after{" "}
-											{CLAMPING_THRESHOLD_DAYS} days of data.
+											Your score range is limited while we build a baseline.
+											Full range unlocks after {CLAMPING_THRESHOLD_DAYS} days of
+											data.
 										</p>
 									</div>
 								</Card>
@@ -369,20 +357,17 @@ export function Recovery() {
 									<FactorBar
 										label="Acute:Chronic Workload Ratio"
 										value={
-											(recovery.factors.acwr /
-												(ACWR_SWEET_SPOT.max * 1.5)) *
+											(recovery.factors.acwr / (ACWR_SWEET_SPOT.max * 1.5)) *
 											100
 										}
 										displayValue={recovery.factors.acwr.toFixed(2)}
 										icon={TrendingUp}
 										highlight={{
 											min:
-												(ACWR_SWEET_SPOT.min /
-													(ACWR_SWEET_SPOT.max * 1.5)) *
+												(ACWR_SWEET_SPOT.min / (ACWR_SWEET_SPOT.max * 1.5)) *
 												100,
 											max:
-												(ACWR_SWEET_SPOT.max /
-													(ACWR_SWEET_SPOT.max * 1.5)) *
+												(ACWR_SWEET_SPOT.max / (ACWR_SWEET_SPOT.max * 1.5)) *
 												100,
 										}}
 									/>
@@ -393,8 +378,7 @@ export function Recovery() {
 										value={
 											recovery.factors.chronicVolume > 0
 												? (recovery.factors.weeklyVolume /
-														(recovery.factors.chronicVolume /
-															6) /
+														(recovery.factors.chronicVolume / 6) /
 														1.5) *
 													100
 												: 50
@@ -407,17 +391,14 @@ export function Recovery() {
 									<FactorBar
 										label="Chronic Average (42d weekly)"
 										value={50}
-										displayValue={`${((recovery.factors.chronicVolume / 6) / 1000).toFixed(1)}k`}
+										displayValue={`${(recovery.factors.chronicVolume / 6 / 1000).toFixed(1)}k`}
 										icon={Calendar}
 									/>
 
 									{/* Training frequency */}
 									<FactorBar
 										label="Training Frequency (7d)"
-										value={
-											(recovery.factors.trainingFrequency / 7) *
-											100
-										}
+										value={(recovery.factors.trainingFrequency / 7) * 100}
 										displayValue={`${recovery.factors.trainingFrequency} sessions`}
 										icon={Activity}
 									/>
@@ -425,9 +406,7 @@ export function Recovery() {
 									{/* Rest days */}
 									<FactorBar
 										label="Rest Days (7d)"
-										value={
-											(recovery.factors.restDays / 7) * 100
-										}
+										value={(recovery.factors.restDays / 7) * 100}
 										displayValue={`${recovery.factors.restDays} days`}
 										icon={Moon}
 									/>
@@ -465,8 +444,7 @@ export function Recovery() {
 									<div className="space-y-3">
 										{wearable.map((w, i) => {
 											const rawData =
-												typeof w.raw_data === "object" &&
-												w.raw_data !== null
+												typeof w.raw_data === "object" && w.raw_data !== null
 													? w.raw_data
 													: {};
 											const hasRecovery =
@@ -489,16 +467,13 @@ export function Recovery() {
 													</div>
 													{hasRecovery ? (
 														<div className="grid grid-cols-3 gap-2 text-sm">
-															{"recovery_score" in
-																rawData && (
+															{"recovery_score" in rawData && (
 																<div>
 																	<p className="text-muted-foreground text-xs">
 																		Recovery
 																	</p>
 																	<p className="text-white">
-																		{String(
-																			rawData.recovery_score,
-																		)}
+																		{String(rawData.recovery_score)}
 																	</p>
 																</div>
 															)}
@@ -508,32 +483,24 @@ export function Recovery() {
 																		HRV
 																	</p>
 																	<p className="text-white">
-																		{String(
-																			rawData.hrv,
-																		)}{" "}
-																		ms
+																		{String(rawData.hrv)} ms
 																	</p>
 																</div>
 															)}
-															{"sleep_score" in
-																rawData && (
+															{"sleep_score" in rawData && (
 																<div>
 																	<p className="text-muted-foreground text-xs">
 																		Sleep
 																	</p>
 																	<p className="text-white">
-																		{String(
-																			rawData.sleep_score,
-																		)}
+																		{String(rawData.sleep_score)}
 																	</p>
 																</div>
 															)}
 														</div>
 													) : (
 														<p className="text-xs text-muted-foreground">
-															No recovery metrics
-															available from this
-															sync
+															No recovery metrics available from this sync
 														</p>
 													)}
 												</div>
@@ -552,9 +519,7 @@ export function Recovery() {
 											className="border-primary text-primary hover:bg-primary/10"
 											asChild
 										>
-											<Link to="/integrations">
-												Connect a Wearable
-											</Link>
+											<Link to="/integrations">Connect a Wearable</Link>
 										</Button>
 									</div>
 								)}

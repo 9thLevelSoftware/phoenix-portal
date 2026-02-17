@@ -7,8 +7,8 @@ import { Navigation } from "@/app/components/Navigation";
 import { OfflineBanner } from "@/app/components/OfflineBanner";
 import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
-import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
 import { Toaster } from "@/app/components/ui/sonner";
+import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
@@ -43,9 +43,7 @@ export function AppLayout() {
 			</div>
 
 			{needsOnboarding && (
-				<OnboardingOverlay
-					onComplete={() => completeOnboarding.mutate()}
-				/>
+				<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
 			)}
 
 			{needsWhatsNew && (

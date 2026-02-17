@@ -2,8 +2,8 @@ import { ArrowRight, HeartPulse } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
-import { useSubscription } from "@/hooks/useSubscription";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
+import { useSubscription } from "@/hooks/useSubscription";
 import { GATING_THRESHOLD_DAYS } from "@/lib/recovery";
 import { RecoveryScore } from "./RecoveryScore";
 
@@ -78,9 +78,7 @@ export function RecoveryDashboardWidget() {
 			) : (
 				<div className="flex flex-col items-center justify-center py-4 text-center">
 					<HeartPulse className="w-8 h-8 text-secondary mb-2" />
-					<p className="text-sm text-muted-foreground">
-						No training data yet
-					</p>
+					<p className="text-sm text-muted-foreground">No training data yet</p>
 				</div>
 			)}
 		</Card>

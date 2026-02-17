@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import {
@@ -48,9 +49,7 @@ export function useGoalProgress(): Map<string, number> {
 	const { user } = useAuth();
 	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
 	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? ""));
-	const { data: records } = useQuery(
-		personalRecordsOptions(user?.id ?? ""),
-	);
+	const { data: records } = useQuery(personalRecordsOptions(user?.id ?? ""));
 
 	return useMemo(() => {
 		const map = new Map<string, number>();
@@ -88,8 +87,7 @@ export function useGoalProgress(): Map<string, number> {
 				// PR values are already Zod-transformed (doubled)
 				const exercisePRs = records.filter(
 					(r) =>
-						r.exercise_name.toLowerCase() ===
-						goal.exercise_name!.toLowerCase(),
+						r.exercise_name.toLowerCase() === goal.exercise_name!.toLowerCase(),
 				);
 				if (exercisePRs.length > 0) {
 					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
@@ -175,7 +173,12 @@ export function Goals() {
 		goalType: "frequency" | "volume" | "pr";
 		description: string;
 		achievedValue: string;
-	}>({ isOpen: false, goalType: "frequency", description: "", achievedValue: "" });
+	}>({
+		isOpen: false,
+		goalType: "frequency",
+		description: "",
+		achievedValue: "",
+	});
 
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
@@ -280,19 +283,25 @@ export function Goals() {
 							Set targets, track progress, achieve greatness.
 						</p>
 					</div>
-					<Button
-						onClick={() => setCreateOpen(true)}
-						disabled={atLimit}
-						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-						title={
-							atLimit
-								? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
-								: "Create new goal"
-						}
+					<FeatureHint
+						hintId="goals-set-target"
+						content="Set workout frequency, volume, or PR targets to track your progress"
+						side="bottom"
 					>
-						<Plus className="w-4 h-4 mr-2" />
-						New Goal
-					</Button>
+						<Button
+							onClick={() => setCreateOpen(true)}
+							disabled={atLimit}
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							title={
+								atLimit
+									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
+									: "Create new goal"
+							}
+						>
+							<Plus className="w-4 h-4 mr-2" />
+							New Goal
+						</Button>
+					</FeatureHint>
 				</motion.div>
 
 				{/* Active Goals */}
@@ -345,8 +354,7 @@ export function Goals() {
 												</p>
 												{goal.deadline && (
 													<p className="text-xs text-muted mt-1">
-														Deadline:{" "}
-														{goal.deadline.toLocaleDateString()}
+														Deadline: {goal.deadline.toLocaleDateString()}
 													</p>
 												)}
 											</div>
@@ -363,9 +371,7 @@ export function Goals() {
 												<Button
 													variant="ghost"
 													size="icon"
-													onClick={() =>
-														archiveGoal.mutate(goal.id)
-													}
+													onClick={() => archiveGoal.mutate(goal.id)}
 													className="hover:bg-chart-2/10"
 													title="Archive goal"
 												>
@@ -418,8 +424,7 @@ export function Goals() {
 												</p>
 												<p className="text-xs text-muted-foreground">
 													Completed{" "}
-													{goal.completed_at?.toLocaleDateString() ??
-														""}
+													{goal.completed_at?.toLocaleDateString() ?? ""}
 												</p>
 											</div>
 										</div>
@@ -492,9 +497,7 @@ export function Goals() {
 			{/* Celebration Animation */}
 			<GoalCelebration
 				isOpen={celebration.isOpen}
-				onClose={() =>
-					setCelebration((prev) => ({ ...prev, isOpen: false }))
-				}
+				onClose={() => setCelebration((prev) => ({ ...prev, isOpen: false }))}
 				goalData={{
 					goalType: celebration.goalType,
 					description: celebration.description,
@@ -558,7 +561,14 @@ function GoalFormDialog({
 			setDeadline(defaultValues?.deadline ?? "");
 			setPeriod(defaultValues?.period ?? "weekly");
 		}
-	}, [open, defaultValues?.goal_type, defaultValues?.target_value, defaultValues?.exercise_name, defaultValues?.deadline, defaultValues?.period]);
+	}, [
+		open,
+		defaultValues?.goal_type,
+		defaultValues?.target_value,
+		defaultValues?.exercise_name,
+		defaultValues?.deadline,
+		defaultValues?.period,
+	]);
 
 	const getTargetUnit = (): string => {
 		switch (goalType) {

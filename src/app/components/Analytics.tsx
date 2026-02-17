@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
 	Area,
 	AreaChart,
@@ -28,10 +27,12 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { AnalyticsMobile } from "@/app/components/mobile/AnalyticsMobile";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import {
 	Select,
 	SelectContent,
@@ -52,7 +53,6 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
-import { EmptyState } from "@/app/components/ui/empty-state";
 import { PHOENIX } from "@/lib/colors";
 import { downloadCSV } from "@/lib/export/csv";
 import {
@@ -380,7 +380,10 @@ export function Analytics() {
 					</div>
 					<div className="flex items-center gap-3">
 						<Select value={timePeriod} onValueChange={setTimePeriod}>
-							<SelectTrigger aria-label="Time period" className="w-32 bg-surface-2 border-secondary text-white">
+							<SelectTrigger
+								aria-label="Time period"
+								className="w-32 bg-surface-2 border-secondary text-white"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>

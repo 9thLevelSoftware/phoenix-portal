@@ -115,4 +115,20 @@ authedTest.describe("Authenticated pages", () => {
 			).toBeVisible({ timeout: 10000 });
 		},
 	);
+
+	authedTest("goals page loads", async ({ authedPage: page }) => {
+		authedTest.skip(skip, "No test credentials");
+		await page.goto("/goals");
+		await expect(
+			page.getByRole("heading", { name: /Training Goals/i }),
+		).toBeVisible({ timeout: 10000 });
+	});
+
+	authedTest("compare page loads", async ({ authedPage: page }) => {
+		authedTest.skip(skip, "No test credentials");
+		await page.goto("/compare");
+		await expect(
+			page.getByText(/Missing Session IDs|Session Comparison/i).first(),
+		).toBeVisible({ timeout: 10000 });
+	});
 });

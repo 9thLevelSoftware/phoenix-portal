@@ -17,14 +17,14 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
+import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
-import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
-import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import { useSubscription } from "@/hooks/useSubscription";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
+import { useSubscription } from "@/hooks/useSubscription";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -174,18 +174,12 @@ export function SessionDetail() {
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Print-only report header (visible only in print) */}
 			<div className="print-only mb-6 border-b border-gray-300 pb-4">
-				<h1 className="text-2xl font-bold text-black">
-					{session.name}
-				</h1>
+				<h1 className="text-2xl font-bold text-black">{session.name}</h1>
 				<div className="flex gap-6 text-sm text-gray-600 mt-2">
 					<span>Date: {session.started_at.toLocaleDateString()}</span>
-					{session.routine_name && (
-						<span>Routine: {session.routine_name}</span>
-					)}
+					{session.routine_name && <span>Routine: {session.routine_name}</span>}
 					<span>Duration: {session.duration_seconds} min</span>
-					<span>
-						Volume: {session.total_volume.toLocaleString()} kg
-					</span>
+					<span>Volume: {session.total_volume.toLocaleString()} kg</span>
 				</div>
 			</div>
 
@@ -209,10 +203,7 @@ export function SessionDetail() {
 								<ArrowLeft className="w-4 h-4 mr-2" />
 								Back to History
 							</Button>
-							<SubscriptionGate
-								requiredTier="PHOENIX"
-								fallback={null}
-							>
+							<SubscriptionGate requiredTier="PHOENIX" fallback={null}>
 								<Button
 									variant="outline"
 									size="sm"
@@ -483,9 +474,7 @@ export function SessionDetail() {
 					<Button
 						variant="outline"
 						className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
-						onClick={() =>
-							toast("Session sharing coming in a future update")
-						}
+						onClick={() => toast("Session sharing coming in a future update")}
 					>
 						<Share2 className="w-4 h-4 mr-2" />
 						Share Summary
@@ -494,16 +483,14 @@ export function SessionDetail() {
 
 				{/* Comparison Session Picker */}
 				<div className="print:hidden">
-				<ComparisonSessionPicker
-					open={pickerOpen}
-					onClose={() => setPickerOpen(false)}
-					excludeSessionId={sessionId}
-					onSelect={(selectedSessionId) =>
-						navigate(
-							`/compare?a=${sessionId}&b=${selectedSessionId}`,
-						)
-					}
-				/>
+					<ComparisonSessionPicker
+						open={pickerOpen}
+						onClose={() => setPickerOpen(false)}
+						excludeSessionId={sessionId}
+						onSelect={(selectedSessionId) =>
+							navigate(`/compare?a=${sessionId}&b=${selectedSessionId}`)
+						}
+					/>
 				</div>
 
 				{/* Notes Section */}

@@ -1052,18 +1052,14 @@ function ProgressionRules({
 						<Select
 							value={progressionType}
 							onValueChange={(v) =>
-								onProgressionTypeChange(
-									v as "percentage" | "fixed" | "manual",
-								)
+								onProgressionTypeChange(v as "percentage" | "fixed" | "manual")
 							}
 						>
 							<SelectTrigger className="bg-background border-secondary">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="percentage">
-									Percentage Increase
-								</SelectItem>
+								<SelectItem value="percentage">Percentage Increase</SelectItem>
 								<SelectItem value="fixed">Fixed Weight Increase</SelectItem>
 								<SelectItem value="manual">Manual Adjustment</SelectItem>
 							</SelectContent>
@@ -1088,9 +1084,7 @@ function ProgressionRules({
 								type="number"
 								value={progressionAmount}
 								onChange={(e) =>
-									onProgressionAmountChange(
-										parseFloat(e.target.value) || 0,
-									)
+									onProgressionAmountChange(parseFloat(e.target.value) || 0)
 								}
 								className="bg-background border-secondary"
 								step={progressionType === "percentage" ? 0.5 : 0.25}
@@ -1110,9 +1104,7 @@ function ProgressionRules({
 							type="number"
 							value={progressionFrequency}
 							onChange={(e) =>
-								onProgressionFrequencyChange(
-									parseInt(e.target.value, 10) || 1,
-								)
+								onProgressionFrequencyChange(parseInt(e.target.value, 10) || 1)
 							}
 							className="bg-background border-secondary"
 							min={1}
@@ -1138,18 +1130,12 @@ function ProgressionRules({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="all-sets">
-									All Sets Completed
-								</SelectItem>
+								<SelectItem value="all-sets">All Sets Completed</SelectItem>
 								<SelectItem value="target-rpe">Target RPE Met</SelectItem>
-								<SelectItem value="cycle-complete">
-									Cycle Complete
-								</SelectItem>
+								<SelectItem value="cycle-complete">Cycle Complete</SelectItem>
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted mt-1">
-							When to advance weight
-						</p>
+						<p className="text-xs text-muted mt-1">When to advance weight</p>
 					</div>
 				</div>
 
@@ -1163,9 +1149,7 @@ function ProgressionRules({
 							type="number"
 							value={upperBodyIncrement}
 							onChange={(e) =>
-								onUpperBodyIncrementChange(
-									parseFloat(e.target.value) || 0,
-								)
+								onUpperBodyIncrementChange(parseFloat(e.target.value) || 0)
 							}
 							className="bg-background border-secondary"
 							step={0.25}
@@ -1180,9 +1164,7 @@ function ProgressionRules({
 							type="number"
 							value={lowerBodyIncrement}
 							onChange={(e) =>
-								onLowerBodyIncrementChange(
-									parseFloat(e.target.value) || 0,
-								)
+								onLowerBodyIncrementChange(parseFloat(e.target.value) || 0)
 							}
 							className="bg-background border-secondary"
 							step={0.5}
@@ -1216,9 +1198,7 @@ function ProgressionRules({
 									type="number"
 									value={deloadFrequency}
 									onChange={(e) =>
-										onDeloadFrequencyChange(
-											parseInt(e.target.value, 10) || 1,
-										)
+										onDeloadFrequencyChange(parseInt(e.target.value, 10) || 1)
 									}
 									className="bg-background border-secondary"
 									min={1}
@@ -1232,9 +1212,7 @@ function ProgressionRules({
 									type="number"
 									value={deloadIntensity}
 									onChange={(e) =>
-										onDeloadIntensityChange(
-											parseInt(e.target.value, 10) || 0,
-										)
+										onDeloadIntensityChange(parseInt(e.target.value, 10) || 0)
 									}
 									className="bg-background border-secondary"
 									min={0}
@@ -1249,9 +1227,7 @@ function ProgressionRules({
 									type="number"
 									value={deloadVolume}
 									onChange={(e) =>
-										onDeloadVolumeChange(
-											parseInt(e.target.value, 10) || 0,
-										)
+										onDeloadVolumeChange(parseInt(e.target.value, 10) || 0)
 									}
 									className="bg-background border-secondary"
 									min={0}

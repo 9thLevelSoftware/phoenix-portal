@@ -118,10 +118,7 @@ export function AppRoutes() {
 				{/* Public routes */}
 				<Route path="/" element={<LandingPage />} />
 				<Route path="/privacy" element={<PrivacyPolicy />} />
-				<Route
-					path="/auth/reset-password"
-					element={<ResetPassword />}
-				/>
+				<Route path="/auth/reset-password" element={<ResetPassword />} />
 
 				{/* Protected routes */}
 				<Route element={<ProtectedRoute />}>

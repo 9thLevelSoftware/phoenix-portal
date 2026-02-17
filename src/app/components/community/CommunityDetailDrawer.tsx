@@ -207,7 +207,10 @@ export function CommunityDetailDrawer({
 					<div className="px-4 pb-4 overflow-y-auto">
 						<DetailContent item={item} />
 						<div className="mt-4 pt-4 border-t border-secondary">
-							<CommentThread itemId={item.id} itemType={isRoutine(item) ? "routine" : "cycle"} />
+							<CommentThread
+								itemId={item.id}
+								itemType={isRoutine(item) ? "routine" : "cycle"}
+							/>
 						</div>
 					</div>
 					<DrawerFooter />
@@ -227,7 +230,10 @@ export function CommunityDetailDrawer({
 				</DialogHeader>
 				<DetailContent item={item} />
 				<div className="mt-4 pt-4 border-t border-secondary">
-					<CommentThread itemId={item.id} itemType={isRoutine(item) ? "routine" : "cycle"} />
+					<CommentThread
+						itemId={item.id}
+						itemType={isRoutine(item) ? "routine" : "cycle"}
+					/>
 				</div>
 			</DialogContent>
 		</Dialog>

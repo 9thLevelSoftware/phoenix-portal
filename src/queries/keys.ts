@@ -106,8 +106,7 @@ export const queryKeys = {
 	},
 	onboarding: {
 		all: ["onboarding"] as const,
-		byUser: (userId: string) =>
-			[...queryKeys.onboarding.all, userId] as const,
+		byUser: (userId: string) => [...queryKeys.onboarding.all, userId] as const,
 	},
 	goals: {
 		all: ["goals"] as const,

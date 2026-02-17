@@ -148,8 +148,7 @@ function MobileChallengeCard({
 								{Math.max(
 									0,
 									Math.ceil(
-										(new Date(challenge.end_date).getTime() -
-											Date.now()) /
+										(new Date(challenge.end_date).getTime() - Date.now()) /
 											(1000 * 60 * 60 * 24),
 									),
 								)}{" "}
@@ -210,12 +209,8 @@ export function ChallengesMobile() {
 	const [activeTab, setActiveTab] = useState("active");
 	const [expandedId, setExpandedId] = useState<string | null>(null);
 
-	const { data: challenges, isPending } = useQuery(
-		challengeListOptions(),
-	);
-	const { data: userChallenges } = useQuery(
-		userChallengesOptions(userId),
-	);
+	const { data: challenges, isPending } = useQuery(challengeListOptions());
+	const { data: userChallenges } = useQuery(userChallengesOptions(userId));
 
 	const joinMutation = useJoinChallenge();
 	const leaveMutation = useLeaveChallenge();
@@ -297,8 +292,7 @@ export function ChallengesMobile() {
 
 				{/* Active Challenges */}
 				<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
-					{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
-					0 ? (
+					{activeChallenges.filter((c) => joinedIds.has(c.id)).length === 0 ? (
 						<div className="text-center py-12 text-muted">
 							<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 							<p>No active challenges right now</p>
@@ -316,12 +310,8 @@ export function ChallengesMobile() {
 								.map((challenge) => (
 									<SwipeableCard
 										key={challenge.id}
-										onSwipeRight={() =>
-											handleViewChallenge(challenge.id)
-										}
-										onSwipeLeft={() =>
-											handleLeaveChallenge(challenge.id)
-										}
+										onSwipeRight={() => handleViewChallenge(challenge.id)}
+										onSwipeLeft={() => handleLeaveChallenge(challenge.id)}
 									>
 										<MobileChallengeCard
 											challenge={challenge}

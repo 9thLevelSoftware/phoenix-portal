@@ -1,6 +1,6 @@
+import { Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { Sparkles, X } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 
 interface WhatsNewBannerProps {
