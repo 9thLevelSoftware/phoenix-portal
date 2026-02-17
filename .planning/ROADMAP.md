@@ -122,13 +122,13 @@ Plans:
   3. The app can be installed from Chrome/Safari to a device home screen; a second visit after install shows an update banner when a new version is deployed
   4. All v1.1 features pass @axe-core/playwright WCAG audit with zero critical violations
 
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 12-01: Smart Workout Widget — computeNextWorkout() pure function, NextWorkoutWidget component, Dashboard integration
-- [ ] 12-02: Session reports — @media print CSS, window.print() trigger in SessionDetail, static summary for Canvas elements, tier gating
-- [ ] 12-03: PWA — vite-plugin-pwa manifest + service worker (autoUpdate), offline banner, install prompt after 3 sessions, Cache-Control: no-cache on sw.js, web-vitals to Sentry
-- [ ] 12-04: Testing & a11y — Playwright E2E suite for all v1.1 features, @axe-core/playwright WCAG audit, bundle analysis check against 71KB baseline
+- [ ] 12-01-PLAN.md — Smart Workout Widget (TDD): computeNextWorkout() pure function, NextWorkoutWidget component, Dashboard/DashboardMobile integration
+- [ ] 12-02-PLAN.md — Session Reports: @media print CSS, SubscriptionGate-wrapped print button in SessionDetail, Phoenix branding footer, print-hide markers
+- [ ] 12-03-PLAN.md — PWA: vite-plugin-pwa manifest + service worker (autoUpdate), PNG icons, offline banner, install prompt after 3 workouts, Sentry web vitals verification
+- [ ] 12-04-PLAN.md — Testing & A11y: Playwright E2E smoke tests, @axe-core/playwright WCAG audit, bundle analysis vs 71KB baseline
 
 ---
 
@@ -147,7 +147,7 @@ Plans:
 | 8. Tech Debt Cleanup | v1.0 | 2/2 | Complete | 2026-02-16 |
 | 9. Foundation & Toolchain | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 10. Wire-Up & Mock Purge | v1.1 | Complete    | 2026-02-17 | - |
-| 11. New Features | v1.1 | 0/5 | Planned | - |
+| 11. New Features | v1.1 | Complete    | 2026-02-17 | - |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 0/4 | Not started | - |
 
 ---
