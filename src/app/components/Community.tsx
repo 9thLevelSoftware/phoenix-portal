@@ -16,7 +16,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/app/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -147,17 +152,19 @@ function CommunityDesktop() {
 					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="routines"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Routines
 						</TabsTrigger>
 						<TabsTrigger
 							value="cycles"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Cycles
 						</TabsTrigger>
 					</TabsList>
+					<TabsContent value="routines" />
+					<TabsContent value="cycles" />
 				</Tabs>
 
 				{viewingCreatorId ? (
@@ -178,7 +185,7 @@ function CommunityDesktop() {
 								value={sort}
 								onValueChange={(v) => setSort(v as "hot" | "top" | "new")}
 							>
-								<SelectTrigger className="w-[120px] bg-surface-2 border-secondary text-white">
+								<SelectTrigger aria-label="Sort order" className="w-[120px] bg-surface-2 border-secondary text-white">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent className="bg-surface-2 border-secondary">

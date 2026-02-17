@@ -361,25 +361,25 @@ export function Profile() {
 					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="stats"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Public Stats
 						</TabsTrigger>
 						<TabsTrigger
 							value="badges"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Badges
 						</TabsTrigger>
 						<TabsTrigger
 							value="integrations"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Integrations
 						</TabsTrigger>
 						<TabsTrigger
 							value="settings"
-							className="data-[state=active]:bg-primary"
+							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
 						>
 							Settings
 						</TabsTrigger>

@@ -380,7 +380,7 @@ export function Analytics() {
 					</div>
 					<div className="flex items-center gap-3">
 						<Select value={timePeriod} onValueChange={setTimePeriod}>
-							<SelectTrigger className="w-32 bg-surface-2 border-secondary text-white">
+							<SelectTrigger aria-label="Time period" className="w-32 bg-surface-2 border-secondary text-white">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
