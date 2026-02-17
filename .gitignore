@@ -25,6 +25,9 @@ Thumbs.db
 # Planning (local-only)
 .planning/
 
+# Supabase CLI
+supabase/.temp/
+
 # Logs
 *.log
 npm-debug.log*
