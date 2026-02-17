@@ -13,6 +13,7 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Link } from "react-router";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -27,7 +28,6 @@ import {
 	GATING_THRESHOLD_DAYS,
 } from "@/lib/recovery";
 import { workoutListOptions } from "@/queries/workouts";
-import { FeatureHint } from "@/app/components/FeatureHint";
 import { RecoveryScore } from "./RecoveryScore";
 
 const DISCLAIMER_KEY = "phoenix_recovery_disclaimer_dismissed";
@@ -211,12 +211,18 @@ export function Recovery() {
 					animate={{ opacity: 1, y: 0 }}
 					className="mb-8"
 				>
-					<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
-						<HeartPulse className="w-8 h-8 text-primary" />
-						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-							Recovery Readiness
-						</span>
-					</h1>
+					<FeatureHint
+						hintId="recovery-readiness"
+						content="Monitor your training load and recovery status based on workout patterns"
+						side="bottom"
+					>
+						<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
+							<HeartPulse className="w-8 h-8 text-primary" />
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Recovery Readiness
+							</span>
+						</h1>
+					</FeatureHint>
 					<p className="text-muted-foreground">
 						Training load analysis and recovery insights
 					</p>
