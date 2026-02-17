@@ -1,15 +1,16 @@
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
 	Award,
 	Bell,
 	Calendar,
 	CreditCard,
+	Dumbbell,
 	Flame,
 	Globe,
 	Loader2,
 	LogOut,
 	Shield,
-	TrendingUp,
 	Trophy,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -18,11 +19,16 @@ import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ExportSection } from "@/app/components/profile/ExportSection";
 import { TierBadge } from "@/app/components/TierBadge";
-import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
+import {
+	Avatar,
+	AvatarFallback,
+	AvatarImage,
+} from "@/app/components/ui/avatar";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Label } from "@/app/components/ui/label";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
 import {
 	Tabs,
@@ -31,9 +37,18 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { openCustomerPortal } from "@/lib/stripe";
+import { useUpdateProfile } from "@/mutations/profile";
+import { integrationsOptions } from "@/queries/integrations";
+import {
+	profileOptions,
+	profileStatsOptions,
+	topExercisesOptions,
+} from "@/queries/profile";
+import { workoutListOptions } from "@/queries/workouts";
 
 const PLAN_LABELS = {
 	FREE: "Free Plan",
@@ -41,11 +56,92 @@ const PLAN_LABELS = {
 	ELITE: "ELITE Plan",
 } as const;
 
+/** Provider display config for integrations tab */
+const PROVIDER_META: Record<
+	string,
+	{ label: string; logo: string }
+> = {
+	strava: { label: "Strava", logo: "S" },
+	fitbit: { label: "Fitbit", logo: "F" },
+	garmin: { label: "Garmin Connect", logo: "G" },
+	hevy: { label: "Hevy", logo: "H" },
+	apple_health: { label: "Apple Health", logo: "A" },
+};
+
+/** Format a large number to a human-friendly string */
+function formatVolume(volume: number): string {
+	if (volume >= 1_000_000) {
+		return `${(volume / 1_000_000).toFixed(1)}M kg`;
+	}
+	if (volume >= 1_000) {
+		return `${(volume / 1_000).toFixed(0)}k kg`;
+	}
+	return `${Math.round(volume)} kg`;
+}
+
+/** Get initials from a display name or email */
+function getInitials(name: string | null | undefined): string {
+	if (!name) return "?";
+	const parts = name.trim().split(/\s+/);
+	if (parts.length >= 2) {
+		return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+	}
+	return name.slice(0, 2).toUpperCase();
+}
+
 export function Profile() {
-	const { signOut } = useAuth();
+	const { user, signOut } = useAuth();
+	const userId = user?.id ?? "";
 	const { tier, currentPeriodEnd, cancelAtPeriodEnd } = useSubscription();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [portalLoading, setPortalLoading] = useState(false);
+
+	// Real data queries
+	const { data: profile, isPending: profileLoading } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: stats, isPending: statsLoading } = useQuery({
+		...profileStatsOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: workouts } = useQuery(workoutListOptions(user?.id));
+	const { data: topExercises, isPending: exercisesLoading } = useQuery({
+		...topExercisesOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: integrations, isPending: integrationsLoading } = useQuery({
+		...integrationsOptions(userId),
+		enabled: !!userId,
+	});
+
+	const streak = useStreak(workouts);
+	const updateProfile = useUpdateProfile(userId || undefined);
+
+	// Local settings state, initialized from profile query
+	const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
+	const [emailDigests, setEmailDigests] = useState(true);
+	const [pushNotifications, setPushNotifications] = useState(true);
+	const [streakReminders, setStreakReminders] = useState(true);
+	const [challengeUpdates, setChallengeUpdates] = useState(true);
+	const [profileVisible, setProfileVisible] = useState(true);
+	const [leaderboardParticipation, setLeaderboardParticipation] =
+		useState(true);
+
+	// Sync local state when profile data loads
+	useEffect(() => {
+		if (profile) {
+			setWeightUnit(profile.weight_unit === "lbs" ? "lbs" : "kg");
+			setEmailDigests(profile.email_digests ?? true);
+			setPushNotifications(profile.push_notifications ?? true);
+			setStreakReminders(profile.streak_reminders ?? true);
+			setChallengeUpdates(profile.challenge_updates ?? true);
+			setProfileVisible(profile.profile_visible ?? true);
+			setLeaderboardParticipation(
+				profile.leaderboard_participation ?? true,
+			);
+		}
+	}, [profile]);
 
 	// Handle checkout return query params
 	useEffect(() => {
@@ -64,90 +160,46 @@ export function Profile() {
 		try {
 			await openCustomerPortal();
 		} catch {
-			toast.error("Could not open subscription portal. Please try again.");
+			toast.error(
+				"Could not open subscription portal. Please try again.",
+			);
 			setPortalLoading(false);
 		}
 	}
+
+	// Derived profile data
+	const displayName =
+		profile?.display_name ?? user?.email?.split("@")[0] ?? "Athlete";
+	const initials = getInitials(
+		profile?.display_name ?? user?.email?.split("@")[0],
+	);
+	const memberSince = profile?.created_at
+		? format(new Date(profile.created_at), "MMMM yyyy")
+		: null;
+
+	// Real stats for header grid
 	const userStats = [
-		{ label: "Level", value: "24", icon: TrendingUp },
-		{ label: "Total Workouts", value: "147", icon: Calendar },
-		{ label: "Personal Records", value: "34", icon: Trophy },
-		{ label: "Badges Earned", value: "12", icon: Award },
-	];
-
-	const badges = [
 		{
-			name: "Week Warrior",
-			icon: "🔥",
-			rarity: "gold",
-			earned: "Jan 15, 2026",
+			label: "Total Workouts",
+			value: statsLoading ? "..." : String(stats?.totalWorkouts ?? 0),
+			icon: Calendar,
 		},
 		{
-			name: "PR Crusher",
-			icon: "💪",
-			rarity: "platinum",
-			earned: "Jan 12, 2026",
+			label: "Personal Records",
+			value: statsLoading ? "..." : String(stats?.prCount ?? 0),
+			icon: Trophy,
 		},
 		{
-			name: "Consistency King",
-			icon: "👑",
-			rarity: "gold",
-			earned: "Jan 10, 2026",
+			label: "Current Streak",
+			value: `${streak}d`,
+			icon: Flame,
 		},
 		{
-			name: "100 Workouts",
-			icon: "💯",
-			rarity: "silver",
-			earned: "Jan 5, 2026",
-		},
-		{
-			name: "Streak Master",
-			icon: "⚡",
-			rarity: "gold",
-			earned: "Jan 1, 2026",
-		},
-		{
-			name: "Early Bird",
-			icon: "🌅",
-			rarity: "bronze",
-			earned: "Dec 28, 2025",
-		},
-		{
-			name: "Volume Beast",
-			icon: "🏋️",
-			rarity: "silver",
-			earned: "Dec 20, 2025",
-		},
-		{ name: "First PR", icon: "🎯", rarity: "bronze", earned: "Dec 15, 2025" },
-	];
-
-	const topExercises = [
-		{ name: "Bench Press", sets: 248, volume: "29,760 kg" },
-		{ name: "Squat", sets: 236, volume: "37,680 kg" },
-		{ name: "Deadlift", sets: 198, volume: "35,640 kg" },
-		{ name: "Rows", sets: 212, volume: "21,200 kg" },
-		{ name: "Shoulder Press", sets: 184, volume: "14,720 kg" },
-	];
-
-	const connectedApps = [
-		{
-			name: "Strava",
-			status: "Connected",
-			lastSync: "2 hours ago",
-			logo: "🏃",
-		},
-		{
-			name: "Apple Health",
-			status: "Connected",
-			lastSync: "1 hour ago",
-			logo: "🍎",
-		},
-		{ name: "MyFitnessPal", status: "Not Connected", lastSync: "-", logo: "🍽️" },
-		{
-			name: "Garmin Connect",
-			status: "Not Connected",
-			lastSync: "-",
-			logo: "⌚",
+			label: "Total Volume",
+			value: statsLoading
+				? "..."
+				: formatVolume(stats?.totalVolume ?? 0),
+			icon: Dumbbell,
 		},
 	];
 
@@ -167,27 +219,48 @@ export function Profile() {
 						<div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
 							{/* Avatar */}
 							<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
+								{profile?.avatar_url ? (
+									<AvatarImage
+										src={profile.avatar_url}
+										alt={displayName}
+									/>
+								) : null}
 								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
-									JD
+									{profileLoading ? "..." : initials}
 								</AvatarFallback>
 							</Avatar>
 
 							{/* Info */}
 							<div className="flex-1 text-center md:text-left">
-								<h1 className="text-3xl text-white mb-2">John Doe</h1>
-								<p className="text-muted-foreground mb-4">
-									Member since December 2025
-								</p>
+								{profileLoading ? (
+									<>
+										<Skeleton className="h-9 w-48 mb-2 mx-auto md:mx-0" />
+										<Skeleton className="h-5 w-36 mb-4 mx-auto md:mx-0" />
+									</>
+								) : (
+									<>
+										<h1 className="text-3xl text-white mb-2">
+											{displayName}
+										</h1>
+										<p className="text-muted-foreground mb-4">
+											{memberSince
+												? `Member since ${memberSince}`
+												: "Member"}
+										</p>
+									</>
+								)}
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
-									<span className="text-white">7 day streak</span>
+									<Flame
+										className="w-5 h-5 text-accent"
+										fill={PHOENIX.ember}
+									/>
+									<span className="text-white">
+										{streak} day streak
+									</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
 									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
 										Phoenix Member
-									</Badge>
-									<Badge className="bg-accent text-background border-0">
-										Level 24
 									</Badge>
 								</div>
 							</div>
@@ -200,7 +273,9 @@ export function Profile() {
 										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-										<div className="text-2xl text-white mb-1">{stat.value}</div>
+										<div className="text-2xl text-white mb-1">
+											{stat.value}
+										</div>
 										<div className="text-xs text-muted-foreground">
 											{stat.label}
 										</div>
@@ -232,8 +307,13 @@ export function Profile() {
 									</div>
 									{tier !== "FREE" && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
-											{cancelAtPeriodEnd ? "Cancels" : "Renews"}{" "}
-											{format(new Date(currentPeriodEnd), "MMM d, yyyy")}
+											{cancelAtPeriodEnd
+												? "Cancels"
+												: "Renews"}{" "}
+											{format(
+												new Date(currentPeriodEnd),
+												"MMM d, yyyy",
+											)}
 										</div>
 									)}
 								</div>
@@ -264,7 +344,9 @@ export function Profile() {
 												asChild
 												className="bg-gradient-to-r from-accent to-warning hover:from-warning hover:to-accent border-0 text-background"
 											>
-												<Link to="/pricing">Upgrade to ELITE</Link>
+												<Link to="/pricing">
+													Upgrade to ELITE
+												</Link>
 											</Button>
 										)}
 									</>
@@ -308,50 +390,102 @@ export function Profile() {
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Top Exercises */}
 							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h3 className="text-xl text-white mb-6">Top Exercises</h3>
-								<div className="space-y-4">
-									{topExercises.map((exercise, index) => (
-										<div
-											key={index}
-											className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
-										>
-											<div>
-												<div className="text-white">{exercise.name}</div>
-												<div className="text-sm text-muted-foreground">
-													{exercise.sets} sets
+								<h3 className="text-xl text-white mb-6">
+									Top Exercises
+								</h3>
+								{exercisesLoading ? (
+									<div className="space-y-4">
+										{Array.from({ length: 5 }).map(
+											(_, i) => (
+												<div
+													key={i}
+													className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
+												>
+													<Skeleton className="h-5 w-32" />
+													<Skeleton className="h-5 w-16" />
 												</div>
-											</div>
-											<div className="text-right">
-												<div className="text-primary">{exercise.volume}</div>
-											</div>
-										</div>
-									))}
-								</div>
+											),
+										)}
+									</div>
+								) : !topExercises ||
+									topExercises.length === 0 ? (
+									<div className="flex flex-col items-center justify-center py-8 text-center">
+										<Dumbbell className="w-10 h-10 text-secondary mb-3" />
+										<p className="text-muted-foreground mb-1">
+											No exercises yet
+										</p>
+										<p className="text-sm text-muted">
+											Complete workouts to see your top
+											exercises here
+										</p>
+									</div>
+								) : (
+									<div className="space-y-4">
+										{topExercises.map(
+											(exercise, index) => (
+												<div
+													key={exercise.name}
+													className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
+												>
+													<div className="flex items-center gap-3">
+														<span className="text-sm text-muted-foreground w-5">
+															#{index + 1}
+														</span>
+														<div className="text-white">
+															{exercise.name}
+														</div>
+													</div>
+													<div className="text-right">
+														<div className="text-primary">
+															{exercise.count}{" "}
+															times
+														</div>
+													</div>
+												</div>
+											),
+										)}
+									</div>
+								)}
 							</Card>
 
 							{/* Achievement Summary */}
 							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h3 className="text-xl text-white mb-6">Achievement Summary</h3>
+								<h3 className="text-xl text-white mb-6">
+									Achievement Summary
+								</h3>
 								<div className="space-y-4">
 									<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
 											Total Volume Lifted
 										</div>
 										<div className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-											1.2M kg
+											{statsLoading
+												? "..."
+												: formatVolume(
+														stats?.totalVolume ??
+															0,
+													)}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-success/10 to-[#059669]/10 border border-success/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
-										<div className="text-3xl text-success">23 days</div>
+										<div className="text-3xl text-success">
+											{statsLoading
+												? "..."
+												: `${stats?.bestStreak ?? 0} days`}
+										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-accent/10 to-warning/10 border border-accent/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
-											Challenges Won
+											Personal Records
 										</div>
-										<div className="text-3xl text-accent">7</div>
+										<div className="text-3xl text-accent">
+											{statsLoading
+												? "..."
+												: (stats?.prCount ?? 0)}
+										</div>
 									</div>
 								</div>
 							</Card>
@@ -360,129 +494,271 @@ export function Profile() {
 
 					{/* Badges Tab */}
 					<TabsContent value="badges" className="space-y-6">
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-							{badges.map((badge, index) => (
-								<motion.div
-									key={index}
-									initial={{ opacity: 0, scale: 0.9 }}
-									animate={{ opacity: 1, scale: 1 }}
-									transition={{ delay: index * 0.05 }}
-								>
-									<Card
-										className={`p-4 text-center cursor-pointer hover:scale-105 transition-transform border-2 ${
-											badge.rarity === "platinum"
-												? "bg-gradient-to-br from-secondary-foreground/20 to-muted-foreground/20 border-secondary-foreground"
-												: badge.rarity === "gold"
-													? "bg-gradient-to-br from-accent/20 to-warning/20 border-accent"
-													: badge.rarity === "silver"
-														? "bg-gradient-to-br from-muted-foreground/20 to-muted/20 border-muted-foreground"
-														: "bg-gradient-to-br from-[#D97706]/20 to-[#92400E]/20 border-[#D97706]"
-										}`}
-									>
-										<div className="text-5xl mb-2">{badge.icon}</div>
-										<div className="text-white mb-1">{badge.name}</div>
-										<div className="text-xs text-muted-foreground">
-											{badge.earned}
-										</div>
-										<Badge
-											className={`mt-2 text-xs ${
-												badge.rarity === "platinum"
-													? "bg-secondary-foreground text-background"
-													: badge.rarity === "gold"
-														? "bg-accent text-background"
-														: badge.rarity === "silver"
-															? "bg-muted-foreground text-background"
-															: "bg-[#D97706] text-background"
-											} border-0`}
-										>
-											{badge.rarity.toUpperCase()}
-										</Badge>
-									</Card>
-								</motion.div>
-							))}
+						<div className="flex flex-col items-center justify-center py-16 text-center">
+							<Award className="w-16 h-16 text-secondary mb-4" />
+							<h3 className="text-xl text-white mb-2">
+								Badges Coming Soon
+							</h3>
+							<p className="text-muted-foreground max-w-md mb-4">
+								Earn badges by completing challenges, hitting
+								milestones, and maintaining streaks
+							</p>
+							<Button
+								variant="outline"
+								className="border-primary text-primary hover:bg-primary/10"
+								asChild
+							>
+								<Link to="/challenges">
+									Browse Challenges
+								</Link>
+							</Button>
 						</div>
 					</TabsContent>
 
 					{/* Integrations Tab */}
-					<TabsContent value="integrations" className="space-y-6">
+					<TabsContent
+						value="integrations"
+						className="space-y-6"
+					>
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-							<h3 className="text-xl text-white mb-6">Connected Apps</h3>
-							<div className="space-y-4">
-								{connectedApps.map((app, index) => (
-									<div
-										key={index}
-										className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
-									>
-										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-2xl">
-												{app.logo}
-											</div>
-											<div>
-												<div className="text-white">{app.name}</div>
-												<div className="text-sm text-muted-foreground">
-													{app.status === "Connected"
-														? `Last sync: ${app.lastSync}`
-														: "Not connected"}
-												</div>
-											</div>
-										</div>
-										{app.status === "Connected" ? (
-											<Button
-												variant="outline"
-												className="border-destructive text-destructive hover:bg-destructive/10"
+							<h3 className="text-xl text-white mb-6">
+								Connected Apps
+							</h3>
+							{integrationsLoading ? (
+								<div className="space-y-4">
+									{Array.from({ length: 3 }).map(
+										(_, i) => (
+											<div
+												key={i}
+												className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 											>
-												Disconnect
-											</Button>
-										) : (
-											<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
-												Connect
-											</Button>
+												<div className="flex items-center gap-4">
+													<Skeleton className="w-12 h-12 rounded-lg" />
+													<div>
+														<Skeleton className="h-5 w-24 mb-1" />
+														<Skeleton className="h-4 w-32" />
+													</div>
+												</div>
+												<Skeleton className="h-9 w-24" />
+											</div>
+										),
+									)}
+								</div>
+							) : !integrations ||
+								integrations.length === 0 ? (
+								<div className="flex flex-col items-center justify-center py-8 text-center">
+									<Globe className="w-10 h-10 text-secondary mb-3" />
+									<p className="text-muted-foreground mb-1">
+										No connected apps
+									</p>
+									<p className="text-sm text-muted mb-4">
+										Connect your fitness apps to sync
+										data
+									</p>
+									<Button
+										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+										asChild
+									>
+										<Link to="/integrations">
+											Manage Integrations
+										</Link>
+									</Button>
+								</div>
+							) : (
+								<>
+									<div className="space-y-4">
+										{integrations.map(
+											(integration) => {
+												const meta =
+													PROVIDER_META[
+														integration.provider
+													] ?? {
+														label: integration.provider,
+														logo: integration.provider[0]?.toUpperCase() ??
+															"?",
+													};
+												const isConnected =
+													integration.status ===
+													"connected";
+												return (
+													<div
+														key={
+															integration.id
+														}
+														className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
+													>
+														<div className="flex items-center gap-4">
+															<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-xl font-bold text-white">
+																{
+																	meta.logo
+																}
+															</div>
+															<div>
+																<div className="text-white">
+																	{
+																		meta.label
+																	}
+																</div>
+																<div className="text-sm text-muted-foreground">
+																	{isConnected
+																		? `Connected${
+																				integration.last_sync_at
+																					? ` - Last sync: ${format(new Date(integration.last_sync_at), "MMM d, h:mm a")}`
+																					: ""
+																			}`
+																		: "Disconnected"}
+																</div>
+															</div>
+														</div>
+														<Badge
+															className={
+																isConnected
+																	? "bg-success/20 text-success border-success/30"
+																	: "bg-secondary text-muted-foreground border-secondary"
+															}
+														>
+															{isConnected
+																? "Connected"
+																: "Disconnected"}
+														</Badge>
+													</div>
+												);
+											},
 										)}
 									</div>
-								))}
-							</div>
+									<Button
+										variant="outline"
+										className="w-full mt-4 border-primary text-primary hover:bg-primary/10"
+										asChild
+									>
+										<Link to="/integrations">
+											Manage All Integrations
+										</Link>
+									</Button>
+								</>
+							)}
 						</Card>
 					</TabsContent>
 
 					{/* Settings Tab */}
-					<TabsContent value="settings" className="space-y-6">
+					<TabsContent
+						value="settings"
+						className="space-y-6"
+					>
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Bell className="w-5 h-5" />
 								Notification Settings
 							</h3>
 							<div className="space-y-4">
-								{[
-									{
-										label: "Email digests",
-										description: "Weekly summary of your progress",
-									},
-									{
-										label: "Push notifications",
-										description: "Get notified of challenges and PRs",
-									},
-									{
-										label: "Streak reminders",
-										description: "Don't break your streak!",
-									},
-									{
-										label: "Challenge updates",
-										description: "Updates on active challenges",
-									},
-								].map((setting, index) => (
-									<div
-										key={index}
-										className="flex items-center justify-between py-3 border-b border-secondary"
-									>
-										<div>
-											<div className="text-white">{setting.label}</div>
-											<div className="text-sm text-muted-foreground">
-												{setting.description}
-											</div>
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
+									<div>
+										<div className="text-white">
+											Email digests
 										</div>
-										<Switch defaultChecked />
+										<div className="text-sm text-muted-foreground">
+											Weekly summary of your
+											progress
+										</div>
 									</div>
-								))}
+									<Switch
+										checked={emailDigests}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setEmailDigests(checked);
+											updateProfile.mutate({
+												email_digests: checked,
+											});
+										}}
+									/>
+								</div>
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
+									<div>
+										<div className="text-white">
+											Push notifications
+										</div>
+										<div className="text-sm text-muted-foreground">
+											Get notified of challenges
+											and PRs
+										</div>
+									</div>
+									<Switch
+										checked={pushNotifications}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setPushNotifications(
+												checked,
+											);
+											updateProfile.mutate({
+												push_notifications:
+													checked,
+											});
+										}}
+									/>
+								</div>
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
+									<div>
+										<div className="text-white">
+											Streak reminders
+										</div>
+										<div className="text-sm text-muted-foreground">
+											Don't break your streak!
+										</div>
+									</div>
+									<Switch
+										checked={streakReminders}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setStreakReminders(
+												checked,
+											);
+											updateProfile.mutate({
+												streak_reminders:
+													checked,
+											});
+										}}
+									/>
+								</div>
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
+									<div>
+										<div className="text-white">
+											Challenge updates
+										</div>
+										<div className="text-sm text-muted-foreground">
+											Updates on active
+											challenges
+										</div>
+									</div>
+									<Switch
+										checked={challengeUpdates}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setChallengeUpdates(
+												checked,
+											);
+											updateProfile.mutate({
+												challenge_updates:
+													checked,
+											});
+										}}
+									/>
+								</div>
 							</div>
 						</Card>
 
@@ -493,14 +769,53 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<Label className="text-white mb-2 block">Weight Unit</Label>
+									<Label className="text-white mb-2 block">
+										Weight Unit
+									</Label>
 									<div className="flex gap-2">
-										<Button className="flex-1 bg-gradient-to-r from-primary to-chart-2 border-0">
+										<Button
+											className={
+												weightUnit === "kg"
+													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
+													: "flex-1 border-secondary text-muted-foreground"
+											}
+											variant={
+												weightUnit === "kg"
+													? "default"
+													: "outline"
+											}
+											disabled={
+												updateProfile.isPending
+											}
+											onClick={() => {
+												setWeightUnit("kg");
+												updateProfile.mutate({
+													weight_unit: "kg",
+												});
+											}}
+										>
 											Kilograms (kg)
 										</Button>
 										<Button
-											variant="outline"
-											className="flex-1 border-secondary text-muted-foreground"
+											className={
+												weightUnit === "lbs"
+													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
+													: "flex-1 border-secondary text-muted-foreground"
+											}
+											variant={
+												weightUnit === "lbs"
+													? "default"
+													: "outline"
+											}
+											disabled={
+												updateProfile.isPending
+											}
+											onClick={() => {
+												setWeightUnit("lbs");
+												updateProfile.mutate({
+													weight_unit: "lbs",
+												});
+											}}
 										>
 											Pounds (lbs)
 										</Button>
@@ -517,21 +832,61 @@ export function Profile() {
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Profile visibility</div>
+										<div className="text-white">
+											Profile visibility
+										</div>
 										<div className="text-sm text-muted-foreground">
-											Make your profile visible to others
+											Make your profile visible
+											to others
 										</div>
 									</div>
-									<Switch defaultChecked />
+									<Switch
+										checked={profileVisible}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setProfileVisible(
+												checked,
+											);
+											updateProfile.mutate({
+												profile_visible:
+													checked,
+											});
+										}}
+									/>
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Leaderboard participation</div>
+										<div className="text-white">
+											Leaderboard participation
+										</div>
 										<div className="text-sm text-muted-foreground">
-											Appear on public leaderboards
+											Appear on public
+											leaderboards
 										</div>
 									</div>
-									<Switch defaultChecked />
+									<Switch
+										checked={
+											leaderboardParticipation
+										}
+										disabled={
+											updateProfile.isPending
+										}
+										onCheckedChange={(
+											checked,
+										) => {
+											setLeaderboardParticipation(
+												checked,
+											);
+											updateProfile.mutate({
+												leaderboard_participation:
+													checked,
+											});
+										}}
+									/>
 								</div>
 							</div>
 						</Card>
@@ -546,7 +901,8 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<p className="text-sm text-muted-foreground">
-									Sign out of your account on this device
+									Sign out of your account on this
+									device
 								</p>
 								<Button
 									className="w-full bg-chart-2 hover:bg-chart-2/80 text-white border-0"
