@@ -19,7 +19,9 @@ import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { useSubscription } from "@/hooks/useSubscription";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -33,8 +35,10 @@ export function SessionDetail() {
 		...sessionDetailOptions(sessionId ?? ""),
 		enabled: !!sessionId,
 	});
+	const { isPremium } = useSubscription();
 	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
 	const [notes, setNotes] = useState("");
+	const [pickerOpen, setPickerOpen] = useState(false);
 
 	if (!sessionId) {
 		return <Navigate to="/history" replace />;
@@ -417,15 +421,25 @@ export function SessionDetail() {
 					transition={{ delay: 0.4 }}
 					className="flex flex-col sm:flex-row gap-3"
 				>
-					<Button
-						className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-						onClick={() =>
-							toast("Session comparison coming in a future update")
-						}
-					>
-						<BarChart3 className="w-4 h-4 mr-2" />
-						Compare to Previous
-					</Button>
+					{isPremium ? (
+						<Button
+							className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							onClick={() => setPickerOpen(true)}
+						>
+							<BarChart3 className="w-4 h-4 mr-2" />
+							Compare with...
+						</Button>
+					) : (
+						<Button
+							className="flex-1 border-secondary text-muted-foreground"
+							variant="outline"
+							disabled
+							title="Upgrade to compare sessions"
+						>
+							<BarChart3 className="w-4 h-4 mr-2" />
+							Compare with...
+						</Button>
+					)}
 					<Button
 						variant="outline"
 						className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
@@ -437,6 +451,18 @@ export function SessionDetail() {
 						Share Summary
 					</Button>
 				</motion.div>
+
+				{/* Comparison Session Picker */}
+				<ComparisonSessionPicker
+					open={pickerOpen}
+					onClose={() => setPickerOpen(false)}
+					excludeSessionId={sessionId}
+					onSelect={(selectedSessionId) =>
+						navigate(
+							`/compare?a=${sessionId}&b=${selectedSessionId}`,
+						)
+					}
+				/>
 
 				{/* Notes Section */}
 				<motion.div
