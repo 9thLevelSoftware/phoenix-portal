@@ -9,6 +9,7 @@ import {
 	Flame,
 	Target,
 	TrendingUp,
+	Trophy,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
@@ -81,6 +82,115 @@ export function DashboardMobile() {
 		await queryClient.invalidateQueries({ queryKey: ["workouts"] });
 		setIsPullRefreshing(false);
 	};
+
+	// Zero-session welcome view for mobile
+	const hasNoWorkouts =
+		!workoutsLoading && (!workouts || workouts.length === 0);
+
+	if (hasNoWorkouts) {
+		return (
+			<div className="min-h-screen bg-background pb-24">
+				<div className="px-4 py-12">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="text-center mb-10"
+					>
+						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
+							<Flame
+								className="w-8 h-8 text-primary"
+								fill={PHOENIX.ember}
+							/>
+						</div>
+						<h1 className="text-3xl font-bold mb-3">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Welcome to Phoenix Portal
+							</span>
+						</h1>
+						<p className="text-muted-foreground max-w-xs mx-auto">
+							Your training journey starts here. Complete your first
+							workout in the mobile app and watch your dashboard come
+							alive.
+						</p>
+					</motion.div>
+
+					<div className="space-y-4">
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.1 }}
+						>
+							<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<div className="flex items-center gap-4">
+									<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center flex-shrink-0">
+										<TrendingUp className="w-5 h-5 text-white" />
+									</div>
+									<div>
+										<h3 className="font-semibold text-white">
+											Track your progress
+										</h3>
+										<p className="text-xs text-muted-foreground">
+											Volume, strength, and muscle insights
+										</p>
+									</div>
+								</div>
+							</Card>
+						</motion.div>
+
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							<Link to="/routines/new">
+								<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+									<div className="flex items-center gap-4">
+										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
+											<Dumbbell className="w-5 h-5 text-white" />
+										</div>
+										<div>
+											<h3 className="font-semibold text-white">
+												Build custom routines
+											</h3>
+											<p className="text-xs text-muted-foreground">
+												Create tailored workout programs
+											</p>
+										</div>
+										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
+									</div>
+								</Card>
+							</Link>
+						</motion.div>
+
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							<Link to="/challenges">
+								<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+									<div className="flex items-center gap-4">
+										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center flex-shrink-0">
+											<Trophy className="w-5 h-5 text-white" />
+										</div>
+										<div>
+											<h3 className="font-semibold text-white">
+												Join challenges
+											</h3>
+											<p className="text-xs text-muted-foreground">
+												Compete with other athletes
+											</p>
+										</div>
+										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
+									</div>
+								</Card>
+							</Link>
+						</motion.div>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-background pb-24">

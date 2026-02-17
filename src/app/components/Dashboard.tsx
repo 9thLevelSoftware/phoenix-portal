@@ -103,6 +103,101 @@ export function Dashboard() {
 
 	if (isMobile) return <DashboardMobile />;
 
+	// Zero-session welcome view
+	const hasNoWorkouts = !workoutsLoading && (!workouts || workouts.length === 0);
+
+	if (hasNoWorkouts) {
+		return (
+			<div className="min-h-screen bg-background pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="text-center mb-12"
+					>
+						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
+							<Flame className="w-10 h-10 text-primary" />
+						</div>
+						<h1 className="text-4xl sm:text-5xl mb-4">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Welcome to Phoenix Portal
+							</span>
+						</h1>
+						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
+							Your training journey starts here. Complete your first
+							workout in the mobile app and watch your dashboard come
+							alive.
+						</p>
+					</motion.div>
+
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.1 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
+									<TrendingUp className="w-6 h-6 text-white" />
+								</div>
+								<h3 className="text-lg font-semibold text-white mb-2">
+									Track your progress
+								</h3>
+								<p className="text-sm text-muted-foreground">
+									See volume trends, strength gains, and muscle
+									balance insights once you start training.
+								</p>
+							</Card>
+						</motion.div>
+
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							<Link to="/routines/new" className="block h-full">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
+										<Dumbbell className="w-6 h-6 text-white" />
+									</div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Build custom routines
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Create workout routines tailored to your
+										goals with drag-and-drop exercise
+										management.
+									</p>
+								</Card>
+							</Link>
+						</motion.div>
+
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							<Link to="/challenges" className="block h-full">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center mb-4">
+										<Trophy className="w-6 h-6 text-white" />
+									</div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Join challenges
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Compete with other athletes in community
+										challenges and earn recognition.
+									</p>
+								</Card>
+							</Link>
+						</motion.div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

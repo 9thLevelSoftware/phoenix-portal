@@ -11,10 +11,11 @@ import {
 	Loader2,
 	Plus,
 	Save,
+	Search,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -28,6 +29,8 @@ import {
 } from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
+import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
+import { supabase } from "@/lib/supabase";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
 import { routineDetailOptions } from "@/queries/routines";
@@ -610,14 +613,58 @@ function ExercisePickerModal({
 	onClose: () => void;
 	onSelect: (exercise: { name: string; muscleGroup: string }) => void;
 }) {
-	const exercises = [
-		{ name: "Bench Press", muscleGroup: "Chest" },
-		{ name: "Squat", muscleGroup: "Legs" },
-		{ name: "Deadlift", muscleGroup: "Back" },
-		{ name: "Overhead Press", muscleGroup: "Shoulders" },
-		{ name: "Barbell Row", muscleGroup: "Back" },
-		{ name: "Pull-ups", muscleGroup: "Back" },
-	];
+	const [searchQuery, setSearchQuery] = useState("");
+	const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
+
+	// Fetch user's exercises from Supabase
+	const { data: userExercises } = useQuery({
+		queryKey: ["exercises", "library"],
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("exercises")
+				.select("name, muscle_group")
+				.order("name");
+			if (error) return [];
+			return (data ?? []).map((e) => ({
+				name: e.name,
+				muscleGroup: e.muscle_group,
+			}));
+		},
+		staleTime: 5 * 60 * 1000,
+	});
+
+	// Merge user exercises with static library, deduplicate by name
+	const allExercises = useMemo(() => {
+		const map = new Map<string, { name: string; muscleGroup: string }>();
+		// Static library first (fallback)
+		for (const ex of EXERCISE_LIBRARY) {
+			map.set(ex.name.toLowerCase(), ex);
+		}
+		// User exercises override static entries
+		for (const ex of userExercises ?? []) {
+			map.set(ex.name.toLowerCase(), ex);
+		}
+		return Array.from(map.values()).sort((a, b) =>
+			a.name.localeCompare(b.name),
+		);
+	}, [userExercises]);
+
+	// Get unique muscle groups for filter buttons
+	const muscleGroups = useMemo(() => {
+		const groups = new Set(allExercises.map((e) => e.muscleGroup));
+		return Array.from(groups).sort();
+	}, [allExercises]);
+
+	// Filter exercises by search and muscle group
+	const filteredExercises = useMemo(() => {
+		return allExercises.filter((ex) => {
+			const matchesSearch =
+				!searchQuery ||
+				ex.name.toLowerCase().includes(searchQuery.toLowerCase());
+			const matchesMuscle = !muscleFilter || ex.muscleGroup === muscleFilter;
+			return matchesSearch && matchesMuscle;
+		});
+	}, [allExercises, searchQuery, muscleFilter]);
 
 	return (
 		<>
@@ -632,39 +679,88 @@ function ExercisePickerModal({
 				initial={{ opacity: 0, scale: 0.95 }}
 				animate={{ opacity: 1, scale: 1 }}
 				exit={{ opacity: 0, scale: 0.95 }}
-				className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-background rounded-lg border border-secondary z-50 overflow-hidden"
+				className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-background rounded-lg border border-secondary z-50 overflow-hidden flex flex-col max-h-[80vh]"
 			>
 				<div className="p-6 border-b border-secondary">
-					<div className="flex items-center justify-between">
+					<div className="flex items-center justify-between mb-4">
 						<h2 className="text-xl font-semibold text-white">Add Exercise</h2>
 						<Button size="sm" variant="ghost" onClick={onClose}>
 							<X className="w-4 h-4" />
 						</Button>
 					</div>
-				</div>
 
-				<div className="p-6 max-h-96 overflow-y-auto">
-					<div className="space-y-2">
-						{exercises.map((exercise) => (
-							<button
-								key={exercise.name}
-								onClick={() => onSelect(exercise)}
-								className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
+					{/* Search */}
+					<div className="relative mb-3">
+						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+						<Input
+							placeholder="Search exercises..."
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							className="pl-9 bg-surface-2 border-secondary text-white placeholder:text-muted"
+						/>
+					</div>
+
+					{/* Muscle group filter */}
+					<div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+						<Button
+							size="sm"
+							onClick={() => setMuscleFilter(null)}
+							className={
+								!muscleFilter
+									? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+									: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
+							}
+						>
+							All
+						</Button>
+						{muscleGroups.map((group) => (
+							<Button
+								key={group}
+								size="sm"
+								onClick={() =>
+									setMuscleFilter(muscleFilter === group ? null : group)
+								}
+								className={
+									muscleFilter === group
+										? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
+								}
 							>
-								<div className="flex items-center justify-between">
-									<div>
-										<h4 className="font-semibold text-white mb-1">
-											{exercise.name}
-										</h4>
-										<Badge className="bg-primary text-white border-0 text-xs">
-											{exercise.muscleGroup}
-										</Badge>
-									</div>
-									<Plus className="w-5 h-5 text-muted-foreground" />
-								</div>
-							</button>
+								{group}
+							</Button>
 						))}
 					</div>
+				</div>
+
+				<div className="p-6 overflow-y-auto flex-1">
+					{filteredExercises.length === 0 ? (
+						<div className="text-center py-8 text-muted-foreground">
+							<Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+							<p>No exercises found</p>
+						</div>
+					) : (
+						<div className="space-y-2">
+							{filteredExercises.map((exercise) => (
+								<button
+									key={exercise.name}
+									onClick={() => onSelect(exercise)}
+									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
+								>
+									<div className="flex items-center justify-between">
+										<div>
+											<h4 className="font-semibold text-white mb-1">
+												{exercise.name}
+											</h4>
+											<Badge className="bg-primary text-white border-0 text-xs">
+												{exercise.muscleGroup}
+											</Badge>
+										</div>
+										<Plus className="w-5 h-5 text-muted-foreground" />
+									</div>
+								</button>
+							))}
+						</div>
+					)}
 				</div>
 			</motion.div>
 		</>
