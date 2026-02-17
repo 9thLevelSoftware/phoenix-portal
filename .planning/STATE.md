@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 9 of 12 (Foundation & Toolchain)
-Plan: 4 of 5 in current phase
-Status: Executing
-Last activity: 2026-02-17 — Plan 09-04 complete (Sentry v10 + Supabase CLI tooling)
+Phase: 9 of 12 (Foundation & Toolchain) -- COMPLETE
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-02-17 — Plan 09-05 complete (feature component color token migration)
 
-Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 45/58 total plans)
+Progress: [███░░░░░░░] 25% (10 of 13 phases complete, 46/58 total plans)
 
 ## Performance Metrics
 
@@ -27,7 +27,7 @@ Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 45/58 t
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-foundation-toolchain | 4/5 | 25 min | 6.3 min |
+| 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 
 *Updated after each plan completion*
 
@@ -55,6 +55,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 9, Plan 4]: Hardcoded SUPABASE_PROJECT_REF (ilzlswmatadlnsuxatcv) in gen:types script; no env var needed per run.
 - [Phase 9, Plan 4]: TOOL-09 (database.types.ts generation) deferred: supabase CLI needs interactive TTY for login. User must run `npx supabase login` + `npm run gen:types` from a regular terminal.
 - [Phase 9, Plan 4]: Sentry enabled only in production (import.meta.env.PROD). React 19 error hooks (onUncaughtError, onCaughtError, onRecoverableError) all wired to single sentryErrorHandler.
+- [Phase 9, Plan 5]: Non-Phoenix palette colors (#6366F1, #FC4C02, #8B5CF6, etc.) retained as arbitrary values -- no semantic tokens for third-party/accent colors.
+- [Phase 9, Plan 5]: mutedForeground (#9CA3AF) added to PHOENIX constants for chart axis SVG stroke values where CSS vars cannot be used.
+- [Phase 9, Plan 5]: Color usage rule: Tailwind classes = semantic tokens; SVG/Recharts = PHOENIX.* constants; inline styles = var(--token).
 
 ### Pending Todos
 
@@ -75,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 09-04-PLAN.md (Sentry v10 + Supabase CLI tooling; TOOL-09 deferred)
-Resume file: .planning/phases/09-foundation-toolchain/09-05-PLAN.md
+Stopped at: Completed 09-05-PLAN.md (feature component color token migration; Phase 9 complete)
+Resume file: .planning/phases/10-data-integrity/10-01-PLAN.md
