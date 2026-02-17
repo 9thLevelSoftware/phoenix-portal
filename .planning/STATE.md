@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 9 of 12 (Foundation & Toolchain)
-Plan: 3 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-17 — Plan 09-03 complete (Design token layer + dark: variant cleanup)
+Last activity: 2026-02-17 — Plan 09-04 complete (Sentry v10 + Supabase CLI tooling)
 
-Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 44/58 total plans)
+Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 45/58 total plans)
 
 ## Performance Metrics
 
@@ -27,7 +27,7 @@ Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 44/58 t
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-foundation-toolchain | 3/5 | 20 min | 6.7 min |
+| 09-foundation-toolchain | 4/5 | 25 min | 6.3 min |
 
 *Updated after each plan completion*
 
@@ -52,6 +52,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 9, Plan 3]: dark: variant values promoted to base styles (not deleted) since app is dark-only. bg-input/30 is the unified dark input background.
 - [Phase 9, Plan 3]: Chart THEMES dark selector set to empty string to preserve API contract for theme consumers.
 - [Phase 9, Plan 3]: Dual-token pattern established: CSS variables for Tailwind/inline, hex constants (colors.ts) for SVG/motion.
+- [Phase 9, Plan 4]: Hardcoded SUPABASE_PROJECT_REF (ilzlswmatadlnsuxatcv) in gen:types script; no env var needed per run.
+- [Phase 9, Plan 4]: TOOL-09 (database.types.ts generation) deferred: supabase CLI needs interactive TTY for login. User must run `npx supabase login` + `npm run gen:types` from a regular terminal.
+- [Phase 9, Plan 4]: Sentry enabled only in production (import.meta.env.PROD). React 19 error hooks (onUncaughtError, onCaughtError, onRecoverableError) all wired to single sentryErrorHandler.
 
 ### Pending Todos
 
@@ -72,5 +75,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 09-03-PLAN.md (Design token layer + dark: variant cleanup)
-Resume file: .planning/phases/09-foundation-toolchain/09-04-PLAN.md
+Stopped at: Completed 09-04-PLAN.md (Sentry v10 + Supabase CLI tooling; TOOL-09 deferred)
+Resume file: .planning/phases/09-foundation-toolchain/09-05-PLAN.md

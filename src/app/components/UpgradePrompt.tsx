@@ -25,14 +25,14 @@ const TIER_COLORS: Record<
 	{ border: string; glow: string; accent: string }
 > = {
 	PHOENIX: {
-		border: "border-[#FF6B35]/40",
-		glow: "from-[#FF6B35]/10 to-[#DC2626]/10",
-		accent: "text-[#FF6B35]",
+		border: "border-primary/40",
+		glow: "from-primary/10 to-chart-2/10",
+		accent: "text-primary",
 	},
 	ELITE: {
-		border: "border-[#F59E0B]/40",
-		glow: "from-[#F59E0B]/10 to-[#FBBF24]/10",
-		accent: "text-[#F59E0B]",
+		border: "border-accent/40",
+		glow: "from-accent/10 to-warning/10",
+		accent: "text-accent",
 	},
 };
 
@@ -52,7 +52,7 @@ export function UpgradePrompt({
 
 	return (
 		<Card
-			className={`relative overflow-hidden bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] ${colors.border} p-8`}
+			className={`relative overflow-hidden bg-gradient-to-br from-surface-2 to-background ${colors.border} p-8`}
 		>
 			{/* Subtle gradient glow */}
 			<div
@@ -62,7 +62,7 @@ export function UpgradePrompt({
 			<div className="relative z-10 flex flex-col items-center text-center gap-5">
 				{/* Lock icon */}
 				<div
-					className={`rounded-full bg-[#0D0D0D] border ${colors.border} p-4`}
+					className={`rounded-full bg-background border ${colors.border} p-4`}
 				>
 					<Lock className={`w-8 h-8 ${colors.accent}`} />
 				</div>
@@ -94,7 +94,7 @@ export function UpgradePrompt({
 				{/* CTA */}
 				<Button
 					asChild
-					className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 text-white px-8"
+					className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white px-8"
 				>
 					<Link to="/pricing">View Plans</Link>
 				</Button>

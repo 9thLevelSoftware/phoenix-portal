@@ -140,8 +140,8 @@ export function WorkoutHistory() {
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] px-4 sm:px-6 lg:px-8 py-6">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
 						<Skeleton className="h-10 w-64 mb-2" />
 						<Skeleton className="h-5 w-48" />
@@ -159,22 +159,22 @@ export function WorkoutHistory() {
 	// Empty state
 	if (!workouts || workouts.length === 0) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] px-4 sm:px-6 lg:px-8 py-6">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
 						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Workout History
 							</span>
 						</h1>
-						<p className="text-[#9CA3AF]">Your training journey, documented</p>
+						<p className="text-muted-foreground">Your training journey, documented</p>
 					</div>
 				</div>
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
 					<div className="flex flex-col items-center justify-center text-center">
-						<Dumbbell className="w-16 h-16 text-[#374151] mb-6" />
+						<Dumbbell className="w-16 h-16 text-secondary mb-6" />
 						<h2 className="text-2xl text-white mb-2">No workouts found</h2>
-						<p className="text-[#9CA3AF] max-w-md">
+						<p className="text-muted-foreground max-w-md">
 							Complete a workout in the Vitruvian mobile app and it will appear
 							here automatically after syncing.
 						</p>
@@ -185,9 +185,9 @@ export function WorkoutHistory() {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -196,25 +196,25 @@ export function WorkoutHistory() {
 					>
 						<div>
 							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									Workout History
 								</span>
 							</h1>
-							<p className="text-[#9CA3AF]">
+							<p className="text-muted-foreground">
 								Your training journey, documented
 							</p>
 						</div>
 
 						<div className="flex flex-col sm:flex-row gap-3">
 							{/* View Toggle */}
-							<div className="flex bg-[#1a1a1a] rounded-lg p-1 border border-[#374151]">
+							<div className="flex bg-surface-2 rounded-lg p-1 border border-secondary">
 								<Button
 									size="sm"
 									onClick={() => setViewMode("calendar")}
 									className={
 										viewMode === "calendar"
-											? "bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0 text-white"
-											: "bg-transparent border-0 text-[#9CA3AF] hover:text-white"
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "bg-transparent border-0 text-muted-foreground hover:text-white"
 									}
 								>
 									<Calendar className="w-4 h-4 mr-2" />
@@ -225,8 +225,8 @@ export function WorkoutHistory() {
 									onClick={() => setViewMode("list")}
 									className={
 										viewMode === "list"
-											? "bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0 text-white"
-											: "bg-transparent border-0 text-[#9CA3AF] hover:text-white"
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "bg-transparent border-0 text-muted-foreground hover:text-white"
 									}
 								>
 									<List className="w-4 h-4 mr-2" />
@@ -238,7 +238,7 @@ export function WorkoutHistory() {
 							<select
 								value={dateRange}
 								onChange={(e) => setDateRange(e.target.value)}
-								className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-[#374151] text-white text-sm focus:border-[#FF6B35] focus:outline-none"
+								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 							>
 								<option>Last 30 days</option>
 								<option>Last 90 days</option>
@@ -267,7 +267,7 @@ export function WorkoutHistory() {
 									variant="outline"
 									size="sm"
 									onClick={() => navigateMonth("prev")}
-									className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
 									<ChevronLeft className="w-4 h-4 mr-2" />
 									Previous
@@ -279,7 +279,7 @@ export function WorkoutHistory() {
 									variant="outline"
 									size="sm"
 									onClick={() => navigateMonth("next")}
-									className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
 									Next
 									<ChevronRight className="w-4 h-4 ml-2" />
@@ -287,13 +287,13 @@ export function WorkoutHistory() {
 							</div>
 
 							{/* Calendar Grid */}
-							<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4 sm:p-6 mb-6">
+							<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4 sm:p-6 mb-6">
 								{/* Week Day Headers */}
 								<div className="grid grid-cols-7 gap-2 sm:gap-4 mb-4">
 									{weekDays.map((day) => (
 										<div
 											key={day}
-											className="text-center text-sm text-[#9CA3AF] font-semibold"
+											className="text-center text-sm text-muted-foreground font-semibold"
 										>
 											{day}
 										</div>
@@ -328,13 +328,13 @@ export function WorkoutHistory() {
                           aspect-square rounded-lg border-2 relative p-2 transition-all
                           ${
 														hasWorkoutDay
-															? "cursor-pointer bg-gradient-to-br hover:border-[#FF6B35]"
-															: "bg-[#1a1a1a] border-[#374151] cursor-default"
+															? "cursor-pointer bg-gradient-to-br hover:border-primary"
+															: "bg-surface-2 border-secondary cursor-default"
 													}
                           ${
 														isTodayDay
-															? "ring-2 ring-[#FF6B35] ring-offset-2 ring-offset-[#0D0D0D]"
-															: "border-[#374151]"
+															? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+															: "border-secondary"
 													}
                         `}
 												style={
@@ -350,13 +350,13 @@ export function WorkoutHistory() {
 													className={`text-sm sm:text-base ${
 														hasWorkoutDay
 															? "text-white font-semibold"
-															: "text-[#6B7280]"
+															: "text-muted"
 													}`}
 												>
 													{day}
 												</span>
 												{hasPRDay && (
-													<Flame className="w-3 h-3 sm:w-4 sm:h-4 text-[#F59E0B] absolute top-1 right-1" />
+													<Flame className="w-3 h-3 sm:w-4 sm:h-4 text-accent absolute top-1 right-1" />
 												)}
 											</motion.button>
 										);
@@ -371,13 +371,13 @@ export function WorkoutHistory() {
 								transition={{ delay: 0.2 }}
 								className="text-center"
 							>
-								<Card className="inline-block bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-2 border-[#FF6B35]/30 px-8 py-4">
+								<Card className="inline-block bg-gradient-to-br from-primary/20 to-chart-2/20 border-2 border-primary/30 px-8 py-4">
 									<div className="flex items-center gap-3">
-										<Flame className="w-6 h-6 text-[#FF6B35]" />
+										<Flame className="w-6 h-6 text-primary" />
 										<span className="text-2xl font-semibold text-white">
 											{streak} Day Streak
 										</span>
-										<Flame className="w-6 h-6 text-[#FF6B35]" />
+										<Flame className="w-6 h-6 text-primary" />
 									</div>
 								</Card>
 							</motion.div>
@@ -400,16 +400,16 @@ export function WorkoutHistory() {
 								>
 									<Card
 										onClick={() => navigate(`/history/${workout.id}`)}
-										className="p-4 sm:p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all cursor-pointer group"
+										className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all cursor-pointer group"
 									>
 										<div className="flex flex-col sm:flex-row sm:items-center gap-4">
 											{/* Left: Icon & Date */}
 											<div className="flex items-center gap-4">
 												<div className="relative">
-													<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center group-hover:scale-110 transition-transform">
+													<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
 														<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
 													</div>
-													<div className="absolute -bottom-1 -right-1 bg-[#0D0D0D] rounded px-1.5 py-0.5 text-xs text-[#9CA3AF] border border-[#374151]">
+													<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
 														{workout.started_at.getDate()}
 													</div>
 												</div>
@@ -418,7 +418,7 @@ export function WorkoutHistory() {
 													<h3 className="text-lg font-semibold text-white mb-1">
 														{workout.name}
 													</h3>
-													<div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
+													<div className="flex items-center gap-2 text-sm text-muted-foreground">
 														<span>
 															{workout.started_at.toLocaleDateString("en-US", {
 																weekday: "short",
@@ -437,7 +437,7 @@ export function WorkoutHistory() {
 													{workout.routine_name && (
 														<Badge
 															variant="outline"
-															className="mt-2 border-[#FF6B35]/30 text-[#FF6B35] text-xs"
+															className="mt-2 border-primary/30 text-primary text-xs"
 														>
 															{workout.routine_name}
 														</Badge>
@@ -448,7 +448,7 @@ export function WorkoutHistory() {
 											{/* Right: Stats */}
 											<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
 												<div className="text-center">
-													<div className="text-sm text-[#9CA3AF] mb-1">
+													<div className="text-sm text-muted-foreground mb-1">
 														Volume
 													</div>
 													<div className="text-lg font-semibold text-white">
@@ -456,7 +456,7 @@ export function WorkoutHistory() {
 													</div>
 												</div>
 												<div className="text-center">
-													<div className="text-sm text-[#9CA3AF] mb-1">
+													<div className="text-sm text-muted-foreground mb-1">
 														Duration
 													</div>
 													<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
@@ -466,7 +466,7 @@ export function WorkoutHistory() {
 												</div>
 												{workout.pr_count > 0 && (
 													<div className="text-center col-span-2 sm:col-span-1">
-														<Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
+														<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
 															<Award className="w-3 h-3 mr-1" />
 															{workout.pr_count} PR
 															{workout.pr_count > 1 ? "s" : ""}
@@ -502,10 +502,10 @@ export function WorkoutHistory() {
 							animate={{ x: 0 }}
 							exit={{ x: "100%" }}
 							transition={{ type: "spring", damping: 25, stiffness: 200 }}
-							className="fixed right-0 top-0 h-full w-full sm:w-96 bg-[#0D0D0D] border-l border-[#374151] z-50 overflow-y-auto"
+							className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l border-secondary z-50 overflow-y-auto"
 						>
 							{/* Panel Header */}
-							<div className="sticky top-0 bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] p-6 flex items-center justify-between">
+							<div className="sticky top-0 bg-gradient-to-b from-surface-2 to-background border-b border-secondary p-6 flex items-center justify-between">
 								<div>
 									<h3 className="text-xl font-semibold text-white mb-1">
 										{selectedDay.toLocaleDateString("en-US", {
@@ -514,7 +514,7 @@ export function WorkoutHistory() {
 											day: "numeric",
 										})}
 									</h3>
-									<p className="text-sm text-[#9CA3AF]">
+									<p className="text-sm text-muted-foreground">
 										{getWorkoutsForDay(selectedDay.getDate()).length} workout
 										{getWorkoutsForDay(selectedDay.getDate()).length !== 1
 											? "s"
@@ -525,7 +525,7 @@ export function WorkoutHistory() {
 									variant="outline"
 									size="sm"
 									onClick={() => setSelectedDay(null)}
-									className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
 									<X className="w-4 h-4" />
 								</Button>
@@ -540,14 +540,14 @@ export function WorkoutHistory() {
 											setSelectedDay(null);
 											navigate(`/history/${workout.id}`);
 										}}
-										className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all"
+										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all"
 									>
 										<h4 className="text-lg font-semibold text-white mb-2">
 											{workout.name}
 										</h4>
 										<div className="space-y-2 text-sm">
-											<div className="flex items-center justify-between text-[#E5E7EB]">
-												<span className="text-[#9CA3AF]">Time</span>
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Time</span>
 												<span>
 													{workout.started_at.toLocaleTimeString("en-US", {
 														hour: "numeric",
@@ -555,18 +555,18 @@ export function WorkoutHistory() {
 													})}
 												</span>
 											</div>
-											<div className="flex items-center justify-between text-[#E5E7EB]">
-												<span className="text-[#9CA3AF]">Duration</span>
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Duration</span>
 												<span>{workout.duration_seconds} min</span>
 											</div>
-											<div className="flex items-center justify-between text-[#E5E7EB]">
-												<span className="text-[#9CA3AF]">Volume</span>
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Volume</span>
 												<span>{workout.total_volume.toLocaleString()} kg</span>
 											</div>
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">
-													<span className="text-[#9CA3AF]">PRs</span>
-													<Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
+													<span className="text-muted-foreground">PRs</span>
+													<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
 														{workout.pr_count}
 													</Badge>
 												</div>

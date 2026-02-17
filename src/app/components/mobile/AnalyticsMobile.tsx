@@ -54,16 +54,16 @@ interface StatCardProps {
 
 function StatCard({ label, value, icon, trend, trendUp }: StatCardProps) {
 	return (
-		<Card className="min-w-[120px] p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="min-w-[120px] p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<div className="flex flex-col">
-				<div className="text-[#9CA3AF] text-xs mb-1">{label}</div>
+				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
 					<span className="text-2xl font-bold text-white">{value}</span>
-					<div className="text-[#FF6B35]">{icon}</div>
+					<div className="text-primary">{icon}</div>
 				</div>
 				{trend && (
 					<div
-						className={`text-xs mt-1 ${trendUp ? "text-[#10B981]" : "text-[#EF4444]"}`}
+						className={`text-xs mt-1 ${trendUp ? "text-success" : "text-destructive"}`}
 					>
 						{trend}
 					</div>
@@ -83,12 +83,12 @@ function ChartCard({ title, onTap, children }: ChartCardProps) {
 	return (
 		<Card
 			onClick={onTap}
-			className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] active:scale-[0.98] transition-transform"
+			className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform"
 		>
 			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
 			{children}
 			{onTap && (
-				<p className="text-xs text-[#6B7280] text-center mt-2">
+				<p className="text-xs text-muted text-center mt-2">
 					Tap for details
 				</p>
 			)}
@@ -212,8 +212,8 @@ export function AnalyticsMobile() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-20">
-				<div className="sticky top-0 bg-[#0D0D0D]/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-[#374151]">
+			<div className="min-h-screen bg-background pb-20">
+				<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
 					<Skeleton className="h-6 w-32" />
 				</div>
 				<div className="flex overflow-x-auto gap-3 px-4 py-4">
@@ -233,21 +233,21 @@ export function AnalyticsMobile() {
 	const hasData = volumeData.length > 0 || muscleData.length > 0;
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20">
+		<div className="min-h-screen bg-background pb-20">
 			{/* Compact Header */}
-			<div className="sticky top-0 bg-[#0D0D0D]/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-[#374151]">
+			<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
 				<div className="flex items-center justify-between">
 					<h1 className="text-xl font-bold">
-						<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 							Analytics Hub
 						</span>
 					</h1>
 					<div className="flex items-center gap-2">
 						<Select value={timePeriod} onValueChange={setTimePeriod}>
-							<SelectTrigger className="w-20 h-8 text-sm bg-[#1a1a1a] border-[#374151]">
+							<SelectTrigger className="w-20 h-8 text-sm bg-surface-2 border-secondary">
 								<SelectValue />
 							</SelectTrigger>
-							<SelectContent className="bg-[#1a1a1a] border-[#374151]">
+							<SelectContent className="bg-surface-2 border-secondary">
 								<SelectItem value="7D">7D</SelectItem>
 								<SelectItem value="30D">30D</SelectItem>
 								<SelectItem value="90D">90D</SelectItem>
@@ -255,7 +255,7 @@ export function AnalyticsMobile() {
 								<SelectItem value="ALL">All</SelectItem>
 							</SelectContent>
 						</Select>
-						<button className="w-8 h-8 flex items-center justify-center text-[#9CA3AF] hover:text-white transition-colors">
+						<button className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors">
 							<Download className="w-4 h-4" />
 						</button>
 					</div>
@@ -276,7 +276,7 @@ export function AnalyticsMobile() {
 			</div>
 
 			{/* Scrollable Tabs */}
-			<div className="overflow-x-auto scrollbar-hide border-b border-[#374151]">
+			<div className="overflow-x-auto scrollbar-hide border-b border-secondary">
 				<div className="flex px-4 gap-1">
 					{[
 						{ value: "overview", label: "Overview" },
@@ -289,8 +289,8 @@ export function AnalyticsMobile() {
 							onClick={() => setActiveTab(tab.value)}
 							className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
 								activeTab === tab.value
-									? "text-white border-[#FF6B35]"
-									: "text-[#9CA3AF] border-transparent"
+									? "text-white border-primary"
+									: "text-muted-foreground border-transparent"
 							}`}
 						>
 							{tab.label}
@@ -302,7 +302,7 @@ export function AnalyticsMobile() {
 			{/* Content */}
 			<div className="px-4 py-4 space-y-4">
 				{!hasData ? (
-					<div className="text-center py-12 text-[#6B7280]">
+					<div className="text-center py-12 text-muted">
 						<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
 						<p>No analytics data yet. Complete workouts to see insights.</p>
 					</div>
@@ -367,7 +367,7 @@ export function AnalyticsMobile() {
 											</AreaChart>
 										</ResponsiveContainer>
 									) : (
-										<div className="h-[200px] flex items-center justify-center text-[#6B7280] text-sm">
+										<div className="h-[200px] flex items-center justify-center text-muted text-sm">
 											No volume data for this period
 										</div>
 									)}
@@ -412,7 +412,7 @@ export function AnalyticsMobile() {
 															className="w-3 h-3 rounded-full"
 															style={{ backgroundColor: muscle.color }}
 														/>
-														<span className="text-[#9CA3AF]">
+														<span className="text-muted-foreground">
 															{muscle.name} {muscle.value}%
 														</span>
 													</div>
@@ -420,7 +420,7 @@ export function AnalyticsMobile() {
 											</div>
 										</>
 									) : (
-										<div className="h-[200px] flex items-center justify-center text-[#6B7280] text-sm">
+										<div className="h-[200px] flex items-center justify-center text-muted text-sm">
 											No muscle group data yet
 										</div>
 									)}
@@ -462,7 +462,7 @@ export function AnalyticsMobile() {
 										</BarChart>
 									</ResponsiveContainer>
 								) : (
-									<div className="h-[250px] flex items-center justify-center text-[#6B7280] text-sm">
+									<div className="h-[250px] flex items-center justify-center text-muted text-sm">
 										No strength data yet. Set some PRs!
 									</div>
 								)}
@@ -470,14 +470,14 @@ export function AnalyticsMobile() {
 						)}
 
 						{activeTab === "trends" && (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>Trends analysis coming soon</p>
 							</div>
 						)}
 
 						{activeTab === "body" && (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>Body composition tracking coming soon</p>
 							</div>

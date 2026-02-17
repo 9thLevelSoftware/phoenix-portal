@@ -15,15 +15,15 @@ export function RewardsCard({ rewards }: RewardsCardProps) {
 
 		switch (reward.type) {
 			case "badge":
-				return <Award className="w-6 h-6 text-[#F59E0B]" />;
+				return <Award className="w-6 h-6 text-accent" />;
 			case "premium":
-				return <Zap className="w-6 h-6 text-[#FBBF24]" />;
+				return <Zap className="w-6 h-6 text-warning" />;
 			case "points":
-				return <Star className="w-6 h-6 text-[#FF6B35]" />;
+				return <Star className="w-6 h-6 text-primary" />;
 			case "title":
-				return <Trophy className="w-6 h-6 text-[#10B981]" />;
+				return <Trophy className="w-6 h-6 text-success" />;
 			default:
-				return <Trophy className="w-6 h-6 text-[#9CA3AF]" />;
+				return <Trophy className="w-6 h-6 text-muted-foreground" />;
 		}
 	};
 
@@ -38,7 +38,7 @@ export function RewardsCard({ rewards }: RewardsCardProps) {
 			}}
 			className="w-full max-w-md mx-auto px-4"
 		>
-			<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 				<h3 className="text-lg font-semibold text-white mb-4 text-center">
 					REWARDS EARNED
 				</h3>
@@ -54,12 +54,12 @@ export function RewardsCard({ rewards }: RewardsCardProps) {
 								type: "spring",
 								damping: 20,
 							}}
-							className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]"
+							className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary"
 						>
 							<div className="flex-shrink-0">{getRewardIcon(reward)}</div>
 							<div className="flex-1">
 								<p className="text-white font-medium">{reward.name}</p>
-								<p className="text-xs text-[#6B7280] capitalize">
+								<p className="text-xs text-muted capitalize">
 									{reward.type}
 								</p>
 							</div>

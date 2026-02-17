@@ -44,9 +44,9 @@ export function RoutinePickerModal({
 						exit={{ opacity: 0, scale: 0.95, y: 20 }}
 						className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl z-50 max-h-[80vh] overflow-hidden"
 					>
-						<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
 							{/* Header */}
-							<div className="flex items-center justify-between p-6 border-b border-[#374151]">
+							<div className="flex items-center justify-between p-6 border-b border-secondary">
 								<h2 className="text-xl font-semibold text-white">
 									Select Routine
 								</h2>
@@ -56,12 +56,12 @@ export function RoutinePickerModal({
 							</div>
 
 							{/* Search */}
-							<div className="p-6 border-b border-[#374151]">
+							<div className="p-6 border-b border-secondary">
 								<div className="relative">
-									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
 									<Input
 										placeholder="Search routines..."
-										className="pl-10 bg-[#0D0D0D] border-[#374151]"
+										className="pl-10 bg-background border-secondary"
 									/>
 								</div>
 							</div>
@@ -70,7 +70,7 @@ export function RoutinePickerModal({
 							<div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)]">
 								{/* Recent */}
 								<div className="mb-6">
-									<h3 className="text-sm font-semibold text-[#9CA3AF] uppercase mb-3">
+									<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
 										Recent
 									</h3>
 									<div className="space-y-2">
@@ -78,18 +78,18 @@ export function RoutinePickerModal({
 											<button
 												key={routine.id}
 												onClick={() => onSelect(routine.id)}
-												className="w-full p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg hover:border-[#FF6B35] transition-all text-left group"
+												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
 											>
 												<div className="flex items-center justify-between">
 													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center">
+														<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
 															<Dumbbell className="w-5 h-5 text-white" />
 														</div>
 														<div>
 															<div className="font-semibold text-white">
 																{routine.name}
 															</div>
-															<div className="text-sm text-[#9CA3AF]">
+															<div className="text-sm text-muted-foreground">
 																{routine.exercises} exercises • ~
 																{routine.duration} min
 															</div>
@@ -97,7 +97,7 @@ export function RoutinePickerModal({
 													</div>
 													<Button
 														size="sm"
-														className="bg-[#FF6B35] hover:bg-[#DC2626] border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+														className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
 													>
 														Select
 													</Button>
@@ -109,7 +109,7 @@ export function RoutinePickerModal({
 
 								{/* All Routines */}
 								<div>
-									<h3 className="text-sm font-semibold text-[#9CA3AF] uppercase mb-3">
+									<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
 										All My Routines
 									</h3>
 									<div className="space-y-2">
@@ -117,21 +117,21 @@ export function RoutinePickerModal({
 											<button
 												key={routine.id}
 												onClick={() => onSelect(routine.id)}
-												className="w-full p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg hover:border-[#FF6B35] transition-all text-left group"
+												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
 											>
 												<div className="flex items-center justify-between">
 													<div>
 														<div className="font-semibold text-white">
 															{routine.name}
 														</div>
-														<div className="text-sm text-[#9CA3AF]">
+														<div className="text-sm text-muted-foreground">
 															{routine.exercises} exercises • ~
 															{routine.duration} min
 														</div>
 													</div>
 													<Button
 														size="sm"
-														className="bg-[#FF6B35] hover:bg-[#DC2626] border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+														className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
 													>
 														Select
 													</Button>
@@ -143,10 +143,10 @@ export function RoutinePickerModal({
 							</div>
 
 							{/* Footer */}
-							<div className="p-6 border-t border-[#374151]">
+							<div className="p-6 border-t border-secondary">
 								<Button
 									variant="outline"
-									className="w-full border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+									className="w-full border-primary text-primary hover:bg-primary/10"
 								>
 									+ Create New Routine
 								</Button>

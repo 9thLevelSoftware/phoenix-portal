@@ -42,7 +42,7 @@ export function Navigation() {
 	const streak = useUIStore((s) => s.streak);
 
 	return (
-		<nav className="hidden md:block sticky top-0 z-50 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151]">
+		<nav className="hidden md:block sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-secondary">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 				<div className="flex items-center justify-between h-16">
 					{/* Logo */}
@@ -51,7 +51,7 @@ export function Navigation() {
 						className="flex items-center gap-3 cursor-pointer"
 					>
 						<PhoenixLogo size="sm" />
-						<span className="text-xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+						<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 							Project Phoenix
 						</span>
 					</Link>
@@ -63,7 +63,7 @@ export function Navigation() {
 								key={item.path}
 								to={item.path}
 								className={({ isActive }) =>
-									`relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-[#E5E7EB] hover:text-white hover:bg-[#FF6B35]/10 ${
+									`relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-secondary-foreground hover:text-white hover:bg-primary/10 ${
 										isActive ? "text-white" : ""
 									}`
 								}
@@ -75,7 +75,7 @@ export function Navigation() {
 										{isActive && (
 											<motion.div
 												layoutId="activeTab"
-												className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#FF6B35] to-[#DC2626]"
+												className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2"
 											/>
 										)}
 									</>
@@ -90,15 +90,15 @@ export function Navigation() {
 						<Button
 							variant="ghost"
 							size="icon"
-							className="relative hover:bg-[#FF6B35]/10"
+							className="relative hover:bg-primary/10"
 						>
-							<Bell className="w-5 h-5 text-[#E5E7EB]" />
-							<span className="absolute top-1 right-1 w-2 h-2 bg-[#FF6B35] rounded-full animate-pulse" />
+							<Bell className="w-5 h-5 text-secondary-foreground" />
+							<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
 						</Button>
 
 						{/* Streak Indicator */}
-						<div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-[#FF6B35]/20 to-[#DC2626]/20 border border-[#FF6B35]/50 rounded-full">
-							<Flame className="w-4 h-4 text-[#F59E0B]" fill="#FF6B35" />
+						<div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-chart-2/20 border border-primary/50 rounded-full">
+							<Flame className="w-4 h-4 text-accent" fill="#FF6B35" />
 							<span className="text-sm text-white">{streak} day streak</span>
 						</div>
 
@@ -107,8 +107,8 @@ export function Navigation() {
 
 						{/* User Avatar */}
 						<Link to="/profile">
-							<Avatar className="cursor-pointer ring-2 ring-[#FF6B35] ring-offset-2 ring-offset-[#0D0D0D]">
-								<AvatarFallback className="bg-gradient-to-br from-[#FF6B35] to-[#DC2626] text-white">
+							<Avatar className="cursor-pointer ring-2 ring-primary ring-offset-2 ring-offset-background">
+								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white">
 									JD
 								</AvatarFallback>
 							</Avatar>
@@ -119,12 +119,12 @@ export function Navigation() {
 							variant="ghost"
 							size="icon"
 							title="Sign out"
-							className="hover:bg-[#DC2626]/10 hover:text-[#DC2626]"
+							className="hover:bg-chart-2/10 hover:text-chart-2"
 							onClick={async () => {
 								await signOut();
 							}}
 						>
-							<LogOut className="w-5 h-5 text-[#E5E7EB]" />
+							<LogOut className="w-5 h-5 text-secondary-foreground" />
 						</Button>
 					</div>
 				</div>

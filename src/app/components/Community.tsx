@@ -116,16 +116,16 @@ function CommunityDesktop() {
 	}, []);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<div className="mb-8">
 					<h1 className="text-3xl sm:text-4xl mb-2">
-						<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 							Community Hub
 						</span>
 					</h1>
-					<p className="text-[#9CA3AF]">
+					<p className="text-muted-foreground">
 						Discover, share, and connect with fellow athletes
 					</p>
 				</div>
@@ -136,16 +136,16 @@ function CommunityDesktop() {
 					onValueChange={(v) => setActiveTab(v as "routines" | "cycles")}
 					className="mb-6"
 				>
-					<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="routines"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Routines
 						</TabsTrigger>
 						<TabsTrigger
 							value="cycles"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Cycles
 						</TabsTrigger>
@@ -170,10 +170,10 @@ function CommunityDesktop() {
 								value={sort}
 								onValueChange={(v) => setSort(v as "hot" | "top" | "new")}
 							>
-								<SelectTrigger className="w-[120px] bg-[#1a1a1a] border-[#374151] text-white">
+								<SelectTrigger className="w-[120px] bg-surface-2 border-secondary text-white">
 									<SelectValue />
 								</SelectTrigger>
-								<SelectContent className="bg-[#1a1a1a] border-[#374151]">
+								<SelectContent className="bg-surface-2 border-secondary">
 									{SORT_OPTIONS.map((opt) => (
 										<SelectItem key={opt.value} value={opt.value}>
 											{opt.label}
@@ -194,19 +194,19 @@ function CommunityDesktop() {
 								{Array.from({ length: 6 }).map((_, i) => (
 									<Card
 										key={i}
-										className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-48"
+										className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
 									/>
 								))}
 							</div>
 						) : isError ? (
-							<div className="text-center py-16 text-[#6B7280]">
+							<div className="text-center py-16 text-muted">
 								<p className="text-lg mb-2">Something went wrong</p>
 								<p className="text-sm">
 									Failed to load community feed. Please try again.
 								</p>
 							</div>
 						) : allItems.length === 0 ? (
-							<div className="text-center py-16 text-[#6B7280]">
+							<div className="text-center py-16 text-muted">
 								<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p className="text-lg">
 									No {activeTab === "routines" ? "routines" : "cycles"} found
@@ -236,7 +236,7 @@ function CommunityDesktop() {
 						<div ref={sentinelRef} className="h-4" />
 						{isFetchingNextPage && (
 							<div className="flex justify-center py-4">
-								<div className="w-6 h-6 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
+								<div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
 							</div>
 						)}
 					</>

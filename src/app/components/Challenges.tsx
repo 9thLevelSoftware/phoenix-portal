@@ -167,56 +167,56 @@ export function Challenges() {
 	const getDifficultyColor = (difficulty: string) => {
 		switch (difficulty) {
 			case "easy":
-				return "from-[#10B981] to-[#059669]";
+				return "from-success to-[#059669]";
 			case "medium":
-				return "from-[#F59E0B] to-[#D97706]";
+				return "from-accent to-[#D97706]";
 			case "hard":
-				return "from-[#FF6B35] to-[#DC2626]";
+				return "from-primary to-chart-2";
 			case "extreme":
-				return "from-[#DC2626] to-[#991B1B]";
+				return "from-chart-2 to-[#991B1B]";
 			default:
-				return "from-[#6B7280] to-[#4B5563]";
+				return "from-muted to-muted";
 		}
 	};
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<div className="mb-8">
 					<h1 className="text-3xl sm:text-4xl mb-2">
-						<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 							Challenges
 						</span>
 					</h1>
-					<p className="text-[#9CA3AF]">
+					<p className="text-muted-foreground">
 						Compete, conquer, and claim your glory
 					</p>
 				</div>
 
 				<Tabs defaultValue="active" className="space-y-6">
-					<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="active"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Active Challenges
 						</TabsTrigger>
 						<TabsTrigger
 							value="leaderboard"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Leaderboard
 						</TabsTrigger>
 						<TabsTrigger
 							value="past"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Past Challenges
 						</TabsTrigger>
 						<TabsTrigger
 							value="discover"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Discover
 						</TabsTrigger>
@@ -231,7 +231,7 @@ export function Challenges() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
 									<div className="flex flex-col lg:flex-row gap-6">
 										{/* Left Section */}
 										<div className="flex-1 space-y-4">
@@ -247,7 +247,7 @@ export function Challenges() {
 															<h3 className="text-xl text-white">
 																{challenge.name}
 															</h3>
-															<p className="text-sm text-[#9CA3AF]">
+															<p className="text-sm text-muted-foreground">
 																{challenge.description}
 															</p>
 														</div>
@@ -263,7 +263,7 @@ export function Challenges() {
 											{/* Progress */}
 											<div>
 												<div className="flex items-center justify-between mb-2 text-sm">
-													<span className="text-[#9CA3AF]">Your Progress</span>
+													<span className="text-muted-foreground">Your Progress</span>
 													<span className="text-white">
 														{challenge.progress}%
 													</span>
@@ -274,15 +274,15 @@ export function Challenges() {
 											{/* Stats Grid */}
 											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 												<div>
-													<div className="text-xs text-[#9CA3AF] mb-1">
+													<div className="text-xs text-muted-foreground mb-1">
 														Your Rank
 													</div>
-													<div className="text-xl text-[#FF6B35]">
+													<div className="text-xl text-primary">
 														#{challenge.rank}
 													</div>
 												</div>
 												<div>
-													<div className="text-xs text-[#9CA3AF] mb-1">
+													<div className="text-xs text-muted-foreground mb-1">
 														Participants
 													</div>
 													<div className="text-xl text-white">
@@ -290,7 +290,7 @@ export function Challenges() {
 													</div>
 												</div>
 												<div>
-													<div className="text-xs text-[#9CA3AF] mb-1">
+													<div className="text-xs text-muted-foreground mb-1">
 														Your Score
 													</div>
 													<div className="text-xl text-white">
@@ -298,10 +298,10 @@ export function Challenges() {
 													</div>
 												</div>
 												<div>
-													<div className="text-xs text-[#9CA3AF] mb-1">
+													<div className="text-xs text-muted-foreground mb-1">
 														Time Left
 													</div>
-													<div className="text-xl text-[#FBBF24]">
+													<div className="text-xl text-warning">
 														{challenge.timeLeft}
 													</div>
 												</div>
@@ -310,11 +310,11 @@ export function Challenges() {
 
 										{/* Right Section */}
 										<div className="lg:w-64 flex flex-col justify-between">
-											<div className="p-4 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/10 border border-[#FF6B35]/30 rounded-lg mb-4">
-												<div className="text-xs text-[#9CA3AF] mb-2">Prize</div>
+											<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg mb-4">
+												<div className="text-xs text-muted-foreground mb-2">Prize</div>
 												<div className="text-white">{challenge.prize}</div>
 											</div>
-											<Button className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+											<Button className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 												View Details
 											</Button>
 										</div>
@@ -326,7 +326,7 @@ export function Challenges() {
 
 					{/* Leaderboard Tab */}
 					<TabsContent value="leaderboard" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6">
 								January Volume Challenge - Leaderboard
 							</h3>
@@ -336,20 +336,20 @@ export function Challenges() {
 										key={entry.rank}
 										className={`p-4 rounded-lg flex items-center gap-4 ${
 											entry.isUser
-												? "bg-gradient-to-r from-[#FF6B35]/20 to-[#DC2626]/20 border-2 border-[#FF6B35]"
-												: "bg-[#0D0D0D] border border-[#374151]"
-										} hover:border-[#FF6B35]/50 transition-all`}
+												? "bg-gradient-to-r from-primary/20 to-chart-2/20 border-2 border-primary"
+												: "bg-background border border-secondary"
+										} hover:border-primary/50 transition-all`}
 									>
 										{/* Rank Badge */}
 										<div className="w-12 h-12 flex items-center justify-center">
 											{entry.rank === 1 && (
-												<div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] flex items-center justify-center">
-													<Trophy className="w-5 h-5 text-[#0D0D0D]" />
+												<div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-warning flex items-center justify-center">
+													<Trophy className="w-5 h-5 text-background" />
 												</div>
 											)}
 											{entry.rank === 2 && (
-												<div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E5E7EB] to-[#9CA3AF] flex items-center justify-center">
-													<Medal className="w-5 h-5 text-[#0D0D0D]" />
+												<div className="w-10 h-10 rounded-full bg-gradient-to-br from-secondary-foreground to-muted-foreground flex items-center justify-center">
+													<Medal className="w-5 h-5 text-background" />
 												</div>
 											)}
 											{entry.rank === 3 && (
@@ -358,7 +358,7 @@ export function Challenges() {
 												</div>
 											)}
 											{entry.rank > 3 && (
-												<div className="text-xl text-[#9CA3AF]">
+												<div className="text-xl text-muted-foreground">
 													#{entry.rank}
 												</div>
 											)}
@@ -368,8 +368,8 @@ export function Challenges() {
 										<div
 											className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${
 												entry.isUser
-													? "bg-gradient-to-br from-[#FF6B35] to-[#DC2626] ring-2 ring-[#F59E0B] ring-offset-2 ring-offset-[#0D0D0D]"
-													: "bg-gradient-to-br from-[#6B7280] to-[#4B5563]"
+													? "bg-gradient-to-br from-primary to-chart-2 ring-2 ring-accent ring-offset-2 ring-offset-background"
+													: "bg-gradient-to-br from-muted to-muted"
 											}`}
 										>
 											{entry.avatar}
@@ -382,25 +382,25 @@ export function Challenges() {
 
 										{/* Score */}
 										<div className="text-right">
-											<div className="text-[#FF6B35]">{entry.score}</div>
+											<div className="text-primary">{entry.score}</div>
 										</div>
 
 										{/* Change Indicator */}
 										<div className="w-12 text-center">
 											{entry.change > 0 && (
-												<div className="flex items-center justify-center gap-1 text-[#10B981] text-sm">
+												<div className="flex items-center justify-center gap-1 text-success text-sm">
 													<TrendingUp className="w-4 h-4" />
 													{entry.change}
 												</div>
 											)}
 											{entry.change < 0 && (
-												<div className="flex items-center justify-center gap-1 text-[#EF4444] text-sm">
+												<div className="flex items-center justify-center gap-1 text-destructive text-sm">
 													<TrendingUp className="w-4 h-4 rotate-180" />
 													{Math.abs(entry.change)}
 												</div>
 											)}
 											{entry.change === 0 && (
-												<div className="text-[#6B7280] text-sm">-</div>
+												<div className="text-muted text-sm">-</div>
 											)}
 										</div>
 									</div>
@@ -419,32 +419,32 @@ export function Challenges() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.1 }}
 								>
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] h-full">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary h-full">
 										<div className="mb-4">
 											<h3 className="text-lg text-white mb-2">
 												{challenge.name}
 											</h3>
-											<Badge className="bg-[#10B981] text-white border-0">
+											<Badge className="bg-success text-white border-0">
 												Completed
 											</Badge>
 										</div>
 										<div className="space-y-3">
 											<div className="flex items-center justify-between">
-												<span className="text-sm text-[#9CA3AF]">
+												<span className="text-sm text-muted-foreground">
 													Your Placement
 												</span>
 												<span
 													className={`text-lg ${
 														challenge.placement <= 3
-															? "text-[#F59E0B]"
+															? "text-accent"
 															: "text-white"
 													}`}
 												>
 													#{challenge.placement} / {challenge.participants}
 												</span>
 											</div>
-											<div className="p-3 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/10 border border-[#FF6B35]/30 rounded-lg">
-												<div className="text-xs text-[#9CA3AF] mb-1">
+											<div className="p-3 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
+												<div className="text-xs text-muted-foreground mb-1">
 													Reward Earned
 												</div>
 												<div className="text-white">{challenge.reward}</div>
@@ -466,7 +466,7 @@ export function Challenges() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.1 }}
 								>
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all h-full flex flex-col">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full flex flex-col">
 										<div className="flex-1">
 											<div className="flex items-start justify-between mb-4">
 												<div
@@ -483,10 +483,10 @@ export function Challenges() {
 											<h3 className="text-lg text-white mb-2">
 												{challenge.name}
 											</h3>
-											<p className="text-sm text-[#9CA3AF] mb-4">
+											<p className="text-sm text-muted-foreground mb-4">
 												{challenge.description}
 											</p>
-											<div className="flex items-center gap-4 text-sm text-[#9CA3AF] mb-4">
+											<div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
 												<div className="flex items-center gap-1">
 													<Clock className="w-4 h-4" />
 													{challenge.duration}
@@ -498,7 +498,7 @@ export function Challenges() {
 											</div>
 										</div>
 										<Button
-											className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+											className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 											title="Join to track your synced workout progress against other athletes"
 										>
 											Join Challenge

@@ -37,19 +37,19 @@ export function ProgressionRules({
 	};
 
 	return (
-		<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
 				className="w-full flex items-center justify-between mb-6 group"
 			>
 				<h2 className="text-xl font-semibold text-white flex items-center gap-2">
-					<TrendingUp className="w-5 h-5 text-[#FF6B35]" />
+					<TrendingUp className="w-5 h-5 text-primary" />
 					Progression Rules
 				</h2>
 				{isExpanded ? (
-					<ChevronUp className="w-5 h-5 text-[#9CA3AF] group-hover:text-white transition-colors" />
+					<ChevronUp className="w-5 h-5 text-muted-foreground group-hover:text-white transition-colors" />
 				) : (
-					<ChevronDown className="w-5 h-5 text-[#9CA3AF] group-hover:text-white transition-colors" />
+					<ChevronDown className="w-5 h-5 text-muted-foreground group-hover:text-white transition-colors" />
 				)}
 			</button>
 
@@ -57,7 +57,7 @@ export function ProgressionRules({
 				<div className="space-y-6">
 					{/* Type Selection */}
 					<div>
-						<Label className="text-[#E5E7EB] mb-3">
+						<Label className="text-secondary-foreground mb-3">
 							How should weights progress over time?
 						</Label>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -79,7 +79,7 @@ export function ProgressionRules({
 						</div>
 					</div>
 
-					<div className="border-t border-[#374151] pt-6">
+					<div className="border-t border-secondary pt-6">
 						{/* Percentage Settings */}
 						{progressionType === "percentage" && (
 							<div className="space-y-4">
@@ -88,7 +88,7 @@ export function ProgressionRules({
 								</h3>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">
+									<Label className="text-muted-foreground mb-2">
 										Increase all weights by:
 									</Label>
 									<div className="flex items-center gap-2">
@@ -104,7 +104,7 @@ export function ProgressionRules({
 													),
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
@@ -118,9 +118,9 @@ export function ProgressionRules({
 													percentageIncrease: parseFloat(e.target.value) || 2.5,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-[#9CA3AF]">%</span>
+										<span className="text-muted-foreground">%</span>
 										<Button
 											size="sm"
 											variant="outline"
@@ -131,7 +131,7 @@ export function ProgressionRules({
 														(progressionConfig.percentageIncrease || 2.5) + 0.5,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
@@ -139,7 +139,7 @@ export function ProgressionRules({
 								</div>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">Every:</Label>
+									<Label className="text-muted-foreground mb-2">Every:</Label>
 									<div className="flex items-center gap-2">
 										<Button
 											size="sm"
@@ -153,7 +153,7 @@ export function ProgressionRules({
 													),
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
@@ -166,9 +166,9 @@ export function ProgressionRules({
 													cycleFrequency: parseInt(e.target.value, 10) || 1,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-[#9CA3AF]">cycle(s)</span>
+										<span className="text-muted-foreground">cycle(s)</span>
 										<Button
 											size="sm"
 											variant="outline"
@@ -179,7 +179,7 @@ export function ProgressionRules({
 														(progressionConfig.cycleFrequency || 1) + 1,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
@@ -187,7 +187,7 @@ export function ProgressionRules({
 								</div>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-3">
+									<Label className="text-muted-foreground mb-3">
 										Trigger progression when:
 									</Label>
 									<div className="space-y-2">
@@ -226,9 +226,9 @@ export function ProgressionRules({
 									</div>
 								</div>
 
-								<div className="p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg">
-									<div className="text-sm text-[#9CA3AF]">
-										<span className="text-[#F59E0B]">💡 EXAMPLE</span>
+								<div className="p-4 bg-background border border-secondary rounded-lg">
+									<div className="text-sm text-muted-foreground">
+										<span className="text-accent">💡 EXAMPLE</span>
 										<br />
 										If you're lifting 80kg and complete the cycle successfully,
 										next cycle will use 82kg (+
@@ -246,7 +246,7 @@ export function ProgressionRules({
 								</h3>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">
+									<Label className="text-muted-foreground mb-2">
 										Upper body exercises:
 									</Label>
 									<div className="flex items-center gap-2">
@@ -262,11 +262,11 @@ export function ProgressionRules({
 													),
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
-										<span className="text-[#9CA3AF]">+</span>
+										<span className="text-muted-foreground">+</span>
 										<Input
 											type="number"
 											step="0.5"
@@ -277,9 +277,9 @@ export function ProgressionRules({
 													upperBodyIncrement: parseFloat(e.target.value) || 2.5,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-[#9CA3AF]">kg per cycle</span>
+										<span className="text-muted-foreground">kg per cycle</span>
 										<Button
 											size="sm"
 											variant="outline"
@@ -290,7 +290,7 @@ export function ProgressionRules({
 														(progressionConfig.upperBodyIncrement || 2.5) + 0.5,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
@@ -298,7 +298,7 @@ export function ProgressionRules({
 								</div>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">
+									<Label className="text-muted-foreground mb-2">
 										Lower body exercises:
 									</Label>
 									<div className="flex items-center gap-2">
@@ -314,11 +314,11 @@ export function ProgressionRules({
 													),
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
-										<span className="text-[#9CA3AF]">+</span>
+										<span className="text-muted-foreground">+</span>
 										<Input
 											type="number"
 											step="0.5"
@@ -329,9 +329,9 @@ export function ProgressionRules({
 													lowerBodyIncrement: parseFloat(e.target.value) || 5.0,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-[#9CA3AF]">kg per cycle</span>
+										<span className="text-muted-foreground">kg per cycle</span>
 										<Button
 											size="sm"
 											variant="outline"
@@ -342,16 +342,16 @@ export function ProgressionRules({
 														(progressionConfig.lowerBodyIncrement || 5.0) + 0.5,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
 									</div>
 								</div>
 
-								<div className="p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg">
-									<div className="text-sm text-[#9CA3AF]">
-										<span className="text-[#F59E0B]">
+								<div className="p-4 bg-background border border-secondary rounded-lg">
+									<div className="text-sm text-muted-foreground">
+										<span className="text-accent">
 											💡 Based on 5/3/1 methodology
 										</span>
 										<br />
@@ -366,13 +366,13 @@ export function ProgressionRules({
 						{progressionType === "manual" && (
 							<div className="space-y-4">
 								<h3 className="font-semibold text-white">Manual Progression</h3>
-								<p className="text-[#9CA3AF]">
+								<p className="text-muted-foreground">
 									Weights will not automatically increase between cycles. You
 									can manually adjust weights in each workout.
 								</p>
-								<div className="p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg">
-									<div className="text-sm text-[#9CA3AF]">
-										<span className="text-[#F59E0B]">💡 Tip</span>
+								<div className="p-4 bg-background border border-secondary rounded-lg">
+									<div className="text-sm text-muted-foreground">
+										<span className="text-accent">💡 Tip</span>
 										<br />
 										Choose this if you prefer to manage progression yourself or
 										if this is a maintenance/deload cycle.
@@ -383,7 +383,7 @@ export function ProgressionRules({
 					</div>
 
 					{/* Deload Configuration */}
-					<div className="pt-6 border-t border-[#374151]">
+					<div className="pt-6 border-t border-secondary">
 						<h3 className="font-semibold text-white mb-4">Deload Weeks</h3>
 
 						<div className="flex items-center gap-2 mb-4">
@@ -391,7 +391,7 @@ export function ProgressionRules({
 								checked={deloadEnabled}
 								onCheckedChange={onDeloadEnabledChange}
 							/>
-							<Label className="text-[#E5E7EB]">
+							<Label className="text-secondary-foreground">
 								Include scheduled deload weeks
 							</Label>
 						</div>
@@ -399,7 +399,7 @@ export function ProgressionRules({
 						{deloadEnabled && (
 							<div className="space-y-4 pl-8">
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">Deload every:</Label>
+									<Label className="text-muted-foreground mb-2">Deload every:</Label>
 									<div className="flex items-center gap-2">
 										<Input
 											type="number"
@@ -410,18 +410,18 @@ export function ProgressionRules({
 													frequencyWeeks: parseInt(e.target.value, 10) || 4,
 												})
 											}
-											className="w-24 bg-[#0D0D0D] border-[#374151]"
+											className="w-24 bg-background border-secondary"
 											min="1"
 										/>
-										<span className="text-[#9CA3AF]">weeks</span>
+										<span className="text-muted-foreground">weeks</span>
 									</div>
 								</div>
 
 								<div>
-									<Label className="text-[#9CA3AF] mb-2">During deload:</Label>
+									<Label className="text-muted-foreground mb-2">During deload:</Label>
 									<div className="space-y-2">
 										<div className="flex items-center gap-2">
-											<span className="text-sm text-[#9CA3AF] w-24">
+											<span className="text-sm text-muted-foreground w-24">
 												Intensity:
 											</span>
 											<Input
@@ -434,16 +434,16 @@ export function ProgressionRules({
 															parseInt(e.target.value, 10) || 60,
 													})
 												}
-												className="w-24 bg-[#0D0D0D] border-[#374151]"
+												className="w-24 bg-background border-secondary"
 												min="0"
 												max="100"
 											/>
-											<span className="text-[#9CA3AF]">
+											<span className="text-muted-foreground">
 												% of working weight
 											</span>
 										</div>
 										<div className="flex items-center gap-2">
-											<span className="text-sm text-[#9CA3AF] w-24">
+											<span className="text-sm text-muted-foreground w-24">
 												Volume:
 											</span>
 											<Input
@@ -455,18 +455,18 @@ export function ProgressionRules({
 														volumePercent: parseInt(e.target.value, 10) || 50,
 													})
 												}
-												className="w-24 bg-[#0D0D0D] border-[#374151]"
+												className="w-24 bg-background border-secondary"
 												min="0"
 												max="100"
 											/>
-											<span className="text-[#9CA3AF]">% of normal sets</span>
+											<span className="text-muted-foreground">% of normal sets</span>
 										</div>
 									</div>
 								</div>
 
-								<div className="p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg">
-									<div className="text-sm text-[#9CA3AF]">
-										<span className="text-[#F59E0B]">💡 Why deload?</span>
+								<div className="p-4 bg-background border border-secondary rounded-lg">
+									<div className="text-sm text-muted-foreground">
+										<span className="text-accent">💡 Why deload?</span>
 										<br />
 										Deload weeks help prevent overtraining and allow your body
 										to recover. Most programs recommend every 4-6 weeks of hard
@@ -496,13 +496,13 @@ function ProgressionTypeCard({
 			onClick={onClick}
 			className={`p-4 rounded-lg border-2 transition-all ${
 				isSelected
-					? "border-[#FF6B35] bg-[#FF6B35]/10"
-					: "border-[#374151] hover:border-[#FF6B35]/50 bg-[#0D0D0D]"
+					? "border-primary bg-primary/10"
+					: "border-secondary hover:border-primary/50 bg-background"
 			}`}
 		>
 			<div className="text-center">
 				<div className="font-semibold text-white mb-2">{title}</div>
-				<div className="text-sm text-[#9CA3AF]">
+				<div className="text-sm text-muted-foreground">
 					{isSelected ? "● Selected" : "○"}
 				</div>
 			</div>
@@ -520,7 +520,7 @@ function TriggerOption({
 	onClick: () => void;
 }) {
 	return (
-		<label className="flex items-start gap-3 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg cursor-pointer hover:border-[#FF6B35] transition-colors">
+		<label className="flex items-start gap-3 p-3 bg-background border border-secondary rounded-lg cursor-pointer hover:border-primary transition-colors">
 			<input
 				type="radio"
 				checked={isSelected}

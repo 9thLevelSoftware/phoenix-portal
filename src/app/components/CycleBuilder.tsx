@@ -203,16 +203,16 @@ export function CycleBuilder() {
 	const restDays = days.filter((d) => d.type === "rest").length;
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-8">
+		<div className="min-h-screen bg-background pb-8">
 			{/* Sticky Top Bar */}
-			<div className="sticky top-0 z-40 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151] px-4 py-4">
+			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">
 					<div className="flex items-center gap-4 flex-1">
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={handleCancel}
-							className="text-[#9CA3AF] hover:text-white"
+							className="text-muted-foreground hover:text-white"
 						>
 							<ChevronLeft className="w-5 h-5 mr-1" />
 							Cancel
@@ -231,7 +231,7 @@ export function CycleBuilder() {
 						{hasUnsavedChanges && (
 							<Badge
 								variant="outline"
-								className="bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/30"
+								className="bg-accent/20 text-accent border-accent/30"
 							>
 								● Unsaved
 							</Badge>
@@ -242,14 +242,14 @@ export function CycleBuilder() {
 						<Button
 							variant="outline"
 							onClick={() => setShowPreview(true)}
-							className="border-[#374151] hover:border-[#FF6B35]"
+							className="border-secondary hover:border-primary"
 						>
 							<Eye className="w-4 h-4 mr-2" />
 							Preview
 						</Button>
 						<Button
 							onClick={handleSave}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							<Save className="w-4 h-4 mr-2" />
 							Save Cycle
@@ -265,28 +265,28 @@ export function CycleBuilder() {
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
-							<Calendar className="w-5 h-5 text-[#FF6B35]" />
+							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
 						</h2>
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
-								<Label className="text-[#E5E7EB] mb-2">Cycle Name</Label>
+								<Label className="text-secondary-foreground mb-2">Cycle Name</Label>
 								<Input
 									value={cycleName}
 									onChange={(e) => {
 										setCycleName(e.target.value);
 										setHasUnsavedChanges(true);
 									}}
-									className="bg-[#0D0D0D] border-[#374151]"
+									className="bg-background border-secondary"
 									placeholder="e.g., 12-Week Strength Builder"
 								/>
 							</div>
 
 							<div>
-								<Label className="text-[#E5E7EB] mb-2">Duration (Days)</Label>
+								<Label className="text-secondary-foreground mb-2">Duration (Days)</Label>
 								<div className="flex items-center gap-2">
 									<Input
 										type="number"
@@ -295,7 +295,7 @@ export function CycleBuilder() {
 											setDuration(parseInt(e.target.value, 10) || 7);
 											setHasUnsavedChanges(true);
 										}}
-										className="bg-[#0D0D0D] border-[#374151] w-24"
+										className="bg-background border-secondary w-24"
 										min="1"
 									/>
 									<div className="flex gap-2">
@@ -310,8 +310,8 @@ export function CycleBuilder() {
 												}}
 												className={
 													duration === num
-														? "bg-[#FF6B35] border-0"
-														: "border-[#374151]"
+														? "bg-primary border-0"
+														: "border-secondary"
 												}
 											>
 												{num}
@@ -322,20 +322,20 @@ export function CycleBuilder() {
 							</div>
 
 							<div className="md:col-span-2">
-								<Label className="text-[#E5E7EB] mb-2">Description</Label>
+								<Label className="text-secondary-foreground mb-2">Description</Label>
 								<Textarea
 									value={description}
 									onChange={(e) => {
 										setDescription(e.target.value);
 										setHasUnsavedChanges(true);
 									}}
-									className="bg-[#0D0D0D] border-[#374151] min-h-[80px]"
+									className="bg-background border-secondary min-h-[80px]"
 									placeholder="Describe your training cycle goals and approach..."
 								/>
 							</div>
 
 							<div>
-								<Label className="text-[#E5E7EB] mb-2">
+								<Label className="text-secondary-foreground mb-2">
 									Start Date (Optional)
 								</Label>
 								<Input
@@ -345,9 +345,9 @@ export function CycleBuilder() {
 										setStartDate(e.target.value);
 										setHasUnsavedChanges(true);
 									}}
-									className="bg-[#0D0D0D] border-[#374151]"
+									className="bg-background border-secondary"
 								/>
-								<p className="text-xs text-[#6B7280] mt-1">
+								<p className="text-xs text-muted mt-1">
 									Leave blank to start anytime
 								</p>
 							</div>
@@ -361,16 +361,16 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-center justify-between mb-6">
 							<h2 className="text-xl font-semibold text-white flex items-center gap-2">
-								<Dumbbell className="w-5 h-5 text-[#FF6B35]" />
+								<Dumbbell className="w-5 h-5 text-primary" />
 								Workout Schedule
 							</h2>
 							<Button
 								size="sm"
 								onClick={handleAddDay}
-								className="bg-[#FF6B35] hover:bg-[#DC2626] border-0"
+								className="bg-primary hover:bg-chart-2 border-0"
 							>
 								<Plus className="w-4 h-4 mr-2" />
 								Add Day
@@ -392,7 +392,7 @@ export function CycleBuilder() {
 							</div>
 						</div>
 
-						<p className="text-sm text-[#6B7280] mt-4 text-center">
+						<p className="text-sm text-muted mt-4 text-center">
 							Click a day to configure • Scroll horizontally for more days
 						</p>
 					</Card>
@@ -461,7 +461,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.3 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<h2 className="text-xl font-semibold text-white mb-6">
 							Week at a Glance
 						</h2>
@@ -472,19 +472,19 @@ export function CycleBuilder() {
 									const day = days[i];
 									return (
 										<div key={dayName} className="text-center">
-											<div className="text-xs text-[#9CA3AF] mb-2">
+											<div className="text-xs text-muted-foreground mb-2">
 												{dayName}
 											</div>
 											<div
 												className={`h-16 rounded-lg flex items-center justify-center text-2xl ${
 													day?.type === "workout"
-														? "bg-[#FF6B35]/20 border border-[#FF6B35]/30"
-														: "bg-[#374151]/20 border border-[#374151]"
+														? "bg-primary/20 border border-primary/30"
+														: "bg-secondary/20 border border-secondary"
 												}`}
 											>
 												{day?.type === "workout" ? "🏋️" : "🛋️"}
 											</div>
-											<div className="text-xs text-[#6B7280] mt-1 truncate">
+											<div className="text-xs text-muted mt-1 truncate">
 												{day?.routineName ||
 													(day?.type === "rest" ? "REST" : "-")}
 											</div>
@@ -494,7 +494,7 @@ export function CycleBuilder() {
 							)}
 						</div>
 
-						<div className="text-sm text-[#E5E7EB] mb-4">
+						<div className="text-sm text-secondary-foreground mb-4">
 							📊 {workoutDays} workout days • {restDays} rest days
 						</div>
 					</Card>
@@ -538,19 +538,19 @@ function DayCard({
 			whileHover={{ scale: 1.02 }}
 			whileTap={{ scale: 0.98 }}
 			className={`relative min-w-[180px] cursor-pointer transition-all ${
-				isSelected ? "ring-2 ring-[#FF6B35]" : ""
+				isSelected ? "ring-2 ring-primary" : ""
 			}`}
 		>
 			<Card
 				onClick={onClick}
 				className={`p-4 ${
 					day.type === "workout"
-						? "bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/5 border-l-4 border-l-[#FF6B35]"
-						: "bg-gradient-to-br from-[#374151]/20 to-[#0D0D0D] border-[#374151]"
+						? "bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35]"
+						: "bg-gradient-to-br from-secondary/20 to-background border-secondary"
 				}`}
 			>
 				<div className="text-center mb-3">
-					<div className="text-sm font-semibold text-[#9CA3AF]">
+					<div className="text-sm font-semibold text-muted-foreground">
 						Day {day.dayNumber}
 					</div>
 				</div>
@@ -561,19 +561,19 @@ function DayCard({
 						<div className="font-semibold text-white text-sm">
 							{day.routineName}
 						</div>
-						<div className="text-xs text-[#9CA3AF]">
+						<div className="text-xs text-muted-foreground">
 							{day.exerciseCount} ex. • ~{day.duration} min
 						</div>
 					</div>
 				) : day.type === "workout" ? (
 					<div className="text-center space-y-2">
-						<div className="text-4xl text-[#6B7280]">+</div>
-						<div className="text-xs text-[#9CA3AF]">Add Routine</div>
+						<div className="text-4xl text-muted">+</div>
+						<div className="text-xs text-muted-foreground">Add Routine</div>
 					</div>
 				) : (
 					<div className="text-center space-y-2">
 						<div className="text-2xl">🛋️</div>
-						<div className="text-sm font-semibold text-[#9CA3AF]">REST</div>
+						<div className="text-sm font-semibold text-muted-foreground">REST</div>
 					</div>
 				)}
 
@@ -583,9 +583,9 @@ function DayCard({
 							e.stopPropagation();
 							onRemove();
 						}}
-						className="absolute top-2 right-2 p-1 bg-[#EF4444]/20 hover:bg-[#EF4444]/40 rounded transition-colors"
+						className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
 					>
-						<X className="w-3 h-3 text-[#EF4444]" />
+						<X className="w-3 h-3 text-destructive" />
 					</button>
 				)}
 			</Card>
@@ -608,7 +608,7 @@ function DayEditorPanel({
 	onUpdate: (updates: Partial<DayConfig>) => void;
 }) {
 	return (
-		<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<div className="flex items-center justify-between mb-6">
 				<h3 className="text-lg font-semibold text-white">
 					Day {day.dayNumber} Configuration
@@ -622,13 +622,13 @@ function DayEditorPanel({
 				<div className="space-y-6">
 					{day.routineName ? (
 						<div>
-							<Label className="text-[#E5E7EB] mb-2">Assigned Routine</Label>
+							<Label className="text-secondary-foreground mb-2">Assigned Routine</Label>
 							<div className="flex items-center gap-2">
-								<div className="flex-1 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg">
+								<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
 									<div className="font-semibold text-white">
 										{day.routineName}
 									</div>
-									<div className="text-sm text-[#9CA3AF]">
+									<div className="text-sm text-muted-foreground">
 										{day.exerciseCount} exercises • ~{day.duration} min
 									</div>
 								</div>
@@ -636,7 +636,7 @@ function DayEditorPanel({
 									size="sm"
 									onClick={onAssignRoutine}
 									variant="outline"
-									className="border-[#374151]"
+									className="border-secondary"
 								>
 									Change
 								</Button>
@@ -644,11 +644,11 @@ function DayEditorPanel({
 						</div>
 					) : (
 						<div>
-							<Label className="text-[#E5E7EB] mb-2">Routine</Label>
+							<Label className="text-secondary-foreground mb-2">Routine</Label>
 							<Button
 								onClick={onAssignRoutine}
 								variant="outline"
-								className="w-full border-[#374151]"
+								className="w-full border-secondary"
 							>
 								<Plus className="w-4 h-4 mr-2" />
 								Assign Routine
@@ -657,16 +657,16 @@ function DayEditorPanel({
 					)}
 
 					<div>
-						<Label className="text-[#E5E7EB] mb-2">
+						<Label className="text-secondary-foreground mb-2">
 							Day-Specific Overrides
 						</Label>
-						<p className="text-xs text-[#6B7280] mb-4">
+						<p className="text-xs text-muted mb-4">
 							Optional - override routine defaults for this day only
 						</p>
 
 						<div className="space-y-4">
 							<div>
-								<Label className="text-sm text-[#9CA3AF] mb-2">
+								<Label className="text-sm text-muted-foreground mb-2">
 									Weight Adjustment (%)
 								</Label>
 								<div className="flex items-center gap-2">
@@ -678,7 +678,7 @@ function DayEditorPanel({
 												weightAdjustment: (day.weightAdjustment || 0) - 5,
 											})
 										}
-										className="border-[#374151]"
+										className="border-secondary"
 									>
 										−
 									</Button>
@@ -690,7 +690,7 @@ function DayEditorPanel({
 												weightAdjustment: parseInt(e.target.value, 10) || 0,
 											})
 										}
-										className="text-center bg-[#0D0D0D] border-[#374151]"
+										className="text-center bg-background border-secondary"
 									/>
 									<Button
 										size="sm"
@@ -700,7 +700,7 @@ function DayEditorPanel({
 												weightAdjustment: (day.weightAdjustment || 0) + 5,
 											})
 										}
-										className="border-[#374151]"
+										className="border-secondary"
 									>
 										+
 									</Button>
@@ -708,7 +708,7 @@ function DayEditorPanel({
 							</div>
 
 							<div>
-								<Label className="text-sm text-[#9CA3AF] mb-2">
+								<Label className="text-sm text-muted-foreground mb-2">
 									Rep Modifier
 								</Label>
 								<div className="flex items-center gap-2">
@@ -718,7 +718,7 @@ function DayEditorPanel({
 										onClick={() =>
 											onUpdate({ repModifier: (day.repModifier || 0) - 1 })
 										}
-										className="border-[#374151]"
+										className="border-secondary"
 									>
 										−
 									</Button>
@@ -730,7 +730,7 @@ function DayEditorPanel({
 												repModifier: parseInt(e.target.value, 10) || 0,
 											})
 										}
-										className="text-center bg-[#0D0D0D] border-[#374151]"
+										className="text-center bg-background border-secondary"
 									/>
 									<Button
 										size="sm"
@@ -738,7 +738,7 @@ function DayEditorPanel({
 										onClick={() =>
 											onUpdate({ repModifier: (day.repModifier || 0) + 1 })
 										}
-										className="border-[#374151]"
+										className="border-secondary"
 									>
 										+
 									</Button>
@@ -748,11 +748,11 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-[#E5E7EB] mb-2">Notes</Label>
+						<Label className="text-secondary-foreground mb-2">Notes</Label>
 						<Textarea
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
-							className="bg-[#0D0D0D] border-[#374151]"
+							className="bg-background border-secondary"
 							placeholder="e.g., Focus on form, Deload week, etc."
 						/>
 					</div>
@@ -760,7 +760,7 @@ function DayEditorPanel({
 					<Button
 						onClick={onSetRestDay}
 						variant="outline"
-						className="w-full border-[#374151] text-[#9CA3AF]"
+						className="w-full border-secondary text-muted-foreground"
 					>
 						Convert to Rest Day
 					</Button>
@@ -773,12 +773,12 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-[#E5E7EB] mb-2">Rest Type</Label>
+						<Label className="text-secondary-foreground mb-2">Rest Type</Label>
 						<Select
 							value={day.restType || "complete"}
 							onValueChange={(value: any) => onUpdate({ restType: value })}
 						>
-							<SelectTrigger className="bg-[#0D0D0D] border-[#374151]">
+							<SelectTrigger className="bg-background border-secondary">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -790,11 +790,11 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-[#E5E7EB] mb-2">Notes</Label>
+						<Label className="text-secondary-foreground mb-2">Notes</Label>
 						<Textarea
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
-							className="bg-[#0D0D0D] border-[#374151]"
+							className="bg-background border-secondary"
 							placeholder="e.g., Light walk, foam rolling, yoga..."
 						/>
 					</div>
@@ -802,7 +802,7 @@ function DayEditorPanel({
 					<Button
 						onClick={onAssignRoutine}
 						variant="outline"
-						className="w-full border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+						className="w-full border-primary text-primary hover:bg-primary/10"
 					>
 						Convert to Workout Day
 					</Button>
@@ -815,13 +815,13 @@ function DayEditorPanel({
 // Progression Rules Component (continued in next file due to length)
 function ProgressionRules({ ...props }: any) {
 	return (
-		<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<h2 className="text-xl font-semibold text-white mb-6">
 				Progression Rules
 			</h2>
 
 			{/* Implementation continues - see next part */}
-			<p className="text-[#9CA3AF]">Progression settings panel...</p>
+			<p className="text-muted-foreground">Progression settings panel...</p>
 		</Card>
 	);
 }

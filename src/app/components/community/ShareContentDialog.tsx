@@ -163,8 +163,8 @@ export function ShareContentDialog({
 
 				{showSuccess ? (
 					<div className="flex flex-col items-center gap-3 py-8">
-						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#10B981]/20">
-							<Check className="h-6 w-6 text-[#10B981]" />
+						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/20">
+							<Check className="h-6 w-6 text-success" />
 						</div>
 						<p className="text-sm text-muted-foreground">
 							Successfully shared to community!
@@ -273,7 +273,7 @@ export function ShareContentDialog({
 											className={cn(
 												"cursor-pointer select-none transition-colors",
 												isSelected &&
-													"bg-[#FF6B35] hover:bg-[#FF6B35]/80 text-white",
+													"bg-primary hover:bg-primary/80 text-white",
 											)}
 											onClick={() => toggleTag(tag)}
 										>
@@ -304,7 +304,7 @@ export function ShareContentDialog({
 
 						{/* Submit */}
 						<Button
-							className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white"
+							className="w-full bg-primary hover:bg-primary/90 text-white"
 							onClick={handleSubmit}
 							disabled={!isFormValid || shareContent.isPending}
 						>

@@ -53,7 +53,7 @@ export function MobileBottomNav() {
 	);
 
 	return (
-		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0D0D0D]/95 backdrop-blur-lg border-t border-[#374151] pb-safe">
+		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-secondary pb-safe">
 			<div className="flex items-center justify-around px-2 py-2 max-w-screen-xl mx-auto">
 				{primaryItems.map((item) => (
 					<NavLink
@@ -73,7 +73,7 @@ export function MobileBottomNav() {
 									{isActive && (
 										<motion.div
 											layoutId="activeMobileTab"
-											className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] rounded-full"
+											className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
 											transition={{
 												type: "spring",
 												stiffness: 500,
@@ -86,7 +86,7 @@ export function MobileBottomNav() {
 									<div className="relative">
 										<Icon
 											className={`w-6 h-6 transition-all ${
-												isActive ? "text-[#FF6B35] scale-110" : "text-[#9CA3AF]"
+												isActive ? "text-primary scale-110" : "text-muted-foreground"
 											}`}
 										/>
 
@@ -95,7 +95,7 @@ export function MobileBottomNav() {
 											<motion.span
 												initial={{ scale: 0 }}
 												animate={{ scale: 1 }}
-												className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[10px] font-bold rounded-full flex items-center justify-center"
+												className="absolute -top-1 -right-1 w-4 h-4 bg-chart-2 text-white text-[10px] font-bold rounded-full flex items-center justify-center"
 											>
 												{item.path === "/challenges" && notifications.challenges
 													? notifications.challenges
@@ -117,7 +117,7 @@ export function MobileBottomNav() {
 												}}
 											>
 												<Flame
-													className="w-3 h-3 text-[#F59E0B]"
+													className="w-3 h-3 text-accent"
 													fill="#FF6B35"
 												/>
 											</motion.div>
@@ -127,7 +127,7 @@ export function MobileBottomNav() {
 									{/* Label */}
 									<motion.span
 										className={`text-xs transition-all ${
-											isActive ? "text-[#FF6B35] font-medium" : "text-[#9CA3AF]"
+											isActive ? "text-primary font-medium" : "text-muted-foreground"
 										}`}
 										animate={{
 											opacity: isActive ? 1 : 0.8,
@@ -140,7 +140,7 @@ export function MobileBottomNav() {
 									{/* Active glow effect */}
 									{isActive && (
 										<motion.div
-											className="absolute inset-0 bg-[#FF6B35]/10 rounded-lg -z-10"
+											className="absolute inset-0 bg-primary/10 rounded-lg -z-10"
 											initial={{ opacity: 0 }}
 											animate={{ opacity: 1 }}
 											exit={{ opacity: 0 }}
@@ -160,7 +160,7 @@ export function MobileBottomNav() {
 							{isMoreActive && (
 								<motion.div
 									layoutId="activeMobileTab"
-									className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] rounded-full"
+									className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
 									transition={{ type: "spring", stiffness: 500, damping: 30 }}
 								/>
 							)}
@@ -168,14 +168,14 @@ export function MobileBottomNav() {
 							<div className="relative">
 								<MoreHorizontal
 									className={`w-6 h-6 transition-all ${
-										isMoreActive ? "text-[#FF6B35] scale-110" : "text-[#9CA3AF]"
+										isMoreActive ? "text-primary scale-110" : "text-muted-foreground"
 									}`}
 								/>
 							</div>
 
 							<motion.span
 								className={`text-xs transition-all ${
-									isMoreActive ? "text-[#FF6B35] font-medium" : "text-[#9CA3AF]"
+									isMoreActive ? "text-primary font-medium" : "text-muted-foreground"
 								}`}
 								animate={{
 									opacity: isMoreActive ? 1 : 0.8,
@@ -187,7 +187,7 @@ export function MobileBottomNav() {
 
 							{isMoreActive && (
 								<motion.div
-									className="absolute inset-0 bg-[#FF6B35]/10 rounded-lg -z-10"
+									className="absolute inset-0 bg-primary/10 rounded-lg -z-10"
 									initial={{ opacity: 0 }}
 									animate={{ opacity: 1 }}
 									exit={{ opacity: 0 }}
@@ -196,7 +196,7 @@ export function MobileBottomNav() {
 						</button>
 					</DrawerTrigger>
 
-					<DrawerContent className="bg-[#0D0D0D] border-[#374151]">
+					<DrawerContent className="bg-background border-secondary">
 						<DrawerHeader>
 							<DrawerTitle className="text-white">More Pages</DrawerTitle>
 						</DrawerHeader>
@@ -213,14 +213,14 @@ export function MobileBottomNav() {
 										onClick={() => setMoreOpen(false)}
 										className={`flex items-center gap-3 px-4 py-3 rounded-lg ${
 											location.pathname === item.path
-												? "bg-[#FF6B35]/10 text-[#FF6B35]"
-												: "text-[#E5E7EB] hover:bg-[#1F2937]"
+												? "bg-primary/10 text-primary"
+												: "text-secondary-foreground hover:bg-secondary"
 										}`}
 									>
 										<item.icon className="w-5 h-5" />
 										<span className="text-sm font-medium">{item.label}</span>
 										{hasNotification && (
-											<span className="ml-auto w-5 h-5 bg-[#DC2626] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+											<span className="ml-auto w-5 h-5 bg-chart-2 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
 												{item.path === "/challenges"
 													? notifications.challenges
 													: notifications.community}
@@ -235,7 +235,7 @@ export function MobileBottomNav() {
 			</div>
 
 			{/* Safe area for devices with notches/home indicators */}
-			<div className="h-safe-area-inset-bottom bg-[#0D0D0D]" />
+			<div className="h-safe-area-inset-bottom bg-background" />
 		</nav>
 	);
 }

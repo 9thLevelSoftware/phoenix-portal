@@ -56,9 +56,9 @@ export function DayEditor({
 				animate={{ x: 0 }}
 				exit={{ x: "100%" }}
 				transition={{ type: "spring", damping: 25, stiffness: 200 }}
-				className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-l border-[#374151] z-50 overflow-y-auto"
+				className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-gradient-to-br from-surface-2 to-background border-l border-secondary z-50 overflow-y-auto"
 			>
-				<div className="sticky top-0 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151] px-6 py-4 flex items-center justify-between">
+				<div className="sticky top-0 bg-background/95 backdrop-blur-lg border-b border-secondary px-6 py-4 flex items-center justify-between">
 					<h3 className="text-lg font-semibold text-white">
 						Day {day.dayNumber}{" "}
 						{day.type === "rest" ? "- Rest Day" : "Configuration"}
@@ -73,14 +73,14 @@ export function DayEditor({
 						<>
 							{/* Assigned Routine */}
 							<div>
-								<Label className="text-[#E5E7EB] mb-2">Assigned Routine</Label>
+								<Label className="text-secondary-foreground mb-2">Assigned Routine</Label>
 								{day.routineName ? (
 									<div className="flex items-center gap-2">
-										<div className="flex-1 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg">
+										<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
 											<div className="font-semibold text-white">
 												{day.routineName}
 											</div>
-											<div className="text-sm text-[#9CA3AF]">
+											<div className="text-sm text-muted-foreground">
 												{day.exerciseCount} exercises • ~{day.duration} min
 											</div>
 										</div>
@@ -88,7 +88,7 @@ export function DayEditor({
 											size="sm"
 											onClick={onAssignRoutine}
 											variant="outline"
-											className="border-[#374151] hover:border-[#FF6B35]"
+											className="border-secondary hover:border-primary"
 										>
 											Change
 										</Button>
@@ -97,7 +97,7 @@ export function DayEditor({
 									<Button
 										onClick={onAssignRoutine}
 										variant="outline"
-										className="w-full border-[#374151] hover:border-[#FF6B35]"
+										className="w-full border-secondary hover:border-primary"
 									>
 										<Plus className="w-4 h-4 mr-2" />
 										Assign Routine
@@ -107,24 +107,24 @@ export function DayEditor({
 									size="sm"
 									variant="ghost"
 									onClick={onAssignRoutine}
-									className="w-full mt-2 text-[#FF6B35] hover:text-[#DC2626]"
+									className="w-full mt-2 text-primary hover:text-chart-2"
 								>
 									+ Create New Routine
 								</Button>
 							</div>
 
 							{/* Day-Specific Overrides */}
-							<div className="pt-6 border-t border-[#374151]">
+							<div className="pt-6 border-t border-secondary">
 								<h4 className="font-semibold text-white mb-2">
 									Day-Specific Overrides
 								</h4>
-								<p className="text-xs text-[#6B7280] mb-4">
+								<p className="text-xs text-muted mb-4">
 									Adjust settings for this day only
 								</p>
 
 								{/* Weight Adjustment */}
 								<div className="mb-4">
-									<Label className="text-sm text-[#9CA3AF] mb-2">
+									<Label className="text-sm text-muted-foreground mb-2">
 										Weight Adjustment (%)
 									</Label>
 									<div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export function DayEditor({
 													weightAdjustment: overrides.weightAdjustment - 5,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
@@ -150,7 +150,7 @@ export function DayEditor({
 													weightAdjustment: parseInt(e.target.value, 10) || 0,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
 										<Button
 											size="sm"
@@ -161,19 +161,19 @@ export function DayEditor({
 													weightAdjustment: overrides.weightAdjustment + 5,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
 									</div>
-									<p className="text-xs text-[#6B7280] mt-1">
+									<p className="text-xs text-muted mt-1">
 										Increase or decrease all weights for this day
 									</p>
 								</div>
 
 								{/* Rep Modifier */}
 								<div className="mb-4">
-									<Label className="text-sm text-[#9CA3AF] mb-2">
+									<Label className="text-sm text-muted-foreground mb-2">
 										Rep Modifier
 									</Label>
 									<div className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export function DayEditor({
 													repModifier: overrides.repModifier - 1,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											−
 										</Button>
@@ -199,7 +199,7 @@ export function DayEditor({
 													repModifier: parseInt(e.target.value, 10) || 0,
 												})
 											}
-											className="text-center bg-[#0D0D0D] border-[#374151]"
+											className="text-center bg-background border-secondary"
 										/>
 										<Button
 											size="sm"
@@ -210,12 +210,12 @@ export function DayEditor({
 													repModifier: overrides.repModifier + 1,
 												})
 											}
-											className="border-[#374151]"
+											className="border-secondary"
 										>
 											+
 										</Button>
 									</div>
-									<p className="text-xs text-[#6B7280] mt-1">
+									<p className="text-xs text-muted mt-1">
 										Add or subtract reps per set
 									</p>
 								</div>
@@ -240,7 +240,7 @@ export function DayEditor({
 												}
 											}}
 										/>
-										<Label className="text-sm text-[#9CA3AF]">
+										<Label className="text-sm text-muted-foreground">
 											Override default rest times
 										</Label>
 									</div>
@@ -258,7 +258,7 @@ export function DayEditor({
 														),
 													})
 												}
-												className="border-[#374151]"
+												className="border-secondary"
 											>
 												−
 											</Button>
@@ -272,9 +272,9 @@ export function DayEditor({
 															parseInt(e.target.value, 10) || 90,
 													})
 												}
-												className="text-center bg-[#0D0D0D] border-[#374151]"
+												className="text-center bg-background border-secondary"
 											/>
-											<span className="text-sm text-[#9CA3AF]">s</span>
+											<span className="text-sm text-muted-foreground">s</span>
 											<Button
 												size="sm"
 												variant="outline"
@@ -285,7 +285,7 @@ export function DayEditor({
 															(overrides.restTimeOverride || 90) + 15,
 													})
 												}
-												className="border-[#374151]"
+												className="border-secondary"
 											>
 												+
 											</Button>
@@ -295,29 +295,29 @@ export function DayEditor({
 							</div>
 
 							{/* Notes */}
-							<div className="pt-6 border-t border-[#374151]">
-								<Label className="text-[#E5E7EB] mb-2">Notes</Label>
+							<div className="pt-6 border-t border-secondary">
+								<Label className="text-secondary-foreground mb-2">Notes</Label>
 								<Textarea
 									value={day.notes || ""}
 									onChange={(e) => onUpdateNotes(e.target.value)}
-									className="bg-[#0D0D0D] border-[#374151] min-h-[100px]"
+									className="bg-background border-secondary min-h-[100px]"
 									placeholder="Focus on form today..."
 								/>
 							</div>
 
 							{/* Actions */}
-							<div className="space-y-2 pt-6 border-t border-[#374151]">
+							<div className="space-y-2 pt-6 border-t border-secondary">
 								<Button
 									onClick={onConvertToRest}
 									variant="outline"
-									className="w-full border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+									className="w-full border-secondary text-muted-foreground hover:border-primary hover:text-white"
 								>
 									Convert to Rest Day
 								</Button>
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-[#EF4444] text-[#EF4444] hover:bg-[#EF4444] hover:text-white"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule
@@ -336,9 +336,9 @@ export function DayEditor({
 
 							{/* Rest Type */}
 							<div>
-								<Label className="text-[#E5E7EB] mb-3">Rest Type</Label>
+								<Label className="text-secondary-foreground mb-3">Rest Type</Label>
 								<div className="space-y-2">
-									<label className="flex items-start gap-3 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg cursor-pointer hover:border-[#FF6B35] transition-colors">
+									<label className="flex items-start gap-3 p-3 bg-background border border-secondary rounded-lg cursor-pointer hover:border-primary transition-colors">
 										<input
 											type="radio"
 											name="restType"
@@ -350,13 +350,13 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Complete Rest
 											</div>
-											<div className="text-sm text-[#6B7280]">
+											<div className="text-sm text-muted">
 												No structured activity
 											</div>
 										</div>
 									</label>
 
-									<label className="flex items-start gap-3 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg cursor-pointer hover:border-[#FF6B35] transition-colors">
+									<label className="flex items-start gap-3 p-3 bg-background border border-secondary rounded-lg cursor-pointer hover:border-primary transition-colors">
 										<input
 											type="radio"
 											name="restType"
@@ -368,13 +368,13 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Active Recovery
 											</div>
-											<div className="text-sm text-[#6B7280]">
+											<div className="text-sm text-muted">
 												Light movement, walking
 											</div>
 										</div>
 									</label>
 
-									<label className="flex items-start gap-3 p-3 bg-[#0D0D0D] border border-[#374151] rounded-lg cursor-pointer hover:border-[#FF6B35] transition-colors">
+									<label className="flex items-start gap-3 p-3 bg-background border border-secondary rounded-lg cursor-pointer hover:border-primary transition-colors">
 										<input
 											type="radio"
 											name="restType"
@@ -386,7 +386,7 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Mobility & Stretching
 											</div>
-											<div className="text-sm text-[#6B7280]">
+											<div className="text-sm text-muted">
 												Foam rolling, yoga
 											</div>
 										</div>
@@ -395,29 +395,29 @@ export function DayEditor({
 							</div>
 
 							{/* Notes */}
-							<div className="pt-6 border-t border-[#374151]">
-								<Label className="text-[#E5E7EB] mb-2">Notes</Label>
+							<div className="pt-6 border-t border-secondary">
+								<Label className="text-secondary-foreground mb-2">Notes</Label>
 								<Textarea
 									value={day.notes || ""}
 									onChange={(e) => onUpdateNotes(e.target.value)}
-									className="bg-[#0D0D0D] border-[#374151] min-h-[100px]"
+									className="bg-background border-secondary min-h-[100px]"
 									placeholder="Light walk, foam rolling..."
 								/>
 							</div>
 
 							{/* Actions */}
-							<div className="space-y-2 pt-6 border-t border-[#374151]">
+							<div className="space-y-2 pt-6 border-t border-secondary">
 								<Button
 									onClick={onConvertToWorkout}
 									variant="outline"
-									className="w-full border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+									className="w-full border-primary text-primary hover:bg-primary/10"
 								>
 									Convert to Workout Day
 								</Button>
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-[#EF4444] text-[#EF4444] hover:bg-[#EF4444] hover:text-white"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule

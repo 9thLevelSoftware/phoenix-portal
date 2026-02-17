@@ -86,16 +86,16 @@ export function RoutineBuilder() {
 	}, 0);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Top Bar */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-50 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex items-center justify-between">
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={() => navigate("/routines")}
-							className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Cancel
@@ -104,8 +104,8 @@ export function RoutineBuilder() {
 						<div className="flex items-center gap-3">
 							{hasUnsavedChanges && (
 								<div className="flex items-center gap-2">
-									<div className="w-2 h-2 bg-[#FF6B35] rounded-full animate-pulse" />
-									<span className="text-sm text-[#9CA3AF]">
+									<div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+									<span className="text-sm text-muted-foreground">
 										Unsaved changes
 									</span>
 								</div>
@@ -124,7 +124,7 @@ export function RoutineBuilder() {
 							<Button
 								variant="outline"
 								size="sm"
-								className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 							>
 								<Eye className="w-4 h-4 mr-2" />
 								Preview
@@ -132,7 +132,7 @@ export function RoutineBuilder() {
 							<Button
 								size="sm"
 								onClick={handleSave}
-								className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 							>
 								<Save className="w-4 h-4 mr-2" />
 								Save Routine
@@ -150,7 +150,7 @@ export function RoutineBuilder() {
 						<div className="mb-4 flex items-center justify-between">
 							<div>
 								<h2 className="text-xl font-semibold text-white">Exercises</h2>
-								<p className="text-sm text-[#9CA3AF]">
+								<p className="text-sm text-muted-foreground">
 									{exercises.length} exercises • ~{Math.round(totalDuration)}{" "}
 									min
 								</p>
@@ -175,7 +175,7 @@ export function RoutineBuilder() {
 						<Button
 							onClick={() => setShowExercisePicker(true)}
 							variant="outline"
-							className="w-full mt-4 border-dashed border-2 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="w-full mt-4 border-dashed border-2 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<Plus className="w-4 h-4 mr-2" />
 							Add Exercise
@@ -252,27 +252,27 @@ function SortableExerciseItem({
 
 	const getMuscleGroupColor = (group: string) => {
 		const colors: Record<string, string> = {
-			Chest: "bg-[#FF6B35]",
-			Back: "bg-[#10B981]",
-			Shoulders: "bg-[#F59E0B]",
-			Legs: "bg-[#DC2626]",
-			Arms: "bg-[#FBBF24]",
+			Chest: "bg-primary",
+			Back: "bg-success",
+			Shoulders: "bg-accent",
+			Legs: "bg-chart-2",
+			Arms: "bg-warning",
 		};
-		return colors[group] || "bg-[#6B7280]";
+		return colors[group] || "bg-muted";
 	};
 
 	return (
 		<div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }}>
 			<Card
 				onClick={onSelect}
-				className={`p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all ${
-					isSelected ? "border-[#FF6B35] ring-1 ring-[#FF6B35]" : ""
+				className={`p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all ${
+					isSelected ? "border-primary ring-1 ring-primary" : ""
 				}`}
 			>
 				<div className="flex items-center gap-3">
 					<button
 						ref={handleRef}
-						className="cursor-grab active:cursor-grabbing text-[#6B7280] hover:text-[#9CA3AF]"
+						className="cursor-grab active:cursor-grabbing text-muted hover:text-muted-foreground"
 					>
 						<GripVertical className="w-5 h-5" />
 					</button>
@@ -286,11 +286,11 @@ function SortableExerciseItem({
 								{exercise.muscleGroup}
 							</Badge>
 						</div>
-						<p className="text-sm text-[#9CA3AF]">
+						<p className="text-sm text-muted-foreground">
 							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight} kg
 							• {exercise.mode}
 						</p>
-						<p className="text-xs text-[#6B7280] mt-1">
+						<p className="text-xs text-muted mt-1">
 							Rest: {exercise.rest}s between sets
 						</p>
 					</div>
@@ -303,7 +303,7 @@ function SortableExerciseItem({
 								e.stopPropagation();
 								onSelect();
 							}}
-							className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<Edit className="w-4 h-4" />
 						</Button>
@@ -314,7 +314,7 @@ function SortableExerciseItem({
 								e.stopPropagation();
 								onDelete();
 							}}
-							className="border-[#374151] text-[#EF4444] hover:border-[#EF4444]"
+							className="border-secondary text-destructive hover:border-destructive"
 						>
 							<X className="w-4 h-4" />
 						</Button>
@@ -340,7 +340,7 @@ function ExerciseDetailPanel({
 			animate={{ opacity: 1, x: 0 }}
 			exit={{ opacity: 0, x: 20 }}
 		>
-			<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] sticky top-24">
+			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
 				<div className="flex items-center justify-between mb-6">
 					<h3 className="text-lg font-semibold text-white">
 						Exercise Settings
@@ -349,7 +349,7 @@ function ExerciseDetailPanel({
 						size="sm"
 						variant="ghost"
 						onClick={onClose}
-						className="text-[#9CA3AF] hover:text-white"
+						className="text-muted-foreground hover:text-white"
 					>
 						<X className="w-4 h-4" />
 					</Button>
@@ -358,7 +358,7 @@ function ExerciseDetailPanel({
 				<div className="space-y-6">
 					{/* Sets Configuration */}
 					<div>
-						<label className="text-sm font-medium text-[#E5E7EB] mb-3 block">
+						<label className="text-sm font-medium text-secondary-foreground mb-3 block">
 							Sets
 						</label>
 						<div className="space-y-2">
@@ -370,7 +370,7 @@ function ExerciseDetailPanel({
 										onChange={(e) =>
 											onUpdate({ reps: parseInt(e.target.value, 10) || 0 })
 										}
-										className="bg-[#0D0D0D] border-[#374151] text-white"
+										className="bg-background border-secondary text-white"
 										placeholder="Reps"
 									/>
 									<Input
@@ -379,7 +379,7 @@ function ExerciseDetailPanel({
 										onChange={(e) =>
 											onUpdate({ weight: parseInt(e.target.value, 10) || 0 })
 										}
-										className="bg-[#0D0D0D] border-[#374151] text-white"
+										className="bg-background border-secondary text-white"
 										placeholder="kg"
 									/>
 									<Input
@@ -388,7 +388,7 @@ function ExerciseDetailPanel({
 										onChange={(e) =>
 											onUpdate({ rest: parseInt(e.target.value, 10) || 0 })
 										}
-										className="bg-[#0D0D0D] border-[#374151] text-white"
+										className="bg-background border-secondary text-white"
 										placeholder="Rest"
 									/>
 								</div>
@@ -399,7 +399,7 @@ function ExerciseDetailPanel({
 								size="sm"
 								variant="outline"
 								onClick={() => onUpdate({ sets: exercise.sets + 1 })}
-								className="border-[#374151] text-[#9CA3AF] flex-1"
+								className="border-secondary text-muted-foreground flex-1"
 							>
 								<Plus className="w-4 h-4 mr-1" />
 								Add Set
@@ -409,7 +409,7 @@ function ExerciseDetailPanel({
 									size="sm"
 									variant="outline"
 									onClick={() => onUpdate({ sets: exercise.sets - 1 })}
-									className="border-[#374151] text-[#EF4444] flex-1"
+									className="border-secondary text-destructive flex-1"
 								>
 									Remove Set
 								</Button>
@@ -419,13 +419,13 @@ function ExerciseDetailPanel({
 
 					{/* Training Mode */}
 					<div>
-						<label className="text-sm font-medium text-[#E5E7EB] mb-2 block">
+						<label className="text-sm font-medium text-secondary-foreground mb-2 block">
 							Training Mode
 						</label>
 						<select
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
-							className="w-full px-3 py-2 rounded-lg bg-[#0D0D0D] border border-[#374151] text-white text-sm focus:border-[#FF6B35] focus:outline-none"
+							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 						>
 							<option>Old School</option>
 							<option>Pump</option>
@@ -434,7 +434,7 @@ function ExerciseDetailPanel({
 							<option>Eccentric Only</option>
 							<option>Echo</option>
 						</select>
-						<p className="text-xs text-[#6B7280] mt-1">
+						<p className="text-xs text-muted mt-1">
 							Traditional resistance training
 						</p>
 					</div>
@@ -451,10 +451,10 @@ function EmptyDetailPanel() {
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
 		>
-			<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] sticky top-24">
+			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
 				<div className="text-center py-12">
-					<Dumbbell className="w-12 h-12 text-[#6B7280] mx-auto mb-4" />
-					<p className="text-[#9CA3AF]">Select an exercise to configure</p>
+					<Dumbbell className="w-12 h-12 text-muted mx-auto mb-4" />
+					<p className="text-muted-foreground">Select an exercise to configure</p>
 				</div>
 			</Card>
 		</motion.div>
@@ -490,9 +490,9 @@ function ExercisePickerModal({
 				initial={{ opacity: 0, scale: 0.95 }}
 				animate={{ opacity: 1, scale: 1 }}
 				exit={{ opacity: 0, scale: 0.95 }}
-				className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-[#0D0D0D] rounded-lg border border-[#374151] z-50 overflow-hidden"
+				className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-background rounded-lg border border-secondary z-50 overflow-hidden"
 			>
-				<div className="p-6 border-b border-[#374151]">
+				<div className="p-6 border-b border-secondary">
 					<div className="flex items-center justify-between">
 						<h2 className="text-xl font-semibold text-white">Add Exercise</h2>
 						<Button size="sm" variant="ghost" onClick={onClose}>
@@ -507,18 +507,18 @@ function ExercisePickerModal({
 							<button
 								key={exercise.name}
 								onClick={() => onSelect(exercise)}
-								className="w-full p-4 rounded-lg bg-[#1a1a1a] border border-[#374151] hover:border-[#FF6B35] transition-all text-left"
+								className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
 							>
 								<div className="flex items-center justify-between">
 									<div>
 										<h4 className="font-semibold text-white mb-1">
 											{exercise.name}
 										</h4>
-										<Badge className="bg-[#FF6B35] text-white border-0 text-xs">
+										<Badge className="bg-primary text-white border-0 text-xs">
 											{exercise.muscleGroup}
 										</Badge>
 									</div>
-									<Plus className="w-5 h-5 text-[#9CA3AF]" />
+									<Plus className="w-5 h-5 text-muted-foreground" />
 								</div>
 							</button>
 						))}

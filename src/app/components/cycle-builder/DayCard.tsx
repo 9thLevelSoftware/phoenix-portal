@@ -26,24 +26,24 @@ export function DayCard({
 				whileHover={{ scale: 1.02 }}
 				whileTap={{ scale: 0.98 }}
 				className={`relative min-w-[180px] cursor-pointer ${
-					isSelected ? "ring-2 ring-[#FF6B35]" : ""
+					isSelected ? "ring-2 ring-primary" : ""
 				}`}
 			>
 				<Card
 					onClick={onClick}
-					className="p-4 border-2 border-dashed border-[#374151] hover:border-[#FF6B35] bg-gradient-to-br from-[#1a1a1a]/50 to-[#0D0D0D] transition-all"
+					className="p-4 border-2 border-dashed border-secondary hover:border-primary bg-gradient-to-br from-surface-2/50 to-background transition-all"
 				>
 					<div className="text-center mb-3">
-						<div className="text-sm font-semibold text-[#9CA3AF]">
+						<div className="text-sm font-semibold text-muted-foreground">
 							Day {day.dayNumber}
 						</div>
 					</div>
 
 					<div className="text-center space-y-3 py-4">
-						<div className="w-12 h-12 mx-auto rounded-full border-2 border-dashed border-[#374151] flex items-center justify-center text-2xl text-[#6B7280]">
+						<div className="w-12 h-12 mx-auto rounded-full border-2 border-dashed border-secondary flex items-center justify-center text-2xl text-muted">
 							+
 						</div>
-						<div className="text-sm text-[#9CA3AF]">Add Routine</div>
+						<div className="text-sm text-muted-foreground">Add Routine</div>
 					</div>
 
 					<button
@@ -51,7 +51,7 @@ export function DayCard({
 							e.stopPropagation();
 							onSetRest();
 						}}
-						className="w-full text-xs text-[#6B7280] hover:text-[#9CA3AF] transition-colors mt-2"
+						className="w-full text-xs text-muted hover:text-muted-foreground transition-colors mt-2"
 					>
 						Mark as Rest Day
 					</button>
@@ -63,7 +63,7 @@ export function DayCard({
 							e.stopPropagation();
 							onRemove();
 						}}
-						className="absolute -top-2 -right-2 p-1 bg-[#EF4444] hover:bg-[#DC2626] rounded-full transition-colors"
+						className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 					>
 						<X className="w-3 h-3 text-white" />
 					</button>
@@ -79,15 +79,15 @@ export function DayCard({
 				whileHover={{ scale: 1.02 }}
 				whileTap={{ scale: 0.98 }}
 				className={`relative min-w-[180px] cursor-pointer ${
-					isSelected ? "ring-2 ring-[#FF6B35]" : ""
+					isSelected ? "ring-2 ring-primary" : ""
 				}`}
 			>
 				<Card
 					onClick={onClick}
-					className="p-4 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/5 border-l-4 border-l-[#FF6B35] border-r border-t border-b border-[#374151] hover:border-[#FF6B35]/50 transition-all"
+					className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35] border-r border-t border-b border-secondary hover:border-primary/50 transition-all"
 				>
 					<div className="text-center mb-3">
-						<div className="text-sm font-semibold text-[#9CA3AF]">
+						<div className="text-sm font-semibold text-muted-foreground">
 							Day {day.dayNumber}
 						</div>
 					</div>
@@ -97,7 +97,7 @@ export function DayCard({
 						<div className="font-semibold text-white text-sm line-clamp-2 min-h-[2.5rem]">
 							{day.routineName}
 						</div>
-						<div className="text-xs text-[#9CA3AF] space-y-1">
+						<div className="text-xs text-muted-foreground space-y-1">
 							<div>{day.exerciseCount} exercises</div>
 							<div>~{day.duration} min</div>
 						</div>
@@ -111,7 +111,7 @@ export function DayCard({
 								e.stopPropagation();
 								onClick();
 							}}
-							className="flex-1 text-xs text-[#9CA3AF] hover:text-white h-7"
+							className="flex-1 text-xs text-muted-foreground hover:text-white h-7"
 						>
 							Change
 						</Button>
@@ -124,7 +124,7 @@ export function DayCard({
 							e.stopPropagation();
 							onRemove();
 						}}
-						className="absolute -top-2 -right-2 p-1 bg-[#EF4444] hover:bg-[#DC2626] rounded-full transition-colors"
+						className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 					>
 						<X className="w-3 h-3 text-white" />
 					</button>
@@ -139,23 +139,23 @@ export function DayCard({
 			whileHover={{ scale: 1.02 }}
 			whileTap={{ scale: 0.98 }}
 			className={`relative min-w-[180px] cursor-pointer ${
-				isSelected ? "ring-2 ring-[#FF6B35]" : ""
+				isSelected ? "ring-2 ring-primary" : ""
 			}`}
 		>
 			<Card
 				onClick={onClick}
-				className="p-4 bg-gradient-to-br from-[#374151]/20 to-[#0D0D0D] border-[#374151] hover:border-[#9CA3AF] transition-all"
+				className="p-4 bg-gradient-to-br from-secondary/20 to-background border-secondary hover:border-muted-foreground transition-all"
 			>
 				<div className="text-center mb-3">
-					<div className="text-sm font-semibold text-[#9CA3AF]">
+					<div className="text-sm font-semibold text-muted-foreground">
 						Day {day.dayNumber}
 					</div>
 				</div>
 
 				<div className="text-center space-y-2 py-4">
 					<div className="text-4xl">🛋️</div>
-					<div className="font-semibold text-[#9CA3AF]">REST</div>
-					<div className="text-xs text-[#6B7280] capitalize">
+					<div className="font-semibold text-muted-foreground">REST</div>
+					<div className="text-xs text-muted capitalize">
 						{day.restType || "complete"} rest
 					</div>
 				</div>
@@ -165,7 +165,7 @@ export function DayCard({
 						e.stopPropagation();
 						onClick();
 					}}
-					className="w-full text-xs text-[#6B7280] hover:text-[#9CA3AF] transition-colors mt-2"
+					className="w-full text-xs text-muted hover:text-muted-foreground transition-colors mt-2"
 				>
 					Convert to Workout
 				</button>
@@ -177,7 +177,7 @@ export function DayCard({
 						e.stopPropagation();
 						onRemove();
 					}}
-					className="absolute -top-2 -right-2 p-1 bg-[#EF4444] hover:bg-[#DC2626] rounded-full transition-colors"
+					className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 				>
 					<X className="w-3 h-3 text-white" />
 				</button>

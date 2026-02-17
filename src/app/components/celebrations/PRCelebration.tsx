@@ -63,7 +63,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
 						onClick={handleDismiss}
-						className="fixed inset-0 bg-[#0D0D0D]/95 z-[100] backdrop-blur-sm"
+						className="fixed inset-0 bg-background/95 z-[100] backdrop-blur-sm"
 						style={{
 							background:
 								"radial-gradient(circle at center, rgba(255, 107, 53, 0.1) 0%, rgba(13, 13, 13, 0.95) 70%)",
@@ -101,7 +101,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 								className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[102] w-full max-w-md px-4"
 								onClick={handleDismiss}
 							>
-								<Card className="relative p-8 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-2 border-[#FF6B35] overflow-hidden">
+								<Card className="relative p-8 bg-gradient-to-br from-surface-2 to-background border-2 border-primary overflow-hidden">
 									{/* Animated gradient border */}
 									<motion.div
 										className="absolute inset-0 opacity-50"
@@ -122,7 +122,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 
 									{/* Pulse glow */}
 									<motion.div
-										className="absolute inset-0 bg-[#FF6B35]/20 blur-xl"
+										className="absolute inset-0 bg-primary/20 blur-xl"
 										animate={{
 											opacity: [0.3, 0.6, 0.3],
 											scale: [1, 1.05, 1],
@@ -135,7 +135,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 									/>
 
 									<div className="relative z-10 text-center">
-										<h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+										<h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 											{getTitle()}
 										</h2>
 
@@ -152,14 +152,14 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 												{prData.weight} kg × {prData.reps}
 											</motion.div>
 
-											<div className="text-lg text-[#9CA3AF] mb-4">
+											<div className="text-lg text-muted-foreground mb-4">
 												Estimated 1RM:{" "}
-												<span className="text-[#F59E0B]">
+												<span className="text-accent">
 													~{prData.estimated1RM} kg
 												</span>
 											</div>
 
-											<div className="flex items-center justify-center gap-2 text-[#10B981]">
+											<div className="flex items-center justify-center gap-2 text-success">
 												<TrendingUp className="w-5 h-5" />
 												<span className="text-lg font-semibold">
 													+{prData.improvement} kg from previous PR
@@ -167,13 +167,13 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 											</div>
 										</div>
 
-										<div className="flex items-center justify-center gap-2 text-[#F59E0B] mb-4">
+										<div className="flex items-center justify-center gap-2 text-accent mb-4">
 											<Award className="w-5 h-5" />
 											<span className="text-sm">Keep Rising</span>
 											<Award className="w-5 h-5" />
 										</div>
 
-										<p className="text-xs text-[#6B7280] mt-6">
+										<p className="text-xs text-muted mt-6">
 											Tap anywhere to continue
 										</p>
 									</div>
@@ -224,7 +224,7 @@ function PhoenixIcon() {
 			{Array.from({ length: 15 }).map((_, i) => (
 				<motion.div
 					key={i}
-					className="absolute w-2 h-2 rounded-full bg-[#FF6B35]"
+					className="absolute w-2 h-2 rounded-full bg-primary"
 					style={{
 						left: "50%",
 						top: "100%",

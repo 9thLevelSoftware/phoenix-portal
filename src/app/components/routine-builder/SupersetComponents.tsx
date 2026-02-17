@@ -45,20 +45,20 @@ export function SupersetCard({
 
 	return (
 		<Card
-			className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-l-4 relative"
+			className="p-4 bg-gradient-to-br from-surface-2 to-background border-l-4 relative"
 			style={{ borderLeftColor: superset.color }}
 		>
 			{/* Superset Header */}
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
-					<GripVertical className="w-5 h-5 text-[#6B7280] cursor-grab active:cursor-grabbing" />
+					<GripVertical className="w-5 h-5 text-muted cursor-grab active:cursor-grabbing" />
 					<Badge
 						className="text-white border-0"
 						style={{ backgroundColor: superset.color }}
 					>
 						Superset {colorLabel}
 					</Badge>
-					<span className="text-xs text-[#6B7280]">
+					<span className="text-xs text-muted">
 						{supersetExercises.length} exercises
 					</span>
 				</div>
@@ -67,7 +67,7 @@ export function SupersetCard({
 					size="sm"
 					variant="ghost"
 					onClick={onUngroup}
-					className="text-[#9CA3AF] hover:text-white"
+					className="text-muted-foreground hover:text-white"
 				>
 					<Unlink className="w-4 h-4 mr-1" />
 					Ungroup
@@ -78,22 +78,22 @@ export function SupersetCard({
 			<div className="space-y-3">
 				{supersetExercises.map((exercise, index) => (
 					<div key={exercise.id}>
-						<div className="p-3 bg-[#0D0D0D] rounded-lg border border-[#374151] hover:border-[#FF6B35] transition-all">
+						<div className="p-3 bg-background rounded-lg border border-secondary hover:border-primary transition-all">
 							<div className="flex items-center justify-between">
 								<div className="flex-1">
 									<div className="flex items-center gap-2 mb-1">
-										<GripVertical className="w-4 h-4 text-[#6B7280]" />
+										<GripVertical className="w-4 h-4 text-muted" />
 										<span className="font-semibold text-white">
 											{exercise.name}
 										</span>
 										<Badge
 											variant="outline"
-											className="text-xs border-[#374151] text-[#9CA3AF]"
+											className="text-xs border-secondary text-muted-foreground"
 										>
 											{exercise.muscleGroup}
 										</Badge>
 									</div>
-									<div className="text-sm text-[#6B7280] ml-6">
+									<div className="text-sm text-muted ml-6">
 										{exercise.sets} sets • {exercise.reps} reps •{" "}
 										{exercise.weight} kg
 									</div>
@@ -104,7 +104,7 @@ export function SupersetCard({
 										size="sm"
 										variant="ghost"
 										onClick={() => onEditExercise(exercise.id)}
-										className="text-[#9CA3AF] hover:text-white"
+										className="text-muted-foreground hover:text-white"
 									>
 										<Edit className="w-4 h-4" />
 									</Button>
@@ -112,7 +112,7 @@ export function SupersetCard({
 										size="sm"
 										variant="ghost"
 										onClick={() => onRemoveExercise(exercise.id)}
-										className="text-[#EF4444] hover:text-[#DC2626]"
+										className="text-destructive hover:text-chart-2"
 									>
 										<X className="w-4 h-4" />
 									</Button>
@@ -123,7 +123,7 @@ export function SupersetCard({
 						{/* Transition Arrow */}
 						{index < supersetExercises.length - 1 && (
 							<div className="flex items-center justify-center my-2">
-								<div className="flex items-center gap-2 text-xs text-[#6B7280]">
+								<div className="flex items-center gap-2 text-xs text-muted">
 									<ArrowDown className="w-4 h-4" />
 									<span>Transition: {superset.transitionTime}s</span>
 								</div>
@@ -138,16 +138,16 @@ export function SupersetCard({
 				size="sm"
 				variant="outline"
 				onClick={onAddExercise}
-				className="w-full mt-3 border-dashed border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+				className="w-full mt-3 border-dashed border-secondary text-muted-foreground hover:border-primary hover:text-white"
 			>
 				<Plus className="w-4 h-4 mr-2" />
 				Add to Superset
 			</Button>
 
 			{/* Superset Settings */}
-			<div className="mt-4 pt-4 border-t border-[#374151] grid grid-cols-2 gap-4">
+			<div className="mt-4 pt-4 border-t border-secondary grid grid-cols-2 gap-4">
 				<div>
-					<Label className="text-xs text-[#9CA3AF] mb-2">
+					<Label className="text-xs text-muted-foreground mb-2">
 						Transition Time (s)
 					</Label>
 					<div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export function SupersetCard({
 							onClick={() =>
 								onUpdateTransition(Math.max(0, superset.transitionTime - 5))
 							}
-							className="border-[#374151]"
+							className="border-secondary"
 						>
 							−
 						</Button>
@@ -167,13 +167,13 @@ export function SupersetCard({
 							onChange={(e) =>
 								onUpdateTransition(parseInt(e.target.value, 10) || 10)
 							}
-							className="text-center bg-[#0D0D0D] border-[#374151] h-8"
+							className="text-center bg-background border-secondary h-8"
 						/>
 						<Button
 							size="sm"
 							variant="outline"
 							onClick={() => onUpdateTransition(superset.transitionTime + 5)}
-							className="border-[#374151]"
+							className="border-secondary"
 						>
 							+
 						</Button>
@@ -181,13 +181,13 @@ export function SupersetCard({
 				</div>
 
 				<div>
-					<Label className="text-xs text-[#9CA3AF] mb-2">Rest After (s)</Label>
+					<Label className="text-xs text-muted-foreground mb-2">Rest After (s)</Label>
 					<div className="flex items-center gap-2">
 						<Button
 							size="sm"
 							variant="outline"
 							onClick={() => onUpdateRest(Math.max(0, superset.restAfter - 15))}
-							className="border-[#374151]"
+							className="border-secondary"
 						>
 							−
 						</Button>
@@ -195,13 +195,13 @@ export function SupersetCard({
 							type="number"
 							value={superset.restAfter}
 							onChange={(e) => onUpdateRest(parseInt(e.target.value, 10) || 90)}
-							className="text-center bg-[#0D0D0D] border-[#374151] h-8"
+							className="text-center bg-background border-secondary h-8"
 						/>
 						<Button
 							size="sm"
 							variant="outline"
 							onClick={() => onUpdateRest(superset.restAfter + 15)}
-							className="border-[#374151]"
+							className="border-secondary"
 						>
 							+
 						</Button>
@@ -230,19 +230,19 @@ export function SelectionModeBar({
 			exit={{ y: 100, opacity: 0 }}
 			className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50"
 		>
-			<Card className="px-6 py-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#FF6B35] shadow-2xl">
+			<Card className="px-6 py-4 bg-gradient-to-br from-surface-2 to-background border-primary shadow-2xl">
 				<div className="flex items-center gap-4">
 					<div className="text-sm text-white">
 						✓ <span className="font-semibold">{selectedCount}</span> exercises
 						selected
 					</div>
 
-					<div className="h-6 w-px bg-[#374151]" />
+					<div className="h-6 w-px bg-secondary" />
 
 					<Button
 						onClick={onCreateSuperset}
 						disabled={selectedCount < 2}
-						className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 disabled:opacity-50"
+						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 disabled:opacity-50"
 					>
 						Create Superset
 					</Button>
@@ -250,7 +250,7 @@ export function SelectionModeBar({
 					<Button
 						onClick={onCancel}
 						variant="ghost"
-						className="text-[#9CA3AF] hover:text-white"
+						className="text-muted-foreground hover:text-white"
 					>
 						Cancel
 					</Button>

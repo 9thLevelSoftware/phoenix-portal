@@ -102,17 +102,17 @@ export function BottomSheet({
 				transition={{ type: "spring", damping: 30, stiffness: 300 }}
 				className="fixed left-0 right-0 bottom-0 z-[95] md:hidden"
 			>
-				<div className="bg-[#0D0D0D] rounded-t-3xl shadow-2xl border-t border-[#374151] max-h-screen flex flex-col">
+				<div className="bg-background rounded-t-3xl shadow-2xl border-t border-secondary max-h-screen flex flex-col">
 					{/* Drag Handle */}
 					{showHandle && (
 						<div className="pt-3 pb-2 flex justify-center cursor-grab active:cursor-grabbing">
-							<div className="w-12 h-1.5 bg-[#374151] rounded-full" />
+							<div className="w-12 h-1.5 bg-secondary rounded-full" />
 						</div>
 					)}
 
 					{/* Header */}
 					{(title || showCloseButton) && (
-						<div className="flex items-center justify-between px-6 py-4 border-b border-[#374151]">
+						<div className="flex items-center justify-between px-6 py-4 border-b border-secondary">
 							{title && (
 								<h2 className="text-lg font-semibold text-white">{title}</h2>
 							)}
@@ -122,7 +122,7 @@ export function BottomSheet({
 									size="sm"
 									variant="ghost"
 									onClick={onClose}
-									className="text-[#9CA3AF] hover:text-white -mr-2"
+									className="text-muted-foreground hover:text-white -mr-2"
 								>
 									<X className="w-5 h-5" />
 								</Button>
@@ -136,7 +136,7 @@ export function BottomSheet({
 					</div>
 
 					{/* Safe area for notched devices */}
-					<div className="h-safe-area-inset-bottom bg-[#0D0D0D]" />
+					<div className="h-safe-area-inset-bottom bg-background" />
 				</div>
 			</motion.div>
 		</>

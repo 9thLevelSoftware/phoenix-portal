@@ -33,7 +33,7 @@ export function VoteButton({
 				className={cn(
 					"flex items-center gap-1",
 					compact && "h-8 px-2",
-					isVoted && "text-[#FF6B35] hover:text-[#FF6B35]/80",
+					isVoted && "text-primary hover:text-primary/80",
 					!isVoted && "text-muted-foreground hover:text-foreground",
 				)}
 				onClick={handleClick}
@@ -48,7 +48,7 @@ export function VoteButton({
 				<span
 					className={cn(
 						"text-sm font-medium tabular-nums",
-						isVoted ? "text-[#FF6B35]" : "text-muted-foreground",
+						isVoted ? "text-primary" : "text-muted-foreground",
 					)}
 				>
 					{voteCount}

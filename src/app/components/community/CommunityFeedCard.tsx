@@ -31,12 +31,12 @@ export function CommunityFeedCard({
 		<motion.div whileTap={{ scale: 0.98 }}>
 			<Card
 				onClick={() => onSelect(item.id)}
-				className="p-5 bg-[#1A1A2E] border-[#374151] hover:scale-[1.02] hover:shadow-lg hover:shadow-[#FF6B35]/5 transition-all cursor-pointer"
+				className="p-5 bg-surface-2 border-secondary hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/5 transition-all cursor-pointer"
 			>
 				{/* Header: Author + Vote */}
 				<div className="flex items-start justify-between mb-3">
 					<div className="flex items-center gap-2 min-w-0">
-						<div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center text-white text-xs shrink-0">
+						<div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-xs shrink-0">
 							{authorName.charAt(0).toUpperCase()}
 						</div>
 						<button
@@ -44,7 +44,7 @@ export function CommunityFeedCard({
 								e.stopPropagation();
 								onAuthorClick?.(item.user_id);
 							}}
-							className="text-xs text-[#9CA3AF] truncate hover:text-[#FF6B35] transition-colors"
+							className="text-xs text-muted-foreground truncate hover:text-primary transition-colors"
 						>
 							{authorName}
 						</button>
@@ -56,8 +56,8 @@ export function CommunityFeedCard({
 						}}
 						className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
 							isVoted
-								? "text-[#FF6B35] bg-[#FF6B35]/10"
-								: "text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/5"
+								? "text-primary bg-primary/10"
+								: "text-muted-foreground hover:text-primary hover:bg-primary/5"
 						}`}
 					>
 						<ArrowBigUp
@@ -79,7 +79,7 @@ export function CommunityFeedCard({
 						{item.tags.slice(0, 4).map((tag) => (
 							<Badge
 								key={tag}
-								className="bg-[#374151] text-[#E5E7EB] border-0 text-[11px] px-2 py-0"
+								className="bg-secondary text-secondary-foreground border-0 text-[11px] px-2 py-0"
 							>
 								{tag}
 							</Badge>
@@ -88,7 +88,7 @@ export function CommunityFeedCard({
 				)}
 
 				{/* Stats row */}
-				<div className="flex items-center gap-4 text-xs text-[#9CA3AF] mb-2">
+				<div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
 					{isRoutine(item) ? (
 						<>
 							<div className="flex items-center gap-1">
@@ -109,7 +109,7 @@ export function CommunityFeedCard({
 				</div>
 
 				{/* Timestamp */}
-				<p className="text-[11px] text-[#6B7280]">Shared {sharedAgo}</p>
+				<p className="text-[11px] text-muted">Shared {sharedAgo}</p>
 			</Card>
 		</motion.div>
 	);

@@ -20,17 +20,17 @@ export function CommunitySearch() {
 
 	return (
 		<div className="relative flex-1">
-			<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B7280]" />
+			<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
 			<Input
 				value={localValue}
 				onChange={(e) => setLocalValue(e.target.value)}
 				placeholder={placeholder}
-				className="pl-9 pr-8 bg-[#1a1a1a] border-[#374151] text-white placeholder:text-[#6B7280]"
+				className="pl-9 pr-8 bg-surface-2 border-secondary text-white placeholder:text-muted"
 			/>
 			{localValue && (
 				<button
 					onClick={() => setLocalValue("")}
-					className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-white transition-colors"
+					className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
 				>
 					<X className="w-4 h-4" />
 				</button>

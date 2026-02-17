@@ -90,43 +90,43 @@ export function Routines() {
 	];
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 					<div>
 						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								My Routines
 							</span>
 						</h1>
-						<p className="text-[#9CA3AF]">
+						<p className="text-muted-foreground">
 							Create, manage, and track your workout routines
 						</p>
 					</div>
-					<Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 shadow-lg shadow-[#FF6B35]/50">
+					<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50">
 						<Plus className="w-4 h-4 mr-2" />
 						Create Routine
 					</Button>
 				</div>
 
 				<Tabs defaultValue="routines" className="space-y-6">
-					<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="routines"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							My Routines
 						</TabsTrigger>
 						<TabsTrigger
 							value="cycles"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Training Cycles
 						</TabsTrigger>
 						<TabsTrigger
 							value="library"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Exercise Library
 						</TabsTrigger>
@@ -147,31 +147,31 @@ export function Routines() {
 											animate={{ opacity: 1, y: 0 }}
 											transition={{ delay: index * 0.1 }}
 										>
-											<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all h-full flex flex-col">
+											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full flex flex-col">
 												<div className="flex-1">
 													<div className="flex items-start justify-between mb-4">
 														<h3 className="text-xl text-white">
 															{routine.name}
 														</h3>
-														<Badge className="bg-[#F59E0B] text-[#0D0D0D] border-0">
+														<Badge className="bg-accent text-background border-0">
 															⭐
 														</Badge>
 													</div>
 
 													<div className="space-y-3 mb-4">
-														<div className="flex items-center gap-2 text-[#9CA3AF]">
+														<div className="flex items-center gap-2 text-muted-foreground">
 															<Dumbbell className="w-4 h-4" />
 															<span className="text-sm">
 																{routine.exercises} exercises
 															</span>
 														</div>
-														<div className="flex items-center gap-2 text-[#9CA3AF]">
+														<div className="flex items-center gap-2 text-muted-foreground">
 															<Clock className="w-4 h-4" />
 															<span className="text-sm">
 																~{routine.duration}
 															</span>
 														</div>
-														<div className="flex items-center gap-2 text-[#9CA3AF]">
+														<div className="flex items-center gap-2 text-muted-foreground">
 															<Calendar className="w-4 h-4" />
 															<span className="text-sm">
 																Last used: {routine.lastUsed}
@@ -179,24 +179,24 @@ export function Routines() {
 														</div>
 													</div>
 
-													<div className="p-3 bg-[#0D0D0D] rounded-lg border border-[#374151] mb-4">
-														<div className="text-xs text-[#9CA3AF] mb-1">
+													<div className="p-3 bg-background rounded-lg border border-secondary mb-4">
+														<div className="text-xs text-muted-foreground mb-1">
 															Times Completed
 														</div>
-														<div className="text-2xl text-[#FF6B35]">
+														<div className="text-2xl text-primary">
 															{routine.timesCompleted}
 														</div>
 													</div>
 												</div>
 
 												<div className="grid grid-cols-2 gap-2">
-													<Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+													<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 														<Eye className="w-4 h-4 mr-2" />
 														View
 													</Button>
 													<Button
 														variant="outline"
-														className="border-[#374151] text-white hover:bg-[#374151]/50"
+														className="border-secondary text-white hover:bg-secondary/50"
 													>
 														<Edit className="w-4 h-4 mr-2" />
 														Edit
@@ -215,17 +215,17 @@ export function Routines() {
 								{myRoutines.map((routine) => (
 									<Card
 										key={routine.id}
-										className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all"
+										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all"
 									>
 										<div className="flex items-center gap-4">
 											<div className="flex-1">
 												<div className="flex items-center gap-2 mb-2">
 													<h3 className="text-lg text-white">{routine.name}</h3>
 													{routine.isFavorite && (
-														<span className="text-[#F59E0B]">⭐</span>
+														<span className="text-accent">⭐</span>
 													)}
 												</div>
-												<div className="flex items-center gap-4 text-sm text-[#9CA3AF]">
+												<div className="flex items-center gap-4 text-sm text-muted-foreground">
 													<span>{routine.exercises} exercises</span>
 													<span>•</span>
 													<span>{routine.duration}</span>
@@ -236,28 +236,28 @@ export function Routines() {
 											<div className="flex items-center gap-2">
 												<Button
 													size="sm"
-													className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+													className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 												>
 													<Eye className="w-4 h-4" />
 												</Button>
 												<Button
 													size="sm"
 													variant="outline"
-													className="border-[#374151] text-white hover:bg-[#374151]/50"
+													className="border-secondary text-white hover:bg-secondary/50"
 												>
 													<Edit className="w-4 h-4" />
 												</Button>
 												<Button
 													size="sm"
 													variant="outline"
-													className="border-[#374151] text-white hover:bg-[#374151]/50"
+													className="border-secondary text-white hover:bg-secondary/50"
 												>
 													<Copy className="w-4 h-4" />
 												</Button>
 												<Button
 													size="sm"
 													variant="outline"
-													className="border-[#EF4444] text-[#EF4444] hover:bg-[#EF4444]/10"
+													className="border-destructive text-destructive hover:bg-destructive/10"
 												>
 													<Trash2 className="w-4 h-4" />
 												</Button>
@@ -282,8 +282,8 @@ export function Routines() {
 									<Card
 										className={`p-6 h-full flex flex-col ${
 											cycle.status === "active"
-												? "bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-[#FF6B35] border-2"
-												: "bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]"
+												? "bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2"
+												: "bg-gradient-to-br from-surface-2 to-background border-secondary"
 										}`}
 									>
 										<div className="flex-1">
@@ -292,8 +292,8 @@ export function Routines() {
 												<Badge
 													className={
 														cycle.status === "active"
-															? "bg-gradient-to-r from-[#FF6B35] to-[#DC2626] text-white border-0"
-															: "bg-[#374151] text-[#9CA3AF] border-0"
+															? "bg-gradient-to-r from-primary to-chart-2 text-white border-0"
+															: "bg-secondary text-muted-foreground border-0"
 													}
 												>
 													{cycle.status === "active" ? "ACTIVE" : "UPCOMING"}
@@ -302,7 +302,7 @@ export function Routines() {
 
 											<div className="space-y-3 mb-4">
 												<div className="flex items-center justify-between text-sm">
-													<span className="text-[#9CA3AF]">Duration</span>
+													<span className="text-muted-foreground">Duration</span>
 													<span className="text-white">
 														{cycle.weeks} weeks
 													</span>
@@ -310,7 +310,7 @@ export function Routines() {
 												{cycle.status === "active" && (
 													<>
 														<div className="flex items-center justify-between text-sm">
-															<span className="text-[#9CA3AF]">
+															<span className="text-muted-foreground">
 																Current Week
 															</span>
 															<span className="text-white">
@@ -318,14 +318,14 @@ export function Routines() {
 															</span>
 														</div>
 														<div className="flex items-center justify-between text-sm">
-															<span className="text-[#9CA3AF]">Progress</span>
-															<span className="text-[#FF6B35]">
+															<span className="text-muted-foreground">Progress</span>
+															<span className="text-primary">
 																{cycle.progress}%
 															</span>
 														</div>
-														<div className="h-2 bg-[#374151] rounded-full overflow-hidden">
+														<div className="h-2 bg-secondary rounded-full overflow-hidden">
 															<div
-																className="h-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] rounded-full"
+																className="h-full bg-gradient-to-r from-primary to-chart-2 rounded-full"
 																style={{ width: `${cycle.progress}%` }}
 															/>
 														</div>
@@ -337,24 +337,24 @@ export function Routines() {
 										<div className="grid grid-cols-2 gap-2">
 											{cycle.status === "active" ? (
 												<>
-													<Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+													<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 														Continue
 													</Button>
 													<Button
 														variant="outline"
-														className="border-[#374151] text-white hover:bg-[#374151]/50"
+														className="border-secondary text-white hover:bg-secondary/50"
 													>
 														Edit
 													</Button>
 												</>
 											) : (
 												<>
-													<Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+													<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 														Start
 													</Button>
 													<Button
 														variant="outline"
-														className="border-[#374151] text-white hover:bg-[#374151]/50"
+														className="border-secondary text-white hover:bg-secondary/50"
 													>
 														Preview
 													</Button>
@@ -366,15 +366,15 @@ export function Routines() {
 							))}
 
 							{/* Create New Cycle Card */}
-							<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] border-dashed hover:border-[#FF6B35]/50 transition-all flex items-center justify-center min-h-[300px] cursor-pointer">
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary border-dashed hover:border-primary/50 transition-all flex items-center justify-center min-h-[300px] cursor-pointer">
 								<div className="text-center">
-									<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center">
+									<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
 										<Plus className="w-8 h-8 text-white" />
 									</div>
 									<h3 className="text-xl text-white mb-2">
 										Create Training Cycle
 									</h3>
-									<p className="text-sm text-[#9CA3AF]">
+									<p className="text-sm text-muted-foreground">
 										Plan your long-term training program
 									</p>
 								</div>
@@ -384,21 +384,21 @@ export function Routines() {
 
 					{/* Exercise Library Tab */}
 					<TabsContent value="library" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6">Exercise Library</h3>
 							<div className="space-y-2">
 								{exerciseLibrary.map((exercise, index) => (
 									<div
 										key={index}
-										className="flex items-center justify-between p-4 bg-[#0D0D0D] rounded-lg border border-[#374151] hover:border-[#FF6B35]/50 transition-all cursor-pointer"
+										className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary hover:border-primary/50 transition-all cursor-pointer"
 									>
 										<div>
 											<h4 className="text-white mb-1">{exercise.name}</h4>
 											<div className="flex items-center gap-2">
-												<Badge className="bg-[#374151] text-[#E5E7EB] border-0 text-xs">
+												<Badge className="bg-secondary text-secondary-foreground border-0 text-xs">
 													{exercise.category}
 												</Badge>
-												<Badge className="bg-[#374151] text-[#E5E7EB] border-0 text-xs">
+												<Badge className="bg-secondary text-secondary-foreground border-0 text-xs">
 													{exercise.equipment}
 												</Badge>
 											</div>
@@ -406,7 +406,7 @@ export function Routines() {
 										<Button
 											size="sm"
 											variant="outline"
-											className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+											className="border-primary text-primary hover:bg-primary/10"
 										>
 											<Plus className="w-4 h-4 mr-2" />
 											Add to Routine

@@ -151,7 +151,7 @@ export function Profile() {
 	];
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Profile Header */}
 				<motion.div
@@ -159,14 +159,14 @@ export function Profile() {
 					animate={{ opacity: 1, y: 0 }}
 					className="mb-8"
 				>
-					<Card className="p-8 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] relative overflow-hidden">
+					<Card className="p-8 bg-gradient-to-br from-surface-2 to-background border-secondary relative overflow-hidden">
 						{/* Background Effect */}
-						<div className="absolute inset-0 bg-gradient-to-r from-[#FF6B35]/10 to-[#DC2626]/10 opacity-50" />
+						<div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-chart-2/10 opacity-50" />
 
 						<div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
 							{/* Avatar */}
-							<Avatar className="w-24 h-24 ring-4 ring-[#FF6B35] ring-offset-4 ring-offset-[#0D0D0D]">
-								<AvatarFallback className="bg-gradient-to-br from-[#FF6B35] to-[#DC2626] text-white text-3xl">
+							<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
+								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
 									JD
 								</AvatarFallback>
 							</Avatar>
@@ -174,18 +174,18 @@ export function Profile() {
 							{/* Info */}
 							<div className="flex-1 text-center md:text-left">
 								<h1 className="text-3xl text-white mb-2">John Doe</h1>
-								<p className="text-[#9CA3AF] mb-4">
+								<p className="text-muted-foreground mb-4">
 									Member since December 2025
 								</p>
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-									<Flame className="w-5 h-5 text-[#F59E0B]" fill="#FF6B35" />
+									<Flame className="w-5 h-5 text-accent" fill="#FF6B35" />
 									<span className="text-white">7 day streak</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
-									<Badge className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] text-white border-0">
+									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
 										Phoenix Member
 									</Badge>
-									<Badge className="bg-[#F59E0B] text-[#0D0D0D] border-0">
+									<Badge className="bg-accent text-background border-0">
 										Level 24
 									</Badge>
 								</div>
@@ -196,11 +196,11 @@ export function Profile() {
 								{userStats.map((stat) => (
 									<div
 										key={stat.label}
-										className="text-center p-4 bg-[#0D0D0D] rounded-lg border border-[#374151]"
+										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
-										<stat.icon className="w-5 h-5 text-[#FF6B35] mx-auto mb-2" />
+										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
 										<div className="text-2xl text-white mb-1">{stat.value}</div>
-										<div className="text-xs text-[#9CA3AF]">{stat.label}</div>
+										<div className="text-xs text-muted-foreground">{stat.label}</div>
 									</div>
 								))}
 							</div>
@@ -215,9 +215,9 @@ export function Profile() {
 					transition={{ delay: 0.1 }}
 					className="mb-8"
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<h3 className="text-xl text-white mb-4 flex items-center gap-2">
-							<CreditCard className="w-5 h-5 text-[#FF6B35]" />
+							<CreditCard className="w-5 h-5 text-primary" />
 							Subscription
 						</h3>
 						<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -228,7 +228,7 @@ export function Profile() {
 										{PLAN_LABELS[tier]}
 									</div>
 									{tier !== "FREE" && currentPeriodEnd && (
-										<div className="text-sm text-[#9CA3AF]">
+										<div className="text-sm text-muted-foreground">
 											{cancelAtPeriodEnd ? "Cancels" : "Renews"}{" "}
 											{format(new Date(currentPeriodEnd), "MMM d, yyyy")}
 										</div>
@@ -239,7 +239,7 @@ export function Profile() {
 								{tier === "FREE" ? (
 									<Button
 										asChild
-										className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 text-white"
+										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white"
 									>
 										<Link to="/pricing">Upgrade</Link>
 									</Button>
@@ -247,7 +247,7 @@ export function Profile() {
 									<>
 										<Button
 											variant="outline"
-											className="border-[#374151] text-white hover:bg-[#374151]/50"
+											className="border-secondary text-white hover:bg-secondary/50"
 											onClick={handleManageSubscription}
 											disabled={portalLoading}
 										>
@@ -259,7 +259,7 @@ export function Profile() {
 										{tier === "PHOENIX" && (
 											<Button
 												asChild
-												className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] hover:from-[#FBBF24] hover:to-[#F59E0B] border-0 text-[#0D0D0D]"
+												className="bg-gradient-to-r from-accent to-warning hover:from-warning hover:to-accent border-0 text-background"
 											>
 												<Link to="/pricing">Upgrade to ELITE</Link>
 											</Button>
@@ -273,28 +273,28 @@ export function Profile() {
 
 				{/* Main Content */}
 				<Tabs defaultValue="stats" className="space-y-6">
-					<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+					<TabsList className="bg-surface-2 border border-secondary p-1">
 						<TabsTrigger
 							value="stats"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Public Stats
 						</TabsTrigger>
 						<TabsTrigger
 							value="badges"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Badges
 						</TabsTrigger>
 						<TabsTrigger
 							value="integrations"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Integrations
 						</TabsTrigger>
 						<TabsTrigger
 							value="settings"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							Settings
 						</TabsTrigger>
@@ -304,22 +304,22 @@ export function Profile() {
 					<TabsContent value="stats" className="space-y-6">
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Top Exercises */}
-							<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 								<h3 className="text-xl text-white mb-6">Top Exercises</h3>
 								<div className="space-y-4">
 									{topExercises.map((exercise, index) => (
 										<div
 											key={index}
-											className="flex items-center justify-between p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]"
+											className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
 										>
 											<div>
 												<div className="text-white">{exercise.name}</div>
-												<div className="text-sm text-[#9CA3AF]">
+												<div className="text-sm text-muted-foreground">
 													{exercise.sets} sets
 												</div>
 											</div>
 											<div className="text-right">
-												<div className="text-[#FF6B35]">{exercise.volume}</div>
+												<div className="text-primary">{exercise.volume}</div>
 											</div>
 										</div>
 									))}
@@ -327,28 +327,28 @@ export function Profile() {
 							</Card>
 
 							{/* Achievement Summary */}
-							<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 								<h3 className="text-xl text-white mb-6">Achievement Summary</h3>
 								<div className="space-y-4">
-									<div className="p-4 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/10 border border-[#FF6B35]/30 rounded-lg">
-										<div className="text-sm text-[#9CA3AF] mb-1">
+									<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
+										<div className="text-sm text-muted-foreground mb-1">
 											Total Volume Lifted
 										</div>
-										<div className="text-3xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+										<div className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 											1.2M kg
 										</div>
 									</div>
-									<div className="p-4 bg-gradient-to-br from-[#10B981]/10 to-[#059669]/10 border border-[#10B981]/30 rounded-lg">
-										<div className="text-sm text-[#9CA3AF] mb-1">
+									<div className="p-4 bg-gradient-to-br from-success/10 to-[#059669]/10 border border-success/30 rounded-lg">
+										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
-										<div className="text-3xl text-[#10B981]">23 days</div>
+										<div className="text-3xl text-success">23 days</div>
 									</div>
-									<div className="p-4 bg-gradient-to-br from-[#F59E0B]/10 to-[#FBBF24]/10 border border-[#F59E0B]/30 rounded-lg">
-										<div className="text-sm text-[#9CA3AF] mb-1">
+									<div className="p-4 bg-gradient-to-br from-accent/10 to-warning/10 border border-accent/30 rounded-lg">
+										<div className="text-sm text-muted-foreground mb-1">
 											Challenges Won
 										</div>
-										<div className="text-3xl text-[#F59E0B]">7</div>
+										<div className="text-3xl text-accent">7</div>
 									</div>
 								</div>
 							</Card>
@@ -368,26 +368,26 @@ export function Profile() {
 									<Card
 										className={`p-4 text-center cursor-pointer hover:scale-105 transition-transform border-2 ${
 											badge.rarity === "platinum"
-												? "bg-gradient-to-br from-[#E5E7EB]/20 to-[#9CA3AF]/20 border-[#E5E7EB]"
+												? "bg-gradient-to-br from-secondary-foreground/20 to-muted-foreground/20 border-secondary-foreground"
 												: badge.rarity === "gold"
-													? "bg-gradient-to-br from-[#F59E0B]/20 to-[#FBBF24]/20 border-[#F59E0B]"
+													? "bg-gradient-to-br from-accent/20 to-warning/20 border-accent"
 													: badge.rarity === "silver"
-														? "bg-gradient-to-br from-[#9CA3AF]/20 to-[#6B7280]/20 border-[#9CA3AF]"
+														? "bg-gradient-to-br from-muted-foreground/20 to-muted/20 border-muted-foreground"
 														: "bg-gradient-to-br from-[#D97706]/20 to-[#92400E]/20 border-[#D97706]"
 										}`}
 									>
 										<div className="text-5xl mb-2">{badge.icon}</div>
 										<div className="text-white mb-1">{badge.name}</div>
-										<div className="text-xs text-[#9CA3AF]">{badge.earned}</div>
+										<div className="text-xs text-muted-foreground">{badge.earned}</div>
 										<Badge
 											className={`mt-2 text-xs ${
 												badge.rarity === "platinum"
-													? "bg-[#E5E7EB] text-[#0D0D0D]"
+													? "bg-secondary-foreground text-background"
 													: badge.rarity === "gold"
-														? "bg-[#F59E0B] text-[#0D0D0D]"
+														? "bg-accent text-background"
 														: badge.rarity === "silver"
-															? "bg-[#9CA3AF] text-[#0D0D0D]"
-															: "bg-[#D97706] text-[#0D0D0D]"
+															? "bg-muted-foreground text-background"
+															: "bg-[#D97706] text-background"
 											} border-0`}
 										>
 											{badge.rarity.toUpperCase()}
@@ -400,21 +400,21 @@ export function Profile() {
 
 					{/* Integrations Tab */}
 					<TabsContent value="integrations" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6">Connected Apps</h3>
 							<div className="space-y-4">
 								{connectedApps.map((app, index) => (
 									<div
 										key={index}
-										className="flex items-center justify-between p-4 bg-[#0D0D0D] rounded-lg border border-[#374151]"
+										className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 									>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 bg-[#374151] rounded-lg flex items-center justify-center text-2xl">
+											<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-2xl">
 												{app.logo}
 											</div>
 											<div>
 												<div className="text-white">{app.name}</div>
-												<div className="text-sm text-[#9CA3AF]">
+												<div className="text-sm text-muted-foreground">
 													{app.status === "Connected"
 														? `Last sync: ${app.lastSync}`
 														: "Not connected"}
@@ -424,12 +424,12 @@ export function Profile() {
 										{app.status === "Connected" ? (
 											<Button
 												variant="outline"
-												className="border-[#EF4444] text-[#EF4444] hover:bg-[#EF4444]/10"
+												className="border-destructive text-destructive hover:bg-destructive/10"
 											>
 												Disconnect
 											</Button>
 										) : (
-											<Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+											<Button className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 												Connect
 											</Button>
 										)}
@@ -441,7 +441,7 @@ export function Profile() {
 
 					{/* Settings Tab */}
 					<TabsContent value="settings" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Bell className="w-5 h-5" />
 								Notification Settings
@@ -467,11 +467,11 @@ export function Profile() {
 								].map((setting, index) => (
 									<div
 										key={index}
-										className="flex items-center justify-between py-3 border-b border-[#374151]"
+										className="flex items-center justify-between py-3 border-b border-secondary"
 									>
 										<div>
 											<div className="text-white">{setting.label}</div>
-											<div className="text-sm text-[#9CA3AF]">
+											<div className="text-sm text-muted-foreground">
 												{setting.description}
 											</div>
 										</div>
@@ -481,7 +481,7 @@ export function Profile() {
 							</div>
 						</Card>
 
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Globe className="w-5 h-5" />
 								General Settings
@@ -490,12 +490,12 @@ export function Profile() {
 								<div>
 									<Label className="text-white mb-2 block">Weight Unit</Label>
 									<div className="flex gap-2">
-										<Button className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0">
+										<Button className="flex-1 bg-gradient-to-r from-primary to-chart-2 border-0">
 											Kilograms (kg)
 										</Button>
 										<Button
 											variant="outline"
-											className="flex-1 border-[#374151] text-[#9CA3AF]"
+											className="flex-1 border-secondary text-muted-foreground"
 										>
 											Pounds (lbs)
 										</Button>
@@ -504,25 +504,25 @@ export function Profile() {
 							</div>
 						</Card>
 
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Shield className="w-5 h-5" />
 								Privacy & Security
 							</h3>
 							<div className="space-y-4">
-								<div className="flex items-center justify-between py-3 border-b border-[#374151]">
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
 										<div className="text-white">Profile visibility</div>
-										<div className="text-sm text-[#9CA3AF]">
+										<div className="text-sm text-muted-foreground">
 											Make your profile visible to others
 										</div>
 									</div>
 									<Switch defaultChecked />
 								</div>
-								<div className="flex items-center justify-between py-3 border-b border-[#374151]">
+								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
 										<div className="text-white">Leaderboard participation</div>
-										<div className="text-sm text-[#9CA3AF]">
+										<div className="text-sm text-muted-foreground">
 											Appear on public leaderboards
 										</div>
 									</div>
@@ -534,17 +534,17 @@ export function Profile() {
 						{/* Data Export - available to all tiers (no SubscriptionGate) */}
 						<ExportSection />
 
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<LogOut className="w-5 h-5" />
 								Account
 							</h3>
 							<div className="space-y-4">
-								<p className="text-sm text-[#9CA3AF]">
+								<p className="text-sm text-muted-foreground">
 									Sign out of your account on this device
 								</p>
 								<Button
-									className="w-full bg-[#DC2626] hover:bg-[#DC2626]/80 text-white border-0"
+									className="w-full bg-chart-2 hover:bg-chart-2/80 text-white border-0"
 									onClick={async () => {
 										await signOut();
 									}}
