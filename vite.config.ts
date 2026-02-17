@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 
 import path from "node:path";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -15,6 +16,15 @@ export default defineConfig({
 		...(process.env.ANALYZE === "true"
 			? [visualizer({ open: true, gzipSize: true, brotliSize: true })]
 			: []),
+		...(process.env.SENTRY_AUTH_TOKEN
+			? [
+					sentryVitePlugin({
+						org: process.env.SENTRY_ORG || "phoenix-portal",
+						project: process.env.SENTRY_PROJECT || "phoenix-portal",
+						authToken: process.env.SENTRY_AUTH_TOKEN,
+					}),
+				]
+			: []),
 	],
 	resolve: {
 		alias: {
@@ -23,6 +33,7 @@ export default defineConfig({
 		},
 	},
 	build: {
+		sourcemap: true,
 		rollupOptions: {
 			output: {
 				manualChunks: {
