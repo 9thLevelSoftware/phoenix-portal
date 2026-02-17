@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "optimize:logo": "node scripts/optimize-logo.mjs",
+    "analyze": "cross-env ANALYZE=true vite build",
     "gen:types": "npx supabase gen types typescript --project-id \"$SUPABASE_PROJECT_REF\" --schema public > src/lib/database.types.ts"
   },
   "dependencies": {
@@ -87,6 +88,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.2",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query-devtools": "^5.91.3",
     "@testing-library/dom": "^10.4.1",
@@ -97,7 +99,9 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
+    "cross-env": "^10.1.0",
     "jsdom": "^28.1.0",
+    "rollup-plugin-visualizer": "^6.0.5",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.7.0",
