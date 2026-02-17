@@ -1,17 +1,17 @@
-import { Navigate, Outlet } from 'react-router';
-import { useAuth } from '@/app/hooks/useAuth';
-import { PageLoading } from '@/app/components/PageLoading';
+import { Navigate, Outlet } from "react-router";
+import { PageLoading } from "@/app/components/PageLoading";
+import { useAuth } from "@/app/hooks/useAuth";
 
 export function ProtectedRoute() {
-  const { user, loading } = useAuth();
+	const { user, loading } = useAuth();
 
-  if (loading) {
-    return <PageLoading />;
-  }
+	if (loading) {
+		return <PageLoading />;
+	}
 
-  if (!user) {
-    return <Navigate to="/" replace />;
-  }
+	if (!user) {
+		return <Navigate to="/" replace />;
+	}
 
-  return <Outlet />;
+	return <Outlet />;
 }

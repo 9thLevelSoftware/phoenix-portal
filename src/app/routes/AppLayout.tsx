@@ -1,12 +1,12 @@
-import { Suspense } from 'react';
-import { Outlet } from 'react-router';
-import { ErrorBoundary } from 'react-error-boundary';
-import { Navigation } from '@/app/components/Navigation';
-import { MobileBottomNav } from '@/app/components/MobileBottomNav';
-import { Toaster } from '@/app/components/ui/sonner';
-import { PageLoading } from '@/app/components/PageLoading';
-import { PageErrorFallback } from '@/app/components/ErrorFallback';
-import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import { Outlet } from "react-router";
+import { PageErrorFallback } from "@/app/components/ErrorFallback";
+import { MobileBottomNav } from "@/app/components/MobileBottomNav";
+import { Navigation } from "@/app/components/Navigation";
+import { PageLoading } from "@/app/components/PageLoading";
+import { Toaster } from "@/app/components/ui/sonner";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
 /**
  * Authenticated shell layout.
@@ -17,21 +17,21 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
  * Navigation and MobileBottomNav use NavLink + Zustand internally (no props needed).
  */
 export function AppLayout() {
-  useRealtimeSync();
+	useRealtimeSync();
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D]">
-      <Navigation />
+	return (
+		<div className="min-h-screen bg-[#0D0D0D]">
+			<Navigation />
 
-      <ErrorBoundary FallbackComponent={PageErrorFallback}>
-        <Suspense fallback={<PageLoading />}>
-          <Outlet />
-        </Suspense>
-      </ErrorBoundary>
+			<ErrorBoundary FallbackComponent={PageErrorFallback}>
+				<Suspense fallback={<PageLoading />}>
+					<Outlet />
+				</Suspense>
+			</ErrorBoundary>
 
-      <MobileBottomNav />
+			<MobileBottomNav />
 
-      <Toaster />
-    </div>
-  );
+			<Toaster />
+		</div>
+	);
 }

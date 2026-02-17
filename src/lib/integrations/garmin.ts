@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import type { NormalizedActivity } from './types';
+import { z } from "zod";
+import type { NormalizedActivity } from "./types";
 
 // =============================================================================
 // Garmin Activity Schema
@@ -7,17 +7,17 @@ import type { NormalizedActivity } from './types';
 // =============================================================================
 
 export const garminActivitySchema = z.object({
-  activityId: z.number(),
-  activityName: z.string().optional().default('Garmin Activity'),
-  activityType: z.string(),
-  startTimeInSeconds: z.number(), // Unix epoch seconds
-  startTimeOffsetInSeconds: z.number().optional().default(0),
-  durationInSeconds: z.number(),
-  distanceInMeters: z.number().optional(),
-  activeKilocalories: z.number().optional(),
-  averageHeartRateInBeatsPerMinute: z.number().optional(),
-  maxHeartRateInBeatsPerMinute: z.number().optional(),
-  elevationGainInMeters: z.number().optional(),
+	activityId: z.number(),
+	activityName: z.string().optional().default("Garmin Activity"),
+	activityType: z.string(),
+	startTimeInSeconds: z.number(), // Unix epoch seconds
+	startTimeOffsetInSeconds: z.number().optional().default(0),
+	durationInSeconds: z.number(),
+	distanceInMeters: z.number().optional(),
+	activeKilocalories: z.number().optional(),
+	averageHeartRateInBeatsPerMinute: z.number().optional(),
+	maxHeartRateInBeatsPerMinute: z.number().optional(),
+	elevationGainInMeters: z.number().optional(),
 });
 
 export type GarminActivity = z.infer<typeof garminActivitySchema>;
@@ -27,27 +27,27 @@ export type GarminActivity = z.infer<typeof garminActivitySchema>;
  * Garmin uses uppercase descriptive string types.
  */
 function mapGarminActivityType(garminType: string): string {
-  const mapping: Record<string, string> = {
-    RUNNING: 'running',
-    TRAIL_RUNNING: 'running',
-    TREADMILL_RUNNING: 'running',
-    CYCLING: 'cycling',
-    MOUNTAIN_BIKING: 'cycling',
-    INDOOR_CYCLING: 'cycling',
-    SWIMMING: 'swimming',
-    OPEN_WATER_SWIMMING: 'swimming',
-    WALKING: 'walking',
-    HIKING: 'hiking',
-    STRENGTH_TRAINING: 'strength',
-    YOGA: 'flexibility',
-    PILATES: 'flexibility',
-    ROWING: 'rowing',
-    INDOOR_ROWING: 'rowing',
-    ELLIPTICAL: 'cardio',
-    STAIR_CLIMBING: 'cardio',
-    FITNESS_EQUIPMENT: 'cardio',
-  };
-  return mapping[garminType] ?? 'other';
+	const mapping: Record<string, string> = {
+		RUNNING: "running",
+		TRAIL_RUNNING: "running",
+		TREADMILL_RUNNING: "running",
+		CYCLING: "cycling",
+		MOUNTAIN_BIKING: "cycling",
+		INDOOR_CYCLING: "cycling",
+		SWIMMING: "swimming",
+		OPEN_WATER_SWIMMING: "swimming",
+		WALKING: "walking",
+		HIKING: "hiking",
+		STRENGTH_TRAINING: "strength",
+		YOGA: "flexibility",
+		PILATES: "flexibility",
+		ROWING: "rowing",
+		INDOOR_ROWING: "rowing",
+		ELLIPTICAL: "cardio",
+		STAIR_CLIMBING: "cardio",
+		FITNESS_EQUIPMENT: "cardio",
+	};
+	return mapping[garminType] ?? "other";
 }
 
 /**
@@ -60,26 +60,26 @@ function mapGarminActivityType(garminType: string): string {
  * - durationInSeconds: already in seconds (no conversion)
  */
 export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
-  const activity = garminActivitySchema.parse(raw);
+	const activity = garminActivitySchema.parse(raw);
 
-  // Convert epoch seconds to ISO string, accounting for timezone offset
-  const startedAt = new Date(
-    (activity.startTimeInSeconds + activity.startTimeOffsetInSeconds) * 1000,
-  ).toISOString();
+	// Convert epoch seconds to ISO string, accounting for timezone offset
+	const startedAt = new Date(
+		(activity.startTimeInSeconds + activity.startTimeOffsetInSeconds) * 1000,
+	).toISOString();
 
-  return {
-    external_id: String(activity.activityId),
-    provider: 'garmin',
-    name: activity.activityName,
-    activity_type: mapGarminActivityType(activity.activityType),
-    started_at: startedAt,
-    duration_seconds: activity.durationInSeconds,
-    distance_meters: activity.distanceInMeters ?? null,
-    calories: activity.activeKilocalories ?? null,
-    avg_heart_rate: activity.averageHeartRateInBeatsPerMinute ?? null,
-    max_heart_rate: activity.maxHeartRateInBeatsPerMinute ?? null,
-    elevation_gain_meters: activity.elevationGainInMeters ?? null,
-  };
+	return {
+		external_id: String(activity.activityId),
+		provider: "garmin",
+		name: activity.activityName,
+		activity_type: mapGarminActivityType(activity.activityType),
+		started_at: startedAt,
+		duration_seconds: activity.durationInSeconds,
+		distance_meters: activity.distanceInMeters ?? null,
+		calories: activity.activeKilocalories ?? null,
+		avg_heart_rate: activity.averageHeartRateInBeatsPerMinute ?? null,
+		max_heart_rate: activity.maxHeartRateInBeatsPerMinute ?? null,
+		elevation_gain_meters: activity.elevationGainInMeters ?? null,
+	};
 }
 
 /**
@@ -96,7 +96,7 @@ export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
  * This function is ready but untested until credentials are available.
  */
 export function initiateGarminConnect(userId: string): void {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  // Redirect to the garmin-oauth Edge Function which handles the OAuth 1.0a initiation
-  window.location.href = `${supabaseUrl}/functions/v1/garmin-oauth?user_id=${encodeURIComponent(userId)}`;
+	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+	// Redirect to the garmin-oauth Edge Function which handles the OAuth 1.0a initiation
+	window.location.href = `${supabaseUrl}/functions/v1/garmin-oauth?user_id=${encodeURIComponent(userId)}`;
 }

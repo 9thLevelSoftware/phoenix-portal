@@ -1,236 +1,254 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Card } from '@/app/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CommunityDetailDrawer } from "@/app/components/community/CommunityDetailDrawer";
+import { CommunityFeedCard } from "@/app/components/community/CommunityFeedCard";
+import { CommunityFilterPanel } from "@/app/components/community/CommunityFilterPanel";
+import { CommunitySearch } from "@/app/components/community/CommunitySearch";
+import { CreatorProfile } from "@/app/components/community/CreatorProfile";
+import { FeaturedCreators } from "@/app/components/community/FeaturedCreators";
+import { CommunityMobile } from "@/app/components/mobile/CommunityMobile";
+import { Card } from "@/app/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/app/components/ui/select';
-import { Search } from 'lucide-react';
-import { useIsMobile } from '@/app/hooks/useIsMobile';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useCommunityStore } from '@/stores/useCommunityStore';
-import { useCommunityRealtime } from '@/hooks/useCommunityRealtime';
-import { communityFeedOptions, userVotesOptions } from '@/queries/community';
-import { useAuth } from '@/providers/AuthProvider';
-import { CommunityFeedCard } from '@/app/components/community/CommunityFeedCard';
-import { CommunitySearch } from '@/app/components/community/CommunitySearch';
-import { CommunityFilterPanel } from '@/app/components/community/CommunityFilterPanel';
-import { CommunityDetailDrawer } from '@/app/components/community/CommunityDetailDrawer';
-import { FeaturedCreators } from '@/app/components/community/FeaturedCreators';
-import { CreatorProfile } from '@/app/components/community/CreatorProfile';
-import { CommunityMobile } from '@/app/components/mobile/CommunityMobile';
-import type { CommunityFeedItem } from '@/schemas/community';
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/app/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useAuth } from "@/providers/AuthProvider";
+import { communityFeedOptions, userVotesOptions } from "@/queries/community";
+import type { CommunityFeedItem } from "@/schemas/community";
+import { useCommunityStore } from "@/stores/useCommunityStore";
 
 const SORT_OPTIONS = [
-  { value: 'hot', label: 'Hot' },
-  { value: 'top', label: 'Top' },
-  { value: 'new', label: 'New' },
+	{ value: "hot", label: "Hot" },
+	{ value: "top", label: "Top" },
+	{ value: "new", label: "New" },
 ] as const;
 
 export function Community() {
-  const isMobile = useIsMobile();
+	const isMobile = useIsMobile();
 
-  if (isMobile) {
-    return <CommunityMobile />;
-  }
+	if (isMobile) {
+		return <CommunityMobile />;
+	}
 
-  return <CommunityDesktop />;
+	return <CommunityDesktop />;
 }
 
 function CommunityDesktop() {
-  const { user } = useAuth();
-  const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null);
-  const activeTab = useCommunityStore((s) => s.activeTab);
-  const sort = useCommunityStore((s) => s.sort);
-  const search = useCommunityStore((s) => s.search);
-  const filters = useCommunityStore((s) => s.filters);
-  const selectedItemId = useCommunityStore((s) => s.selectedItemId);
-  const setActiveTab = useCommunityStore((s) => s.setActiveTab);
-  const setSort = useCommunityStore((s) => s.setSort);
-  const setSelectedItemId = useCommunityStore((s) => s.setSelectedItemId);
-  const resetAll = useCommunityStore((s) => s.resetAll);
+	const { user } = useAuth();
+	const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null);
+	const activeTab = useCommunityStore((s) => s.activeTab);
+	const sort = useCommunityStore((s) => s.sort);
+	const search = useCommunityStore((s) => s.search);
+	const filters = useCommunityStore((s) => s.filters);
+	const selectedItemId = useCommunityStore((s) => s.selectedItemId);
+	const setActiveTab = useCommunityStore((s) => s.setActiveTab);
+	const setSort = useCommunityStore((s) => s.setSort);
+	const setSelectedItemId = useCommunityStore((s) => s.setSelectedItemId);
+	const resetAll = useCommunityStore((s) => s.resetAll);
 
-  const debouncedSearch = useDebounce(search, 300);
+	const debouncedSearch = useDebounce(search, 300);
 
-  // Reset state on mount
-  useEffect(() => {
-    resetAll();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+	// Reset state on mount
+	useEffect(() => {
+		resetAll();
+	}, [resetAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Wire realtime
-  useCommunityRealtime();
+	// Wire realtime
+	useCommunityRealtime();
 
-  // Feed query
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-  } = useInfiniteQuery(
-    communityFeedOptions({
-      tab: activeTab,
-      sort,
-      filters,
-      search: debouncedSearch,
-    })
-  );
+	// Feed query
+	const {
+		data,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		isLoading,
+		isError,
+	} = useInfiniteQuery(
+		communityFeedOptions({
+			tab: activeTab,
+			sort,
+			filters,
+			search: debouncedSearch,
+		}),
+	);
 
-  // User votes
-  const { data: votedIds } = useQuery({
-    ...userVotesOptions(user?.id ?? ''),
-    enabled: !!user?.id,
-  });
+	// User votes
+	const { data: votedIds } = useQuery({
+		...userVotesOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
-  // Infinite scroll sentinel
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
-      },
-      { threshold: 0.1 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+	// Infinite scroll sentinel
+	const sentinelRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = sentinelRef.current;
+		if (!el) return;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+					fetchNextPage();
+				}
+			},
+			{ threshold: 0.1 },
+		);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const allItems: CommunityFeedItem[] = data?.pages.flat() ?? [];
+	const allItems: CommunityFeedItem[] = data?.pages.flat() ?? [];
 
-  const selectedItem = selectedItemId
-    ? allItems.find((item) => item.id === selectedItemId) ?? null
-    : null;
+	const selectedItem = selectedItemId
+		? (allItems.find((item) => item.id === selectedItemId) ?? null)
+		: null;
 
-  const handleVote = useCallback((id: string) => {
-    // Optimistic vote will be handled in a future plan (05-03)
-    console.log('Vote:', id);
-  }, []);
+	const handleVote = useCallback((id: string) => {
+		// Optimistic vote will be handled in a future plan (05-03)
+		console.log("Vote:", id);
+	}, []);
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl mb-2">
-            <span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
-              Community Hub
-            </span>
-          </h1>
-          <p className="text-[#9CA3AF]">Discover, share, and connect with fellow athletes</p>
-        </div>
+	return (
+		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{/* Header */}
+				<div className="mb-8">
+					<h1 className="text-3xl sm:text-4xl mb-2">
+						<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							Community Hub
+						</span>
+					</h1>
+					<p className="text-[#9CA3AF]">
+						Discover, share, and connect with fellow athletes
+					</p>
+				</div>
 
-        {/* Tabs */}
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as 'routines' | 'cycles')}
-          className="mb-6"
-        >
-          <TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
-            <TabsTrigger value="routines" className="data-[state=active]:bg-[#FF6B35]">
-              Routines
-            </TabsTrigger>
-            <TabsTrigger value="cycles" className="data-[state=active]:bg-[#FF6B35]">
-              Cycles
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+				{/* Tabs */}
+				<Tabs
+					value={activeTab}
+					onValueChange={(v) => setActiveTab(v as "routines" | "cycles")}
+					className="mb-6"
+				>
+					<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+						<TabsTrigger
+							value="routines"
+							className="data-[state=active]:bg-[#FF6B35]"
+						>
+							Routines
+						</TabsTrigger>
+						<TabsTrigger
+							value="cycles"
+							className="data-[state=active]:bg-[#FF6B35]"
+						>
+							Cycles
+						</TabsTrigger>
+					</TabsList>
+				</Tabs>
 
-        {viewingCreatorId ? (
-          /* Creator profile view */
-          <CreatorProfile
-            userId={viewingCreatorId}
-            onBack={() => setViewingCreatorId(null)}
-            onSelectItem={(id) => setSelectedItemId(id)}
-            onVote={handleVote}
-          />
-        ) : (
-          <>
-            {/* Toolbar: Search + Sort + Filter */}
-            <div className="flex items-center gap-3 mb-6">
-              <CommunitySearch />
+				{viewingCreatorId ? (
+					/* Creator profile view */
+					<CreatorProfile
+						userId={viewingCreatorId}
+						onBack={() => setViewingCreatorId(null)}
+						onSelectItem={(id) => setSelectedItemId(id)}
+						onVote={handleVote}
+					/>
+				) : (
+					<>
+						{/* Toolbar: Search + Sort + Filter */}
+						<div className="flex items-center gap-3 mb-6">
+							<CommunitySearch />
 
-              <Select value={sort} onValueChange={(v) => setSort(v as 'hot' | 'top' | 'new')}>
-                <SelectTrigger className="w-[120px] bg-[#1a1a1a] border-[#374151] text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-[#1a1a1a] border-[#374151]">
-                  {SORT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+							<Select
+								value={sort}
+								onValueChange={(v) => setSort(v as "hot" | "top" | "new")}
+							>
+								<SelectTrigger className="w-[120px] bg-[#1a1a1a] border-[#374151] text-white">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent className="bg-[#1a1a1a] border-[#374151]">
+									{SORT_OPTIONS.map((opt) => (
+										<SelectItem key={opt.value} value={opt.value}>
+											{opt.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 
-              <CommunityFilterPanel />
-            </div>
+							<CommunityFilterPanel />
+						</div>
 
-            {/* Featured creators */}
-            <FeaturedCreators onSelectCreator={setViewingCreatorId} />
+						{/* Featured creators */}
+						<FeaturedCreators onSelectCreator={setViewingCreatorId} />
 
-            {/* Feed grid */}
-            {isLoading ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Card key={i} className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-48" />
-                ))}
-              </div>
-            ) : isError ? (
-              <div className="text-center py-16 text-[#6B7280]">
-                <p className="text-lg mb-2">Something went wrong</p>
-                <p className="text-sm">Failed to load community feed. Please try again.</p>
-              </div>
-            ) : allItems.length === 0 ? (
-              <div className="text-center py-16 text-[#6B7280]">
-                <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p className="text-lg">
-                  No {activeTab === 'routines' ? 'routines' : 'cycles'} found
-                </p>
-                {debouncedSearch && (
-                  <p className="text-sm mt-1">Try adjusting your search or filters</p>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {allItems.map((item) => (
-                  <CommunityFeedCard
-                    key={item.id}
-                    item={item}
-                    onSelect={(id) => setSelectedItemId(id)}
-                    isVoted={votedIds?.has(item.id) ?? false}
-                    onVote={handleVote}
-                    onAuthorClick={setViewingCreatorId}
-                  />
-                ))}
-              </div>
-            )}
+						{/* Feed grid */}
+						{isLoading ? (
+							<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+								{Array.from({ length: 6 }).map((_, i) => (
+									<Card
+										key={i}
+										className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-48"
+									/>
+								))}
+							</div>
+						) : isError ? (
+							<div className="text-center py-16 text-[#6B7280]">
+								<p className="text-lg mb-2">Something went wrong</p>
+								<p className="text-sm">
+									Failed to load community feed. Please try again.
+								</p>
+							</div>
+						) : allItems.length === 0 ? (
+							<div className="text-center py-16 text-[#6B7280]">
+								<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+								<p className="text-lg">
+									No {activeTab === "routines" ? "routines" : "cycles"} found
+								</p>
+								{debouncedSearch && (
+									<p className="text-sm mt-1">
+										Try adjusting your search or filters
+									</p>
+								)}
+							</div>
+						) : (
+							<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+								{allItems.map((item) => (
+									<CommunityFeedCard
+										key={item.id}
+										item={item}
+										onSelect={(id) => setSelectedItemId(id)}
+										isVoted={votedIds?.has(item.id) ?? false}
+										onVote={handleVote}
+										onAuthorClick={setViewingCreatorId}
+									/>
+								))}
+							</div>
+						)}
 
-            {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="h-4" />
-            {isFetchingNextPage && (
-              <div className="flex justify-center py-4">
-                <div className="w-6 h-6 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-          </>
-        )}
+						{/* Infinite scroll sentinel */}
+						<div ref={sentinelRef} className="h-4" />
+						{isFetchingNextPage && (
+							<div className="flex justify-center py-4">
+								<div className="w-6 h-6 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
+							</div>
+						)}
+					</>
+				)}
 
-        {/* Detail drawer/dialog */}
-        <CommunityDetailDrawer
-          item={selectedItem}
-          open={!!selectedItemId}
-          onClose={() => setSelectedItemId(null)}
-        />
-      </div>
-    </div>
-  );
+				{/* Detail drawer/dialog */}
+				<CommunityDetailDrawer
+					item={selectedItem}
+					open={!!selectedItemId}
+					onClose={() => setSelectedItemId(null)}
+				/>
+			</div>
+		</div>
+	);
 }

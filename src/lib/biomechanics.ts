@@ -6,10 +6,13 @@ export const ASYMMETRY_THRESHOLD = 10;
  * Positive = right dominant, negative = left dominant.
  * Formula: ((right - left) / total) * 200
  */
-export function calculateAsymmetry(leftForce: number, rightForce: number): number {
-  const total = leftForce + rightForce;
-  if (total === 0) return 0;
-  return Math.round(((rightForce - leftForce) / total) * 200 * 10) / 10;
+export function calculateAsymmetry(
+	leftForce: number,
+	rightForce: number,
+): number {
+	const total = leftForce + rightForce;
+	if (total === 0) return 0;
+	return Math.round(((rightForce - leftForce) / total) * 200 * 10) / 10;
 }
 
 /**
@@ -17,17 +20,20 @@ export function calculateAsymmetry(leftForce: number, rightForce: number): numbe
  * Returns 0 for invalid inputs, weight itself for single reps.
  */
 export function estimateOneRepMax(weight: number, reps: number): number {
-  if (weight <= 0 || reps <= 0) return 0;
-  if (reps === 1) return weight;
-  return Math.round(weight * (1 + reps / 30));
+	if (weight <= 0 || reps <= 0) return 0;
+	if (reps === 1) return weight;
+	return Math.round(weight * (1 + reps / 30));
 }
 
 /**
  * Calculate power output in watts from force and velocity.
  * P = F * v
  */
-export function calculatePower(forceNewtons: number, velocityMps: number): number {
-  return Math.round(forceNewtons * velocityMps);
+export function calculatePower(
+	forceNewtons: number,
+	velocityMps: number,
+): number {
+	return Math.round(forceNewtons * velocityMps);
 }
 
 /**
@@ -35,6 +41,6 @@ export function calculatePower(forceNewtons: number, velocityMps: number): numbe
  * Returns max - min in millimeters.
  */
 export function calculateRom(positions: number[]): number {
-  if (positions.length === 0) return 0;
-  return Math.round(Math.max(...positions) - Math.min(...positions));
+	if (positions.length === 0) return 0;
+	return Math.round(Math.max(...positions) - Math.min(...positions));
 }

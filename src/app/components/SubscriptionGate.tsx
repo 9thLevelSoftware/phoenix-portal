@@ -1,30 +1,43 @@
-import type { ReactNode } from 'react';
-import { useSubscription, type SubscriptionTier } from '@/hooks/useSubscription';
-import { Skeleton } from '@/app/components/ui/skeleton';
-import { UpgradePrompt } from '@/app/components/UpgradePrompt';
+import type { ReactNode } from "react";
+import { UpgradePrompt } from "@/app/components/UpgradePrompt";
+import { Skeleton } from "@/app/components/ui/skeleton";
+import {
+	type SubscriptionTier,
+	useSubscription,
+} from "@/hooks/useSubscription";
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
-  FREE: 0,
-  PHOENIX: 1,
-  ELITE: 2,
+	FREE: 0,
+	PHOENIX: 1,
+	ELITE: 2,
 };
 
 interface SubscriptionGateProps {
-  requiredTier: 'PHOENIX' | 'ELITE';
-  children: ReactNode;
-  fallback?: ReactNode;
+	requiredTier: "PHOENIX" | "ELITE";
+	children: ReactNode;
+	fallback?: ReactNode;
 }
 
-export function SubscriptionGate({ requiredTier, children, fallback }: SubscriptionGateProps) {
-  const { tier, isLoading } = useSubscription();
+export function SubscriptionGate({
+	requiredTier,
+	children,
+	fallback,
+}: SubscriptionGateProps) {
+	const { tier, isLoading } = useSubscription();
 
-  if (isLoading) {
-    return <Skeleton className="h-32 w-full" />;
-  }
+	if (isLoading) {
+		return <Skeleton className="h-32 w-full" />;
+	}
 
-  if (TIER_LEVEL[tier] >= TIER_LEVEL[requiredTier]) {
-    return <>{children}</>;
-  }
+	if (TIER_LEVEL[tier] >= TIER_LEVEL[requiredTier]) {
+		return <>{children}</>;
+	}
 
-  return <>{fallback ?? <UpgradePrompt requiredTier={requiredTier} currentTier={tier} />}</>;
+	return (
+		<>
+			{fallback ?? (
+				<UpgradePrompt requiredTier={requiredTier} currentTier={tier} />
+			)}
+		</>
+	);
 }
