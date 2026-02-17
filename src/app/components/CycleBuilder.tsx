@@ -4,17 +4,26 @@ import {
 	ChevronLeft,
 	Dumbbell,
 	Eye,
+	Loader2,
 	Plus,
 	Save,
+	Settings,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { RoutinePickerModal } from "@/app/components/modals/RoutinePickerModal";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
@@ -24,8 +33,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/app/components/ui/select";
+import { Switch } from "@/app/components/ui/switch";
 import { Textarea } from "@/app/components/ui/textarea";
+import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useSaveCycle } from "@/mutations/cycles";
+import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
 
 interface DayConfig {
@@ -45,6 +58,15 @@ interface DayConfig {
 export function CycleBuilder() {
 	const { cycleId } = useParams<{ cycleId: string }>();
 	const navigate = useNavigate();
+	const saveMutation = useSaveCycle();
+	const isEditing = !!cycleId;
+
+	// Fetch existing cycle for editing
+	const { data: existingCycle, isLoading: isLoadingCycle } = useQuery({
+		...cycleDetailOptions(cycleId ?? ""),
+		enabled: !!cycleId,
+	});
+
 	const [cycleName, setCycleName] = useState("Untitled Cycle");
 	const [description, setDescription] = useState("");
 	const [duration, setDuration] = useState(7);
@@ -62,6 +84,7 @@ export function CycleBuilder() {
 	const [showPreview, setShowPreview] = useState(false);
 	const [showRoutinePicker, setShowRoutinePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
 	// Progression settings
 	const [progressionType, setProgressionType] = useState<
@@ -94,43 +117,95 @@ export function CycleBuilder() {
 		muscleGroup: r.tags?.[0] ?? "General",
 	}));
 
+	// Populate form from existing cycle when editing
+	useEffect(() => {
+		if (existingCycle) {
+			setCycleName(existingCycle.name);
+			setDuration(existingCycle.duration_weeks);
+			if (existingCycle.cycle_days.length > 0) {
+				setDays(
+					existingCycle.cycle_days.map((d) => ({
+						dayNumber: d.day_number,
+						type: d.day_type as "workout" | "rest",
+						routineId: d.routine_id ?? undefined,
+						weightAdjustment: d.weight_adjustment,
+						repModifier: d.rep_modifier,
+						restOverride: d.rest_override ?? undefined,
+						notes: d.notes ?? undefined,
+						restType: (d.rest_type as DayConfig["restType"]) ?? undefined,
+					})),
+				);
+			}
+			if (existingCycle.progression_settings) {
+				const ps = existingCycle.progression_settings as any;
+				if (ps.type) setProgressionType(ps.type);
+				if (ps.amount) setProgressionAmount(ps.amount);
+				if (ps.frequency) setProgressionFrequency(ps.frequency);
+				if (ps.trigger) setProgressionTrigger(ps.trigger);
+				if (ps.upperIncrement) setUpperBodyIncrement(ps.upperIncrement);
+				if (ps.lowerIncrement) setLowerBodyIncrement(ps.lowerIncrement);
+			}
+			if (existingCycle.deload_settings) {
+				const ds = existingCycle.deload_settings as any;
+				setIncludeDeload(true);
+				if (ds.frequency) setDeloadFrequency(ds.frequency);
+				if (ds.intensity) setDeloadIntensity(ds.intensity);
+				if (ds.volume) setDeloadVolume(ds.volume);
+			}
+		}
+	}, [existingCycle]);
+
 	const handleCancel = () => {
 		if (hasUnsavedChanges) {
-			if (
-				confirm("You have unsaved changes. Are you sure you want to leave?")
-			) {
-				navigate("/cycles");
-			}
+			setShowUnsavedDialog(true);
 		} else {
 			navigate("/cycles");
 		}
 	};
 
 	const handleSave = () => {
-		const cycle = {
-			name: cycleName,
-			description,
-			duration,
-			startDate,
-			days,
-			progression: {
-				type: progressionType,
-				amount: progressionAmount,
-				frequency: progressionFrequency,
-				trigger: progressionTrigger,
-				upperIncrement: upperBodyIncrement,
-				lowerIncrement: lowerBodyIncrement,
-			},
-			deload: includeDeload
-				? {
-						frequency: deloadFrequency,
-						intensity: deloadIntensity,
-						volume: deloadVolume,
-					}
-				: null,
+		const progressionSettings = {
+			type: progressionType,
+			amount: progressionAmount,
+			frequency: progressionFrequency,
+			trigger: progressionTrigger,
+			upperIncrement: upperBodyIncrement,
+			lowerIncrement: lowerBodyIncrement,
 		};
-		console.log("Saving cycle:", cycle);
-		navigate("/cycles");
+
+		const deloadSettings = includeDeload
+			? {
+					frequency: deloadFrequency,
+					intensity: deloadIntensity,
+					volume: deloadVolume,
+				}
+			: null;
+
+		saveMutation.mutate(
+			{
+				name: cycleName,
+				description,
+				duration_weeks: duration,
+				started_at: startDate || null,
+				days: days.map((d) => ({
+					day_number: d.dayNumber,
+					day_type: d.type,
+					routine_id: d.routineId ?? null,
+					weight_adjustment: d.weightAdjustment ?? 0,
+					rep_modifier: d.repModifier ?? 0,
+					rest_override: d.restOverride ?? null,
+					notes: d.notes ?? null,
+					rest_type: d.restType ?? null,
+				})),
+				progression_settings: progressionSettings,
+				deload_settings: deloadSettings,
+			},
+			{
+				onSuccess: () => {
+					setHasUnsavedChanges(false);
+				},
+			},
+		);
 	};
 
 	const handleDayClick = (dayNumber: number) => {
@@ -202,6 +277,17 @@ export function CycleBuilder() {
 	const workoutDays = days.filter((d) => d.type === "workout").length;
 	const restDays = days.filter((d) => d.type === "rest").length;
 
+	if (isEditing && isLoadingCycle) {
+		return (
+			<div className="min-h-screen bg-background flex items-center justify-center">
+				<div className="flex flex-col items-center gap-4">
+					<Loader2 className="w-8 h-8 text-primary animate-spin" />
+					<p className="text-muted-foreground">Loading cycle...</p>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="min-h-screen bg-background pb-8">
 			{/* Sticky Top Bar */}
@@ -233,7 +319,7 @@ export function CycleBuilder() {
 								variant="outline"
 								className="bg-accent/20 text-accent border-accent/30"
 							>
-								● Unsaved
+								Unsaved
 							</Badge>
 						)}
 					</div>
@@ -249,10 +335,15 @@ export function CycleBuilder() {
 						</Button>
 						<Button
 							onClick={handleSave}
+							disabled={saveMutation.isPending}
 							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
-							<Save className="w-4 h-4 mr-2" />
-							Save Cycle
+							{saveMutation.isPending ? (
+								<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+							) : (
+								<Save className="w-4 h-4 mr-2" />
+							)}
+							{saveMutation.isPending ? "Saving..." : "Save Cycle"}
 						</Button>
 					</div>
 				</div>
@@ -399,7 +490,7 @@ export function CycleBuilder() {
 						</div>
 
 						<p className="text-sm text-muted mt-4 text-center">
-							Click a day to configure • Scroll horizontally for more days
+							Click a day to configure -- Scroll horizontally for more days
 						</p>
 					</Card>
 				</motion.div>
@@ -438,26 +529,57 @@ export function CycleBuilder() {
 				>
 					<ProgressionRules
 						progressionType={progressionType}
-						onProgressionTypeChange={setProgressionType}
+						onProgressionTypeChange={(v: "percentage" | "fixed" | "manual") => {
+							setProgressionType(v);
+							setHasUnsavedChanges(true);
+						}}
 						progressionAmount={progressionAmount}
-						onProgressionAmountChange={setProgressionAmount}
+						onProgressionAmountChange={(v: number) => {
+							setProgressionAmount(v);
+							setHasUnsavedChanges(true);
+						}}
 						progressionFrequency={progressionFrequency}
-						onProgressionFrequencyChange={setProgressionFrequency}
+						onProgressionFrequencyChange={(v: number) => {
+							setProgressionFrequency(v);
+							setHasUnsavedChanges(true);
+						}}
 						progressionTrigger={progressionTrigger}
-						onProgressionTriggerChange={setProgressionTrigger}
+						onProgressionTriggerChange={(
+							v: "all-sets" | "target-rpe" | "cycle-complete",
+						) => {
+							setProgressionTrigger(v);
+							setHasUnsavedChanges(true);
+						}}
 						upperBodyIncrement={upperBodyIncrement}
-						onUpperBodyIncrementChange={setUpperBodyIncrement}
+						onUpperBodyIncrementChange={(v: number) => {
+							setUpperBodyIncrement(v);
+							setHasUnsavedChanges(true);
+						}}
 						lowerBodyIncrement={lowerBodyIncrement}
-						onLowerBodyIncrementChange={setLowerBodyIncrement}
+						onLowerBodyIncrementChange={(v: number) => {
+							setLowerBodyIncrement(v);
+							setHasUnsavedChanges(true);
+						}}
 						includeDeload={includeDeload}
-						onIncludeDeloadChange={setIncludeDeload}
+						onIncludeDeloadChange={(v: boolean) => {
+							setIncludeDeload(v);
+							setHasUnsavedChanges(true);
+						}}
 						deloadFrequency={deloadFrequency}
-						onDeloadFrequencyChange={setDeloadFrequency}
+						onDeloadFrequencyChange={(v: number) => {
+							setDeloadFrequency(v);
+							setHasUnsavedChanges(true);
+						}}
 						deloadIntensity={deloadIntensity}
-						onDeloadIntensityChange={setDeloadIntensity}
+						onDeloadIntensityChange={(v: number) => {
+							setDeloadIntensity(v);
+							setHasUnsavedChanges(true);
+						}}
 						deloadVolume={deloadVolume}
-						onDeloadVolumeChange={setDeloadVolume}
-						onSettingsChange={() => setHasUnsavedChanges(true)}
+						onDeloadVolumeChange={(v: number) => {
+							setDeloadVolume(v);
+							setHasUnsavedChanges(true);
+						}}
 					/>
 				</motion.div>
 
@@ -488,7 +610,13 @@ export function CycleBuilder() {
 														: "bg-secondary/20 border border-secondary"
 												}`}
 											>
-												{day?.type === "workout" ? "🏋️" : "🛋️"}
+												{day?.type === "workout" ? (
+													<Dumbbell className="w-6 h-6 text-primary" />
+												) : (
+													<span className="text-muted-foreground text-sm">
+														REST
+													</span>
+												)}
 											</div>
 											<div className="text-xs text-muted mt-1 truncate">
 												{day?.routineName ||
@@ -501,7 +629,7 @@ export function CycleBuilder() {
 						</div>
 
 						<div className="text-sm text-secondary-foreground mb-4">
-							📊 {workoutDays} workout days • {restDays} rest days
+							{workoutDays} workout days / {restDays} rest days
 						</div>
 					</Card>
 				</motion.div>
@@ -521,7 +649,39 @@ export function CycleBuilder() {
 			<PreviewModal
 				isOpen={showPreview}
 				onClose={() => setShowPreview(false)}
-				cycle={{ name: cycleName, description, duration, days }}
+				cycle={{
+					name: cycleName,
+					description,
+					duration,
+					days,
+					progression: {
+						type: progressionType,
+						amount: progressionAmount,
+						frequency: progressionFrequency,
+						trigger: progressionTrigger,
+					},
+					deload: includeDeload
+						? {
+								frequency: deloadFrequency,
+								intensity: deloadIntensity,
+								volume: deloadVolume,
+							}
+						: null,
+				}}
+			/>
+
+			{/* Unsaved Changes Dialog */}
+			<UnsavedChangesDialog
+				open={showUnsavedDialog}
+				onSave={() => {
+					setShowUnsavedDialog(false);
+					handleSave();
+				}}
+				onDiscard={() => {
+					setShowUnsavedDialog(false);
+					navigate("/cycles");
+				}}
+				onCancel={() => setShowUnsavedDialog(false)}
 			/>
 		</div>
 	);
@@ -563,7 +723,7 @@ function DayCard({
 
 				{day.type === "workout" && day.routineName ? (
 					<div className="text-center space-y-2">
-						<div className="text-2xl">🏋️</div>
+						<Dumbbell className="w-6 h-6 text-primary mx-auto" />
 						<div className="font-semibold text-white text-sm">
 							{day.routineName}
 						</div>
@@ -578,9 +738,15 @@ function DayCard({
 					</div>
 				) : (
 					<div className="text-center space-y-2">
-						<div className="text-2xl">🛋️</div>
-						<div className="text-sm font-semibold text-muted-foreground">
+						<span className="text-muted-foreground text-sm block mt-2">
 							REST
+						</span>
+						<div className="text-sm font-semibold text-muted-foreground">
+							{day.restType === "active"
+								? "Active Recovery"
+								: day.restType === "mobility"
+									? "Mobility"
+									: "Complete Rest"}
 						</div>
 					</div>
 				)}
@@ -690,7 +856,7 @@ function DayEditorPanel({
 										}
 										className="border-secondary"
 									>
-										−
+										-
 									</Button>
 									<Input
 										type="number"
@@ -730,7 +896,7 @@ function DayEditorPanel({
 										}
 										className="border-secondary"
 									>
-										−
+										-
 									</Button>
 									<Input
 										type="number"
@@ -778,8 +944,9 @@ function DayEditorPanel({
 			) : (
 				<div className="space-y-6">
 					<div className="text-center py-4">
-						<div className="text-4xl mb-2">🛋️</div>
-						<div className="text-lg font-semibold text-white">Rest Day</div>
+						<span className="text-muted-foreground text-lg block">
+							Rest Day
+						</span>
 					</div>
 
 					<div>
@@ -822,21 +989,445 @@ function DayEditorPanel({
 	);
 }
 
-// Progression Rules Component (continued in next file due to length)
-function ProgressionRules({ ...props }: any) {
+// Progression Rules Component
+function ProgressionRules({
+	progressionType,
+	onProgressionTypeChange,
+	progressionAmount,
+	onProgressionAmountChange,
+	progressionFrequency,
+	onProgressionFrequencyChange,
+	progressionTrigger,
+	onProgressionTriggerChange,
+	upperBodyIncrement,
+	onUpperBodyIncrementChange,
+	lowerBodyIncrement,
+	onLowerBodyIncrementChange,
+	includeDeload,
+	onIncludeDeloadChange,
+	deloadFrequency,
+	onDeloadFrequencyChange,
+	deloadIntensity,
+	onDeloadIntensityChange,
+	deloadVolume,
+	onDeloadVolumeChange,
+}: {
+	progressionType: "percentage" | "fixed" | "manual";
+	onProgressionTypeChange: (v: "percentage" | "fixed" | "manual") => void;
+	progressionAmount: number;
+	onProgressionAmountChange: (v: number) => void;
+	progressionFrequency: number;
+	onProgressionFrequencyChange: (v: number) => void;
+	progressionTrigger: "all-sets" | "target-rpe" | "cycle-complete";
+	onProgressionTriggerChange: (
+		v: "all-sets" | "target-rpe" | "cycle-complete",
+	) => void;
+	upperBodyIncrement: number;
+	onUpperBodyIncrementChange: (v: number) => void;
+	lowerBodyIncrement: number;
+	onLowerBodyIncrementChange: (v: number) => void;
+	includeDeload: boolean;
+	onIncludeDeloadChange: (v: boolean) => void;
+	deloadFrequency: number;
+	onDeloadFrequencyChange: (v: number) => void;
+	deloadIntensity: number;
+	onDeloadIntensityChange: (v: number) => void;
+	deloadVolume: number;
+	onDeloadVolumeChange: (v: number) => void;
+}) {
 	return (
 		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6">
+			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules
 			</h2>
 
-			{/* Implementation continues - see next part */}
-			<p className="text-muted-foreground">Progression settings panel...</p>
+			<div className="space-y-6">
+				{/* Progression Type */}
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<Label className="text-secondary-foreground mb-2">
+							Progression Type
+						</Label>
+						<Select
+							value={progressionType}
+							onValueChange={(v) =>
+								onProgressionTypeChange(
+									v as "percentage" | "fixed" | "manual",
+								)
+							}
+						>
+							<SelectTrigger className="bg-background border-secondary">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="percentage">
+									Percentage Increase
+								</SelectItem>
+								<SelectItem value="fixed">Fixed Weight Increase</SelectItem>
+								<SelectItem value="manual">Manual Adjustment</SelectItem>
+							</SelectContent>
+						</Select>
+						<p className="text-xs text-muted mt-1">
+							{progressionType === "percentage"
+								? "Increase weight by a percentage each cycle"
+								: progressionType === "fixed"
+									? "Add a fixed amount of weight each cycle"
+									: "Adjust weight manually between cycles"}
+						</p>
+					</div>
+
+					{progressionType !== "manual" && (
+						<div>
+							<Label className="text-secondary-foreground mb-2">
+								{progressionType === "percentage"
+									? "Increase (%)"
+									: "Increase (kg)"}
+							</Label>
+							<Input
+								type="number"
+								value={progressionAmount}
+								onChange={(e) =>
+									onProgressionAmountChange(
+										parseFloat(e.target.value) || 0,
+									)
+								}
+								className="bg-background border-secondary"
+								step={progressionType === "percentage" ? 0.5 : 0.25}
+								min={0}
+							/>
+						</div>
+					)}
+				</div>
+
+				{/* Frequency and Trigger */}
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<Label className="text-secondary-foreground mb-2">
+							Progression Frequency (weeks)
+						</Label>
+						<Input
+							type="number"
+							value={progressionFrequency}
+							onChange={(e) =>
+								onProgressionFrequencyChange(
+									parseInt(e.target.value, 10) || 1,
+								)
+							}
+							className="bg-background border-secondary"
+							min={1}
+						/>
+						<p className="text-xs text-muted mt-1">
+							How often to apply progression
+						</p>
+					</div>
+
+					<div>
+						<Label className="text-secondary-foreground mb-2">
+							Progression Trigger
+						</Label>
+						<Select
+							value={progressionTrigger}
+							onValueChange={(v) =>
+								onProgressionTriggerChange(
+									v as "all-sets" | "target-rpe" | "cycle-complete",
+								)
+							}
+						>
+							<SelectTrigger className="bg-background border-secondary">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all-sets">
+									All Sets Completed
+								</SelectItem>
+								<SelectItem value="target-rpe">Target RPE Met</SelectItem>
+								<SelectItem value="cycle-complete">
+									Cycle Complete
+								</SelectItem>
+							</SelectContent>
+						</Select>
+						<p className="text-xs text-muted mt-1">
+							When to advance weight
+						</p>
+					</div>
+				</div>
+
+				{/* Body-specific Increments */}
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<Label className="text-secondary-foreground mb-2">
+							Upper Body Increment (kg)
+						</Label>
+						<Input
+							type="number"
+							value={upperBodyIncrement}
+							onChange={(e) =>
+								onUpperBodyIncrementChange(
+									parseFloat(e.target.value) || 0,
+								)
+							}
+							className="bg-background border-secondary"
+							step={0.25}
+							min={0}
+						/>
+					</div>
+					<div>
+						<Label className="text-secondary-foreground mb-2">
+							Lower Body Increment (kg)
+						</Label>
+						<Input
+							type="number"
+							value={lowerBodyIncrement}
+							onChange={(e) =>
+								onLowerBodyIncrementChange(
+									parseFloat(e.target.value) || 0,
+								)
+							}
+							className="bg-background border-secondary"
+							step={0.5}
+							min={0}
+						/>
+					</div>
+				</div>
+
+				{/* Deload Section */}
+				<div className="border-t border-secondary pt-6">
+					<div className="flex items-center justify-between mb-4">
+						<div>
+							<Label className="text-white text-base">Deload Week</Label>
+							<p className="text-xs text-muted-foreground">
+								Periodically reduce intensity for recovery
+							</p>
+						</div>
+						<Switch
+							checked={includeDeload}
+							onCheckedChange={onIncludeDeloadChange}
+						/>
+					</div>
+
+					{includeDeload && (
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+							<div>
+								<Label className="text-secondary-foreground mb-2">
+									Every N weeks
+								</Label>
+								<Input
+									type="number"
+									value={deloadFrequency}
+									onChange={(e) =>
+										onDeloadFrequencyChange(
+											parseInt(e.target.value, 10) || 1,
+										)
+									}
+									className="bg-background border-secondary"
+									min={1}
+								/>
+							</div>
+							<div>
+								<Label className="text-secondary-foreground mb-2">
+									Intensity (% of normal)
+								</Label>
+								<Input
+									type="number"
+									value={deloadIntensity}
+									onChange={(e) =>
+										onDeloadIntensityChange(
+											parseInt(e.target.value, 10) || 0,
+										)
+									}
+									className="bg-background border-secondary"
+									min={0}
+									max={100}
+								/>
+							</div>
+							<div>
+								<Label className="text-secondary-foreground mb-2">
+									Volume (% of normal)
+								</Label>
+								<Input
+									type="number"
+									value={deloadVolume}
+									onChange={(e) =>
+										onDeloadVolumeChange(
+											parseInt(e.target.value, 10) || 0,
+										)
+									}
+									className="bg-background border-secondary"
+									min={0}
+									max={100}
+								/>
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
 		</Card>
 	);
 }
 
-// Preview Modal stub
-function PreviewModal({ isOpen, onClose, cycle }: any) {
-	return null; // Will implement in next file
+// Preview Modal
+function PreviewModal({
+	isOpen,
+	onClose,
+	cycle,
+}: {
+	isOpen: boolean;
+	onClose: () => void;
+	cycle: {
+		name: string;
+		description: string;
+		duration: number;
+		days: DayConfig[];
+		progression: {
+			type: string;
+			amount: number;
+			frequency: number;
+			trigger: string;
+		};
+		deload: { frequency: number; intensity: number; volume: number } | null;
+	};
+}) {
+	const workoutDays = cycle.days.filter((d) => d.type === "workout").length;
+	const restDays = cycle.days.filter((d) => d.type === "rest").length;
+
+	return (
+		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+			<DialogContent className="bg-surface-2 border-secondary max-w-2xl max-h-[80vh] overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle className="text-white text-xl">
+						{cycle.name || "Untitled Cycle"}
+					</DialogTitle>
+					<DialogDescription>
+						{cycle.description || "No description provided"}
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-6">
+					{/* Summary Stats */}
+					<div className="grid grid-cols-3 gap-4">
+						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
+							<div className="text-sm text-muted-foreground">Duration</div>
+							<div className="text-2xl font-bold text-white">
+								{cycle.duration}
+							</div>
+							<div className="text-xs text-muted">days</div>
+						</div>
+						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
+							<div className="text-sm text-muted-foreground">Workout</div>
+							<div className="text-2xl font-bold text-primary">
+								{workoutDays}
+							</div>
+							<div className="text-xs text-muted">days</div>
+						</div>
+						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
+							<div className="text-sm text-muted-foreground">Rest</div>
+							<div className="text-2xl font-bold text-muted-foreground">
+								{restDays}
+							</div>
+							<div className="text-xs text-muted">days</div>
+						</div>
+					</div>
+
+					{/* Day Grid */}
+					<div>
+						<h4 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
+							Schedule
+						</h4>
+						<div className="grid grid-cols-7 gap-2">
+							{cycle.days.map((day) => (
+								<div
+									key={day.dayNumber}
+									className={`p-2 rounded-lg text-center text-xs ${
+										day.type === "workout"
+											? "bg-primary/20 border border-primary/30"
+											: "bg-secondary/20 border border-secondary"
+									}`}
+								>
+									<div className="font-semibold text-muted-foreground">
+										D{day.dayNumber}
+									</div>
+									{day.type === "workout" ? (
+										<>
+											<Dumbbell className="w-3 h-3 text-primary mx-auto my-1" />
+											<div className="text-white truncate text-[10px]">
+												{day.routineName || "TBD"}
+											</div>
+										</>
+									) : (
+										<div className="text-muted-foreground mt-1">REST</div>
+									)}
+								</div>
+							))}
+						</div>
+					</div>
+
+					{/* Progression Preview */}
+					<div>
+						<h4 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
+							Progression
+						</h4>
+						<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
+							<div className="text-sm text-white">
+								Type:{" "}
+								<span className="text-primary capitalize">
+									{cycle.progression.type}
+								</span>
+							</div>
+							{cycle.progression.type !== "manual" && (
+								<div className="text-sm text-white">
+									Amount:{" "}
+									<span className="text-primary">
+										{cycle.progression.amount}
+										{cycle.progression.type === "percentage" ? "%" : "kg"}
+									</span>
+								</div>
+							)}
+							<div className="text-sm text-white">
+								Every:{" "}
+								<span className="text-primary">
+									{cycle.progression.frequency} week(s)
+								</span>
+							</div>
+							<div className="text-sm text-white">
+								Trigger:{" "}
+								<span className="text-primary">
+									{cycle.progression.trigger.replace(/-/g, " ")}
+								</span>
+							</div>
+						</div>
+					</div>
+
+					{/* Deload Preview */}
+					{cycle.deload && (
+						<div>
+							<h4 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
+								Deload Schedule
+							</h4>
+							<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
+								<div className="text-sm text-white">
+									Every{" "}
+									<span className="text-primary">
+										{cycle.deload.frequency} weeks
+									</span>
+								</div>
+								<div className="text-sm text-white">
+									Intensity:{" "}
+									<span className="text-primary">
+										{cycle.deload.intensity}% of normal
+									</span>
+								</div>
+								<div className="text-sm text-white">
+									Volume:{" "}
+									<span className="text-primary">
+										{cycle.deload.volume}% of normal
+									</span>
+								</div>
+							</div>
+						</div>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
 }

@@ -1,10 +1,19 @@
-import { CheckSquare, ChevronLeft, Plus, Save, Square } from "lucide-react";
+import {
+	CheckSquare,
+	ChevronLeft,
+	Loader2,
+	Plus,
+	Save,
+	Square,
+} from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
+import { useSaveRoutine } from "@/mutations/routines";
 import { ExerciseCard } from "./routine-builder/ExerciseCard";
 import { SelectionModeBar } from "./routine-builder/SelectionModeBar";
 import { SupersetContainer } from "./routine-builder/SupersetContainer";
@@ -25,66 +34,18 @@ export function RoutineBuilderEnhanced({
 	onBack,
 	onSave,
 }: RoutineBuilderEnhancedProps) {
+	const saveMutation = useSaveRoutine();
 	const [routineName, setRoutineName] = useState("Untitled Routine");
-	const [exercises, setExercises] = useState<RoutineExercise[]>([
-		{
-			id: "1",
-			exerciseId: "bench-press",
-			exerciseName: "Bench Press",
-			sets: [
-				{ reps: 10, weight: 80 },
-				{ reps: 10, weight: 80 },
-				{ reps: 10, weight: 80 },
-			],
-			programMode: "Old School",
-			restTime: 90,
-			muscleGroup: "Chest",
-		},
-		{
-			id: "2",
-			exerciseId: "incline-flyes",
-			exerciseName: "Incline Flyes",
-			sets: [
-				{ reps: 12, weight: 15 },
-				{ reps: 12, weight: 15 },
-				{ reps: 12, weight: 15 },
-			],
-			programMode: "Pump",
-			restTime: 60,
-			muscleGroup: "Chest",
-		},
-		{
-			id: "3",
-			exerciseId: "shoulder-press",
-			exerciseName: "Shoulder Press",
-			sets: [
-				{ reps: 10, weight: 40 },
-				{ reps: 10, weight: 40 },
-				{ reps: 10, weight: 40 },
-			],
-			programMode: "Old School",
-			restTime: 90,
-			muscleGroup: "Shoulders",
-		},
-		{
-			id: "4",
-			exerciseId: "lateral-raises",
-			exerciseName: "Lateral Raises",
-			sets: [
-				{ reps: 15, weight: 8 },
-				{ reps: 15, weight: 8 },
-				{ reps: 15, weight: 8 },
-			],
-			programMode: "Pump",
-			restTime: 60,
-			muscleGroup: "Shoulders",
-		},
-	]);
+	const [exercises, setExercises] = useState<RoutineExercise[]>([]);
+	const [showExercisePicker, setShowExercisePicker] = useState(false);
 
 	const [supersets, setSupersets] = useState<Superset[]>([]);
 	const [isSelectionMode, setIsSelectionMode] = useState(false);
 	const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+	const [editingExerciseId, setEditingExerciseId] = useState<string | null>(
+		null,
+	);
 
 	const handleToggleSelectionMode = () => {
 		setIsSelectionMode(!isSelectionMode);
@@ -129,9 +90,7 @@ export function RoutineBuilderEnhanced({
 		setSelectedExerciseIds([]);
 		setIsSelectionMode(false);
 		setHasUnsavedChanges(true);
-
-		// Show success toast (you can add a toast library)
-		console.log("Superset created!");
+		toast.success("Superset created");
 	};
 
 	const handleUngroupSuperset = (supersetId: string) => {
@@ -154,8 +113,7 @@ export function RoutineBuilderEnhanced({
 
 		setExercises(updatedExercises);
 		setHasUnsavedChanges(true);
-
-		console.log("Superset ungrouped");
+		toast.info("Superset ungrouped");
 	};
 
 	const handleUpdateTransitionTime = (exerciseId: string, time: number) => {
@@ -181,14 +139,48 @@ export function RoutineBuilderEnhanced({
 		setHasUnsavedChanges(true);
 	};
 
+	const handleEditExercise = (exerciseId: string) => {
+		setEditingExerciseId(
+			editingExerciseId === exerciseId ? null : exerciseId,
+		);
+	};
+
 	const handleSave = () => {
-		const routine = {
-			id: routineId || `routine-${Date.now()}`,
-			name: routineName,
-			exercises,
-			supersets,
-		};
-		onSave(routine);
+		// Build exercise payload for the mutation
+		const exercisePayload = exercises.map((ex, i) => ({
+			name: ex.exerciseName,
+			muscle_group: ex.muscleGroup,
+			sets: ex.sets.length,
+			reps: ex.sets[0]?.reps ?? 10,
+			weight: ex.sets[0]?.weight ?? 0,
+			rest_seconds: ex.restTime,
+			mode: ex.programMode,
+			order_index: i,
+		}));
+
+		saveMutation.mutate(
+			{
+				name: routineName,
+				description: "",
+				exercises: exercisePayload,
+			},
+			{
+				onSuccess: () => {
+					setHasUnsavedChanges(false);
+					// Also call the parent callback for compatibility
+					onSave({
+						id: routineId || `routine-${Date.now()}`,
+						name: routineName,
+						exercises,
+						supersets,
+					});
+				},
+			},
+		);
+	};
+
+	const handleAddExercise = () => {
+		setShowExercisePicker(true);
 	};
 
 	// Group exercises by superset or individual
@@ -245,7 +237,7 @@ export function RoutineBuilderEnhanced({
 								variant="outline"
 								className="bg-accent/20 text-accent border-accent/30"
 							>
-								● Unsaved
+								Unsaved
 							</Badge>
 						)}
 					</div>
@@ -253,10 +245,15 @@ export function RoutineBuilderEnhanced({
 					<div className="flex items-center gap-3">
 						<Button
 							onClick={handleSave}
+							disabled={saveMutation.isPending}
 							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
-							<Save className="w-4 h-4 mr-2" />
-							Save
+							{saveMutation.isPending ? (
+								<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+							) : (
+								<Save className="w-4 h-4 mr-2" />
+							)}
+							{saveMutation.isPending ? "Saving..." : "Save"}
 						</Button>
 					</div>
 				</div>
@@ -297,7 +294,7 @@ export function RoutineBuilderEnhanced({
 
 							<Button
 								size="sm"
-								onClick={() => console.log("Add exercise")}
+								onClick={handleAddExercise}
 								className="bg-primary hover:bg-chart-2 border-0"
 							>
 								<Plus className="w-4 h-4 mr-2" />
@@ -323,10 +320,8 @@ export function RoutineBuilderEnhanced({
 											}
 											onUngroup={() => handleUngroupSuperset(superset.id)}
 											onRemoveExercise={handleRemoveExercise}
-											onEditExercise={(id) => console.log("Edit exercise:", id)}
-											onAddExercise={() =>
-												console.log("Add to superset:", superset.id)
-											}
+											onEditExercise={handleEditExercise}
+											onAddExercise={handleAddExercise}
 										/>
 									);
 								} else {
@@ -335,7 +330,7 @@ export function RoutineBuilderEnhanced({
 										<ExerciseCard
 											key={group.id}
 											exercise={exercise}
-											onEdit={() => console.log("Edit:", exercise.id)}
+											onEdit={() => handleEditExercise(exercise.id)}
 											onRemove={() => handleRemoveExercise(exercise.id)}
 											isSelectionMode={isSelectionMode}
 											isSelected={selectedExerciseIds.includes(exercise.id)}
@@ -350,7 +345,7 @@ export function RoutineBuilderEnhanced({
 							<div className="text-center py-12 text-muted">
 								<p className="mb-4">No exercises yet</p>
 								<Button
-									onClick={() => console.log("Add first exercise")}
+									onClick={handleAddExercise}
 									variant="outline"
 									className="border-secondary hover:border-primary"
 								>
