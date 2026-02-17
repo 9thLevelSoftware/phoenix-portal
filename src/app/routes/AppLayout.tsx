@@ -4,6 +4,7 @@ import { Outlet } from "react-router";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
 import { MobileBottomNav } from "@/app/components/MobileBottomNav";
 import { Navigation } from "@/app/components/Navigation";
+import { OfflineBanner } from "@/app/components/OfflineBanner";
 import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
@@ -35,6 +36,8 @@ export function AppLayout() {
 
 	return (
 		<div className="min-h-screen bg-[#0D0D0D]">
+			<OfflineBanner />
+
 			<div data-print-hide>
 				<Navigation />
 			</div>
