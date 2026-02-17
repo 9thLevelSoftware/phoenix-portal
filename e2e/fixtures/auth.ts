@@ -1,40 +1,124 @@
 import { test as base, type Page } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const SUPABASE_URL = "https://ilzlswmatadlnsuxatcv.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_UDrjasV6UJLm_IdIzGljoQ_YaRes4dQ";
+const STORAGE_KEY = "sb-ilzlswmatadlnsuxatcv-auth-token";
+const SESSION_CACHE = path.join(__dirname, ".session-cache.json");
+
+/** Load e2e/.env file as fallback for env vars (avoids shell quoting issues) */
+function loadEnvFile(): void {
+	const envPath = path.join(__dirname, "..", ".env");
+	if (!fs.existsSync(envPath)) return;
+	const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		const eq = trimmed.indexOf("=");
+		if (eq === -1) continue;
+		const key = trimmed.slice(0, eq);
+		const value = trimmed.slice(eq + 1);
+		if (!process.env[key]) {
+			process.env[key] = value;
+		}
+	}
+}
+
+loadEnvFile();
+
+async function getSession(): Promise<Record<string, unknown> | null> {
+	const email = process.env.SUPABASE_TEST_EMAIL;
+	const password = process.env.SUPABASE_TEST_PASSWORD;
+	if (!email || !password) return null;
+
+	// Check for cached session (avoids rate limiting across parallel workers)
+	if (fs.existsSync(SESSION_CACHE)) {
+		try {
+			const cached = JSON.parse(fs.readFileSync(SESSION_CACHE, "utf-8"));
+			// Use cached session if less than 30 minutes old
+			if (cached.timestamp && Date.now() - cached.timestamp < 30 * 60 * 1000) {
+				return cached.session;
+			}
+		} catch {
+			// Ignore cache read errors
+		}
+	}
+
+	// Authenticate with retry (handles Supabase rate limiting)
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (attempt > 0) {
+			await new Promise((r) => setTimeout(r, 2000 * attempt));
+		}
+
+		const response = await fetch(
+			`${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					apikey: SUPABASE_ANON_KEY,
+				},
+				body: JSON.stringify({ email, password }),
+			},
+		);
+
+			if (response.ok) {
+			const data = await response.json();
+			const session = {
+				access_token: data.access_token,
+				refresh_token: data.refresh_token,
+				expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+				expires_in: data.expires_in,
+				token_type: "bearer",
+				user: data.user,
+			};
+
+			// Cache for other workers
+			try {
+				fs.writeFileSync(
+					SESSION_CACHE,
+					JSON.stringify({ timestamp: Date.now(), session }),
+				);
+			} catch {
+				// Ignore cache write errors
+			}
+
+			return session;
+		}
+
+		const body = await response.text();
+		if (attempt === 2) {
+			throw new Error(`Supabase auth failed after 3 attempts (${response.status}): ${body}`);
+		}
+	}
+
+	return null;
+}
 
 export const test = base.extend<{ authedPage: Page }>({
 	authedPage: async ({ page }, use) => {
-		const email = process.env.SUPABASE_TEST_EMAIL;
-		const password = process.env.SUPABASE_TEST_PASSWORD;
+		const session = await getSession();
 
-		if (email && password) {
-			// Navigate to landing page
+		if (session) {
+			// Load the app to access localStorage
 			await page.goto("/");
+
+			// Inject session into localStorage
+			await page.evaluate(
+				({ key, data }) => {
+					localStorage.setItem(key, JSON.stringify(data));
+				},
+				{ key: STORAGE_KEY, data: session },
+			);
+
+			// Reload to pick up the injected session
+			await page.goto("/dashboard");
 			await page.waitForLoadState("networkidle");
-			// Wait for Framer Motion entrance animations to complete
-			await page.waitForTimeout(2000);
-
-			// Click "Get Started" to open the auth dialog
-			await page
-				.getByRole("button", { name: /get started/i })
-				.first()
-				.click();
-
-			// Wait for the Radix Dialog to appear
-			const dialog = page.locator('[role="dialog"]');
-			await dialog.waitFor({ state: "visible", timeout: 5000 });
-
-			// Fill credentials within the dialog scope
-			await dialog.getByPlaceholder("you@example.com").fill(email);
-			await dialog
-				.getByPlaceholder("Enter your password")
-				.fill(password);
-
-			// Click Sign In within the dialog
-			await dialog
-				.getByRole("button", { name: /^sign in$/i })
-				.click();
-
-			// Wait for redirect to dashboard
-			await page.waitForURL("**/dashboard", { timeout: 15000 });
 		}
 
 		await use(page);

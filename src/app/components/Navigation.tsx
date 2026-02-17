@@ -95,6 +95,7 @@ export function Navigation() {
 						<Button
 							variant="ghost"
 							size="icon"
+							aria-label="Notifications"
 							className="relative hover:bg-primary/10"
 						>
 							<Bell className="w-5 h-5 text-secondary-foreground" />
