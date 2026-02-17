@@ -17,6 +17,7 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { weeklySummaryOptions } from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
+import { PHOENIX } from "@/lib/colors";
 
 export interface SummaryReportProps {
 	userId: string;
@@ -222,7 +223,7 @@ function ConsistencyRing({ score }: { score: number }) {
 	const radius = 28;
 	const circumference = 2 * Math.PI * radius;
 	const offset = circumference - (score / 100) * circumference;
-	const color = score > 80 ? "#10B981" : score >= 50 ? "#F59E0B" : "#DC2626";
+	const color = score > 80 ? PHOENIX.forgeGreen : score >= 50 ? PHOENIX.gold : PHOENIX.flameRed;
 
 	return (
 		<svg width="68" height="68" viewBox="0 0 68 68">
@@ -231,7 +232,7 @@ function ConsistencyRing({ score }: { score: number }) {
 				cy="34"
 				r={radius}
 				fill="none"
-				stroke="#2D2D44"
+				stroke={PHOENIX.moltenSteel}
 				strokeWidth="5"
 			/>
 			<circle
@@ -411,7 +412,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										<Line
 											type="monotone"
 											dataKey="volume"
-											stroke="#FF6B35"
+											stroke={PHOENIX.ember}
 											strokeWidth={2}
 											dot={false}
 										/>
@@ -462,7 +463,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 									<BarChart data={summary.dailyWorkouts}>
 										<Bar
 											dataKey="worked"
-											fill="#F59E0B"
+											fill={PHOENIX.gold}
 											radius={[2, 2, 0, 0]}
 										/>
 									</BarChart>
@@ -545,10 +546,10 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 									style={{
 										color:
 											summary.consistencyScore > 80
-												? "#10B981"
+												? PHOENIX.forgeGreen
 												: summary.consistencyScore >= 50
-													? "#F59E0B"
-													: "#DC2626",
+													? PHOENIX.gold
+													: PHOENIX.flameRed,
 									}}
 								>
 									{summary.consistencyScore}%

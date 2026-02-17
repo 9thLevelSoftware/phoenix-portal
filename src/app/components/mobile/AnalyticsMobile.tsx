@@ -34,11 +34,12 @@ import {
 	strengthProgressOptions,
 	volumeTrendOptions,
 } from "@/queries/analytics";
+import { PHOENIX } from "@/lib/colors";
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
-	Chest: "#FF6B35",
-	Back: "#F59E0B",
-	Legs: "#10B981",
+	Chest: PHOENIX.ember,
+	Back: PHOENIX.gold,
+	Legs: PHOENIX.forgeGreen,
 	Shoulders: "#6366F1",
 	Arms: "#EC4899",
 	Core: "#8B5CF6",
@@ -153,7 +154,7 @@ export function AnalyticsMobile() {
 	const volumeData = bucketByWeek(volumeRaw ?? []);
 	const muscleData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS[m.name] ?? "#6B7280",
+		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
 	}));
 
 	// Build strength data from PR records (top exercises by value)
@@ -325,32 +326,32 @@ export function AnalyticsMobile() {
 													>
 														<stop
 															offset="5%"
-															stopColor="#FF6B35"
+															stopColor={PHOENIX.ember}
 															stopOpacity={0.3}
 														/>
 														<stop
 															offset="95%"
-															stopColor="#FF6B35"
+															stopColor={PHOENIX.ember}
 															stopOpacity={0}
 														/>
 													</linearGradient>
 												</defs>
 												<XAxis
 													dataKey="date"
-													stroke="#6B7280"
+													stroke={PHOENIX.ashGray}
 													style={{ fontSize: "12px" }}
 												/>
 												<YAxis
-													stroke="#6B7280"
+													stroke={PHOENIX.ashGray}
 													style={{ fontSize: "12px" }}
 													tickFormatter={(value) => `${value / 1000}k`}
 												/>
 												<Tooltip
 													contentStyle={{
-														backgroundColor: "#1a1a1a",
+														backgroundColor: "var(--surface-2)",
 														border: "1px solid #374151",
 														borderRadius: "8px",
-														color: "#fff",
+														color: "var(--foreground)",
 													}}
 													formatter={(value: number) => [
 														`${value.toLocaleString()} kg`,
@@ -360,7 +361,7 @@ export function AnalyticsMobile() {
 												<Area
 													type="monotone"
 													dataKey="volume"
-													stroke="#FF6B35"
+													stroke={PHOENIX.ember}
 													strokeWidth={2}
 													fill="url(#volumeGradient)"
 												/>
@@ -394,10 +395,10 @@ export function AnalyticsMobile() {
 													</Pie>
 													<Tooltip
 														contentStyle={{
-															backgroundColor: "#1a1a1a",
+															backgroundColor: "var(--surface-2)",
 															border: "1px solid #374151",
 															borderRadius: "8px",
-															color: "#fff",
+															color: "var(--foreground)",
 														}}
 													/>
 												</PieChart>
@@ -435,28 +436,28 @@ export function AnalyticsMobile() {
 										<BarChart data={strengthData} layout="vertical">
 											<XAxis
 												type="number"
-												stroke="#6B7280"
+												stroke={PHOENIX.ashGray}
 												style={{ fontSize: "12px" }}
 											/>
 											<YAxis
 												type="category"
 												dataKey="exercise"
-												stroke="#6B7280"
+												stroke={PHOENIX.ashGray}
 												style={{ fontSize: "12px" }}
 												width={70}
 											/>
 											<Tooltip
 												contentStyle={{
-													backgroundColor: "#1a1a1a",
+													backgroundColor: "var(--surface-2)",
 													border: "1px solid #374151",
 													borderRadius: "8px",
-													color: "#fff",
+													color: "var(--foreground)",
 												}}
 												formatter={(value: number) => [`${value} kg`, "1RM"]}
 											/>
 											<Bar
 												dataKey="weight"
-												fill="#FF6B35"
+												fill={PHOENIX.ember}
 												radius={[0, 4, 4, 0]}
 											/>
 										</BarChart>

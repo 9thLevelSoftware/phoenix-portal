@@ -9,12 +9,13 @@ import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
 import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
 import type { RepSummary } from "@/schemas/telemetry";
+import { PHOENIX } from "@/lib/colors";
 
 // -- Colors --
-const COLOR_BALANCED = "#10B981"; // Forge Green
-const COLOR_IMBALANCED = "#DC2626"; // Flame Red
-const COLOR_AXIS = "#6B7280";
-const COLOR_THRESHOLD = "#F59E0B"; // Gold for threshold lines
+const COLOR_BALANCED = PHOENIX.forgeGreen; // Forge Green
+const COLOR_IMBALANCED = PHOENIX.flameRed; // Flame Red
+const COLOR_AXIS = PHOENIX.ashGray;
+const COLOR_THRESHOLD = PHOENIX.gold; // Gold for threshold lines
 const COLOR_TEXT = "#D1D5DB";
 
 // -- Types --

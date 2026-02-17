@@ -223,7 +223,7 @@ function RomChart({
 					top={tooltipTop}
 					style={{
 						background: CHART_COLORS.tooltipBg,
-						color: "#FFFFFF",
+						color: "var(--foreground)",
 						border: `1px solid ${CHART_COLORS.tooltipBorder}`,
 						borderRadius: 6,
 						padding: "8px 12px",

@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 import { exerciseProgressOptions } from "@/queries/progress";
 import type { ExerciseProgress as ExerciseProgressType } from "@/schemas/telemetry";
+import { PHOENIX, SURFACE } from "@/lib/colors";
 
 export interface ExerciseProgressProps {
 	userId: string;
@@ -41,10 +42,10 @@ const TIME_RANGES = [
 ] as const;
 
 const TOOLTIP_STYLE = {
-	backgroundColor: "#1A1A2E",
-	border: "1px solid #2D2D44",
+	backgroundColor: "var(--surface-2)",
+	border: "1px solid var(--secondary)",
 	borderRadius: "8px",
-	color: "#E5E7EB",
+	color: "var(--secondary-foreground)",
 };
 
 /** Fetch distinct exercise names for the user */
@@ -300,19 +301,19 @@ export function ExerciseProgress({
 						<StatCard
 							label="Max Weight"
 							stat={weightTrend}
-							color="#FF6B35"
+							color={PHOENIX.ember}
 							unit="kg"
 						/>
 						<StatCard
 							label="Total Volume"
 							stat={volumeTrend}
-							color="#F59E0B"
+							color={PHOENIX.gold}
 							unit="kg"
 						/>
 						<StatCard
 							label="Est. 1RM"
 							stat={oneRmTrend}
-							color="#10B981"
+							color={PHOENIX.forgeGreen}
 							unit="kg"
 						/>
 					</motion.div>
@@ -341,32 +342,32 @@ export function ExerciseProgress({
 											>
 												<stop
 													offset="5%"
-													stopColor="#FF6B35"
+													stopColor={PHOENIX.ember}
 													stopOpacity={0.3}
 												/>
 												<stop
 													offset="95%"
-													stopColor="#FF6B35"
+													stopColor={PHOENIX.ember}
 													stopOpacity={0.05}
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke="#1A1A2E" />
+										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
 										<XAxis
 											dataKey="date"
-											stroke="#9CA3AF"
+											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke="#9CA3AF" tick={{ fontSize: 11 }} />
+										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
 											dataKey="maxWeight"
 											name="Max Weight (kg)"
-											stroke="#FF6B35"
+											stroke={PHOENIX.ember}
 											strokeWidth={2}
 											fill="url(#weightGradient)"
-											dot={{ fill: "#FF6B35", r: 3 }}
+											dot={{ fill: PHOENIX.ember, r: 3 }}
 											activeDot={{ r: 5 }}
 										/>
 									</AreaChart>
@@ -396,32 +397,32 @@ export function ExerciseProgress({
 											>
 												<stop
 													offset="5%"
-													stopColor="#F59E0B"
+													stopColor={PHOENIX.gold}
 													stopOpacity={0.3}
 												/>
 												<stop
 													offset="95%"
-													stopColor="#F59E0B"
+													stopColor={PHOENIX.gold}
 													stopOpacity={0.05}
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke="#1A1A2E" />
+										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
 										<XAxis
 											dataKey="date"
-											stroke="#9CA3AF"
+											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke="#9CA3AF" tick={{ fontSize: 11 }} />
+										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
 											dataKey="totalVolume"
 											name="Volume (kg)"
-											stroke="#F59E0B"
+											stroke={PHOENIX.gold}
 											strokeWidth={2}
 											fill="url(#volumeGradientProgress)"
-											dot={{ fill: "#F59E0B", r: 3 }}
+											dot={{ fill: PHOENIX.gold, r: 3 }}
 											activeDot={{ r: 5 }}
 										/>
 									</AreaChart>
@@ -451,32 +452,32 @@ export function ExerciseProgress({
 											>
 												<stop
 													offset="5%"
-													stopColor="#10B981"
+													stopColor={PHOENIX.forgeGreen}
 													stopOpacity={0.3}
 												/>
 												<stop
 													offset="95%"
-													stopColor="#10B981"
+													stopColor={PHOENIX.forgeGreen}
 													stopOpacity={0.05}
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke="#1A1A2E" />
+										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
 										<XAxis
 											dataKey="date"
-											stroke="#9CA3AF"
+											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke="#9CA3AF" tick={{ fontSize: 11 }} />
+										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
 											dataKey="estimated1RM"
 											name="Est. 1RM (kg)"
-											stroke="#10B981"
+											stroke={PHOENIX.forgeGreen}
 											strokeWidth={2}
 											fill="url(#oneRmGradient)"
-											dot={{ fill: "#10B981", r: 3 }}
+											dot={{ fill: PHOENIX.forgeGreen, r: 3 }}
 											activeDot={{ r: 5 }}
 										/>
 									</AreaChart>

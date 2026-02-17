@@ -20,6 +20,7 @@ import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { dashboardStatsOptions, workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
+import { PHOENIX } from "@/lib/colors";
 
 /** Format a relative time string from a Date */
 function formatRelativeTime(date: Date): string {
@@ -96,7 +97,7 @@ export function DashboardMobile() {
 						animate={{ rotate: 360 }}
 						transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
 					>
-						<Flame className="w-6 h-6 text-primary" fill="#FF6B35" />
+						<Flame className="w-6 h-6 text-primary" fill={PHOENIX.ember} />
 					</motion.div>
 				</div>
 			)}
@@ -126,7 +127,7 @@ export function DashboardMobile() {
 									ease: "easeInOut",
 								}}
 							>
-								<Flame className="w-16 h-16 text-primary" fill="#FF6B35" />
+								<Flame className="w-16 h-16 text-primary" fill={PHOENIX.ember} />
 							</motion.div>
 							<div className="flex-1">
 								<div className="text-4xl font-bold text-white mb-1">7 Days</div>

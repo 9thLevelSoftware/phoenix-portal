@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
+import { PHOENIX } from "@/lib/colors";
 
 interface CommunityFeedCardProps {
 	item: CommunityFeedItem;
@@ -62,7 +63,7 @@ export function CommunityFeedCard({
 					>
 						<ArrowBigUp
 							className="w-5 h-5"
-							fill={isVoted ? "#FF6B35" : "none"}
+							fill={isVoted ? PHOENIX.ember : "none"}
 						/>
 						<span className="text-sm font-medium">{item.vote_count}</span>
 					</button>

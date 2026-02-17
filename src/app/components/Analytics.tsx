@@ -57,14 +57,15 @@ import {
 	volumeTrendOptions,
 } from "@/queries/analytics";
 import { externalActivitiesOptions } from "@/queries/integrations";
+import { PHOENIX } from "@/lib/colors";
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
-	Chest: "#FF6B35",
-	Back: "#DC2626",
-	Legs: "#F59E0B",
-	Shoulders: "#10B981",
-	Arms: "#6B7280",
-	Core: "#FBBF24",
+	Chest: PHOENIX.ember,
+	Back: PHOENIX.flameRed,
+	Legs: PHOENIX.gold,
+	Shoulders: PHOENIX.forgeGreen,
+	Arms: PHOENIX.ashGray,
+	Core: PHOENIX.flameYellow,
 };
 
 // Time period to query period mapping
@@ -154,7 +155,7 @@ function groupStrengthByExercise(
 	});
 }
 
-const EXERCISE_COLORS = ["#FF6B35", "#DC2626", "#F59E0B"];
+const EXERCISE_COLORS = [PHOENIX.ember, PHOENIX.flameRed, PHOENIX.gold];
 
 interface Insight {
 	type: "positive" | "warning" | "neutral";
@@ -310,7 +311,7 @@ export function Analytics() {
 	const volumeData = bucketByWeek(volumeRaw ?? []);
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS[m.name] ?? "#6B7280",
+		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
 	}));
 	const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []);
 	const strengthExercises =
@@ -592,34 +593,34 @@ export function Analytics() {
 														>
 															<stop
 																offset="5%"
-																stopColor="#FF6B35"
+																stopColor={PHOENIX.ember}
 																stopOpacity={0.8}
 															/>
 															<stop
 																offset="95%"
-																stopColor="#DC2626"
+																stopColor={PHOENIX.flameRed}
 																stopOpacity={0.1}
 															/>
 														</linearGradient>
 													</defs>
 													<CartesianGrid
 														strokeDasharray="3 3"
-														stroke="#374151"
+														stroke={PHOENIX.moltenSteel}
 													/>
-													<XAxis dataKey="date" stroke="#9CA3AF" />
-													<YAxis stroke="#9CA3AF" />
+													<XAxis dataKey="date" stroke={PHOENIX.mutedForeground} />
+													<YAxis stroke={PHOENIX.mutedForeground} />
 													<Tooltip
 														contentStyle={{
-															backgroundColor: "#1a1a1a",
+															backgroundColor: "var(--surface-2)",
 															border: "1px solid #374151",
 															borderRadius: "8px",
-															color: "#E5E7EB",
+															color: "var(--secondary-foreground)",
 														}}
 													/>
 													<Area
 														type="monotone"
 														dataKey="volume"
-														stroke="#FF6B35"
+														stroke={PHOENIX.ember}
 														strokeWidth={2}
 														fill="url(#volumeGradientAnalytics)"
 													/>
@@ -656,10 +657,10 @@ export function Analytics() {
 													</Pie>
 													<Tooltip
 														contentStyle={{
-															backgroundColor: "#1a1a1a",
+															backgroundColor: "var(--surface-2)",
 															border: "1px solid #374151",
 															borderRadius: "8px",
-															color: "#E5E7EB",
+															color: "var(--secondary-foreground)",
 														}}
 													/>
 												</PieChart>
@@ -680,15 +681,15 @@ export function Analytics() {
 									{strengthProgressData.length > 0 ? (
 										<ResponsiveContainer width="100%" height={400}>
 											<LineChart data={strengthProgressData}>
-												<CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-												<XAxis dataKey="date" stroke="#9CA3AF" />
-												<YAxis stroke="#9CA3AF" />
+												<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
+												<XAxis dataKey="date" stroke={PHOENIX.mutedForeground} />
+												<YAxis stroke={PHOENIX.mutedForeground} />
 												<Tooltip
 													contentStyle={{
-														backgroundColor: "#1a1a1a",
+														backgroundColor: "var(--surface-2)",
 														border: "1px solid #374151",
 														borderRadius: "8px",
-														color: "#E5E7EB",
+														color: "var(--secondary-foreground)",
 													}}
 												/>
 												<Legend />
@@ -824,11 +825,11 @@ export function Analytics() {
 												>
 													<CartesianGrid
 														strokeDasharray="3 3"
-														stroke="#374151"
+														stroke={PHOENIX.moltenSteel}
 													/>
 													<XAxis
 														dataKey="date"
-														stroke="#9CA3AF"
+														stroke={PHOENIX.mutedForeground}
 														tickFormatter={(val: string) =>
 															new Date(val).toLocaleDateString(undefined, {
 																month: "short",
@@ -837,20 +838,20 @@ export function Analytics() {
 														}
 													/>
 													<YAxis
-														stroke="#9CA3AF"
+														stroke={PHOENIX.mutedForeground}
 														label={{
 															value: "min",
 															angle: -90,
 															position: "insideLeft",
-															fill: "#9CA3AF",
+															fill: PHOENIX.mutedForeground,
 														}}
 													/>
 													<Tooltip
 														contentStyle={{
-															backgroundColor: "#1a1a1a",
+															backgroundColor: "var(--surface-2)",
 															border: "1px solid #374151",
 															borderRadius: "8px",
-															color: "#E5E7EB",
+															color: "var(--secondary-foreground)",
 														}}
 														labelFormatter={(val: string) =>
 															new Date(val).toLocaleDateString(undefined, {

@@ -2,6 +2,7 @@ import { Flame } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Card } from "@/app/components/ui/card";
+import { PHOENIX } from "@/lib/colors";
 
 interface StreakMilestoneProps {
 	isOpen: boolean;
@@ -91,7 +92,7 @@ export function StreakMilestone({
 								},
 							}}
 						>
-							<Flame className="w-24 h-24 text-primary" fill="#FF6B35" />
+							<Flame className="w-24 h-24 text-primary" fill={PHOENIX.ember} />
 						</motion.div>
 
 						{/* Milestone Number */}

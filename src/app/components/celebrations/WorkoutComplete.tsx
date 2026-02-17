@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { PHOENIX } from "@/lib/colors";
 
 interface WorkoutCompleteProps {
 	isOpen: boolean;
@@ -74,7 +75,7 @@ export function WorkoutComplete({
 										cy="60"
 										r="54"
 										fill="none"
-										stroke="#10B981"
+										stroke={PHOENIX.forgeGreen}
 										strokeWidth="4"
 										initial={{ pathLength: 0 }}
 										animate={{ pathLength: 1 }}
@@ -85,7 +86,7 @@ export function WorkoutComplete({
 									<motion.path
 										d="M 35 60 L 52 75 L 85 42"
 										fill="none"
-										stroke="#10B981"
+										stroke={PHOENIX.forgeGreen}
 										strokeWidth="6"
 										strokeLinecap="round"
 										strokeLinejoin="round"
@@ -100,7 +101,7 @@ export function WorkoutComplete({
 										cy="60"
 										r="54"
 										fill="none"
-										stroke="#FF6B35"
+										stroke={PHOENIX.ember}
 										strokeWidth="2"
 										opacity="0.4"
 										initial={{ scale: 0.8, opacity: 0 }}
@@ -241,7 +242,7 @@ export function WorkoutComplete({
 													>
 														<Flame
 															className="w-10 h-10 text-primary"
-															fill="#FF6B35"
+															fill={PHOENIX.ember}
 														/>
 													</motion.div>
 													<div className="flex-1">
