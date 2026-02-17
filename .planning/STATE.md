@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 12 of 13 (Schedule-Dependent Features & Delivery)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: Executing phase 12
-Last activity: 2026-02-17 — Plan 12-02 complete (Printable session reports)
+Last activity: 2026-02-17 — Plan 12-03 complete (PWA & delivery)
 
-Progress: [██████░░░░] 58% (11 of 13 phases complete, 59/63 total plans)
+Progress: [██████░░░░] 59% (11 of 13 phases complete, 60/63 total plans)
 
 ## Performance Metrics
 
@@ -30,7 +30,7 @@ Progress: [██████░░░░] 58% (11 of 13 phases complete, 59/63 
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
 | 11-new-features | 5/5 | 32 min | 6.4 min |
-| 12-schedule-dependent-features-delivery | 2/4 | 6 min | 3.0 min |
+| 12-schedule-dependent-features-delivery | 3/4 | 10 min | 3.3 min |
 
 *Updated after each plan completion*
 
@@ -98,6 +98,10 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11, Plan 3]: Recovery disclaimer persisted via localStorage (not Supabase) to avoid extra DB roundtrip.
 - [Phase 12, Plan 2]: Print button uses fallback={null} so FREE users see nothing (no upgrade prompt for print feature).
 - [Phase 12, Plan 2]: Print-only branding footer uses PNG fallback logo for maximum print compatibility.
+- [Phase 12, Plan 3]: updateViaCache set to 'none' explicitly (workbox default is 'imports', not 'none') per DLVR-03.
+- [Phase 12, Plan 3]: DLVR-04 (web vitals) satisfied by existing Sentry browserTracingIntegration with tracesSampleRate 0.1 -- no code changes needed.
+- [Phase 12, Plan 3]: Module-level beforeinstallprompt listener captures event before React mounts, surviving component remounts.
+- [Phase 12, Plan 3]: PNG icons generated from WebP sources via sharp, not copied from fallback.
 
 ### Pending Todos
 
@@ -118,5 +122,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 12-02-PLAN.md (Printable session reports)
-Resume file: .planning/phases/12-schedule-dependent-features-delivery/12-03-PLAN.md
+Stopped at: Completed 12-03-PLAN.md (PWA & delivery)
+Resume file: .planning/phases/12-schedule-dependent-features-delivery/12-04-PLAN.md
