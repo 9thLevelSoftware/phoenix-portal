@@ -148,7 +148,7 @@ Plans:
 | 9. Foundation & Toolchain | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 10. Wire-Up & Mock Purge | v1.1 | Complete    | 2026-02-17 | - |
 | 11. New Features | v1.1 | Complete    | 2026-02-17 | - |
-| 12. Schedule-Dependent Features & Delivery | v1.1 | 0/4 | Not started | - |
+| 12. Schedule-Dependent Features & Delivery | v1.1 | Complete    | 2026-02-17 | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
