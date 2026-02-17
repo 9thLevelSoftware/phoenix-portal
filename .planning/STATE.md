@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 10 of 12 (Wire-Up & Mock Purge)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-17 — Plan 10-02 complete (Dashboard & Profile wire-up)
+Last activity: 2026-02-17 — Plan 10-03 complete (Challenges, votes, dead buttons, bug fixes)
 
-Progress: [███░░░░░░░] 28% (10 of 13 phases complete, 48/58 total plans)
+Progress: [███░░░░░░░] 30% (10 of 13 phases complete, 49/58 total plans)
 
 ## Performance Metrics
 
@@ -28,7 +28,7 @@ Progress: [███░░░░░░░] 28% (10 of 13 phases complete, 48/58 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
-| 10-wire-up-mock-purge | 2/4 | 17 min | 8.5 min |
+| 10-wire-up-mock-purge | 3/4 | 26 min | 8.7 min |
 
 *Updated after each plan completion*
 
@@ -67,6 +67,10 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 10, Plan 2]: Profile integrations tab queries real user_integrations data instead of hardcoded app list.
 - [Phase 10, Plan 2]: useStreak hook extracted for reuse: Dashboard, DashboardMobile, Profile, WorkoutHistory all share it.
 - [Phase 10, Plan 2]: Settings persistence uses confirmed mutation pattern (not optimistic) with local useState synced from query data.
+- [Phase 10, Plan 3]: useVote refactored from optimistic to confirmed pattern -- removed onMutate/onError/voteMutedRef entire system.
+- [Phase 10, Plan 3]: Challenges use confirmed mutation pattern for join/leave/complete. Challenge progress computed from workout_sessions.
+- [Phase 10, Plan 3]: Client-side date filtering in WorkoutHistory (all data already fetched). No query param changes needed.
+- [Phase 10, Plan 3]: Biomechanics/ExerciseProgress auto-selection moved from render-time setState to useEffect with derived effective* values.
 
 ### Pending Todos
 
@@ -87,5 +91,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 10-02-PLAN.md (Dashboard & Profile wire-up to real Supabase data)
-Resume file: .planning/phases/10-wire-up-mock-purge/10-03-PLAN.md
+Stopped at: Completed 10-03-PLAN.md (Challenges, votes, dead buttons, bug fixes)
+Resume file: .planning/phases/10-wire-up-mock-purge/10-04-PLAN.md
