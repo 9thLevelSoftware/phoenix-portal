@@ -242,4 +242,78 @@
   .animate-phoenix-glow {
     animation: phoenix-glow 2s ease-in-out infinite;
   }
+
+  .print-only {
+    display: none;
+  }
+}
+
+@media print {
+  /* ---- Hide non-report UI ---- */
+  nav,
+  [data-print-hide],
+  .print\:hidden,
+  button:not([data-print-show]),
+  .toaster,
+  .sonner-toast {
+    display: none !important;
+  }
+
+  /* ---- Print-friendly base styles ---- */
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ---- Page setup ---- */
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+
+  /* ---- Card reset for print ---- */
+  .bg-gradient-to-br,
+  .bg-gradient-to-b {
+    background: white !important;
+    border-color: #e5e7eb !important;
+  }
+
+  /* ---- Ensure SVG charts print with colors ---- */
+  svg {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* ---- Fix ResponsiveContainer dimensions for print ---- */
+  .recharts-responsive-container {
+    width: 100% !important;
+    height: 300px !important;
+  }
+
+  /* ---- Text colors for print readability ---- */
+  .text-white,
+  .text-foreground {
+    color: black !important;
+  }
+
+  .text-muted-foreground,
+  .text-muted {
+    color: #4b5563 !important;
+  }
+
+  .text-primary {
+    color: #FF6B35 !important;
+  }
+
+  /* ---- Print-only elements ---- */
+  .print-only {
+    display: block !important;
+  }
+
+  /* ---- Prevent page breaks inside cards ---- */
+  .exercise-card {
+    break-inside: avoid;
+  }
 }
