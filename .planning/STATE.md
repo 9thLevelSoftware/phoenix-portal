@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 11 of 13 (New Features)
-Plan: 4 of 5 in current phase
+Plan: 5 of 5 in current phase (plans 01,02,04,05 complete; 03 remaining)
 Status: Executing phase 11
-Last activity: 2026-02-17 — Plan 11-04 complete (Community comments)
+Last activity: 2026-02-17 — Plan 11-05 complete (Session comparison feature)
 
-Progress: [█████░░░░░] 45% (10 of 13 phases complete, 55/59 total plans)
+Progress: [█████░░░░░] 47% (10 of 13 phases complete, 56/59 total plans)
 
 ## Performance Metrics
 
@@ -29,7 +29,7 @@ Progress: [█████░░░░░] 45% (10 of 13 phases complete, 55/59 
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
-| 11-new-features | 4/5 | 11 min | 2.8 min |
+| 11-new-features | 5/5 | 25 min | 5.0 min |
 
 *Updated after each plan completion*
 
@@ -85,6 +85,12 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11, Plan 4]: 1-second debounce on comment realtime (faster than 2.5s votes debounce for chat-like UX).
 - [Phase 11, Plan 4]: comment_count as denormalized column with trigger auto-update (avoids COUNT query on every feed render).
 - [Phase 11, Plan 4]: Client+server edit window enforcement: UI hides edit button AND RLS blocks update after 5 minutes.
+- [Phase 11, Plan 5]: Velocity data sourced from rep_summaries mean_velocity_mps, averaged per exercise per session.
+- [Phase 11, Plan 5]: Compare mode in WorkoutHistory forces list view for selection UX clarity.
+- [Phase 11, Plan 5]: SessionDetail FREE users see disabled Compare button (discovery/upsell pattern) rather than hiding it.
+- [Phase 11, Plan 1]: Goal progress computation uses Zod-transformed data (already doubled) to avoid double-doubling weight values.
+- [Phase 11, Plan 1]: Goal achievement detection uses ref-based Set to prevent re-triggering celebrations on re-render.
+- [Phase 11, Plan 1]: FREE tier sees EmptyState upgrade prompt for goals; PHOENIX/ELITE get 3 active goals.
 
 ### Pending Todos
 
@@ -105,5 +111,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 11-04-PLAN.md (Community comments)
-Resume file: .planning/phases/11-new-features/11-05-PLAN.md
+Stopped at: Completed 11-05-PLAN.md (Session comparison feature)
+Resume file: .planning/phases/11-new-features/11-03-PLAN.md (remaining plan in phase 11)
