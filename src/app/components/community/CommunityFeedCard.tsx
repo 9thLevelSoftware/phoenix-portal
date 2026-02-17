@@ -1,5 +1,11 @@
 import { formatDistanceToNow } from "date-fns";
-import { ArrowBigUp, Calendar, Clock, Dumbbell } from "lucide-react";
+import {
+	ArrowBigUp,
+	Calendar,
+	Clock,
+	Dumbbell,
+	MessageSquare,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
@@ -109,8 +115,14 @@ export function CommunityFeedCard({
 					)}
 				</div>
 
-				{/* Timestamp */}
-				<p className="text-[11px] text-muted">Shared {sharedAgo}</p>
+				{/* Timestamp + Comment count */}
+				<div className="flex items-center justify-between">
+					<p className="text-[11px] text-muted">Shared {sharedAgo}</p>
+					<div className="flex items-center gap-1 text-xs text-muted-foreground">
+						<MessageSquare className="w-3.5 h-3.5" />
+						<span>{item.comment_count ?? 0}</span>
+					</div>
+				</div>
 			</Card>
 		</motion.div>
 	);
