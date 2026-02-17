@@ -4,7 +4,6 @@ import {
 	Bell,
 	Calendar,
 	ChevronRight,
-	Clock,
 	Dumbbell,
 	Flame,
 	Target,
@@ -26,6 +25,8 @@ import { PHOENIX } from "@/lib/colors";
 import { cycleListOptions } from "@/queries/cycles";
 import { dashboardStatsOptions, workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
+import { NextWorkoutWidget } from "./NextWorkoutWidget";
+import { PWAInstallPrompt } from "./PWAInstallPrompt";
 
 /** Format a relative time string from a Date */
 function formatRelativeTime(date: Date): string {
@@ -280,48 +281,12 @@ export function DashboardMobile() {
 					transition={{ delay: 0.2 }}
 				>
 					<h2 className="text-lg font-semibold text-white mb-3">
-						Scheduled Workout
+						Today's Workout
 					</h2>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-						{activeCycle ? (
-							<>
-								<div className="flex items-start justify-between mb-4">
-									<div className="flex-1">
-										<h3 className="text-xl font-semibold text-white mb-2">
-											{activeCycle.name}
-										</h3>
-										<div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-											<div className="flex items-center gap-1">
-												<Dumbbell className="w-4 h-4" />
-												<span>
-													{activeCycle.workout_days} workout days
-												</span>
-											</div>
-											<div className="flex items-center gap-1">
-												<Clock className="w-4 h-4" />
-												<span>
-													Week {activeCycle.current_week}/
-													{activeCycle.duration_weeks}
-												</span>
-											</div>
-										</div>
-									</div>
-									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
-										Active
-									</Badge>
-								</div>
-
-								<Button
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 h-12"
-									asChild
-								>
-									<Link to={`/cycles/${activeCycle.id}`}>
-										<Calendar className="w-5 h-5 mr-2" />
-										View Cycle Details
-									</Link>
-								</Button>
-							</>
-						) : (
+					{activeCycle ? (
+						<NextWorkoutWidget cycleId={activeCycle.id} />
+					) : (
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex flex-col items-center justify-center py-6 text-center">
 								<Calendar className="w-10 h-10 text-secondary mb-3" />
 								<p className="text-muted-foreground mb-1">
@@ -340,8 +305,8 @@ export function DashboardMobile() {
 									</Link>
 								</Button>
 							</div>
-						)}
-					</Card>
+						</Card>
+					)}
 				</motion.div>
 
 				{/* Quick Stats - Horizontal Scroll */}
@@ -508,6 +473,9 @@ export function DashboardMobile() {
 						</div>
 					)}
 				</motion.div>
+
+				{/* PWA Install Prompt */}
+				<PWAInstallPrompt workoutCount={workouts?.length ?? 0} />
 			</div>
 		</div>
 	);
