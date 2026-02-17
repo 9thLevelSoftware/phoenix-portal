@@ -115,6 +115,13 @@ export const queryKeys = {
 		progress: (userId: string) =>
 			[...queryKeys.goals.all, "progress", userId] as const,
 	},
+	recovery: {
+		all: ["recovery"] as const,
+		score: (userId: string) =>
+			[...queryKeys.recovery.all, "score", userId] as const,
+		wearable: (userId: string) =>
+			[...queryKeys.recovery.all, "wearable", userId] as const,
+	},
 	profile: {
 		all: ["profile"] as const,
 		byUser: (userId: string) => [...queryKeys.profile.all, userId] as const,

@@ -42,6 +42,7 @@ import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { DashboardMobile } from "./DashboardMobile";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { PortalBanner } from "./PortalBanner";
+import { RecoveryDashboardWidget } from "./RecoveryDashboardWidget";
 import { SyncStatus } from "./SyncStatus";
 
 /** Derive weekly volume chart data from dashboard stats */
@@ -582,6 +583,15 @@ export function Dashboard() {
 							transition={{ delay: 0.25 }}
 						>
 							<GoalDashboardWidget />
+						</motion.div>
+
+						{/* Recovery Readiness Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.27 }}
+						>
+							<RecoveryDashboardWidget />
 						</motion.div>
 
 						{/* Recent PRs */}
