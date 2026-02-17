@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
+import type { SessionSummary } from "@/lib/comparison";
 import {
 	exerciseSchema,
 	personalRecordListSchema,
@@ -122,6 +123,114 @@ export function sessionDetailOptions(sessionId: string) {
 			return {
 				...parsedSession,
 				exercises: exercisesWithSets,
+			};
+		},
+		enabled: !!sessionId,
+	});
+}
+
+/**
+ * Extended session detail that also fetches rep summaries for velocity data.
+ * Returns a SessionSummary ready for the comparison engine.
+ */
+export function comparisonDetailOptions(sessionId: string) {
+	return queryOptions({
+		queryKey: queryKeys.workouts.comparison(sessionId, "detail"),
+		queryFn: async (): Promise<SessionSummary> => {
+			// Re-use sessionDetailOptions data structure
+			const { data: session, error: sessionError } = await supabase
+				.from("workout_sessions")
+				.select("*")
+				.eq("id", sessionId)
+				.single();
+			if (sessionError) throw sessionError;
+
+			const { data: exercises, error: exercisesError } = await supabase
+				.from("exercises")
+				.select("*")
+				.eq("session_id", sessionId)
+				.order("order_index", { ascending: true });
+			if (exercisesError) throw exercisesError;
+
+			const exerciseIds = exercises.map((e: { id: string }) => e.id);
+
+			const { data: sets, error: setsError } = await supabase
+				.from("sets")
+				.select("*")
+				.in("exercise_id", exerciseIds.length > 0 ? exerciseIds : ["_none_"])
+				.order("set_number", { ascending: true });
+			if (setsError) throw setsError;
+
+			// Fetch rep summaries for velocity data
+			const setIds = (sets ?? []).map((s: { id: string }) => s.id);
+			let reps: { set_id: string; mean_velocity_mps: number | null }[] = [];
+			if (setIds.length > 0) {
+				const { data: repData, error: repError } = await supabase
+					.from("rep_summaries")
+					.select("set_id, mean_velocity_mps")
+					.in("set_id", setIds);
+				if (repError) throw repError;
+				reps = repData ?? [];
+			}
+
+			// Parse with Zod
+			const parsedSession = workoutSessionSchema.parse(session);
+			const parsedExercises = z.array(exerciseSchema).parse(exercises);
+			const parsedSets = z.array(setSchema).parse(sets);
+
+			// Build set-to-exercise mapping
+			const setToExercise = new Map(
+				parsedSets.map((s) => [s.id, s.exercise_id]),
+			);
+
+			// Compute per-exercise avg velocity from rep summaries
+			const velocityByExercise = new Map<string, number[]>();
+			for (const rep of reps) {
+				const exerciseId = setToExercise.get(rep.set_id);
+				if (!exerciseId || rep.mean_velocity_mps == null) continue;
+				const arr = velocityByExercise.get(exerciseId) ?? [];
+				arr.push(rep.mean_velocity_mps);
+				velocityByExercise.set(exerciseId, arr);
+			}
+
+			// Build exercise summaries
+			const exerciseSummaries = parsedExercises.map((exercise) => {
+				const exSets = parsedSets.filter(
+					(s) => s.exercise_id === exercise.id,
+				);
+				const volume = exSets.reduce(
+					(sum, s) => sum + s.weight_kg * s.actual_reps,
+					0,
+				);
+				const maxWeight = exSets.reduce(
+					(max, s) => Math.max(max, s.weight_kg),
+					0,
+				);
+				const velocities = velocityByExercise.get(exercise.id) ?? [];
+				const avgVelocity =
+					velocities.length > 0
+						? velocities.reduce((a, b) => a + b, 0) / velocities.length
+						: 0;
+
+				return {
+					name: exercise.name,
+					volume,
+					maxWeight,
+					sets: exSets.length,
+					avgVelocity,
+				};
+			});
+
+			return {
+				id: parsedSession.id,
+				name: parsedSession.name,
+				startedAt: parsedSession.started_at,
+				totalVolume: parsedSession.total_volume,
+				duration: parsedSession.duration_seconds,
+				exerciseCount: parsedSession.exercise_count,
+				setCount: parsedSession.set_count,
+				prCount: parsedSession.pr_count,
+				exercises: exerciseSummaries,
 			};
 		},
 		enabled: !!sessionId,
