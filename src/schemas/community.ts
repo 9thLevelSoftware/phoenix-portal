@@ -19,6 +19,7 @@ export const sharedRoutineSchema = z.object({
 	vote_count: z.number(),
 	save_count: z.number(),
 	hot_score: z.number(),
+	comment_count: z.number().default(0),
 	shared_at: z.string().transform((s) => new Date(s)),
 	updated_at: z.string().transform((s) => new Date(s)),
 	profiles: z
@@ -45,6 +46,7 @@ export const sharedCycleSchema = z.object({
 	vote_count: z.number(),
 	save_count: z.number(),
 	hot_score: z.number(),
+	comment_count: z.number().default(0),
 	shared_at: z.string().transform((s) => new Date(s)),
 	updated_at: z.string().transform((s) => new Date(s)),
 	profiles: z
