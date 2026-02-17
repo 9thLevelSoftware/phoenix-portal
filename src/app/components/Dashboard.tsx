@@ -38,6 +38,7 @@ import {
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { PortalBanner } from "./PortalBanner";
 import { SyncStatus } from "./SyncStatus";
+import { PHOENIX } from "@/lib/colors";
 
 /** Derive weekly volume chart data from dashboard stats */
 function deriveWeeklyVolume(
@@ -140,7 +141,7 @@ export function Dashboard() {
 										<div className="flex items-center gap-3 mb-2">
 											<Flame
 												className="w-8 h-8 text-accent"
-												fill="#FF6B35"
+												fill={PHOENIX.ember}
 											/>
 											<div>
 												<h3 className="text-2xl text-white">7 Day Streak</h3>
@@ -233,34 +234,34 @@ export function Dashboard() {
 														>
 															<stop
 																offset="5%"
-																stopColor="#FF6B35"
+																stopColor={PHOENIX.ember}
 																stopOpacity={0.8}
 															/>
 															<stop
 																offset="95%"
-																stopColor="#DC2626"
+																stopColor={PHOENIX.flameRed}
 																stopOpacity={0.1}
 															/>
 														</linearGradient>
 													</defs>
 													<CartesianGrid
 														strokeDasharray="3 3"
-														stroke="#374151"
+														stroke={PHOENIX.moltenSteel}
 													/>
-													<XAxis dataKey="day" stroke="#9CA3AF" />
-													<YAxis stroke="#9CA3AF" />
+													<XAxis dataKey="day" stroke={PHOENIX.mutedForeground} />
+													<YAxis stroke={PHOENIX.mutedForeground} />
 													<Tooltip
 														contentStyle={{
-															backgroundColor: "#1a1a1a",
+															backgroundColor: "var(--surface-2)",
 															border: "1px solid #374151",
 															borderRadius: "8px",
-															color: "#E5E7EB",
+															color: "var(--secondary-foreground)",
 														}}
 													/>
 													<Area
 														type="monotone"
 														dataKey="volume"
-														stroke="#FF6B35"
+														stroke={PHOENIX.ember}
 														strokeWidth={2}
 														fill="url(#volumeGradient)"
 													/>

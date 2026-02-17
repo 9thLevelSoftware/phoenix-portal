@@ -26,6 +26,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import {
+import { PHOENIX } from "@/lib/colors";
 	Tabs,
 	TabsContent,
 	TabsList,
@@ -396,10 +397,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 							<h3 className="text-xl text-white mb-6">Power Output by Set</h3>
 							<ResponsiveContainer width="100%" height={300}>
 								<LineChart data={powerOutputData}>
-									<CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+									<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
 									<XAxis
 										dataKey="set"
-										stroke="#9CA3AF"
+										stroke={PHOENIX.mutedForeground}
 										label={{
 											value: "Set",
 											position: "insideBottom",
@@ -407,7 +408,7 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 										}}
 									/>
 									<YAxis
-										stroke="#9CA3AF"
+										stroke={PHOENIX.mutedForeground}
 										label={{
 											value: "Power (W)",
 											angle: -90,
@@ -416,10 +417,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 									/>
 									<Tooltip
 										contentStyle={{
-											backgroundColor: "#1a1a1a",
+											backgroundColor: "var(--surface-2)",
 											border: "1px solid #374151",
 											borderRadius: "8px",
-											color: "#E5E7EB",
+											color: "var(--secondary-foreground)",
 										}}
 									/>
 									<Legend />
@@ -427,17 +428,17 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 										type="monotone"
 										dataKey="peak"
 										name="Peak Power"
-										stroke="#FF6B35"
+										stroke={PHOENIX.ember}
 										strokeWidth={2}
-										dot={{ fill: "#FF6B35", r: 5 }}
+										dot={{ fill: PHOENIX.ember, r: 5 }}
 									/>
 									<Line
 										type="monotone"
 										dataKey="avg"
 										name="Average Power"
-										stroke="#F59E0B"
+										stroke={PHOENIX.gold}
 										strokeWidth={2}
-										dot={{ fill: "#F59E0B", r: 5 }}
+										dot={{ fill: PHOENIX.gold, r: 5 }}
 									/>
 								</LineChart>
 							</ResponsiveContainer>
@@ -491,10 +492,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											x2="0"
 											y2="1"
 										>
-											<stop offset="5%" stopColor="#FF6B35" stopOpacity={0.8} />
+											<stop offset="5%" stopColor={PHOENIX.ember} stopOpacity={0.8} />
 											<stop
 												offset="95%"
-												stopColor="#DC2626"
+												stopColor={PHOENIX.flameRed}
 												stopOpacity={0.1}
 											/>
 										</linearGradient>
@@ -505,7 +506,7 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											x2="0"
 											y2="1"
 										>
-											<stop offset="5%" stopColor="#10B981" stopOpacity={0.8} />
+											<stop offset="5%" stopColor={PHOENIX.forgeGreen} stopOpacity={0.8} />
 											<stop
 												offset="95%"
 												stopColor="#059669"
@@ -513,10 +514,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 											/>
 										</linearGradient>
 									</defs>
-									<CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+									<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
 									<XAxis
 										dataKey="time"
-										stroke="#9CA3AF"
+										stroke={PHOENIX.mutedForeground}
 										label={{
 											value: "Time (seconds)",
 											position: "insideBottom",
@@ -524,7 +525,7 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 										}}
 									/>
 									<YAxis
-										stroke="#9CA3AF"
+										stroke={PHOENIX.mutedForeground}
 										label={{
 											value: "Force (N)",
 											angle: -90,
@@ -533,10 +534,10 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 									/>
 									<Tooltip
 										contentStyle={{
-											backgroundColor: "#1a1a1a",
+											backgroundColor: "var(--surface-2)",
 											border: "1px solid #374151",
 											borderRadius: "8px",
-											color: "#E5E7EB",
+											color: "var(--secondary-foreground)",
 										}}
 									/>
 									<Legend />
@@ -544,7 +545,7 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 										type="monotone"
 										dataKey="concentric"
 										name="Concentric Phase"
-										stroke="#FF6B35"
+										stroke={PHOENIX.ember}
 										strokeWidth={2}
 										fill="url(#concentricGradient)"
 									/>
@@ -552,7 +553,7 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 										type="monotone"
 										dataKey="eccentric"
 										name="Eccentric Phase"
-										stroke="#10B981"
+										stroke={PHOENIX.forgeGreen}
 										strokeWidth={2}
 										fill="url(#eccentricGradient)"
 									/>

@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { openCustomerPortal } from "@/lib/stripe";
+import { PHOENIX } from "@/lib/colors";
 
 const PLAN_LABELS = {
 	FREE: "Free Plan",
@@ -178,7 +179,7 @@ export function Profile() {
 									Member since December 2025
 								</p>
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-									<Flame className="w-5 h-5 text-accent" fill="#FF6B35" />
+									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
 									<span className="text-white">7 day streak</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">

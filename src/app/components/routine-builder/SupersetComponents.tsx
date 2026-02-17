@@ -6,6 +6,7 @@ import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import type { SupersetGroup } from "./superset-helpers";
+import { PHOENIX } from "@/lib/colors";
 
 interface SupersetCardProps {
 	superset: SupersetGroup;
@@ -40,7 +41,7 @@ export function SupersetCard({
 	);
 	const colorLabel =
 		["A", "B", "C", "D"][
-			["#6366F1", "#EC4899", "#10B981", "#F59E0B"].indexOf(superset.color)
+			["#6366F1", "#EC4899", PHOENIX.forgeGreen, PHOENIX.gold].indexOf(superset.color)
 		] || "A";
 
 	return (

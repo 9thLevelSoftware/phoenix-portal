@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
+import { PHOENIX } from "@/lib/colors";
 
 interface BadgeEarnedProps {
 	isOpen: boolean;
@@ -52,25 +53,25 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 				return {
 					bg: "from-secondary-foreground to-muted-foreground",
 					particles: "rgba(156, 163, 175, 0.8)",
-					glow: "#E5E7EB",
+					glow: PHOENIX.lightGray,
 				};
 			case "gold":
 				return {
 					bg: "from-accent to-[#D97706]",
 					particles: "rgba(245, 158, 11, 0.9)",
-					glow: "#F59E0B",
+					glow: PHOENIX.gold,
 				};
 			case "platinum":
 				return {
 					bg: "from-secondary-foreground via-[#F3F4F6] to-secondary-foreground",
 					particles: "rgba(229, 231, 235, 0.9)",
-					glow: "#E5E7EB",
+					glow: PHOENIX.lightGray,
 				};
 			default:
 				return {
 					bg: "from-muted to-secondary",
 					particles: "rgba(107, 116, 128, 0.8)",
-					glow: "#6B7280",
+					glow: PHOENIX.ashGray,
 				};
 		}
 	};
@@ -277,7 +278,7 @@ function ParticleBurst({
 							width: isConfetti ? 8 : 3,
 							height: isConfetti ? 8 : 3,
 							backgroundColor: isConfetti
-								? ["#FF6B35", "#F59E0B", "#10B981", "#DC2626"][
+								? [PHOENIX.ember, PHOENIX.gold, PHOENIX.forgeGreen, PHOENIX.flameRed][
 										Math.floor(Math.random() * 4)
 									]
 								: color,

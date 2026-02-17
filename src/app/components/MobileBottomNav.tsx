@@ -24,6 +24,7 @@ import {
 	DrawerTrigger,
 } from "@/app/components/ui/drawer";
 import { useUIStore } from "@/stores/useUIStore";
+import { PHOENIX } from "@/lib/colors";
 
 const primaryItems = [
 	{ path: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -118,7 +119,7 @@ export function MobileBottomNav() {
 											>
 												<Flame
 													className="w-3 h-3 text-accent"
-													fill="#FF6B35"
+													fill={PHOENIX.ember}
 												/>
 											</motion.div>
 										)}

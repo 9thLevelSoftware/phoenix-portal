@@ -19,6 +19,7 @@ export const PHOENIX = {
 	lightGray: "#E5E7EB",
 	crimson: "#EF4444",
 	flameYellow: "#FBBF24",
+	mutedForeground: "#9CA3AF",
 } as const;
 
 /** Surface layer colors for programmatic use */

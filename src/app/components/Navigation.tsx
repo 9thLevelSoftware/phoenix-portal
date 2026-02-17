@@ -22,6 +22,7 @@ import { Button } from "@/app/components/ui/button";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useUIStore } from "@/stores/useUIStore";
 import { PhoenixLogo } from "./PhoenixLogo";
+import { PHOENIX } from "@/lib/colors";
 
 const navItems = [
 	{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -98,7 +99,7 @@ export function Navigation() {
 
 						{/* Streak Indicator */}
 						<div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-chart-2/20 border border-primary/50 rounded-full">
-							<Flame className="w-4 h-4 text-accent" fill="#FF6B35" />
+							<Flame className="w-4 h-4 text-accent" fill={PHOENIX.ember} />
 							<span className="text-sm text-white">{streak} day streak</span>
 						</div>
 

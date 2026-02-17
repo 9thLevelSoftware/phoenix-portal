@@ -7,6 +7,7 @@ import {
 } from "date-fns";
 import { Flame } from "lucide-react";
 import { useMemo, useState } from "react";
+import { PHOENIX } from "@/lib/colors";
 
 export interface ConsistencyCalendarProps {
 	workoutDates: Date[];
@@ -16,7 +17,7 @@ export interface ConsistencyCalendarProps {
 const CELL_SIZE = 10;
 const CELL_GAP = 2;
 const STEP = CELL_SIZE + CELL_GAP;
-const EMBER = "#FF6B35";
+const EMBER = PHOENIX.ember;
 const BG_EMPTY = "#1A1A2E";
 const DAY_LABELS_WIDTH = 24;
 const TOP_LABEL_HEIGHT = 18;
@@ -179,7 +180,7 @@ export function ConsistencyCalendar({
 							key={i}
 							x={DAY_LABELS_WIDTH + ml.col * STEP}
 							y={12}
-							fill="#6B7280"
+							fill={PHOENIX.ashGray}
 							fontSize={9}
 							fontFamily="system-ui"
 						>
@@ -193,7 +194,7 @@ export function ConsistencyCalendar({
 							key={row}
 							x={16}
 							y={TOP_LABEL_HEIGHT + row * STEP + CELL_SIZE - 1}
-							fill="#6B7280"
+							fill={PHOENIX.ashGray}
 							fontSize={8}
 							textAnchor="end"
 							fontFamily="system-ui"
@@ -245,7 +246,7 @@ export function ConsistencyCalendar({
 							left: hoveredCell.x + 16,
 							top: hoveredCell.y - 30,
 							background: "#1F2937",
-							color: "#E5E7EB",
+							color: "var(--secondary-foreground)",
 							border: "1px solid #374151",
 							whiteSpace: "nowrap",
 							position: "absolute",
@@ -254,7 +255,7 @@ export function ConsistencyCalendar({
 						<div className="font-medium">
 							{format(hoveredCell.date, "MMM d, yyyy")}
 						</div>
-						<div style={{ color: hoveredCell.count > 0 ? EMBER : "#6B7280" }}>
+						<div style={{ color: hoveredCell.count > 0 ? EMBER : PHOENIX.ashGray }}>
 							{hoveredCell.count === 0
 								? "No workouts"
 								: `${hoveredCell.count} workout${hoveredCell.count > 1 ? "s" : ""}`}

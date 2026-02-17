@@ -36,6 +36,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
+import { PHOENIX } from "@/lib/colors";
 
 // -- Section wrapper --
 function Section({
@@ -433,8 +434,8 @@ function BiomechanicsContent() {
 														: "#DC262620",
 												color:
 													parseFloat(avgAsymmetry) <= 10
-														? "#10B981"
-														: "#DC2626",
+														? PHOENIX.forgeGreen
+															: PHOENIX.flameRed,
 												border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
 											}}
 										>

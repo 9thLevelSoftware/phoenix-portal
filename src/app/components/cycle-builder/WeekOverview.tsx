@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { Card } from "@/app/components/ui/card";
 import type { CycleDay } from "./types";
+import { PHOENIX } from "@/lib/colors";
 
 interface WeekOverviewProps {
 	days: CycleDay[];
@@ -12,10 +13,10 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 
 	// Calculate muscle distribution (mock calculation)
 	const muscleDistribution = [
-		{ name: "Chest", percentage: 22, color: "#FF6B35" },
-		{ name: "Back", percentage: 20, color: "#DC2626" },
-		{ name: "Legs", percentage: 18, color: "#F59E0B" },
-		{ name: "Shoulders", percentage: 15, color: "#10B981" },
+		{ name: "Chest", percentage: 22, color: "var(--primary)" },
+		{ name: "Back", percentage: 20, color: PHOENIX.flameRed },
+		{ name: "Legs", percentage: 18, color: PHOENIX.gold },
+		{ name: "Shoulders", percentage: 15, color: PHOENIX.forgeGreen },
 		{ name: "Arms", percentage: 15, color: "#6366F1" },
 		{ name: "Core", percentage: 10, color: "#EC4899" },
 	];

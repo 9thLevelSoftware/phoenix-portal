@@ -41,13 +41,13 @@ export function ChartTooltipContent({
 				border: `1px solid ${CHART_COLORS.tooltipBorder}`,
 				borderRadius: "6px",
 				padding: "8px 12px",
-				color: "#FFFFFF",
+				color: "var(--foreground)",
 				fontSize: "12px",
 				lineHeight: "1.4",
 				boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
 			}}
 		>
-			<div style={{ fontWeight: 500, marginBottom: "2px", color: "#9CA3AF" }}>
+			<div style={{ fontWeight: 500, marginBottom: "2px", color: "var(--muted-foreground)" }}>
 				{data.label}
 			</div>
 			<div

@@ -31,6 +31,7 @@ import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
+import { PHOENIX } from "@/lib/colors";
 
 interface CommunityDetailDrawerProps {
 	item: CommunityFeedItem | null;
@@ -164,7 +165,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 				>
 					<Bookmark
 						className="w-4 h-4 mr-1.5"
-						fill={isSaved ? "#FF6B35" : "none"}
+						fill={isSaved ? PHOENIX.ember : "none"}
 					/>
 					{isSaved ? "Saved" : "Save"}
 				</Button>
