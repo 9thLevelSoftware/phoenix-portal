@@ -44,7 +44,6 @@ import { NextWorkoutWidget } from "./NextWorkoutWidget";
 import { PortalBanner } from "./PortalBanner";
 import { PWAInstallPrompt } from "./PWAInstallPrompt";
 import { RecoveryDashboardWidget } from "./RecoveryDashboardWidget";
-import { SyncStatus } from "./SyncStatus";
 
 /** Derive weekly volume chart data from dashboard stats */
 function deriveWeeklyVolume(
@@ -227,15 +226,6 @@ export function Dashboard() {
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 					{/* Left Column - Main Stats */}
 					<div className="lg:col-span-2 space-y-6">
-						{/* Vitruvian Sync Status */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: 0.05 }}
-						>
-							<SyncStatus lastSync="2 minutes ago" status="synced" />
-						</motion.div>
-
 						{/* Streak Card */}
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}

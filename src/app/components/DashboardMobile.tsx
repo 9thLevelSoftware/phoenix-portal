@@ -25,8 +25,10 @@ import { PHOENIX } from "@/lib/colors";
 import { cycleListOptions } from "@/queries/cycles";
 import { dashboardStatsOptions, workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
+import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
 import { PWAInstallPrompt } from "./PWAInstallPrompt";
+import { RecoveryDashboardWidget } from "./RecoveryDashboardWidget";
 
 /** Format a relative time string from a Date */
 function formatRelativeTime(date: Date): string {
@@ -415,6 +417,22 @@ export function DashboardMobile() {
 							</div>
 						</Card>
 					)}
+				</motion.div>
+
+				{/* Goal & Recovery Widgets (self-gate: premium only) */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.45 }}
+				>
+					<GoalDashboardWidget />
+				</motion.div>
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.47 }}
+				>
+					<RecoveryDashboardWidget />
 				</motion.div>
 
 				{/* Recent Activity */}
