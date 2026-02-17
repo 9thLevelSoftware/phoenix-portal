@@ -1,9 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import {
-	routineDetailSchema,
-	routineListSchema,
-} from "@/schemas/transforms";
+import { routineDetailSchema, routineListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 export function routineListOptions(userId: string) {

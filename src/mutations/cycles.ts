@@ -51,9 +51,7 @@ export function useSaveCycle() {
 			const workoutDays = input.days.filter(
 				(d) => d.day_type === "workout",
 			).length;
-			const restDays = input.days.filter(
-				(d) => d.day_type === "rest",
-			).length;
+			const restDays = input.days.filter((d) => d.day_type === "rest").length;
 
 			// Create the cycle row
 			const { data: cycle, error: cycleError } = await supabase
@@ -77,21 +75,19 @@ export function useSaveCycle() {
 
 			// Insert cycle days
 			if (input.days.length > 0) {
-				const { error: daysError } = await supabase
-					.from("cycle_days")
-					.insert(
-						input.days.map((day) => ({
-							cycle_id: cycle.id,
-							day_number: day.day_number,
-							day_type: day.day_type,
-							routine_id: day.routine_id || null,
-							weight_adjustment: day.weight_adjustment,
-							rep_modifier: day.rep_modifier,
-							rest_override: day.rest_override ?? null,
-							notes: day.notes ?? null,
-							rest_type: day.rest_type ?? null,
-						})),
-					);
+				const { error: daysError } = await supabase.from("cycle_days").insert(
+					input.days.map((day) => ({
+						cycle_id: cycle.id,
+						day_number: day.day_number,
+						day_type: day.day_type,
+						routine_id: day.routine_id || null,
+						weight_adjustment: day.weight_adjustment,
+						rep_modifier: day.rep_modifier,
+						rest_override: day.rest_override ?? null,
+						notes: day.notes ?? null,
+						rest_type: day.rest_type ?? null,
+					})),
+				);
 				if (daysError) throw daysError;
 			}
 

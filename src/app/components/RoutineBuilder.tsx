@@ -62,9 +62,7 @@ export function RoutineBuilder() {
 
 	const [routineName, setRoutineName] = useState("Untitled Routine");
 	const [exercises, setExercises] = useState<Exercise[]>([]);
-	const [selectedExercise, setSelectedExercise] = useState<string | null>(
-		null,
-	);
+	const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 	const [showExercisePicker, setShowExercisePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);

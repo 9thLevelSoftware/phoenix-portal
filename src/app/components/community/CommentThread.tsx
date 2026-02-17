@@ -87,9 +87,7 @@ function CommentItem({
 			{/* Content */}
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-2">
-					<span className="text-sm text-white font-medium">
-						{authorName}
-					</span>
+					<span className="text-sm text-white font-medium">{authorName}</span>
 					<span className="text-xs text-muted">{timeAgo}</span>
 				</div>
 
@@ -102,9 +100,7 @@ function CommentItem({
 							className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 						/>
 						<div className="flex items-center justify-between">
-							<span className="text-xs text-muted">
-								{editBody.length}/500
-							</span>
+							<span className="text-xs text-muted">{editBody.length}/500</span>
 							<div className="flex gap-2">
 								<Button
 									variant="ghost"
@@ -161,8 +157,8 @@ function CommentItem({
 										Delete comment?
 									</AlertDialogTitle>
 									<AlertDialogDescription>
-										This action cannot be undone. Your
-										comment will be permanently removed.
+										This action cannot be undone. Your comment will be
+										permanently removed.
 									</AlertDialogDescription>
 								</AlertDialogHeader>
 								<AlertDialogFooter>
@@ -260,16 +256,11 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 						className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 					/>
 					<div className="flex items-center justify-between">
-						<span className="text-xs text-muted">
-							{newComment.length}/500
-						</span>
+						<span className="text-xs text-muted">{newComment.length}/500</span>
 						<Button
 							size="sm"
 							onClick={handlePost}
-							disabled={
-								createMutation.isPending ||
-								!newComment.trim()
-							}
+							disabled={createMutation.isPending || !newComment.trim()}
 							className="bg-primary hover:bg-primary/90 h-7 text-xs"
 						>
 							Post
@@ -280,10 +271,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 				<div className="flex items-center gap-2 p-3 bg-surface-2 rounded-md border border-secondary">
 					<Lock className="w-4 h-4 text-muted-foreground shrink-0" />
 					<span className="text-sm text-muted-foreground">
-						<Link
-							to="/pricing"
-							className="text-primary hover:underline"
-						>
+						<Link to="/pricing" className="text-primary hover:underline">
 							Upgrade to comment
 						</Link>
 					</span>

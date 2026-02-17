@@ -9,11 +9,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
-import {
-	Alert,
-	AlertDescription,
-	AlertTitle,
-} from "@/app/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/app/components/ui/alert";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -26,33 +22,39 @@ import {
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
-	compareSessions,
 	type ComparisonResult,
+	compareSessions,
 	type SessionSummary,
 } from "@/lib/comparison";
 import { comparisonDetailOptions } from "@/queries/workouts";
 
-function DeltaIndicator({ value, suffix = "%" }: { value: number; suffix?: string }) {
+function DeltaIndicator({
+	value,
+	suffix = "%",
+}: {
+	value: number;
+	suffix?: string;
+}) {
 	if (Math.abs(value) < 0.1) {
 		return (
 			<span className="inline-flex items-center gap-1 text-muted-foreground">
-				<Minus className="w-3 h-3" />
-				0{suffix}
+				<Minus className="w-3 h-3" />0{suffix}
 			</span>
 		);
 	}
 	if (value > 0) {
 		return (
 			<span className="inline-flex items-center gap-1 text-success">
-				<TrendingUp className="w-3 h-3" />
-				+{value.toFixed(1)}{suffix}
+				<TrendingUp className="w-3 h-3" />+{value.toFixed(1)}
+				{suffix}
 			</span>
 		);
 	}
 	return (
 		<span className="inline-flex items-center gap-1 text-destructive">
 			<TrendingDown className="w-3 h-3" />
-			{value.toFixed(1)}{suffix}
+			{value.toFixed(1)}
+			{suffix}
 		</span>
 	);
 }
@@ -65,15 +67,16 @@ function formatVelocity(v: number): string {
 function SessionSummaryCard({
 	summary,
 	label,
-}: { summary: SessionSummary; label: string }) {
+}: {
+	summary: SessionSummary;
+	label: string;
+}) {
 	return (
 		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
 			<div className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
 				{label}
 			</div>
-			<h3 className="text-lg font-semibold text-white mb-1">
-				{summary.name}
-			</h3>
+			<h3 className="text-lg font-semibold text-white mb-1">{summary.name}</h3>
 			<p className="text-sm text-muted-foreground mb-4">
 				{summary.startedAt.toLocaleDateString("en-US", {
 					weekday: "short",
@@ -142,9 +145,7 @@ function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 				<table className="w-full text-sm">
 					<thead>
 						<tr className="border-b border-secondary">
-							<th className="text-left py-2 text-muted-foreground">
-								Exercise
-							</th>
+							<th className="text-left py-2 text-muted-foreground">Exercise</th>
 							<th className="text-right py-2 text-muted-foreground">
 								A Volume
 							</th>
@@ -247,9 +248,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 					) : (
 						<div className="grid grid-cols-3 gap-2 text-sm">
 							<div className="text-muted-foreground">Metric</div>
-							<div className="text-muted-foreground text-center">
-								A vs B
-							</div>
+							<div className="text-muted-foreground text-center">A vs B</div>
 							<div className="text-muted-foreground text-right">Change</div>
 
 							<div className="text-secondary-foreground">Volume</div>
@@ -323,8 +322,8 @@ export function ComparisonView() {
 						Premium Feature
 					</h2>
 					<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-						Workout comparison is available on Phoenix and Elite plans.
-						Upgrade to compare sessions side by side and track your progress.
+						Workout comparison is available on Phoenix and Elite plans. Upgrade
+						to compare sessions side by side and track your progress.
 					</p>
 					<Button
 						onClick={() => navigate("/pricing")}
@@ -463,7 +462,9 @@ export function ComparisonView() {
 						Failed to Load Sessions
 					</h2>
 					<p className="text-muted-foreground">
-						{errorA?.message || errorB?.message || "One or both sessions could not be loaded."}
+						{errorA?.message ||
+							errorB?.message ||
+							"One or both sessions could not be loaded."}
 					</p>
 					<Button
 						onClick={() => navigate("/history")}

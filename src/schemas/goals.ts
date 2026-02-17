@@ -44,7 +44,10 @@ export const createGoalSchema = z
 			}
 			return true;
 		},
-		{ message: "Exercise name is required for PR goals", path: ["exercise_name"] },
+		{
+			message: "Exercise name is required for PR goals",
+			path: ["exercise_name"],
+		},
 	);
 
 export type CreateGoalInput = z.infer<typeof createGoalSchema>;

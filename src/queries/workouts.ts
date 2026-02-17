@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
-import { supabase } from "@/lib/supabase";
 import type { SessionSummary } from "@/lib/comparison";
+import { supabase } from "@/lib/supabase";
 import {
 	exerciseSchema,
 	personalRecordListSchema,
@@ -195,9 +195,7 @@ export function comparisonDetailOptions(sessionId: string) {
 
 			// Build exercise summaries
 			const exerciseSummaries = parsedExercises.map((exercise) => {
-				const exSets = parsedSets.filter(
-					(s) => s.exercise_id === exercise.id,
-				);
+				const exSets = parsedSets.filter((s) => s.exercise_id === exercise.id);
 				const volume = exSets.reduce(
 					(sum, s) => sum + s.weight_kg * s.actual_reps,
 					0,

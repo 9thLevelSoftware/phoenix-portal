@@ -98,10 +98,7 @@ export function DashboardMobile() {
 						className="text-center mb-10"
 					>
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
-							<Flame
-								className="w-8 h-8 text-primary"
-								fill={PHOENIX.ember}
-							/>
+							<Flame className="w-8 h-8 text-primary" fill={PHOENIX.ember} />
 						</div>
 						<h1 className="text-3xl font-bold mb-3">
 							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -109,9 +106,8 @@ export function DashboardMobile() {
 							</span>
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
-							Your training journey starts here. Complete your first
-							workout in the mobile app and watch your dashboard come
-							alive.
+							Your training journey starts here. Complete your first workout in
+							the mobile app and watch your dashboard come alive.
 						</p>
 					</motion.div>
 
@@ -204,9 +200,7 @@ export function DashboardMobile() {
 					</div>
 					<button
 						className="relative p-2 hover:bg-surface-2 rounded-full transition-colors"
-						onClick={() =>
-							toast("Notifications coming in a future update")
-						}
+						onClick={() => toast("Notifications coming in a future update")}
 					>
 						<Bell className="w-6 h-6 text-secondary-foreground" />
 						<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />

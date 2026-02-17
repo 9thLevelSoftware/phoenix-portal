@@ -42,9 +42,7 @@ export function GoalDashboardWidget() {
 			{activeGoals.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-6 text-center">
 					<Target className="w-8 h-8 text-secondary mb-2" />
-					<p className="text-sm text-muted-foreground mb-2">
-						No active goals
-					</p>
+					<p className="text-sm text-muted-foreground mb-2">No active goals</p>
 					<Button
 						variant="outline"
 						size="sm"

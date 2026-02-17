@@ -107,7 +107,8 @@ export function Dashboard() {
 	if (isMobile) return <DashboardMobile />;
 
 	// Zero-session welcome view
-	const hasNoWorkouts = !workoutsLoading && (!workouts || workouts.length === 0);
+	const hasNoWorkouts =
+		!workoutsLoading && (!workouts || workouts.length === 0);
 
 	if (hasNoWorkouts) {
 		return (
@@ -127,9 +128,8 @@ export function Dashboard() {
 							</span>
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
-							Your training journey starts here. Complete your first
-							workout in the mobile app and watch your dashboard come
-							alive.
+							Your training journey starts here. Complete your first workout in
+							the mobile app and watch your dashboard come alive.
 						</p>
 					</motion.div>
 
@@ -147,8 +147,8 @@ export function Dashboard() {
 									Track your progress
 								</h3>
 								<p className="text-sm text-muted-foreground">
-									See volume trends, strength gains, and muscle
-									balance insights once you start training.
+									See volume trends, strength gains, and muscle balance insights
+									once you start training.
 								</p>
 							</Card>
 						</motion.div>
@@ -167,9 +167,8 @@ export function Dashboard() {
 										Build custom routines
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Create workout routines tailored to your
-										goals with drag-and-drop exercise
-										management.
+										Create workout routines tailored to your goals with
+										drag-and-drop exercise management.
 									</p>
 								</Card>
 							</Link>
@@ -189,8 +188,8 @@ export function Dashboard() {
 										Join challenges
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Compete with other athletes in community
-										challenges and earn recognition.
+										Compete with other athletes in community challenges and earn
+										recognition.
 									</p>
 								</Card>
 							</Link>
@@ -281,9 +280,7 @@ export function Dashboard() {
 							) : (
 								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
 									<div className="flex items-center justify-between mb-4">
-										<h3 className="text-xl text-white">
-											Scheduled Workout
-										</h3>
+										<h3 className="text-xl text-white">Scheduled Workout</h3>
 									</div>
 									<div className="flex flex-col items-center justify-center py-8 text-center">
 										<Calendar className="w-12 h-12 text-secondary mb-4" />
@@ -291,8 +288,7 @@ export function Dashboard() {
 											No scheduled workout
 										</p>
 										<p className="text-sm text-muted mb-4">
-											Create a training cycle to see your next workout
-											here
+											Create a training cycle to see your next workout here
 										</p>
 										<Button
 											className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"

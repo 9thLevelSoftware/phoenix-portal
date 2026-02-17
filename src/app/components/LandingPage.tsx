@@ -75,12 +75,9 @@ export function LandingPage() {
 		}
 		setAuthLoading(true);
 		try {
-			const { error } = await supabase.auth.resetPasswordForEmail(
-				resetEmail,
-				{
-					redirectTo: `${window.location.origin}/auth/reset-password`,
-				},
-			);
+			const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+				redirectTo: `${window.location.origin}/auth/reset-password`,
+			});
 			if (error) {
 				toast.error(error.message);
 			} else {
@@ -260,9 +257,7 @@ export function LandingPage() {
 			}}
 		>
 			<DialogContent className="bg-surface-2 border-secondary max-w-md p-6">
-				<DialogTitle className="sr-only">
-					Sign in to Phoenix Portal
-				</DialogTitle>
+				<DialogTitle className="sr-only">Sign in to Phoenix Portal</DialogTitle>
 				<DialogDescription className="sr-only">
 					Enter your credentials to access the dashboard
 				</DialogDescription>

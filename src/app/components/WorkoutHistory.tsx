@@ -18,11 +18,11 @@ import { useNavigate } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { EmptyState } from "@/app/components/ui/empty-state";
-import { useSubscription } from "@/hooks/useSubscription";
 import { useStreak } from "@/hooks/useStreak";
+import { useSubscription } from "@/hooks/useSubscription";
 import { workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 

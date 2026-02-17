@@ -21,8 +21,7 @@ export default defineConfig({
 			manifest: {
 				name: "Phoenix Portal",
 				short_name: "Phoenix",
-				description:
-					"Training companion dashboard for Vitruvian Trainer",
+				description: "Training companion dashboard for Vitruvian Trainer",
 				theme_color: "#0D0D0D",
 				background_color: "#0D0D0D",
 				display: "standalone",
@@ -51,9 +50,7 @@ export default defineConfig({
 				cleanupOutdatedCaches: true,
 				skipWaiting: true,
 				clientsClaim: true,
-				globPatterns: [
-					"**/*.{js,css,html,ico,png,svg,webp,woff2}",
-				],
+				globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
 			},
 			devOptions: {
 				enabled: false,

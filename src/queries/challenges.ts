@@ -113,15 +113,11 @@ export function challengeProgressOptions(
 	});
 }
 
-function computeStreak(
-	sessions: Array<{ started_at: string }>,
-): number {
+function computeStreak(sessions: Array<{ started_at: string }>): number {
 	if (sessions.length === 0) return 0;
 
 	const dates = [
-		...new Set(
-			sessions.map((s) => new Date(s.started_at).toDateString()),
-		),
+		...new Set(sessions.map((s) => new Date(s.started_at).toDateString())),
 	].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
 	let streak = 1;

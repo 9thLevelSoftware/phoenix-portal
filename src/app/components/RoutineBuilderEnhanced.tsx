@@ -140,9 +140,7 @@ export function RoutineBuilderEnhanced({
 	};
 
 	const handleEditExercise = (exerciseId: string) => {
-		setEditingExerciseId(
-			editingExerciseId === exerciseId ? null : exerciseId,
-		);
+		setEditingExerciseId(editingExerciseId === exerciseId ? null : exerciseId);
 	};
 
 	const handleSave = () => {

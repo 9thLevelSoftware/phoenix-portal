@@ -23,10 +23,10 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Progress } from "@/app/components/ui/progress";
 import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { EmptyState } from "@/app/components/ui/empty-state";
 import { cycleListOptions } from "@/queries/cycles";
 
 export function TrainingCycles() {

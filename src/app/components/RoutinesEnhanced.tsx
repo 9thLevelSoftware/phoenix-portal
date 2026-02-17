@@ -23,6 +23,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { RoutineCardSkeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
@@ -31,7 +32,6 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { EmptyState } from "@/app/components/ui/empty-state";
 import { routineListOptions } from "@/queries/routines";
 import type { Routine } from "@/schemas/transforms";
 
@@ -329,4 +329,3 @@ function RoutineGrid({
 		</div>
 	);
 }
-

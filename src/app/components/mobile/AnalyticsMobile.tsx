@@ -1,9 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Download, Dumbbell, Target, TrendingUp, Zap } from "lucide-react";
+import {
+	Activity,
+	Download,
+	Dumbbell,
+	Target,
+	TrendingUp,
+	Zap,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { toast } from "sonner";
 import {
 	Area,
 	AreaChart,
@@ -17,7 +23,9 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import {
 	Select,
 	SelectContent,
@@ -31,7 +39,6 @@ import {
 	StatCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { EmptyState } from "@/app/components/ui/empty-state";
 import { PHOENIX } from "@/lib/colors";
 import { downloadCSV } from "@/lib/export/csv";
 import {
@@ -525,9 +532,7 @@ export function AnalyticsMobile() {
 												stroke={PHOENIX.ashGray}
 												style={{ fontSize: "12px" }}
 												tickFormatter={(value) =>
-													value >= 1000
-														? `${value / 1000}k`
-														: `${value}`
+													value >= 1000 ? `${value / 1000}k` : `${value}`
 												}
 											/>
 											<Tooltip
@@ -558,8 +563,8 @@ export function AnalyticsMobile() {
 											Track your training trends
 										</p>
 										<p className="text-xs">
-											Complete a few workouts to see your volume and
-											strength trends here
+											Complete a few workouts to see your volume and strength
+											trends here
 										</p>
 									</div>
 								)}
@@ -569,12 +574,10 @@ export function AnalyticsMobile() {
 						{activeTab === "body" && (
 							<div className="text-center py-12 text-muted">
 								<Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p className="font-medium mb-1">
-									Body composition tracking
-								</p>
+								<p className="font-medium mb-1">Body composition tracking</p>
 								<p className="text-xs mb-4">
-									Body metrics will be available when connected to a
-									compatible tracker
+									Body metrics will be available when connected to a compatible
+									tracker
 								</p>
 								<Link
 									to="/integrations"

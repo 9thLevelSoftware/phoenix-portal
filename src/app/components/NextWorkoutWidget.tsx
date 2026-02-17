@@ -55,9 +55,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 				</div>
 				<div className="flex flex-col items-center justify-center py-6 text-center">
 					<Calendar className="w-10 h-10 text-secondary mb-3" />
-					<p className="text-muted-foreground">
-						Cycle schedule unavailable
-					</p>
+					<p className="text-muted-foreground">Cycle schedule unavailable</p>
 				</div>
 			</Card>
 		);
@@ -87,9 +85,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 				</div>
 				<div className="flex flex-col items-center justify-center py-6 text-center">
 					<Calendar className="w-10 h-10 text-secondary mb-3" />
-					<p className="text-muted-foreground">
-						Cycle schedule unavailable
-					</p>
+					<p className="text-muted-foreground">Cycle schedule unavailable</p>
 					<p className="text-sm text-muted mt-1">
 						The cycle may have ended or not started yet
 					</p>
@@ -107,9 +103,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 			>
 				<div className="flex items-center justify-between mb-4">
 					<h3 className="text-xl text-white">Today's Schedule</h3>
-					<Badge className="bg-success text-white border-0">
-						Rest Day
-					</Badge>
+					<Badge className="bg-success text-white border-0">Rest Day</Badge>
 				</div>
 				<div className="space-y-4">
 					<div className="flex items-center gap-3">
@@ -119,14 +113,14 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 						<div>
 							<h4 className="text-2xl text-success">Rest Day</h4>
 							<p className="text-muted-foreground">
-								Day {result.dayNumber} - Week {result.cycleWeek}{" "}
-								of {cycleDetail.duration_weeks}
+								Day {result.dayNumber} - Week {result.cycleWeek} of{" "}
+								{cycleDetail.duration_weeks}
 							</p>
 						</div>
 					</div>
 					<p className="text-sm text-muted-foreground">
-						Recovery is part of the process. Let your muscles rebuild
-						and come back stronger.
+						Recovery is part of the process. Let your muscles rebuild and come
+						back stronger.
 					</p>
 					<Button
 						className="w-full bg-gradient-to-r from-success/80 to-success hover:from-success hover:to-success/80 border-0 shadow-lg shadow-success/30"
@@ -150,9 +144,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 		>
 			<div className="flex items-center justify-between mb-4">
 				<h3 className="text-xl text-white">Today's Workout</h3>
-				<Badge className="bg-success text-white border-0">
-					Active Cycle
-				</Badge>
+				<Badge className="bg-success text-white border-0">Active Cycle</Badge>
 			</div>
 			<div className="space-y-4">
 				<div className="flex items-center gap-3">
@@ -160,19 +152,14 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 						<Dumbbell className="w-6 h-6 text-primary" />
 					</div>
 					<div>
-						<h4 className="text-2xl text-primary">
-							Day {result.dayNumber}
-						</h4>
+						<h4 className="text-2xl text-primary">Day {result.dayNumber}</h4>
 						<p className="text-muted-foreground">
-							Week {result.cycleWeek} of{" "}
-							{cycleDetail.duration_weeks}
+							Week {result.cycleWeek} of {cycleDetail.duration_weeks}
 						</p>
 					</div>
 				</div>
 				<div className="p-3 bg-background rounded-lg border border-secondary">
-					<p className="text-sm text-muted-foreground mb-1">
-						Routine
-					</p>
+					<p className="text-sm text-muted-foreground mb-1">Routine</p>
 					<p className="text-white font-semibold">
 						{result.routineId ? (
 							<RoutineName routineId={result.routineId} />

@@ -72,10 +72,7 @@ export function ResetPassword() {
 
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="space-y-2">
-						<Label
-							htmlFor="new-password"
-							className="text-secondary-foreground"
-						>
+						<Label htmlFor="new-password" className="text-secondary-foreground">
 							New Password
 						</Label>
 						<Input

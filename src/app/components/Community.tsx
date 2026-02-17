@@ -185,7 +185,10 @@ function CommunityDesktop() {
 								value={sort}
 								onValueChange={(v) => setSort(v as "hot" | "top" | "new")}
 							>
-								<SelectTrigger aria-label="Sort order" className="w-[120px] bg-surface-2 border-secondary text-white">
+								<SelectTrigger
+									aria-label="Sort order"
+									className="w-[120px] bg-surface-2 border-secondary text-white"
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent className="bg-surface-2 border-secondary">

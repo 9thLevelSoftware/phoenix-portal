@@ -66,11 +66,7 @@ export function useUpdateComment() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		mutationFn: async ({
-			commentId,
-			body,
-			createdAt,
-		}: UpdateCommentArgs) => {
+		mutationFn: async ({ commentId, body, createdAt }: UpdateCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to edit");
 
 			// Client-side check: 5-minute edit window

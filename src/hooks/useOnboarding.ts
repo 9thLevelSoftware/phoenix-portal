@@ -1,8 +1,4 @@
-import {
-	useMutation,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
@@ -41,8 +37,7 @@ export function useOnboarding() {
 	const hasExistingData = (workoutCount ?? 0) > 0;
 
 	// Decision tree
-	const needsOnboarding =
-		!isPending && onboarding === null && !hasExistingData;
+	const needsOnboarding = !isPending && onboarding === null && !hasExistingData;
 	const needsWhatsNew =
 		!isPending &&
 		((onboarding === null && hasExistingData) ||

@@ -17,6 +17,8 @@ const authedPages = [
 	{ name: "Routines", path: "/routines" },
 	{ name: "Profile", path: "/profile" },
 	{ name: "Recovery", path: "/recovery" },
+	{ name: "Goals", path: "/goals" },
+	{ name: "Compare", path: "/compare" },
 ];
 
 test.describe("WCAG Accessibility Audit - Public Pages", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeNextWorkout } from "./computeNextWorkout";
 import type { CycleDay } from "@/schemas/transforms";
+import { computeNextWorkout } from "./computeNextWorkout";
 
 const makeCycleDay = (
 	overrides: Partial<CycleDay> & { day_number: number; day_type: string },
@@ -98,30 +98,15 @@ describe("computeNextWorkout", () => {
 		expect(day1!.cycleWeek).toBe(1);
 
 		// Day 8 (index 7, daysSinceStart=7) = week 2
-		const day8 = computeNextWorkout(
-			days,
-			startDate,
-			4,
-			new Date(2026, 0, 12),
-		);
+		const day8 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 12));
 		expect(day8!.cycleWeek).toBe(2);
 
 		// Day 14 (daysSinceStart=13) = week 2
-		const day14 = computeNextWorkout(
-			days,
-			startDate,
-			4,
-			new Date(2026, 0, 18),
-		);
+		const day14 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 18));
 		expect(day14!.cycleWeek).toBe(2);
 
 		// Day 15 (daysSinceStart=14) = week 3
-		const day15 = computeNextWorkout(
-			days,
-			startDate,
-			4,
-			new Date(2026, 0, 19),
-		);
+		const day15 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 19));
 		expect(day15!.cycleWeek).toBe(3);
 	});
 });

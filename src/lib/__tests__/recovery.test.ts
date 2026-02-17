@@ -190,7 +190,7 @@ describe("computeReadinessScore", () => {
 		// 4 sessions in last 7 days (3 rest days)
 		for (let i = 0; i < 4; i++) {
 			const d = new Date(now);
-			d.setDate(d.getDate() - (i * 2));
+			d.setDate(d.getDate() - i * 2);
 			sessionsWithRest.push({ started_at: d, total_volume: 5000 });
 		}
 
@@ -270,8 +270,14 @@ describe("computeReadinessScore", () => {
 
 		// Check actual results across different scenarios
 		const scenarios: RecoveryInput[] = [
-			{ sessions: makeSessionsInWindow(42, 4, 5000), daysSinceFirstSession: 35 },
-			{ sessions: makeSessionsInWindow(42, 2, 2000), daysSinceFirstSession: 35 },
+			{
+				sessions: makeSessionsInWindow(42, 4, 5000),
+				daysSinceFirstSession: 35,
+			},
+			{
+				sessions: makeSessionsInWindow(42, 2, 2000),
+				daysSinceFirstSession: 35,
+			},
 			{ sessions: makeSessions(20, 42, 10000), daysSinceFirstSession: 35 },
 		];
 
