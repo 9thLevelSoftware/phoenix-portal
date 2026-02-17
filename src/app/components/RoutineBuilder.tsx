@@ -1,23 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { DragDropProvider } from '@dnd-kit/react';
+import { useSortable } from '@dnd-kit/react/sortable';
+import { move } from '@dnd-kit/helpers';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -74,22 +60,9 @@ export function RoutineBuilder() {
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setExercises((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
+  const handleDragEnd = (event: { canceled: boolean }) => {
+    if (!event.canceled) {
+      setExercises((items) => move(items, event as any));
       setHasUnsavedChanges(true);
     }
   };
@@ -181,28 +154,22 @@ export function RoutineBuilder() {
               </div>
             </div>
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
+            <DragDropProvider
               onDragEnd={handleDragEnd}
             >
-              <SortableContext
-                items={exercises.map((ex) => ex.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-3">
-                  {exercises.map((exercise) => (
-                    <SortableExerciseItem
-                      key={exercise.id}
-                      exercise={exercise}
-                      isSelected={selectedExercise === exercise.id}
-                      onSelect={() => setSelectedExercise(exercise.id)}
-                      onDelete={() => handleDeleteExercise(exercise.id)}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+              <div className="space-y-3">
+                {exercises.map((exercise, index) => (
+                  <SortableExerciseItem
+                    key={exercise.id}
+                    exercise={exercise}
+                    index={index}
+                    isSelected={selectedExercise === exercise.id}
+                    onSelect={() => setSelectedExercise(exercise.id)}
+                    onDelete={() => handleDeleteExercise(exercise.id)}
+                  />
+                ))}
+              </div>
+            </DragDropProvider>
 
             <Button
               onClick={() => setShowExercisePicker(true)}
@@ -266,24 +233,21 @@ export function RoutineBuilder() {
 
 function SortableExerciseItem({
   exercise,
+  index,
   isSelected,
   onSelect,
   onDelete,
 }: {
   exercise: Exercise;
+  index: number;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { ref, handleRef, isDragging } = useSortable({
     id: exercise.id,
+    index,
   });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
 
   const getMuscleGroupColor = (group: string) => {
     const colors: Record<string, string> = {
@@ -297,7 +261,7 @@ function SortableExerciseItem({
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }}>
       <Card
         onClick={onSelect}
         className={`p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all ${
@@ -306,8 +270,7 @@ function SortableExerciseItem({
       >
         <div className="flex items-center gap-3">
           <button
-            {...attributes}
-            {...listeners}
+            ref={handleRef}
             className="cursor-grab active:cursor-grabbing text-[#6B7280] hover:text-[#9CA3AF]"
           >
             <GripVertical className="w-5 h-5" />
