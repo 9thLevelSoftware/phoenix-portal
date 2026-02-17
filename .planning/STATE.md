@@ -115,6 +115,8 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 13, Plan 1]: Only 1 actual Biome error remained (Recovery.tsx import sorting) -- prior formatting was already clean; plan estimate of 89 errors was stale.
 - [Phase 13, Plan 1]: Deleted mock SyncStatus.tsx; real implementation lives at integrations/SyncStatus.tsx and remains in use by Integrations page.
 - [Phase 13, Plan 1]: navigateFallbackDenylist [/^\/api\//] prevents service worker from serving HTML shell for API routes.
+- [Phase 13, Plan 2]: FeatureHint placed on desktop Dialog only in CommunityDetailDrawer (not mobile Drawer) to avoid Radix Tooltip layout issues.
+- [Phase 13, Plan 2]: One FeatureHint per page to prevent tooltip stacking (defaultOpen conflict).
 
 ### Pending Todos
 
@@ -135,5 +137,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 13-01-PLAN.md (Biome zero errors, widget integration, PWA fallback) -- ALL PHASES COMPLETE
+Stopped at: Completed 13-02-PLAN.md (FeatureHint deployed to 4 pages) -- ALL PHASES COMPLETE
 Resume file: N/A -- all 13 phases and 66 plans are complete
