@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
@@ -117,7 +118,7 @@ export function useShareContent() {
 		},
 
 		onError: (error) => {
-			console.error("Failed to share content:", error);
+			toast.error(`Failed to share content: ${error.message}`);
 		},
 	});
 }
