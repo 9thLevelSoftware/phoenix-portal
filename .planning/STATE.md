@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 9 of 12 (Foundation & Toolchain)
-Plan: 2 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-17 — Plan 09-02 complete (Biome 2.4 linter/formatter + TS strict + bundle visualizer)
+Last activity: 2026-02-17 — Plan 09-03 complete (Design token layer + dark: variant cleanup)
 
-Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 43/58 total plans)
+Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 44/58 total plans)
 
 ## Performance Metrics
 
@@ -27,7 +27,7 @@ Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 43/58 t
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-foundation-toolchain | 2/5 | 13 min | 6.5 min |
+| 09-foundation-toolchain | 3/5 | 20 min | 6.7 min |
 
 *Updated after each plan completion*
 
@@ -49,6 +49,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 9, Plan 2]: Downgraded 12 pre-existing lint rules to warn level in biome.json instead of 148 biome-ignore comments. Rules can be promoted to error as code is cleaned up.
 - [Phase 9, Plan 2]: Biome formatting standard: tabs, double quotes, semicolons, 80-char width. All future code must match.
 - [Phase 9, Plan 2]: cross-env required for analyze script due to Windows ANALYZE=true env var syntax.
+- [Phase 9, Plan 3]: dark: variant values promoted to base styles (not deleted) since app is dark-only. bg-input/30 is the unified dark input background.
+- [Phase 9, Plan 3]: Chart THEMES dark selector set to empty string to preserve API contract for theme consumers.
+- [Phase 9, Plan 3]: Dual-token pattern established: CSS variables for Tailwind/inline, hex constants (colors.ts) for SVG/motion.
 
 ### Pending Todos
 
@@ -69,5 +72,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 09-02-PLAN.md (Biome 2.4 + TS strict + bundle visualizer)
-Resume file: .planning/phases/09-foundation-toolchain/09-03-PLAN.md
+Stopped at: Completed 09-03-PLAN.md (Design token layer + dark: variant cleanup)
+Resume file: .planning/phases/09-foundation-toolchain/09-04-PLAN.md
