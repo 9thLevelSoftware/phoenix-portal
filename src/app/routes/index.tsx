@@ -15,6 +15,11 @@ const PrivacyPolicy = lazy(() =>
 		default: m.PrivacyPolicy,
 	})),
 );
+const ResetPassword = lazy(() =>
+	import("@/app/components/ResetPassword").then((m) => ({
+		default: m.ResetPassword,
+	})),
+);
 const Dashboard = lazy(() =>
 	import("@/app/components/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
@@ -102,6 +107,10 @@ export function AppRoutes() {
 				{/* Public routes */}
 				<Route path="/" element={<LandingPage />} />
 				<Route path="/privacy" element={<PrivacyPolicy />} />
+				<Route
+					path="/auth/reset-password"
+					element={<ResetPassword />}
+				/>
 
 				{/* Protected routes */}
 				<Route element={<ProtectedRoute />}>

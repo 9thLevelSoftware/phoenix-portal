@@ -21,6 +21,12 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogTitle,
+} from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
@@ -59,6 +65,35 @@ type SignUpFormData = z.infer<typeof signUpSchema>;
 export function LandingPage() {
 	const [showAuthDialog, setShowAuthDialog] = useState(false);
 	const [authLoading, setAuthLoading] = useState(false);
+	const [showForgotPassword, setShowForgotPassword] = useState(false);
+	const [resetEmail, setResetEmail] = useState("");
+
+	const handleResetPassword = async () => {
+		if (!resetEmail) {
+			toast.error("Please enter your email address");
+			return;
+		}
+		setAuthLoading(true);
+		try {
+			const { error } = await supabase.auth.resetPasswordForEmail(
+				resetEmail,
+				{
+					redirectTo: `${window.location.origin}/auth/reset-password`,
+				},
+			);
+			if (error) {
+				toast.error(error.message);
+			} else {
+				toast.success("Password reset link sent. Check your email.");
+				setShowForgotPassword(false);
+				setResetEmail("");
+			}
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setAuthLoading(false);
+		}
+	};
 
 	const signInForm = useForm<SignInFormData>({
 		resolver: zodResolver(signInSchema),
@@ -212,30 +247,84 @@ export function LandingPage() {
 		},
 	];
 
-	// Auth dialog/modal overlay
-	const authDialog = showAuthDialog && (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-			<motion.div
-				initial={{ opacity: 0, scale: 0.95 }}
-				animate={{ opacity: 1, scale: 1 }}
-				transition={{ duration: 0.2 }}
-			>
-				<Card className="w-full max-w-md p-6 bg-surface-2 border-secondary relative">
-					<button
-						onClick={() => setShowAuthDialog(false)}
-						className="absolute top-4 right-4 text-muted-foreground hover:text-white transition-colors text-xl leading-none"
-						aria-label="Close"
-					>
-						&times;
-					</button>
+	// Auth dialog using Radix Dialog for accessibility (focus trap, ARIA, keyboard nav)
+	const authDialog = (
+		<Dialog
+			open={showAuthDialog}
+			onOpenChange={(open) => {
+				setShowAuthDialog(open);
+				if (!open) {
+					setShowForgotPassword(false);
+					setResetEmail("");
+				}
+			}}
+		>
+			<DialogContent className="bg-surface-2 border-secondary max-w-md p-6">
+				<DialogTitle className="sr-only">
+					Sign in to Phoenix Portal
+				</DialogTitle>
+				<DialogDescription className="sr-only">
+					Enter your credentials to access the dashboard
+				</DialogDescription>
 
-					<div className="flex items-center justify-center gap-2 mb-6">
-						<PhoenixLogo size="sm" animated={false} />
-						<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
-							Project Phoenix
-						</span>
+				<div className="flex items-center justify-center gap-2 mb-6">
+					<PhoenixLogo size="sm" animated={false} />
+					<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
+						Project Phoenix
+					</span>
+				</div>
+
+				{showForgotPassword ? (
+					<div className="space-y-4">
+						<div className="text-center mb-4">
+							<h3 className="text-lg font-semibold text-white mb-1">
+								Reset your password
+							</h3>
+							<p className="text-sm text-muted-foreground">
+								Enter your email and we will send you a reset link
+							</p>
+						</div>
+						<div className="space-y-2">
+							<Label
+								htmlFor="reset-email"
+								className="text-secondary-foreground"
+							>
+								Email
+							</Label>
+							<Input
+								id="reset-email"
+								type="email"
+								placeholder="you@example.com"
+								value={resetEmail}
+								onChange={(e) => setResetEmail(e.target.value)}
+								className="bg-background border-secondary text-white placeholder:text-muted"
+							/>
+						</div>
+						<Button
+							type="button"
+							disabled={authLoading}
+							onClick={handleResetPassword}
+							className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						>
+							{authLoading ? (
+								<Loader2 className="w-4 h-4 animate-spin mr-2" />
+							) : (
+								<Mail className="w-4 h-4 mr-2" />
+							)}
+							Send Reset Link
+						</Button>
+						<button
+							type="button"
+							onClick={() => {
+								setShowForgotPassword(false);
+								setResetEmail("");
+							}}
+							className="w-full text-sm text-muted-foreground hover:text-white transition-colors"
+						>
+							Back to sign in
+						</button>
 					</div>
-
+				) : (
 					<Tabs defaultValue="signin" className="w-full">
 						<TabsList className="w-full mb-4">
 							<TabsTrigger value="signin" className="flex-1">
@@ -290,6 +379,15 @@ export function LandingPage() {
 											{signInForm.formState.errors.password.message}
 										</p>
 									)}
+								</div>
+								<div className="flex justify-end">
+									<button
+										type="button"
+										onClick={() => setShowForgotPassword(true)}
+										className="text-sm text-primary hover:text-accent transition-colors"
+									>
+										Forgot password?
+									</button>
 								</div>
 								<Button
 									type="submit"
@@ -422,9 +520,9 @@ export function LandingPage() {
 							</Button>
 						</div>
 					</Tabs>
-				</Card>
-			</motion.div>
-		</div>
+				)}
+			</DialogContent>
+		</Dialog>
 	);
 
 	return (
