@@ -9,6 +9,7 @@ import {
 	Clock,
 	Dumbbell,
 	Flame,
+	Printer,
 	Share2,
 	TrendingUp,
 } from "lucide-react";
@@ -20,8 +21,10 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
+import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { useSubscription } from "@/hooks/useSubscription";
+import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -169,22 +172,59 @@ export function SessionDetail() {
 
 	return (
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
+			{/* Print-only report header (visible only in print) */}
+			<div className="print-only mb-6 border-b border-gray-300 pb-4">
+				<h1 className="text-2xl font-bold text-black">
+					{session.name}
+				</h1>
+				<div className="flex gap-6 text-sm text-gray-600 mt-2">
+					<span>Date: {session.started_at.toLocaleDateString()}</span>
+					{session.routine_name && (
+						<span>Routine: {session.routine_name}</span>
+					)}
+					<span>Duration: {session.duration_seconds} min</span>
+					<span>
+						Volume: {session.total_volume.toLocaleString()} kg
+					</span>
+				</div>
+			</div>
+
 			{/* Header */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+			<div
+				className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl"
+				data-print-hide
+			>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => navigate("/history")}
-							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
-						>
-							<ArrowLeft className="w-4 h-4 mr-2" />
-							Back to History
-						</Button>
+						<div className="flex items-center gap-2 mb-4">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => navigate("/history")}
+								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary print:hidden"
+							>
+								<ArrowLeft className="w-4 h-4 mr-2" />
+								Back to History
+							</Button>
+							<SubscriptionGate
+								requiredTier="PHOENIX"
+								fallback={null}
+							>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => window.print()}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary print:hidden"
+									data-print-hide
+								>
+									<Printer className="w-4 h-4 mr-2" />
+									Print Report
+								</Button>
+							</SubscriptionGate>
+						</div>
 
 						<h1 className="text-3xl sm:text-4xl mb-2">
 							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -297,7 +337,7 @@ export function SessionDetail() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.3 + index * 0.05 }}
 							>
-								<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
+								<Card className="exercise-card bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
 									{/* Exercise Header */}
 									<button
 										onClick={() => toggleExercise(exercise.id)}
@@ -419,7 +459,7 @@ export function SessionDetail() {
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.4 }}
-					className="flex flex-col sm:flex-row gap-3"
+					className="flex flex-col sm:flex-row gap-3 print:hidden"
 				>
 					{isPremium ? (
 						<Button
@@ -453,6 +493,7 @@ export function SessionDetail() {
 				</motion.div>
 
 				{/* Comparison Session Picker */}
+				<div className="print:hidden">
 				<ComparisonSessionPicker
 					open={pickerOpen}
 					onClose={() => setPickerOpen(false)}
@@ -463,12 +504,14 @@ export function SessionDetail() {
 						)
 					}
 				/>
+				</div>
 
 				{/* Notes Section */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.5 }}
+					className="print:hidden"
 				>
 					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4">
 						<h3 className="text-lg font-semibold text-white mb-3">
@@ -489,6 +532,19 @@ export function SessionDetail() {
 						</Button>
 					</Card>
 				</motion.div>
+
+				{/* Print-only branding footer */}
+				<div className="print-only mt-8 border-t border-gray-300 pt-4 text-center text-sm text-gray-500">
+					<img
+						src={phoenixLogo}
+						alt="Phoenix Portal"
+						className="h-8 mx-auto mb-2"
+					/>
+					<p>
+						Generated by Phoenix Portal &mdash;{" "}
+						{new Date().toLocaleDateString()}
+					</p>
+				</div>
 			</div>
 		</div>
 	);
