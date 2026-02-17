@@ -2,15 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import type { CommunityFeedItem } from "@/schemas/community";
 
-// Module-level mute ref: realtime hook checks this to skip invalidation
-// after an optimistic vote update (prevents flicker from double-update)
-export const voteMutedRef: { current: number } = { current: 0 };
-
-const MUTE_WINDOW_MS = 3000;
-
-// ---------- useVote ----------
+// ---------- useVote (confirmed pattern) ----------
 
 interface VoteMutationArgs {
 	itemId: string;
@@ -54,77 +47,17 @@ export function useVote() {
 			}
 		},
 
-		onMutate: async ({ itemId, itemType }: VoteMutationArgs) => {
-			// Set mute window so realtime hook skips invalidation
-			voteMutedRef.current = Date.now() + MUTE_WINDOW_MS;
-
-			// Cancel outgoing feed queries
-			await queryClient.cancelQueries({ queryKey: queryKeys.community.all });
-
-			// Snapshot current feed data
-			const feedQueryKey = queryKeys.community.all;
-			const previousData = queryClient.getQueriesData<{
-				pages: CommunityFeedItem[][];
-				pageParams: number[];
-			}>({ queryKey: feedQueryKey });
-
-			// Determine if user already voted (check votes set in cache)
-			const votesKey = user ? queryKeys.community.votes(user.id) : undefined;
-			const currentVotes = votesKey
-				? queryClient.getQueryData<Set<string>>(votesKey)
-				: undefined;
-			const isCurrentlyVoted = currentVotes?.has(itemId) ?? false;
-			const delta = isCurrentlyVoted ? -1 : 1;
-
-			// Optimistically update feed items across all feed query caches
-			queryClient.setQueriesData<{
-				pages: CommunityFeedItem[][];
-				pageParams: number[];
-			}>({ queryKey: feedQueryKey }, (old) => {
-				if (!old) return old;
-				return {
-					...old,
-					pages: old.pages.map((page) =>
-						page.map((item) => {
-							if (item.id === itemId) {
-								return {
-									...item,
-									vote_count: Math.max(0, item.vote_count + delta),
-								};
-							}
-							return item;
-						}),
-					),
-				};
+		onSuccess: () => {
+			// Confirmed pattern: invalidate to refetch fresh data from server
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.community.all,
 			});
-
-			// Optimistically update the user's votes set
-			if (votesKey) {
-				queryClient.setQueryData<Set<string>>(votesKey, (old) => {
-					const next = new Set(old);
-					if (isCurrentlyVoted) {
-						next.delete(itemId);
-					} else {
-						next.add(itemId);
-					}
-					return next;
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.votes(user.id),
 				});
 			}
-
-			return { previousData, mutedUntil: voteMutedRef.current };
 		},
-
-		onError: (_error, _variables, context) => {
-			// Rollback to snapshot
-			if (context?.previousData) {
-				for (const [key, data] of context.previousData) {
-					queryClient.setQueryData(key, data);
-				}
-			}
-		},
-
-		// onSettled: intentionally omitted — let realtime handle eventual consistency
-		// This prevents double-update flicker (pitfall #5)
 	});
 }
 

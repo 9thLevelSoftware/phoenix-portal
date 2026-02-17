@@ -7,16 +7,28 @@ export function volumeTrendOptions(userId: string, period: string = "4w") {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(userId, `volume-${period}`),
 		queryFn: async () => {
-			const daysBack = period === "4w" ? 28 : period === "12w" ? 84 : 7;
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
-
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, total_volume")
 				.eq("user_id", userId)
-				.gte("started_at", since.toISOString())
 				.order("started_at", { ascending: true });
+
+			// Apply date filter unless "all" (fetch everything)
+			if (period !== "all") {
+				const daysBack =
+					period === "52w"
+						? 365
+						: period === "12w"
+							? 84
+							: period === "4w"
+								? 28
+								: 7;
+				const since = new Date();
+				since.setDate(since.getDate() - daysBack);
+				query = query.gte("started_at", since.toISOString());
+			}
+
+			const { data, error } = await query;
 			if (error) throw error;
 			return data;
 		},

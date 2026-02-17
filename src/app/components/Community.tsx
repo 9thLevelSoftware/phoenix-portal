@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { communityFeedOptions, userVotesOptions } from "@/queries/community";
 import type { CommunityFeedItem } from "@/schemas/community";
@@ -104,16 +105,23 @@ function CommunityDesktop() {
 		return () => observer.disconnect();
 	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+	const voteMutation = useVote();
+
 	const allItems: CommunityFeedItem[] = data?.pages.flat() ?? [];
 
 	const selectedItem = selectedItemId
 		? (allItems.find((item) => item.id === selectedItemId) ?? null)
 		: null;
 
-	const handleVote = useCallback((id: string) => {
-		// Optimistic vote will be handled in a future plan (05-03)
-		console.log("Vote:", id);
-	}, []);
+	const handleVote = useCallback(
+		(id: string) => {
+			voteMutation.mutate({
+				itemId: id,
+				itemType: activeTab === "routines" ? "routine" : "cycle",
+			});
+		},
+		[voteMutation, activeTab],
+	);
 
 	return (
 		<div className="min-h-screen bg-background pb-20 md:pb-8">
