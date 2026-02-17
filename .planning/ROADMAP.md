@@ -71,13 +71,13 @@ Plans:
   4. On a mobile device, DashboardMobile renders instead of the desktop layout
   5. The auth modal can be navigated entirely by keyboard, and a user can complete a password reset flow via email
 
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 10-01: Dead buttons, RoutineBuilder/CycleBuilder save mutations, cycle_days table + started_at column
-- [ ] 10-02: Dashboard streak, Profile stats/avatar/settings, Challenges wiring, Community vote persistence
-- [ ] 10-03: WorkoutHistory date filter, Analytics time periods, Biomechanics state fix, AnalyticsMobile tabs, DashboardMobile rendering
-- [ ] 10-04: Auth modal accessibility + password reset, ExercisePicker from Supabase, routine editing, empty states
+- [ ] 10-01: DB migrations (cycle_days, challenges, routine_exercises) + RoutineBuilder/CycleBuilder save mutations + unsaved changes dialog + routine editing + ProgressionRules/PreviewModal
+- [ ] 10-02: Dashboard streak computation + DashboardMobile rendering + Profile real data/settings persistence + mock data removal
+- [ ] 10-03: Challenges wiring to Supabase + Community vote persistence + dead button triage + WorkoutHistory date filter + Analytics time period fix + Biomechanics setState fix + AnalyticsMobile tabs
+- [ ] 10-04: Auth modal accessibility (Radix Dialog) + password reset flow + ExercisePicker from Supabase + empty states across all features
 
 ---
 
@@ -144,7 +144,7 @@ Plans:
 | 6. Session Replay & Advanced VBT | v1.0 | 4/4 | Complete | 2026-02-16 |
 | 7. Integrations & Data Export | v1.0 | 7/7 | Complete | 2026-02-16 |
 | 8. Tech Debt Cleanup | v1.0 | 2/2 | Complete | 2026-02-16 |
-| 9. Foundation & Toolchain | v1.1 | 0/5 | Not started | - |
+| 9. Foundation & Toolchain | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 10. Wire-Up & Mock Purge | v1.1 | 0/4 | Not started | - |
 | 11. New Features | v1.1 | 0/5 | Not started | - |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 0/4 | Not started | - |

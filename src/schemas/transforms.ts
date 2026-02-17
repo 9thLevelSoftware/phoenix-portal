@@ -149,3 +149,109 @@ export const analyticsSummarySchema = z.object({
 });
 
 export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
+
+// --- Routine Exercise ---
+
+export const routineExerciseSchema = z.object({
+	id: z.string().uuid(),
+	routine_id: z.string().uuid(),
+	name: z.string(),
+	muscle_group: z.string(),
+	sets: z.number(),
+	reps: z.number(),
+	weight: z.number(),
+	rest_seconds: z.number(),
+	mode: z.string(),
+	order_index: z.number(),
+	created_at: z.string().transform((s) => new Date(s)),
+});
+
+export const routineExerciseListSchema = z.array(routineExerciseSchema);
+
+export type RoutineExercise = z.infer<typeof routineExerciseSchema>;
+
+// --- Routine Detail (routine + exercises) ---
+
+export const routineDetailSchema = routineSchema.extend({
+	routine_exercises: z.array(routineExerciseSchema),
+});
+
+export type RoutineDetail = z.infer<typeof routineDetailSchema>;
+
+// --- Cycle Day ---
+
+export const cycleDaySchema = z.object({
+	id: z.string().uuid(),
+	cycle_id: z.string().uuid(),
+	day_number: z.number(),
+	day_type: z.string(),
+	routine_id: z.string().uuid().nullable(),
+	weight_adjustment: z.number(),
+	rep_modifier: z.number(),
+	rest_override: z.number().nullable(),
+	notes: z.string().nullable(),
+	rest_type: z.string().nullable(),
+});
+
+export type CycleDay = z.infer<typeof cycleDaySchema>;
+
+// --- Cycle Detail (cycle + days) ---
+
+export const cycleDetailSchema = trainingCycleSchema.extend({
+	cycle_days: z.array(cycleDaySchema),
+	started_at: z
+		.string()
+		.nullable()
+		.optional()
+		.transform((s) => (s ? new Date(s) : null)),
+	progression_settings: z.any().nullable().optional(),
+	deload_settings: z.any().nullable().optional(),
+});
+
+export type CycleDetail = z.infer<typeof cycleDetailSchema>;
+
+// --- Challenge ---
+
+export const challengeSchema = z.object({
+	id: z.string().uuid(),
+	name: z.string(),
+	description: z.string().nullable(),
+	challenge_type: z.enum(["volume", "frequency", "streak", "pr_count"]),
+	target_value: z.number(),
+	target_unit: z.string().nullable(),
+	start_date: z
+		.string()
+		.nullable()
+		.transform((s) => (s ? new Date(s) : null)),
+	end_date: z
+		.string()
+		.nullable()
+		.transform((s) => (s ? new Date(s) : null)),
+	difficulty: z.string(),
+	prize: z.string().nullable(),
+	created_at: z.string().transform((s) => new Date(s)),
+	is_active: z.boolean(),
+});
+
+export const challengeListSchema = z.array(challengeSchema);
+
+export type Challenge = z.infer<typeof challengeSchema>;
+
+// --- Challenge Participant ---
+
+export const challengeParticipantSchema = z.object({
+	id: z.string().uuid(),
+	challenge_id: z.string().uuid(),
+	user_id: z.string().uuid(),
+	joined_at: z.string().transform((s) => new Date(s)),
+	completed_at: z
+		.string()
+		.nullable()
+		.transform((s) => (s ? new Date(s) : null)),
+});
+
+export const challengeParticipantListSchema = z.array(
+	challengeParticipantSchema,
+);
+
+export type ChallengeParticipant = z.infer<typeof challengeParticipantSchema>;

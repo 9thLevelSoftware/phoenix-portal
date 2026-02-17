@@ -88,4 +88,17 @@ export const queryKeys = {
 		votes: (userId: string) =>
 			[...queryKeys.community.all, "votes", userId] as const,
 	},
+	challenges: {
+		all: ["challenges"] as const,
+		list: () => [...queryKeys.challenges.all, "list"] as const,
+		detail: (id: string) => [...queryKeys.challenges.all, id] as const,
+	},
+	profile: {
+		all: ["profile"] as const,
+		byUser: (userId: string) => [...queryKeys.profile.all, userId] as const,
+		stats: (userId: string) =>
+			[...queryKeys.profile.all, "stats", userId] as const,
+		topExercises: (userId: string) =>
+			[...queryKeys.profile.all, "top-exercises", userId] as const,
+	},
 } as const;
