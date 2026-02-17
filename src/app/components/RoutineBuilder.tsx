@@ -1,23 +1,36 @@
 import { move } from "@dnd-kit/helpers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
+import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowLeft,
 	Dumbbell,
 	Edit,
 	Eye,
 	GripVertical,
+	Loader2,
 	Plus,
 	Save,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
+import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
+import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
+import { useAuth } from "@/providers/AuthProvider";
+import { routineDetailOptions } from "@/queries/routines";
 
 interface Exercise {
 	id: string;
@@ -33,32 +46,45 @@ interface Exercise {
 export function RoutineBuilder() {
 	const { routineId } = useParams<{ routineId: string }>();
 	const navigate = useNavigate();
+	const { user } = useAuth();
+	const saveMutation = useSaveRoutine();
+	const updateMutation = useUpdateRoutine();
+	const isEditing = !!routineId;
+
+	// Fetch existing routine for editing
+	const { data: existingRoutine, isLoading: isLoadingRoutine } = useQuery({
+		...routineDetailOptions(routineId ?? ""),
+		enabled: !!routineId,
+	});
+
 	const [routineName, setRoutineName] = useState("Untitled Routine");
-	const [exercises, setExercises] = useState<Exercise[]>([
-		{
-			id: "1",
-			name: "Bench Press",
-			muscleGroup: "Chest",
-			sets: 3,
-			reps: 10,
-			weight: 80,
-			rest: 90,
-			mode: "Old School",
-		},
-		{
-			id: "2",
-			name: "Incline Dumbbell Press",
-			muscleGroup: "Chest",
-			sets: 3,
-			reps: 12,
-			weight: 35,
-			rest: 60,
-			mode: "Pump",
-		},
-	]);
-	const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+	const [exercises, setExercises] = useState<Exercise[]>([]);
+	const [selectedExercise, setSelectedExercise] = useState<string | null>(
+		null,
+	);
 	const [showExercisePicker, setShowExercisePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [showPreview, setShowPreview] = useState(false);
+
+	// Populate form state from existing routine
+	useEffect(() => {
+		if (existingRoutine) {
+			setRoutineName(existingRoutine.name);
+			setExercises(
+				existingRoutine.routine_exercises.map((ex) => ({
+					id: ex.id,
+					name: ex.name,
+					muscleGroup: ex.muscle_group,
+					sets: ex.sets,
+					reps: ex.reps,
+					weight: ex.weight,
+					rest: ex.rest_seconds,
+					mode: ex.mode,
+				})),
+			);
+		}
+	}, [existingRoutine]);
 
 	const handleDragEnd = (event: { canceled: boolean }) => {
 		if (!event.canceled) {
@@ -75,15 +101,61 @@ export function RoutineBuilder() {
 		setHasUnsavedChanges(true);
 	};
 
+	const buildExercisePayload = () =>
+		exercises.map((ex, i) => ({
+			name: ex.name,
+			muscle_group: ex.muscleGroup,
+			sets: ex.sets,
+			reps: ex.reps,
+			weight: ex.weight,
+			rest_seconds: ex.rest,
+			mode: ex.mode,
+			order_index: i,
+		}));
+
 	const handleSave = () => {
-		console.log("Saving routine:", { name: routineName, exercises });
-		setHasUnsavedChanges(false);
-		navigate("/routines");
+		const payload = {
+			name: routineName,
+			description: "",
+			exercises: buildExercisePayload(),
+		};
+
+		if (isEditing && routineId) {
+			updateMutation.mutate(
+				{ ...payload, routineId },
+				{ onSuccess: () => setHasUnsavedChanges(false) },
+			);
+		} else {
+			saveMutation.mutate(payload, {
+				onSuccess: () => setHasUnsavedChanges(false),
+			});
+		}
 	};
+
+	const handleBackClick = () => {
+		if (hasUnsavedChanges) {
+			setShowUnsavedDialog(true);
+		} else {
+			navigate("/routines");
+		}
+	};
+
+	const isSaving = saveMutation.isPending || updateMutation.isPending;
 
 	const totalDuration = exercises.reduce((sum, ex) => {
 		return sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest) / 60;
 	}, 0);
+
+	if (isEditing && isLoadingRoutine) {
+		return (
+			<div className="min-h-screen bg-background flex items-center justify-center">
+				<div className="flex flex-col items-center gap-4">
+					<Loader2 className="w-8 h-8 text-primary animate-spin" />
+					<p className="text-muted-foreground">Loading routine...</p>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
@@ -94,7 +166,7 @@ export function RoutineBuilder() {
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => navigate("/routines")}
+							onClick={handleBackClick}
 							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
@@ -124,6 +196,7 @@ export function RoutineBuilder() {
 							<Button
 								variant="outline"
 								size="sm"
+								onClick={() => setShowPreview(true)}
 								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 							>
 								<Eye className="w-4 h-4 mr-2" />
@@ -132,10 +205,15 @@ export function RoutineBuilder() {
 							<Button
 								size="sm"
 								onClick={handleSave}
+								disabled={isSaving}
 								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 							>
-								<Save className="w-4 h-4 mr-2" />
-								Save Routine
+								{isSaving ? (
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+								) : (
+									<Save className="w-4 h-4 mr-2" />
+								)}
+								{isSaving ? "Saving..." : "Save Routine"}
 							</Button>
 						</div>
 					</div>
@@ -228,6 +306,68 @@ export function RoutineBuilder() {
 					/>
 				)}
 			</AnimatePresence>
+
+			{/* Unsaved Changes Dialog */}
+			<UnsavedChangesDialog
+				open={showUnsavedDialog}
+				onSave={() => {
+					setShowUnsavedDialog(false);
+					handleSave();
+				}}
+				onDiscard={() => {
+					setShowUnsavedDialog(false);
+					navigate("/routines");
+				}}
+				onCancel={() => setShowUnsavedDialog(false)}
+			/>
+
+			{/* Preview Dialog */}
+			<Dialog open={showPreview} onOpenChange={setShowPreview}>
+				<DialogContent className="bg-surface-2 border-secondary">
+					<DialogHeader>
+						<DialogTitle className="text-white">{routineName}</DialogTitle>
+						<DialogDescription>Routine summary</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="p-3 bg-background rounded-lg border border-secondary">
+								<div className="text-sm text-muted-foreground">Exercises</div>
+								<div className="text-2xl font-bold text-white">
+									{exercises.length}
+								</div>
+							</div>
+							<div className="p-3 bg-background rounded-lg border border-secondary">
+								<div className="text-sm text-muted-foreground">
+									Est. Duration
+								</div>
+								<div className="text-2xl font-bold text-white">
+									~{Math.round(totalDuration)} min
+								</div>
+							</div>
+						</div>
+						<div className="space-y-2">
+							{exercises.map((ex) => (
+								<div
+									key={ex.id}
+									className="flex items-center justify-between p-2 bg-background rounded-lg border border-secondary"
+								>
+									<div>
+										<div className="font-medium text-white text-sm">
+											{ex.name}
+										</div>
+										<div className="text-xs text-muted-foreground">
+											{ex.muscleGroup}
+										</div>
+									</div>
+									<div className="text-sm text-muted-foreground">
+										{ex.sets}x{ex.reps} @ {ex.weight}kg
+									</div>
+								</div>
+							))}
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
