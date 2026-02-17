@@ -2,23 +2,27 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Award,
 	Bell,
+	Calendar,
 	ChevronRight,
 	Clock,
 	Dumbbell,
-	Eye,
 	Flame,
 	Target,
 	TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
+import { Link } from "react-router";
+import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useStreak } from "@/hooks/useStreak";
 import { PHOENIX } from "@/lib/colors";
+import { cycleListOptions } from "@/queries/cycles";
 import { dashboardStatsOptions, workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 
@@ -46,6 +50,10 @@ export function DashboardMobile() {
 	const { data: weeklyStats, isPending: statsLoading } = useQuery(
 		dashboardStatsOptions(user?.id),
 	);
+	const { data: cycles } = useQuery(cycleListOptions(user?.id ?? ""));
+
+	const streak = useStreak(workouts);
+	const activeCycle = cycles?.find((c) => c.status === "active");
 
 	const recentWorkouts = workouts?.slice(0, 3) ?? [];
 
@@ -83,7 +91,12 @@ export function DashboardMobile() {
 						<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
 						<p className="text-sm text-muted-foreground">Let's crush today</p>
 					</div>
-					<button className="relative p-2 hover:bg-surface-2 rounded-full transition-colors">
+					<button
+						className="relative p-2 hover:bg-surface-2 rounded-full transition-colors"
+						onClick={() =>
+							toast("Notifications coming in a future update")
+						}
+					>
 						<Bell className="w-6 h-6 text-secondary-foreground" />
 						<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
 					</button>
@@ -133,11 +146,18 @@ export function DashboardMobile() {
 								/>
 							</motion.div>
 							<div className="flex-1">
-								<div className="text-4xl font-bold text-white mb-1">7 Days</div>
-								<div className="text-sm text-secondary-foreground">
-									Keep the fire burning!
+								<div className="text-4xl font-bold text-white mb-1">
+									{streak} {streak === 1 ? "Day" : "Days"}
 								</div>
-								<Progress value={70} className="h-2 mt-2 bg-surface-2" />
+								<div className="text-sm text-secondary-foreground">
+									{streak > 0
+										? "Keep the fire burning!"
+										: "Start your streak today!"}
+								</div>
+								<Progress
+									value={Math.min(streak * 10, 100)}
+									className="h-2 mt-2 bg-surface-2"
+								/>
 							</div>
 						</div>
 					</Card>
@@ -150,34 +170,67 @@ export function DashboardMobile() {
 					transition={{ delay: 0.2 }}
 				>
 					<h2 className="text-lg font-semibold text-white mb-3">
-						Today's Workout
+						Scheduled Workout
 					</h2>
 					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-						<div className="flex items-start justify-between mb-4">
-							<div className="flex-1">
-								<h3 className="text-xl font-semibold text-white mb-2">
-									Push Day A
-								</h3>
-								<div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-									<div className="flex items-center gap-1">
-										<Dumbbell className="w-4 h-4" />
-										<span>6 exercises</span>
+						{activeCycle ? (
+							<>
+								<div className="flex items-start justify-between mb-4">
+									<div className="flex-1">
+										<h3 className="text-xl font-semibold text-white mb-2">
+											{activeCycle.name}
+										</h3>
+										<div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+											<div className="flex items-center gap-1">
+												<Dumbbell className="w-4 h-4" />
+												<span>
+													{activeCycle.workout_days} workout days
+												</span>
+											</div>
+											<div className="flex items-center gap-1">
+												<Clock className="w-4 h-4" />
+												<span>
+													Week {activeCycle.current_week}/
+													{activeCycle.duration_weeks}
+												</span>
+											</div>
+										</div>
 									</div>
-									<div className="flex items-center gap-1">
-										<Clock className="w-4 h-4" />
-										<span>~60 min</span>
-									</div>
+									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
+										Active
+									</Badge>
 								</div>
-							</div>
-							<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
-								Ready
-							</Badge>
-						</div>
 
-						<Button className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 h-12">
-							<Eye className="w-5 h-5 mr-2" />
-							View Routine Details
-						</Button>
+								<Button
+									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 h-12"
+									asChild
+								>
+									<Link to={`/cycles/${activeCycle.id}`}>
+										<Calendar className="w-5 h-5 mr-2" />
+										View Cycle Details
+									</Link>
+								</Button>
+							</>
+						) : (
+							<div className="flex flex-col items-center justify-center py-6 text-center">
+								<Calendar className="w-10 h-10 text-secondary mb-3" />
+								<p className="text-muted-foreground mb-1">
+									No scheduled workout
+								</p>
+								<p className="text-sm text-muted mb-4">
+									Create a training cycle to see your next workout here
+								</p>
+								<Button
+									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									asChild
+								>
+									<Link to="/cycles">
+										<Calendar className="w-4 h-4 mr-2" />
+										Browse Training Cycles
+									</Link>
+								</Button>
+							</div>
+						)}
 					</Card>
 				</motion.div>
 
@@ -305,10 +358,13 @@ export function DashboardMobile() {
 						<h2 className="text-lg font-semibold text-white">
 							Recent Activity
 						</h2>
-						<button className="text-sm text-primary flex items-center gap-1">
+						<Link
+							to="/history"
+							className="text-sm text-primary flex items-center gap-1"
+						>
 							View All
 							<ChevronRight className="w-4 h-4" />
-						</button>
+						</Link>
 					</div>
 
 					{workoutsLoading ? (

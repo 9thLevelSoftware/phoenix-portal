@@ -5,7 +5,6 @@ import {
 	Calendar,
 	Clock,
 	Dumbbell,
-	Eye,
 	Flame,
 	TrendingUp,
 	Trophy,
@@ -30,13 +29,17 @@ import {
 	WorkoutCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { useStreak } from "@/hooks/useStreak";
 import { PHOENIX } from "@/lib/colors";
+import { cycleListOptions } from "@/queries/cycles";
 import {
 	dashboardStatsOptions,
 	recentPRsOptions,
 	workoutListOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
+import { DashboardMobile } from "./DashboardMobile";
 import { PortalBanner } from "./PortalBanner";
 import { SyncStatus } from "./SyncStatus";
 
@@ -78,6 +81,7 @@ function formatRelativeTime(date: Date): string {
 }
 
 export function Dashboard() {
+	const isMobile = useIsMobile();
 	const { user } = useAuth();
 	const { data: workouts, isPending: workoutsLoading } = useQuery(
 		workoutListOptions(user?.id),
@@ -88,10 +92,16 @@ export function Dashboard() {
 	const { data: recentPRs, isPending: prsLoading } = useQuery(
 		recentPRsOptions(user?.id),
 	);
+	const { data: cycles } = useQuery(cycleListOptions(user?.id ?? ""));
+
+	const streak = useStreak(workouts);
+	const activeCycle = cycles?.find((c) => c.status === "active");
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
 	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
+
+	if (isMobile) return <DashboardMobile />;
 
 	return (
 		<div className="min-h-screen bg-background pb-20 md:pb-8">
@@ -144,7 +154,9 @@ export function Dashboard() {
 												fill={PHOENIX.ember}
 											/>
 											<div>
-												<h3 className="text-2xl text-white">7 Day Streak</h3>
+												<h3 className="text-2xl text-white">
+													{streak} Day Streak
+												</h3>
 												<p className="text-secondary-foreground text-sm">
 													Keep the fire burning!
 												</p>
@@ -160,41 +172,86 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						{/* Today's Workout Card */}
+						{/* Scheduled Workout Card */}
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.2 }}
 						>
 							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
-								<div className="flex items-center justify-between mb-4">
-									<h3 className="text-xl text-white">Scheduled Workout</h3>
-									<Badge className="bg-success text-white border-0">
-										Scheduled
-									</Badge>
-								</div>
-								<div className="space-y-4">
-									<div>
-										<h4 className="text-2xl text-primary mb-2">Push Day A</h4>
-										<p className="text-muted-foreground">
-											Part of: Upper/Lower 4-Day Split
-										</p>
-									</div>
-									<div className="flex items-center gap-4 text-sm text-muted-foreground">
-										<div className="flex items-center gap-2">
-											<Dumbbell className="w-4 h-4" />
-											<span>6 exercises</span>
+								{activeCycle ? (
+									<>
+										<div className="flex items-center justify-between mb-4">
+											<h3 className="text-xl text-white">
+												Scheduled Workout
+											</h3>
+											<Badge className="bg-success text-white border-0">
+												Active Cycle
+											</Badge>
 										</div>
-										<div className="flex items-center gap-2">
-											<Clock className="w-4 h-4" />
-											<span>~60 min</span>
+										<div className="space-y-4">
+											<div>
+												<h4 className="text-2xl text-primary mb-2">
+													{activeCycle.name}
+												</h4>
+												<p className="text-muted-foreground">
+													Week {activeCycle.current_week} of{" "}
+													{activeCycle.duration_weeks}
+												</p>
+											</div>
+											<div className="flex items-center gap-4 text-sm text-muted-foreground">
+												<div className="flex items-center gap-2">
+													<Dumbbell className="w-4 h-4" />
+													<span>
+														{activeCycle.workout_days} workout days
+													</span>
+												</div>
+												<div className="flex items-center gap-2">
+													<Clock className="w-4 h-4" />
+													<span>
+														{activeCycle.rest_days} rest days
+													</span>
+												</div>
+											</div>
+											<Button
+												className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
+												asChild
+											>
+												<Link to={`/cycles/${activeCycle.id}`}>
+													<Calendar className="w-4 h-4 mr-2" />
+													View Cycle Details
+												</Link>
+											</Button>
 										</div>
-									</div>
-									<Button className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50">
-										<Eye className="w-4 h-4 mr-2" />
-										View Routine Details
-									</Button>
-								</div>
+									</>
+								) : (
+									<>
+										<div className="flex items-center justify-between mb-4">
+											<h3 className="text-xl text-white">
+												Scheduled Workout
+											</h3>
+										</div>
+										<div className="flex flex-col items-center justify-center py-8 text-center">
+											<Calendar className="w-12 h-12 text-secondary mb-4" />
+											<p className="text-muted-foreground mb-2">
+												No scheduled workout
+											</p>
+											<p className="text-sm text-muted mb-4">
+												Create a training cycle to see your next workout
+												here
+											</p>
+											<Button
+												className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+												asChild
+											>
+												<Link to="/cycles">
+													<Calendar className="w-4 h-4 mr-2" />
+													Browse Training Cycles
+												</Link>
+											</Button>
+										</div>
+									</>
+								)}
 							</Card>
 						</motion.div>
 
@@ -296,9 +353,12 @@ export function Dashboard() {
 									<Button
 										variant="ghost"
 										className="text-primary hover:bg-primary/10"
+										asChild
 									>
-										View All
-										<ArrowRight className="w-4 h-4 ml-2" />
+										<Link to="/history">
+											View All
+											<ArrowRight className="w-4 h-4 ml-2" />
+										</Link>
 									</Button>
 								</div>
 								{workoutsLoading ? (
