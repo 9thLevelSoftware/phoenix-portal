@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 10 of 12 (Wire-Up & Mock Purge)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-02-17 — Plan 10-03 complete (Challenges, votes, dead buttons, bug fixes)
+Plan: 4 of 4 in current phase (PHASE COMPLETE)
+Status: Phase 10 complete
+Last activity: 2026-02-17 — Plan 10-04 complete (Auth accessibility, password reset, empty states)
 
-Progress: [███░░░░░░░] 30% (10 of 13 phases complete, 49/58 total plans)
+Progress: [████░░░░░░] 38% (10 of 13 phases complete, 50/58 total plans)
 
 ## Performance Metrics
 
@@ -28,7 +28,7 @@ Progress: [███░░░░░░░] 30% (10 of 13 phases complete, 49/58 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
-| 10-wire-up-mock-purge | 3/4 | 26 min | 8.7 min |
+| 10-wire-up-mock-purge | 4/4 | 38 min | 9.5 min |
 
 *Updated after each plan completion*
 
@@ -71,6 +71,11 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 10, Plan 3]: Challenges use confirmed mutation pattern for join/leave/complete. Challenge progress computed from workout_sessions.
 - [Phase 10, Plan 3]: Client-side date filtering in WorkoutHistory (all data already fetched). No query param changes needed.
 - [Phase 10, Plan 3]: Biomechanics/ExerciseProgress auto-selection moved from render-time setState to useEffect with derived effective* values.
+- [Phase 10, Plan 4]: Auth modal replaced with Radix Dialog for automatic focus trap, ARIA, and keyboard nav.
+- [Phase 10, Plan 4]: Password reset: inline toggle within auth dialog, reset page outside ProtectedRoute (magic link arrives without session).
+- [Phase 10, Plan 4]: ExercisePicker merges Supabase exercises with 30-exercise static fallback, deduped case-insensitive.
+- [Phase 10, Plan 4]: EmptyState pattern: shared component from @/app/components/ui/empty-state deployed across 6+ feature pages.
+- [Phase 10, Plan 4]: Dashboard zero-session welcome view gates on hasNoWorkouts (loading complete + empty array).
 
 ### Pending Todos
 
@@ -91,5 +96,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 10-03-PLAN.md (Challenges, votes, dead buttons, bug fixes)
-Resume file: .planning/phases/10-wire-up-mock-purge/10-04-PLAN.md
+Stopped at: Completed 10-04-PLAN.md (Auth accessibility, password reset, empty states) — Phase 10 COMPLETE
+Resume file: Next phase (11)
