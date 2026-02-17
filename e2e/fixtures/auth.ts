@@ -6,15 +6,35 @@ export const test = base.extend<{ authedPage: Page }>({
 		const password = process.env.SUPABASE_TEST_PASSWORD;
 
 		if (email && password) {
-			// Navigate to login and authenticate
+			// Navigate to landing page
 			await page.goto("/");
-			// Wait for auth UI and fill credentials
-			await page.getByPlaceholder(/email/i).fill(email);
-			await page.getByPlaceholder(/password/i).fill(password);
+			await page.waitForLoadState("networkidle");
+			// Wait for Framer Motion entrance animations to complete
+			await page.waitForTimeout(2000);
+
+			// Click "Get Started" to open the auth dialog
 			await page
-				.getByRole("button", { name: /sign in|log in/i })
+				.getByRole("button", { name: /get started/i })
+				.first()
 				.click();
-			await page.waitForURL("**/dashboard", { timeout: 10000 });
+
+			// Wait for the Radix Dialog to appear
+			const dialog = page.locator('[role="dialog"]');
+			await dialog.waitFor({ state: "visible", timeout: 5000 });
+
+			// Fill credentials within the dialog scope
+			await dialog.getByPlaceholder("you@example.com").fill(email);
+			await dialog
+				.getByPlaceholder("Enter your password")
+				.fill(password);
+
+			// Click Sign In within the dialog
+			await dialog
+				.getByRole("button", { name: /^sign in$/i })
+				.click();
+
+			// Wait for redirect to dashboard
+			await page.waitForURL("**/dashboard", { timeout: 15000 });
 		}
 
 		await use(page);
