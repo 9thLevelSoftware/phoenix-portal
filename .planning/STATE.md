@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 9 of 12 (Foundation & Toolchain)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: Executing
-Last activity: 2026-02-17 — Plan 09-01 complete (React 19 + Vite 7 + Recharts 3 + dnd-kit migration)
+Last activity: 2026-02-17 — Plan 09-02 complete (Biome 2.4 linter/formatter + TS strict + bundle visualizer)
 
-Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 42/58 total plans)
+Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 43/58 total plans)
 
 ## Performance Metrics
 
@@ -27,7 +27,7 @@ Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 42/58 t
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 09-foundation-toolchain | 1/5 | 8 min | 8 min |
+| 09-foundation-toolchain | 2/5 | 13 min | 6.5 min |
 
 *Updated after each plan completion*
 
@@ -46,6 +46,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 9]: Delete .dark CSS block FIRST before any color tokenization — block silently overwrites Phoenix palette with oklch grays.
 - [Phase 11]: Recovery dashboard MUST gate behind 14-day minimum data requirement. Score clamped to 25-75% until 30 days. Descriptive language only — no imperative commands. Medical liability risk if shipped without these guardrails.
 - [Phase 11]: community_comments RLS must be in the migration file, not added post-launch (CVE-2025-48757).
+- [Phase 9, Plan 2]: Downgraded 12 pre-existing lint rules to warn level in biome.json instead of 148 biome-ignore comments. Rules can be promoted to error as code is cleaned up.
+- [Phase 9, Plan 2]: Biome formatting standard: tabs, double quotes, semicolons, 80-char width. All future code must match.
+- [Phase 9, Plan 2]: cross-env required for analyze script due to Windows ANALYZE=true env var syntax.
 
 ### Pending Todos
 
@@ -66,5 +69,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 09-01-PLAN.md (major dependency upgrades)
-Resume file: .planning/phases/09-foundation-toolchain/09-02-PLAN.md
+Stopped at: Completed 09-02-PLAN.md (Biome 2.4 + TS strict + bundle visualizer)
+Resume file: .planning/phases/09-foundation-toolchain/09-03-PLAN.md
