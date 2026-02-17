@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
+import { test as authedTest, expect as authedExpect } from "./fixtures/auth";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -59,16 +60,18 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 	}
 });
 
-test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
+authedTest.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 	const skip = !process.env.SUPABASE_TEST_EMAIL;
 
 	for (const { name, path } of authedPages) {
-		test(`${name} has no critical WCAG violations`, async ({
-			page,
+		authedTest(`${name} has no critical WCAG violations`, async ({
+			authedPage: page,
 		}) => {
-			test.skip(skip, "No test credentials");
+			authedTest.skip(skip, "No test credentials");
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
+			// Wait for any entrance animations to settle
+			await page.waitForTimeout(2000);
 
 			const results = await new AxeBuilder({ page })
 				.withTags(WCAG_TAGS)
@@ -90,7 +93,7 @@ test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 				(v) =>
 					v.impact === "critical" || v.impact === "serious",
 			);
-			expect(
+			authedExpect(
 				critical,
 				`${name} has ${critical.length} critical/serious a11y violations`,
 			).toHaveLength(0);
