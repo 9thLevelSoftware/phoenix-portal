@@ -40,6 +40,7 @@ import {
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { DashboardMobile } from "./DashboardMobile";
+import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { PortalBanner } from "./PortalBanner";
 import { SyncStatus } from "./SyncStatus";
 
@@ -572,6 +573,15 @@ export function Dashboard() {
 									</div>
 								)}
 							</Card>
+						</motion.div>
+
+						{/* Goal Progress Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.25 }}
+						>
+							<GoalDashboardWidget />
 						</motion.div>
 
 						{/* Recent PRs */}
