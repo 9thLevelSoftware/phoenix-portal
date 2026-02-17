@@ -31,6 +31,7 @@ import {
 	StatCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PHOENIX } from "@/lib/colors";
 import { downloadCSV } from "@/lib/export/csv";
 import {
@@ -322,10 +323,11 @@ export function AnalyticsMobile() {
 			{/* Content */}
 			<div className="px-4 py-4 space-y-4">
 				{!hasData ? (
-					<div className="text-center py-12 text-muted">
-						<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
-						<p>No analytics data yet. Complete workouts to see insights.</p>
-					</div>
+					<EmptyState
+						icon={TrendingUp}
+						title="Your analytics await"
+						description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
+					/>
 				) : (
 					<>
 						{activeTab === "overview" && (

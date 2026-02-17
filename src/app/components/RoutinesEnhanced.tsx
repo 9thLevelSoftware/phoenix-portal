@@ -31,6 +31,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { routineListOptions } from "@/queries/routines";
 import type { Routine } from "@/schemas/transforms";
 
@@ -144,7 +145,13 @@ export function RoutinesEnhanced() {
 
 					<TabsContent value="my-routines">
 						{allRoutines.length === 0 ? (
-							<EmptyState onCreateRoutine={() => navigate("/routines/new")} />
+							<EmptyState
+								icon={Dumbbell}
+								title="Build your first routine"
+								description="Create a custom workout routine tailored to your goals. Drag and drop exercises, set your reps and weights."
+								actionLabel="Create Routine"
+								actionHref="/routines/new"
+							/>
 						) : (
 							<RoutineGrid
 								routines={allRoutines}
@@ -323,37 +330,3 @@ function RoutineGrid({
 	);
 }
 
-function EmptyState({ onCreateRoutine }: { onCreateRoutine: () => void }) {
-	return (
-		<motion.div
-			initial={{ opacity: 0, y: 20 }}
-			animate={{ opacity: 1, y: 0 }}
-			className="text-center py-16"
-		>
-			<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
-				<Dumbbell className="w-12 h-12 text-primary" />
-			</div>
-			<h3 className="text-2xl font-semibold text-white mb-2">
-				No routines yet
-			</h3>
-			<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-				Create your first routine or import from the community
-			</p>
-			<div className="flex gap-4 justify-center">
-				<Button
-					onClick={() => navigate("/routines/new")}
-					className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-				>
-					<Plus className="w-4 h-4 mr-2" />
-					Create Routine
-				</Button>
-				<Button
-					variant="outline"
-					className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
-				>
-					Browse Community
-				</Button>
-			</div>
-		</motion.div>
-	);
-}
