@@ -563,7 +563,7 @@ export function LandingPage() {
 					</motion.p>
 
 					<motion.p
-						className="mt-4 text-lg sm:text-xl text-muted max-w-2xl mx-auto"
+						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
