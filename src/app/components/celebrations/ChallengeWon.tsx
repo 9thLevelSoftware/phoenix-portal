@@ -87,7 +87,7 @@ export function ChallengeWon({
 						>
 							{/* Decorative lines */}
 							<div className="flex items-center justify-center gap-4 mb-2">
-								<div className="h-px w-16 md:w-32 bg-gradient-to-r from-transparent to-[#FF6B35]" />
+								<div className="h-px w-16 md:w-32 bg-gradient-to-r from-transparent to-primary" />
 								<motion.div
 									animate={{
 										scale: [1, 1.1, 1],
@@ -99,13 +99,13 @@ export function ChallengeWon({
 									}}
 									className="flex items-center gap-2"
 								>
-									<Trophy className="w-6 h-6 md:w-8 md:h-8 text-[#F59E0B]" />
+									<Trophy className="w-6 h-6 md:w-8 md:h-8 text-accent" />
 									<h2 className="text-2xl md:text-4xl font-bold text-white">
 										CHALLENGE COMPLETE!
 									</h2>
-									<Trophy className="w-6 h-6 md:w-8 md:h-8 text-[#F59E0B]" />
+									<Trophy className="w-6 h-6 md:w-8 md:h-8 text-accent" />
 								</motion.div>
-								<div className="h-px w-16 md:w-32 bg-gradient-to-l from-transparent to-[#FF6B35]" />
+								<div className="h-px w-16 md:w-32 bg-gradient-to-l from-transparent to-primary" />
 							</div>
 
 							{/* Challenge name */}
@@ -113,7 +113,7 @@ export function ChallengeWon({
 								initial={{ opacity: 0 }}
 								animate={{ opacity: 1 }}
 								transition={{ delay: 0.4 }}
-								className="text-lg md:text-xl text-[#E5E7EB] mt-2"
+								className="text-lg md:text-xl text-secondary-foreground mt-2"
 							>
 								{challengeName}
 							</motion.p>
@@ -212,14 +212,14 @@ export function ChallengeWon({
 										onViewResults();
 									}}
 									variant="outline"
-									className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+									className="border-primary text-primary hover:bg-primary/10"
 								>
 									<ExternalLink className="w-4 h-4 mr-2" />
 									View Full Results
 								</Button>
 							)}
 
-							<p className="text-sm text-[#6B7280]">Tap anywhere to dismiss</p>
+							<p className="text-sm text-muted">Tap anywhere to dismiss</p>
 						</motion.div>
 					)}
 				</div>

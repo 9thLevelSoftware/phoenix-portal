@@ -109,11 +109,11 @@ export function CommunityMobile() {
 	}, []);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20">
+		<div className="min-h-screen bg-background pb-20">
 			{/* Header */}
-			<header className="flex items-center justify-between px-4 py-4 border-b border-[#374151]">
+			<header className="flex items-center justify-between px-4 py-4 border-b border-secondary">
 				<h1 className="text-2xl font-bold">
-					<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+					<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 						Community
 					</span>
 				</h1>
@@ -124,17 +124,17 @@ export function CommunityMobile() {
 				value={activeTab}
 				onValueChange={(v) => setActiveTab(v as "routines" | "cycles")}
 			>
-				<div className="border-b border-[#374151]">
+				<div className="border-b border-secondary">
 					<TabsList className="flex w-full bg-transparent px-4 gap-1">
 						<TabsTrigger
 							value="routines"
-							className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-[#FF6B35]"
+							className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
 						>
 							Routines
 						</TabsTrigger>
 						<TabsTrigger
 							value="cycles"
-							className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-[#FF6B35]"
+							className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
 						>
 							Cycles
 						</TabsTrigger>
@@ -169,8 +169,8 @@ export function CommunityMobile() {
 									onClick={() => setSort(opt.value as "hot" | "top" | "new")}
 									className={
 										sort === opt.value
-											? "bg-[#FF6B35] text-white border-0 text-xs px-3 h-7"
-											: "border-[#374151] text-[#9CA3AF] text-xs px-3 h-7"
+											? "bg-primary text-white border-0 text-xs px-3 h-7"
+											: "border-secondary text-muted-foreground text-xs px-3 h-7"
 									}
 								>
 									{opt.label}
@@ -191,23 +191,23 @@ export function CommunityMobile() {
 							Array.from({ length: 4 }).map((_, i) => (
 								<Card
 									key={i}
-									className="p-5 bg-[#1A1A2E] border-[#374151] animate-pulse h-40"
+									className="p-5 bg-surface-2 border-secondary animate-pulse h-40"
 								/>
 							))
 						) : isError ? (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<p className="mb-2">Something went wrong</p>
 								<Button
 									variant="outline"
 									size="sm"
 									onClick={() => refetch()}
-									className="border-[#374151] text-[#9CA3AF]"
+									className="border-secondary text-muted-foreground"
 								>
 									Try Again
 								</Button>
 							</div>
 						) : allItems.length === 0 ? (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
 								<p>
 									No {activeTab === "routines" ? "routines" : "cycles"} found
@@ -230,7 +230,7 @@ export function CommunityMobile() {
 						<div ref={sentinelRef} className="h-4" />
 						{isFetchingNextPage && (
 							<div className="flex justify-center py-3">
-								<div className="w-5 h-5 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
+								<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
 							</div>
 						)}
 					</div>

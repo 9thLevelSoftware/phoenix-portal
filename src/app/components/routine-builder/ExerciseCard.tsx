@@ -38,12 +38,12 @@ export function ExerciseCard({
 		>
 			<Card
 				onClick={handleCardClick}
-				className={`p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border transition-all ${
+				className={`p-4 bg-gradient-to-br from-surface-2 to-background border transition-all ${
 					isSelectionMode ? "cursor-pointer" : ""
 				} ${
 					isSelected
-						? "border-[#FF6B35] bg-[#FF6B35]/10"
-						: "border-[#374151] hover:border-[#FF6B35]/50"
+						? "border-primary bg-primary/10"
+						: "border-secondary hover:border-primary/50"
 				}`}
 			>
 				<div className="flex items-center justify-between">
@@ -55,14 +55,14 @@ export function ExerciseCard({
 								<div
 									className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
 										isSelected
-											? "bg-[#FF6B35] border-[#FF6B35]"
-											: "border-[#6B7280] hover:border-[#9CA3AF]"
+											? "bg-primary border-primary"
+											: "border-muted hover:border-muted-foreground"
 									}`}
 								>
 									{isSelected && <Check className="w-3 h-3 text-white" />}
 								</div>
 							) : (
-								<GripVertical className="w-5 h-5 text-[#6B7280] cursor-grab active:cursor-grabbing" />
+								<GripVertical className="w-5 h-5 text-muted cursor-grab active:cursor-grabbing" />
 							)}
 						</div>
 
@@ -74,12 +74,12 @@ export function ExerciseCard({
 								</h4>
 								<Badge
 									variant="outline"
-									className="text-xs border-[#374151] text-[#9CA3AF] flex-shrink-0"
+									className="text-xs border-secondary text-muted-foreground flex-shrink-0"
 								>
 									{exercise.muscleGroup}
 								</Badge>
 							</div>
-							<div className="text-sm text-[#6B7280]">
+							<div className="text-sm text-muted">
 								{exercise.sets.length} sets • {exercise.sets[0]?.reps || 0} reps
 								• {exercise.sets[0]?.weight || 0} kg • {exercise.programMode}
 							</div>
@@ -96,7 +96,7 @@ export function ExerciseCard({
 									e.stopPropagation();
 									onEdit();
 								}}
-								className="text-[#9CA3AF] hover:text-white"
+								className="text-muted-foreground hover:text-white"
 							>
 								<Edit className="w-4 h-4" />
 							</Button>
@@ -107,7 +107,7 @@ export function ExerciseCard({
 									e.stopPropagation();
 									onRemove();
 								}}
-								className="text-[#EF4444] hover:text-[#DC2626]"
+								className="text-destructive hover:text-chart-2"
 							>
 								<X className="w-4 h-4" />
 							</Button>

@@ -38,17 +38,17 @@ export function TrainingCycles() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
 								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 										Training Cycles
 									</span>
 								</h1>
-								<p className="text-[#9CA3AF]">Periodize your progress</p>
+								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
 						</div>
 					</div>
@@ -67,8 +67,8 @@ export function TrainingCycles() {
 
 	if (allCycles.length === 0) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}
@@ -77,15 +77,15 @@ export function TrainingCycles() {
 						>
 							<div>
 								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 										Training Cycles
 									</span>
 								</h1>
-								<p className="text-[#9CA3AF]">Periodize your progress</p>
+								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
 							<Button
 								onClick={() => navigate("/cycles/new")}
-								className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 							>
 								<Plus className="w-4 h-4 mr-2" />
 								Create Cycle
@@ -94,19 +94,19 @@ export function TrainingCycles() {
 					</div>
 				</div>
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 flex items-center justify-center">
-						<Flame className="w-12 h-12 text-[#FF6B35]" />
+					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
+						<Flame className="w-12 h-12 text-primary" />
 					</div>
 					<h3 className="text-2xl font-semibold text-white mb-2">
 						No training cycles yet
 					</h3>
-					<p className="text-[#9CA3AF] mb-6 max-w-md mx-auto">
+					<p className="text-muted-foreground mb-6 max-w-md mx-auto">
 						Create your first training cycle to periodize your progress and
 						track weekly goals.
 					</p>
 					<Button
 						onClick={() => navigate("/cycles/new")}
-						className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 					>
 						<Plus className="w-4 h-4 mr-2" />
 						Create Cycle
@@ -117,9 +117,9 @@ export function TrainingCycles() {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -128,16 +128,16 @@ export function TrainingCycles() {
 					>
 						<div>
 							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									Training Cycles
 								</span>
 							</h1>
-							<p className="text-[#9CA3AF]">Periodize your progress</p>
+							<p className="text-muted-foreground">Periodize your progress</p>
 						</div>
 
 						<Button
 							onClick={() => navigate("/cycles/new")}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Cycle
@@ -154,9 +154,9 @@ export function TrainingCycles() {
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<Card className="p-6 sm:p-8 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/10 border-2 border-[#FF6B35]/50 relative overflow-hidden">
+						<Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-chart-2/10 border-2 border-primary/50 relative overflow-hidden">
 							<div className="absolute top-4 right-4">
-								<Badge className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] text-white border-0">
+								<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
 									<Flame className="w-3 h-3 mr-1" />
 									ACTIVE CYCLE
 								</Badge>
@@ -166,7 +166,7 @@ export function TrainingCycles() {
 								<h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
 									{activeCycle.name}
 								</h2>
-								<div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
+								<div className="flex items-center gap-2 text-sm text-muted-foreground">
 									<span>
 										Week {activeCycle.current_week} of{" "}
 										{activeCycle.duration_weeks}
@@ -188,18 +188,18 @@ export function TrainingCycles() {
 										(activeCycle.current_week / activeCycle.duration_weeks) *
 										100
 									}
-									className="h-3 bg-[#1a1a1a]"
+									className="h-3 bg-surface-2"
 								/>
 							</div>
 
 							<div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-								<div className="flex gap-6 text-sm text-[#9CA3AF]">
+								<div className="flex gap-6 text-sm text-muted-foreground">
 									<div className="flex items-center gap-2">
-										<Dumbbell className="w-4 h-4 text-[#FF6B35]" />
+										<Dumbbell className="w-4 h-4 text-primary" />
 										<span>{activeCycle.workout_days} workout days/week</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<BedDouble className="w-4 h-4 text-[#6B7280]" />
+										<BedDouble className="w-4 h-4 text-muted" />
 										<span>{activeCycle.rest_days} rest days/week</span>
 									</div>
 								</div>
@@ -207,7 +207,7 @@ export function TrainingCycles() {
 									<Button
 										variant="outline"
 										onClick={() => navigate(`/cycles/${activeCycle.id}`)}
-										className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+										className="border-primary text-primary hover:bg-primary/10"
 									>
 										<Eye className="w-4 h-4 mr-2" />
 										View Full Cycle
@@ -237,7 +237,7 @@ export function TrainingCycles() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.05 }}
 								>
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
 										<div className="flex items-start justify-between mb-4">
 											<div className="flex-1">
 												<h3 className="text-lg font-semibold text-white mb-2">
@@ -246,10 +246,10 @@ export function TrainingCycles() {
 												<Badge
 													className={
 														cycle.status === "active"
-															? "bg-[#10B981] text-white border-0"
+															? "bg-success text-white border-0"
 															: cycle.status === "completed"
-																? "bg-[#6B7280] text-white border-0"
-																: "bg-[#F59E0B] text-white border-0"
+																? "bg-muted text-white border-0"
+																: "bg-accent text-white border-0"
 													}
 												>
 													{cycle.status.toUpperCase()}
@@ -257,20 +257,20 @@ export function TrainingCycles() {
 											</div>
 											<DropdownMenu>
 												<DropdownMenuTrigger asChild>
-													<button className="text-[#9CA3AF] hover:text-white transition-colors">
+													<button className="text-muted-foreground hover:text-white transition-colors">
 														<MoreVertical className="w-5 h-5" />
 													</button>
 												</DropdownMenuTrigger>
-												<DropdownMenuContent className="bg-[#1a1a1a] border-[#374151]">
+												<DropdownMenuContent className="bg-surface-2 border-secondary">
 													<DropdownMenuItem
-														className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer"
+														className="text-secondary-foreground hover:bg-secondary cursor-pointer"
 														onClick={() => navigate(`/cycles/${cycle.id}`)}
 													>
 														<Eye className="w-4 h-4 mr-2" />
 														View
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer"
+														className="text-secondary-foreground hover:bg-secondary cursor-pointer"
 														onClick={() => setShareDialogOpen(true)}
 													>
 														<Share2 className="w-4 h-4 mr-2" />
@@ -282,28 +282,28 @@ export function TrainingCycles() {
 
 										<div className="space-y-3 mb-4">
 											<div className="flex items-center justify-between text-sm">
-												<span className="text-[#9CA3AF]">Duration</span>
+												<span className="text-muted-foreground">Duration</span>
 												<span className="text-white font-medium">
 													{cycle.duration_weeks} weeks
 												</span>
 											</div>
 											<div className="flex items-center justify-between text-sm">
-												<span className="text-[#9CA3AF]">Workout days</span>
+												<span className="text-muted-foreground">Workout days</span>
 												<div className="flex items-center gap-2">
-													<Dumbbell className="w-4 h-4 text-[#FF6B35]" />
+													<Dumbbell className="w-4 h-4 text-primary" />
 													<span className="text-white font-medium">
 														{cycle.workout_days}
 													</span>
-													<span className="text-[#6B7280]">/</span>
-													<BedDouble className="w-4 h-4 text-[#6B7280]" />
-													<span className="text-[#9CA3AF]">
+													<span className="text-muted">/</span>
+													<BedDouble className="w-4 h-4 text-muted" />
+													<span className="text-muted-foreground">
 														{cycle.rest_days}
 													</span>
 												</div>
 											</div>
 											{cycle.status !== "draft" && lastUsedText && (
 												<div className="flex items-center justify-between text-sm">
-													<span className="text-[#9CA3AF]">Last used</span>
+													<span className="text-muted-foreground">Last used</span>
 													<span className="text-white font-medium">
 														{lastUsedText}
 													</span>
@@ -317,7 +317,7 @@ export function TrainingCycles() {
 													value={
 														(cycle.current_week / cycle.duration_weeks) * 100
 													}
-													className="h-2 bg-[#0D0D0D]"
+													className="h-2 bg-background"
 												/>
 											</div>
 										)}
@@ -327,7 +327,7 @@ export function TrainingCycles() {
 												size="sm"
 												variant="outline"
 												onClick={() => navigate(`/cycles/${cycle.id}`)}
-												className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+												className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 											>
 												<Edit className="w-4 h-4 mr-1" />
 												Edit
@@ -335,7 +335,7 @@ export function TrainingCycles() {
 											{cycle.status !== "active" && (
 												<Button
 													size="sm"
-													className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+													className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 												>
 													Activate
 												</Button>

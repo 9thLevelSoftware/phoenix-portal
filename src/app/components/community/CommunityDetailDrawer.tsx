@@ -65,17 +65,17 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 		<div className="space-y-4">
 			{/* Author */}
 			<div className="flex items-center gap-2">
-				<div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center text-white text-sm">
+				<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-sm">
 					{authorName.charAt(0).toUpperCase()}
 				</div>
 				<div>
 					<p className="text-sm text-white">{authorName}</p>
-					<p className="text-xs text-[#6B7280]">Shared {sharedAgo}</p>
+					<p className="text-xs text-muted">Shared {sharedAgo}</p>
 				</div>
 			</div>
 
 			{/* Description */}
-			<p className="text-sm text-[#E5E7EB]">{item.description}</p>
+			<p className="text-sm text-secondary-foreground">{item.description}</p>
 
 			{/* Tags */}
 			{item.tags.length > 0 && (
@@ -83,7 +83,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 					{item.tags.map((tag) => (
 						<Badge
 							key={tag}
-							className="bg-[#374151] text-[#E5E7EB] border-0 text-xs"
+							className="bg-secondary text-secondary-foreground border-0 text-xs"
 						>
 							{tag}
 						</Badge>
@@ -92,7 +92,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 			)}
 
 			{/* Stats */}
-			<div className="flex items-center gap-4 text-sm text-[#9CA3AF]">
+			<div className="flex items-center gap-4 text-sm text-muted-foreground">
 				{isRoutine(item) ? (
 					<>
 						<div className="flex items-center gap-1">
@@ -125,9 +125,9 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 							.map((ex, i) => (
 								<div
 									key={i}
-									className="flex items-center gap-2 p-2 bg-[#1a1a1a] rounded-md text-sm"
+									className="flex items-center gap-2 p-2 bg-surface-2 rounded-md text-sm"
 								>
-									<span className="text-[#6B7280] w-5 text-right">{i + 1}</span>
+									<span className="text-muted w-5 text-right">{i + 1}</span>
 									<span className="text-white">
 										{typeof ex === "object" && ex?.name
 											? ex.name
@@ -145,7 +145,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 					variant="outline"
 					onClick={() => voteMutation.mutate({ itemId: item.id, itemType })}
 					disabled={voteMutation.isPending}
-					className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+					className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-white"
 				>
 					<ArrowBigUp className="w-5 h-5 mr-1.5" />
 					{item.vote_count}
@@ -156,10 +156,10 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 						saveMutation.mutate({ sharedItemId: item.id, itemType })
 					}
 					disabled={saveMutation.isPending}
-					className={`flex-1 border-[#374151] transition-colors ${
+					className={`flex-1 border-secondary transition-colors ${
 						isSaved
-							? "text-[#FF6B35] border-[#FF6B35]/50"
-							: "text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+							? "text-primary border-primary/50"
+							: "text-muted-foreground hover:border-primary hover:text-white"
 					}`}
 				>
 					<Bookmark
@@ -172,7 +172,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 
 			{/* Linked reference indicator */}
 			{isSaved && (
-				<div className="flex items-center gap-1.5 text-xs text-[#6B7280] pt-1">
+				<div className="flex items-center gap-1.5 text-xs text-muted pt-1">
 					<Link2 className="w-3 h-3" />
 					<span>Linked to original</span>
 				</div>
@@ -193,12 +193,12 @@ export function CommunityDetailDrawer({
 	if (isMobile) {
 		return (
 			<Drawer open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-				<DrawerContent className="bg-[#0D0D0D] border-[#374151] max-h-[85vh]">
+				<DrawerContent className="bg-background border-secondary max-h-[85vh]">
 					<DrawerHeader>
 						<DrawerTitle className="text-white text-left">
 							{item.name}
 						</DrawerTitle>
-						<DrawerDescription className="text-[#9CA3AF] text-left">
+						<DrawerDescription className="text-muted-foreground text-left">
 							{item.difficulty} {isRoutine(item) ? "Routine" : "Cycle"}
 						</DrawerDescription>
 					</DrawerHeader>
@@ -213,10 +213,10 @@ export function CommunityDetailDrawer({
 
 	return (
 		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-			<DialogContent className="bg-[#0D0D0D] border-[#374151] sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+			<DialogContent className="bg-background border-secondary sm:max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle className="text-white">{item.name}</DialogTitle>
-					<DialogDescription className="text-[#9CA3AF]">
+					<DialogDescription className="text-muted-foreground">
 						{item.difficulty} {isRoutine(item) ? "Routine" : "Cycle"}
 					</DialogDescription>
 				</DialogHeader>

@@ -22,9 +22,9 @@ export function CelebrationDemo() {
 	const [selectedPlacement, setSelectedPlacement] = useState<1 | 2 | 3>(1);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -32,11 +32,11 @@ export function CelebrationDemo() {
 						className="text-center"
 					>
 						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Celebration Animations
 							</span>
 						</h1>
-						<p className="text-[#9CA3AF]">
+						<p className="text-muted-foreground">
 							Test all celebration animations and micro-interactions
 						</p>
 					</motion.div>
@@ -51,16 +51,16 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
 								<Trophy className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Personal Record Celebration
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Full animation sequence with phoenix rise, particle burst, and
 									PR card reveal
 								</p>
@@ -71,7 +71,7 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 								>
 									Weight PR
 								</Button>
@@ -83,12 +83,12 @@ export function CelebrationDemo() {
 								</Button>
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-[#F59E0B] to-[#D97706] hover:from-[#D97706] hover:to-[#F59E0B] border-0"
+									className="bg-gradient-to-r from-accent to-[#D97706] hover:from-[#D97706] hover:to-accent border-0"
 								>
 									1RM Estimate
 								</Button>
 							</div>
-							<p className="text-xs text-[#6B7280]">
+							<p className="text-xs text-muted">
 								✨ Features: Phoenix rise animation, ember trail, particle
 								burst, glowing PR card
 							</p>
@@ -102,16 +102,16 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.2 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center">
 								<Award className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Badge Unlocked
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Dramatic card flip reveal with tier-specific particle effects
 									and colors
 								</p>
@@ -134,7 +134,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("silver");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#E5E7EB] to-[#9CA3AF] text-[#1a1a1a] text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground to-muted-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Silver
 								</button>
@@ -143,7 +143,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("gold");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#F59E0B] to-[#D97706] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-[#D97706] text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Gold
 								</button>
@@ -152,12 +152,12 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("platinum");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#E5E7EB] via-[#F3F4F6] to-[#E5E7EB] text-[#1a1a1a] text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground via-[#F3F4F6] to-secondary-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Platinum
 								</button>
 							</div>
-							<p className="text-xs text-[#6B7280]">
+							<p className="text-xs text-muted">
 								✨ Features: 3D card flip, tier-specific particles, confetti for
 								Gold/Platinum
 							</p>
@@ -171,16 +171,16 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.3 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#F59E0B] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
 								<Flame className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Streak Milestones
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Flame intensify animation with expanding rings and
 									milestone-specific messages
 								</p>
@@ -196,13 +196,13 @@ export function CelebrationDemo() {
 											setSelectedStreak(streak);
 											setShowStreak(true);
 										}}
-										className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] hover:border-[#FF6B35] text-white text-sm font-medium transition-all"
+										className="px-3 py-2 rounded-lg bg-gradient-to-br from-surface-2 to-background border border-secondary hover:border-primary text-white text-sm font-medium transition-all"
 									>
 										{streak} days
 									</button>
 								))}
 							</div>
-							<p className="text-xs text-[#6B7280]">
+							<p className="text-xs text-muted">
 								✨ Features: Flame intensify, expanding fire rings, ember
 								particles, special 365-day animation
 							</p>
@@ -216,16 +216,16 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.4 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#F59E0B] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
 								<Medal className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Challenge Won
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Animated medal reveal with tier-specific particle effects and
 									colors
 								</p>
@@ -239,7 +239,7 @@ export function CelebrationDemo() {
 										setSelectedPlacement(1);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-warning text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									👑 1st Place
 								</button>
@@ -248,7 +248,7 @@ export function CelebrationDemo() {
 										setSelectedPlacement(2);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#E5E7EB] to-[#9CA3AF] text-[#1a1a1a] text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground to-muted-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
 								>
 									🥈 2nd Place
 								</button>
@@ -262,7 +262,7 @@ export function CelebrationDemo() {
 									🥉 3rd Place
 								</button>
 							</div>
-							<p className="text-xs text-[#6B7280]">
+							<p className="text-xs text-muted">
 								✨ Features: Podium rise, avatar drop, spotlights, confetti
 								burst, rewards card
 							</p>
@@ -276,16 +276,16 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.5 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
 								<Check className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Workout Complete
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Animated checkmark with particle burst and confetti
 								</p>
 							</div>
@@ -295,12 +295,12 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 								<button
 									onClick={() => setShowWorkoutComplete(true)}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-success to-[#059669] text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Complete
 								</button>
 							</div>
-							<p className="text-xs text-[#6B7280]">
+							<p className="text-xs text-muted">
 								✨ Features: Checkmark animation, particle burst, confetti
 							</p>
 						</div>
@@ -313,47 +313,47 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.6 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
 								<Zap className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Micro-Celebrations
 								</h3>
-								<p className="text-sm text-[#9CA3AF] mb-4">
+								<p className="text-sm text-muted-foreground mb-4">
 									Subtle, frequent celebrations integrated throughout the app
 								</p>
 							</div>
 						</div>
 
 						<div className="space-y-2 text-sm">
-							<div className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]">
-								<div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center">
+							<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
+								<div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
 									<span className="text-lg">✓</span>
 								</div>
 								<div>
 									<div className="text-white font-medium">Set Complete</div>
-									<div className="text-xs text-[#6B7280]">
+									<div className="text-xs text-muted">
 										Brief pulse + checkmark animation
 									</div>
 								</div>
 							</div>
 
-							<div className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]">
-								<div className="w-8 h-8 rounded-full bg-[#F59E0B]/20 flex items-center justify-center">
+							<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
+								<div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
 									<span className="text-lg">↑</span>
 								</div>
 								<div>
 									<div className="text-white font-medium">Weight Increase</div>
-									<div className="text-xs text-[#6B7280]">
+									<div className="text-xs text-muted">
 										Arrow animation + ember sparkle
 									</div>
 								</div>
 							</div>
 
-							<div className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]">
+							<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
 								<div className="w-8 h-8 rounded-full bg-[#6366F1]/20 flex items-center justify-center">
 									<span className="text-lg">⏱️</span>
 								</div>
@@ -361,7 +361,7 @@ export function CelebrationDemo() {
 									<div className="text-white font-medium">
 										Rest Timer Complete
 									</div>
-									<div className="text-xs text-[#6B7280]">
+									<div className="text-xs text-muted">
 										Gentle pulse + wing flap icon
 									</div>
 								</div>

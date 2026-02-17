@@ -215,16 +215,16 @@ export function RoutineBuilderEnhanced({
 	});
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-8">
+		<div className="min-h-screen bg-background pb-8">
 			{/* Sticky Top Bar */}
-			<div className="sticky top-0 z-40 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151] px-4 py-4">
+			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
 					<div className="flex items-center gap-4 flex-1 min-w-0">
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={onBack}
-							className="text-[#9CA3AF] hover:text-white"
+							className="text-muted-foreground hover:text-white"
 						>
 							<ChevronLeft className="w-5 h-5 mr-1" />
 							Back
@@ -243,7 +243,7 @@ export function RoutineBuilderEnhanced({
 						{hasUnsavedChanges && (
 							<Badge
 								variant="outline"
-								className="bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/30"
+								className="bg-accent/20 text-accent border-accent/30"
 							>
 								● Unsaved
 							</Badge>
@@ -253,7 +253,7 @@ export function RoutineBuilderEnhanced({
 					<div className="flex items-center gap-3">
 						<Button
 							onClick={handleSave}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							<Save className="w-4 h-4 mr-2" />
 							Save
@@ -265,7 +265,7 @@ export function RoutineBuilderEnhanced({
 			{/* Main Content */}
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 				{/* Exercises Section */}
-				<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 					<div className="flex items-center justify-between mb-6">
 						<h2 className="text-xl font-semibold text-white">
 							EXERCISES ({exercises.length})
@@ -278,8 +278,8 @@ export function RoutineBuilderEnhanced({
 								onClick={handleToggleSelectionMode}
 								className={
 									isSelectionMode
-										? "bg-[#FF6B35] hover:bg-[#DC2626] border-0"
-										: "border-[#374151] hover:border-[#FF6B35]"
+										? "bg-primary hover:bg-chart-2 border-0"
+										: "border-secondary hover:border-primary"
 								}
 							>
 								{isSelectionMode ? (
@@ -298,7 +298,7 @@ export function RoutineBuilderEnhanced({
 							<Button
 								size="sm"
 								onClick={() => console.log("Add exercise")}
-								className="bg-[#FF6B35] hover:bg-[#DC2626] border-0"
+								className="bg-primary hover:bg-chart-2 border-0"
 							>
 								<Plus className="w-4 h-4 mr-2" />
 								Add Exercise
@@ -347,12 +347,12 @@ export function RoutineBuilderEnhanced({
 						</AnimatePresence>
 
 						{exercises.length === 0 && (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<p className="mb-4">No exercises yet</p>
 								<Button
 									onClick={() => console.log("Add first exercise")}
 									variant="outline"
-									className="border-[#374151] hover:border-[#FF6B35]"
+									className="border-secondary hover:border-primary"
 								>
 									<Plus className="w-4 h-4 mr-2" />
 									Add Your First Exercise

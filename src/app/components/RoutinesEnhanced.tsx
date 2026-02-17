@@ -64,17 +64,17 @@ export function RoutinesEnhanced() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
 								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 										My Routines
 									</span>
 								</h1>
-								<p className="text-[#9CA3AF]">Build your perfect workout</p>
+								<p className="text-muted-foreground">Build your perfect workout</p>
 							</div>
 						</div>
 					</div>
@@ -91,9 +91,9 @@ export function RoutinesEnhanced() {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -102,16 +102,16 @@ export function RoutinesEnhanced() {
 					>
 						<div>
 							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									My Routines
 								</span>
 							</h1>
-							<p className="text-[#9CA3AF]">Build your perfect workout</p>
+							<p className="text-muted-foreground">Build your perfect workout</p>
 						</div>
 
 						<Button
 							onClick={() => navigate("/routines/new")}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Routine
@@ -123,16 +123,16 @@ export function RoutinesEnhanced() {
 			{/* Content */}
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				<Tabs defaultValue="my-routines" className="w-full">
-					<TabsList className="bg-[#1a1a1a] border border-[#374151] mb-6">
+					<TabsList className="bg-surface-2 border border-secondary mb-6">
 						<TabsTrigger
 							value="my-routines"
-							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-chart-2"
 						>
 							My Routines
 						</TabsTrigger>
 						<TabsTrigger
 							value="favorites"
-							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]"
+							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-chart-2"
 						>
 							Favorites
 						</TabsTrigger>
@@ -154,7 +154,7 @@ export function RoutinesEnhanced() {
 
 					<TabsContent value="favorites">
 						{favoriteRoutines.length === 0 ? (
-							<div className="text-center py-12 text-[#6B7280]">
+							<div className="text-center py-12 text-muted">
 								<Heart className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No favorite routines yet. Heart a routine to add it here.</p>
 							</div>
@@ -216,39 +216,39 @@ function RoutineGrid({
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: index * 0.05 }}
 					>
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all group">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all group">
 							{/* Header */}
 							<div className="flex items-start justify-between mb-3">
 								<div className="flex-1">
 									<h3 className="text-lg font-semibold text-white mb-1">
 										{routine.name}
 									</h3>
-									<p className="text-sm text-[#9CA3AF] line-clamp-2">
+									<p className="text-sm text-muted-foreground line-clamp-2">
 										{routine.description}
 									</p>
 								</div>
 								<div className="flex items-center gap-2 ml-2">
 									<button
 										onClick={() => onToggleFavorite(routine.id)}
-										className="text-[#9CA3AF] hover:text-[#F59E0B] transition-colors"
+										className="text-muted-foreground hover:text-accent transition-colors"
 									>
 										<Heart
-											className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-[#F59E0B]" : ""}`}
+											className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-accent" : ""}`}
 										/>
 									</button>
 									<DropdownMenu>
 										<DropdownMenuTrigger asChild>
-											<button className="text-[#9CA3AF] hover:text-white transition-colors">
+											<button className="text-muted-foreground hover:text-white transition-colors">
 												<MoreVertical className="w-5 h-5" />
 											</button>
 										</DropdownMenuTrigger>
-										<DropdownMenuContent className="bg-[#1a1a1a] border-[#374151]">
-											<DropdownMenuItem className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer">
+										<DropdownMenuContent className="bg-surface-2 border-secondary">
+											<DropdownMenuItem className="text-secondary-foreground hover:bg-secondary cursor-pointer">
 												<Copy className="w-4 h-4 mr-2" />
 												Duplicate
 											</DropdownMenuItem>
 											<DropdownMenuItem
-												className="text-[#E5E7EB] hover:bg-[#374151] cursor-pointer"
+												className="text-secondary-foreground hover:bg-secondary cursor-pointer"
 												onClick={onShare}
 											>
 												<Share2 className="w-4 h-4 mr-2" />
@@ -261,11 +261,11 @@ function RoutineGrid({
 
 							{/* Stats */}
 							<div className="flex items-center gap-4 mb-4 text-sm">
-								<div className="flex items-center gap-1 text-[#9CA3AF]">
+								<div className="flex items-center gap-1 text-muted-foreground">
 									<Dumbbell className="w-4 h-4" />
 									<span>{routine.exercise_count} exercises</span>
 								</div>
-								<div className="flex items-center gap-1 text-[#9CA3AF]">
+								<div className="flex items-center gap-1 text-muted-foreground">
 									<Clock className="w-4 h-4" />
 									<span>~{routine.estimated_duration} min</span>
 								</div>
@@ -278,7 +278,7 @@ function RoutineGrid({
 										<Badge
 											key={tag}
 											variant="outline"
-											className="border-[#FF6B35]/30 text-[#FF6B35] text-xs"
+											className="border-primary/30 text-primary text-xs"
 										>
 											{tag}
 										</Badge>
@@ -287,8 +287,8 @@ function RoutineGrid({
 							)}
 
 							{/* Footer */}
-							<div className="flex items-center justify-between pt-4 border-t border-[#374151]">
-								<div className="text-xs text-[#6B7280]">
+							<div className="flex items-center justify-between pt-4 border-t border-secondary">
+								<div className="text-xs text-muted">
 									<div>Used {routine.times_completed} times</div>
 									<div>Last used: {lastUsedText}</div>
 								</div>
@@ -297,14 +297,14 @@ function RoutineGrid({
 										size="sm"
 										variant="outline"
 										onClick={() => onEdit(routine.id)}
-										className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									>
 										<Edit className="w-4 h-4 mr-1" />
 										Edit
 									</Button>
 									<Button
 										size="sm"
-										className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 									>
 										<Eye className="w-4 h-4 mr-1" />
 										View
@@ -326,26 +326,26 @@ function EmptyState({ onCreateRoutine }: { onCreateRoutine: () => void }) {
 			animate={{ opacity: 1, y: 0 }}
 			className="text-center py-16"
 		>
-			<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 flex items-center justify-center">
-				<Dumbbell className="w-12 h-12 text-[#FF6B35]" />
+			<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
+				<Dumbbell className="w-12 h-12 text-primary" />
 			</div>
 			<h3 className="text-2xl font-semibold text-white mb-2">
 				No routines yet
 			</h3>
-			<p className="text-[#9CA3AF] mb-6 max-w-md mx-auto">
+			<p className="text-muted-foreground mb-6 max-w-md mx-auto">
 				Create your first routine or import from the community
 			</p>
 			<div className="flex gap-4 justify-center">
 				<Button
 					onClick={() => navigate("/routines/new")}
-					className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+					className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 				>
 					<Plus className="w-4 h-4 mr-2" />
 					Create Routine
 				</Button>
 				<Button
 					variant="outline"
-					className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+					className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 				>
 					Browse Community
 				</Button>

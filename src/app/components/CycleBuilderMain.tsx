@@ -192,16 +192,16 @@ export function CycleBuilderMain({
 	const selectedDayData = days.find((d) => d.dayNumber === selectedDay);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-8">
+		<div className="min-h-screen bg-background pb-8">
 			{/* Sticky Top Bar */}
-			<div className="sticky top-0 z-40 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151] px-4 py-4">
+			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
 					<div className="flex items-center gap-4 flex-1 min-w-0">
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={handleCancel}
-							className="text-[#9CA3AF] hover:text-white flex-shrink-0"
+							className="text-muted-foreground hover:text-white flex-shrink-0"
 						>
 							<ChevronLeft className="w-5 h-5 mr-1" />
 							Cancel
@@ -220,7 +220,7 @@ export function CycleBuilderMain({
 						{hasUnsavedChanges && (
 							<Badge
 								variant="outline"
-								className="bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/30 flex-shrink-0"
+								className="bg-accent/20 text-accent border-accent/30 flex-shrink-0"
 							>
 								● Unsaved
 							</Badge>
@@ -230,7 +230,7 @@ export function CycleBuilderMain({
 					<div className="flex items-center gap-3">
 						<Button
 							onClick={handleSave}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							<Save className="w-4 h-4 mr-2" />
 							Save Cycle

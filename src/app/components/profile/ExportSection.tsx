@@ -73,10 +73,10 @@ export function ExportSection() {
 	};
 
 	return (
-		<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2 text-white">
-					<FileSpreadsheet className="h-5 w-5 text-[#FF6B35]" />
+					<FileSpreadsheet className="h-5 w-5 text-primary" />
 					Export Data
 				</CardTitle>
 				<CardDescription>
@@ -89,7 +89,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleExportWorkouts}
 						disabled={workoutsLoading || exporting !== null}
-						className="flex-1 border-[#374151] text-white hover:bg-[#374151]/50"
+						className="flex-1 border-secondary text-white hover:bg-secondary/50"
 					>
 						{exporting === "workouts" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -104,7 +104,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleExportRecords}
 						disabled={recordsLoading || exporting !== null}
-						className="flex-1 border-[#374151] text-white hover:bg-[#374151]/50"
+						className="flex-1 border-secondary text-white hover:bg-secondary/50"
 					>
 						{exporting === "records" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />

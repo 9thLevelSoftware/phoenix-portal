@@ -264,9 +264,9 @@ export function ConsistencyCalendar({
 			</div>
 
 			{/* Streak info */}
-			<div className="mt-3 flex items-center gap-6 text-sm text-[#9CA3AF]">
+			<div className="mt-3 flex items-center gap-6 text-sm text-muted-foreground">
 				<div className="flex items-center gap-2">
-					<Flame className="w-4 h-4 text-[#FF6B35]" />
+					<Flame className="w-4 h-4 text-primary" />
 					<span>
 						Current Streak:{" "}
 						<span className="font-semibold text-white">
@@ -284,7 +284,7 @@ export function ConsistencyCalendar({
 			</div>
 
 			{/* Legend */}
-			<div className="mt-2 flex items-center gap-2 text-xs text-[#6B7280]">
+			<div className="mt-2 flex items-center gap-2 text-xs text-muted">
 				<span>Less</span>
 				{[BG_EMPTY, `${EMBER}66`, `${EMBER}B3`, EMBER].map((color, i) => (
 					<div

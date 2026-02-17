@@ -225,7 +225,7 @@ export function SessionReplay() {
 												className={`text-sm font-medium ${
 													currentRepQuality.isLowQuality
 														? "text-amber-500"
-														: "text-[#FF6B35]"
+														: "text-primary"
 												}`}
 											>
 												Quality: {currentRepQuality.score}

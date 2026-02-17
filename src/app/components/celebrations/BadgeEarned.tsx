@@ -50,25 +50,25 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 				};
 			case "silver":
 				return {
-					bg: "from-[#E5E7EB] to-[#9CA3AF]",
+					bg: "from-secondary-foreground to-muted-foreground",
 					particles: "rgba(156, 163, 175, 0.8)",
 					glow: "#E5E7EB",
 				};
 			case "gold":
 				return {
-					bg: "from-[#F59E0B] to-[#D97706]",
+					bg: "from-accent to-[#D97706]",
 					particles: "rgba(245, 158, 11, 0.9)",
 					glow: "#F59E0B",
 				};
 			case "platinum":
 				return {
-					bg: "from-[#E5E7EB] via-[#F3F4F6] to-[#E5E7EB]",
+					bg: "from-secondary-foreground via-[#F3F4F6] to-secondary-foreground",
 					particles: "rgba(229, 231, 235, 0.9)",
 					glow: "#E5E7EB",
 				};
 			default:
 				return {
-					bg: "from-[#6B7280] to-[#374151]",
+					bg: "from-muted to-secondary",
 					particles: "rgba(107, 116, 128, 0.8)",
 					glow: "#6B7280",
 				};
@@ -122,8 +122,8 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 									rotateY: 180,
 								}}
 							>
-								<Card className="h-96 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-2 border-[#FF6B35] flex items-center justify-center">
-									<div className="text-[#FF6B35] text-9xl opacity-20">?</div>
+								<Card className="h-96 bg-gradient-to-br from-surface-2 to-background border-2 border-primary flex items-center justify-center">
+									<div className="text-primary text-9xl opacity-20">?</div>
 								</Card>
 							</motion.div>
 

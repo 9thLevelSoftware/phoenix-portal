@@ -110,11 +110,11 @@ export function PersonalRecords() {
 	const getTrendIcon = (trend: string) => {
 		switch (trend) {
 			case "improving":
-				return <ArrowUp className="w-4 h-4 text-[#10B981]" />;
+				return <ArrowUp className="w-4 h-4 text-success" />;
 			case "stable":
-				return <ArrowRight className="w-4 h-4 text-[#9CA3AF]" />;
+				return <ArrowRight className="w-4 h-4 text-muted-foreground" />;
 			case "plateau":
-				return <AlertTriangle className="w-4 h-4 text-[#FBBF24]" />;
+				return <AlertTriangle className="w-4 h-4 text-warning" />;
 			default:
 				return null;
 		}
@@ -135,14 +135,14 @@ export function PersonalRecords() {
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
 		const colors: Record<string, string> = {
-			Chest: "from-[#FF6B35] to-[#DC2626]",
-			Shoulders: "from-[#F59E0B] to-[#FBBF24]",
-			Back: "from-[#10B981] to-[#059669]",
-			Legs: "from-[#DC2626] to-[#991B1B]",
-			Arms: "from-[#FBBF24] to-[#F59E0B]",
+			Chest: "from-primary to-chart-2",
+			Shoulders: "from-accent to-warning",
+			Back: "from-success to-[#059669]",
+			Legs: "from-chart-2 to-[#991B1B]",
+			Arms: "from-warning to-accent",
 			Core: "from-[#8B5CF6] to-[#7C3AED]",
 		};
-		return colors[muscleGroup] || "from-[#6B7280] to-[#4B5563]";
+		return colors[muscleGroup] || "from-muted to-muted";
 	};
 
 	const filteredExercises =
@@ -157,8 +157,8 @@ export function PersonalRecords() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151]">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Skeleton className="h-10 w-64 mb-2" />
 						<Skeleton className="h-4 w-48" />
@@ -183,13 +183,13 @@ export function PersonalRecords() {
 
 	if (!records || records.length === 0) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151]">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex items-center gap-3 mb-2">
-							<Trophy className="w-8 h-8 text-[#F59E0B]" />
+							<Trophy className="w-8 h-8 text-accent" />
 							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									Personal Records
 								</span>
 							</h1>
@@ -197,13 +197,13 @@ export function PersonalRecords() {
 					</div>
 				</div>
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#F59E0B]/20 to-[#FBBF24]/20 flex items-center justify-center">
-						<Trophy className="w-12 h-12 text-[#F59E0B]" />
+					<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-accent/20 to-warning/20 flex items-center justify-center">
+						<Trophy className="w-12 h-12 text-accent" />
 					</div>
 					<h3 className="text-2xl font-semibold text-white mb-2">
 						No personal records yet
 					</h3>
-					<p className="text-[#9CA3AF] max-w-md mx-auto">
+					<p className="text-muted-foreground max-w-md mx-auto">
 						Complete workouts to start tracking your personal records. Every new
 						best is a victory!
 					</p>
@@ -213,23 +213,23 @@ export function PersonalRecords() {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151]">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
 						<div className="flex items-center gap-3 mb-2">
-							<Trophy className="w-8 h-8 text-[#F59E0B]" />
+							<Trophy className="w-8 h-8 text-accent" />
 							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									Personal Records
 								</span>
 							</h1>
 						</div>
-						<p className="text-[#9CA3AF]">Celebrate every victory</p>
+						<p className="text-muted-foreground">Celebrate every victory</p>
 					</motion.div>
 
 					{/* Stats Row */}
@@ -239,37 +239,37 @@ export function PersonalRecords() {
 						transition={{ delay: 0.1 }}
 						className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6"
 					>
-						<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
-								<Trophy className="w-5 h-5 text-[#F59E0B]" />
-								<div className="text-sm text-[#9CA3AF]">Total PRs</div>
+								<Trophy className="w-5 h-5 text-accent" />
+								<div className="text-sm text-muted-foreground">Total PRs</div>
 							</div>
 							<div className="text-2xl font-semibold text-white">
 								{totalPRs}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
-								<TrendingUp className="w-5 h-5 text-[#10B981]" />
-								<div className="text-sm text-[#9CA3AF]">This Month</div>
+								<TrendingUp className="w-5 h-5 text-success" />
+								<div className="text-sm text-muted-foreground">This Month</div>
 							</div>
 							<div className="text-2xl font-semibold text-white">
 								{monthlyPRs}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
-								<Flame className="w-5 h-5 text-[#FF6B35]" />
-								<div className="text-sm text-[#9CA3AF]">Exercises Tracked</div>
+								<Flame className="w-5 h-5 text-primary" />
+								<div className="text-sm text-muted-foreground">Exercises Tracked</div>
 							</div>
 							<div className="text-2xl font-semibold text-white">
 								{exercisePRs.length}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
-								<Star className="w-5 h-5 text-[#FBBF24]" />
-								<div className="text-sm text-[#9CA3AF]">Most Improved</div>
+								<Star className="w-5 h-5 text-warning" />
+								<div className="text-sm text-muted-foreground">Most Improved</div>
 							</div>
 							<div className="text-lg font-semibold text-white truncate">
 								{mostImproved}
@@ -305,11 +305,11 @@ export function PersonalRecords() {
 										transition={{ delay: 0.3 + index * 0.1 }}
 										className="flex-shrink-0 w-80 snap-start"
 									>
-										<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-2 border-[#FF6B35] relative overflow-hidden group hover:scale-105 transition-transform">
-											<div className="absolute inset-0 bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 opacity-50 group-hover:opacity-70 transition-opacity" />
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-2 border-primary relative overflow-hidden group hover:scale-105 transition-transform">
+											<div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 opacity-50 group-hover:opacity-70 transition-opacity" />
 											<div className="relative z-10">
 												{isNew && (
-													<Badge className="mb-3 bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0 animate-pulse">
+													<Badge className="mb-3 bg-gradient-to-r from-accent to-warning text-white border-0 animate-pulse">
 														NEW
 													</Badge>
 												)}
@@ -321,22 +321,22 @@ export function PersonalRecords() {
 												>
 													{pr.muscle_group}
 												</Badge>
-												<div className="text-3xl font-bold bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent mb-2">
+												<div className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
 													{pr.value} {pr.unit}
 												</div>
 												{pr.previous_value && (
-													<div className="text-sm text-[#9CA3AF] mb-3">
+													<div className="text-sm text-muted-foreground mb-3">
 														Previous: {pr.previous_value} {pr.unit}
 													</div>
 												)}
 												<div className="flex items-center justify-between">
 													<Badge
 														variant="outline"
-														className="border-[#FF6B35]/30 text-[#FF6B35]"
+														className="border-primary/30 text-primary"
 													>
 														{pr.record_type}
 													</Badge>
-													<span className="text-xs text-[#9CA3AF]">
+													<span className="text-xs text-muted-foreground">
 														{pr.achieved_at.toLocaleDateString("en-US", {
 															month: "short",
 															day: "numeric",
@@ -368,8 +368,8 @@ export function PersonalRecords() {
 									size="sm"
 									className={
 										activeFilter === filter
-											? "bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0 text-white flex-shrink-0"
-											: "bg-[#374151] border-0 text-[#9CA3AF] hover:bg-[#4B5563] flex-shrink-0"
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+											: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 									}
 								>
 									{filter}
@@ -384,8 +384,8 @@ export function PersonalRecords() {
 								onClick={() => setViewMode("list")}
 								className={
 									viewMode === "list"
-										? "border-[#FF6B35] text-[#FF6B35]"
-										: "border-[#374151] text-[#9CA3AF]"
+										? "border-primary text-primary"
+										: "border-secondary text-muted-foreground"
 								}
 							>
 								List
@@ -396,8 +396,8 @@ export function PersonalRecords() {
 								onClick={() => setViewMode("timeline")}
 								className={
 									viewMode === "timeline"
-										? "border-[#FF6B35] text-[#FF6B35]"
-										: "border-[#374151] text-[#9CA3AF]"
+										? "border-primary text-primary"
+										: "border-secondary text-muted-foreground"
 								}
 							>
 								Timeline
@@ -417,15 +417,15 @@ export function PersonalRecords() {
 						{plateauExercises.map((exercise) => (
 							<Card
 								key={exercise.exercise}
-								className="p-4 bg-gradient-to-br from-[#FBBF24]/10 to-[#F59E0B]/10 border-2 border-[#FBBF24]/50 mb-3"
+								className="p-4 bg-gradient-to-br from-warning/10 to-accent/10 border-2 border-warning/50 mb-3"
 							>
 								<div className="flex items-start gap-3">
-									<AlertTriangle className="w-5 h-5 text-[#FBBF24] flex-shrink-0 mt-0.5" />
+									<AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
 									<div className="flex-1">
 										<h4 className="text-white font-semibold mb-1">
 											Your {exercise.exercise} has plateaued
 										</h4>
-										<p className="text-sm text-[#E5E7EB] mb-2">
+										<p className="text-sm text-secondary-foreground mb-2">
 											No PR in{" "}
 											{Math.floor(
 												(now.getTime() - exercise.lastPRDate.getTime()) /
@@ -433,14 +433,14 @@ export function PersonalRecords() {
 											)}{" "}
 											weeks
 										</p>
-										<p className="text-sm text-[#9CA3AF]">
+										<p className="text-sm text-muted-foreground">
 											Try: Add variation or reduce weight, increase reps
 										</p>
 									</div>
 									<Button
 										size="sm"
 										variant="outline"
-										className="border-[#FBBF24] text-[#FBBF24] hover:bg-[#FBBF24]/10"
+										className="border-warning text-warning hover:bg-warning/10"
 									>
 										Browse Routines
 									</Button>
@@ -465,7 +465,7 @@ export function PersonalRecords() {
 								PR List by Exercise
 							</h2>
 							{filteredExercises.length === 0 ? (
-								<div className="text-center py-12 text-[#6B7280]">
+								<div className="text-center py-12 text-muted">
 									<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 									<p>No records for this muscle group yet</p>
 								</div>
@@ -477,10 +477,10 @@ export function PersonalRecords() {
 										animate={{ opacity: 1, y: 0 }}
 										transition={{ delay: index * 0.05 }}
 									>
-										<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] overflow-hidden">
+										<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
 											<button
 												onClick={() => toggleExercise(exercise.exercise)}
-												className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
+												className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
 											>
 												<div className="flex items-center gap-4">
 													<div>
@@ -502,34 +502,34 @@ export function PersonalRecords() {
 														<div className="text-lg font-semibold text-white">
 															{exercise.currentValue} {exercise.unit}
 														</div>
-														<div className="text-sm text-[#9CA3AF]">
+														<div className="text-sm text-muted-foreground">
 															{exercise.recordType}
 														</div>
 													</div>
 													<div className="flex items-center gap-2">
 														{getTrendIcon(exercise.trend)}
-														<span className="text-sm text-[#9CA3AF] hidden sm:inline">
+														<span className="text-sm text-muted-foreground hidden sm:inline">
 															{getTrendText(exercise.trend)}
 														</span>
 													</div>
-													<span className="text-xs text-[#6B7280] hidden sm:inline">
+													<span className="text-xs text-muted hidden sm:inline">
 														{exercise.lastPRDate.toLocaleDateString("en-US", {
 															month: "short",
 															day: "numeric",
 														})}
 													</span>
 													{expandedExercises.includes(exercise.exercise) ? (
-														<ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
+														<ChevronUp className="w-5 h-5 text-muted-foreground" />
 													) : (
-														<ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
+														<ChevronDown className="w-5 h-5 text-muted-foreground" />
 													)}
 												</div>
 											</button>
 
 											{expandedExercises.includes(exercise.exercise) && (
-												<div className="border-t border-[#374151] p-4">
-													<div className="mb-4 p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-														<div className="text-sm text-[#9CA3AF] mb-3">
+												<div className="border-t border-secondary p-4">
+													<div className="mb-4 p-4 rounded-lg bg-background border border-secondary">
+														<div className="text-sm text-muted-foreground mb-3">
 															PR Progression
 														</div>
 														<div className="h-32 flex items-end justify-between gap-2">
@@ -545,10 +545,10 @@ export function PersonalRecords() {
 																		className="flex-1 flex flex-col items-center gap-2"
 																	>
 																		<div
-																			className="w-full bg-gradient-to-t from-[#FF6B35] to-[#F59E0B] rounded-t transition-all hover:opacity-80"
+																			className="w-full bg-gradient-to-t from-primary to-accent rounded-t transition-all hover:opacity-80"
 																			style={{ height: `${height}%` }}
 																		/>
-																		<div className="text-xs text-[#9CA3AF]">
+																		<div className="text-xs text-muted-foreground">
 																			{entry.achieved_at.toLocaleDateString(
 																				"en-US",
 																				{
@@ -566,14 +566,14 @@ export function PersonalRecords() {
 													<div className="overflow-x-auto">
 														<table className="w-full text-sm">
 															<thead>
-																<tr className="border-b border-[#374151]">
-																	<th className="text-left py-2 text-[#9CA3AF]">
+																<tr className="border-b border-secondary">
+																	<th className="text-left py-2 text-muted-foreground">
 																		Date
 																	</th>
-																	<th className="text-left py-2 text-[#9CA3AF]">
+																	<th className="text-left py-2 text-muted-foreground">
 																		Value
 																	</th>
-																	<th className="text-left py-2 text-[#9CA3AF]">
+																	<th className="text-left py-2 text-muted-foreground">
 																		Type
 																	</th>
 																</tr>
@@ -582,9 +582,9 @@ export function PersonalRecords() {
 																{exercise.history.map((entry, idx) => (
 																	<tr
 																		key={idx}
-																		className="border-b border-[#374151]/50"
+																		className="border-b border-secondary/50"
 																	>
-																		<td className="py-3 text-[#E5E7EB]">
+																		<td className="py-3 text-secondary-foreground">
 																			{entry.achieved_at.toLocaleDateString(
 																				"en-US",
 																				{
@@ -600,7 +600,7 @@ export function PersonalRecords() {
 																		<td className="py-3">
 																			<Badge
 																				variant="outline"
-																				className="border-[#374151] text-[#9CA3AF]"
+																				className="border-secondary text-muted-foreground"
 																			>
 																				{entry.record_type}
 																			</Badge>
@@ -630,7 +630,7 @@ export function PersonalRecords() {
 							</h2>
 
 							<div className="relative">
-								<div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#FF6B35] via-[#DC2626] to-[#F59E0B]" />
+								<div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-chart-2 to-accent" />
 
 								<div className="space-y-8">
 									{/* Achieved milestones */}
@@ -642,16 +642,16 @@ export function PersonalRecords() {
 											transition={{ delay: index * 0.1 }}
 											className="relative pl-20"
 										>
-											<div className="absolute left-4 w-8 h-8 rounded-full bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] flex items-center justify-center border-4 border-[#0D0D0D]">
+											<div className="absolute left-4 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-warning flex items-center justify-center border-4 border-background">
 												<milestone.icon className="w-4 h-4 text-white" />
 											</div>
-											<Card className="p-4 bg-gradient-to-br from-[#F59E0B]/20 to-[#FBBF24]/20 border-2 border-[#F59E0B]/50">
+											<Card className="p-4 bg-gradient-to-br from-accent/20 to-warning/20 border-2 border-accent/50">
 												<div className="flex items-center justify-between">
 													<div>
 														<h3 className="text-lg font-semibold text-white mb-1">
 															{milestone.name}
 														</h3>
-														<p className="text-sm text-[#E5E7EB]">
+														<p className="text-sm text-secondary-foreground">
 															Milestone achieved! {milestone.count} personal
 															records
 														</p>
@@ -672,8 +672,8 @@ export function PersonalRecords() {
 											}}
 											className="relative pl-20"
 										>
-											<div className="absolute left-5 w-6 h-6 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#DC2626] border-4 border-[#0D0D0D]" />
-											<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all">
+											<div className="absolute left-5 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-chart-2 border-4 border-background" />
+											<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
 												<div className="flex items-center justify-between">
 													<div>
 														<div className="flex items-center gap-2 mb-1">
@@ -686,18 +686,18 @@ export function PersonalRecords() {
 																{pr.muscle_group}
 															</Badge>
 														</div>
-														<p className="text-xl font-bold bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+														<p className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 															{pr.value} {pr.unit}
 														</p>
 													</div>
 													<div className="text-right">
 														<Badge
 															variant="outline"
-															className="border-[#FF6B35]/30 text-[#FF6B35] mb-2"
+															className="border-primary/30 text-primary mb-2"
 														>
 															{pr.record_type}
 														</Badge>
-														<div className="text-xs text-[#9CA3AF]">
+														<div className="text-xs text-muted-foreground">
 															{pr.achieved_at.toLocaleDateString("en-US", {
 																month: "short",
 																day: "numeric",

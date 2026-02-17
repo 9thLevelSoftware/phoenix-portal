@@ -103,10 +103,10 @@ function computeTrend(values: number[]): TrendStat {
 
 function DirectionIcon({ direction }: { direction: "up" | "down" | "flat" }) {
 	if (direction === "up")
-		return <TrendingUp className="w-4 h-4 text-[#10B981]" />;
+		return <TrendingUp className="w-4 h-4 text-success" />;
 	if (direction === "down")
-		return <TrendingDown className="w-4 h-4 text-[#DC2626]" />;
-	return <Minus className="w-4 h-4 text-[#9CA3AF]" />;
+		return <TrendingDown className="w-4 h-4 text-chart-2" />;
+	return <Minus className="w-4 h-4 text-muted-foreground" />;
 }
 
 function StatCard({
@@ -121,8 +121,8 @@ function StatCard({
 	unit: string;
 }) {
 	return (
-		<Card className="p-4 bg-[#1A1A2E] border-[#2D2D44]">
-			<div className="text-sm text-[#9CA3AF] mb-1">{label}</div>
+		<Card className="p-4 bg-surface-2 border-secondary">
+			<div className="text-sm text-muted-foreground mb-1">{label}</div>
 			<div className="text-2xl font-semibold" style={{ color }}>
 				{stat.current} {unit}
 			</div>
@@ -131,10 +131,10 @@ function StatCard({
 				<span
 					className={
 						stat.direction === "up"
-							? "text-[#10B981]"
+							? "text-success"
 							: stat.direction === "down"
-								? "text-[#DC2626]"
-								: "text-[#9CA3AF]"
+								? "text-chart-2"
+								: "text-muted-foreground"
 					}
 				>
 					{stat.change > 0 ? "+" : ""}
@@ -233,13 +233,13 @@ export function ExerciseProgress({
 	if (!exercises || exercises.length === 0) {
 		return (
 			<div className="text-center py-16">
-				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
-					<TrendingUp className="w-12 h-12 text-[#FF6B35]" />
+				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+					<TrendingUp className="w-12 h-12 text-primary" />
 				</div>
 				<h3 className="text-2xl font-semibold text-white mb-2">
 					No progress data yet
 				</h3>
-				<p className="text-[#9CA3AF] max-w-md mx-auto">
+				<p className="text-muted-foreground max-w-md mx-auto">
 					Complete workouts to start tracking exercise progress. Weight, volume,
 					and 1RM trends will appear here.
 				</p>
@@ -252,7 +252,7 @@ export function ExerciseProgress({
 			{/* Exercise selector + time range */}
 			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 				<Select value={selectedExercise} onValueChange={setSelectedExercise}>
-					<SelectTrigger className="w-64 bg-[#1A1A2E] border-[#2D2D44] text-white">
+					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
 						<SelectValue placeholder="Select an exercise" />
 					</SelectTrigger>
 					<SelectContent>
@@ -265,12 +265,12 @@ export function ExerciseProgress({
 				</Select>
 
 				<Tabs value={timeRange} onValueChange={setTimeRange}>
-					<TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+					<TabsList className="bg-surface-2 border border-secondary">
 						{TIME_RANGES.map((r) => (
 							<TabsTrigger
 								key={r.label}
 								value={r.label}
-								className="data-[state=active]:bg-[#FF6B35] data-[state=active]:text-white text-xs px-3"
+								className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs px-3"
 							>
 								{r.label}
 							</TabsTrigger>
@@ -286,7 +286,7 @@ export function ExerciseProgress({
 					<Skeleton className="h-[300px]" />
 				</div>
 			) : chartData.length === 0 ? (
-				<div className="text-center py-12 text-[#9CA3AF]">
+				<div className="text-center py-12 text-muted-foreground">
 					No progress data for this exercise in the selected time range
 				</div>
 			) : (
@@ -325,8 +325,8 @@ export function ExerciseProgress({
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
 						>
-							<Card className="p-4 bg-[#1A1A2E] border-[#2D2D44]">
-								<h4 className="text-sm font-medium text-[#9CA3AF] mb-4">
+							<Card className="p-4 bg-surface-2 border-secondary">
+								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Max Weight Trend
 								</h4>
 								<ResponsiveContainer width="100%" height={250}>
@@ -380,8 +380,8 @@ export function ExerciseProgress({
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.2 }}
 						>
-							<Card className="p-4 bg-[#1A1A2E] border-[#2D2D44]">
-								<h4 className="text-sm font-medium text-[#9CA3AF] mb-4">
+							<Card className="p-4 bg-surface-2 border-secondary">
+								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Total Volume Trend
 								</h4>
 								<ResponsiveContainer width="100%" height={250}>
@@ -435,8 +435,8 @@ export function ExerciseProgress({
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.3 }}
 						>
-							<Card className="p-4 bg-[#1A1A2E] border-[#2D2D44]">
-								<h4 className="text-sm font-medium text-[#9CA3AF] mb-4">
+							<Card className="p-4 bg-surface-2 border-secondary">
+								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Estimated 1RM Trend
 								</h4>
 								<ResponsiveContainer width="100%" height={250}>

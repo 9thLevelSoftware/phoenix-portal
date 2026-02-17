@@ -24,7 +24,7 @@ export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 			<Button
 				variant="default"
 				size="icon"
-				className="w-12 h-12 rounded-full bg-[#FF6B35] hover:bg-[#FF6B35]/90"
+				className="w-12 h-12 rounded-full bg-primary hover:bg-primary/90"
 				onClick={togglePlayPause}
 				disabled={disabled}
 				aria-label={isPlaying ? "Pause" : "Play"}

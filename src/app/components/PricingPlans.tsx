@@ -79,11 +79,11 @@ const TIERS: TierConfig[] = [
 			{ label: "Community sharing" },
 			{ label: "Unlimited history" },
 		],
-		accentBorder: "border-[#FF6B35]",
-		accentBg: "from-[#FF6B35]/10 to-[#DC2626]/10",
-		accentText: "text-[#FF6B35]",
+		accentBorder: "border-primary",
+		accentBg: "from-primary/10 to-chart-2/10",
+		accentText: "text-primary",
 		buttonClass:
-			"bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#FF6B35]/90 hover:to-[#DC2626]/90 text-white border-0",
+			"bg-gradient-to-r from-primary to-chart-2 hover:from-primary/90 hover:to-chart-2/90 text-white border-0",
 		popular: true,
 	},
 	{
@@ -100,11 +100,11 @@ const TIERS: TierConfig[] = [
 			{ label: "Advanced VBT analytics" },
 			{ label: "Priority support" },
 		],
-		accentBorder: "border-[#F59E0B]",
-		accentBg: "from-[#F59E0B]/10 to-[#B45309]/10",
-		accentText: "text-[#F59E0B]",
+		accentBorder: "border-accent",
+		accentBg: "from-accent/10 to-[#B45309]/10",
+		accentText: "text-accent",
 		buttonClass:
-			"bg-gradient-to-r from-[#F59E0B] to-[#B45309] hover:from-[#F59E0B]/90 hover:to-[#B45309]/90 text-black border-0",
+			"bg-gradient-to-r from-accent to-[#B45309] hover:from-accent/90 hover:to-[#B45309]/90 text-black border-0",
 	},
 ];
 
@@ -197,7 +197,7 @@ export function PricingPlans() {
 					<h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
 						Choose Your Plan
 					</h1>
-					<p className="text-[#9CA3AF] text-lg max-w-2xl mx-auto">
+					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 						Unlock premium features to get the most out of your training data
 					</p>
 				</div>
@@ -205,18 +205,18 @@ export function PricingPlans() {
 				{/* Billing Toggle */}
 				<div className="flex items-center justify-center gap-3 mb-10">
 					<span
-						className={`text-sm font-medium ${!isAnnual ? "text-white" : "text-[#9CA3AF]"}`}
+						className={`text-sm font-medium ${!isAnnual ? "text-white" : "text-muted-foreground"}`}
 					>
 						Monthly
 					</span>
 					<Switch checked={isAnnual} onCheckedChange={setIsAnnual} />
 					<span
-						className={`text-sm font-medium ${isAnnual ? "text-white" : "text-[#9CA3AF]"}`}
+						className={`text-sm font-medium ${isAnnual ? "text-white" : "text-muted-foreground"}`}
 					>
 						Annual
 					</span>
 					{isAnnual && (
-						<Badge className="bg-[#10B981]/20 text-[#10B981] border-[#10B981]/30">
+						<Badge className="bg-success/20 text-success border-success/30">
 							Save ~17%
 						</Badge>
 					)}
@@ -232,13 +232,13 @@ export function PricingPlans() {
 							<Card
 								key={tierConfig.tier}
 								className={`relative bg-gradient-to-b ${tierConfig.accentBg} border-2 ${
-									isCurrent ? tierConfig.accentBorder : "border-[#374151]"
+									isCurrent ? tierConfig.accentBorder : "border-secondary"
 								} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
 							>
 								{/* Popular Badge */}
 								{tierConfig.popular && (
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-[#FF6B35] text-white border-0 px-3">
+										<Badge className="bg-primary text-white border-0 px-3">
 											Most Popular
 										</Badge>
 									</div>
@@ -249,7 +249,7 @@ export function PricingPlans() {
 									<div className="absolute -top-3 right-4">
 										<Badge
 											variant="outline"
-											className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-[#0D0D0D]`}
+											className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
 										>
 											Current
 										</Badge>
@@ -280,10 +280,10 @@ export function PricingPlans() {
 													? tierConfig.annualMonthly
 													: tierConfig.monthlyPrice}
 											</span>
-											<span className="text-[#9CA3AF] text-sm">/mo</span>
+											<span className="text-muted-foreground text-sm">/mo</span>
 										</div>
 										{isAnnual && tierConfig.tier !== "FREE" && (
-											<p className="text-[#9CA3AF] text-xs mt-1">
+											<p className="text-muted-foreground text-xs mt-1">
 												{tierConfig.annualPrice}/year billed annually
 											</p>
 										)}
@@ -299,7 +299,7 @@ export function PricingPlans() {
 												<Check
 													className={`w-4 h-4 mt-0.5 shrink-0 ${tierConfig.accentText}`}
 												/>
-												<span className="text-sm text-[#E5E7EB]">
+												<span className="text-sm text-secondary-foreground">
 													{feature.label}
 												</span>
 											</li>

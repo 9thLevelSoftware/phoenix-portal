@@ -91,7 +91,7 @@ export function StreakMilestone({
 								},
 							}}
 						>
-							<Flame className="w-24 h-24 text-[#FF6B35]" fill="#FF6B35" />
+							<Flame className="w-24 h-24 text-primary" fill="#FF6B35" />
 						</motion.div>
 
 						{/* Milestone Number */}
@@ -104,14 +104,14 @@ export function StreakMilestone({
 									className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -z-10"
 								>
 									<div
-										className="text-[12rem] font-bold bg-gradient-to-br from-[#FF6B35] to-[#DC2626] bg-clip-text text-transparent"
+										className="text-[12rem] font-bold bg-gradient-to-br from-primary to-chart-2 bg-clip-text text-transparent"
 										style={{
 											filter: "drop-shadow(0 0 30px rgba(255, 107, 53, 0.5))",
 										}}
 									>
 										{streak}
 									</div>
-									<div className="text-3xl font-semibold text-center text-[#F59E0B] uppercase tracking-wider mt-4">
+									<div className="text-3xl font-semibold text-center text-accent uppercase tracking-wider mt-4">
 										Day Streak!
 									</div>
 								</motion.div>
@@ -125,7 +125,7 @@ export function StreakMilestone({
 							[0, 1, 2].map((index) => (
 								<motion.div
 									key={index}
-									className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-[#FF6B35] z-[100]"
+									className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-primary z-[100]"
 									initial={{ scale: 0, opacity: 0.8 }}
 									animate={{ scale: 3, opacity: 0 }}
 									transition={{
@@ -162,8 +162,8 @@ export function StreakMilestone({
 								<Card
 									className={`p-6 text-center ${
 										isYearMilestone
-											? "bg-gradient-to-br from-[#F59E0B] to-[#DC2626] border-[#F59E0B]"
-											: "bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#FF6B35]"
+											? "bg-gradient-to-br from-accent to-chart-2 border-accent"
+											: "bg-gradient-to-br from-surface-2 to-background border-primary"
 									} border-2 overflow-hidden relative`}
 								>
 									{/* Shimmer effect for year milestone */}
@@ -184,7 +184,7 @@ export function StreakMilestone({
 									<div className="relative z-10">
 										<motion.h2
 											className={`text-2xl font-bold mb-2 ${
-												isYearMilestone ? "text-white" : "text-[#FF6B35]"
+												isYearMilestone ? "text-white" : "text-primary"
 											}`}
 											animate={isYearMilestone ? { scale: [1, 1.05, 1] } : {}}
 											transition={{ duration: 1, repeat: Infinity }}
@@ -204,7 +204,7 @@ export function StreakMilestone({
 										)}
 
 										<p
-											className={`text-xs ${isYearMilestone ? "text-white/70" : "text-[#6B7280]"} mt-4`}
+											className={`text-xs ${isYearMilestone ? "text-white/70" : "text-muted"} mt-4`}
 										>
 											{phase >= 5 || isYearMilestone
 												? "Tap to continue"
@@ -233,7 +233,7 @@ function EmberParticles({ count }: { count: number }) {
 				return (
 					<motion.div
 						key={i}
-						className="absolute w-2 h-2 rounded-full bg-[#FF6B35]"
+						className="absolute w-2 h-2 rounded-full bg-primary"
 						style={{
 							left: startX,
 							top: "50%",

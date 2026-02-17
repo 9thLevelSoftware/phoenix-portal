@@ -333,7 +333,7 @@ export function Analytics() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+			<div className="min-h-screen bg-background pb-20 md:pb-8">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<Skeleton className="h-10 w-48 mb-2" />
 					<Skeleton className="h-4 w-64 mb-8" />
@@ -356,23 +356,23 @@ export function Analytics() {
 		volumeData.length > 0 || muscleGroupData.length > 0 || externalCount > 0;
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 					<div>
 						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Analytics Hub
 							</span>
 						</h1>
-						<p className="text-[#9CA3AF]">
+						<p className="text-muted-foreground">
 							Comprehensive insights into your training
 						</p>
 					</div>
 					<div className="flex items-center gap-3">
 						<Select value={timePeriod} onValueChange={setTimePeriod}>
-							<SelectTrigger className="w-32 bg-[#1a1a1a] border-[#374151] text-white">
+							<SelectTrigger className="w-32 bg-surface-2 border-secondary text-white">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -385,7 +385,7 @@ export function Analytics() {
 						</Select>
 						<Button
 							variant="outline"
-							className="border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+							className="border-primary text-primary hover:bg-primary/10"
 						>
 							<Download className="w-4 h-4 mr-2" />
 							Export
@@ -395,13 +395,13 @@ export function Analytics() {
 
 				{!hasData ? (
 					<div className="text-center py-16">
-						<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
-							<TrendingUp className="w-12 h-12 text-[#FF6B35]" />
+						<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+							<TrendingUp className="w-12 h-12 text-primary" />
 						</div>
 						<h3 className="text-2xl font-semibold text-white mb-2">
 							No analytics data yet
 						</h3>
-						<p className="text-[#9CA3AF] max-w-md mx-auto">
+						<p className="text-muted-foreground max-w-md mx-auto">
 							Complete workouts to start seeing your training analytics. Charts
 							and insights will populate automatically.
 						</p>
@@ -445,15 +445,15 @@ export function Analytics() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.1 }}
 								>
-									<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-										<div className="text-sm text-[#9CA3AF] mb-1">
+									<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+										<div className="text-sm text-muted-foreground mb-1">
 											{stat.label}
 										</div>
 										<div className="text-2xl text-white mb-1">{stat.value}</div>
 										{stat.change && (
 											<div
 												className={`text-xs flex items-center gap-1 ${
-													stat.positive ? "text-[#10B981]" : "text-[#6B7280]"
+													stat.positive ? "text-success" : "text-muted"
 												}`}
 											>
 												{stat.positive ? (
@@ -471,34 +471,34 @@ export function Analytics() {
 
 						{/* Main Content Tabs */}
 						<Tabs defaultValue="overview" className="space-y-6">
-							<TabsList className="bg-[#1a1a1a] border border-[#374151] p-1">
+							<TabsList className="bg-surface-2 border border-secondary p-1">
 								<TabsTrigger
 									value="overview"
-									className="data-[state=active]:bg-[#FF6B35]"
+									className="data-[state=active]:bg-primary"
 								>
 									Overview
 								</TabsTrigger>
 								<TabsTrigger
 									value="strength"
-									className="data-[state=active]:bg-[#FF6B35]"
+									className="data-[state=active]:bg-primary"
 								>
 									Strength Progress
 								</TabsTrigger>
 								<TabsTrigger
 									value="insights"
-									className="data-[state=active]:bg-[#FF6B35]"
+									className="data-[state=active]:bg-primary"
 								>
 									Trends & Insights
 								</TabsTrigger>
 								<TabsTrigger
 									value="body"
-									className="data-[state=active]:bg-[#FF6B35]"
+									className="data-[state=active]:bg-primary"
 								>
 									Body Part Analysis
 								</TabsTrigger>
 								<TabsTrigger
 									value="external"
-									className="data-[state=active]:bg-[#FF6B35]"
+									className="data-[state=active]:bg-primary"
 								>
 									External
 								</TabsTrigger>
@@ -508,13 +508,13 @@ export function Analytics() {
 							<TabsContent value="overview" className="space-y-6">
 								{/* Activity Sources Breakdown */}
 								{(totalWorkouts > 0 || externalCount > 0) && (
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 										<h3 className="text-xl text-white mb-4">
 											Activity Sources
 										</h3>
 										<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 											<div>
-												<p className="text-2xl font-bold text-[#FF6B35]">
+												<p className="text-2xl font-bold text-primary">
 													{totalWorkouts}
 												</p>
 												<p className="text-sm text-muted-foreground">
@@ -550,7 +550,7 @@ export function Analytics() {
 										</div>
 										{/* Provider badges */}
 										{externalCount > 0 && (
-											<div className="flex gap-2 mt-4 pt-4 border-t border-[#374151]">
+											<div className="flex gap-2 mt-4 pt-4 border-t border-secondary">
 												{Array.from(
 													new Set(externalChartData.map((a) => a.provider)),
 												).map((provider) => {
@@ -575,7 +575,7 @@ export function Analytics() {
 
 								<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 									{/* Volume Over Time */}
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 										<h3 className="text-xl text-white mb-6">
 											Volume Over Time
 										</h3>
@@ -626,14 +626,14 @@ export function Analytics() {
 												</AreaChart>
 											</ResponsiveContainer>
 										) : (
-											<div className="h-[300px] flex items-center justify-center text-[#6B7280]">
+											<div className="h-[300px] flex items-center justify-center text-muted">
 												No volume data for this period
 											</div>
 										)}
 									</Card>
 
 									{/* Muscle Group Distribution */}
-									<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 										<h3 className="text-xl text-white mb-6">
 											Muscle Group Distribution
 										</h3>
@@ -665,7 +665,7 @@ export function Analytics() {
 												</PieChart>
 											</ResponsiveContainer>
 										) : (
-											<div className="h-[300px] flex items-center justify-center text-[#6B7280]">
+											<div className="h-[300px] flex items-center justify-center text-muted">
 												No muscle group data yet
 											</div>
 										)}
@@ -675,7 +675,7 @@ export function Analytics() {
 
 							{/* Strength Progress Tab */}
 							<TabsContent value="strength" className="space-y-6">
-								<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 									<h3 className="text-xl text-white mb-6">1RM Progression</h3>
 									{strengthProgressData.length > 0 ? (
 										<ResponsiveContainer width="100%" height={400}>
@@ -709,7 +709,7 @@ export function Analytics() {
 											</LineChart>
 										</ResponsiveContainer>
 									) : (
-										<div className="h-[400px] flex items-center justify-center text-[#6B7280]">
+										<div className="h-[400px] flex items-center justify-center text-muted">
 											No strength progress data yet. Set some PRs to see your
 											progression!
 										</div>
@@ -730,29 +730,29 @@ export function Analytics() {
 											<Card
 												className={`p-6 border-2 ${
 													insight.type === "positive"
-														? "bg-gradient-to-br from-[#10B981]/10 to-[#0D0D0D] border-[#10B981]"
+														? "bg-gradient-to-br from-success/10 to-background border-success"
 														: insight.type === "warning"
-															? "bg-gradient-to-br from-[#FBBF24]/10 to-[#0D0D0D] border-[#FBBF24]"
-															: "bg-gradient-to-br from-[#6B7280]/10 to-[#0D0D0D] border-[#6B7280]"
+															? "bg-gradient-to-br from-warning/10 to-background border-warning"
+															: "bg-gradient-to-br from-muted/10 to-background border-muted"
 												}`}
 											>
 												<div className="flex items-start gap-4">
 													<div
 														className={`p-3 rounded-lg ${
 															insight.type === "positive"
-																? "bg-[#10B981]/20"
+																? "bg-success/20"
 																: insight.type === "warning"
-																	? "bg-[#FBBF24]/20"
-																	: "bg-[#6B7280]/20"
+																	? "bg-warning/20"
+																	: "bg-muted/20"
 														}`}
 													>
 														<insight.icon
 															className={`w-6 h-6 ${
 																insight.type === "positive"
-																	? "text-[#10B981]"
+																	? "text-success"
 																	: insight.type === "warning"
-																		? "text-[#FBBF24]"
-																		: "text-[#6B7280]"
+																		? "text-warning"
+																		: "text-muted"
 															}`}
 														/>
 													</div>
@@ -760,7 +760,7 @@ export function Analytics() {
 														<h4 className="text-white text-lg mb-1">
 															{insight.title}
 														</h4>
-														<p className="text-[#9CA3AF]">
+														<p className="text-muted-foreground">
 															{insight.description}
 														</p>
 													</div>
@@ -773,7 +773,7 @@ export function Analytics() {
 
 							{/* Body Part Analysis Tab */}
 							<TabsContent value="body" className="space-y-6">
-								<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 									<h3 className="text-xl text-white mb-6">
 										Muscle Group Frequency
 									</h3>
@@ -795,14 +795,14 @@ export function Analytics() {
 													>
 														{muscle.value}%
 													</div>
-													<div className="text-xs text-[#9CA3AF]">
+													<div className="text-xs text-muted-foreground">
 														of total volume
 													</div>
 												</div>
 											))}
 										</div>
 									) : (
-										<div className="text-center py-12 text-[#6B7280]">
+										<div className="text-center py-12 text-muted">
 											No body part data yet
 										</div>
 									)}
@@ -814,7 +814,7 @@ export function Analytics() {
 								{externalCount > 0 ? (
 									<>
 										{/* External Activity Duration Chart */}
-										<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 											<h3 className="text-xl text-white mb-6">
 												External Activity Duration
 											</h3>
@@ -874,7 +874,7 @@ export function Analytics() {
 										</Card>
 
 										{/* Recent External Activities List */}
-										<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 											<h3 className="text-xl text-white mb-4">
 												Recent External Activities
 											</h3>
@@ -884,7 +884,7 @@ export function Analytics() {
 													.map((activity, index) => (
 														<div
 															key={index}
-															className="flex items-center justify-between p-3 rounded-lg bg-[#111] border border-[#374151]"
+															className="flex items-center justify-between p-3 rounded-lg bg-surface-1 border border-secondary"
 														>
 															<div className="flex items-center gap-3">
 																<div className="p-2 rounded-lg bg-blue-500/20">
@@ -937,7 +937,7 @@ export function Analytics() {
 										<h3 className="text-2xl font-semibold text-white mb-2">
 											No external activities
 										</h3>
-										<p className="text-[#9CA3AF] max-w-md mx-auto">
+										<p className="text-muted-foreground max-w-md mx-auto">
 											Connect fitness services in the Integrations page to see
 											external activities here.
 										</p>

@@ -28,7 +28,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 
 	return (
 		<div className="mb-6">
-			<p className="text-xs text-[#6B7280] uppercase tracking-wider mb-3">
+			<p className="text-xs text-muted uppercase tracking-wider mb-3">
 				Featured Creators
 			</p>
 
@@ -52,7 +52,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 								onClick={() => onSelectCreator(creator.user_id)}
 								className="flex flex-col items-center gap-1.5 shrink-0 snap-start group"
 							>
-								<div className="ring-2 ring-[#FF6B35]/50 rounded-full p-0.5 group-hover:ring-[#FF6B35] transition-all">
+								<div className="ring-2 ring-primary/50 rounded-full p-0.5 group-hover:ring-primary transition-all">
 									<Avatar className="w-12 h-12">
 										{creator.avatar_url && (
 											<AvatarImage
@@ -60,12 +60,12 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 												alt={creator.display_name}
 											/>
 										)}
-										<AvatarFallback className="bg-gradient-to-br from-[#FF6B35] to-[#DC2626] text-white text-sm">
+										<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-sm">
 											{getInitials(creator.display_name)}
 										</AvatarFallback>
 									</Avatar>
 								</div>
-								<span className="text-[11px] text-[#9CA3AF] max-w-16 truncate group-hover:text-white transition-colors">
+								<span className="text-[11px] text-muted-foreground max-w-16 truncate group-hover:text-white transition-colors">
 									{creator.display_name}
 								</span>
 							</button>

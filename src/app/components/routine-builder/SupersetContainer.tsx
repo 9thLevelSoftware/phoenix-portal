@@ -57,7 +57,7 @@ export function SupersetContainer({
 			{/* Superset Header */}
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
-					<GripVertical className="w-5 h-5 text-[#6B7280] cursor-grab active:cursor-grabbing" />
+					<GripVertical className="w-5 h-5 text-muted cursor-grab active:cursor-grabbing" />
 					<div
 						className="text-sm font-bold px-2 py-1 rounded"
 						style={{
@@ -67,7 +67,7 @@ export function SupersetContainer({
 					>
 						SUPERSET {label}
 					</div>
-					<span className="text-xs text-[#6B7280]">
+					<span className="text-xs text-muted">
 						{supersetExercises.length} exercises
 					</span>
 				</div>
@@ -76,7 +76,7 @@ export function SupersetContainer({
 					size="sm"
 					variant="ghost"
 					onClick={onUngroup}
-					className="text-[#9CA3AF] hover:text-white"
+					className="text-muted-foreground hover:text-white"
 				>
 					<Unlink className="w-4 h-4 mr-1" />
 					Ungroup
@@ -88,20 +88,20 @@ export function SupersetContainer({
 				{supersetExercises.map((exercise, index) => (
 					<div key={exercise.id}>
 						{/* Exercise Card */}
-						<div className="p-3 bg-[#0D0D0D] rounded-lg border border-[#374151] hover:border-[#FF6B35] transition-all">
+						<div className="p-3 bg-background rounded-lg border border-secondary hover:border-primary transition-all">
 							<div className="flex items-center justify-between">
 								<div className="flex-1 flex items-center gap-3">
-									<GripVertical className="w-4 h-4 text-[#6B7280] cursor-grab active:cursor-grabbing" />
+									<GripVertical className="w-4 h-4 text-muted cursor-grab active:cursor-grabbing" />
 									<div className="flex-1">
 										<div className="flex items-center gap-2 mb-1">
 											<span className="font-semibold text-white">
 												{exercise.exerciseName}
 											</span>
-											<span className="text-xs px-2 py-0.5 rounded bg-[#374151] text-[#9CA3AF]">
+											<span className="text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground">
 												{exercise.muscleGroup}
 											</span>
 										</div>
-										<div className="text-sm text-[#6B7280]">
+										<div className="text-sm text-muted">
 											{exercise.sets.length} sets •{" "}
 											{exercise.sets[0]?.reps || 0} reps •{" "}
 											{exercise.sets[0]?.weight || 0} kg •{" "}
@@ -115,7 +115,7 @@ export function SupersetContainer({
 										size="sm"
 										variant="ghost"
 										onClick={() => onEditExercise(exercise.id)}
-										className="text-[#9CA3AF] hover:text-white"
+										className="text-muted-foreground hover:text-white"
 									>
 										<Edit className="w-4 h-4" />
 									</Button>
@@ -123,7 +123,7 @@ export function SupersetContainer({
 										size="sm"
 										variant="ghost"
 										onClick={() => onRemoveExercise(exercise.id)}
-										className="text-[#EF4444] hover:text-[#DC2626]"
+										className="text-destructive hover:text-chart-2"
 									>
 										<X className="w-4 h-4" />
 									</Button>
@@ -147,23 +147,23 @@ export function SupersetContainer({
 				size="sm"
 				variant="outline"
 				onClick={onAddExercise}
-				className="w-full mt-3 border-dashed border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-white"
+				className="w-full mt-3 border-dashed border-secondary text-muted-foreground hover:border-primary hover:text-white"
 			>
 				<Plus className="w-4 h-4 mr-2" />
 				Add Exercise to Superset
 			</Button>
 
 			{/* Footer Controls */}
-			<div className="mt-4 pt-4 border-t border-[#374151] flex items-center justify-between">
+			<div className="mt-4 pt-4 border-t border-secondary flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<span className="text-sm text-[#9CA3AF]">Rest after superset:</span>
+					<span className="text-sm text-muted-foreground">Rest after superset:</span>
 					<Button
 						size="sm"
 						variant="outline"
 						onClick={() =>
 							onUpdateRestAfter(Math.max(0, superset.restAfter - 15))
 						}
-						className="border-[#374151] h-8 w-8 p-0"
+						className="border-secondary h-8 w-8 p-0"
 					>
 						−
 					</Button>
@@ -173,14 +173,14 @@ export function SupersetContainer({
 						onChange={(e) =>
 							onUpdateRestAfter(parseInt(e.target.value, 10) || 90)
 						}
-						className="w-16 text-center bg-[#0D0D0D] border-[#374151] h-8"
+						className="w-16 text-center bg-background border-secondary h-8"
 					/>
-					<span className="text-sm text-[#9CA3AF]">s</span>
+					<span className="text-sm text-muted-foreground">s</span>
 					<Button
 						size="sm"
 						variant="outline"
 						onClick={() => onUpdateRestAfter(superset.restAfter + 15)}
-						className="border-[#374151] h-8 w-8 p-0"
+						className="border-secondary h-8 w-8 p-0"
 					>
 						+
 					</Button>
@@ -201,7 +201,7 @@ function TransitionIndicator({
 
 	return (
 		<div className="flex items-center justify-center my-2">
-			<div className="flex items-center gap-2 text-xs text-[#6B7280]">
+			<div className="flex items-center gap-2 text-xs text-muted">
 				<ArrowDown className="w-4 h-4" />
 				{isEditing ? (
 					<div className="flex items-center gap-1">
@@ -218,7 +218,7 @@ function TransitionIndicator({
 							value={time}
 							onChange={(e) => onUpdate(parseInt(e.target.value, 10) || 10)}
 							onBlur={() => setIsEditing(false)}
-							className="w-12 text-center h-6 text-xs bg-[#0D0D0D] border-[#374151]"
+							className="w-12 text-center h-6 text-xs bg-background border-secondary"
 							autoFocus
 						/>
 						<Button
@@ -234,7 +234,7 @@ function TransitionIndicator({
 				) : (
 					<button
 						onClick={() => setIsEditing(true)}
-						className="hover:text-[#9CA3AF] transition-colors"
+						className="hover:text-muted-foreground transition-colors"
 					>
 						{time}s transition
 					</button>

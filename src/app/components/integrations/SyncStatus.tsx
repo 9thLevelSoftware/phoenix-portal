@@ -40,7 +40,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 	const processing = queue?.find((q) => q.status === "processing");
 
 	return (
-		<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<CardHeader className="pb-3">
 				<CardTitle className="text-lg">Sync Status</CardTitle>
 			</CardHeader>
@@ -71,7 +71,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 
 					{/* Recent activity */}
 					{queue && queue.length > 0 && (
-						<div className="border-t border-[#374151] pt-4 mt-4">
+						<div className="border-t border-secondary pt-4 mt-4">
 							<h4 className="text-sm font-medium mb-2">Recent Activity</h4>
 							<div className="space-y-2">
 								{queue.slice(0, 5).map((item) => (

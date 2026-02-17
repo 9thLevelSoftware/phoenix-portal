@@ -125,10 +125,10 @@ export function WorkoutComplete({
 								transition={{ type: "spring", damping: 20 }}
 								className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[102] w-full max-w-md px-4"
 							>
-								<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-2 border-[#10B981] overflow-hidden relative">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-2 border-success overflow-hidden relative">
 									{/* Glow effect */}
 									<motion.div
-										className="absolute inset-0 bg-[#10B981]/10 blur-xl"
+										className="absolute inset-0 bg-success/10 blur-xl"
 										animate={{
 											opacity: [0.3, 0.5, 0.3],
 										}}
@@ -150,7 +150,7 @@ export function WorkoutComplete({
 											<div className="text-3xl font-bold text-white mb-2">
 												✓ Workout Complete
 											</div>
-											<p className="text-sm text-[#10B981]">
+											<p className="text-sm text-success">
 												Great work! Keep the momentum going! 🔥
 											</p>
 										</motion.div>
@@ -162,24 +162,24 @@ export function WorkoutComplete({
 											animate={{ opacity: 1 }}
 											transition={{ delay: 0.2 }}
 										>
-											<div className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]">
+											<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
 												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center">
 													<Clock className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
-													<div className="text-xs text-[#9CA3AF]">Duration</div>
+													<div className="text-xs text-muted-foreground">Duration</div>
 													<div className="text-lg font-bold text-white">
 														{duration}
 													</div>
 												</div>
 											</div>
 
-											<div className="flex items-center gap-3 p-3 bg-[#0D0D0D] rounded-lg border border-[#374151]">
-												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
+											<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
+												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
 													<Dumbbell className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
-													<div className="text-xs text-[#9CA3AF]">
+													<div className="text-xs text-muted-foreground">
 														Total Volume
 													</div>
 													<div className="text-lg font-bold text-white">
@@ -190,16 +190,16 @@ export function WorkoutComplete({
 
 											{prsAchieved > 0 && (
 												<motion.div
-													className="flex items-center gap-3 p-3 bg-gradient-to-br from-[#F59E0B]/20 to-[#D97706]/10 rounded-lg border-2 border-[#F59E0B]"
+													className="flex items-center gap-3 p-3 bg-gradient-to-br from-accent/20 to-[#D97706]/10 rounded-lg border-2 border-accent"
 													initial={{ scale: 0.9 }}
 													animate={{ scale: 1 }}
 													transition={{ delay: 0.3, type: "spring" }}
 												>
-													<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center">
+													<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center">
 														<TrendingUp className="w-5 h-5 text-white" />
 													</div>
 													<div className="flex-1">
-														<div className="text-xs text-[#F59E0B] font-semibold">
+														<div className="text-xs text-accent font-semibold">
 															PRs Achieved
 														</div>
 														<div className="text-lg font-bold text-white">
@@ -224,7 +224,7 @@ export function WorkoutComplete({
 
 											{streakContinued && (
 												<motion.div
-													className="flex items-center gap-3 p-3 bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/10 rounded-lg border border-[#FF6B35]"
+													className="flex items-center gap-3 p-3 bg-gradient-to-br from-primary/20 to-chart-2/10 rounded-lg border border-primary"
 													initial={{ scale: 0.9 }}
 													animate={{ scale: 1 }}
 													transition={{ delay: 0.4, type: "spring" }}
@@ -240,12 +240,12 @@ export function WorkoutComplete({
 														}}
 													>
 														<Flame
-															className="w-10 h-10 text-[#FF6B35]"
+															className="w-10 h-10 text-primary"
 															fill="#FF6B35"
 														/>
 													</motion.div>
 													<div className="flex-1">
-														<div className="text-xs text-[#FF6B35] font-semibold">
+														<div className="text-xs text-primary font-semibold">
 															Streak Continued!
 														</div>
 														<div className="text-sm text-white">
@@ -268,20 +268,20 @@ export function WorkoutComplete({
 													e.stopPropagation();
 													onViewSummary();
 												}}
-												className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+												className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 											>
 												View Summary
 											</Button>
 											<Button
 												onClick={onClose}
 												variant="outline"
-												className="flex-1 border-[#374151] hover:border-[#FF6B35]"
+												className="flex-1 border-secondary hover:border-primary"
 											>
 												Done
 											</Button>
 										</motion.div>
 
-										<p className="text-xs text-center text-[#6B7280] mt-4">
+										<p className="text-xs text-center text-muted mt-4">
 											Tap anywhere to dismiss
 										</p>
 									</div>
@@ -314,7 +314,7 @@ function ParticleBurst({ count }: { count: number }) {
 				return (
 					<motion.div
 						key={i}
-						className="absolute w-2 h-2 rounded-full bg-[#10B981]"
+						className="absolute w-2 h-2 rounded-full bg-success"
 						style={{
 							left: "50%",
 							top: "50%",
@@ -350,7 +350,7 @@ function BackgroundEmbers() {
 				return (
 					<motion.div
 						key={i}
-						className="absolute w-2 h-2 rounded-full bg-[#FF6B35]"
+						className="absolute w-2 h-2 rounded-full bg-primary"
 						style={{
 							left: startX,
 							bottom: 0,

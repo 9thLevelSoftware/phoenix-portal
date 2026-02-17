@@ -220,10 +220,10 @@ export function LandingPage() {
 				animate={{ opacity: 1, scale: 1 }}
 				transition={{ duration: 0.2 }}
 			>
-				<Card className="w-full max-w-md p-6 bg-[#1a1a1a] border-[#374151] relative">
+				<Card className="w-full max-w-md p-6 bg-surface-2 border-secondary relative">
 					<button
 						onClick={() => setShowAuthDialog(false)}
-						className="absolute top-4 right-4 text-[#9CA3AF] hover:text-white transition-colors text-xl leading-none"
+						className="absolute top-4 right-4 text-muted-foreground hover:text-white transition-colors text-xl leading-none"
 						aria-label="Close"
 					>
 						&times;
@@ -231,7 +231,7 @@ export function LandingPage() {
 
 					<div className="flex items-center justify-center gap-2 mb-6">
 						<PhoenixLogo size="sm" animated={false} />
-						<span className="text-xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent font-semibold">
+						<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
 							Project Phoenix
 						</span>
 					</div>
@@ -252,14 +252,14 @@ export function LandingPage() {
 								className="space-y-4"
 							>
 								<div className="space-y-2">
-									<Label htmlFor="signin-email" className="text-[#E5E7EB]">
+									<Label htmlFor="signin-email" className="text-secondary-foreground">
 										Email
 									</Label>
 									<Input
 										id="signin-email"
 										type="email"
 										placeholder="you@example.com"
-										className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+										className="bg-background border-secondary text-white placeholder:text-muted"
 										{...signInForm.register("email")}
 									/>
 									{signInForm.formState.errors.email && (
@@ -269,14 +269,14 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signin-password" className="text-[#E5E7EB]">
+									<Label htmlFor="signin-password" className="text-secondary-foreground">
 										Password
 									</Label>
 									<Input
 										id="signin-password"
 										type="password"
 										placeholder="Enter your password"
-										className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+										className="bg-background border-secondary text-white placeholder:text-muted"
 										{...signInForm.register("password")}
 									/>
 									{signInForm.formState.errors.password && (
@@ -288,7 +288,7 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -306,14 +306,14 @@ export function LandingPage() {
 								className="space-y-4"
 							>
 								<div className="space-y-2">
-									<Label htmlFor="signup-email" className="text-[#E5E7EB]">
+									<Label htmlFor="signup-email" className="text-secondary-foreground">
 										Email
 									</Label>
 									<Input
 										id="signup-email"
 										type="email"
 										placeholder="you@example.com"
-										className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+										className="bg-background border-secondary text-white placeholder:text-muted"
 										{...signUpForm.register("email")}
 									/>
 									{signUpForm.formState.errors.email && (
@@ -323,14 +323,14 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signup-password" className="text-[#E5E7EB]">
+									<Label htmlFor="signup-password" className="text-secondary-foreground">
 										Password
 									</Label>
 									<Input
 										id="signup-password"
 										type="password"
 										placeholder="At least 6 characters"
-										className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+										className="bg-background border-secondary text-white placeholder:text-muted"
 										{...signUpForm.register("password")}
 									/>
 									{signUpForm.formState.errors.password && (
@@ -340,14 +340,14 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signup-confirm" className="text-[#E5E7EB]">
+									<Label htmlFor="signup-confirm" className="text-secondary-foreground">
 										Confirm Password
 									</Label>
 									<Input
 										id="signup-confirm"
 										type="password"
 										placeholder="Confirm your password"
-										className="bg-[#0D0D0D] border-[#374151] text-white placeholder:text-[#6B7280]"
+										className="bg-background border-secondary text-white placeholder:text-muted"
 										{...signUpForm.register("confirmPassword")}
 									/>
 									{signUpForm.formState.errors.confirmPassword && (
@@ -359,7 +359,7 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -374,10 +374,10 @@ export function LandingPage() {
 						{/* OAuth divider */}
 						<div className="relative my-6">
 							<div className="absolute inset-0 flex items-center">
-								<div className="w-full border-t border-[#374151]" />
+								<div className="w-full border-t border-secondary" />
 							</div>
 							<div className="relative flex justify-center text-sm">
-								<span className="bg-[#1a1a1a] px-2 text-[#6B7280]">
+								<span className="bg-surface-2 px-2 text-muted">
 									or continue with
 								</span>
 							</div>
@@ -390,7 +390,7 @@ export function LandingPage() {
 								variant="outline"
 								disabled={authLoading}
 								onClick={() => handleOAuthSignIn("google")}
-								className="w-full border-[#374151] text-[#E5E7EB] hover:bg-[#374151]/50 hover:text-white"
+								className="w-full border-secondary text-secondary-foreground hover:bg-secondary/50 hover:text-white"
 							>
 								<Chrome className="w-4 h-4 mr-2" />
 								Continue with Google
@@ -400,7 +400,7 @@ export function LandingPage() {
 								variant="outline"
 								disabled={authLoading}
 								onClick={() => handleOAuthSignIn("apple")}
-								className="w-full border-[#374151] text-[#E5E7EB] hover:bg-[#374151]/50 hover:text-white"
+								className="w-full border-secondary text-secondary-foreground hover:bg-secondary/50 hover:text-white"
 							>
 								<Apple className="w-4 h-4 mr-2" />
 								Continue with Apple
@@ -413,7 +413,7 @@ export function LandingPage() {
 	);
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] text-white overflow-x-hidden">
+		<div className="min-h-screen bg-background text-white overflow-x-hidden">
 			<EmberParticles />
 
 			{authDialog}
@@ -435,13 +435,13 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
 					>
-						<span className="block bg-gradient-to-r from-[#FF6B35] via-[#DC2626] to-[#F59E0B] bg-clip-text text-transparent">
+						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
 							Project Phoenix
 						</span>
 					</motion.h1>
 
 					<motion.p
-						className="mt-6 text-xl sm:text-2xl md:text-3xl text-[#E5E7EB]"
+						className="mt-6 text-xl sm:text-2xl md:text-3xl text-secondary-foreground"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.4 }}
@@ -450,7 +450,7 @@ export function LandingPage() {
 					</motion.p>
 
 					<motion.p
-						className="mt-4 text-lg sm:text-xl text-[#6B7280] max-w-2xl mx-auto"
+						className="mt-4 text-lg sm:text-xl text-muted max-w-2xl mx-auto"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
@@ -467,7 +467,7 @@ export function LandingPage() {
 						<Button
 							size="lg"
 							onClick={openAuth}
-							className="relative group bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] text-white border-0 shadow-lg shadow-[#FF6B35]/50 hover:shadow-xl hover:shadow-[#FF6B35]/70 transition-all duration-300"
+							className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
 						>
 							<span className="relative z-10 flex items-center gap-2">
 								Get Started
@@ -477,7 +477,7 @@ export function LandingPage() {
 						<Button
 							size="lg"
 							variant="outline"
-							className="border-2 border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10 hover:border-[#DC2626]"
+							className="border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
 						>
 							View Features
 						</Button>
@@ -490,14 +490,14 @@ export function LandingPage() {
 					animate={{ opacity: 1 }}
 					transition={{ delay: 1.2 }}
 				>
-					<div className="w-6 h-10 border-2 border-[#FF6B35] rounded-full flex items-start justify-center p-2">
-						<div className="w-1.5 h-1.5 bg-[#FF6B35] rounded-full" />
+					<div className="w-6 h-10 border-2 border-primary rounded-full flex items-start justify-center p-2">
+						<div className="w-1.5 h-1.5 bg-primary rounded-full" />
 					</div>
 				</motion.div>
 			</section>
 
 			{/* Features Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#0D0D0D] to-[#1a1a1a]">
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-surface-2">
 				<div className="max-w-7xl mx-auto">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -506,11 +506,11 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<h2 className="text-4xl sm:text-5xl mb-4">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Elevate Your Training
 							</span>
 						</h2>
-						<p className="text-xl text-[#6B7280]">
+						<p className="text-xl text-muted">
 							Everything you need to reach your fitness goals
 						</p>
 					</motion.div>
@@ -524,12 +524,12 @@ export function LandingPage() {
 								viewport={{ once: true }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all duration-300 group cursor-pointer h-full">
-									<div className="mb-4 w-12 h-12 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300 group cursor-pointer h-full">
+									<div className="mb-4 w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
 										<feature.icon className="w-6 h-6 text-white" />
 									</div>
 									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
-									<p className="text-[#9CA3AF]">{feature.description}</p>
+									<p className="text-muted-foreground">{feature.description}</p>
 								</Card>
 							</motion.div>
 						))}
@@ -547,11 +547,11 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<h2 className="text-4xl sm:text-5xl mb-4">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Choose Your Path
 							</span>
 						</h2>
-						<p className="text-xl text-[#6B7280]">
+						<p className="text-xl text-muted">
 							Select the plan that fits your journey
 						</p>
 					</motion.div>
@@ -569,12 +569,12 @@ export function LandingPage() {
 								<Card
 									className={`p-8 h-full flex flex-col ${
 										tier.highlight
-											? "bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-[#FF6B35] border-2 ring-4 ring-[#FF6B35]/20"
-											: "bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]"
+											? "bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2 ring-4 ring-primary/20"
+											: "bg-gradient-to-br from-surface-2 to-background border-secondary"
 									}`}
 								>
 									{tier.highlight && (
-										<div className="mb-4 px-4 py-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] rounded-full text-sm text-center w-fit mx-auto">
+										<div className="mb-4 px-4 py-1 bg-gradient-to-r from-primary to-chart-2 rounded-full text-sm text-center w-fit mx-auto">
 											RECOMMENDED
 										</div>
 									)}
@@ -582,18 +582,18 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+										<span className="text-5xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 											{tier.price}
 										</span>
-										<span className="text-[#9CA3AF] ml-2">/ {tier.period}</span>
+										<span className="text-muted-foreground ml-2">/ {tier.period}</span>
 									</div>
 									<ul className="space-y-3 mb-8 flex-1">
 										{tier.features.map((feature) => (
 											<li
 												key={feature}
-												className="flex items-start gap-2 text-[#E5E7EB]"
+												className="flex items-start gap-2 text-secondary-foreground"
 											>
-												<Check className="w-5 h-5 text-[#10B981] flex-shrink-0 mt-0.5" />
+												<Check className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
 												<span>{feature}</span>
 											</li>
 										))}
@@ -603,8 +603,8 @@ export function LandingPage() {
 										onClick={openAuth}
 										className={
 											tier.highlight
-												? "w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 shadow-lg shadow-[#FF6B35]/50"
-												: "w-full border-2 border-[#FF6B35] bg-transparent text-[#FF6B35] hover:bg-[#FF6B35]/10"
+												? "w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
+												: "w-full border-2 border-primary bg-transparent text-primary hover:bg-primary/10"
 										}
 									>
 										{tier.cta}
@@ -617,7 +617,7 @@ export function LandingPage() {
 			</section>
 
 			{/* CTA Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D]">
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-surface-2 to-background">
 				<div className="max-w-4xl mx-auto text-center">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -625,17 +625,17 @@ export function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<h2 className="text-4xl sm:text-5xl mb-6">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								Ready to Transform?
 							</span>
 						</h2>
-						<p className="text-xl text-[#E5E7EB] mb-8">
+						<p className="text-xl text-secondary-foreground mb-8">
 							Join thousands of athletes who are already rising stronger
 						</p>
 						<Button
 							size="lg"
 							onClick={openAuth}
-							className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] text-white border-0 shadow-lg shadow-[#FF6B35]/50 hover:shadow-xl hover:shadow-[#FF6B35]/70 text-lg px-8 py-6"
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
 						>
 							<span className="flex items-center gap-2">
 								Start Your Journey
@@ -647,63 +647,63 @@ export function LandingPage() {
 			</section>
 
 			{/* Footer */}
-			<footer className="relative py-12 px-4 sm:px-6 lg:px-8 border-t border-[#374151]">
+			<footer className="relative py-12 px-4 sm:px-6 lg:px-8 border-t border-secondary">
 				<div className="max-w-7xl mx-auto">
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
 						<div>
 							<div className="flex items-center gap-2 mb-4">
 								<PhoenixLogo size="sm" animated={false} />
-								<span className="text-xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+								<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 									Project Phoenix
 								</span>
 							</div>
-							<p className="text-[#9CA3AF] text-sm">
+							<p className="text-muted-foreground text-sm">
 								Rise From the Ashes. Forge Your Strength.
 							</p>
 						</div>
 						<div>
 							<h4 className="text-white mb-4">Product</h4>
-							<ul className="space-y-2 text-[#9CA3AF] text-sm">
-								<li className="hover:text-[#FF6B35] cursor-pointer">
+							<ul className="space-y-2 text-muted-foreground text-sm">
+								<li className="hover:text-primary cursor-pointer">
 									Features
 								</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Pricing</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">
+								<li className="hover:text-primary cursor-pointer">Pricing</li>
+								<li className="hover:text-primary cursor-pointer">
 									Integrations
 								</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Roadmap</li>
+								<li className="hover:text-primary cursor-pointer">Roadmap</li>
 							</ul>
 						</div>
 						<div>
 							<h4 className="text-white mb-4">Company</h4>
-							<ul className="space-y-2 text-[#9CA3AF] text-sm">
-								<li className="hover:text-[#FF6B35] cursor-pointer">About</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Blog</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Careers</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Contact</li>
+							<ul className="space-y-2 text-muted-foreground text-sm">
+								<li className="hover:text-primary cursor-pointer">About</li>
+								<li className="hover:text-primary cursor-pointer">Blog</li>
+								<li className="hover:text-primary cursor-pointer">Careers</li>
+								<li className="hover:text-primary cursor-pointer">Contact</li>
 							</ul>
 						</div>
 						<div>
 							<h4 className="text-white mb-4">Legal</h4>
-							<ul className="space-y-2 text-[#9CA3AF] text-sm">
+							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<Link
 										to="/privacy"
-										className="hover:text-[#FF6B35] cursor-pointer"
+										className="hover:text-primary cursor-pointer"
 									>
 										Privacy
 									</Link>
 								</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">Terms</li>
-								<li className="hover:text-[#FF6B35] cursor-pointer">
+								<li className="hover:text-primary cursor-pointer">Terms</li>
+								<li className="hover:text-primary cursor-pointer">
 									Security
 								</li>
 							</ul>
 						</div>
 					</div>
-					<div className="pt-8 border-t border-[#374151] text-center space-y-3">
-						<p className="text-[#9CA3AF] text-sm">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent font-semibold">
+					<div className="pt-8 border-t border-secondary text-center space-y-3">
+						<p className="text-muted-foreground text-sm">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
 								Project Phoenix
 							</span>{" "}
 							is a community preservation project by{" "}
@@ -711,8 +711,8 @@ export function LandingPage() {
 								9th Level Software LLC
 							</span>
 						</p>
-						<div className="text-[#6B7280] text-xs max-w-3xl mx-auto space-y-2">
-							<p className="font-semibold text-[#9CA3AF]">Legal Notice</p>
+						<div className="text-muted text-xs max-w-3xl mx-auto space-y-2">
+							<p className="font-semibold text-muted-foreground">Legal Notice</p>
 							<p>
 								Project Phoenix is an independent, community-developed
 								application and is not affiliated with, endorsed by, sponsored
@@ -726,7 +726,7 @@ export function LandingPage() {
 								liability disclaimers.
 							</p>
 						</div>
-						<p className="text-[#6B7280] text-xs">
+						<p className="text-muted text-xs">
 							&copy; 2026 9th Level Software LLC. All rights reserved.
 						</p>
 					</div>

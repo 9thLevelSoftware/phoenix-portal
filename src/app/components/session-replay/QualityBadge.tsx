@@ -26,7 +26,7 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
             w-14 h-14 rounded-lg
             text-white font-semibold
             transition-colors cursor-pointer
-            ${isLowQuality ? "bg-amber-600/80 hover:bg-amber-600" : "bg-[#FF6B35]/90 hover:bg-[#FF6B35]"}
+            ${isLowQuality ? "bg-amber-600/80 hover:bg-amber-600" : "bg-primary/90 hover:bg-primary"}
           `}
 					aria-label={`Rep ${repNumber} quality: ${score}`}
 				>
@@ -58,7 +58,7 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 						<div className="flex justify-between items-center">
 							<span className="text-sm font-medium">Overall</span>
 							<span
-								className={`text-lg font-bold ${isLowQuality ? "text-amber-500" : "text-[#FF6B35]"}`}
+								className={`text-lg font-bold ${isLowQuality ? "text-amber-500" : "text-primary"}`}
 							>
 								{score}
 							</span>

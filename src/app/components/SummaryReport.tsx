@@ -264,7 +264,7 @@ function SkeletonCards() {
 	return (
 		<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 			{Array.from({ length: 4 }).map((_, i) => (
-				<Card key={i} className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+				<Card key={i} className="p-5 bg-surface-2 border-secondary">
 					<Skeleton className="h-4 w-20 mb-3" />
 					<Skeleton className="h-8 w-24 mb-2" />
 					<Skeleton className="h-12 w-full mb-2" />
@@ -300,16 +300,16 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 		return (
 			<div className="space-y-6">
 				<Tabs value={period}>
-					<TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+					<TabsList className="bg-surface-2 border border-secondary">
 						<TabsTrigger
 							value="week"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							This Week
 						</TabsTrigger>
 						<TabsTrigger
 							value="month"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							This Month
 						</TabsTrigger>
@@ -329,29 +329,29 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					value={period}
 					onValueChange={(v) => setPeriod(v as "week" | "month")}
 				>
-					<TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+					<TabsList className="bg-surface-2 border border-secondary">
 						<TabsTrigger
 							value="week"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							This Week
 						</TabsTrigger>
 						<TabsTrigger
 							value="month"
-							className="data-[state=active]:bg-[#FF6B35]"
+							className="data-[state=active]:bg-primary"
 						>
 							This Month
 						</TabsTrigger>
 					</TabsList>
 				</Tabs>
 				<div className="text-center py-12">
-					<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
-						<Dumbbell className="w-10 h-10 text-[#FF6B35]" />
+					<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+						<Dumbbell className="w-10 h-10 text-primary" />
 					</div>
 					<h3 className="text-xl font-semibold text-white mb-2">
 						No summary data yet
 					</h3>
-					<p className="text-[#9CA3AF] max-w-sm mx-auto">
+					<p className="text-muted-foreground max-w-sm mx-auto">
 						Complete some workouts to see your{" "}
 						{period === "week" ? "weekly" : "monthly"} summary report.
 					</p>
@@ -367,16 +367,16 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 				value={period}
 				onValueChange={(v) => setPeriod(v as "week" | "month")}
 			>
-				<TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+				<TabsList className="bg-surface-2 border border-secondary">
 					<TabsTrigger
 						value="week"
-						className="data-[state=active]:bg-[#FF6B35]"
+						className="data-[state=active]:bg-primary"
 					>
 						This Week
 					</TabsTrigger>
 					<TabsTrigger
 						value="month"
-						className="data-[state=active]:bg-[#FF6B35]"
+						className="data-[state=active]:bg-primary"
 					>
 						This Month
 					</TabsTrigger>
@@ -391,18 +391,18 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0 }}
 				>
-					<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+					<Card className="p-5 bg-surface-2 border-secondary h-full">
 						<div className="flex items-center gap-2 mb-3">
-							<div className="p-2 rounded-lg bg-[#FF6B35]/20">
-								<Dumbbell className="w-4 h-4 text-[#FF6B35]" />
+							<div className="p-2 rounded-lg bg-primary/20">
+								<Dumbbell className="w-4 h-4 text-primary" />
 							</div>
-							<span className="text-sm text-[#9CA3AF]">Total Volume</span>
+							<span className="text-sm text-muted-foreground">Total Volume</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.totalVolume > 1000
 								? `${(summary.totalVolume / 1000).toFixed(1)}K`
 								: summary.totalVolume}{" "}
-							<span className="text-sm text-[#9CA3AF]">kg</span>
+							<span className="text-sm text-muted-foreground">kg</span>
 						</div>
 						{summary.dailyVolume.length > 0 && (
 							<div className="mb-2">
@@ -421,13 +421,13 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						)}
 						<div className="flex items-center gap-1 text-xs">
 							{volumeChange >= 0 ? (
-								<TrendingUp className="w-3 h-3 text-[#10B981]" />
+								<TrendingUp className="w-3 h-3 text-success" />
 							) : (
-								<TrendingDown className="w-3 h-3 text-[#DC2626]" />
+								<TrendingDown className="w-3 h-3 text-chart-2" />
 							)}
 							<span
 								className={
-									volumeChange >= 0 ? "text-[#10B981]" : "text-[#DC2626]"
+									volumeChange >= 0 ? "text-success" : "text-chart-2"
 								}
 							>
 								{volumeChange > 0 ? "+" : ""}
@@ -443,16 +443,16 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+					<Card className="p-5 bg-surface-2 border-secondary h-full">
 						<div className="flex items-center gap-2 mb-3">
-							<div className="p-2 rounded-lg bg-[#F59E0B]/20">
-								<Calendar className="w-4 h-4 text-[#F59E0B]" />
+							<div className="p-2 rounded-lg bg-accent/20">
+								<Calendar className="w-4 h-4 text-accent" />
 							</div>
-							<span className="text-sm text-[#9CA3AF]">Frequency</span>
+							<span className="text-sm text-muted-foreground">Frequency</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.workoutDays}{" "}
-							<span className="text-sm text-[#9CA3AF]">
+							<span className="text-sm text-muted-foreground">
 								of {DEFAULT_TARGET_DAYS} target
 							</span>
 						</div>
@@ -471,13 +471,13 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						)}
 						<div className="flex items-center gap-1 text-xs">
 							{frequencyChange >= 0 ? (
-								<TrendingUp className="w-3 h-3 text-[#10B981]" />
+								<TrendingUp className="w-3 h-3 text-success" />
 							) : (
-								<TrendingDown className="w-3 h-3 text-[#DC2626]" />
+								<TrendingDown className="w-3 h-3 text-chart-2" />
 							)}
 							<span
 								className={
-									frequencyChange >= 0 ? "text-[#10B981]" : "text-[#DC2626]"
+									frequencyChange >= 0 ? "text-success" : "text-chart-2"
 								}
 							>
 								{frequencyChange > 0 ? "+" : ""}
@@ -493,31 +493,31 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.2 }}
 				>
-					<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+					<Card className="p-5 bg-surface-2 border-secondary h-full">
 						<div className="flex items-center gap-2 mb-3">
-							<div className="p-2 rounded-lg bg-[#10B981]/20">
-								<Trophy className="w-4 h-4 text-[#10B981]" />
+							<div className="p-2 rounded-lg bg-success/20">
+								<Trophy className="w-4 h-4 text-success" />
 							</div>
-							<span className="text-sm text-[#9CA3AF]">Personal Records</span>
+							<span className="text-sm text-muted-foreground">Personal Records</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.prs.length}{" "}
-							<span className="text-sm text-[#9CA3AF]">PRs hit</span>
+							<span className="text-sm text-muted-foreground">PRs hit</span>
 						</div>
 						{summary.prs.length > 0 ? (
 							<div className="space-y-1">
 								{summary.prs.slice(0, 3).map((pr) => (
 									<div
 										key={pr.exercise}
-										className="text-xs text-[#9CA3AF] truncate"
+										className="text-xs text-muted-foreground truncate"
 									>
 										{pr.exercise}{" "}
-										<span className="text-[#10B981]">+{pr.improvement}kg</span>
+										<span className="text-success">+{pr.improvement}kg</span>
 									</div>
 								))}
 							</div>
 						) : (
-							<div className="text-xs text-[#6B7280]">
+							<div className="text-xs text-muted">
 								No new PRs this {period}
 							</div>
 						)}
@@ -530,12 +530,12 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.3 }}
 				>
-					<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44] h-full">
+					<Card className="p-5 bg-surface-2 border-secondary h-full">
 						<div className="flex items-center gap-2 mb-3">
-							<div className="p-2 rounded-lg bg-[#DC2626]/20">
-								<Flame className="w-4 h-4 text-[#DC2626]" />
+							<div className="p-2 rounded-lg bg-chart-2/20">
+								<Flame className="w-4 h-4 text-chart-2" />
 							</div>
-							<span className="text-sm text-[#9CA3AF]">Consistency</span>
+							<span className="text-sm text-muted-foreground">Consistency</span>
 						</div>
 						<div className="flex items-center gap-3">
 							<ConsistencyRing score={summary.consistencyScore} />
@@ -553,7 +553,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								>
 									{summary.consistencyScore}%
 								</div>
-								<div className="text-xs text-[#9CA3AF]">
+								<div className="text-xs text-muted-foreground">
 									{summary.workoutDays}/{DEFAULT_TARGET_DAYS} days
 								</div>
 							</div>
@@ -571,24 +571,24 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.4 }}
 				>
-					<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+					<Card className="p-5 bg-surface-2 border-secondary">
 						<h4 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-							<Zap className="w-5 h-5 text-[#F59E0B]" />
+							<Zap className="w-5 h-5 text-accent" />
 							Highlights
 						</h4>
 						<div className="space-y-3">
 							{summary.bestSessionVolume > 0 && (
 								<div className="flex items-start gap-3">
-									<Target className="w-4 h-4 text-[#FF6B35] mt-0.5 shrink-0" />
+									<Target className="w-4 h-4 text-primary mt-0.5 shrink-0" />
 									<div>
 										<span className="text-white text-sm">
 											Best session by volume:{" "}
 										</span>
-										<span className="text-[#FF6B35] text-sm font-medium">
+										<span className="text-primary text-sm font-medium">
 											{summary.bestSessionVolume} kg
 										</span>
 										{summary.bestSessionDate && (
-											<span className="text-[#6B7280] text-xs ml-1">
+											<span className="text-muted text-xs ml-1">
 												on {summary.bestSessionDate}
 											</span>
 										)}
@@ -597,10 +597,10 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							)}
 							{summary.mostImprovedExercise && (
 								<div className="flex items-start gap-3">
-									<TrendingUp className="w-4 h-4 text-[#10B981] mt-0.5 shrink-0" />
+									<TrendingUp className="w-4 h-4 text-success mt-0.5 shrink-0" />
 									<div>
 										<span className="text-white text-sm">Most improved: </span>
-										<span className="text-[#10B981] text-sm font-medium">
+										<span className="text-success text-sm font-medium">
 											{summary.mostImprovedExercise} (+
 											{summary.mostImprovedAmount}kg)
 										</span>
@@ -609,10 +609,10 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							)}
 							{summary.longestStreak > 0 && (
 								<div className="flex items-start gap-3">
-									<Flame className="w-4 h-4 text-[#F59E0B] mt-0.5 shrink-0" />
+									<Flame className="w-4 h-4 text-accent mt-0.5 shrink-0" />
 									<div>
 										<span className="text-white text-sm">Longest streak: </span>
-										<span className="text-[#F59E0B] text-sm font-medium">
+										<span className="text-accent text-sm font-medium">
 											{summary.longestStreak} consecutive days
 										</span>
 									</div>

@@ -74,17 +74,17 @@ export function DashboardMobile() {
 	};
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24">
+		<div className="min-h-screen bg-background pb-24">
 			{/* Mobile Header */}
-			<div className="sticky top-0 z-40 bg-[#0D0D0D]/95 backdrop-blur-lg border-b border-[#374151] px-4 py-4">
+			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
 				<div className="flex items-center justify-between">
 					<div>
 						<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
-						<p className="text-sm text-[#9CA3AF]">Let's crush today</p>
+						<p className="text-sm text-muted-foreground">Let's crush today</p>
 					</div>
-					<button className="relative p-2 hover:bg-[#1a1a1a] rounded-full transition-colors">
-						<Bell className="w-6 h-6 text-[#E5E7EB]" />
-						<span className="absolute top-1 right-1 w-2 h-2 bg-[#FF6B35] rounded-full animate-pulse" />
+					<button className="relative p-2 hover:bg-surface-2 rounded-full transition-colors">
+						<Bell className="w-6 h-6 text-secondary-foreground" />
+						<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
 					</button>
 				</div>
 			</div>
@@ -96,7 +96,7 @@ export function DashboardMobile() {
 						animate={{ rotate: 360 }}
 						transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
 					>
-						<Flame className="w-6 h-6 text-[#FF6B35]" fill="#FF6B35" />
+						<Flame className="w-6 h-6 text-primary" fill="#FF6B35" />
 					</motion.div>
 				</div>
 			)}
@@ -109,7 +109,7 @@ export function DashboardMobile() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-2 border-[#FF6B35]/50">
+					<Card className="p-6 bg-gradient-to-br from-primary/20 to-chart-2/20 border-2 border-primary/50">
 						<div className="flex items-center gap-4">
 							<motion.div
 								animate={{
@@ -126,14 +126,14 @@ export function DashboardMobile() {
 									ease: "easeInOut",
 								}}
 							>
-								<Flame className="w-16 h-16 text-[#FF6B35]" fill="#FF6B35" />
+								<Flame className="w-16 h-16 text-primary" fill="#FF6B35" />
 							</motion.div>
 							<div className="flex-1">
 								<div className="text-4xl font-bold text-white mb-1">7 Days</div>
-								<div className="text-sm text-[#E5E7EB]">
+								<div className="text-sm text-secondary-foreground">
 									Keep the fire burning!
 								</div>
-								<Progress value={70} className="h-2 mt-2 bg-[#1a1a1a]" />
+								<Progress value={70} className="h-2 mt-2 bg-surface-2" />
 							</div>
 						</div>
 					</Card>
@@ -148,13 +148,13 @@ export function DashboardMobile() {
 					<h2 className="text-lg font-semibold text-white mb-3">
 						Today's Workout
 					</h2>
-					<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start justify-between mb-4">
 							<div className="flex-1">
 								<h3 className="text-xl font-semibold text-white mb-2">
 									Push Day A
 								</h3>
-								<div className="flex flex-wrap gap-3 text-sm text-[#9CA3AF]">
+								<div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
 									<div className="flex items-center gap-1">
 										<Dumbbell className="w-4 h-4" />
 										<span>6 exercises</span>
@@ -165,12 +165,12 @@ export function DashboardMobile() {
 									</div>
 								</div>
 							</div>
-							<Badge className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] text-white border-0">
+							<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
 								Ready
 							</Badge>
 						</div>
 
-						<Button className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 h-12">
+						<Button className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 h-12">
 							<Eye className="w-5 h-5 mr-2" />
 							View Routine Details
 						</Button>
@@ -189,7 +189,7 @@ export function DashboardMobile() {
 							{Array.from({ length: 4 }).map((_, i) => (
 								<Card
 									key={i}
-									className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] min-w-[120px] flex-shrink-0"
+									className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary min-w-[120px] flex-shrink-0"
 								>
 									<Skeleton className="w-10 h-10 rounded-lg mb-3" />
 									<Skeleton className="h-7 w-16 mb-1" />
@@ -203,7 +203,7 @@ export function DashboardMobile() {
 								icon={<Dumbbell className="w-5 h-5" />}
 								value={String(workouts?.length ?? 0)}
 								label="Workouts"
-								gradient="from-[#FF6B35] to-[#DC2626]"
+								gradient="from-primary to-chart-2"
 							/>
 							<QuickStatCard
 								icon={<Award className="w-5 h-5" />}
@@ -211,7 +211,7 @@ export function DashboardMobile() {
 									workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0,
 								)}
 								label="PRs"
-								gradient="from-[#F59E0B] to-[#D97706]"
+								gradient="from-accent to-[#D97706]"
 							/>
 							<QuickStatCard
 								icon={<TrendingUp className="w-5 h-5" />}
@@ -219,7 +219,7 @@ export function DashboardMobile() {
 									weeklyTotal > 0 ? `${(weeklyTotal / 1000).toFixed(0)}k` : "--"
 								}
 								label="Volume"
-								gradient="from-[#10B981] to-[#059669]"
+								gradient="from-success to-[#059669]"
 							/>
 							<QuickStatCard
 								icon={<Target className="w-5 h-5" />}
@@ -239,28 +239,28 @@ export function DashboardMobile() {
 				>
 					<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
 					{statsLoading ? (
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<Skeleton className="h-8 w-32 mb-1" />
 							<Skeleton className="h-4 w-40 mb-4" />
 							<Skeleton className="h-32 w-full" />
 						</Card>
 					) : weeklyTotal === 0 ? (
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex flex-col items-center justify-center py-8 text-center">
-								<Dumbbell className="w-10 h-10 text-[#374151] mb-3" />
-								<p className="text-[#9CA3AF] mb-1">No workouts this week</p>
-								<p className="text-sm text-[#6B7280]">
+								<Dumbbell className="w-10 h-10 text-secondary mb-3" />
+								<p className="text-muted-foreground mb-1">No workouts this week</p>
+								<p className="text-sm text-muted">
 									Complete a workout in the mobile app to see your stats here
 								</p>
 							</div>
 						</Card>
 					) : (
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="mb-4">
 								<div className="text-3xl font-bold text-white mb-1">
 									{Math.round(weeklyTotal).toLocaleString()} kg
 								</div>
-								<div className="text-sm text-[#10B981] flex items-center gap-1">
+								<div className="text-sm text-success flex items-center gap-1">
 									<TrendingUp className="w-4 h-4" />
 									<span>This week's total</span>
 								</div>
@@ -274,12 +274,12 @@ export function DashboardMobile() {
 										className="flex-1 flex flex-col items-center gap-2"
 									>
 										<motion.div
-											className="w-full bg-gradient-to-t from-[#FF6B35] to-[#F59E0B] rounded-t"
+											className="w-full bg-gradient-to-t from-primary to-accent rounded-t"
 											initial={{ height: 0 }}
 											animate={{ height: `${Math.max(height, 2)}%` }}
 											transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
 										/>
-										<span className="text-xs text-[#6B7280]">
+										<span className="text-xs text-muted">
 											{["M", "T", "W", "T", "F", "S", "S"][i]}
 										</span>
 									</div>
@@ -299,7 +299,7 @@ export function DashboardMobile() {
 						<h2 className="text-lg font-semibold text-white">
 							Recent Activity
 						</h2>
-						<button className="text-sm text-[#FF6B35] flex items-center gap-1">
+						<button className="text-sm text-primary flex items-center gap-1">
 							View All
 							<ChevronRight className="w-4 h-4" />
 						</button>
@@ -312,11 +312,11 @@ export function DashboardMobile() {
 							))}
 						</div>
 					) : recentWorkouts.length === 0 ? (
-						<Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex flex-col items-center justify-center py-6 text-center">
-								<Dumbbell className="w-10 h-10 text-[#374151] mb-3" />
-								<p className="text-[#9CA3AF] mb-1">No workouts yet</p>
-								<p className="text-sm text-[#6B7280]">
+								<Dumbbell className="w-10 h-10 text-secondary mb-3" />
+								<p className="text-muted-foreground mb-1">No workouts yet</p>
+								<p className="text-sm text-muted">
 									Sync from the Vitruvian mobile app to see your activity
 								</p>
 							</div>
@@ -353,14 +353,14 @@ function QuickStatCard({
 	gradient: string;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] min-w-[120px] flex-shrink-0">
+		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary min-w-[120px] flex-shrink-0">
 			<div
 				className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
 			>
 				{icon}
 			</div>
 			<div className="text-2xl font-bold text-white mb-1">{value}</div>
-			<div className="text-xs text-[#9CA3AF]">{label}</div>
+			<div className="text-xs text-muted-foreground">{label}</div>
 		</Card>
 	);
 }
@@ -379,19 +379,19 @@ function RecentActivityCard({
 	prs: number;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] active:scale-[0.98] transition-transform">
+		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
 				<h4 className="font-semibold text-white">{title}</h4>
-				<span className="text-xs text-[#6B7280]">{time}</span>
+				<span className="text-xs text-muted">{time}</span>
 			</div>
-			<div className="flex items-center gap-4 text-sm text-[#9CA3AF]">
+			<div className="flex items-center gap-4 text-sm text-muted-foreground">
 				<span>{volume}</span>
 				<span>-</span>
 				<span>{duration}</span>
 				{prs > 0 && (
 					<>
 						<span>-</span>
-						<Badge className="bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/30 text-xs">
+						<Badge className="bg-accent/20 text-accent border-accent/30 text-xs">
 							{prs} PR
 						</Badge>
 					</>

@@ -49,42 +49,42 @@ export function SessionDetail() {
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
 		const colors: Record<string, string> = {
-			Chest: "bg-[#FF6B35]",
-			Shoulders: "bg-[#F59E0B]",
-			Back: "bg-[#10B981]",
-			Legs: "bg-[#DC2626]",
-			Arms: "bg-[#FBBF24]",
+			Chest: "bg-primary",
+			Shoulders: "bg-accent",
+			Back: "bg-success",
+			Legs: "bg-chart-2",
+			Arms: "bg-warning",
 			Core: "bg-[#8B5CF6]",
 		};
-		return colors[muscleGroup] || "bg-[#6B7280]";
+		return colors[muscleGroup] || "bg-muted";
 	};
 
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={() => navigate("/history")}
-							className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to History
 						</Button>
-						<Skeleton className="h-10 w-64 mb-2 bg-[#1a1a1a]" />
-						<Skeleton className="h-5 w-48 bg-[#1a1a1a]" />
+						<Skeleton className="h-10 w-64 mb-2 bg-surface-2" />
+						<Skeleton className="h-5 w-48 bg-surface-2" />
 					</div>
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-					<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-6">
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
 							{[1, 2, 3, 4].map((i) => (
 								<div key={i} className="text-center space-y-2">
-									<Skeleton className="h-4 w-20 mx-auto bg-[#1a1a1a]" />
-									<Skeleton className="h-8 w-16 mx-auto bg-[#1a1a1a]" />
+									<Skeleton className="h-4 w-20 mx-auto bg-surface-2" />
+									<Skeleton className="h-8 w-16 mx-auto bg-surface-2" />
 								</div>
 							))}
 						</div>
@@ -92,13 +92,13 @@ export function SessionDetail() {
 					{[1, 2, 3].map((i) => (
 						<Card
 							key={i}
-							className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4"
+							className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4"
 						>
 							<div className="flex items-center gap-3">
-								<Skeleton className="h-10 w-10 rounded-lg bg-[#1a1a1a]" />
+								<Skeleton className="h-10 w-10 rounded-lg bg-surface-2" />
 								<div className="space-y-2">
-									<Skeleton className="h-5 w-40 bg-[#1a1a1a]" />
-									<Skeleton className="h-4 w-20 bg-[#1a1a1a]" />
+									<Skeleton className="h-5 w-40 bg-surface-2" />
+									<Skeleton className="h-4 w-20 bg-surface-2" />
 								</div>
 							</div>
 						</Card>
@@ -111,14 +111,14 @@ export function SessionDetail() {
 	// Error state
 	if (error || !session) {
 		return (
-			<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
 							size="sm"
 							onClick={() => navigate("/history")}
-							className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to History
@@ -126,18 +126,18 @@ export function SessionDetail() {
 					</div>
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<AlertCircle className="w-12 h-12 text-[#DC2626] mx-auto mb-4" />
+					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
 					<h2 className="text-xl font-semibold text-white mb-2">
 						Session Not Found
 					</h2>
-					<p className="text-[#9CA3AF]">
+					<p className="text-muted-foreground">
 						{error
 							? error.message
 							: "This workout session could not be loaded."}
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
-						className="mt-6 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 					>
 						Return to History
 					</Button>
@@ -163,9 +163,9 @@ export function SessionDetail() {
 			: expandedExercises;
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -175,18 +175,18 @@ export function SessionDetail() {
 							variant="outline"
 							size="sm"
 							onClick={() => navigate("/history")}
-							className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to History
 						</Button>
 
 						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 								{session.name}
 							</span>
 						</h1>
-						<div className="flex flex-wrap items-center gap-2 text-sm text-[#9CA3AF]">
+						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 							<span>
 								{session.started_at.toLocaleDateString("en-US", {
 									weekday: "long",
@@ -206,7 +206,7 @@ export function SessionDetail() {
 									<span>-</span>
 									<Badge
 										variant="outline"
-										className="border-[#FF6B35]/30 text-[#FF6B35]"
+										className="border-primary/30 text-primary"
 									>
 										{session.routine_name}
 									</Badge>
@@ -215,7 +215,7 @@ export function SessionDetail() {
 							{session.workout_mode && (
 								<Badge
 									variant="outline"
-									className="border-[#F59E0B]/30 text-[#F59E0B]"
+									className="border-accent/30 text-accent"
 								>
 									{session.workout_mode}
 								</Badge>
@@ -233,12 +233,12 @@ export function SessionDetail() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-6">
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
 							<div className="text-center">
 								<div className="flex items-center justify-center gap-2 mb-2">
-									<Clock className="w-5 h-5 text-[#FF6B35]" />
-									<div className="text-sm text-[#9CA3AF]">Duration</div>
+									<Clock className="w-5 h-5 text-primary" />
+									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
 									{session.duration_seconds}m
@@ -246,8 +246,8 @@ export function SessionDetail() {
 							</div>
 							<div className="text-center">
 								<div className="flex items-center justify-center gap-2 mb-2">
-									<TrendingUp className="w-5 h-5 text-[#10B981]" />
-									<div className="text-sm text-[#9CA3AF]">Volume</div>
+									<TrendingUp className="w-5 h-5 text-success" />
+									<div className="text-sm text-muted-foreground">Volume</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
 									{session.total_volume.toLocaleString()} kg
@@ -255,8 +255,8 @@ export function SessionDetail() {
 							</div>
 							<div className="text-center">
 								<div className="flex items-center justify-center gap-2 mb-2">
-									<Dumbbell className="w-5 h-5 text-[#F59E0B]" />
-									<div className="text-sm text-[#9CA3AF]">Sets</div>
+									<Dumbbell className="w-5 h-5 text-accent" />
+									<div className="text-sm text-muted-foreground">Sets</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
 									{totalSets}
@@ -264,10 +264,10 @@ export function SessionDetail() {
 							</div>
 							<div className="text-center">
 								<div className="flex items-center justify-center gap-2 mb-2">
-									<Award className="w-5 h-5 text-[#FBBF24]" />
-									<div className="text-sm text-[#9CA3AF]">PRs</div>
+									<Award className="w-5 h-5 text-warning" />
+									<div className="text-sm text-muted-foreground">PRs</div>
 								</div>
-								<div className="text-2xl font-semibold bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] bg-clip-text text-transparent">
+								<div className="text-2xl font-semibold bg-gradient-to-r from-accent to-warning bg-clip-text text-transparent">
 									{prCount}
 								</div>
 							</div>
@@ -292,14 +292,14 @@ export function SessionDetail() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.3 + index * 0.05 }}
 							>
-								<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] overflow-hidden">
+								<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
 									{/* Exercise Header */}
 									<button
 										onClick={() => toggleExercise(exercise.id)}
-										className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
+										className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
 									>
 										<div className="flex items-center gap-3">
-											<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center">
+											<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
 												<Dumbbell className="w-5 h-5 text-white" />
 											</div>
 											<div className="text-left">
@@ -308,7 +308,7 @@ export function SessionDetail() {
 														{exercise.name}
 													</h3>
 													{exercise.hasPR && (
-														<Flame className="w-4 h-4 text-[#F59E0B]" />
+														<Flame className="w-4 h-4 text-accent" />
 													)}
 												</div>
 												<Badge
@@ -321,40 +321,40 @@ export function SessionDetail() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<span className="text-sm text-[#9CA3AF]">
+											<span className="text-sm text-muted-foreground">
 												{exercise.sets.length} sets
 											</span>
 											{effectiveExpanded.includes(exercise.id) ? (
-												<ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
+												<ChevronUp className="w-5 h-5 text-muted-foreground" />
 											) : (
-												<ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
+												<ChevronDown className="w-5 h-5 text-muted-foreground" />
 											)}
 										</div>
 									</button>
 
 									{/* Exercise Sets Table */}
 									{effectiveExpanded.includes(exercise.id) && (
-										<div className="border-t border-[#374151] p-4">
+										<div className="border-t border-secondary p-4">
 											<div className="overflow-x-auto">
 												<table className="w-full text-sm">
 													<thead>
-														<tr className="border-b border-[#374151]">
-															<th className="text-left py-2 text-[#9CA3AF]">
+														<tr className="border-b border-secondary">
+															<th className="text-left py-2 text-muted-foreground">
 																Set
 															</th>
-															<th className="text-left py-2 text-[#9CA3AF]">
+															<th className="text-left py-2 text-muted-foreground">
 																Target
 															</th>
-															<th className="text-left py-2 text-[#9CA3AF]">
+															<th className="text-left py-2 text-muted-foreground">
 																Actual
 															</th>
-															<th className="text-left py-2 text-[#9CA3AF]">
+															<th className="text-left py-2 text-muted-foreground">
 																Weight
 															</th>
-															<th className="text-left py-2 text-[#9CA3AF]">
+															<th className="text-left py-2 text-muted-foreground">
 																RPE
 															</th>
-															<th className="text-left py-2 text-[#9CA3AF]">
+															<th className="text-left py-2 text-muted-foreground">
 																Notes
 															</th>
 														</tr>
@@ -363,7 +363,7 @@ export function SessionDetail() {
 														{exercise.sets.map((set) => (
 															<tr
 																key={set.set_number}
-																className={`border-b border-[#374151]/50 ${
+																className={`border-b border-secondary/50 ${
 																	set.is_pr
 																		? "border-l-4 border-l-[#F59E0B]"
 																		: ""
@@ -372,26 +372,26 @@ export function SessionDetail() {
 																<td className="py-3 text-white font-semibold">
 																	{set.set_number}
 																</td>
-																<td className="py-3 text-[#E5E7EB]">
+																<td className="py-3 text-secondary-foreground">
 																	{set.target_reps}
 																</td>
-																<td className="py-3 text-[#E5E7EB]">
+																<td className="py-3 text-secondary-foreground">
 																	{set.actual_reps}
 																</td>
-																<td className="py-3 text-[#E5E7EB]">
+																<td className="py-3 text-secondary-foreground">
 																	{set.weight_kg} kg
 																</td>
-																<td className="py-3 text-[#E5E7EB]">
+																<td className="py-3 text-secondary-foreground">
 																	{set.rpe ?? "-"}
 																</td>
 																<td className="py-3">
 																	{set.is_pr && (
-																		<Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
+																		<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
 																			NEW PR
 																		</Badge>
 																	)}
 																	{set.notes && !set.is_pr && (
-																		<span className="text-[#9CA3AF]">
+																		<span className="text-muted-foreground">
 																			{set.notes}
 																		</span>
 																	)}
@@ -416,13 +416,13 @@ export function SessionDetail() {
 					transition={{ delay: 0.4 }}
 					className="flex flex-col sm:flex-row gap-3"
 				>
-					<Button className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+					<Button className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
 						<BarChart3 className="w-4 h-4 mr-2" />
 						Compare to Previous
 					</Button>
 					<Button
 						variant="outline"
-						className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
+						className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 					>
 						<Share2 className="w-4 h-4 mr-2" />
 						Share Summary
@@ -435,7 +435,7 @@ export function SessionDetail() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.5 }}
 				>
-					<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4">
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4">
 						<h3 className="text-lg font-semibold text-white mb-3">
 							Workout Notes
 						</h3>
@@ -443,12 +443,12 @@ export function SessionDetail() {
 							value={notes}
 							onChange={(e) => setNotes(e.target.value)}
 							placeholder="Add notes about this workout..."
-							className="w-full bg-[#0D0D0D] border border-[#374151] rounded-lg p-3 text-white placeholder:text-[#6B7280] focus:border-[#FF6B35] focus:outline-none resize-none"
+							className="w-full bg-background border border-secondary rounded-lg p-3 text-white placeholder:text-muted focus:border-primary focus:outline-none resize-none"
 							rows={4}
 						/>
 						<Button
 							size="sm"
-							className="mt-3 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
 							Save Notes
 						</Button>

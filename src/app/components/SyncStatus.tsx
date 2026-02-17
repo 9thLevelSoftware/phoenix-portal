@@ -22,42 +22,42 @@ export function SyncStatus({
 			case "synced":
 				return {
 					icon: CheckCircle2,
-					color: "text-[#10B981]",
-					bgColor: "bg-[#10B981]/10",
-					borderColor: "border-[#10B981]/30",
+					color: "text-success",
+					bgColor: "bg-success/10",
+					borderColor: "border-success/30",
 					label: "Synced",
 				};
 			case "syncing":
 				return {
 					icon: RefreshCw,
-					color: "text-[#F59E0B]",
-					bgColor: "bg-[#F59E0B]/10",
-					borderColor: "border-[#F59E0B]/30",
+					color: "text-accent",
+					bgColor: "bg-accent/10",
+					borderColor: "border-accent/30",
 					label: "Syncing...",
 					animate: true,
 				};
 			case "pending":
 				return {
 					icon: Clock,
-					color: "text-[#6B7280]",
-					bgColor: "bg-[#6B7280]/10",
-					borderColor: "border-[#6B7280]/30",
+					color: "text-muted",
+					bgColor: "bg-muted/10",
+					borderColor: "border-muted/30",
 					label: "Pending",
 				};
 			case "error":
 				return {
 					icon: AlertCircle,
-					color: "text-[#EF4444]",
-					bgColor: "bg-[#EF4444]/10",
-					borderColor: "border-[#EF4444]/30",
+					color: "text-destructive",
+					bgColor: "bg-destructive/10",
+					borderColor: "border-destructive/30",
 					label: "Sync Error",
 				};
 			default:
 				return {
 					icon: CheckCircle2,
-					color: "text-[#10B981]",
-					bgColor: "bg-[#10B981]/10",
-					borderColor: "border-[#10B981]/30",
+					color: "text-success",
+					bgColor: "bg-success/10",
+					borderColor: "border-success/30",
 					label: "Synced",
 				};
 		}
@@ -70,7 +70,7 @@ export function SyncStatus({
 		<Card className={`p-4 border ${config.borderColor} ${config.bgColor}`}>
 			<div className="flex items-center gap-3">
 				<div
-					className={`w-10 h-10 rounded-lg bg-[#0D0D0D] flex items-center justify-center ${config.color}`}
+					className={`w-10 h-10 rounded-lg bg-background flex items-center justify-center ${config.color}`}
 				>
 					<Smartphone className="w-5 h-5" />
 				</div>
@@ -88,8 +88,8 @@ export function SyncStatus({
 							{config.label}
 						</Badge>
 					</div>
-					<p className="text-xs text-[#9CA3AF]">
-						<span className="text-[#6B7280]">App → Portal</span> • Last sync:{" "}
+					<p className="text-xs text-muted-foreground">
+						<span className="text-muted">App → Portal</span> • Last sync:{" "}
 						{lastSync}
 					</p>
 				</div>

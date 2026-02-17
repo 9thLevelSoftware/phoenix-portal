@@ -66,9 +66,9 @@ export function RoutinePicker({
 						exit={{ opacity: 0, scale: 0.95, y: 20 }}
 						className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl z-50 max-h-[85vh] overflow-hidden"
 					>
-						<Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
 							{/* Header */}
-							<div className="flex items-center justify-between p-6 border-b border-[#374151]">
+							<div className="flex items-center justify-between p-6 border-b border-secondary">
 								<h2 className="text-2xl font-semibold text-white">
 									Select Routine
 								</h2>
@@ -78,19 +78,19 @@ export function RoutinePicker({
 							</div>
 
 							{/* Search & Filters */}
-							<div className="p-6 space-y-4 border-b border-[#374151]">
+							<div className="p-6 space-y-4 border-b border-secondary">
 								<div className="relative">
-									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
 									<Input
 										value={searchQuery}
 										onChange={(e) => setSearchQuery(e.target.value)}
 										placeholder="Search routines..."
-										className="pl-10 bg-[#0D0D0D] border-[#374151] focus:border-[#FF6B35]"
+										className="pl-10 bg-background border-secondary focus:border-primary"
 									/>
 								</div>
 
 								<div className="flex flex-wrap gap-2">
-									<span className="text-sm text-[#9CA3AF] self-center mr-2">
+									<span className="text-sm text-muted-foreground self-center mr-2">
 										Filter:
 									</span>
 									{filters.map((filter) => (
@@ -103,8 +103,8 @@ export function RoutinePicker({
 											onClick={() => setSelectedFilter(filter)}
 											className={
 												selectedFilter === filter
-													? "bg-[#FF6B35] hover:bg-[#DC2626] border-0"
-													: "border-[#374151] hover:border-[#FF6B35]"
+													? "bg-primary hover:bg-chart-2 border-0"
+													: "border-secondary hover:border-primary"
 											}
 										>
 											{filter}
@@ -120,7 +120,7 @@ export function RoutinePicker({
 									searchQuery === "" &&
 									selectedFilter === "All" && (
 										<div className="mb-6">
-											<h3 className="text-sm font-semibold text-[#9CA3AF] uppercase mb-3">
+											<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
 												Recently Used
 											</h3>
 											<div className="space-y-2">
@@ -138,7 +138,7 @@ export function RoutinePicker({
 
 								{/* All Routines */}
 								<div>
-									<h3 className="text-sm font-semibold text-[#9CA3AF] uppercase mb-3">
+									<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
 										{searchQuery || selectedFilter !== "All"
 											? "Results"
 											: "All My Routines"}
@@ -154,7 +154,7 @@ export function RoutinePicker({
 											))}
 										</div>
 									) : (
-										<div className="text-center py-8 text-[#6B7280]">
+										<div className="text-center py-8 text-muted">
 											<p>No routines found</p>
 											<p className="text-sm mt-2">
 												Try adjusting your search or filters
@@ -165,14 +165,14 @@ export function RoutinePicker({
 							</div>
 
 							{/* Footer */}
-							<div className="p-6 border-t border-[#374151]">
-								<p className="text-sm text-[#9CA3AF] mb-3">
+							<div className="p-6 border-t border-secondary">
+								<p className="text-sm text-muted-foreground mb-3">
 									Don't see what you need?
 								</p>
 								<Button
 									onClick={onCreateNew}
 									variant="outline"
-									className="w-full border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
+									className="w-full border-primary text-primary hover:bg-primary/10"
 								>
 									<Plus className="w-4 h-4 mr-2" />
 									Create New Routine
@@ -207,22 +207,22 @@ function RoutineItem({
 	return (
 		<button
 			onClick={onSelect}
-			className="w-full p-4 bg-[#0D0D0D] border border-[#374151] rounded-lg hover:border-[#FF6B35] transition-all text-left group"
+			className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
 		>
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3 flex-1">
-					<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center flex-shrink-0">
+					<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center flex-shrink-0">
 						<Dumbbell className="w-5 h-5 text-white" />
 					</div>
 					<div className="flex-1 min-w-0">
 						<div className="font-semibold text-white mb-1">{routine.name}</div>
-						<div className="text-sm text-[#9CA3AF] flex items-center gap-2 flex-wrap">
+						<div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
 							<span>{routine.exercises} exercises</span>
-							<span className="text-[#6B7280]">•</span>
+							<span className="text-muted">•</span>
 							<span>~{routine.duration} min</span>
 							{showLastUsed && routine.lastUsed && (
 								<>
-									<span className="text-[#6B7280]">•</span>
+									<span className="text-muted">•</span>
 									<span>Last used: {getTimeAgo(routine.lastUsed)}</span>
 								</>
 							)}
@@ -231,7 +231,7 @@ function RoutineItem({
 				</div>
 				<Button
 					size="sm"
-					className="bg-[#FF6B35] hover:bg-[#DC2626] border-0 opacity-0 group-hover:opacity-100 transition-opacity ml-4"
+					className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity ml-4"
 					onClick={onSelect}
 				>
 					Select

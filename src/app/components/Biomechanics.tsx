@@ -56,9 +56,9 @@ function Section({
 			transition={{ duration: 0.3 }}
 			className={className}
 		>
-			<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+			<Card className="p-5 bg-surface-2 border-secondary">
 				<h3 className="flex items-center gap-2 text-lg font-medium text-white mb-4">
-					<Icon className="w-5 h-5 text-[#FF6B35]" />
+					<Icon className="w-5 h-5 text-primary" />
 					{title}
 				</h3>
 				{children}
@@ -75,15 +75,15 @@ function ErrorCard({
 	onRetry?: () => void;
 }) {
 	return (
-		<Card className="p-6 bg-[#1A1A2E] border-[#2D2D44] flex flex-col items-center gap-3">
-			<AlertCircle className="w-8 h-8 text-[#DC2626]" />
-			<p className="text-sm text-[#9CA3AF]">{message}</p>
+		<Card className="p-6 bg-surface-2 border-secondary flex flex-col items-center gap-3">
+			<AlertCircle className="w-8 h-8 text-chart-2" />
+			<p className="text-sm text-muted-foreground">{message}</p>
 			{onRetry && (
 				<Button
 					variant="outline"
 					size="sm"
 					onClick={onRetry}
-					className="border-[#2D2D44]"
+					className="border-secondary"
 				>
 					<RefreshCw className="w-4 h-4 mr-1" />
 					Retry
@@ -95,7 +95,7 @@ function ErrorCard({
 
 function SectionSkeleton() {
 	return (
-		<Card className="p-5 bg-[#1A1A2E] border-[#2D2D44]">
+		<Card className="p-5 bg-surface-2 border-secondary">
 			<Skeleton className="h-6 w-40 mb-4" />
 			<Skeleton className="h-[250px] w-full" />
 		</Card>
@@ -256,13 +256,13 @@ function BiomechanicsContent() {
 	if (!workouts || workouts.length === 0) {
 		return (
 			<div className="text-center py-16">
-				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#F59E0B]/20 flex items-center justify-center">
-					<Activity className="w-12 h-12 text-[#FF6B35]" />
+				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+					<Activity className="w-12 h-12 text-primary" />
 				</div>
 				<h3 className="text-2xl font-semibold text-white mb-2">
 					No workout data yet
 				</h3>
-				<p className="text-[#9CA3AF] max-w-md mx-auto">
+				<p className="text-muted-foreground max-w-md mx-auto">
 					Complete workouts in the mobile app to see your biomechanics data
 					here.
 				</p>
@@ -283,7 +283,7 @@ function BiomechanicsContent() {
 						setSelectedSetId("");
 					}}
 				>
-					<SelectTrigger className="w-64 bg-[#1A1A2E] border-[#2D2D44] text-white">
+					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
 						<SelectValue placeholder="Select session" />
 					</SelectTrigger>
 					<SelectContent>
@@ -309,7 +309,7 @@ function BiomechanicsContent() {
 							setSelectedSetId("");
 						}}
 					>
-						<SelectTrigger className="w-64 bg-[#1A1A2E] border-[#2D2D44] text-white">
+						<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
 							<SelectValue placeholder="Select exercise" />
 						</SelectTrigger>
 						<SelectContent>
@@ -325,12 +325,12 @@ function BiomechanicsContent() {
 				{/* Set selector */}
 				{sets.length > 0 && (
 					<Tabs value={effectiveSetId} onValueChange={setSelectedSetId}>
-						<TabsList className="bg-[#1A1A2E] border border-[#2D2D44]">
+						<TabsList className="bg-surface-2 border border-secondary">
 							{sets.map((s, i) => (
 								<TabsTrigger
 									key={s.id}
 									value={s.id}
-									className="data-[state=active]:bg-[#FF6B35] data-[state=active]:text-white text-xs px-3"
+									className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs px-3"
 								>
 									Set {i + 1}
 								</TabsTrigger>
@@ -362,7 +362,7 @@ function BiomechanicsContent() {
 									checked={overlayAll}
 									onCheckedChange={setOverlayAll}
 								/>
-								<Label htmlFor="overlay" className="text-sm text-[#9CA3AF]">
+								<Label htmlFor="overlay" className="text-sm text-muted-foreground">
 									Overlay All Reps
 								</Label>
 							</div>
@@ -372,7 +372,7 @@ function BiomechanicsContent() {
 									checked={normalized}
 									onCheckedChange={setNormalized}
 								/>
-								<Label htmlFor="normalized" className="text-sm text-[#9CA3AF]">
+								<Label htmlFor="normalized" className="text-sm text-muted-foreground">
 									Normalized Time
 								</Label>
 							</div>
@@ -387,7 +387,7 @@ function BiomechanicsContent() {
 								selectedRep={selectedRep}
 							/>
 						) : (
-							<div className="text-center py-8 text-[#6B7280] text-sm">
+							<div className="text-center py-8 text-muted text-sm">
 								No telemetry data for this set
 							</div>
 						)}
@@ -502,7 +502,7 @@ export function Biomechanics() {
 		<div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 max-w-7xl mx-auto">
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold text-white">Biomechanics</h1>
-				<p className="text-[#9CA3AF] mt-1">Advanced training analytics</p>
+				<p className="text-muted-foreground mt-1">Advanced training analytics</p>
 			</div>
 
 			<SubscriptionGate requiredTier="PHOENIX">
