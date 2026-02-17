@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
-- 🚧 **v1.1 Full UX Overhaul** — Phases 9-12 (in progress)
+- 🚧 **v1.1 Full UX Overhaul** — Phases 9-13 (in progress)
 
 ## Phases
 
@@ -132,6 +132,31 @@ Plans:
 
 ---
 
+### Phase 13: Hardening & Polish
+
+**Goal**: Close all audit gaps — fix Biome violations, wire missing DashboardMobile widgets, deploy FeatureHint tooltips, extend E2E coverage to all feature pages, and document human action gates.
+
+**Depends on**: Phase 12
+
+**Requirements**: TOOL-01, TOOL-09, ONBD-06, DLVR-05, DLVR-06
+**Gap Closure:** Closes gaps from v1.1 milestone audit (5 requirements, 4 integration, 3 flows)
+
+**Success Criteria** (what must be TRUE):
+  1. `npx @biomejs/biome check .` exits with zero errors
+  2. DashboardMobile on a mobile viewport shows GoalDashboardWidget and RecoveryDashboardWidget for PHOENIX/ELITE subscribers
+  3. FeatureHint tooltips appear on Goals, Recovery, Comments, and Comparison pages for users who haven't dismissed them
+  4. smoke.spec.ts and a11y.spec.ts include test cases for /goals and /compare routes
+  5. TOOL-09 (database.types.ts generation) has a documented human action procedure in the plan summary
+
+**Plans**: 3 plans
+
+Plans:
+- [ ] 13-01: Biome fix + DashboardMobile widget integration + SyncStatus mock fix + PWA NavigationFallback
+- [ ] 13-02: FeatureHint deployment on Goals, Recovery, Comments, Comparison pages
+- [ ] 13-03: E2E test gap closure (/goals, /compare) + human gate documentation (TOOL-09, DLVR-06)
+
+---
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -149,6 +174,7 @@ Plans:
 | 10. Wire-Up & Mock Purge | v1.1 | Complete    | 2026-02-17 | - |
 | 11. New Features | v1.1 | Complete    | 2026-02-17 | - |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | Complete    | 2026-02-17 | - |
+| 13. Hardening & Polish | v1.1 | 0/3 | In Progress | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
