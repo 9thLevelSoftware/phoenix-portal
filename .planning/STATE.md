@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 11 — New Features
+**Current focus:** Phase 12 — Schedule-Dependent Features & Delivery
 
 ## Current Position
 
-Phase: 11 of 13 (New Features) -- COMPLETE
-Plan: 5 of 5 in current phase (all plans complete)
-Status: Phase 11 complete
-Last activity: 2026-02-17 — Plan 11-03 complete (Recovery readiness dashboard)
+Phase: 12 of 13 (Schedule-Dependent Features & Delivery)
+Plan: 2 of 4 in current phase
+Status: Executing phase 12
+Last activity: 2026-02-17 — Plan 12-02 complete (Printable session reports)
 
-Progress: [██████░░░░] 55% (11 of 13 phases complete, 57/59 total plans)
+Progress: [██████░░░░] 58% (11 of 13 phases complete, 59/63 total plans)
 
 ## Performance Metrics
 
@@ -30,6 +30,7 @@ Progress: [██████░░░░] 55% (11 of 13 phases complete, 57/59 
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
 | 11-new-features | 5/5 | 32 min | 6.4 min |
+| 12-schedule-dependent-features-delivery | 2/4 | 6 min | 3.0 min |
 
 *Updated after each plan completion*
 
@@ -95,6 +96,8 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11, Plan 3]: Weighted composite scoring: ACWR 50%, rest days 30%, cycle position 20%.
 - [Phase 11, Plan 3]: Cycle position deload detection uses currentWeek % 4 === 0 heuristic.
 - [Phase 11, Plan 3]: Recovery disclaimer persisted via localStorage (not Supabase) to avoid extra DB roundtrip.
+- [Phase 12, Plan 2]: Print button uses fallback={null} so FREE users see nothing (no upgrade prompt for print feature).
+- [Phase 12, Plan 2]: Print-only branding footer uses PNG fallback logo for maximum print compatibility.
 
 ### Pending Todos
 
@@ -115,5 +118,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 11-03-PLAN.md (Recovery readiness dashboard) — Phase 11 complete
-Resume file: Next phase (12 or 13)
+Stopped at: Completed 12-02-PLAN.md (Printable session reports)
+Resume file: .planning/phases/12-schedule-dependent-features-delivery/12-03-PLAN.md
