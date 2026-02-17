@@ -32,6 +32,7 @@ import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { CommentThread } from "./CommentThread";
 
 interface CommunityDetailDrawerProps {
@@ -229,12 +230,18 @@ export function CommunityDetailDrawer({
 					</DialogDescription>
 				</DialogHeader>
 				<DetailContent item={item} />
-				<div className="mt-4 pt-4 border-t border-secondary">
-					<CommentThread
-						itemId={item.id}
-						itemType={isRoutine(item) ? "routine" : "cycle"}
-					/>
-				</div>
+				<FeatureHint
+					hintId="community-comments"
+					content="Join the discussion -- share feedback on routines and training cycles"
+					side="top"
+				>
+					<div className="mt-4 pt-4 border-t border-secondary">
+						<CommentThread
+							itemId={item.id}
+							itemType={isRoutine(item) ? "routine" : "cycle"}
+						/>
+					</div>
+				</FeatureHint>
 			</DialogContent>
 		</Dialog>
 	);

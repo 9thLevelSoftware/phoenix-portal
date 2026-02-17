@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
+import { FeatureHint } from "@/app/components/FeatureHint";
 import { Alert, AlertDescription, AlertTitle } from "@/app/components/ui/alert";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -497,11 +498,17 @@ export function ComparisonView() {
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to History
 						</Button>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Session Comparison
-							</span>
-						</h1>
+						<FeatureHint
+							hintId="workout-comparison"
+							content="Compare two workout sessions side-by-side to track progression"
+							side="bottom"
+						>
+							<h1 className="text-3xl sm:text-4xl mb-2">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+									Session Comparison
+								</span>
+							</h1>
+						</FeatureHint>
 						<p className="text-muted-foreground">
 							{summaryA.name} vs {summaryB.name}
 						</p>
