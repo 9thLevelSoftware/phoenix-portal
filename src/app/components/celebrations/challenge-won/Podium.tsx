@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
-import { PLACEMENT_CONFIG } from "./types";
 import { PHOENIX } from "@/lib/colors";
+import { PLACEMENT_CONFIG } from "./types";
 
 interface PodiumProps {
 	userPlacement: 1 | 2 | 3;
@@ -70,7 +70,8 @@ export function Podium({ userPlacement }: PodiumProps) {
 								className="text-4xl font-bold opacity-90"
 								style={{
 									textShadow: "0 2px 8px rgba(0,0,0,0.3)",
-									color: pos.place === 1 ? PHOENIX.white : "rgba(255,255,255,0.9)",
+									color:
+										pos.place === 1 ? PHOENIX.white : "rgba(255,255,255,0.9)",
 								}}
 							>
 								{pos.place}

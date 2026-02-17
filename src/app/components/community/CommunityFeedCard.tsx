@@ -3,8 +3,8 @@ import { ArrowBigUp, Calendar, Clock, Dumbbell } from "lucide-react";
 import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
-import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
 import { PHOENIX } from "@/lib/colors";
+import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
 
 interface CommunityFeedCardProps {
 	item: CommunityFeedItem;

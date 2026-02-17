@@ -260,7 +260,9 @@ export function PersonalRecords() {
 						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<Flame className="w-5 h-5 text-primary" />
-								<div className="text-sm text-muted-foreground">Exercises Tracked</div>
+								<div className="text-sm text-muted-foreground">
+									Exercises Tracked
+								</div>
 							</div>
 							<div className="text-2xl font-semibold text-white">
 								{exercisePRs.length}
@@ -269,7 +271,9 @@ export function PersonalRecords() {
 						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<Star className="w-5 h-5 text-warning" />
-								<div className="text-sm text-muted-foreground">Most Improved</div>
+								<div className="text-sm text-muted-foreground">
+									Most Improved
+								</div>
 							</div>
 							<div className="text-lg font-semibold text-white truncate">
 								{mostImproved}

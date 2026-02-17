@@ -29,7 +29,9 @@ export function SelectionModeBar({
 							<div className="flex items-center gap-2 text-white">
 								<Check className="w-5 h-5 text-success" />
 								<span className="font-semibold">{selectedCount}</span>
-								<span className="text-muted-foreground">exercises selected</span>
+								<span className="text-muted-foreground">
+									exercises selected
+								</span>
 							</div>
 
 							<div className="h-6 w-px bg-secondary" />

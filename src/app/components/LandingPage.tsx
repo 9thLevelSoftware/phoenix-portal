@@ -252,7 +252,10 @@ export function LandingPage() {
 								className="space-y-4"
 							>
 								<div className="space-y-2">
-									<Label htmlFor="signin-email" className="text-secondary-foreground">
+									<Label
+										htmlFor="signin-email"
+										className="text-secondary-foreground"
+									>
 										Email
 									</Label>
 									<Input
@@ -269,7 +272,10 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signin-password" className="text-secondary-foreground">
+									<Label
+										htmlFor="signin-password"
+										className="text-secondary-foreground"
+									>
 										Password
 									</Label>
 									<Input
@@ -306,7 +312,10 @@ export function LandingPage() {
 								className="space-y-4"
 							>
 								<div className="space-y-2">
-									<Label htmlFor="signup-email" className="text-secondary-foreground">
+									<Label
+										htmlFor="signup-email"
+										className="text-secondary-foreground"
+									>
 										Email
 									</Label>
 									<Input
@@ -323,7 +332,10 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signup-password" className="text-secondary-foreground">
+									<Label
+										htmlFor="signup-password"
+										className="text-secondary-foreground"
+									>
 										Password
 									</Label>
 									<Input
@@ -340,7 +352,10 @@ export function LandingPage() {
 									)}
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="signup-confirm" className="text-secondary-foreground">
+									<Label
+										htmlFor="signup-confirm"
+										className="text-secondary-foreground"
+									>
 										Confirm Password
 									</Label>
 									<Input
@@ -585,7 +600,9 @@ export function LandingPage() {
 										<span className="text-5xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
 											{tier.price}
 										</span>
-										<span className="text-muted-foreground ml-2">/ {tier.period}</span>
+										<span className="text-muted-foreground ml-2">
+											/ {tier.period}
+										</span>
 									</div>
 									<ul className="space-y-3 mb-8 flex-1">
 										{tier.features.map((feature) => (
@@ -664,9 +681,7 @@ export function LandingPage() {
 						<div>
 							<h4 className="text-white mb-4">Product</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
-								<li className="hover:text-primary cursor-pointer">
-									Features
-								</li>
+								<li className="hover:text-primary cursor-pointer">Features</li>
 								<li className="hover:text-primary cursor-pointer">Pricing</li>
 								<li className="hover:text-primary cursor-pointer">
 									Integrations
@@ -695,9 +710,7 @@ export function LandingPage() {
 									</Link>
 								</li>
 								<li className="hover:text-primary cursor-pointer">Terms</li>
-								<li className="hover:text-primary cursor-pointer">
-									Security
-								</li>
+								<li className="hover:text-primary cursor-pointer">Security</li>
 							</ul>
 						</div>
 					</div>
@@ -712,7 +725,9 @@ export function LandingPage() {
 							</span>
 						</p>
 						<div className="text-muted text-xs max-w-3xl mx-auto space-y-2">
-							<p className="font-semibold text-muted-foreground">Legal Notice</p>
+							<p className="font-semibold text-muted-foreground">
+								Legal Notice
+							</p>
 							<p>
 								Project Phoenix is an independent, community-developed
 								application and is not affiliated with, endorsed by, sponsored

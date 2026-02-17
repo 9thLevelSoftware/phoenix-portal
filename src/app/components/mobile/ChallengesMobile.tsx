@@ -320,9 +320,7 @@ export function ChallengesMobile() {
 
 				{/* Active Challenges */}
 				<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
-					<div className="text-xs text-muted mb-2">
-						← Swipe for actions →
-					</div>
+					<div className="text-xs text-muted mb-2">← Swipe for actions →</div>
 					{activeChallenges.map((challenge) => (
 						<SwipeableCard
 							key={challenge.id}
@@ -343,7 +341,9 @@ export function ChallengesMobile() {
 						<h2 className="text-white font-semibold mb-1">
 							January Volume Challenge
 						</h2>
-						<p className="text-sm text-muted-foreground">Your Rank: #12 of 150</p>
+						<p className="text-sm text-muted-foreground">
+							Your Rank: #12 of 150
+						</p>
 					</div>
 
 					<div className="px-4 py-4 space-y-2">

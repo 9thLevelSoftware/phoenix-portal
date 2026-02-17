@@ -454,7 +454,9 @@ function EmptyDetailPanel() {
 			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
 				<div className="text-center py-12">
 					<Dumbbell className="w-12 h-12 text-muted mx-auto mb-4" />
-					<p className="text-muted-foreground">Select an exercise to configure</p>
+					<p className="text-muted-foreground">
+						Select an exercise to configure
+					</p>
 				</div>
 			</Card>
 		</motion.div>

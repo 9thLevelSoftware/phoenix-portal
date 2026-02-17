@@ -273,7 +273,9 @@ export function CycleBuilder() {
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
-								<Label className="text-secondary-foreground mb-2">Cycle Name</Label>
+								<Label className="text-secondary-foreground mb-2">
+									Cycle Name
+								</Label>
 								<Input
 									value={cycleName}
 									onChange={(e) => {
@@ -286,7 +288,9 @@ export function CycleBuilder() {
 							</div>
 
 							<div>
-								<Label className="text-secondary-foreground mb-2">Duration (Days)</Label>
+								<Label className="text-secondary-foreground mb-2">
+									Duration (Days)
+								</Label>
 								<div className="flex items-center gap-2">
 									<Input
 										type="number"
@@ -322,7 +326,9 @@ export function CycleBuilder() {
 							</div>
 
 							<div className="md:col-span-2">
-								<Label className="text-secondary-foreground mb-2">Description</Label>
+								<Label className="text-secondary-foreground mb-2">
+									Description
+								</Label>
 								<Textarea
 									value={description}
 									onChange={(e) => {
@@ -573,7 +579,9 @@ function DayCard({
 				) : (
 					<div className="text-center space-y-2">
 						<div className="text-2xl">🛋️</div>
-						<div className="text-sm font-semibold text-muted-foreground">REST</div>
+						<div className="text-sm font-semibold text-muted-foreground">
+							REST
+						</div>
 					</div>
 				)}
 
@@ -622,7 +630,9 @@ function DayEditorPanel({
 				<div className="space-y-6">
 					{day.routineName ? (
 						<div>
-							<Label className="text-secondary-foreground mb-2">Assigned Routine</Label>
+							<Label className="text-secondary-foreground mb-2">
+								Assigned Routine
+							</Label>
 							<div className="flex items-center gap-2">
 								<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
 									<div className="font-semibold text-white">

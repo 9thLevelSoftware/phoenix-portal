@@ -5,8 +5,8 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import type { SupersetGroup } from "./superset-helpers";
 import { PHOENIX } from "@/lib/colors";
+import type { SupersetGroup } from "./superset-helpers";
 
 interface SupersetCardProps {
 	superset: SupersetGroup;
@@ -41,7 +41,9 @@ export function SupersetCard({
 	);
 	const colorLabel =
 		["A", "B", "C", "D"][
-			["#6366F1", "#EC4899", PHOENIX.forgeGreen, PHOENIX.gold].indexOf(superset.color)
+			["#6366F1", "#EC4899", PHOENIX.forgeGreen, PHOENIX.gold].indexOf(
+				superset.color,
+			)
 		] || "A";
 
 	return (
@@ -182,7 +184,9 @@ export function SupersetCard({
 				</div>
 
 				<div>
-					<Label className="text-xs text-muted-foreground mb-2">Rest After (s)</Label>
+					<Label className="text-xs text-muted-foreground mb-2">
+						Rest After (s)
+					</Label>
 					<div className="flex items-center gap-2">
 						<Button
 							size="sm"

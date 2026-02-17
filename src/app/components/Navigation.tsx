@@ -20,9 +20,9 @@ import { TierBadge } from "@/app/components/TierBadge";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
 import { useAuth } from "@/app/hooks/useAuth";
+import { PHOENIX } from "@/lib/colors";
 import { useUIStore } from "@/stores/useUIStore";
 import { PhoenixLogo } from "./PhoenixLogo";
-import { PHOENIX } from "@/lib/colors";
 
 const navItems = [
 	{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },

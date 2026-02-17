@@ -47,7 +47,13 @@ export function ChartTooltipContent({
 				boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
 			}}
 		>
-			<div style={{ fontWeight: 500, marginBottom: "2px", color: "var(--muted-foreground)" }}>
+			<div
+				style={{
+					fontWeight: 500,
+					marginBottom: "2px",
+					color: "var(--muted-foreground)",
+				}}
+			>
 				{data.label}
 			</div>
 			<div

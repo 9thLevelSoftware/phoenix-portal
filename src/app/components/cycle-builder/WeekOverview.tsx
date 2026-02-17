@@ -1,7 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { Card } from "@/app/components/ui/card";
-import type { CycleDay } from "./types";
 import { PHOENIX } from "@/lib/colors";
+import type { CycleDay } from "./types";
 
 interface WeekOverviewProps {
 	days: CycleDay[];
@@ -36,7 +36,9 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 					const day = days[i];
 					return (
 						<div key={dayName} className="text-center">
-							<div className="text-xs text-muted-foreground mb-2">{dayName}</div>
+							<div className="text-xs text-muted-foreground mb-2">
+								{dayName}
+							</div>
 							<div
 								className={`h-20 rounded-lg flex flex-col items-center justify-center text-2xl transition-all ${
 									day?.type === "workout"
@@ -72,7 +74,9 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 					{muscleDistribution.map((muscle) => (
 						<div key={muscle.name}>
 							<div className="flex items-center justify-between mb-1">
-								<span className="text-sm text-secondary-foreground">{muscle.name}</span>
+								<span className="text-sm text-secondary-foreground">
+									{muscle.name}
+								</span>
 								<span className="text-sm text-muted-foreground">
 									{muscle.percentage}%
 								</span>

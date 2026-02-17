@@ -278,9 +278,12 @@ function ParticleBurst({
 							width: isConfetti ? 8 : 3,
 							height: isConfetti ? 8 : 3,
 							backgroundColor: isConfetti
-								? [PHOENIX.ember, PHOENIX.gold, PHOENIX.forgeGreen, PHOENIX.flameRed][
-										Math.floor(Math.random() * 4)
-									]
+								? [
+										PHOENIX.ember,
+										PHOENIX.gold,
+										PHOENIX.forgeGreen,
+										PHOENIX.flameRed,
+									][Math.floor(Math.random() * 4)]
 								: color,
 							boxShadow: `0 0 ${isConfetti ? 15 : 8}px ${color}`,
 						}}

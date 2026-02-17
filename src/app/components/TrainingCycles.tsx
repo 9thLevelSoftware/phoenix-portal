@@ -288,7 +288,9 @@ export function TrainingCycles() {
 												</span>
 											</div>
 											<div className="flex items-center justify-between text-sm">
-												<span className="text-muted-foreground">Workout days</span>
+												<span className="text-muted-foreground">
+													Workout days
+												</span>
 												<div className="flex items-center gap-2">
 													<Dumbbell className="w-4 h-4 text-primary" />
 													<span className="text-white font-medium">
@@ -303,7 +305,9 @@ export function TrainingCycles() {
 											</div>
 											{cycle.status !== "draft" && lastUsedText && (
 												<div className="flex items-center justify-between text-sm">
-													<span className="text-muted-foreground">Last used</span>
+													<span className="text-muted-foreground">
+														Last used
+													</span>
 													<span className="text-white font-medium">
 														{lastUsedText}
 													</span>

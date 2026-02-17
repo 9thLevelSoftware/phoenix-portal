@@ -399,7 +399,9 @@ export function ProgressionRules({
 						{deloadEnabled && (
 							<div className="space-y-4 pl-8">
 								<div>
-									<Label className="text-muted-foreground mb-2">Deload every:</Label>
+									<Label className="text-muted-foreground mb-2">
+										Deload every:
+									</Label>
 									<div className="flex items-center gap-2">
 										<Input
 											type="number"
@@ -418,7 +420,9 @@ export function ProgressionRules({
 								</div>
 
 								<div>
-									<Label className="text-muted-foreground mb-2">During deload:</Label>
+									<Label className="text-muted-foreground mb-2">
+										During deload:
+									</Label>
 									<div className="space-y-2">
 										<div className="flex items-center gap-2">
 											<span className="text-sm text-muted-foreground w-24">
@@ -459,7 +463,9 @@ export function ProgressionRules({
 												min="0"
 												max="100"
 											/>
-											<span className="text-muted-foreground">% of normal sets</span>
+											<span className="text-muted-foreground">
+												% of normal sets
+											</span>
 										</div>
 									</div>
 								</div>

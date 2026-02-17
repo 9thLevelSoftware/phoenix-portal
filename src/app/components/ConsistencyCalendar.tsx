@@ -255,7 +255,9 @@ export function ConsistencyCalendar({
 						<div className="font-medium">
 							{format(hoveredCell.date, "MMM d, yyyy")}
 						</div>
-						<div style={{ color: hoveredCell.count > 0 ? EMBER : PHOENIX.ashGray }}>
+						<div
+							style={{ color: hoveredCell.count > 0 ? EMBER : PHOENIX.ashGray }}
+						>
 							{hoveredCell.count === 0
 								? "No workouts"
 								: `${hoveredCell.count} workout${hoveredCell.count > 1 ? "s" : ""}`}

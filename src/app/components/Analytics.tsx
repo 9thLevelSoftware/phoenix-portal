@@ -51,13 +51,13 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { PHOENIX } from "@/lib/colors";
 import {
 	muscleGroupOptions,
 	strengthProgressOptions,
 	volumeTrendOptions,
 } from "@/queries/analytics";
 import { externalActivitiesOptions } from "@/queries/integrations";
-import { PHOENIX } from "@/lib/colors";
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
 	Chest: PHOENIX.ember,
@@ -607,7 +607,10 @@ export function Analytics() {
 														strokeDasharray="3 3"
 														stroke={PHOENIX.moltenSteel}
 													/>
-													<XAxis dataKey="date" stroke={PHOENIX.mutedForeground} />
+													<XAxis
+														dataKey="date"
+														stroke={PHOENIX.mutedForeground}
+													/>
 													<YAxis stroke={PHOENIX.mutedForeground} />
 													<Tooltip
 														contentStyle={{
@@ -681,8 +684,14 @@ export function Analytics() {
 									{strengthProgressData.length > 0 ? (
 										<ResponsiveContainer width="100%" height={400}>
 											<LineChart data={strengthProgressData}>
-												<CartesianGrid strokeDasharray="3 3" stroke={PHOENIX.moltenSteel} />
-												<XAxis dataKey="date" stroke={PHOENIX.mutedForeground} />
+												<CartesianGrid
+													strokeDasharray="3 3"
+													stroke={PHOENIX.moltenSteel}
+												/>
+												<XAxis
+													dataKey="date"
+													stroke={PHOENIX.mutedForeground}
+												/>
 												<YAxis stroke={PHOENIX.mutedForeground} />
 												<Tooltip
 													contentStyle={{

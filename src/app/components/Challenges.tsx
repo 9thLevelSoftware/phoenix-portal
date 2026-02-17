@@ -263,7 +263,9 @@ export function Challenges() {
 											{/* Progress */}
 											<div>
 												<div className="flex items-center justify-between mb-2 text-sm">
-													<span className="text-muted-foreground">Your Progress</span>
+													<span className="text-muted-foreground">
+														Your Progress
+													</span>
 													<span className="text-white">
 														{challenge.progress}%
 													</span>
@@ -311,7 +313,9 @@ export function Challenges() {
 										{/* Right Section */}
 										<div className="lg:w-64 flex flex-col justify-between">
 											<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg mb-4">
-												<div className="text-xs text-muted-foreground mb-2">Prize</div>
+												<div className="text-xs text-muted-foreground mb-2">
+													Prize
+												</div>
 												<div className="text-white">{challenge.prize}</div>
 											</div>
 											<Button className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">

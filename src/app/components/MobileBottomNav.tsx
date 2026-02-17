@@ -23,8 +23,8 @@ import {
 	DrawerTitle,
 	DrawerTrigger,
 } from "@/app/components/ui/drawer";
-import { useUIStore } from "@/stores/useUIStore";
 import { PHOENIX } from "@/lib/colors";
+import { useUIStore } from "@/stores/useUIStore";
 
 const primaryItems = [
 	{ path: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -87,7 +87,9 @@ export function MobileBottomNav() {
 									<div className="relative">
 										<Icon
 											className={`w-6 h-6 transition-all ${
-												isActive ? "text-primary scale-110" : "text-muted-foreground"
+												isActive
+													? "text-primary scale-110"
+													: "text-muted-foreground"
 											}`}
 										/>
 
@@ -128,7 +130,9 @@ export function MobileBottomNav() {
 									{/* Label */}
 									<motion.span
 										className={`text-xs transition-all ${
-											isActive ? "text-primary font-medium" : "text-muted-foreground"
+											isActive
+												? "text-primary font-medium"
+												: "text-muted-foreground"
 										}`}
 										animate={{
 											opacity: isActive ? 1 : 0.8,
@@ -169,14 +173,18 @@ export function MobileBottomNav() {
 							<div className="relative">
 								<MoreHorizontal
 									className={`w-6 h-6 transition-all ${
-										isMoreActive ? "text-primary scale-110" : "text-muted-foreground"
+										isMoreActive
+											? "text-primary scale-110"
+											: "text-muted-foreground"
 									}`}
 								/>
 							</div>
 
 							<motion.span
 								className={`text-xs transition-all ${
-									isMoreActive ? "text-primary font-medium" : "text-muted-foreground"
+									isMoreActive
+										? "text-primary font-medium"
+										: "text-muted-foreground"
 								}`}
 								animate={{
 									opacity: isMoreActive ? 1 : 0.8,

@@ -22,11 +22,11 @@ import {
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { estimateOneRepMax } from "@/lib/biomechanics";
+import { PHOENIX, SURFACE } from "@/lib/colors";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 import { exerciseProgressOptions } from "@/queries/progress";
 import type { ExerciseProgress as ExerciseProgressType } from "@/schemas/telemetry";
-import { PHOENIX, SURFACE } from "@/lib/colors";
 
 export interface ExerciseProgressProps {
 	userId: string;
@@ -352,13 +352,19 @@ export function ExerciseProgress({
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
+										<CartesianGrid
+											strokeDasharray="3 3"
+											stroke={SURFACE.elevated}
+										/>
 										<XAxis
 											dataKey="date"
 											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
+										<YAxis
+											stroke={PHOENIX.mutedForeground}
+											tick={{ fontSize: 11 }}
+										/>
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
@@ -407,13 +413,19 @@ export function ExerciseProgress({
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
+										<CartesianGrid
+											strokeDasharray="3 3"
+											stroke={SURFACE.elevated}
+										/>
 										<XAxis
 											dataKey="date"
 											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
+										<YAxis
+											stroke={PHOENIX.mutedForeground}
+											tick={{ fontSize: 11 }}
+										/>
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
@@ -462,13 +474,19 @@ export function ExerciseProgress({
 												/>
 											</linearGradient>
 										</defs>
-										<CartesianGrid strokeDasharray="3 3" stroke={SURFACE.elevated} />
+										<CartesianGrid
+											strokeDasharray="3 3"
+											stroke={SURFACE.elevated}
+										/>
 										<XAxis
 											dataKey="date"
 											stroke={PHOENIX.mutedForeground}
 											tick={{ fontSize: 11 }}
 										/>
-										<YAxis stroke={PHOENIX.mutedForeground} tick={{ fontSize: 11 }} />
+										<YAxis
+											stroke={PHOENIX.mutedForeground}
+											tick={{ fontSize: 11 }}
+										/>
 										<Tooltip contentStyle={TOOLTIP_STYLE} />
 										<Area
 											type="monotone"
