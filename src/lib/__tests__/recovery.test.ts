@@ -121,30 +121,33 @@ describe("computeReadinessScore", () => {
 		expect(result.status).toBe("low");
 	});
 
-	// Test 6: User with 35 days, ACWR < 0.6 (detraining) -> score ~40, status "low"
+	// Test 6: User with 35 days, ACWR < 0.6 (detraining) -> low ACWR score
 	it("returns low score for ACWR < 0.6 (detraining)", () => {
 		const now = new Date();
 		const sessions: RecoveryInput["sessions"] = [];
 
-		// Heavy chronic: 5 sessions/week for weeks 2-6
+		// Heavy chronic: 6 sessions/week for weeks 2-6 at high volume
 		for (let w = 1; w <= 5; w++) {
-			for (let s = 0; s < 5; s++) {
+			for (let s = 0; s < 6; s++) {
 				const d = new Date(now);
 				d.setDate(d.getDate() - (w * 7 + s));
-				sessions.push({ started_at: d, total_volume: 8000 });
+				sessions.push({ started_at: d, total_volume: 10000 });
 			}
 		}
 
-		// Almost no acute: 1 session in last 7 days
-		const d = new Date(now);
-		d.setDate(d.getDate() - 3);
-		sessions.push({ started_at: d, total_volume: 3000 });
+		// Minimal acute: only 1 tiny session, plus train every day to kill rest score
+		for (let i = 0; i < 7; i++) {
+			const d = new Date(now);
+			d.setDate(d.getDate() - i);
+			sessions.push({ started_at: d, total_volume: 500 });
+		}
 
 		const result = computeReadinessScore({
 			sessions,
 			daysSinceFirstSession: 35,
 		});
 		expect(result.isGated).toBe(false);
+		expect(result.factors.acwr).toBeLessThan(0.6);
 		expect(result.score).toBeLessThan(50);
 		expect(result.status).toBe("low");
 	});
