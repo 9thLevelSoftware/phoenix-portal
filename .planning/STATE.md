@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 9 — Foundation & Toolchain
+**Current focus:** Phase 10 — Wire-Up & Mock Purge
 
 ## Current Position
 
-Phase: 9 of 12 (Foundation & Toolchain) -- COMPLETE
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-02-17 — Plan 09-05 complete (feature component color token migration)
+Phase: 10 of 12 (Wire-Up & Mock Purge)
+Plan: 2 of 4 in current phase
+Status: In progress
+Last activity: 2026-02-17 — Plan 10-02 complete (Dashboard & Profile wire-up)
 
-Progress: [███░░░░░░░] 25% (10 of 13 phases complete, 46/58 total plans)
+Progress: [███░░░░░░░] 28% (10 of 13 phases complete, 48/58 total plans)
 
 ## Performance Metrics
 
@@ -28,6 +28,7 @@ Progress: [███░░░░░░░] 25% (10 of 13 phases complete, 46/58 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
+| 10-wire-up-mock-purge | 2/4 | 17 min | 8.5 min |
 
 *Updated after each plan completion*
 
@@ -58,6 +59,14 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 9, Plan 5]: Non-Phoenix palette colors (#6366F1, #FC4C02, #8B5CF6, etc.) retained as arbitrary values -- no semantic tokens for third-party/accent colors.
 - [Phase 9, Plan 5]: mutedForeground (#9CA3AF) added to PHOENIX constants for chart axis SVG stroke values where CSS vars cannot be used.
 - [Phase 9, Plan 5]: Color usage rule: Tailwind classes = semantic tokens; SVG/Recharts = PHOENIX.* constants; inline styles = var(--token).
+- [Phase 10, Plan 1]: Confirmed mutation pattern (not optimistic) for RoutineBuilder/CycleBuilder saves. Toast confirms success; no speculative UI.
+- [Phase 10, Plan 1]: Save stays on page (no navigate away) with toast confirmation as the success signal.
+- [Phase 10, Plan 1]: UnsavedChangesDialog uses shadcn AlertDialog primitives with Phoenix theme (Save/Discard/Cancel buttons).
+- [Phase 10, Plan 1]: CycleBuilder ProgressionRules uses fully typed props; PreviewModal uses shadcn Dialog for consistency.
+- [Phase 10, Plan 2]: Profile badges tab shows empty state -- no badge table exists yet. Link to challenges instead.
+- [Phase 10, Plan 2]: Profile integrations tab queries real user_integrations data instead of hardcoded app list.
+- [Phase 10, Plan 2]: useStreak hook extracted for reuse: Dashboard, DashboardMobile, Profile, WorkoutHistory all share it.
+- [Phase 10, Plan 2]: Settings persistence uses confirmed mutation pattern (not optimistic) with local useState synced from query data.
 
 ### Pending Todos
 
@@ -78,5 +87,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 09-05-PLAN.md (feature component color token migration; Phase 9 complete)
-Resume file: .planning/phases/10-data-integrity/10-01-PLAN.md
+Stopped at: Completed 10-02-PLAN.md (Dashboard & Profile wire-up to real Supabase data)
+Resume file: .planning/phases/10-wire-up-mock-purge/10-03-PLAN.md

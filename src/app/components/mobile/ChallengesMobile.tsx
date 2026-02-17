@@ -1,4 +1,5 @@
-import { ChevronRight, Target, TrendingUp, Trophy } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, Target, Trophy } from "lucide-react";
 import {
 	motion,
 	type PanInfo,
@@ -6,26 +7,24 @@ import {
 	useTransform,
 } from "motion/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
-
-interface Challenge {
-	id: string;
-	name: string;
-	icon: string;
-	progress: number;
-	rank: number;
-	totalParticipants: number;
-	daysRemaining: number;
-	metric: string;
-	currentValue: number;
-}
+import { useJoinChallenge, useLeaveChallenge } from "@/mutations/challenges";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+	type Challenge,
+	challengeListOptions,
+	challengeProgressOptions,
+	userChallengesOptions,
+} from "@/queries/challenges";
 
 interface SwipeableCardProps {
 	children: React.ReactNode;
@@ -69,7 +68,6 @@ function SwipeableCard({
 
 	return (
 		<div className="relative overflow-hidden rounded-xl">
-			{/* Background Actions */}
 			<motion.div
 				className="absolute inset-0 flex items-center justify-start pl-6"
 				style={{ backgroundColor: leftBg, opacity: leftOpacity }}
@@ -88,7 +86,6 @@ function SwipeableCard({
 				</span>
 			</motion.div>
 
-			{/* Draggable Content */}
 			<motion.div
 				drag="x"
 				dragConstraints={{ left: 0, right: 0 }}
@@ -104,176 +101,162 @@ function SwipeableCard({
 	);
 }
 
-function ChallengeCard({
+function MobileChallengeCard({
 	challenge,
-	onView,
+	isJoined,
+	userId,
 }: {
 	challenge: Challenge;
-	onView: () => void;
+	isJoined: boolean;
+	userId: string;
 }) {
 	return (
 		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
 			<div className="flex items-start gap-3">
-				<div className="text-3xl">{challenge.icon}</div>
+				<div className="text-3xl">
+					{challenge.challenge_type === "volume"
+						? "🏋️"
+						: challenge.challenge_type === "streak"
+							? "🔥"
+							: challenge.challenge_type === "pr_count"
+								? "💎"
+								: "🎯"}
+				</div>
 				<div className="flex-1 min-w-0">
 					<h3 className="text-white font-semibold mb-2 truncate">
 						{challenge.name}
 					</h3>
 
-					{/* Progress Bar */}
-					<div className="mb-3">
-						<div className="flex items-center justify-between mb-1">
-							<span className="text-xs text-muted-foreground">Progress</span>
-							<span className="text-xs font-semibold text-primary">
-								{challenge.progress}%
-							</span>
-						</div>
-						<Progress value={challenge.progress} className="h-2" />
-					</div>
+					{isJoined && (
+						<MobileProgressBar
+							userId={userId}
+							challengeId={challenge.id}
+							challengeType={challenge.challenge_type}
+							targetValue={challenge.target_value}
+							startDate={challenge.start_date}
+							endDate={challenge.end_date}
+						/>
+					)}
 
-					{/* Stats */}
-					<div className="flex items-center gap-4 text-xs text-muted-foreground">
+					<div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
 						<div className="flex items-center gap-1">
 							<Trophy className="w-3 h-3" />
-							<span>
-								Rank #{challenge.rank} of {challenge.totalParticipants}
-							</span>
+							<span>{challenge.difficulty}</span>
 						</div>
 						<div className="flex items-center gap-1">
-							<span>{challenge.daysRemaining} days left</span>
+							<span>
+								{Math.max(
+									0,
+									Math.ceil(
+										(new Date(challenge.end_date).getTime() -
+											Date.now()) /
+											(1000 * 60 * 60 * 24),
+									),
+								)}{" "}
+								days left
+							</span>
 						</div>
 					</div>
-
-					{/* Current Value */}
-					<div className="mt-2 text-sm">
-						<span className="text-muted">{challenge.metric}: </span>
-						<span className="text-white font-semibold">
-							{challenge.currentValue.toLocaleString()}
-						</span>
-					</div>
 				</div>
-
-				<button
-					onClick={onView}
-					className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
-				>
-					<ChevronRight className="w-5 h-5" />
-				</button>
 			</div>
 		</Card>
 	);
 }
 
-function LeaderboardRow({
-	rank,
-	name,
-	value,
-	isUser = false,
+function MobileProgressBar({
+	userId,
+	challengeId,
+	challengeType,
+	targetValue,
+	startDate,
+	endDate,
 }: {
-	rank: number;
-	name: string;
-	value: string;
-	isUser?: boolean;
+	userId: string;
+	challengeId: string;
+	challengeType: string;
+	targetValue: number;
+	startDate: string;
+	endDate: string;
 }) {
-	const medal =
-		rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
+	const { data: progress } = useQuery(
+		challengeProgressOptions(
+			userId,
+			challengeId,
+			challengeType,
+			targetValue,
+			startDate,
+			endDate,
+		),
+	);
+
+	const percentage = progress?.percentage ?? 0;
 
 	return (
-		<div
-			className={`flex items-center gap-3 p-3 rounded-lg ${
-				isUser
-					? "bg-primary/10 border border-primary/30 sticky top-0"
-					: "bg-background"
-			}`}
-		>
-			<div className="w-10 text-center">
-				{medal || (
-					<span className="text-muted text-sm font-semibold">{rank}</span>
-				)}
+		<div className="mb-3">
+			<div className="flex items-center justify-between mb-1">
+				<span className="text-xs text-muted-foreground">Progress</span>
+				<span className="text-xs font-semibold text-primary">
+					{percentage}%
+				</span>
 			</div>
-			<div className="flex-1 min-w-0">
-				<p
-					className={`font-medium truncate ${isUser ? "text-white" : "text-secondary-foreground"}`}
-				>
-					{name}
-					{isUser && <span className="ml-2 text-xs text-primary">(You)</span>}
-				</p>
-			</div>
-			<div className="text-right">
-				<p className="text-white font-semibold">{value}</p>
-			</div>
-			{isUser && (
-				<div className="text-success text-xs">
-					<TrendingUp className="w-4 h-4" />
-				</div>
-			)}
+			<Progress value={percentage} className="h-2" />
 		</div>
 	);
 }
 
 export function ChallengesMobile() {
+	const { user } = useAuth();
+	const userId = user?.id ?? "";
 	const [activeTab, setActiveTab] = useState("active");
+	const [expandedId, setExpandedId] = useState<string | null>(null);
 
-	const activeChallenges: Challenge[] = [
-		{
-			id: "1",
-			name: "January Volume Challenge",
-			icon: "🔥",
-			progress: 68,
-			rank: 12,
-			totalParticipants: 150,
-			daysRemaining: 12,
-			metric: "Total Volume",
-			currentValue: 186500,
-		},
-		{
-			id: "2",
-			name: "PR Hunter",
-			icon: "💎",
-			progress: 45,
-			rank: 8,
-			totalParticipants: 50,
-			daysRemaining: 12,
-			metric: "PRs Achieved",
-			currentValue: 9,
-		},
-		{
-			id: "3",
-			name: "30-Day Streak",
-			icon: "🔥",
-			progress: 87,
-			rank: 25,
-			totalParticipants: 100,
-			daysRemaining: 4,
-			metric: "Days Trained",
-			currentValue: 26,
-		},
-	];
+	const { data: challenges, isPending } = useQuery(
+		challengeListOptions(),
+	);
+	const { data: userChallenges } = useQuery(
+		userChallengesOptions(userId),
+	);
 
-	const leaderboard = [
-		{ rank: 1, name: "Marcus Chen", value: "274,200 kg" },
-		{ rank: 2, name: "Sarah Williams", value: "268,500 kg" },
-		{ rank: 3, name: "David Rodriguez", value: "251,800 kg" },
-		{ rank: 4, name: "Emma Thompson", value: "243,100 kg" },
-		{ rank: 5, name: "James Lee", value: "238,900 kg" },
-		{ rank: 6, name: "Lisa Park", value: "235,600 kg" },
-		{ rank: 7, name: "Chris Anderson", value: "232,100 kg" },
-		{ rank: 8, name: "Amy Zhang", value: "228,400 kg" },
-		{ rank: 9, name: "Mike Johnson", value: "225,700 kg" },
-		{ rank: 10, name: "Rachel Kim", value: "222,300 kg" },
-		{ rank: 11, name: "Tom Wilson", value: "219,500 kg" },
-		{ rank: 12, name: "You", value: "186,500 kg" },
-		{ rank: 13, name: "Mike Johnson", value: "184,200 kg" },
-		{ rank: 14, name: "Anna Davis", value: "181,800 kg" },
-		{ rank: 15, name: "John Smith", value: "179,400 kg" },
-	];
+	const joinMutation = useJoinChallenge();
+	const leaveMutation = useLeaveChallenge();
+
+	const joinedIds = new Set(
+		(userChallenges ?? []).map((uc) => uc.challenge_id),
+	);
+	const completedIds = new Set(
+		(userChallenges ?? [])
+			.filter((uc) => uc.completed_at)
+			.map((uc) => uc.challenge_id),
+	);
+
+	const activeChallenges = (challenges ?? []).filter(
+		(c) => !completedIds.has(c.id),
+	);
+	const discoverChallenges = (challenges ?? []).filter(
+		(c) => !joinedIds.has(c.id) && !completedIds.has(c.id),
+	);
+
+	if (isPending) {
+		return (
+			<div className="min-h-screen bg-background pb-20">
+				<header className="px-4 py-4 border-b border-secondary">
+					<Skeleton className="h-8 w-32" />
+				</header>
+				<div className="px-4 py-4 space-y-4">
+					{Array.from({ length: 3 }).map((_, i) => (
+						<Skeleton key={i} className="h-32 w-full" />
+					))}
+				</div>
+			</div>
+		);
+	}
 
 	const handleViewChallenge = (challengeId: string) => {
-		console.log("View challenge:", challengeId);
+		setExpandedId(expandedId === challengeId ? null : challengeId);
 	};
 
 	const handleLeaveChallenge = (challengeId: string) => {
-		console.log("Leave challenge:", challengeId);
+		leaveMutation.mutate(challengeId);
 	};
 
 	return (
@@ -298,12 +281,6 @@ export function ChallengesMobile() {
 							Active
 						</TabsTrigger>
 						<TabsTrigger
-							value="leaderboard"
-							className="px-4 py-3 text-sm font-medium whitespace-nowrap data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-						>
-							Board
-						</TabsTrigger>
-						<TabsTrigger
 							value="past"
 							className="px-4 py-3 text-sm font-medium whitespace-nowrap data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
 						>
@@ -320,63 +297,120 @@ export function ChallengesMobile() {
 
 				{/* Active Challenges */}
 				<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
-					<div className="text-xs text-muted mb-2">← Swipe for actions →</div>
-					{activeChallenges.map((challenge) => (
-						<SwipeableCard
-							key={challenge.id}
-							onSwipeRight={() => handleViewChallenge(challenge.id)}
-							onSwipeLeft={() => handleLeaveChallenge(challenge.id)}
-						>
-							<ChallengeCard
-								challenge={challenge}
-								onView={() => handleViewChallenge(challenge.id)}
-							/>
-						</SwipeableCard>
-					))}
-				</TabsContent>
-
-				{/* Leaderboard */}
-				<TabsContent value="leaderboard" className="mt-0">
-					<div className="p-4 border-b border-secondary bg-surface-2">
-						<h2 className="text-white font-semibold mb-1">
-							January Volume Challenge
-						</h2>
-						<p className="text-sm text-muted-foreground">
-							Your Rank: #12 of 150
-						</p>
-					</div>
-
-					<div className="px-4 py-4 space-y-2">
-						{leaderboard.map((entry) => (
-							<LeaderboardRow
-								key={entry.rank}
-								rank={entry.rank}
-								name={entry.name}
-								value={entry.value}
-								isUser={entry.name === "You"}
-							/>
-						))}
-					</div>
+					{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
+					0 ? (
+						<div className="text-center py-12 text-muted">
+							<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
+							<p>No active challenges right now</p>
+							<p className="text-xs mt-1">
+								Join a challenge from the Discover tab
+							</p>
+						</div>
+					) : (
+						<>
+							<div className="text-xs text-muted mb-2">
+								Swipe left to leave, right to view
+							</div>
+							{activeChallenges
+								.filter((c) => joinedIds.has(c.id))
+								.map((challenge) => (
+									<SwipeableCard
+										key={challenge.id}
+										onSwipeRight={() =>
+											handleViewChallenge(challenge.id)
+										}
+										onSwipeLeft={() =>
+											handleLeaveChallenge(challenge.id)
+										}
+									>
+										<MobileChallengeCard
+											challenge={challenge}
+											isJoined={true}
+											userId={userId}
+										/>
+									</SwipeableCard>
+								))}
+						</>
+					)}
 				</TabsContent>
 
 				{/* Past Challenges */}
 				<TabsContent value="past" className="px-4 py-12 mt-0">
-					<div className="text-center text-muted">
-						<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
-						<p>No past challenges yet</p>
-						<p className="text-xs mt-1">
-							Complete your first challenge to see it here
-						</p>
-					</div>
+					{completedIds.size === 0 ? (
+						<div className="text-center text-muted">
+							<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
+							<p>No past challenges yet</p>
+							<p className="text-xs mt-1">
+								Complete your first challenge to see it here
+							</p>
+						</div>
+					) : (
+						<div className="space-y-4">
+							{(challenges ?? [])
+								.filter((c) => completedIds.has(c.id))
+								.map((challenge) => (
+									<Card
+										key={challenge.id}
+										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary"
+									>
+										<h3 className="text-white font-semibold mb-1">
+											{challenge.name}
+										</h3>
+										<p className="text-xs text-muted-foreground mb-2">
+											{challenge.description}
+										</p>
+										{challenge.prize && (
+											<div className="text-xs text-accent">
+												{challenge.prize}
+											</div>
+										)}
+									</Card>
+								))}
+						</div>
+					)}
 				</TabsContent>
 
 				{/* Discover */}
-				<TabsContent value="discover" className="px-4 py-12 mt-0">
-					<div className="text-center text-muted">
-						<Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
-						<p>Discover new challenges</p>
-						<p className="text-xs mt-1">Coming soon</p>
-					</div>
+				<TabsContent value="discover" className="px-4 py-4 mt-0">
+					{discoverChallenges.length === 0 ? (
+						<div className="text-center py-12 text-muted">
+							<Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
+							<p>No new challenges available</p>
+							<p className="text-xs mt-1">Check back soon</p>
+						</div>
+					) : (
+						<div className="space-y-4">
+							{discoverChallenges.map((challenge) => (
+								<Card
+									key={challenge.id}
+									className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary"
+								>
+									<h3 className="text-white font-semibold mb-1">
+										{challenge.name}
+									</h3>
+									<p className="text-xs text-muted-foreground mb-3">
+										{challenge.description}
+									</p>
+									<div className="flex items-center justify-between">
+										<span className="text-xs text-muted-foreground capitalize">
+											{challenge.difficulty} | {challenge.challenge_type}
+										</span>
+										<button
+											onClick={() => joinMutation.mutate(challenge.id)}
+											disabled={joinMutation.isPending}
+											className="px-4 py-1.5 text-sm font-medium rounded-lg bg-gradient-to-r from-primary to-chart-2 text-white"
+										>
+											{joinMutation.isPending ? (
+												<Loader2 className="w-4 h-4 animate-spin" />
+											) : (
+												"Join"
+											)}
+										</button>
+									</div>
+								</Card>
+							))}
+						</div>
+					)}
 				</TabsContent>
 			</Tabs>
 		</div>

@@ -15,6 +15,7 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -416,13 +417,21 @@ export function SessionDetail() {
 					transition={{ delay: 0.4 }}
 					className="flex flex-col sm:flex-row gap-3"
 				>
-					<Button className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0">
+					<Button
+						className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						onClick={() =>
+							toast("Session comparison coming in a future update")
+						}
+					>
 						<BarChart3 className="w-4 h-4 mr-2" />
 						Compare to Previous
 					</Button>
 					<Button
 						variant="outline"
 						className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						onClick={() =>
+							toast("Session sharing coming in a future update")
+						}
 					>
 						<Share2 className="w-4 h-4 mr-2" />
 						Share Summary

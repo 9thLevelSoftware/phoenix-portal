@@ -16,6 +16,7 @@ import { Card } from "@/app/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { communityFeedOptions, userVotesOptions } from "@/queries/community";
 import { queryKeys } from "@/queries/keys";
@@ -98,15 +99,23 @@ export function CommunityMobile() {
 		queryClient.invalidateQueries({ queryKey: queryKeys.community.all });
 	}, [queryClient]);
 
+	const voteMutation = useVote();
+
 	const allItems: CommunityFeedItem[] = data?.pages.flat() ?? [];
 
 	const selectedItem = selectedItemId
 		? (allItems.find((item) => item.id === selectedItemId) ?? null)
 		: null;
 
-	const handleVote = useCallback((id: string) => {
-		console.log("Vote:", id);
-	}, []);
+	const handleVote = useCallback(
+		(id: string) => {
+			voteMutation.mutate({
+				itemId: id,
+				itemType: activeTab === "routines" ? "routine" : "cycle",
+			});
+		},
+		[voteMutation, activeTab],
+	);
 
 	return (
 		<div className="min-h-screen bg-background pb-20">

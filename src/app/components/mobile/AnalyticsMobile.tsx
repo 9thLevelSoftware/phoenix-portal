@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, Dumbbell, Target, TrendingUp, Zap } from "lucide-react";
+import { Activity, Download, Dumbbell, Target, TrendingUp, Zap } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
+import { Link } from "react-router";
+import { toast } from "sonner";
 import {
 	Area,
 	AreaChart,
@@ -30,6 +32,7 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
+import { downloadCSV } from "@/lib/export/csv";
 import {
 	muscleGroupOptions,
 	strengthProgressOptions,
@@ -103,6 +106,10 @@ function periodToQuery(period: string): string {
 			return "4w";
 		case "90D":
 			return "12w";
+		case "1Y":
+			return "52w";
+		case "ALL":
+			return "all";
 		default:
 			return "4w";
 	}
@@ -254,7 +261,21 @@ export function AnalyticsMobile() {
 								<SelectItem value="ALL">All</SelectItem>
 							</SelectContent>
 						</Select>
-						<button className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors">
+						<button
+							className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+							onClick={() => {
+								const rows = volumeData.map((d) =>
+									[d.date, d.volume].join(","),
+								);
+								const header = "Week,Volume (kg)";
+								const csv = [header, ...rows].join("\n");
+								downloadCSV(
+									csv,
+									`analytics-${timePeriod.toLowerCase()}-${new Date().toISOString().slice(0, 10)}`,
+								);
+								toast.success("Analytics exported as CSV");
+							}}
+						>
 							<Download className="w-4 h-4" />
 						</button>
 					</div>
@@ -469,16 +490,96 @@ export function AnalyticsMobile() {
 						)}
 
 						{activeTab === "trends" && (
-							<div className="text-center py-12 text-muted">
-								<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>Trends analysis coming soon</p>
-							</div>
+							<ChartCard title="VOLUME TREND">
+								{volumeData.length > 0 ? (
+									<ResponsiveContainer width="100%" height={250}>
+										<AreaChart data={volumeData}>
+											<defs>
+												<linearGradient
+													id="trendGradient"
+													x1="0"
+													y1="0"
+													x2="0"
+													y2="1"
+												>
+													<stop
+														offset="5%"
+														stopColor={PHOENIX.ember}
+														stopOpacity={0.3}
+													/>
+													<stop
+														offset="95%"
+														stopColor={PHOENIX.ember}
+														stopOpacity={0}
+													/>
+												</linearGradient>
+											</defs>
+											<XAxis
+												dataKey="date"
+												stroke={PHOENIX.ashGray}
+												style={{ fontSize: "12px" }}
+											/>
+											<YAxis
+												stroke={PHOENIX.ashGray}
+												style={{ fontSize: "12px" }}
+												tickFormatter={(value) =>
+													value >= 1000
+														? `${value / 1000}k`
+														: `${value}`
+												}
+											/>
+											<Tooltip
+												contentStyle={{
+													backgroundColor: "var(--surface-2)",
+													border: "1px solid #374151",
+													borderRadius: "8px",
+													color: "var(--foreground)",
+												}}
+												formatter={(value: number) => [
+													`${value.toLocaleString()} kg`,
+													"Volume",
+												]}
+											/>
+											<Area
+												type="monotone"
+												dataKey="volume"
+												stroke={PHOENIX.ember}
+												strokeWidth={2}
+												fill="url(#trendGradient)"
+											/>
+										</AreaChart>
+									</ResponsiveContainer>
+								) : (
+									<div className="text-center py-12 text-muted">
+										<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
+										<p className="font-medium mb-1">
+											Track your training trends
+										</p>
+										<p className="text-xs">
+											Complete a few workouts to see your volume and
+											strength trends here
+										</p>
+									</div>
+								)}
+							</ChartCard>
 						)}
 
 						{activeTab === "body" && (
 							<div className="text-center py-12 text-muted">
-								<Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>Body composition tracking coming soon</p>
+								<Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+								<p className="font-medium mb-1">
+									Body composition tracking
+								</p>
+								<p className="text-xs mb-4">
+									Body metrics will be available when connected to a
+									compatible tracker
+								</p>
+								<Link
+									to="/integrations"
+									className="text-primary text-sm hover:underline"
+								>
+									Set up integrations
+								</Link>
 							</div>
 						)}
 					</>

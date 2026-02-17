@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
 	Area,
 	AreaChart,
@@ -52,6 +53,7 @@ import {
 import { useAuth } from "@/app/hooks/useAuth";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { PHOENIX } from "@/lib/colors";
+import { downloadCSV } from "@/lib/export/csv";
 import {
 	muscleGroupOptions,
 	strengthProgressOptions,
@@ -77,6 +79,10 @@ function periodToDays(timePeriod: string): string {
 			return "4w";
 		case "90D":
 			return "12w";
+		case "1Y":
+			return "52w";
+		case "ALL":
+			return "all";
 		default:
 			return "4w";
 	}
@@ -387,6 +393,18 @@ export function Analytics() {
 						<Button
 							variant="outline"
 							className="border-primary text-primary hover:bg-primary/10"
+							onClick={() => {
+								const rows = volumeData.map((d) =>
+									[d.date, d.volume, d.workouts].join(","),
+								);
+								const header = "Week,Volume (kg),Workouts";
+								const csv = [header, ...rows].join("\n");
+								downloadCSV(
+									csv,
+									`analytics-${timePeriod.toLowerCase()}-${new Date().toISOString().slice(0, 10)}`,
+								);
+								toast.success("Analytics exported as CSV");
+							}}
 						>
 							<Download className="w-4 h-4 mr-2" />
 							Export

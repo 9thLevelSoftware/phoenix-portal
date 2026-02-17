@@ -22,6 +22,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -32,6 +33,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { PHOENIX } from "@/lib/colors";
+import { downloadCSV } from "@/lib/export/csv";
 
 interface WorkoutDetailProps {
 	onClose: () => void;
@@ -189,6 +191,9 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 							<Button
 								variant="outline"
 								className="border-secondary text-white hover:bg-secondary/50"
+								onClick={() =>
+									toast("Workout sharing coming in a future update")
+								}
 							>
 								<Share2 className="w-4 h-4 mr-2" />
 								Share
@@ -196,6 +201,28 @@ export function WorkoutDetail({ onClose }: WorkoutDetailProps) {
 							<Button
 								variant="outline"
 								className="border-primary text-primary hover:bg-primary/10"
+								onClick={() => {
+									const csvRows = exerciseData.flatMap((ex) =>
+										ex.sets.map((s) =>
+											[
+												ex.name,
+												ex.mode,
+												s.set,
+												s.weight,
+												s.reps,
+												s.peakPower,
+												s.avgPower,
+												s.tut,
+												s.quality,
+											].join(","),
+										),
+									);
+									const header =
+										"Exercise,Mode,Set,Weight (kg),Reps,Peak Power (W),Avg Power (W),TUT (s),Quality (%)";
+									const csv = [header, ...csvRows].join("\n");
+									downloadCSV(csv, `workout-push-day-a-${new Date().toISOString().slice(0, 10)}`);
+									toast.success("Workout exported as CSV");
+								}}
 							>
 								<Download className="w-4 h-4 mr-2" />
 								Export
