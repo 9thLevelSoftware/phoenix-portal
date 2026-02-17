@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 12 of 13 (Schedule-Dependent Features & Delivery)
-Plan: 3 of 4 in current phase
-Status: Executing phase 12
-Last activity: 2026-02-17 — Plan 12-03 complete (PWA & delivery)
+Plan: 4 of 4 in current phase (PHASE COMPLETE)
+Status: Phase 12 complete
+Last activity: 2026-02-17 — Plan 12-04 complete (E2E, WCAG, bundle analysis)
 
-Progress: [██████░░░░] 59% (11 of 13 phases complete, 60/63 total plans)
+Progress: [████████░░] 64% (12 of 13 phases complete, 63/63 total plans in phases 1-12)
 
 ## Performance Metrics
 
@@ -30,7 +30,7 @@ Progress: [██████░░░░] 59% (11 of 13 phases complete, 60/63 
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
 | 11-new-features | 5/5 | 32 min | 6.4 min |
-| 12-schedule-dependent-features-delivery | 3/4 | 10 min | 3.3 min |
+| 12-schedule-dependent-features-delivery | 4/4 | 16 min | 4.0 min |
 
 *Updated after each plan completion*
 
@@ -105,6 +105,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 12, Plan 3]: DLVR-04 (web vitals) satisfied by existing Sentry browserTracingIntegration with tracesSampleRate 0.1 -- no code changes needed.
 - [Phase 12, Plan 3]: Module-level beforeinstallprompt listener captures event before React mounts, surviving component remounts.
 - [Phase 12, Plan 3]: PNG icons generated from WebP sources via sharp, not copied from fallback.
+- [Phase 12, Plan 4]: --muted bumped from #6B7280 to #838B98 for WCAG AA 4.5:1 contrast ratio on #0D0D0D dark background. Affects 149 text-muted and 18 bg-muted usages.
+- [Phase 12, Plan 4]: Animated elements need 2s wait before axe scan due to Framer Motion opacity:0 initial states causing false contrast failures.
+- [Phase 12, Plan 4]: Authenticated E2E pages (8 total) require SUPABASE_TEST_EMAIL/PASSWORD env vars for a11y audit -- documented as manual follow-up gap.
 
 ### Pending Todos
 
@@ -125,5 +128,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 12-03-PLAN.md (PWA & delivery)
-Resume file: .planning/phases/12-schedule-dependent-features-delivery/12-04-PLAN.md
+Stopped at: Completed 12-04-PLAN.md (E2E, WCAG audit, bundle analysis) -- Phase 12 COMPLETE
+Resume file: .planning/phases/13-hardening-polish/ (next phase)
