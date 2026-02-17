@@ -96,6 +96,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11, Plan 3]: Weighted composite scoring: ACWR 50%, rest days 30%, cycle position 20%.
 - [Phase 11, Plan 3]: Cycle position deload detection uses currentWeek % 4 === 0 heuristic.
 - [Phase 11, Plan 3]: Recovery disclaimer persisted via localStorage (not Supabase) to avoid extra DB roundtrip.
+- [Phase 12, Plan 1]: computeNextWorkout normalizes dates to midnight local time to avoid timezone drift across day boundaries.
+- [Phase 12, Plan 1]: NextWorkoutWidget fetches cycle detail and routine name independently via nested queries rather than prop-drilling from Dashboard.
+- [Phase 12, Plan 1]: Rest day card uses green success accent to distinguish from workout days (primary/ember).
 - [Phase 12, Plan 2]: Print button uses fallback={null} so FREE users see nothing (no upgrade prompt for print feature).
 - [Phase 12, Plan 2]: Print-only branding footer uses PNG fallback logo for maximum print compatibility.
 - [Phase 12, Plan 3]: updateViaCache set to 'none' explicitly (workbox default is 'imports', not 'none') per DLVR-03.
