@@ -32,6 +32,7 @@ import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
+import { CommentThread } from "./CommentThread";
 
 interface CommunityDetailDrawerProps {
 	item: CommunityFeedItem | null;
@@ -205,6 +206,9 @@ export function CommunityDetailDrawer({
 					</DrawerHeader>
 					<div className="px-4 pb-4 overflow-y-auto">
 						<DetailContent item={item} />
+						<div className="mt-4 pt-4 border-t border-secondary">
+							<CommentThread itemId={item.id} itemType={isRoutine(item) ? "routine" : "cycle"} />
+						</div>
 					</div>
 					<DrawerFooter />
 				</DrawerContent>
@@ -222,6 +226,9 @@ export function CommunityDetailDrawer({
 					</DialogDescription>
 				</DialogHeader>
 				<DetailContent item={item} />
+				<div className="mt-4 pt-4 border-t border-secondary">
+					<CommentThread itemId={item.id} itemType={isRoutine(item) ? "routine" : "cycle"} />
+				</div>
 			</DialogContent>
 		</Dialog>
 	);
