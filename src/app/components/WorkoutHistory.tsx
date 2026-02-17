@@ -18,6 +18,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useStreak } from "@/hooks/useStreak";
 import { workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 
@@ -113,29 +114,8 @@ export function WorkoutHistory() {
 
 	const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-	// Calculate streak from workout data
-	const streak = useMemo(() => {
-		if (!workouts || workouts.length === 0) return 0;
-		const uniqueDays = new Set(
-			workouts.map((w) => {
-				const d = w.started_at;
-				return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-			}),
-		);
-		let count = 0;
-		const today = new Date();
-		for (let i = 0; i < 365; i++) {
-			const d = new Date(today);
-			d.setDate(d.getDate() - i);
-			const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-			if (uniqueDays.has(key)) {
-				count++;
-			} else if (i > 0) {
-				break; // Allow today to be missing (haven't worked out yet)
-			}
-		}
-		return count;
-	}, [workouts]);
+	// Calculate streak from workout data (extracted to reusable hook)
+	const streak = useStreak(workouts);
 
 	// Loading state
 	if (isPending) {
