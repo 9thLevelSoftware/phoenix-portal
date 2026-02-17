@@ -3,7 +3,6 @@ import {
 	ArrowRight,
 	Award,
 	Calendar,
-	Clock,
 	Dumbbell,
 	Flame,
 	TrendingUp,
@@ -41,7 +40,9 @@ import {
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { DashboardMobile } from "./DashboardMobile";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
+import { NextWorkoutWidget } from "./NextWorkoutWidget";
 import { PortalBanner } from "./PortalBanner";
+import { PWAInstallPrompt } from "./PWAInstallPrompt";
 import { RecoveryDashboardWidget } from "./RecoveryDashboardWidget";
 import { SyncStatus } from "./SyncStatus";
 
@@ -269,87 +270,42 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						{/* Scheduled Workout Card */}
+						{/* Today's Workout / Scheduled Workout Card */}
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.2 }}
 						>
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
-								{activeCycle ? (
-									<>
-										<div className="flex items-center justify-between mb-4">
-											<h3 className="text-xl text-white">
-												Scheduled Workout
-											</h3>
-											<Badge className="bg-success text-white border-0">
-												Active Cycle
-											</Badge>
-										</div>
-										<div className="space-y-4">
-											<div>
-												<h4 className="text-2xl text-primary mb-2">
-													{activeCycle.name}
-												</h4>
-												<p className="text-muted-foreground">
-													Week {activeCycle.current_week} of{" "}
-													{activeCycle.duration_weeks}
-												</p>
-											</div>
-											<div className="flex items-center gap-4 text-sm text-muted-foreground">
-												<div className="flex items-center gap-2">
-													<Dumbbell className="w-4 h-4" />
-													<span>
-														{activeCycle.workout_days} workout days
-													</span>
-												</div>
-												<div className="flex items-center gap-2">
-													<Clock className="w-4 h-4" />
-													<span>
-														{activeCycle.rest_days} rest days
-													</span>
-												</div>
-											</div>
-											<Button
-												className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
-												asChild
-											>
-												<Link to={`/cycles/${activeCycle.id}`}>
-													<Calendar className="w-4 h-4 mr-2" />
-													View Cycle Details
-												</Link>
-											</Button>
-										</div>
-									</>
-								) : (
-									<>
-										<div className="flex items-center justify-between mb-4">
-											<h3 className="text-xl text-white">
-												Scheduled Workout
-											</h3>
-										</div>
-										<div className="flex flex-col items-center justify-center py-8 text-center">
-											<Calendar className="w-12 h-12 text-secondary mb-4" />
-											<p className="text-muted-foreground mb-2">
-												No scheduled workout
-											</p>
-											<p className="text-sm text-muted mb-4">
-												Create a training cycle to see your next workout
-												here
-											</p>
-											<Button
-												className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-												asChild
-											>
-												<Link to="/cycles">
-													<Calendar className="w-4 h-4 mr-2" />
-													Browse Training Cycles
-												</Link>
-											</Button>
-										</div>
-									</>
-								)}
-							</Card>
+							{activeCycle ? (
+								<NextWorkoutWidget cycleId={activeCycle.id} />
+							) : (
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
+									<div className="flex items-center justify-between mb-4">
+										<h3 className="text-xl text-white">
+											Scheduled Workout
+										</h3>
+									</div>
+									<div className="flex flex-col items-center justify-center py-8 text-center">
+										<Calendar className="w-12 h-12 text-secondary mb-4" />
+										<p className="text-muted-foreground mb-2">
+											No scheduled workout
+										</p>
+										<p className="text-sm text-muted mb-4">
+											Create a training cycle to see your next workout
+											here
+										</p>
+										<Button
+											className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+											asChild
+										>
+											<Link to="/cycles">
+												<Calendar className="w-4 h-4 mr-2" />
+												Browse Training Cycles
+											</Link>
+										</Button>
+									</div>
+								</Card>
+							)}
 						</motion.div>
 
 						{/* Weekly Volume Chart */}
@@ -700,6 +656,11 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 					</div>
+				</div>
+
+				{/* PWA Install Prompt */}
+				<div className="mt-6">
+					<PWAInstallPrompt workoutCount={workouts?.length ?? 0} />
 				</div>
 			</div>
 		</div>
