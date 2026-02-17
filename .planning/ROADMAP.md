@@ -97,14 +97,14 @@ Plans:
   4. A PHOENIX user can select any two sessions from WorkoutHistory, view side-by-side volume and exercise deltas with percentage indicators, and see a mobile layout that stacks the panels vertically with A/B tabs
   5. A PHOENIX user with 14+ days of workout data sees a Training Load Readiness score (0-100) with contributing factors; a user with fewer than 14 days sees an activation threshold message instead of a score
 
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 11-01: Goal setting — user_goals table, Goals page, goal types (frequency/volume/PR), progress rings, tier gating, celebration integration
-- [ ] 11-02: Onboarding — user_onboarding table, Dialog overlay in AppLayout, skip logic, existing-user detection, v1.1 What's New banner, feature hints
-- [ ] 11-03: Recovery dashboard — recovery algorithm spec (validate ACWR thresholds for resistance training), /recovery page, readiness score, 14-day gate, tier gating, Dashboard widget, Garmin/Fitbit surface
-- [ ] 11-04: Community comments — community_comments table with RLS migration, flat-list comment thread in CommunityDetailDrawer, realtime subscription, rate limit, tier gating
-- [ ] 11-05: Workout comparison — comparison view, session picker from WorkoutHistory and SessionDetail, side-by-side summary + exercise breakdown, mobile A/B layout, tier gating
+- [ ] 11-01: Goal setting — user_goals migration + schema/queries/mutations + Goals page with progress rings + celebration animation + Dashboard widget + navigation (Wave 1)
+- [ ] 11-02: Onboarding — user_onboarding migration + detection hook + 3-step Dialog overlay + What's New banner + feature hints + AppLayout integration (Wave 2)
+- [ ] 11-03: Recovery dashboard — TDD ACWR algorithm + /recovery page + score visualization + contributing factors + 14-day gate + Dashboard widget + navigation (Wave 2)
+- [ ] 11-04: Community comments — community_comments migration with RLS + rate limit + flat-list thread in CommunityDetailDrawer + realtime subscription + tier gating (Wave 1)
+- [ ] 11-05: Workout comparison — comparison logic + ComparisonView page + session picker + WorkoutHistory multi-select + SessionDetail button wire + mobile A/B tabs (Wave 1)
 
 ---
 
@@ -146,8 +146,8 @@ Plans:
 | 7. Integrations & Data Export | v1.0 | 7/7 | Complete | 2026-02-16 |
 | 8. Tech Debt Cleanup | v1.0 | 2/2 | Complete | 2026-02-16 |
 | 9. Foundation & Toolchain | v1.1 | 5/5 | Complete | 2026-02-17 |
-| 10. Wire-Up & Mock Purge | v1.1 | 0/4 | Not started | - |
-| 11. New Features | v1.1 | 0/5 | Not started | - |
+| 10. Wire-Up & Mock Purge | v1.1 | Complete    | 2026-02-17 | - |
+| 11. New Features | v1.1 | 0/5 | Planned | - |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 0/4 | Not started | - |
 
 ---
