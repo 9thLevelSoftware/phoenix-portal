@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 
 ## Current Position
 
-Phase: 11 of 13 (New Features)
-Plan: 5 of 5 in current phase (plans 01,02,04,05 complete; 03 remaining)
-Status: Executing phase 11
-Last activity: 2026-02-17 — Plan 11-05 complete (Session comparison feature)
+Phase: 11 of 13 (New Features) -- COMPLETE
+Plan: 5 of 5 in current phase (all plans complete)
+Status: Phase 11 complete
+Last activity: 2026-02-17 — Plan 11-03 complete (Recovery readiness dashboard)
 
-Progress: [█████░░░░░] 47% (10 of 13 phases complete, 56/59 total plans)
+Progress: [██████░░░░] 55% (11 of 13 phases complete, 57/59 total plans)
 
 ## Performance Metrics
 
@@ -29,7 +29,7 @@ Progress: [█████░░░░░] 47% (10 of 13 phases complete, 56/59 
 |-------|-------|-------|----------|
 | 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
-| 11-new-features | 5/5 | 25 min | 5.0 min |
+| 11-new-features | 5/5 | 32 min | 6.4 min |
 
 *Updated after each plan completion*
 
@@ -91,6 +91,10 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 11, Plan 1]: Goal progress computation uses Zod-transformed data (already doubled) to avoid double-doubling weight values.
 - [Phase 11, Plan 1]: Goal achievement detection uses ref-based Set to prevent re-triggering celebrations on re-render.
 - [Phase 11, Plan 1]: FREE tier sees EmptyState upgrade prompt for goals; PHOENIX/ELITE get 3 active goals.
+- [Phase 11, Plan 3]: Recovery ACWR uses raw per-cable volume (no Zod doubling) since algorithm cares about relative ratios only.
+- [Phase 11, Plan 3]: Weighted composite scoring: ACWR 50%, rest days 30%, cycle position 20%.
+- [Phase 11, Plan 3]: Cycle position deload detection uses currentWeek % 4 === 0 heuristic.
+- [Phase 11, Plan 3]: Recovery disclaimer persisted via localStorage (not Supabase) to avoid extra DB roundtrip.
 
 ### Pending Todos
 
@@ -99,7 +103,7 @@ None.
 ### Blockers/Concerns
 
 - visx React 19 peer dep compatibility requires empirical verification after React 19 upgrade (Phase 9). Fallback: fix affected charts separately; do not block migration.
-- Recovery algorithm ACWR thresholds need sport-science validation for cable resistance training before implementing src/lib/recovery.ts (Phase 11 sub-task).
+- Recovery ACWR thresholds (sweet spot 0.8-1.3, spike >1.5, detraining <0.6) implemented with conservative values. Sport-science validation for cable resistance training still recommended post-launch.
 - shadcn component customizations inventory must be created before running npx shadcn@latest add on any component (Phase 9 pre-work).
 
 **Non-blocking items for human verification (carried from v1.0):**
@@ -111,5 +115,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 11-05-PLAN.md (Session comparison feature)
-Resume file: .planning/phases/11-new-features/11-03-PLAN.md (remaining plan in phase 11)
+Stopped at: Completed 11-03-PLAN.md (Recovery readiness dashboard) — Phase 11 complete
+Resume file: Next phase (12 or 13)
