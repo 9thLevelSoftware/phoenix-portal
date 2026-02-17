@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-16)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 12 — Schedule-Dependent Features & Delivery
+**Current focus:** Phase 13 — Hardening & Polish
 
 ## Current Position
 
-Phase: 12 of 13 (Schedule-Dependent Features & Delivery)
-Plan: 4 of 4 in current phase (PHASE COMPLETE)
-Status: Phase 12 complete
-Last activity: 2026-02-17 — Plan 12-04 complete (E2E, WCAG, bundle analysis)
+Phase: 13 of 13 (Hardening & Polish)
+Plan: 1 of 3 in current phase
+Status: Executing phase 13
+Last activity: 2026-02-17 — Plan 13-03 complete (E2E gap closure + human gate docs)
 
-Progress: [████████░░] 64% (12 of 13 phases complete, 63/63 total plans in phases 1-12)
+Progress: [█████████░] 70% (12 of 13 phases complete, 64/66 total plans)
 
 ## Performance Metrics
 
@@ -31,6 +31,7 @@ Progress: [████████░░] 64% (12 of 13 phases complete, 63/63 
 | 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
 | 11-new-features | 5/5 | 32 min | 6.4 min |
 | 12-schedule-dependent-features-delivery | 4/4 | 16 min | 4.0 min |
+| 13-hardening-polish | 1/3 | 2 min | 2.0 min |
 
 *Updated after each plan completion*
 
@@ -108,6 +109,9 @@ All v1.0 decisions archived in PROJECT.md Key Decisions table.
 - [Phase 12, Plan 4]: --muted bumped from #6B7280 to #838B98 for WCAG AA 4.5:1 contrast ratio on #0D0D0D dark background. Affects 149 text-muted and 18 bg-muted usages.
 - [Phase 12, Plan 4]: Animated elements need 2s wait before axe scan due to Framer Motion opacity:0 initial states causing false contrast failures.
 - [Phase 12, Plan 4]: Authenticated E2E pages (8 total) require SUPABASE_TEST_EMAIL/PASSWORD env vars for a11y audit -- documented as manual follow-up gap.
+- [Phase 13, Plan 3]: Compare page test uses loose regex (Missing Session IDs|Session Comparison) to handle both gate and populated states.
+- [Phase 13, Plan 3]: TOOL-09 documented as human action gate -- supabase CLI requires interactive TTY for OAuth login.
+- [Phase 13, Plan 3]: DLVR-06 documented as human action gate -- test user creation requires Supabase Dashboard access.
 
 ### Pending Todos
 
@@ -128,5 +132,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-17
-Stopped at: Completed 12-04-PLAN.md (E2E, WCAG audit, bundle analysis) -- Phase 12 COMPLETE
-Resume file: .planning/phases/13-hardening-polish/ (next phase)
+Stopped at: Completed 13-03-PLAN.md (E2E gap closure + human gate documentation)
+Resume file: .planning/phases/13-hardening-polish/ (plans 01 and 02 remaining)
