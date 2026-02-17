@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
 	Award,
+	BarChart3,
 	Calendar,
+	Check,
 	ChevronLeft,
 	ChevronRight,
 	Clock,
@@ -19,6 +21,7 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { EmptyState } from "@/app/components/ui/empty-state";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useStreak } from "@/hooks/useStreak";
 import { workoutListOptions } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
@@ -28,8 +31,34 @@ export function WorkoutHistory() {
 	const { user } = useAuth();
 	const { data: workouts, isPending } = useQuery(workoutListOptions(user?.id));
 
+	const { isPremium } = useSubscription();
 	const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
 	const [dateRange, setDateRange] = useState("Last 30 days");
+	const [compareMode, setCompareMode] = useState(false);
+	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
+
+	const toggleCompareSelection = (sessionId: string) => {
+		setSelectedForCompare((prev) => {
+			if (prev.includes(sessionId)) {
+				return prev.filter((id) => id !== sessionId);
+			}
+			if (prev.length >= 2) return prev; // max 2
+			return [...prev, sessionId];
+		});
+	};
+
+	const handleCompareSelected = () => {
+		if (selectedForCompare.length === 2) {
+			navigate(
+				`/compare?a=${selectedForCompare[0]}&b=${selectedForCompare[1]}`,
+			);
+		}
+	};
+
+	const exitCompareMode = () => {
+		setCompareMode(false);
+		setSelectedForCompare([]);
+	};
 
 	// Filter workouts based on dateRange selection
 	const filteredWorkouts = useMemo(() => {
@@ -214,6 +243,30 @@ export function WorkoutHistory() {
 						</div>
 
 						<div className="flex flex-col sm:flex-row gap-3">
+							{/* Compare Toggle (premium only) */}
+							{isPremium && (
+								<Button
+									size="sm"
+									variant={compareMode ? "default" : "outline"}
+									onClick={() => {
+										if (compareMode) {
+											exitCompareMode();
+										} else {
+											setCompareMode(true);
+											setViewMode("list");
+										}
+									}}
+									className={
+										compareMode
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									}
+								>
+									<BarChart3 className="w-4 h-4 mr-2" />
+									{compareMode ? "Exit Compare" : "Compare"}
+								</Button>
+							)}
+
 							{/* View Toggle */}
 							<div className="flex bg-surface-2 rounded-lg p-1 border border-secondary">
 								<Button
@@ -400,93 +453,145 @@ export function WorkoutHistory() {
 							transition={{ duration: 0.3 }}
 							className="space-y-4"
 						>
-							{filteredWorkouts.map((workout, index) => (
-								<motion.div
-									key={workout.id}
-									initial={{ opacity: 0, y: 20 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{ delay: index * 0.05 }}
-								>
-									<Card
-										onClick={() => navigate(`/history/${workout.id}`)}
-										className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all cursor-pointer group"
+							{/* Compare mode info */}
+							{compareMode && (
+								<div className="flex items-center justify-between bg-surface-2 border border-secondary rounded-lg p-3 mb-2">
+									<span className="text-sm text-muted-foreground">
+										Select 2 sessions to compare ({selectedForCompare.length}/2)
+									</span>
+									{selectedForCompare.length === 2 && (
+										<Button
+											size="sm"
+											onClick={handleCompareSelected}
+											className="bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+										>
+											<BarChart3 className="w-4 h-4 mr-2" />
+											Compare Selected
+										</Button>
+									)}
+								</div>
+							)}
+							{filteredWorkouts.map((workout, index) => {
+								const isSelected = selectedForCompare.includes(workout.id);
+								return (
+									<motion.div
+										key={workout.id}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{ delay: index * 0.05 }}
 									>
-										<div className="flex flex-col sm:flex-row sm:items-center gap-4">
-											{/* Left: Icon & Date */}
-											<div className="flex items-center gap-4">
-												<div className="relative">
-													<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
-														<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+										<Card
+											onClick={() => {
+												if (compareMode) {
+													toggleCompareSelection(workout.id);
+												} else {
+													navigate(`/history/${workout.id}`);
+												}
+											}}
+											className={`p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background transition-all cursor-pointer group ${
+												isSelected
+													? "border-primary ring-1 ring-primary/50"
+													: "border-secondary hover:border-primary/50"
+											}`}
+										>
+											<div className="flex flex-col sm:flex-row sm:items-center gap-4">
+												{/* Compare mode checkbox */}
+												{compareMode && (
+													<div
+														className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+															isSelected
+																? "bg-primary border-primary"
+																: "border-secondary"
+														}`}
+													>
+														{isSelected && (
+															<Check className="w-4 h-4 text-white" />
+														)}
 													</div>
-													<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
-														{workout.started_at.getDate()}
+												)}
+
+												{/* Left: Icon & Date */}
+												<div className="flex items-center gap-4">
+													<div className="relative">
+														<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
+															<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+														</div>
+														<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
+															{workout.started_at.getDate()}
+														</div>
+													</div>
+
+													<div>
+														<h3 className="text-lg font-semibold text-white mb-1">
+															{workout.name}
+														</h3>
+														<div className="flex items-center gap-2 text-sm text-muted-foreground">
+															<span>
+																{workout.started_at.toLocaleDateString(
+																	"en-US",
+																	{
+																		weekday: "short",
+																		month: "short",
+																		day: "numeric",
+																	},
+																)}
+															</span>
+															<span>-</span>
+															<span>
+																{workout.started_at.toLocaleTimeString(
+																	"en-US",
+																	{
+																		hour: "numeric",
+																		minute: "2-digit",
+																	},
+																)}
+															</span>
+														</div>
+														{workout.routine_name && (
+															<Badge
+																variant="outline"
+																className="mt-2 border-primary/30 text-primary text-xs"
+															>
+																{workout.routine_name}
+															</Badge>
+														)}
 													</div>
 												</div>
 
-												<div>
-													<h3 className="text-lg font-semibold text-white mb-1">
-														{workout.name}
-													</h3>
-													<div className="flex items-center gap-2 text-sm text-muted-foreground">
-														<span>
-															{workout.started_at.toLocaleDateString("en-US", {
-																weekday: "short",
-																month: "short",
-																day: "numeric",
-															})}
-														</span>
-														<span>-</span>
-														<span>
-															{workout.started_at.toLocaleTimeString("en-US", {
-																hour: "numeric",
-																minute: "2-digit",
-															})}
-														</span>
+												{/* Right: Stats */}
+												<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
+													<div className="text-center">
+														<div className="text-sm text-muted-foreground mb-1">
+															Volume
+														</div>
+														<div className="text-lg font-semibold text-white">
+															{workout.total_volume.toLocaleString()} kg
+														</div>
 													</div>
-													{workout.routine_name && (
-														<Badge
-															variant="outline"
-															className="mt-2 border-primary/30 text-primary text-xs"
-														>
-															{workout.routine_name}
-														</Badge>
+													<div className="text-center">
+														<div className="text-sm text-muted-foreground mb-1">
+															Duration
+														</div>
+														<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
+															<Clock className="w-4 h-4" />
+															{workout.duration_seconds}m
+														</div>
+													</div>
+													{workout.pr_count > 0 && (
+														<div className="text-center col-span-2 sm:col-span-1">
+															<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																<Award className="w-3 h-3 mr-1" />
+																{workout.pr_count} PR
+																{workout.pr_count > 1 ? "s" : ""}
+															</Badge>
+														</div>
 													)}
 												</div>
 											</div>
-
-											{/* Right: Stats */}
-											<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
-												<div className="text-center">
-													<div className="text-sm text-muted-foreground mb-1">
-														Volume
-													</div>
-													<div className="text-lg font-semibold text-white">
-														{workout.total_volume.toLocaleString()} kg
-													</div>
-												</div>
-												<div className="text-center">
-													<div className="text-sm text-muted-foreground mb-1">
-														Duration
-													</div>
-													<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
-														<Clock className="w-4 h-4" />
-														{workout.duration_seconds}m
-													</div>
-												</div>
-												{workout.pr_count > 0 && (
-													<div className="text-center col-span-2 sm:col-span-1">
-														<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
-															<Award className="w-3 h-3 mr-1" />
-															{workout.pr_count} PR
-															{workout.pr_count > 1 ? "s" : ""}
-														</Badge>
-													</div>
-												)}
-											</div>
-										</div>
-									</Card>
-								</motion.div>
-							))}
+										</Card>
+									</motion.div>
+								);
+							})}
 						</motion.div>
 					)}
 				</AnimatePresence>
