@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-16)
 ## Current Position
 
 Phase: 9 of 12 (Foundation & Toolchain)
-Plan: 0 of 5 in current phase
-Status: Ready to execute
-Last activity: 2026-02-16 — Phase 9 planned (5 plans in 4 waves, 17 requirements mapped)
+Plan: 1 of 5 in current phase
+Status: Executing
+Last activity: 2026-02-17 — Plan 09-01 complete (React 19 + Vite 7 + Recharts 3 + dnd-kit migration)
 
-Progress: [██░░░░░░░░] 18% (9 of 13 phases complete, 41/58 total plans)
+Progress: [██░░░░░░░░] 20% (9 of 13 phases complete, 42/58 total plans)
 
 ## Performance Metrics
 
@@ -23,11 +23,11 @@ Progress: [██░░░░░░░░] 18% (9 of 13 phases complete, 41/58 t
 - Average duration: 3 min
 - Total execution time: ~2 hours
 
-**By Phase (v1.1 — not started):**
+**By Phase (v1.1):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 09-foundation-toolchain | 1/5 | 8 min | 8 min |
 
 *Updated after each plan completion*
 
@@ -38,6 +38,10 @@ Progress: [██░░░░░░░░] 18% (9 of 13 phases complete, 41/58 t
 All v1.0 decisions archived in PROJECT.md Key Decisions table.
 
 **v1.1 key constraints:**
+- [Phase 9, Plan 1]: Used @dnd-kit/react@0.3.0 (new API) instead of aligning old @dnd-kit/core@6+sortable@6. DragDropProvider+useSortable replaces DndContext+SortableContext.
+- [Phase 9, Plan 1]: React 19 requires --legacy-peer-deps due to visx packages. visx works at runtime but has outdated peer deps.
+- [Phase 9, Plan 1]: react-is must be an explicit dependency for Recharts 3 + React 19 compatibility.
+- [Phase 9, Plan 1]: react-dom/client must be in vendor-react manualChunks to prevent main chunk bloat under React 19.
 - [Phase 9]: Upgrade sequence is strict and non-negotiable: react-day-picker v9 → @tailwindcss/vite 4.1.18 → Vite 7 → Recharts 3 → dnd-kit v7 → React 19. Any deviation causes cascading failures.
 - [Phase 9]: Delete .dark CSS block FIRST before any color tokenization — block silently overwrites Phoenix palette with oklch grays.
 - [Phase 11]: Recovery dashboard MUST gate behind 14-day minimum data requirement. Score clamped to 25-75% until 30 days. Descriptive language only — no imperative commands. Medical liability risk if shipped without these guardrails.
@@ -61,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-16
-Stopped at: Phase 9 plans created (5 plans, ready for execution)
-Resume file: .planning/phases/09-foundation-toolchain/09-01-PLAN.md
+Last session: 2026-02-17
+Stopped at: Completed 09-01-PLAN.md (major dependency upgrades)
+Resume file: .planning/phases/09-foundation-toolchain/09-02-PLAN.md
