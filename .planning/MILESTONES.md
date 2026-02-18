@@ -25,3 +25,27 @@
 
 ---
 
+
+## v1.1 Full UX Overhaul (Shipped: 2026-02-17)
+
+**Phases completed:** 5 phases (9-13), 22 plans
+**Timeline:** 2 days (2026-02-16 → 2026-02-17), ~131 min execution
+**Codebase:** 41,920 LOC TypeScript across 266 modified files, 74 commits
+**Audit:** PASSED (90/91 requirements satisfied, 7/7 integrations, 7/7 E2E flows | TOOL-09 deferred: Supabase migrations not deployed)
+
+**Delivered:** Modernized the entire stack (React 19, Vite 7, Biome), replaced all mock data with real Supabase queries, built a complete design system, added 5 new engagement features (Goals, Onboarding, Recovery, Comments, Comparison), and shipped PWA support with E2E testing — making Phoenix Portal production-ready.
+
+**Key accomplishments:**
+1. Modernized stack: React 19, Vite 7, Biome 2.4 (zero errors), Sentry v10, TypeScript strict mode
+2. Complete Phoenix design system: CSS variable tokens, elevation/typography/radius scales, dual-token pattern (CSS vars + hex constants)
+3. Full Supabase wire-up: 14+ dead buttons fixed, all forms persist, all mock data replaced with real queries and empty states
+4. Goal setting with progress rings and celebration animations, 3-step onboarding overlay with What's New banner
+5. Recovery readiness dashboard (ACWR algorithm, 14-day gate, contributing factors) and community comments with realtime subscription
+6. Workout comparison (side-by-side deltas, mobile A/B tabs), session print reports, PWA (installable, offline banner, auto-update)
+7. Playwright E2E infrastructure with smoke tests and @axe-core WCAG audit, WCAG contrast fixes across all pages
+
+**Git range:** docs(09) → docs(phase-13)
+**Archive:** `.planning/milestones/v1.1-ROADMAP.md`, `.planning/milestones/v1.1-REQUIREMENTS.md`
+
+---
+

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A premium web companion dashboard for Project Phoenix — a community rescue project for Vitruvian Trainer workout machines. The portal gives subscribers deep workout analytics, biomechanics visualizations, community routine sharing, session replay with telemetry playback, and a unified fitness data hub integrating with Strava, Fitbit, Garmin, and Hevy. All workout control happens in the mobile app; the portal is where subscribers analyze, share, and connect.
+A production-ready premium web companion dashboard for Project Phoenix — a community rescue project for Vitruvian Trainer workout machines. The portal gives subscribers deep workout analytics, biomechanics visualizations, community routine sharing with comments, session replay with telemetry playback, goal tracking with celebrations, recovery readiness scoring, workout comparison, and a unified fitness data hub integrating with Strava, Fitbit, Garmin, and Hevy. Installable as a PWA with offline detection and auto-update. All workout control happens in the mobile app; the portal is where subscribers analyze, share, and connect.
 
 ## Core Value
 
@@ -59,47 +59,76 @@ Premium subscribers see data and insights about their training that they cannot 
 - ✓ CSV data export for workout history and personal records (all tiers) — v1.0
 - ✓ Bundle optimized from 676KB to 71KB main chunk — v1.0
 
+- ✓ React 19 + Vite 7 + Biome 2.4 zero errors + TypeScript strict mode — v1.1
+- ✓ Sentry v10 with React 19 error hooks (onUncaughtError, onCaughtError, onRecoverableError) — v1.1
+- ✓ Complete Phoenix design system: CSS variable tokens, elevation/typography/radius/icon scales, dual-token pattern — v1.1
+- ✓ All 14+ dead buttons wired to real actions with unsaved changes dialog — v1.1
+- ✓ RoutineBuilder + CycleBuilder save to Supabase with confirmed mutation pattern — v1.1
+- ✓ Dashboard streak, profile stats, settings all wired to real Supabase queries — v1.1
+- ✓ DashboardMobile renders on mobile devices with premium widgets — v1.1
+- ✓ Auth modal with Radix Dialog focus trap, ARIA, keyboard nav + password reset flow — v1.1
+- ✓ EmptyState pattern deployed across 6+ feature pages — v1.1
+- ✓ All demo/placeholder data removed — every component shows real data or empty states — v1.1
+- ✓ Goal setting: frequency, volume, PR goals with progress rings and celebration animations — v1.1
+- ✓ 3-step onboarding overlay for new users, What's New banner for v1.0 users, FeatureHint tooltips — v1.1
+- ✓ Recovery readiness dashboard: ACWR algorithm, 14-day data gate, contributing factors, tier gating — v1.1
+- ✓ Community comments: flat-list threads with realtime subscription, 5-min edit window, RLS + rate limiting — v1.1
+- ✓ Workout comparison: side-by-side deltas, session picker, mobile A/B tabs, PHOENIX/ELITE gating — v1.1
+- ✓ Smart workout widget: reads real cycle data, shows next workout day on Dashboard — v1.1
+- ✓ Session print reports with @media print CSS and Phoenix branding — v1.1
+- ✓ PWA: installable, offline banner, auto-update service worker, install prompt after 3 sessions — v1.1
+- ✓ Playwright E2E tests + @axe-core WCAG audit with contrast fixes — v1.1
+- ✓ Bundle visualizer with rollup-plugin-visualizer — v1.1
+
 ### Active
 
 <!-- Next milestone scope — to be defined via /gsd:new-milestone -->
 
-(None yet — run `/gsd:new-milestone` to define v1.1 scope)
+(None yet — run `/gsd:new-milestone` to define v1.2 scope)
 
 ### Out of Scope
 
 - Chat / direct messaging — requires moderation infrastructure, high ongoing cost
 - Workout control — all machine control stays in the mobile app
 - ML/AI features — all "intelligence" is statistical (per roadmap decision)
-- Offline mode — portal requires internet connection
+- Offline mode — portal requires internet connection; PWA is for installability and caching only
 - Admin dashboard — defer to future milestone
 - Video content / workout demonstrations — high storage cost, low ROI
 - Custom exercise creation — breaks muscle mapping, volume tracking, and force curve analysis
 - Coach/client management — two-sided marketplace, massive scope for companion dashboard
+- Light mode / theme toggle — app is dark-only by design; .dark block deleted in v1.1
+- React Compiler — stable but opt-in; defer evaluation to v1.2 after React 19 stabilizes
+- Nested comment threads — flat-list only in v1.1; nested replies deferred to v1.2
+- HRV-based recovery score — requires wearable sensor data not available from Vitruvian machine
 
 ## Context
 
-**Shipped v1.0 with 31,459 LOC TypeScript across 208 files.**
+**Shipped v1.1 with 41,920 LOC TypeScript across 266 modified files.**
 
-Tech stack: React 18 + Vite 6 + TypeScript + Tailwind CSS v4 + shadcn/ui + Recharts + visx + Framer Motion + TanStack Query + Zustand + React Router v7 + Supabase (auth, DB, Edge Functions, Realtime) + Stripe.
+Tech stack: React 19 + Vite 7 + TypeScript (strict) + Tailwind CSS v4 + shadcn/ui + Recharts 3 + visx + Framer Motion + TanStack Query + Zustand + React Router v7 + Supabase (auth, DB, Edge Functions, Realtime) + Stripe + Sentry v10 + Biome 2.4 + Playwright.
 
-Production build: 71KB main entry chunk, 15 lazy-loaded pages, 8 vendor chunk groups, largest lazy chunk 395KB.
+Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages, vendor chunk groups, PWA service worker with auto-update.
 
-26 routes, 3 Zustand stores (UI, replay, community), 3 realtime hooks (sync, subscription, community votes), 12 query files with Zod validation.
+26 routes, 3 Zustand stores, 4 realtime hooks (sync, subscription, community votes, comments), 12+ query files with Zod validation, 5 new feature pages (Goals, Recovery, Comparison, Onboarding, Session Reports).
 
 **Known items requiring human verification:**
 - Stripe checkout/portal/webhooks (needs Stripe test environment)
 - OAuth flows with real credentials (Strava, Fitbit, Garmin)
 - Session replay animations and mobile layout (needs live testing)
 - 11 Supabase Edge Functions (needs deployment)
+- 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
+- Recovery ACWR thresholds may need sport-science validation for cable resistance training
 
 ## Constraints
 
-- **Tech stack**: React 18 + Vite + TypeScript + Tailwind v4 + shadcn/ui — established, not changing
+- **Tech stack**: React 19 + Vite 7 + TypeScript (strict) + Tailwind v4 + shadcn/ui + Biome 2.4 — established, not changing
 - **Backend**: Supabase — auth, DB, Edge Functions, Realtime
 - **Payments**: Stripe for web subscriptions
 - **View-only**: Portal never controls the workout machine — display and analyze only
-- **No moderation**: Community features limited to sharing/voting — no user-generated text content requiring moderation
+- **Community**: Comments allowed (flat-list, RLS-gated, rate-limited) — no DMs, no nested threads
 - **Data source**: All workout data originates from mobile app, synced to Supabase, read by portal
+- **Recovery disclaimer**: ACWR scores are training load indicators only — descriptive language, no imperative commands
+- **Formatting**: Biome standard — tabs, double quotes, semicolons, 80-char width
 
 ## Key Decisions
 
@@ -120,6 +149,16 @@ Production build: 71KB main entry chunk, 15 lazy-loaded pages, 8 vendor chunk gr
 | Broadcast channel for realtime sync | Matches mobile app architecture (not postgres_changes) | ✓ Good — consistent pattern |
 | WEIGHT_MULTIPLIER=2 in Zod transforms | Per-cable to total weight conversion centralized | ✓ Good — single source of truth |
 | manualChunks for vendor splitting | Split 676KB main to 71KB + vendor groups | ✓ Good — under 500KB target |
+| Strict upgrade sequence (P9) | react-day-picker → Tailwind → Vite → Recharts → dnd-kit → React 19 | ✓ Good — avoided cascading failures |
+| Delete .dark CSS block first (P9) | Block silently overwrites Phoenix palette with oklch grays | ✓ Good — unblocked design system |
+| Dual-token pattern (P9) | CSS vars for Tailwind/inline, hex constants for SVG/motion | ✓ Good — clean separation of concerns |
+| Confirmed mutations over optimistic (P10) | Toast confirms success; no speculative UI | ✓ Good — simpler, more reliable |
+| Flat-list comments only (P11) | No nesting; soft-delete via deleted_at column | ✓ Good — simple, avoids recursive query complexity |
+| ACWR with conservative thresholds (P11) | 14-day gate, 25-75% clamp until 30 days, descriptive only | ✓ Good — medical liability protection |
+| RLS in migration files (P11) | community_comments RLS must ship with table creation | ✓ Good — prevents security gap window |
+| @dnd-kit/react@0.3.0 new API (P9) | DragDropProvider+useSortable replaces old DndContext pattern | ⚠️ Revisit — API is pre-1.0, may change |
+| --legacy-peer-deps for visx (P9) | visx works at runtime but has outdated React peer deps | ⚠️ Revisit — watch for visx React 19 update |
+| Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-16 after v1.0 milestone*
+*Last updated: 2026-02-17 after v1.1 milestone*
