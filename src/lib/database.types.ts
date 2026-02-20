@@ -234,6 +234,60 @@ export type Database = {
           },
         ]
       }
+      exercise_progress: {
+        Row: {
+          id: string
+          user_id: string
+          exercise_name: string
+          session_id: string
+          recorded_at: string
+          max_weight_kg: number
+          total_volume_kg: number
+          estimated_1rm_kg: number
+          max_reps: number
+          set_count: number
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          exercise_name: string
+          session_id: string
+          recorded_at?: string
+          max_weight_kg?: number
+          total_volume_kg?: number
+          estimated_1rm_kg?: number
+          max_reps?: number
+          set_count?: number
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          exercise_name?: string
+          session_id?: string
+          recorded_at?: string
+          max_weight_kg?: number
+          total_volume_kg?: number
+          estimated_1rm_kg?: number
+          max_reps?: number
+          set_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_progress_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_activities: {
         Row: {
           activity_type: string | null
@@ -1112,6 +1166,17 @@ export type Database = {
       }
     }
     Views: {
+      creator_stats: {
+        Row: {
+          user_id: string
+          display_name: string | null
+          avatar_url: string | null
+          total_shares: number
+          total_upvotes: number
+          featured_count: number
+        }
+        Relationships: []
+      }
       telemetry_points: {
         Row: {
           cable: string | null
