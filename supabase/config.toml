@@ -1,0 +1,6 @@
+# Supabase Edge Function configuration
+
+# Stripe webhooks must bypass JWT verification since Stripe
+# cannot send a Supabase JWT with webhook requests.
+[functions.stripe-webhooks]
+verify_jwt = false

@@ -1,423 +1,654 @@
-import { useState } from 'react';
-import { Card } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Progress } from '@/app/components/ui/progress';
-import { SyncStatus } from './SyncStatus';
-import { PortalBanner } from './PortalBanner';
+import { useQuery } from "@tanstack/react-query";
 import {
-  Flame,
-  TrendingUp,
-  Trophy,
-  Calendar,
-  Clock,
-  Dumbbell,
-  Award,
-  ArrowRight,
-  Target,
-  Eye,
-} from 'lucide-react';
-import { useAppContext } from '@/app/context/AppContext';
-import { motion } from 'motion/react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+	ArrowRight,
+	Award,
+	Calendar,
+	Dumbbell,
+	Flame,
+	TrendingUp,
+	Trophy,
+} from "lucide-react";
+import { motion } from "motion/react";
+import { Link } from "react-router";
+import {
+	Area,
+	AreaChart,
+	CartesianGrid,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
+import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
+import {
+	ChartSkeleton,
+	Skeleton,
+	WorkoutCardSkeleton,
+} from "@/app/components/ui/skeleton";
+import { useAuth } from "@/app/hooks/useAuth";
+import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { useStreak } from "@/hooks/useStreak";
+import { PHOENIX } from "@/lib/colors";
+import { cycleListOptions } from "@/queries/cycles";
+import {
+	dashboardStatsOptions,
+	recentPRsOptions,
+	workoutListOptions,
+} from "@/queries/workouts";
+import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
+import { DashboardMobile } from "./DashboardMobile";
+import { GoalDashboardWidget } from "./GoalDashboardWidget";
+import { NextWorkoutWidget } from "./NextWorkoutWidget";
+import { PortalBanner } from "./PortalBanner";
+import { PWAInstallPrompt } from "./PWAInstallPrompt";
+import { RecoveryDashboardWidget } from "./RecoveryDashboardWidget";
 
-interface DashboardProps {
-  onNavigate: (page: string) => void;
+/** Derive weekly volume chart data from dashboard stats */
+function deriveWeeklyVolume(
+	stats: { started_at: string; total_volume: number }[] | undefined,
+): { day: string; volume: number }[] {
+	const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+	const volumeByDay: Record<string, number> = {};
+	days.forEach((d) => (volumeByDay[d] = 0));
+
+	if (stats) {
+		for (const row of stats) {
+			const dayName = days[new Date(row.started_at).getDay()];
+			// total_volume is per-cable in DB; multiply by 2 for display
+			volumeByDay[dayName] += row.total_volume * 2;
+		}
+	}
+
+	// Return Mon-Sun order for chart
+	const orderedDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+	return orderedDays.map((day) => ({
+		day,
+		volume: Math.round(volumeByDay[day]),
+	}));
 }
 
-export function Dashboard({ onNavigate }: DashboardProps) {
-  // Configurable user state to demonstrate new vs returning user
-  const [user, setUser] = useState({
-    name: 'Alex',
-    isNew: false, // Set to true to see the onboarding empty state
-  });
+/** Format a relative time string from a Date */
+function formatRelativeTime(date: Date): string {
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  const weeklyVolumeData = [
-    { day: 'Mon', volume: 4200 },
-    { day: 'Tue', volume: 3800 },
-    { day: 'Wed', volume: 5100 },
-    { day: 'Thu', volume: 0 },
-    { day: 'Fri', volume: 4600 },
-    { day: 'Sat', volume: 5800 },
-    { day: 'Sun', volume: 3200 },
-  ];
+	if (diffHours < 1) return "Just now";
+	if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+	if (diffDays === 1) return "Yesterday";
+	return `${diffDays} days ago`;
+}
 
-  const { workoutSessions, recentPRs: contextRecentPRs } = useAppContext();
+export function Dashboard() {
+	const isMobile = useIsMobile();
+	const { user } = useAuth();
+	const { data: workouts, isPending: workoutsLoading } = useQuery(
+		workoutListOptions(user?.id),
+	);
+	const { data: weeklyStats, isPending: statsLoading } = useQuery(
+		dashboardStatsOptions(user?.id),
+	);
+	const { data: recentPRs, isPending: prsLoading } = useQuery(
+		recentPRsOptions(user?.id),
+	);
+	const { data: cycles } = useQuery(cycleListOptions(user?.id ?? ""));
 
-  const recentWorkouts = [...workoutSessions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map(session => ({
-    name: session.name,
-    date: new Date(session.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    volume: `${session.volume.toLocaleString()} kg`,
-    duration: `${session.duration} min`,
-    prs: session.prCount
-  }));
+	const streak = useStreak(workouts);
+	const activeCycle = cycles?.find((c) => c.status === "active");
 
-  const activeChallenges = [
-    { name: 'January Volume Challenge', progress: 68, rank: 12, total: 150 },
-    { name: 'PR Hunter', progress: 45, rank: 8, total: 50 },
-    { name: '30-Day Streak', progress: 87, rank: 25, total: 100 },
-  ];
+	const recentWorkouts = workouts?.slice(0, 5) ?? [];
+	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
+	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
-  const recentPRs = [...contextRecentPRs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3).map(pr => ({
-    exercise: pr.exercise,
-    weight: `${pr.weight} kg`,
-    reps: pr.reps,
-    date: new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    isNew: pr.isNew
-  }));
+	if (isMobile) return <DashboardMobile />;
 
-  const badges = [
-    { name: 'Week Warrior', icon: '🔥', rarity: 'gold' },
-    { name: 'PR Crusher', icon: '💪', rarity: 'platinum' },
-    { name: 'Consistency King', icon: '👑', rarity: 'gold' },
-    { name: '100 Workouts', icon: '💯', rarity: 'silver' },
-  ];
+	// Zero-session welcome view
+	const hasNoWorkouts =
+		!workoutsLoading && (!workouts || workouts.length === 0);
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D] pb-20 md:pb-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-3xl sm:text-4xl mb-2">
-            Welcome{user.isNew ? '' : ' back'}, <span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">{user.name}</span>
-          </h1>
-          <p className="text-[#9CA3AF]">
-            {user.isNew ? 'Ready to forge yourself?' : "Let's make today count. Your strength awaits."}
-          </p>
-        </motion.div>
+	if (hasNoWorkouts) {
+		return (
+			<div className="min-h-screen bg-background pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="text-center mb-12"
+					>
+						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
+							<Flame className="w-10 h-10 text-primary" />
+						</div>
+						<h1 className="text-4xl sm:text-5xl mb-4">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Welcome to Phoenix Portal
+							</span>
+						</h1>
+						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
+							Your training journey starts here. Complete your first workout in
+							the mobile app and watch your dashboard come alive.
+						</p>
+					</motion.div>
 
-        {/* Portal Banner */}
-        <PortalBanner />
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.1 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
+									<TrendingUp className="w-6 h-6 text-white" />
+								</div>
+								<h3 className="text-lg font-semibold text-white mb-2">
+									Track your progress
+								</h3>
+								<p className="text-sm text-muted-foreground">
+									See volume trends, strength gains, and muscle balance insights
+									once you start training.
+								</p>
+							</Card>
+						</motion.div>
 
-        {user.isNew ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
-          >
-            <div className="w-24 h-24 mb-6 rounded-full bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 flex items-center justify-center">
-              <Dumbbell className="w-12 h-12 text-[#FF6B35]" />
-            </div>
-            <h2 className="text-3xl font-bold text-white mb-4">Start Your Journey</h2>
-            <p className="text-[#9CA3AF] max-w-lg mb-8">
-              It looks like you haven't started tracking any workouts yet. Create your first routine or jump into an assessment workout to establish your baselines.
-            </p>
-            <div className="flex gap-4">
-              <Button className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 px-8 py-6 text-lg">
-                Create First Routine
-              </Button>
-              <Button variant="outline" className="border-[#374151] text-white hover:border-[#FF6B35] px-8 py-6 text-lg">
-                Take Assessment
-              </Button>
-            </div>
-          </motion.div>
-        ) : (
-          <div className="w-full">
-            {/* Main Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Main Stats */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Vitruvian Sync Status */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-              >
-                <SyncStatus lastSync="2 minutes ago" status="synced" />
-              </motion.div>
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							<Link to="/routines/new" className="block h-full">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
+										<Dumbbell className="w-6 h-6 text-white" />
+									</div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Build custom routines
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Create workout routines tailored to your goals with
+										drag-and-drop exercise management.
+									</p>
+								</Card>
+							</Link>
+						</motion.div>
 
-              {/* Streak Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-              >
-                <Card className="p-6 bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-[#FF6B35] border-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <Flame className="w-8 h-8 text-[#F59E0B]" fill="#FF6B35" />
-                        <div>
-                          <h3 className="text-2xl text-white">7 Day Streak</h3>
-                          <p className="text-[#E5E7EB] text-sm">Keep the fire burning!</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-4xl bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
-                        🔥
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							<Link to="/challenges" className="block h-full">
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center mb-4">
+										<Trophy className="w-6 h-6 text-white" />
+									</div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Join challenges
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										Compete with other athletes in community challenges and earn
+										recognition.
+									</p>
+								</Card>
+							</Link>
+						</motion.div>
+					</div>
+				</div>
+			</div>
+		);
+	}
 
-              {/* Today's Workout Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all duration-300">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl text-white">Scheduled Workout</h3>
-                    <Badge className="bg-[#10B981] text-white border-0">Scheduled</Badge>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-2xl text-[#FF6B35] mb-2">Push Day A</h4>
-                      <p className="text-[#9CA3AF]">Part of: Upper/Lower 4-Day Split</p>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-[#9CA3AF]">
-                      <div className="flex items-center gap-2">
-                        <Dumbbell className="w-4 h-4" />
-                        <span>6 exercises</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        <span>~60 min</span>
-                      </div>
-                    </div>
-                    <Button onClick={() => onNavigate('routines')} className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 shadow-lg shadow-[#FF6B35]/50">
-                      <Eye className="w-4 h-4 mr-2" />
-                      View Routine Details
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
+	return (
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{/* Welcome Header */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					className="mb-8"
+				>
+					<h1 className="text-3xl sm:text-4xl mb-2">
+						Welcome back,{" "}
+						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							{user?.email?.split("@")[0] ?? "Athlete"}
+						</span>
+					</h1>
+					<p className="text-muted-foreground">
+						Let's make today count. Your strength awaits.
+					</p>
+				</motion.div>
 
-              {/* Weekly Volume Chart */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                  <h3 className="text-xl text-white mb-6">Weekly Volume</h3>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={weeklyVolumeData}>
-                      <defs>
-                        <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#DC2626" stopOpacity={0.1} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="day" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1a1a1a',
-                          border: '1px solid #374151',
-                          borderRadius: '8px',
-                          color: '#E5E7EB',
-                        }}
-                      />
-                      <Area
-                        isAnimationActive={false}
-                        type="monotone"
-                        dataKey="volume"
-                        stroke="#FF6B35"
-                        strokeWidth={2}
-                        fill="url(#volumeGradient)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  <div className="mt-4 flex items-center justify-between text-sm">
-                    <span className="text-[#9CA3AF]">Total this week</span>
-                    <span className="text-[#FF6B35] font-semibold">26,700 kg</span>
-                  </div>
-                </Card>
-              </motion.div>
+				{/* Portal Banner */}
+				<PortalBanner />
 
-              {/* Recent Workouts */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-              >
-                <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl text-white">Recent Activity</h3>
-                    <Button variant="ghost" onClick={() => onNavigate('history')} className="text-[#FF6B35] hover:bg-[#FF6B35]/10">
-                      View All
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    {recentWorkouts.map((workout, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 bg-[#0D0D0D] rounded-lg border border-[#374151] hover:border-[#FF6B35]/50 transition-all cursor-pointer"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="text-white">{workout.name}</h4>
-                            {workout.prs > 0 && (
-                              <Badge className="bg-[#F59E0B] text-[#0D0D0D] border-0 text-xs">
-                                {workout.prs} PR{workout.prs > 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-[#9CA3AF]">{workout.date}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-[#FF6B35] font-semibold">{workout.volume}</div>
-                          <div className="text-sm text-[#9CA3AF]">{workout.duration}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </motion.div>
-            </div>
+				{/* Main Grid */}
+				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+					{/* Left Column - Main Stats */}
+					<div className="lg:col-span-2 space-y-6">
+						{/* Streak Card */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.1 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2">
+								<div className="flex items-center justify-between">
+									<div>
+										<div className="flex items-center gap-3 mb-2">
+											<Flame
+												className="w-8 h-8 text-accent"
+												fill={PHOENIX.ember}
+											/>
+											<div>
+												<h3 className="text-2xl text-white">
+													{streak} Day Streak
+												</h3>
+												<p className="text-secondary-foreground text-sm">
+													Keep the fire burning!
+												</p>
+											</div>
+										</div>
+									</div>
+									<div className="text-right">
+										<div className="text-4xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+											{"\u{1F525}"}
+										</div>
+									</div>
+								</div>
+							</Card>
+						</motion.div>
 
-          {/* Right Column - Quick Stats & Challenges */}
-          <div className="space-y-6">
-            {/* Quick Stats */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-4">Quick Stats</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#9CA3AF]">
-                      <Calendar className="w-4 h-4" />
-                      <span>Total Workouts</span>
-                    </div>
-                    <span className="text-white text-lg">147</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#9CA3AF]">
-                      <Trophy className="w-4 h-4" />
-                      <span>Personal Records</span>
-                    </div>
-                    <span className="text-white text-lg">34</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#9CA3AF]">
-                      <Award className="w-4 h-4" />
-                      <span>Badges Earned</span>
-                    </div>
-                    <span className="text-white text-lg">12</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#9CA3AF]">
-                      <TrendingUp className="w-4 h-4" />
-                      <span>Total Volume</span>
-                    </div>
-                    <span className="text-[#FF6B35] text-lg">1.2M kg</span>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
+						{/* Today's Workout / Scheduled Workout Card */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							{activeCycle ? (
+								<NextWorkoutWidget cycleId={activeCycle.id} />
+							) : (
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
+									<div className="flex items-center justify-between mb-4">
+										<h3 className="text-xl text-white">Scheduled Workout</h3>
+									</div>
+									<div className="flex flex-col items-center justify-center py-8 text-center">
+										<Calendar className="w-12 h-12 text-secondary mb-4" />
+										<p className="text-muted-foreground mb-2">
+											No scheduled workout
+										</p>
+										<p className="text-sm text-muted mb-4">
+											Create a training cycle to see your next workout here
+										</p>
+										<Button
+											className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+											asChild
+										>
+											<Link to="/cycles">
+												<Calendar className="w-4 h-4 mr-2" />
+												Browse Training Cycles
+											</Link>
+										</Button>
+									</div>
+								</Card>
+							)}
+						</motion.div>
 
-            {/* Recent PRs */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-4 flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-[#F59E0B]" />
-                  Recent PRs
-                </h3>
-                <div className="space-y-3">
-                  {recentPRs.map((pr, index) => (
-                    <div
-                      key={index}
-                      className="p-3 bg-gradient-to-br from-[#FF6B35]/10 to-[#DC2626]/10 border border-[#FF6B35]/30 rounded-lg"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className="text-white">{pr.exercise}</h4>
-                        {pr.isNew && <Badge className="bg-[#F59E0B] text-[#0D0D0D] border-0">NEW</Badge>}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#FF6B35]">
-                          {pr.weight} × {pr.reps}
-                        </span>
-                        <span className="text-sm text-[#9CA3AF]">{pr.date}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
+						{/* Weekly Volume Chart */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							{statsLoading ? (
+								<ChartSkeleton />
+							) : (
+								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+									<h3 className="text-xl text-white mb-6">Weekly Volume</h3>
+									{weeklyTotal === 0 ? (
+										<div className="flex flex-col items-center justify-center py-12 text-center">
+											<Dumbbell className="w-12 h-12 text-secondary mb-4" />
+											<p className="text-muted-foreground mb-2">
+												No workouts this week yet
+											</p>
+											<p className="text-sm text-muted">
+												Complete a workout in the mobile app to see your volume
+												here
+											</p>
+										</div>
+									) : (
+										<>
+											<ResponsiveContainer width="100%" height={200}>
+												<AreaChart data={weeklyVolumeData}>
+													<defs>
+														<linearGradient
+															id="volumeGradient"
+															x1="0"
+															y1="0"
+															x2="0"
+															y2="1"
+														>
+															<stop
+																offset="5%"
+																stopColor={PHOENIX.ember}
+																stopOpacity={0.8}
+															/>
+															<stop
+																offset="95%"
+																stopColor={PHOENIX.flameRed}
+																stopOpacity={0.1}
+															/>
+														</linearGradient>
+													</defs>
+													<CartesianGrid
+														strokeDasharray="3 3"
+														stroke={PHOENIX.moltenSteel}
+													/>
+													<XAxis
+														dataKey="day"
+														stroke={PHOENIX.mutedForeground}
+													/>
+													<YAxis stroke={PHOENIX.mutedForeground} />
+													<Tooltip
+														contentStyle={{
+															backgroundColor: "var(--surface-2)",
+															border: "1px solid #374151",
+															borderRadius: "8px",
+															color: "var(--secondary-foreground)",
+														}}
+													/>
+													<Area
+														type="monotone"
+														dataKey="volume"
+														stroke={PHOENIX.ember}
+														strokeWidth={2}
+														fill="url(#volumeGradient)"
+													/>
+												</AreaChart>
+											</ResponsiveContainer>
+											<div className="mt-4 flex items-center justify-between text-sm">
+												<span className="text-muted-foreground">
+													Total this week
+												</span>
+												<span className="text-primary font-semibold">
+													{weeklyTotal.toLocaleString()} kg
+												</span>
+											</div>
+										</>
+									)}
+								</Card>
+							)}
+						</motion.div>
 
-            {/* Active Challenges */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-4">Active Challenges</h3>
-                <div className="space-y-4">
-                  {activeChallenges.map((challenge, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-white">{challenge.name}</span>
-                        <span className="text-[#9CA3AF]">
-                          Rank {challenge.rank}/{challenge.total}
-                        </span>
-                      </div>
-                      <Progress value={challenge.progress} className="h-2" />
-                      <div className="flex items-center justify-between text-xs text-[#9CA3AF]">
-                        <span>{challenge.progress}% complete</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full mt-4 border-[#FF6B35] text-[#FF6B35] hover:bg-[#FF6B35]/10"
-                >
-                  View All Challenges
-                </Button>
-              </Card>
-            </motion.div>
+						{/* Recent Workouts */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.4 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<div className="flex items-center justify-between mb-4">
+									<h3 className="text-xl text-white">Recent Activity</h3>
+									<Button
+										variant="ghost"
+										className="text-primary hover:bg-primary/10"
+										asChild
+									>
+										<Link to="/history">
+											View All
+											<ArrowRight className="w-4 h-4 ml-2" />
+										</Link>
+									</Button>
+								</div>
+								{workoutsLoading ? (
+									<div className="space-y-3">
+										{Array.from({ length: 3 }).map((_, i) => (
+											<WorkoutCardSkeleton key={i} />
+										))}
+									</div>
+								) : recentWorkouts.length === 0 ? (
+									<div className="flex flex-col items-center justify-center py-8 text-center">
+										<Dumbbell className="w-10 h-10 text-secondary mb-3" />
+										<p className="text-muted-foreground mb-1">
+											No workouts yet
+										</p>
+										<p className="text-sm text-muted">
+											Sync your first workout from the Vitruvian mobile app
+										</p>
+									</div>
+								) : (
+									<div className="space-y-3">
+										{recentWorkouts.map((workout: WorkoutSession) => (
+											<div
+												key={workout.id}
+												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary hover:border-primary/50 transition-all cursor-pointer"
+											>
+												<div className="flex-1">
+													<div className="flex items-center gap-2 mb-1">
+														<h4 className="text-white">{workout.name}</h4>
+														{workout.pr_count > 0 && (
+															<Badge className="bg-accent text-background border-0 text-xs">
+																{workout.pr_count} PR
+																{workout.pr_count > 1 ? "s" : ""}
+															</Badge>
+														)}
+													</div>
+													<p className="text-sm text-muted-foreground">
+														{formatRelativeTime(workout.started_at)}
+													</p>
+												</div>
+												<div className="text-right">
+													<div className="text-primary font-semibold">
+														{workout.total_volume.toLocaleString()} kg
+													</div>
+													<div className="text-sm text-muted-foreground">
+														{workout.duration_seconds} min
+													</div>
+												</div>
+											</div>
+										))}
+									</div>
+								)}
+							</Card>
+						</motion.div>
+					</div>
 
-            {/* Badge Showcase */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-                <h3 className="text-xl text-white mb-4">Recent Badges</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {badges.map((badge, index) => (
-                    <div
-                      key={index}
-                      className={`p-3 rounded-lg text-center border-2 cursor-pointer hover:scale-105 transition-transform ${
-                        badge.rarity === 'platinum'
-                          ? 'bg-gradient-to-br from-[#E5E7EB]/20 to-[#9CA3AF]/20 border-[#E5E7EB]'
-                          : badge.rarity === 'gold'
-                          ? 'bg-gradient-to-br from-[#F59E0B]/20 to-[#FBBF24]/20 border-[#F59E0B]'
-                          : 'bg-gradient-to-br from-[#6B7280]/20 to-[#374151]/20 border-[#6B7280]'
-                      }`}
-                    >
-                      <div className="text-3xl mb-1">{badge.icon}</div>
-                      <div className="text-xs text-white">{badge.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </motion.div>
-          </div>
-        </div>
-        </div>
-        )}
-      </div>
-    </div>
-  );
+					{/* Right Column - Quick Stats & Challenges */}
+					<div className="space-y-6">
+						{/* Quick Stats */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4">Quick Stats</h3>
+								{workoutsLoading ? (
+									<div className="space-y-4">
+										{Array.from({ length: 4 }).map((_, i) => (
+											<div
+												key={i}
+												className="flex items-center justify-between"
+											>
+												<Skeleton className="h-4 w-28" />
+												<Skeleton className="h-5 w-12" />
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="space-y-4">
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2 text-muted-foreground">
+												<Calendar className="w-4 h-4" />
+												<span>Total Workouts</span>
+											</div>
+											<span className="text-white text-lg">
+												{workouts?.length ?? 0}
+											</span>
+										</div>
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2 text-muted-foreground">
+												<Trophy className="w-4 h-4" />
+												<span>Personal Records</span>
+											</div>
+											<span className="text-white text-lg">
+												{recentPRs?.length ?? 0}
+											</span>
+										</div>
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2 text-muted-foreground">
+												<Award className="w-4 h-4" />
+												<span>Badges Earned</span>
+											</div>
+											<span className="text-white text-lg">--</span>
+										</div>
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2 text-muted-foreground">
+												<TrendingUp className="w-4 h-4" />
+												<span>Weekly Volume</span>
+											</div>
+											<span className="text-primary text-lg">
+												{weeklyTotal > 0
+													? `${(weeklyTotal / 1000).toFixed(1)}k kg`
+													: "--"}
+											</span>
+										</div>
+									</div>
+								)}
+							</Card>
+						</motion.div>
+
+						{/* Goal Progress Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.25 }}
+						>
+							<GoalDashboardWidget />
+						</motion.div>
+
+						{/* Recovery Readiness Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.27 }}
+						>
+							<RecoveryDashboardWidget />
+						</motion.div>
+
+						{/* Recent PRs */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<Trophy className="w-5 h-5 text-accent" />
+									Recent PRs
+								</h3>
+								{prsLoading ? (
+									<div className="space-y-3">
+										{Array.from({ length: 3 }).map((_, i) => (
+											<div
+												key={i}
+												className="p-3 rounded-lg border border-secondary"
+											>
+												<Skeleton className="h-4 w-24 mb-2" />
+												<Skeleton className="h-4 w-32" />
+											</div>
+										))}
+									</div>
+								) : !recentPRs || recentPRs.length === 0 ? (
+									<div className="flex flex-col items-center justify-center py-6 text-center">
+										<Trophy className="w-8 h-8 text-secondary mb-2" />
+										<p className="text-sm text-muted-foreground">
+											No personal records yet
+										</p>
+									</div>
+								) : (
+									<div className="space-y-3">
+										{recentPRs.map((pr: PersonalRecord) => (
+											<div
+												key={pr.id}
+												className="p-3 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg"
+											>
+												<div className="flex items-center justify-between mb-1">
+													<h4 className="text-white">{pr.exercise_name}</h4>
+													<Badge className="bg-accent text-background border-0">
+														NEW
+													</Badge>
+												</div>
+												<div className="flex items-center justify-between">
+													<span className="text-primary">
+														{pr.value} {pr.unit}
+													</span>
+													<span className="text-sm text-muted-foreground">
+														{formatRelativeTime(pr.achieved_at)}
+													</span>
+												</div>
+											</div>
+										))}
+									</div>
+								)}
+							</Card>
+						</motion.div>
+
+						{/* Active Challenges */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.4 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4">Active Challenges</h3>
+								<div className="flex flex-col items-center justify-center py-6 text-center">
+									<Trophy className="w-8 h-8 text-secondary mb-2" />
+									<p className="text-sm text-muted-foreground">
+										No active challenges yet
+									</p>
+									<p className="text-xs text-muted mt-1">
+										Join challenges from the Challenges page to track your
+										progress here
+									</p>
+								</div>
+								<Button
+									variant="outline"
+									className="w-full mt-4 border-primary text-primary hover:bg-primary/10"
+									asChild
+								>
+									<Link to="/challenges">Browse Challenges</Link>
+								</Button>
+							</Card>
+						</motion.div>
+
+						{/* Badge Showcase */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.5 }}
+						>
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4">Recent Badges</h3>
+								<div className="flex flex-col items-center justify-center py-6 text-center">
+									<Award className="w-8 h-8 text-secondary mb-2" />
+									<p className="text-sm text-muted-foreground">
+										No badges earned yet
+									</p>
+									<p className="text-xs text-muted mt-1">
+										Complete challenges and hit milestones to earn badges
+									</p>
+								</div>
+							</Card>
+						</motion.div>
+					</div>
+				</div>
+
+				{/* PWA Install Prompt */}
+				<div className="mt-6">
+					<PWAInstallPrompt workoutCount={workouts?.length ?? 0} />
+				</div>
+			</div>
+		</div>
+	);
 }

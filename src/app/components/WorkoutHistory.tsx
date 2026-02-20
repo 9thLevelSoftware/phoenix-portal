@@ -1,490 +1,698 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Button } from '@/app/components/ui/button';
-import { Card } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
+import { useQuery } from "@tanstack/react-query";
 import {
-  Calendar,
-  List,
-  ChevronLeft,
-  ChevronRight,
-  Flame,
-  Dumbbell,
-  Clock,
-  TrendingUp,
-  Award,
-  X,
-} from 'lucide-react';
-import { useAppContext } from '@/app/context/AppContext';
+	Award,
+	BarChart3,
+	Calendar,
+	Check,
+	ChevronLeft,
+	ChevronRight,
+	Clock,
+	Dumbbell,
+	Flame,
+	List,
+	X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
+import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
+import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
+import { useAuth } from "@/app/hooks/useAuth";
+import { useStreak } from "@/hooks/useStreak";
+import { useSubscription } from "@/hooks/useSubscription";
+import { workoutListOptions } from "@/queries/workouts";
+import type { WorkoutSession } from "@/schemas/transforms";
 
-interface WorkoutHistoryProps {
-  onViewSession: (sessionId: string) => void;
-}
+export function WorkoutHistory() {
+	const navigate = useNavigate();
+	const { user } = useAuth();
+	const { data: workouts, isPending } = useQuery(workoutListOptions(user?.id));
 
+	const { isPremium } = useSubscription();
+	const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
+	const [dateRange, setDateRange] = useState("Last 30 days");
+	const [compareMode, setCompareMode] = useState(false);
+	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
 
+	const toggleCompareSelection = (sessionId: string) => {
+		setSelectedForCompare((prev) => {
+			if (prev.includes(sessionId)) {
+				return prev.filter((id) => id !== sessionId);
+			}
+			if (prev.length >= 2) return prev; // max 2
+			return [...prev, sessionId];
+		});
+	};
 
-export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
-  const { workoutSessions } = useAppContext();
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
-  const [dateRange, setDateRange] = useState('Last 30 days');
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+	const handleCompareSelected = () => {
+		if (selectedForCompare.length === 2) {
+			navigate(
+				`/compare?a=${selectedForCompare[0]}&b=${selectedForCompare[1]}`,
+			);
+		}
+	};
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+	const exitCompareMode = () => {
+		setCompareMode(false);
+		setSelectedForCompare([]);
+	};
 
-    return { daysInMonth, startingDayOfWeek, year, month };
-  };
+	// Filter workouts based on dateRange selection
+	const filteredWorkouts = useMemo(() => {
+		if (!workouts) return [];
+		const now = new Date();
+		let cutoffDays: number | null = null;
+		switch (dateRange) {
+			case "Last 7 days":
+				cutoffDays = 7;
+				break;
+			case "Last 30 days":
+				cutoffDays = 30;
+				break;
+			case "Last 90 days":
+				cutoffDays = 90;
+				break;
+			case "Last 6 months":
+				cutoffDays = 180;
+				break;
+			case "All Time":
+			default:
+				cutoffDays = null;
+				break;
+		}
+		if (cutoffDays === null) return workouts;
+		const cutoff = new Date(now.getTime() - cutoffDays * 24 * 60 * 60 * 1000);
+		return workouts.filter((w) => w.started_at >= cutoff);
+	}, [workouts, dateRange]);
+	const [currentMonth, setCurrentMonth] = useState(() => {
+		const now = new Date();
+		return new Date(now.getFullYear(), now.getMonth(), 1);
+	});
+	const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+	const getDaysInMonth = (date: Date) => {
+		const year = date.getFullYear();
+		const month = date.getMonth();
+		const firstDay = new Date(year, month, 1);
+		const lastDay = new Date(year, month + 1, 0);
+		const daysInMonth = lastDay.getDate();
+		const startingDayOfWeek = firstDay.getDay();
 
-  const getWorkoutsForDay = (day: number) => {
-    return workoutSessions.filter((workout) => {
-      const workoutDate = new Date(workout.date);
-      return (
-        workoutDate.getDate() === day &&
-        workoutDate.getMonth() === month &&
-        workoutDate.getFullYear() === year
-      );
-    });
-  };
+		return { daysInMonth, startingDayOfWeek, year, month };
+	};
 
-  const hasWorkout = (day: number) => getWorkoutsForDay(day).length > 0;
-  const hasPR = (day: number) => getWorkoutsForDay(day).some((w) => w.prCount > 0);
+	const { daysInMonth, startingDayOfWeek, year, month } =
+		getDaysInMonth(currentMonth);
 
-  const getVolumeIntensity = (day: number) => {
-    const workouts = getWorkoutsForDay(day);
-    if (workouts.length === 0) return 0;
-    const totalVolume = workouts.reduce((sum, w) => sum + w.volume, 0);
-    return Math.min(totalVolume / 5000, 1); // Normalize to 0-1
-  };
+	// Index workouts by date string for fast calendar lookups
+	const workoutsByDate = useMemo(() => {
+		const map = new Map<string, WorkoutSession[]>();
+		if (!workouts) return map;
+		for (const w of workouts) {
+			const key = `${w.started_at.getFullYear()}-${w.started_at.getMonth()}-${w.started_at.getDate()}`;
+			const arr = map.get(key) ?? [];
+			arr.push(w);
+			map.set(key, arr);
+		}
+		return map;
+	}, [workouts]);
 
-  const isToday = (day: number) => {
-    const today = new Date();
-    return (
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    );
-  };
+	const getWorkoutsForDay = (day: number) => {
+		const key = `${year}-${month}-${day}`;
+		return workoutsByDate.get(key) ?? [];
+	};
 
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const newMonth = new Date(currentMonth);
-    if (direction === 'prev') {
-      newMonth.setMonth(newMonth.getMonth() - 1);
-    } else {
-      newMonth.setMonth(newMonth.getMonth() + 1);
-    }
-    setCurrentMonth(newMonth);
-  };
+	const hasWorkout = (day: number) => getWorkoutsForDay(day).length > 0;
+	const hasPR = (day: number) =>
+		getWorkoutsForDay(day).some((w) => w.pr_count > 0);
 
-  const monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
+	const getVolumeIntensity = (day: number) => {
+		const dayWorkouts = getWorkoutsForDay(day);
+		if (dayWorkouts.length === 0) return 0;
+		const totalVolume = dayWorkouts.reduce((sum, w) => sum + w.total_volume, 0);
+		return Math.min(totalVolume / 5000, 1); // Normalize to 0-1
+	};
 
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	const isToday = (day: number) => {
+		const today = new Date();
+		return (
+			day === today.getDate() &&
+			month === today.getMonth() &&
+			year === today.getFullYear()
+		);
+	};
 
-  const streak = 7;
+	const navigateMonth = (direction: "prev" | "next") => {
+		const newMonth = new Date(currentMonth);
+		if (direction === "prev") {
+			newMonth.setMonth(newMonth.getMonth() - 1);
+		} else {
+			newMonth.setMonth(newMonth.getMonth() + 1);
+		}
+		setCurrentMonth(newMonth);
+	};
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-      {/* Header */}
-      <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-          >
-            <div>
-              <h1 className="text-3xl sm:text-4xl mb-2">
-                <span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
-                  Workout History
-                </span>
-              </h1>
-              <p className="text-[#9CA3AF]">Your training journey, documented</p>
-            </div>
+	const monthNames = [
+		"January",
+		"February",
+		"March",
+		"April",
+		"May",
+		"June",
+		"July",
+		"August",
+		"September",
+		"October",
+		"November",
+		"December",
+	];
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* View Toggle */}
-              <div className="flex bg-[#1a1a1a] rounded-lg p-1 border border-[#374151]">
-                <Button
-                  size="sm"
-                  onClick={() => setViewMode('calendar')}
-                  className={
-                    viewMode === 'calendar'
-                      ? 'bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0 text-white'
-                      : 'bg-transparent border-0 text-[#9CA3AF] hover:text-white'
-                  }
-                >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Calendar
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setViewMode('list')}
-                  className={
-                    viewMode === 'list'
-                      ? 'bg-gradient-to-r from-[#FF6B35] to-[#DC2626] border-0 text-white'
-                      : 'bg-transparent border-0 text-[#9CA3AF] hover:text-white'
-                  }
-                >
-                  <List className="w-4 h-4 mr-2" />
-                  List
-                </Button>
-              </div>
+	const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-              {/* Date Range Selector */}
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-[#374151] text-white text-sm focus:border-[#FF6B35] focus:outline-none"
-              >
-                <option>Last 30 days</option>
-                <option>Last 90 days</option>
-                <option>This Year</option>
-                <option>All Time</option>
-              </select>
-            </div>
-          </motion.div>
-        </div>
-      </div>
+	// Calculate streak from workout data (extracted to reusable hook)
+	const streak = useStreak(workouts);
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AnimatePresence mode="popLayout">
-          {viewMode === 'calendar' ? (
-            <motion.div
-              key="calendar"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {/* Calendar Navigation */}
-              <div className="flex items-center justify-between mb-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateMonth('prev')}
-                  className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-                >
-                  <ChevronLeft className="w-4 h-4 mr-2" />
-                  Previous
-                </Button>
-                <h2 className="text-2xl text-white">
-                  {monthNames[month]} {year}
-                </h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateMonth('next')}
-                  className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
+	// Loading state
+	if (isPending) {
+		return (
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
+					<div className="max-w-7xl mx-auto">
+						<Skeleton className="h-10 w-64 mb-2" />
+						<Skeleton className="h-5 w-48" />
+					</div>
+				</div>
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+					{Array.from({ length: 5 }).map((_, i) => (
+						<WorkoutCardSkeleton key={i} />
+					))}
+				</div>
+			</div>
+		);
+	}
 
-              {/* Calendar Grid */}
-              <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4 sm:p-6 mb-6">
-                {/* Week Day Headers */}
-                <div className="grid grid-cols-7 gap-2 sm:gap-4 mb-4">
-                  {weekDays.map((day) => (
-                    <div
-                      key={day}
-                      className="text-center text-sm text-[#9CA3AF] font-semibold"
-                    >
-                      {day}
-                    </div>
-                  ))}
-                </div>
+	// Empty state
+	if (!workouts || workouts.length === 0) {
+		return (
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
+					<div className="max-w-7xl mx-auto">
+						<h1 className="text-3xl sm:text-4xl mb-2">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Workout History
+							</span>
+						</h1>
+						<p className="text-muted-foreground">
+							Your training journey, documented
+						</p>
+					</div>
+				</div>
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+					<EmptyState
+						icon={Dumbbell}
+						title="No workouts yet"
+						description="Complete your first workout in the mobile app to see your training history here."
+					/>
+				</div>
+			</div>
+		);
+	}
 
-                {/* Calendar Days */}
-                <div className="grid grid-cols-7 gap-2 sm:gap-4">
-                  {/* Empty cells before month starts */}
-                  {Array.from({ length: startingDayOfWeek }).map((_, index) => (
-                    <div key={`empty-${index}`} className="aspect-square" />
-                  ))}
+	return (
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
+			{/* Header */}
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+					>
+						<div>
+							<h1 className="text-3xl sm:text-4xl mb-2">
+								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+									Workout History
+								</span>
+							</h1>
+							<p className="text-muted-foreground">
+								Your training journey, documented
+							</p>
+						</div>
 
-                  {/* Days of the month */}
-                  {Array.from({ length: daysInMonth }).map((_, index) => {
-                    const day = index + 1;
-                    const intensity = getVolumeIntensity(day);
-                    const hasWorkoutDay = hasWorkout(day);
-                    const hasPRDay = hasPR(day);
-                    const isTodayDay = isToday(day);
+						<div className="flex flex-col sm:flex-row gap-3">
+							{/* Compare Toggle (premium only) */}
+							{isPremium && (
+								<Button
+									size="sm"
+									variant={compareMode ? "default" : "outline"}
+									onClick={() => {
+										if (compareMode) {
+											exitCompareMode();
+										} else {
+											setCompareMode(true);
+											setViewMode("list");
+										}
+									}}
+									className={
+										compareMode
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									}
+								>
+									<BarChart3 className="w-4 h-4 mr-2" />
+									{compareMode ? "Exit Compare" : "Compare"}
+								</Button>
+							)}
 
-                    return (
-                      <motion.button
-                        key={day}
-                        onClick={() => {
-                          if (hasWorkoutDay) {
-                            setSelectedDay(new Date(year, month, day));
-                          }
-                        }}
-                        whileHover={hasWorkoutDay ? { scale: 1.05 } : {}}
-                        className={`
+							{/* View Toggle */}
+							<div className="flex bg-surface-2 rounded-lg p-1 border border-secondary">
+								<Button
+									size="sm"
+									onClick={() => setViewMode("calendar")}
+									className={
+										viewMode === "calendar"
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "bg-transparent border-0 text-muted-foreground hover:text-white"
+									}
+								>
+									<Calendar className="w-4 h-4 mr-2" />
+									Calendar
+								</Button>
+								<Button
+									size="sm"
+									onClick={() => setViewMode("list")}
+									className={
+										viewMode === "list"
+											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											: "bg-transparent border-0 text-muted-foreground hover:text-white"
+									}
+								>
+									<List className="w-4 h-4 mr-2" />
+									List
+								</Button>
+							</div>
+
+							{/* Date Range Selector */}
+							<select
+								value={dateRange}
+								onChange={(e) => setDateRange(e.target.value)}
+								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+							>
+								<option>Last 7 days</option>
+								<option>Last 30 days</option>
+								<option>Last 90 days</option>
+								<option>Last 6 months</option>
+								<option>All Time</option>
+							</select>
+						</div>
+					</motion.div>
+				</div>
+			</div>
+
+			{/* Content */}
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<AnimatePresence mode="wait">
+					{viewMode === "calendar" ? (
+						<motion.div
+							key="calendar"
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							exit={{ opacity: 0, y: -20 }}
+							transition={{ duration: 0.3 }}
+						>
+							{/* Calendar Navigation */}
+							<div className="flex items-center justify-between mb-6">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => navigateMonth("prev")}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								>
+									<ChevronLeft className="w-4 h-4 mr-2" />
+									Previous
+								</Button>
+								<h2 className="text-2xl text-white">
+									{monthNames[month]} {year}
+								</h2>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => navigateMonth("next")}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								>
+									Next
+									<ChevronRight className="w-4 h-4 ml-2" />
+								</Button>
+							</div>
+
+							{/* Calendar Grid */}
+							<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4 sm:p-6 mb-6">
+								{/* Week Day Headers */}
+								<div className="grid grid-cols-7 gap-2 sm:gap-4 mb-4">
+									{weekDays.map((day) => (
+										<div
+											key={day}
+											className="text-center text-sm text-muted-foreground font-semibold"
+										>
+											{day}
+										</div>
+									))}
+								</div>
+
+								{/* Calendar Days */}
+								<div className="grid grid-cols-7 gap-2 sm:gap-4">
+									{/* Empty cells before month starts */}
+									{Array.from({ length: startingDayOfWeek }).map((_, index) => (
+										<div key={`empty-${index}`} className="aspect-square" />
+									))}
+
+									{/* Days of the month */}
+									{Array.from({ length: daysInMonth }).map((_, index) => {
+										const day = index + 1;
+										const intensity = getVolumeIntensity(day);
+										const hasWorkoutDay = hasWorkout(day);
+										const hasPRDay = hasPR(day);
+										const isTodayDay = isToday(day);
+
+										return (
+											<motion.button
+												key={day}
+												onClick={() => {
+													if (hasWorkoutDay) {
+														setSelectedDay(new Date(year, month, day));
+													}
+												}}
+												whileHover={hasWorkoutDay ? { scale: 1.05 } : {}}
+												className={`
                           aspect-square rounded-lg border-2 relative p-2 transition-all
                           ${
-                            hasWorkoutDay
-                              ? 'cursor-pointer bg-gradient-to-br hover:border-[#FF6B35]'
-                              : 'bg-[#1a1a1a] border-[#374151] cursor-default'
-                          }
+														hasWorkoutDay
+															? "cursor-pointer bg-gradient-to-br hover:border-primary"
+															: "bg-surface-2 border-secondary cursor-default"
+													}
                           ${
-                            isTodayDay
-                              ? 'ring-2 ring-[#FF6B35] ring-offset-2 ring-offset-[#0D0D0D]'
-                              : 'border-[#374151]'
-                          }
+														isTodayDay
+															? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+															: "border-secondary"
+													}
                         `}
-                        style={
-                          hasWorkoutDay
-                            ? {
-                                backgroundColor: `rgba(255, 107, 53, ${intensity * 0.3})`,
-                                borderColor: `rgba(255, 107, 53, ${intensity})`,
-                              }
-                            : {}
-                        }
-                      >
-                        <span
-                          className={`text-sm sm:text-base ${
-                            hasWorkoutDay ? 'text-white font-semibold' : 'text-[#6B7280]'
-                          }`}
-                        >
-                          {day}
-                        </span>
-                        {hasPRDay && (
-                          <Flame className="w-3 h-3 sm:w-4 sm:h-4 text-[#F59E0B] absolute top-1 right-1" />
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </Card>
+												style={
+													hasWorkoutDay
+														? {
+																backgroundColor: `rgba(255, 107, 53, ${intensity * 0.3})`,
+																borderColor: `rgba(255, 107, 53, ${intensity})`,
+															}
+														: {}
+												}
+											>
+												<span
+													className={`text-sm sm:text-base ${
+														hasWorkoutDay
+															? "text-white font-semibold"
+															: "text-muted"
+													}`}
+												>
+													{day}
+												</span>
+												{hasPRDay && (
+													<Flame className="w-3 h-3 sm:w-4 sm:h-4 text-accent absolute top-1 right-1" />
+												)}
+											</motion.button>
+										);
+									})}
+								</div>
+							</Card>
 
-              {/* Streak Counter */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center"
-              >
-                <Card className="inline-block bg-gradient-to-br from-[#FF6B35]/20 to-[#DC2626]/20 border-2 border-[#FF6B35]/30 px-8 py-4">
-                  <div className="flex items-center gap-3">
-                    <Flame className="w-6 h-6 text-[#FF6B35]" />
-                    <span className="text-2xl font-semibold text-white">{streak} Day Streak</span>
-                    <Flame className="w-6 h-6 text-[#FF6B35]" />
-                  </div>
-                </Card>
-              </motion.div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="list"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-4"
-            >
-              {workoutSessions.map((workout, index) => (
-                <motion.div
-                  key={workout.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <Card
-                    onClick={() => onViewSession(workout.id)}
-                    className="p-4 sm:p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 transition-all cursor-pointer group"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                      {/* Left: Icon & Date */}
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 bg-[#0D0D0D] rounded px-1.5 py-0.5 text-xs text-[#9CA3AF] border border-[#374151]">
-                            {new Date(workout.date).getDate()}
-                          </div>
-                        </div>
+							{/* Streak Counter */}
+							<motion.div
+								initial={{ opacity: 0, scale: 0.9 }}
+								animate={{ opacity: 1, scale: 1 }}
+								transition={{ delay: 0.2 }}
+								className="text-center"
+							>
+								<Card className="inline-block bg-gradient-to-br from-primary/20 to-chart-2/20 border-2 border-primary/30 px-8 py-4">
+									<div className="flex items-center gap-3">
+										<Flame className="w-6 h-6 text-primary" />
+										<span className="text-2xl font-semibold text-white">
+											{streak} Day Streak
+										</span>
+										<Flame className="w-6 h-6 text-primary" />
+									</div>
+								</Card>
+							</motion.div>
+						</motion.div>
+					) : (
+						<motion.div
+							key="list"
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							exit={{ opacity: 0, y: -20 }}
+							transition={{ duration: 0.3 }}
+							className="space-y-4"
+						>
+							{/* Compare mode info */}
+							{compareMode && (
+								<div className="flex items-center justify-between bg-surface-2 border border-secondary rounded-lg p-3 mb-2">
+									<span className="text-sm text-muted-foreground">
+										Select 2 sessions to compare ({selectedForCompare.length}/2)
+									</span>
+									{selectedForCompare.length === 2 && (
+										<Button
+											size="sm"
+											onClick={handleCompareSelected}
+											className="bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+										>
+											<BarChart3 className="w-4 h-4 mr-2" />
+											Compare Selected
+										</Button>
+									)}
+								</div>
+							)}
+							{filteredWorkouts.map((workout, index) => {
+								const isSelected = selectedForCompare.includes(workout.id);
+								return (
+									<motion.div
+										key={workout.id}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{ delay: index * 0.05 }}
+									>
+										<Card
+											onClick={() => {
+												if (compareMode) {
+													toggleCompareSelection(workout.id);
+												} else {
+													navigate(`/history/${workout.id}`);
+												}
+											}}
+											className={`p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background transition-all cursor-pointer group ${
+												isSelected
+													? "border-primary ring-1 ring-primary/50"
+													: "border-secondary hover:border-primary/50"
+											}`}
+										>
+											<div className="flex flex-col sm:flex-row sm:items-center gap-4">
+												{/* Compare mode checkbox */}
+												{compareMode && (
+													<div
+														className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+															isSelected
+																? "bg-primary border-primary"
+																: "border-secondary"
+														}`}
+													>
+														{isSelected && (
+															<Check className="w-4 h-4 text-white" />
+														)}
+													</div>
+												)}
 
-                        <div>
-                          <h3 className="text-lg font-semibold text-white mb-1">
-                            {workout.name}
-                          </h3>
-                          <div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
-                            <span>
-                              {new Date(workout.date).toLocaleDateString('en-US', {
-                                weekday: 'short',
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                            </span>
-                            <span>•</span>
-                            <span>
-                              {new Date(workout.date).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                          {workout.routine && (
-                            <Badge
-                              variant="outline"
-                              className="mt-2 border-[#FF6B35]/30 text-[#FF6B35] text-xs"
-                            >
-                              {workout.routine}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+												{/* Left: Icon & Date */}
+												<div className="flex items-center gap-4">
+													<div className="relative">
+														<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
+															<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+														</div>
+														<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
+															{workout.started_at.getDate()}
+														</div>
+													</div>
 
-                      {/* Right: Stats */}
-                      <div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
-                        <div className="text-center">
-                          <div className="text-sm text-[#9CA3AF] mb-1">Volume</div>
-                          <div className="text-lg font-semibold text-white">
-                            {workout.volume.toLocaleString()} kg
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm text-[#9CA3AF] mb-1">Duration</div>
-                          <div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {workout.duration}m
-                          </div>
-                        </div>
-                        {workout.prCount > 0 && (
-                          <div className="text-center col-span-2 sm:col-span-1">
-                            <Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
-                              <Award className="w-3 h-3 mr-1" />
-                              {workout.prCount} PR{workout.prCount > 1 ? 's' : ''}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+													<div>
+														<h3 className="text-lg font-semibold text-white mb-1">
+															{workout.name}
+														</h3>
+														<div className="flex items-center gap-2 text-sm text-muted-foreground">
+															<span>
+																{workout.started_at.toLocaleDateString(
+																	"en-US",
+																	{
+																		weekday: "short",
+																		month: "short",
+																		day: "numeric",
+																	},
+																)}
+															</span>
+															<span>-</span>
+															<span>
+																{workout.started_at.toLocaleTimeString(
+																	"en-US",
+																	{
+																		hour: "numeric",
+																		minute: "2-digit",
+																	},
+																)}
+															</span>
+														</div>
+														{workout.routine_name && (
+															<Badge
+																variant="outline"
+																className="mt-2 border-primary/30 text-primary text-xs"
+															>
+																{workout.routine_name}
+															</Badge>
+														)}
+													</div>
+												</div>
 
-      {/* Day Detail Slide-Out Panel */}
-      <AnimatePresence>
-        {selectedDay && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedDay(null)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            />
+												{/* Right: Stats */}
+												<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
+													<div className="text-center">
+														<div className="text-sm text-muted-foreground mb-1">
+															Volume
+														</div>
+														<div className="text-lg font-semibold text-white">
+															{workout.total_volume.toLocaleString()} kg
+														</div>
+													</div>
+													<div className="text-center">
+														<div className="text-sm text-muted-foreground mb-1">
+															Duration
+														</div>
+														<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
+															<Clock className="w-4 h-4" />
+															{workout.duration_seconds}m
+														</div>
+													</div>
+													{workout.pr_count > 0 && (
+														<div className="text-center col-span-2 sm:col-span-1">
+															<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																<Award className="w-3 h-3 mr-1" />
+																{workout.pr_count} PR
+																{workout.pr_count > 1 ? "s" : ""}
+															</Badge>
+														</div>
+													)}
+												</div>
+											</div>
+										</Card>
+									</motion.div>
+								);
+							})}
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</div>
 
-            {/* Panel */}
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 h-full w-full sm:w-96 bg-[#0D0D0D] border-l border-[#374151] z-50 overflow-y-auto"
-            >
-              {/* Panel Header */}
-              <div className="sticky top-0 bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] p-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-semibold text-white mb-1">
-                    {selectedDay.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </h3>
-                  <p className="text-sm text-[#9CA3AF]">
-                    {getWorkoutsForDay(selectedDay.getDate()).length} workout
-                    {getWorkoutsForDay(selectedDay.getDate()).length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedDay(null)}
-                  className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
+			{/* Day Detail Slide-Out Panel */}
+			<AnimatePresence>
+				{selectedDay && (
+					<>
+						{/* Backdrop */}
+						<motion.div
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							onClick={() => setSelectedDay(null)}
+							className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+						/>
 
-              {/* Panel Content */}
-              <div className="p-6 space-y-4">
-                {getWorkoutsForDay(selectedDay.getDate()).map((workout) => (
-                  <Card
-                    key={workout.id}
-                    onClick={() => {
-                      setSelectedDay(null);
-                      onViewSession(workout.id);
-                    }}
-                    className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all"
-                  >
-                    <h4 className="text-lg font-semibold text-white mb-2">{workout.name}</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between text-[#E5E7EB]">
-                        <span className="text-[#9CA3AF]">Time</span>
-                        <span>
-                          {new Date(workout.date).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[#E5E7EB]">
-                        <span className="text-[#9CA3AF]">Duration</span>
-                        <span>{workout.duration} min</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[#E5E7EB]">
-                        <span className="text-[#9CA3AF]">Volume</span>
-                        <span>{workout.volume.toLocaleString()} kg</span>
-                      </div>
-                      {workout.prCount > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-[#9CA3AF]">PRs</span>
-                          <Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
-                            {workout.prCount}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+						{/* Panel */}
+						<motion.div
+							initial={{ x: "100%" }}
+							animate={{ x: 0 }}
+							exit={{ x: "100%" }}
+							transition={{ type: "spring", damping: 25, stiffness: 200 }}
+							className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l border-secondary z-50 overflow-y-auto"
+						>
+							{/* Panel Header */}
+							<div className="sticky top-0 bg-gradient-to-b from-surface-2 to-background border-b border-secondary p-6 flex items-center justify-between">
+								<div>
+									<h3 className="text-xl font-semibold text-white mb-1">
+										{selectedDay.toLocaleDateString("en-US", {
+											weekday: "long",
+											month: "long",
+											day: "numeric",
+										})}
+									</h3>
+									<p className="text-sm text-muted-foreground">
+										{getWorkoutsForDay(selectedDay.getDate()).length} workout
+										{getWorkoutsForDay(selectedDay.getDate()).length !== 1
+											? "s"
+											: ""}
+									</p>
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setSelectedDay(null)}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								>
+									<X className="w-4 h-4" />
+								</Button>
+							</div>
+
+							{/* Panel Content */}
+							<div className="p-6 space-y-4">
+								{getWorkoutsForDay(selectedDay.getDate()).map((workout) => (
+									<Card
+										key={workout.id}
+										onClick={() => {
+											setSelectedDay(null);
+											navigate(`/history/${workout.id}`);
+										}}
+										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all"
+									>
+										<h4 className="text-lg font-semibold text-white mb-2">
+											{workout.name}
+										</h4>
+										<div className="space-y-2 text-sm">
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Time</span>
+												<span>
+													{workout.started_at.toLocaleTimeString("en-US", {
+														hour: "numeric",
+														minute: "2-digit",
+													})}
+												</span>
+											</div>
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Duration</span>
+												<span>{workout.duration_seconds} min</span>
+											</div>
+											<div className="flex items-center justify-between text-secondary-foreground">
+												<span className="text-muted-foreground">Volume</span>
+												<span>{workout.total_volume.toLocaleString()} kg</span>
+											</div>
+											{workout.pr_count > 0 && (
+												<div className="flex items-center justify-between">
+													<span className="text-muted-foreground">PRs</span>
+													<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+														{workout.pr_count}
+													</Badge>
+												</div>
+											)}
+										</div>
+									</Card>
+								))}
+							</div>
+						</motion.div>
+					</>
+				)}
+			</AnimatePresence>
+		</div>
+	);
 }

@@ -1,505 +1,538 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Button } from '@/app/components/ui/button';
-import { Card } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
+import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  Clock,
-  TrendingUp,
-  Award,
-  Dumbbell,
-  ChevronDown,
-  ChevronUp,
-  Share2,
-  BarChart3,
-  Flame,
-  Zap,
-} from 'lucide-react';
+	AlertCircle,
+	ArrowLeft,
+	Award,
+	BarChart3,
+	ChevronDown,
+	ChevronUp,
+	Clock,
+	Dumbbell,
+	Flame,
+	Printer,
+	Share2,
+	TrendingUp,
+} from "lucide-react";
+import { motion } from "motion/react";
+import { useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
+import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
+import { SubscriptionGate } from "@/app/components/SubscriptionGate";
+import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
+import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
+import { useSubscription } from "@/hooks/useSubscription";
+import { sessionDetailOptions } from "@/queries/workouts";
 
-interface SessionDetailProps {
-  sessionId: string;
-  onBack: () => void;
-}
+export function SessionDetail() {
+	const { sessionId } = useParams<{ sessionId: string }>();
+	const navigate = useNavigate();
+	const {
+		data: session,
+		isPending,
+		error,
+	} = useQuery({
+		...sessionDetailOptions(sessionId ?? ""),
+		enabled: !!sessionId,
+	});
+	const { isPremium } = useSubscription();
+	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
+	const [notes, setNotes] = useState("");
+	const [pickerOpen, setPickerOpen] = useState(false);
 
-interface SetData {
-  setNumber: number;
-  target: number;
-  actual: number;
-  weight: number;
-  rpe: number;
-  notes?: string;
-  isPR?: boolean;
-}
+	if (!sessionId) {
+		return <Navigate to="/history" replace />;
+	}
 
-interface Exercise {
-  id: string;
-  name: string;
-  muscleGroup: string;
-  sets: SetData[];
-  hasPR: boolean;
-}
+	const toggleExercise = (exerciseId: string) => {
+		setExpandedExercises((prev) =>
+			prev.includes(exerciseId)
+				? prev.filter((id) => id !== exerciseId)
+				: [...prev, exerciseId],
+		);
+	};
 
-// Mock session data
-const mockSession = {
-  id: '1',
-  name: 'Upper Body Power',
-  date: new Date(2026, 0, 18),
-  startTime: '6:30 AM',
-  duration: 65,
-  totalVolume: 4250,
-  totalSets: 16,
-  prCount: 2,
-  routine: 'Push/Pull/Legs',
-  exercises: [
-    {
-      id: 'ex1',
-      name: 'Bench Press',
-      muscleGroup: 'Chest',
-      hasPR: true,
-      sets: [
-        { setNumber: 1, target: 8, actual: 8, weight: 100, rpe: 7, notes: 'Warmup' },
-        { setNumber: 2, target: 6, actual: 6, weight: 110, rpe: 8 },
-        { setNumber: 3, target: 4, actual: 5, weight: 120, rpe: 9, isPR: true, notes: '🔥 NEW PR!' },
-      ],
-    },
-    {
-      id: 'ex2',
-      name: 'Overhead Press',
-      muscleGroup: 'Shoulders',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 8, actual: 8, weight: 60, rpe: 7 },
-        { setNumber: 2, target: 8, actual: 7, weight: 65, rpe: 8.5 },
-        { setNumber: 3, target: 8, actual: 6, weight: 65, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex3',
-      name: 'Incline Dumbbell Press',
-      muscleGroup: 'Chest',
-      hasPR: true,
-      sets: [
-        { setNumber: 1, target: 10, actual: 10, weight: 40, rpe: 7 },
-        { setNumber: 2, target: 10, actual: 10, weight: 45, rpe: 8 },
-        { setNumber: 3, target: 10, actual: 10, weight: 45, rpe: 8.5, isPR: true, notes: '🔥 Volume PR!' },
-        { setNumber: 4, target: 10, actual: 8, weight: 45, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex4',
-      name: 'Lateral Raises',
-      muscleGroup: 'Shoulders',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 12, actual: 12, weight: 15, rpe: 7 },
-        { setNumber: 2, target: 12, actual: 12, weight: 15, rpe: 8 },
-        { setNumber: 3, target: 12, actual: 10, weight: 15, rpe: 9 },
-      ],
-    },
-    {
-      id: 'ex5',
-      name: 'Tricep Pushdowns',
-      muscleGroup: 'Arms',
-      hasPR: false,
-      sets: [
-        { setNumber: 1, target: 12, actual: 12, weight: 35, rpe: 7 },
-        { setNumber: 2, target: 12, actual: 12, weight: 40, rpe: 8 },
-        { setNumber: 3, target: 12, actual: 10, weight: 40, rpe: 8.5 },
-      ],
-    },
-  ] as Exercise[],
-  metrics: {
-    peakPower: 1250,
-    avgPower: 890,
-    timeUnderTension: 245,
-    estimatedCalories: 385,
-    concentricForce: 65,
-    eccentricForce: 78,
-  },
-};
+	const getMuscleGroupColor = (muscleGroup: string) => {
+		const colors: Record<string, string> = {
+			Chest: "bg-primary",
+			Shoulders: "bg-accent",
+			Back: "bg-success",
+			Legs: "bg-chart-2",
+			Arms: "bg-warning",
+			Core: "bg-[#8B5CF6]",
+		};
+		return colors[muscleGroup] || "bg-muted";
+	};
 
-export function SessionDetail({ sessionId, onBack }: SessionDetailProps) {
-  const [expandedExercises, setExpandedExercises] = useState<string[]>(['ex1']);
-  const [showMetrics, setShowMetrics] = useState(false);
-  const [notes, setNotes] = useState('');
+	// Loading state
+	if (isPending) {
+		return (
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => navigate("/history")}
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<ArrowLeft className="w-4 h-4 mr-2" />
+							Back to History
+						</Button>
+						<Skeleton className="h-10 w-64 mb-2 bg-surface-2" />
+						<Skeleton className="h-5 w-48 bg-surface-2" />
+					</div>
+				</div>
+				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+							{[1, 2, 3, 4].map((i) => (
+								<div key={i} className="text-center space-y-2">
+									<Skeleton className="h-4 w-20 mx-auto bg-surface-2" />
+									<Skeleton className="h-8 w-16 mx-auto bg-surface-2" />
+								</div>
+							))}
+						</div>
+					</Card>
+					{[1, 2, 3].map((i) => (
+						<Card
+							key={i}
+							className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4"
+						>
+							<div className="flex items-center gap-3">
+								<Skeleton className="h-10 w-10 rounded-lg bg-surface-2" />
+								<div className="space-y-2">
+									<Skeleton className="h-5 w-40 bg-surface-2" />
+									<Skeleton className="h-4 w-20 bg-surface-2" />
+								</div>
+							</div>
+						</Card>
+					))}
+				</div>
+			</div>
+		);
+	}
 
-  const toggleExercise = (exerciseId: string) => {
-    setExpandedExercises((prev) =>
-      prev.includes(exerciseId)
-        ? prev.filter((id) => id !== exerciseId)
-        : [...prev, exerciseId]
-    );
-  };
+	// Error state
+	if (error || !session) {
+		return (
+			<div className="min-h-screen bg-background pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => navigate("/history")}
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<ArrowLeft className="w-4 h-4 mr-2" />
+							Back to History
+						</Button>
+					</div>
+				</div>
+				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
+					<h2 className="text-xl font-semibold text-white mb-2">
+						Session Not Found
+					</h2>
+					<p className="text-muted-foreground">
+						{error
+							? error.message
+							: "This workout session could not be loaded."}
+					</p>
+					<Button
+						onClick={() => navigate("/history")}
+						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+					>
+						Return to History
+					</Button>
+				</div>
+			</div>
+		);
+	}
 
-  const getMuscleGroupColor = (muscleGroup: string) => {
-    const colors: Record<string, string> = {
-      Chest: 'bg-[#FF6B35]',
-      Shoulders: 'bg-[#F59E0B]',
-      Back: 'bg-[#10B981]',
-      Legs: 'bg-[#DC2626]',
-      Arms: 'bg-[#FBBF24]',
-      Core: 'bg-[#8B5CF6]',
-    };
-    return colors[muscleGroup] || 'bg-[#6B7280]';
-  };
+	// Compute summary stats from real data
+	const totalSets = session.exercises.reduce(
+		(sum, ex) => sum + ex.sets.length,
+		0,
+	);
+	const prCount = session.exercises.reduce(
+		(sum, ex) => sum + ex.sets.filter((s) => s.is_pr).length,
+		0,
+	);
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-      {/* Header */}
-      <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-40 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onBack}
-              className="mb-4 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to History
-            </Button>
+	// Auto-expand first exercise if none expanded
+	const effectiveExpanded =
+		expandedExercises.length === 0 && session.exercises.length > 0
+			? [session.exercises[0].id]
+			: expandedExercises;
 
-            <h1 className="text-3xl sm:text-4xl mb-2">
-              <span className="bg-gradient-to-r from-[#FF6B35] to-[#F59E0B] bg-clip-text text-transparent">
-                {mockSession.name}
-              </span>
-            </h1>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-[#9CA3AF]">
-              <span>
-                {mockSession.date.toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </span>
-              <span>•</span>
-              <span>{mockSession.startTime}</span>
-              {mockSession.routine && (
-                <>
-                  <span>•</span>
-                  <Badge
-                    variant="outline"
-                    className="border-[#FF6B35]/30 text-[#FF6B35]"
-                  >
-                    {mockSession.routine}
-                  </Badge>
-                </>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      </div>
+	return (
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
+			{/* Print-only report header (visible only in print) */}
+			<div className="print-only mb-6 border-b border-gray-300 pb-4">
+				<h1 className="text-2xl font-bold text-black">{session.name}</h1>
+				<div className="flex gap-6 text-sm text-gray-600 mt-2">
+					<span>Date: {session.started_at.toLocaleDateString()}</span>
+					{session.routine_name && <span>Routine: {session.routine_name}</span>}
+					<span>Duration: {session.duration_seconds} min</span>
+					<span>Volume: {session.total_volume.toLocaleString()} kg</span>
+				</div>
+			</div>
 
-      {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Stats Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Clock className="w-5 h-5 text-[#FF6B35]" />
-                  <div className="text-sm text-[#9CA3AF]">Duration</div>
-                </div>
-                <div className="text-2xl font-semibold text-white">
-                  {mockSession.duration}m
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <TrendingUp className="w-5 h-5 text-[#10B981]" />
-                  <div className="text-sm text-[#9CA3AF]">Volume</div>
-                </div>
-                <div className="text-2xl font-semibold text-white">
-                  {mockSession.totalVolume.toLocaleString()} kg
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Dumbbell className="w-5 h-5 text-[#F59E0B]" />
-                  <div className="text-sm text-[#9CA3AF]">Sets</div>
-                </div>
-                <div className="text-2xl font-semibold text-white">
-                  {mockSession.totalSets}
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Award className="w-5 h-5 text-[#FBBF24]" />
-                  <div className="text-sm text-[#9CA3AF]">PRs</div>
-                </div>
-                <div className="text-2xl font-semibold bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] bg-clip-text text-transparent">
-                  {mockSession.prCount}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
+			{/* Header */}
+			<div
+				className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl"
+				data-print-hide
+			>
+				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+					>
+						<div className="flex items-center gap-2 mb-4">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => navigate("/history")}
+								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary print:hidden"
+							>
+								<ArrowLeft className="w-4 h-4 mr-2" />
+								Back to History
+							</Button>
+							<SubscriptionGate requiredTier="PHOENIX" fallback={null}>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => window.print()}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary print:hidden"
+									data-print-hide
+								>
+									<Printer className="w-4 h-4 mr-2" />
+									Print Report
+								</Button>
+							</SubscriptionGate>
+						</div>
 
-        {/* Exercise Breakdown */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h2 className="text-2xl font-semibold text-white mb-4">Exercise Breakdown</h2>
-          <div className="space-y-3">
-            {mockSession.exercises.map((exercise, index) => (
-              <motion.div
-                key={exercise.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 + index * 0.05 }}
-              >
-                <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] overflow-hidden">
-                  {/* Exercise Header */}
-                  <button
-                    onClick={() => toggleExercise(exercise.id)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FF6B35] to-[#DC2626] flex items-center justify-center">
-                        <Dumbbell className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="text-left">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-semibold text-white">
-                            {exercise.name}
-                          </h3>
-                          {exercise.hasPR && (
-                            <Flame className="w-4 h-4 text-[#F59E0B]" />
-                          )}
-                        </div>
-                        <Badge
-                          className={`${getMuscleGroupColor(
-                            exercise.muscleGroup
-                          )} text-white border-0 mt-1`}
-                        >
-                          {exercise.muscleGroup}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-[#9CA3AF]">
-                        {exercise.sets.length} sets
-                      </span>
-                      {expandedExercises.includes(exercise.id) ? (
-                        <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
-                      )}
-                    </div>
-                  </button>
+						<h1 className="text-3xl sm:text-4xl mb-2">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								{session.name}
+							</span>
+						</h1>
+						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+							<span>
+								{session.started_at.toLocaleDateString("en-US", {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+									year: "numeric",
+								})}
+							</span>
+							<span>
+								{session.started_at.toLocaleTimeString("en-US", {
+									hour: "numeric",
+									minute: "2-digit",
+								})}
+							</span>
+							{session.routine_name && (
+								<>
+									<span>-</span>
+									<Badge
+										variant="outline"
+										className="border-primary/30 text-primary"
+									>
+										{session.routine_name}
+									</Badge>
+								</>
+							)}
+							{session.workout_mode && (
+								<Badge
+									variant="outline"
+									className="border-accent/30 text-accent"
+								>
+									{session.workout_mode}
+								</Badge>
+							)}
+						</div>
+					</motion.div>
+				</div>
+			</div>
 
-                  {/* Exercise Sets Table */}
-                  {expandedExercises.includes(exercise.id) && (
-                    <div className="border-t border-[#374151] p-4">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-[#374151]">
-                              <th className="text-left py-2 text-[#9CA3AF]">Set</th>
-                              <th className="text-left py-2 text-[#9CA3AF]">Target</th>
-                              <th className="text-left py-2 text-[#9CA3AF]">Actual</th>
-                              <th className="text-left py-2 text-[#9CA3AF]">Weight</th>
-                              <th className="text-left py-2 text-[#9CA3AF]">RPE</th>
-                              <th className="text-left py-2 text-[#9CA3AF]">Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {exercise.sets.map((set) => (
-                              <tr
-                                key={set.setNumber}
-                                className={`border-b border-[#374151]/50 ${
-                                  set.isPR ? 'border-l-4 border-l-[#F59E0B]' : ''
-                                }`}
-                              >
-                                <td className="py-3 text-white font-semibold">
-                                  {set.setNumber}
-                                </td>
-                                <td className="py-3 text-[#E5E7EB]">{set.target}</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.actual}</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.weight} kg</td>
-                                <td className="py-3 text-[#E5E7EB]">{set.rpe}</td>
-                                <td className="py-3">
-                                  {set.isPR && (
-                                    <Badge className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-white border-0">
-                                      NEW PR
-                                    </Badge>
-                                  )}
-                                  {set.notes && !set.isPR && (
-                                    <span className="text-[#9CA3AF]">{set.notes}</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
+			{/* Content */}
+			<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+				{/* Stats Card */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.1 }}
+				>
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+							<div className="text-center">
+								<div className="flex items-center justify-center gap-2 mb-2">
+									<Clock className="w-5 h-5 text-primary" />
+									<div className="text-sm text-muted-foreground">Duration</div>
+								</div>
+								<div className="text-2xl font-semibold text-white">
+									{session.duration_seconds}m
+								</div>
+							</div>
+							<div className="text-center">
+								<div className="flex items-center justify-center gap-2 mb-2">
+									<TrendingUp className="w-5 h-5 text-success" />
+									<div className="text-sm text-muted-foreground">Volume</div>
+								</div>
+								<div className="text-2xl font-semibold text-white">
+									{session.total_volume.toLocaleString()} kg
+								</div>
+							</div>
+							<div className="text-center">
+								<div className="flex items-center justify-center gap-2 mb-2">
+									<Dumbbell className="w-5 h-5 text-accent" />
+									<div className="text-sm text-muted-foreground">Sets</div>
+								</div>
+								<div className="text-2xl font-semibold text-white">
+									{totalSets}
+								</div>
+							</div>
+							<div className="text-center">
+								<div className="flex items-center justify-center gap-2 mb-2">
+									<Award className="w-5 h-5 text-warning" />
+									<div className="text-sm text-muted-foreground">PRs</div>
+								</div>
+								<div className="text-2xl font-semibold bg-gradient-to-r from-accent to-warning bg-clip-text text-transparent">
+									{prCount}
+								</div>
+							</div>
+						</div>
+					</Card>
+				</motion.div>
 
-        {/* Metrics Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
-            <button
-              onClick={() => setShowMetrics(!showMetrics)}
-              className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <BarChart3 className="w-5 h-5 text-[#FF6B35]" />
-                <h2 className="text-xl font-semibold text-white">
-                  Performance Metrics
-                </h2>
-              </div>
-              {showMetrics ? (
-                <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
-              )}
-            </button>
+				{/* Exercise Breakdown */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.2 }}
+				>
+					<h2 className="text-2xl font-semibold text-white mb-4">
+						Exercise Breakdown
+					</h2>
+					<div className="space-y-3">
+						{session.exercises.map((exercise, index) => (
+							<motion.div
+								key={exercise.id}
+								initial={{ opacity: 0, y: 20 }}
+								animate={{ opacity: 1, y: 0 }}
+								transition={{ delay: 0.3 + index * 0.05 }}
+							>
+								<Card className="exercise-card bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
+									{/* Exercise Header */}
+									<button
+										onClick={() => toggleExercise(exercise.id)}
+										className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
+									>
+										<div className="flex items-center gap-3">
+											<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
+												<Dumbbell className="w-5 h-5 text-white" />
+											</div>
+											<div className="text-left">
+												<div className="flex items-center gap-2">
+													<h3 className="text-lg font-semibold text-white">
+														{exercise.name}
+													</h3>
+													{exercise.hasPR && (
+														<Flame className="w-4 h-4 text-accent" />
+													)}
+												</div>
+												<Badge
+													className={`${getMuscleGroupColor(
+														exercise.muscle_group,
+													)} text-white border-0 mt-1`}
+												>
+													{exercise.muscle_group}
+												</Badge>
+											</div>
+										</div>
+										<div className="flex items-center gap-4">
+											<span className="text-sm text-muted-foreground">
+												{exercise.sets.length} sets
+											</span>
+											{effectiveExpanded.includes(exercise.id) ? (
+												<ChevronUp className="w-5 h-5 text-muted-foreground" />
+											) : (
+												<ChevronDown className="w-5 h-5 text-muted-foreground" />
+											)}
+										</div>
+									</button>
 
-            {showMetrics && (
-              <div className="border-t border-[#374151] p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap className="w-4 h-4 text-[#FBBF24]" />
-                      <div className="text-sm text-[#9CA3AF]">Peak Power</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.peakPower} W
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap className="w-4 h-4 text-[#10B981]" />
-                      <div className="text-sm text-[#9CA3AF]">Avg Power</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.avgPower} W
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="w-4 h-4 text-[#FF6B35]" />
-                      <div className="text-sm text-[#9CA3AF]">Time Under Tension</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.timeUnderTension}s
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Flame className="w-4 h-4 text-[#DC2626]" />
-                      <div className="text-sm text-[#9CA3AF]">Est. Calories</div>
-                    </div>
-                    <div className="text-2xl font-semibold text-white">
-                      {mockSession.metrics.estimatedCalories} kcal
-                    </div>
-                  </div>
-                </div>
+									{/* Exercise Sets Table */}
+									{effectiveExpanded.includes(exercise.id) && (
+										<div className="border-t border-secondary p-4">
+											<div className="overflow-x-auto">
+												<table className="w-full text-sm">
+													<thead>
+														<tr className="border-b border-secondary">
+															<th className="text-left py-2 text-muted-foreground">
+																Set
+															</th>
+															<th className="text-left py-2 text-muted-foreground">
+																Target
+															</th>
+															<th className="text-left py-2 text-muted-foreground">
+																Actual
+															</th>
+															<th className="text-left py-2 text-muted-foreground">
+																Weight
+															</th>
+															<th className="text-left py-2 text-muted-foreground">
+																RPE
+															</th>
+															<th className="text-left py-2 text-muted-foreground">
+																Notes
+															</th>
+														</tr>
+													</thead>
+													<tbody>
+														{exercise.sets.map((set) => (
+															<tr
+																key={set.set_number}
+																className={`border-b border-secondary/50 ${
+																	set.is_pr
+																		? "border-l-4 border-l-[#F59E0B]"
+																		: ""
+																}`}
+															>
+																<td className="py-3 text-white font-semibold">
+																	{set.set_number}
+																</td>
+																<td className="py-3 text-secondary-foreground">
+																	{set.target_reps}
+																</td>
+																<td className="py-3 text-secondary-foreground">
+																	{set.actual_reps}
+																</td>
+																<td className="py-3 text-secondary-foreground">
+																	{set.weight_kg} kg
+																</td>
+																<td className="py-3 text-secondary-foreground">
+																	{set.rpe ?? "-"}
+																</td>
+																<td className="py-3">
+																	{set.is_pr && (
+																		<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																			NEW PR
+																		</Badge>
+																	)}
+																	{set.notes && !set.is_pr && (
+																		<span className="text-muted-foreground">
+																			{set.notes}
+																		</span>
+																	)}
+																</td>
+															</tr>
+														))}
+													</tbody>
+												</table>
+											</div>
+										</div>
+									)}
+								</Card>
+							</motion.div>
+						))}
+					</div>
+				</motion.div>
 
-                {/* Force Breakdown */}
-                <div className="mt-4 p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                  <h3 className="text-sm text-[#9CA3AF] mb-3">Force Distribution</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-[#E5E7EB]">Concentric</span>
-                        <span className="text-sm text-[#E5E7EB]">
-                          {mockSession.metrics.concentricForce}%
-                        </span>
-                      </div>
-                      <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626]"
-                          style={{ width: `${mockSession.metrics.concentricForce}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-[#E5E7EB]">Eccentric</span>
-                        <span className="text-sm text-[#E5E7EB]">
-                          {mockSession.metrics.eccentricForce}%
-                        </span>
-                      </div>
-                      <div className="h-2 bg-[#1a1a1a] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#10B981] to-[#059669]"
-                          style={{ width: `${mockSession.metrics.eccentricForce}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-        </motion.div>
+				{/* Actions */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.4 }}
+					className="flex flex-col sm:flex-row gap-3 print:hidden"
+				>
+					{isPremium ? (
+						<Button
+							className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							onClick={() => setPickerOpen(true)}
+						>
+							<BarChart3 className="w-4 h-4 mr-2" />
+							Compare with...
+						</Button>
+					) : (
+						<Button
+							className="flex-1 border-secondary text-muted-foreground"
+							variant="outline"
+							disabled
+							title="Upgrade to compare sessions"
+						>
+							<BarChart3 className="w-4 h-4 mr-2" />
+							Compare with...
+						</Button>
+					)}
+					<Button
+						variant="outline"
+						className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						onClick={() => toast("Session sharing coming in a future update")}
+					>
+						<Share2 className="w-4 h-4 mr-2" />
+						Share Summary
+					</Button>
+				</motion.div>
 
-        {/* Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="flex flex-col sm:flex-row gap-3"
-        >
-          <Button
-            className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Compare to Previous
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-          >
-            <Share2 className="w-4 h-4 mr-2" />
-            Share Summary
-          </Button>
-        </motion.div>
+				{/* Comparison Session Picker */}
+				<div className="print:hidden">
+					<ComparisonSessionPicker
+						open={pickerOpen}
+						onClose={() => setPickerOpen(false)}
+						excludeSessionId={sessionId}
+						onSelect={(selectedSessionId) =>
+							navigate(`/compare?a=${sessionId}&b=${selectedSessionId}`)
+						}
+					/>
+				</div>
 
-        {/* Notes Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] p-4">
-            <h3 className="text-lg font-semibold text-white mb-3">Workout Notes</h3>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes about this workout..."
-              className="w-full bg-[#0D0D0D] border border-[#374151] rounded-lg p-3 text-white placeholder:text-[#6B7280] focus:border-[#FF6B35] focus:outline-none resize-none"
-              rows={4}
-            />
-            <Button
-              size="sm"
-              className="mt-3 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
-            >
-              Save Notes
-            </Button>
-          </Card>
-        </motion.div>
-      </div>
-    </div>
-  );
+				{/* Notes Section */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.5 }}
+					className="print:hidden"
+				>
+					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4">
+						<h3 className="text-lg font-semibold text-white mb-3">
+							Workout Notes
+						</h3>
+						<textarea
+							value={notes}
+							onChange={(e) => setNotes(e.target.value)}
+							placeholder="Add notes about this workout..."
+							className="w-full bg-background border border-secondary rounded-lg p-3 text-white placeholder:text-muted focus:border-primary focus:outline-none resize-none"
+							rows={4}
+						/>
+						<Button
+							size="sm"
+							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						>
+							Save Notes
+						</Button>
+					</Card>
+				</motion.div>
+
+				{/* Print-only branding footer */}
+				<div className="print-only mt-8 border-t border-gray-300 pt-4 text-center text-sm text-gray-500">
+					<img
+						src={phoenixLogo}
+						alt="Phoenix Portal"
+						className="h-8 mx-auto mb-2"
+					/>
+					<p>
+						Generated by Phoenix Portal &mdash;{" "}
+						{new Date().toLocaleDateString()}
+					</p>
+				</div>
+			</div>
+		</div>
+	);
 }

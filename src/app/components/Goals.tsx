@@ -1,0 +1,779 @@
+import { useQuery } from "@tanstack/react-query";
+import {
+	Archive,
+	Award,
+	ChevronDown,
+	ChevronUp,
+	Edit2,
+	Plus,
+	Target,
+	TrendingUp,
+} from "lucide-react";
+import { motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FeatureHint } from "@/app/components/FeatureHint";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@/app/components/ui/dialog";
+import { EmptyState } from "@/app/components/ui/empty-state";
+import { Input } from "@/app/components/ui/input";
+import { Label } from "@/app/components/ui/label";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/app/components/ui/tabs";
+import { useAuth } from "@/app/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
+import {
+	useArchiveGoal,
+	useCreateGoal,
+	useUpdateGoal,
+} from "@/mutations/goals";
+import { goalsOptions } from "@/queries/goals";
+import { personalRecordsOptions } from "@/queries/records";
+import { workoutListOptions } from "@/queries/workouts";
+import type { Goal } from "@/schemas/goals";
+import { GoalCelebration } from "./GoalCelebration";
+import { GoalProgressRing } from "./GoalProgressRing";
+
+// ---------- Progress computation hook (exported for Dashboard widget) ----------
+
+export function useGoalProgress(): Map<string, number> {
+	const { user } = useAuth();
+	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
+	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? ""));
+	const { data: records } = useQuery(personalRecordsOptions(user?.id ?? ""));
+
+	return useMemo(() => {
+		const map = new Map<string, number>();
+		if (!goals) return map;
+
+		const now = new Date();
+		const activeGoals = goals.filter((g) => g.status === "active");
+
+		for (const goal of activeGoals) {
+			let progress = 0;
+
+			if (goal.goal_type === "frequency" && workouts) {
+				const periodStart = getPeriodStart(now, goal.period);
+				const workoutsInPeriod = workouts.filter(
+					(w) => w.started_at >= periodStart,
+				);
+				// Count distinct workout days
+				const distinctDays = new Set(
+					workoutsInPeriod.map((w) => w.started_at.toDateString()),
+				);
+				progress = (distinctDays.size / goal.target_value) * 100;
+			} else if (goal.goal_type === "volume" && workouts) {
+				const periodStart = getPeriodStart(now, goal.period);
+				const workoutsInPeriod = workouts.filter(
+					(w) => w.started_at >= periodStart,
+				);
+				// total_volume is already Zod-transformed (doubled)
+				const totalVolume = workoutsInPeriod.reduce(
+					(sum, w) => sum + w.total_volume,
+					0,
+				);
+				progress = (totalVolume / goal.target_value) * 100;
+			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
+				// Check if any PR for this exercise meets or exceeds the target
+				// PR values are already Zod-transformed (doubled)
+				const exercisePRs = records.filter(
+					(r) =>
+						r.exercise_name.toLowerCase() === goal.exercise_name!.toLowerCase(),
+				);
+				if (exercisePRs.length > 0) {
+					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
+					progress = (bestPR / goal.target_value) * 100;
+				}
+			}
+
+			map.set(goal.id, Math.min(progress, 100));
+		}
+
+		return map;
+	}, [goals, workouts, records]);
+}
+
+function getPeriodStart(now: Date, period: string): Date {
+	const start = new Date(now);
+	if (period === "monthly") {
+		start.setDate(1);
+		start.setHours(0, 0, 0, 0);
+	} else {
+		// weekly: start of current week (Monday)
+		const day = start.getDay();
+		const diff = day === 0 ? 6 : day - 1; // Monday = 0
+		start.setDate(start.getDate() - diff);
+		start.setHours(0, 0, 0, 0);
+	}
+	return start;
+}
+
+// ---------- Goal type labels ----------
+
+const goalTypeIcons = {
+	frequency: Target,
+	volume: TrendingUp,
+	pr: Award,
+};
+
+function getGoalDescription(goal: Goal): string {
+	switch (goal.goal_type) {
+		case "frequency":
+			return `${goal.target_value} workouts per ${goal.period === "monthly" ? "month" : "week"}`;
+		case "volume":
+			return `${goal.target_value.toLocaleString()} kg per ${goal.period === "monthly" ? "month" : "week"}`;
+		case "pr":
+			return `${goal.exercise_name}: ${goal.target_value} kg`;
+		default:
+			return "Goal";
+	}
+}
+
+function getProgressText(goal: Goal, progress: number): string {
+	const achieved = Math.round((progress / 100) * goal.target_value);
+	switch (goal.goal_type) {
+		case "frequency":
+			return `${achieved}/${goal.target_value} workouts this ${goal.period === "monthly" ? "month" : "week"}`;
+		case "volume":
+			return `${achieved.toLocaleString()}/${goal.target_value.toLocaleString()} kg this ${goal.period === "monthly" ? "month" : "week"}`;
+		case "pr":
+			return progress >= 100
+				? "Target reached!"
+				: `${Math.round(progress)}% of target`;
+		default:
+			return `${Math.round(progress)}%`;
+	}
+}
+
+// ---------- Goals Page ----------
+
+export function Goals() {
+	const { user } = useAuth();
+	const { isPremium } = useSubscription();
+	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
+	const progressMap = useGoalProgress();
+	const createGoal = useCreateGoal();
+	const updateGoal = useUpdateGoal();
+	const archiveGoal = useArchiveGoal();
+
+	const [createOpen, setCreateOpen] = useState(false);
+	const [editGoal, setEditGoal] = useState<Goal | null>(null);
+	const [showCompleted, setShowCompleted] = useState(false);
+	const [celebration, setCelebration] = useState<{
+		isOpen: boolean;
+		goalType: "frequency" | "volume" | "pr";
+		description: string;
+		achievedValue: string;
+	}>({
+		isOpen: false,
+		goalType: "frequency",
+		description: "",
+		achievedValue: "",
+	});
+
+	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
+	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
+
+	const maxGoals = isPremium ? 3 : 1;
+	const atLimit = activeGoals.length >= maxGoals;
+
+	// Track which goals we have already celebrated to avoid re-triggering
+	const celebratedRef = useRef(new Set<string>());
+
+	// Goal achievement detection
+	const handleGoalComplete = useCallback(
+		(goal: Goal) => {
+			if (celebratedRef.current.has(goal.id)) return;
+			celebratedRef.current.add(goal.id);
+
+			updateGoal.mutate({
+				goalId: goal.id,
+				updates: {
+					status: "completed",
+					completed_at: new Date().toISOString(),
+				},
+			});
+
+			setCelebration({
+				isOpen: true,
+				goalType: goal.goal_type,
+				description: getGoalDescription(goal),
+				achievedValue:
+					goal.goal_type === "pr"
+						? `${goal.target_value} kg`
+						: `${goal.target_value} ${goal.target_unit}`,
+			});
+		},
+		[updateGoal],
+	);
+
+	// Check for completed goals on each render
+	useEffect(() => {
+		for (const goal of activeGoals) {
+			const progress = progressMap.get(goal.id) ?? 0;
+			if (progress >= 100) {
+				handleGoalComplete(goal);
+				break; // One celebration at a time
+			}
+		}
+	}, [activeGoals, progressMap, handleGoalComplete]);
+
+	// Tier gate for FREE users
+	if (!isPremium && !isPending) {
+		return (
+			<div className="min-h-screen bg-background pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+					>
+						<h1 className="text-3xl sm:text-4xl mb-2">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Training Goals
+							</span>
+						</h1>
+						<p className="text-muted-foreground mb-8">
+							Set targets, track progress, achieve greatness.
+						</p>
+					</motion.div>
+
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.1 }}
+					>
+						<EmptyState
+							icon={Target}
+							title="Upgrade to set goals"
+							description="Goal tracking is available for Phoenix and Elite subscribers. Set workout frequency, volume, and PR targets to stay motivated."
+							actionLabel="View Plans"
+							actionHref="/pricing"
+						/>
+					</motion.div>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{/* Header */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					className="flex items-center justify-between mb-8"
+				>
+					<div>
+						<h1 className="text-3xl sm:text-4xl mb-2">
+							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								Training Goals
+							</span>
+						</h1>
+						<p className="text-muted-foreground">
+							Set targets, track progress, achieve greatness.
+						</p>
+					</div>
+					<FeatureHint
+						hintId="goals-set-target"
+						content="Set workout frequency, volume, or PR targets to track your progress"
+						side="bottom"
+					>
+						<Button
+							onClick={() => setCreateOpen(true)}
+							disabled={atLimit}
+							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							title={
+								atLimit
+									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
+									: "Create new goal"
+							}
+						>
+							<Plus className="w-4 h-4 mr-2" />
+							New Goal
+						</Button>
+					</FeatureHint>
+				</motion.div>
+
+				{/* Active Goals */}
+				{isPending ? (
+					<div className="space-y-4">
+						{Array.from({ length: 2 }).map((_, i) => (
+							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
+								<div className="h-20" />
+							</Card>
+						))}
+					</div>
+				) : activeGoals.length === 0 ? (
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.1 }}
+					>
+						<EmptyState
+							icon={Target}
+							title="No active goals"
+							description="Set a training goal to start tracking your progress. You can track workout frequency, volume, or personal records."
+							actionLabel="Create a Goal"
+							onAction={() => setCreateOpen(true)}
+						/>
+					</motion.div>
+				) : (
+					<div className="space-y-4 mb-8">
+						{activeGoals.map((goal, index) => {
+							const progress = progressMap.get(goal.id) ?? 0;
+							const Icon = goalTypeIcons[goal.goal_type];
+							return (
+								<motion.div
+									key={goal.id}
+									initial={{ opacity: 0, y: 20 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{ delay: index * 0.1 }}
+								>
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
+										<div className="flex items-center gap-4">
+											<GoalProgressRing progress={progress} />
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-2 mb-1">
+													<Icon className="w-4 h-4 text-primary" />
+													<h3 className="text-lg font-semibold text-white">
+														{getGoalDescription(goal)}
+													</h3>
+												</div>
+												<p className="text-sm text-muted-foreground">
+													{getProgressText(goal, progress)}
+												</p>
+												{goal.deadline && (
+													<p className="text-xs text-muted mt-1">
+														Deadline: {goal.deadline.toLocaleDateString()}
+													</p>
+												)}
+											</div>
+											<div className="flex items-center gap-2">
+												<Button
+													variant="ghost"
+													size="icon"
+													onClick={() => setEditGoal(goal)}
+													className="hover:bg-primary/10"
+													title="Edit goal"
+												>
+													<Edit2 className="w-4 h-4 text-muted-foreground" />
+												</Button>
+												<Button
+													variant="ghost"
+													size="icon"
+													onClick={() => archiveGoal.mutate(goal.id)}
+													className="hover:bg-chart-2/10"
+													title="Archive goal"
+												>
+													<Archive className="w-4 h-4 text-muted-foreground" />
+												</Button>
+											</div>
+										</div>
+									</Card>
+								</motion.div>
+							);
+						})}
+					</div>
+				)}
+
+				{/* Completed Goals */}
+				{completedGoals.length > 0 && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.3 }}
+					>
+						<button
+							onClick={() => setShowCompleted(!showCompleted)}
+							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+						>
+							{showCompleted ? (
+								<ChevronUp className="w-4 h-4" />
+							) : (
+								<ChevronDown className="w-4 h-4" />
+							)}
+							<span className="text-sm font-medium">
+								Completed Goals ({completedGoals.length})
+							</span>
+						</button>
+
+						{showCompleted && (
+							<div className="space-y-3">
+								{completedGoals.map((goal) => (
+									<Card
+										key={goal.id}
+										className="p-4 bg-surface-2/50 border-secondary"
+									>
+										<div className="flex items-center gap-3">
+											<div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
+												<Award className="w-4 h-4 text-success" />
+											</div>
+											<div className="flex-1">
+												<p className="text-sm text-white">
+													{getGoalDescription(goal)}
+												</p>
+												<p className="text-xs text-muted-foreground">
+													Completed{" "}
+													{goal.completed_at?.toLocaleDateString() ?? ""}
+												</p>
+											</div>
+										</div>
+									</Card>
+								))}
+							</div>
+						)}
+					</motion.div>
+				)}
+
+				{/* Limit indicator */}
+				<motion.div
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					transition={{ delay: 0.4 }}
+					className="mt-6 text-center"
+				>
+					<p className="text-xs text-muted">
+						{activeGoals.length}/{maxGoals} active goal
+						{maxGoals > 1 ? "s" : ""}
+						{!isPremium && " (upgrade for more)"}
+					</p>
+				</motion.div>
+			</div>
+
+			{/* Create Goal Dialog */}
+			<GoalFormDialog
+				open={createOpen}
+				onOpenChange={setCreateOpen}
+				title="Create Goal"
+				onSubmit={(data) => {
+					createGoal.mutate(data);
+					setCreateOpen(false);
+				}}
+			/>
+
+			{/* Edit Goal Dialog */}
+			{editGoal && (
+				<GoalFormDialog
+					open={!!editGoal}
+					onOpenChange={(open) => {
+						if (!open) setEditGoal(null);
+					}}
+					title="Edit Goal"
+					defaultValues={{
+						goal_type: editGoal.goal_type,
+						target_value: editGoal.target_value,
+						exercise_name: editGoal.exercise_name ?? "",
+						deadline: editGoal.deadline
+							? editGoal.deadline.toISOString().split("T")[0]
+							: "",
+						period: editGoal.period,
+					}}
+					onSubmit={(data) => {
+						updateGoal.mutate({
+							goalId: editGoal.id,
+							updates: {
+								target_value: data.target_value,
+								target_unit: data.target_unit,
+								exercise_name: data.exercise_name ?? null,
+								deadline: data.deadline ?? null,
+								period: data.period,
+							},
+						});
+						setEditGoal(null);
+					}}
+				/>
+			)}
+
+			{/* Celebration Animation */}
+			<GoalCelebration
+				isOpen={celebration.isOpen}
+				onClose={() => setCelebration((prev) => ({ ...prev, isOpen: false }))}
+				goalData={{
+					goalType: celebration.goalType,
+					description: celebration.description,
+					achievedValue: celebration.achievedValue,
+				}}
+			/>
+		</div>
+	);
+}
+
+// ---------- Goal Form Dialog ----------
+
+interface GoalFormDialogProps {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	title: string;
+	defaultValues?: {
+		goal_type: "frequency" | "volume" | "pr";
+		target_value: number;
+		exercise_name?: string;
+		deadline?: string;
+		period: "weekly" | "monthly";
+	};
+	onSubmit: (data: {
+		goal_type: "frequency" | "volume" | "pr";
+		target_value: number;
+		target_unit: string;
+		exercise_name?: string | null;
+		deadline?: string | null;
+		period: "weekly" | "monthly";
+	}) => void;
+}
+
+function GoalFormDialog({
+	open,
+	onOpenChange,
+	title,
+	defaultValues,
+	onSubmit,
+}: GoalFormDialogProps) {
+	const [goalType, setGoalType] = useState<"frequency" | "volume" | "pr">(
+		defaultValues?.goal_type ?? "frequency",
+	);
+	const [targetValue, setTargetValue] = useState(
+		defaultValues?.target_value?.toString() ?? "",
+	);
+	const [exerciseName, setExerciseName] = useState(
+		defaultValues?.exercise_name ?? "",
+	);
+	const [deadline, setDeadline] = useState(defaultValues?.deadline ?? "");
+	const [period, setPeriod] = useState<"weekly" | "monthly">(
+		defaultValues?.period ?? "weekly",
+	);
+
+	// Reset form when dialog opens with different defaults
+	useEffect(() => {
+		if (open) {
+			setGoalType(defaultValues?.goal_type ?? "frequency");
+			setTargetValue(defaultValues?.target_value?.toString() ?? "");
+			setExerciseName(defaultValues?.exercise_name ?? "");
+			setDeadline(defaultValues?.deadline ?? "");
+			setPeriod(defaultValues?.period ?? "weekly");
+		}
+	}, [
+		open,
+		defaultValues?.goal_type,
+		defaultValues?.target_value,
+		defaultValues?.exercise_name,
+		defaultValues?.deadline,
+		defaultValues?.period,
+	]);
+
+	const getTargetUnit = (): string => {
+		switch (goalType) {
+			case "frequency":
+				return period === "monthly" ? "workouts/month" : "workouts/week";
+			case "volume":
+				return period === "monthly" ? "kg/month" : "kg/week";
+			case "pr":
+				return "kg";
+		}
+	};
+
+	const handleSubmit = () => {
+		const value = parseFloat(targetValue);
+		if (isNaN(value) || value <= 0) return;
+		if (goalType === "pr" && !exerciseName.trim()) return;
+
+		onSubmit({
+			goal_type: goalType,
+			target_value: value,
+			target_unit: getTargetUnit(),
+			exercise_name: goalType === "pr" ? exerciseName.trim() : null,
+			deadline: goalType === "pr" && deadline ? deadline : null,
+			period,
+		});
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="bg-background border-secondary sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle className="text-white">{title}</DialogTitle>
+				</DialogHeader>
+
+				<div className="space-y-6 py-4">
+					{/* Goal Type Tabs */}
+					<Tabs
+						value={goalType}
+						onValueChange={(v) =>
+							setGoalType(v as "frequency" | "volume" | "pr")
+						}
+					>
+						<TabsList className="w-full">
+							<TabsTrigger value="frequency" className="flex-1">
+								<Target className="w-4 h-4 mr-1" />
+								Frequency
+							</TabsTrigger>
+							<TabsTrigger value="volume" className="flex-1">
+								<TrendingUp className="w-4 h-4 mr-1" />
+								Volume
+							</TabsTrigger>
+							<TabsTrigger value="pr" className="flex-1">
+								<Award className="w-4 h-4 mr-1" />
+								PR
+							</TabsTrigger>
+						</TabsList>
+
+						<TabsContent value="frequency" className="space-y-4 mt-4">
+							<div>
+								<Label htmlFor="freq-target">
+									Target workouts per {period === "monthly" ? "month" : "week"}
+								</Label>
+								<Input
+									id="freq-target"
+									type="number"
+									min={1}
+									placeholder="e.g. 4"
+									value={targetValue}
+									onChange={(e) => setTargetValue(e.target.value)}
+									className="mt-1 bg-input/30"
+								/>
+							</div>
+							<div>
+								<Label>Period</Label>
+								<div className="flex gap-2 mt-1">
+									<Button
+										type="button"
+										variant={period === "weekly" ? "default" : "outline"}
+										size="sm"
+										onClick={() => setPeriod("weekly")}
+										className={
+											period === "weekly"
+												? "bg-primary border-primary"
+												: "border-secondary"
+										}
+									>
+										Weekly
+									</Button>
+									<Button
+										type="button"
+										variant={period === "monthly" ? "default" : "outline"}
+										size="sm"
+										onClick={() => setPeriod("monthly")}
+										className={
+											period === "monthly"
+												? "bg-primary border-primary"
+												: "border-secondary"
+										}
+									>
+										Monthly
+									</Button>
+								</div>
+							</div>
+						</TabsContent>
+
+						<TabsContent value="volume" className="space-y-4 mt-4">
+							<div>
+								<Label htmlFor="vol-target">
+									Target volume (kg) per{" "}
+									{period === "monthly" ? "month" : "week"}
+								</Label>
+								<Input
+									id="vol-target"
+									type="number"
+									min={1}
+									placeholder="e.g. 10000"
+									value={targetValue}
+									onChange={(e) => setTargetValue(e.target.value)}
+									className="mt-1 bg-input/30"
+								/>
+							</div>
+							<div>
+								<Label>Period</Label>
+								<div className="flex gap-2 mt-1">
+									<Button
+										type="button"
+										variant={period === "weekly" ? "default" : "outline"}
+										size="sm"
+										onClick={() => setPeriod("weekly")}
+										className={
+											period === "weekly"
+												? "bg-primary border-primary"
+												: "border-secondary"
+										}
+									>
+										Weekly
+									</Button>
+									<Button
+										type="button"
+										variant={period === "monthly" ? "default" : "outline"}
+										size="sm"
+										onClick={() => setPeriod("monthly")}
+										className={
+											period === "monthly"
+												? "bg-primary border-primary"
+												: "border-secondary"
+										}
+									>
+										Monthly
+									</Button>
+								</div>
+							</div>
+						</TabsContent>
+
+						<TabsContent value="pr" className="space-y-4 mt-4">
+							<div>
+								<Label htmlFor="pr-exercise">Exercise Name</Label>
+								<Input
+									id="pr-exercise"
+									type="text"
+									placeholder="e.g. Bench Press"
+									value={exerciseName}
+									onChange={(e) => setExerciseName(e.target.value)}
+									className="mt-1 bg-input/30"
+								/>
+							</div>
+							<div>
+								<Label htmlFor="pr-target">Target Weight (kg)</Label>
+								<Input
+									id="pr-target"
+									type="number"
+									min={1}
+									placeholder="e.g. 100"
+									value={targetValue}
+									onChange={(e) => setTargetValue(e.target.value)}
+									className="mt-1 bg-input/30"
+								/>
+							</div>
+							<div>
+								<Label htmlFor="pr-deadline">Deadline (optional)</Label>
+								<Input
+									id="pr-deadline"
+									type="date"
+									value={deadline}
+									onChange={(e) => setDeadline(e.target.value)}
+									className="mt-1 bg-input/30"
+								/>
+							</div>
+						</TabsContent>
+					</Tabs>
+
+					{/* Submit */}
+					<Button
+						onClick={handleSubmit}
+						className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						disabled={
+							!targetValue ||
+							parseFloat(targetValue) <= 0 ||
+							(goalType === "pr" && !exerciseName.trim())
+						}
+					>
+						{title === "Create Goal" ? "Create Goal" : "Save Changes"}
+					</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
