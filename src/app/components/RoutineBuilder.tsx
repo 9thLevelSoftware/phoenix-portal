@@ -1,580 +1,766 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { move } from "@dnd-kit/helpers";
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { useQuery } from "@tanstack/react-query";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
+	ArrowLeft,
+	Dumbbell,
+	Edit,
+	Eye,
+	GripVertical,
+	Loader2,
+	Plus,
+	Save,
+	Search,
+	X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
+import { Card } from "@/app/components/ui/card";
 import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Card } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
-import { Badge } from '@/app/components/ui/badge';
-import {
-  ArrowLeft,
-  Plus,
-  GripVertical,
-  Edit,
-  X,
-  Eye,
-  Save,
-  Dumbbell,
-} from 'lucide-react';
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/app/components/ui/dialog";
+import { Input } from "@/app/components/ui/input";
+import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
+import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
+import { supabase } from "@/lib/supabase";
+import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
+import { useAuth } from "@/providers/AuthProvider";
+import { routineDetailOptions } from "@/queries/routines";
 
 interface Exercise {
-  id: string;
-  name: string;
-  muscleGroup: string;
-  sets: number;
-  reps: number;
-  weight: number;
-  rest: number;
-  mode: string;
+	id: string;
+	name: string;
+	muscleGroup: string;
+	sets: number;
+	reps: number;
+	weight: number;
+	rest: number;
+	mode: string;
 }
 
-interface RoutineBuilderProps {
-  routineId?: string;
-  onBack: () => void;
-  onSave: (routine: any) => void;
-}
+export function RoutineBuilder() {
+	const { routineId } = useParams<{ routineId: string }>();
+	const navigate = useNavigate();
+	const { user } = useAuth();
+	const saveMutation = useSaveRoutine();
+	const updateMutation = useUpdateRoutine();
+	const isEditing = !!routineId;
 
-export function RoutineBuilder({ routineId, onBack, onSave }: RoutineBuilderProps) {
-  const [routineName, setRoutineName] = useState('Untitled Routine');
-  const [exercises, setExercises] = useState<Exercise[]>([
-    {
-      id: '1',
-      name: 'Bench Press',
-      muscleGroup: 'Chest',
-      sets: 3,
-      reps: 10,
-      weight: 80,
-      rest: 90,
-      mode: 'Old School',
-    },
-    {
-      id: '2',
-      name: 'Incline Dumbbell Press',
-      muscleGroup: 'Chest',
-      sets: 3,
-      reps: 12,
-      weight: 35,
-      rest: 60,
-      mode: 'Pump',
-    },
-  ]);
-  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-  const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+	// Fetch existing routine for editing
+	const { data: existingRoutine, isLoading: isLoadingRoutine } = useQuery({
+		...routineDetailOptions(routineId ?? ""),
+		enabled: !!routineId,
+	});
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+	const [routineName, setRoutineName] = useState("Untitled Routine");
+	const [exercises, setExercises] = useState<Exercise[]>([]);
+	const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+	const [showExercisePicker, setShowExercisePicker] = useState(false);
+	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [showPreview, setShowPreview] = useState(false);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
+	// Populate form state from existing routine
+	useEffect(() => {
+		if (existingRoutine) {
+			setRoutineName(existingRoutine.name);
+			setExercises(
+				existingRoutine.routine_exercises.map((ex) => ({
+					id: ex.id,
+					name: ex.name,
+					muscleGroup: ex.muscle_group,
+					sets: ex.sets,
+					reps: ex.reps,
+					weight: ex.weight,
+					rest: ex.rest_seconds,
+					mode: ex.mode,
+				})),
+			);
+		}
+	}, [existingRoutine]);
 
-    if (over && active.id !== over.id) {
-      setExercises((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-      setHasUnsavedChanges(true);
-    }
-  };
+	const handleDragEnd = (event: { canceled: boolean }) => {
+		if (!event.canceled) {
+			setExercises((items) => move(items, event as any));
+			setHasUnsavedChanges(true);
+		}
+	};
 
-  const handleDeleteExercise = (id: string) => {
-    setExercises(exercises.filter((ex) => ex.id !== id));
-    if (selectedExercise === id) {
-      setSelectedExercise(null);
-    }
-    setHasUnsavedChanges(true);
-  };
+	const handleDeleteExercise = (id: string) => {
+		setExercises(exercises.filter((ex) => ex.id !== id));
+		if (selectedExercise === id) {
+			setSelectedExercise(null);
+		}
+		setHasUnsavedChanges(true);
+	};
 
-  const handleSave = () => {
-    onSave({ name: routineName, exercises });
-    setHasUnsavedChanges(false);
-  };
+	const buildExercisePayload = () =>
+		exercises.map((ex, i) => ({
+			name: ex.name,
+			muscle_group: ex.muscleGroup,
+			sets: ex.sets,
+			reps: ex.reps,
+			weight: ex.weight,
+			rest_seconds: ex.rest,
+			mode: ex.mode,
+			order_index: i,
+		}));
 
-  const totalDuration = exercises.reduce((sum, ex) => {
-    return sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest) / 60;
-  }, 0);
+	const handleSave = () => {
+		const payload = {
+			name: routineName,
+			description: "",
+			exercises: buildExercisePayload(),
+		};
 
-  return (
-    <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
-      {/* Top Bar */}
-      <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0D0D0D] border-b border-[#374151] sticky top-0 z-50 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onBack}
-              className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Cancel
-            </Button>
+		if (isEditing && routineId) {
+			updateMutation.mutate(
+				{ ...payload, routineId },
+				{ onSuccess: () => setHasUnsavedChanges(false) },
+			);
+		} else {
+			saveMutation.mutate(payload, {
+				onSuccess: () => setHasUnsavedChanges(false),
+			});
+		}
+	};
 
-            <div className="flex items-center gap-3">
-              {hasUnsavedChanges && (
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-[#FF6B35] rounded-full animate-pulse" />
-                  <span className="text-sm text-[#9CA3AF]">Unsaved changes</span>
-                </div>
-              )}
-              <Input
-                value={routineName}
-                onChange={(e) => {
-                  setRoutineName(e.target.value);
-                  setHasUnsavedChanges(true);
-                }}
-                className="text-xl font-semibold bg-transparent border-none text-white focus-visible:ring-0 w-64 text-center"
-              />
-            </div>
+	const handleBackClick = () => {
+		if (hasUnsavedChanges) {
+			setShowUnsavedDialog(true);
+		} else {
+			navigate("/routines");
+		}
+	};
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Preview
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Save Routine
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+	const isSaving = saveMutation.isPending || updateMutation.isPending;
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Exercise List */}
-          <div className="lg:col-span-2">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-white">Exercises</h2>
-                <p className="text-sm text-[#9CA3AF]">
-                  {exercises.length} exercises • ~{Math.round(totalDuration)} min
-                </p>
-              </div>
-            </div>
+	const totalDuration = exercises.reduce((sum, ex) => {
+		return sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest) / 60;
+	}, 0);
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={exercises.map((ex) => ex.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-3">
-                  {exercises.map((exercise) => (
-                    <SortableExerciseItem
-                      key={exercise.id}
-                      exercise={exercise}
-                      isSelected={selectedExercise === exercise.id}
-                      onSelect={() => setSelectedExercise(exercise.id)}
-                      onDelete={() => handleDeleteExercise(exercise.id)}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+	if (isEditing && isLoadingRoutine) {
+		return (
+			<div className="min-h-screen bg-background flex items-center justify-center">
+				<div className="flex flex-col items-center gap-4">
+					<Loader2 className="w-8 h-8 text-primary animate-spin" />
+					<p className="text-muted-foreground">Loading routine...</p>
+				</div>
+			</div>
+		);
+	}
 
-            <Button
-              onClick={() => setShowExercisePicker(true)}
-              variant="outline"
-              className="w-full mt-4 border-dashed border-2 border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Exercise
-            </Button>
-          </div>
+	return (
+		<div className="min-h-screen bg-background pb-24 md:pb-8">
+			{/* Top Bar */}
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50 backdrop-blur-xl">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+					<div className="flex items-center justify-between">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleBackClick}
+							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<ArrowLeft className="w-4 h-4 mr-2" />
+							Cancel
+						</Button>
 
-          {/* Right: Exercise Detail Panel */}
-          <div className="lg:col-span-1">
-            <AnimatePresence mode="wait">
-              {selectedExercise ? (
-                <ExerciseDetailPanel
-                  exercise={exercises.find((ex) => ex.id === selectedExercise)!}
-                  onUpdate={(updated) => {
-                    setExercises(
-                      exercises.map((ex) =>
-                        ex.id === selectedExercise ? { ...ex, ...updated } : ex
-                      )
-                    );
-                    setHasUnsavedChanges(true);
-                  }}
-                  onClose={() => setSelectedExercise(null)}
-                />
-              ) : (
-                <EmptyDetailPanel />
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </div>
+						<div className="flex items-center gap-3">
+							{hasUnsavedChanges && (
+								<div className="flex items-center gap-2">
+									<div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+									<span className="text-sm text-muted-foreground">
+										Unsaved changes
+									</span>
+								</div>
+							)}
+							<Input
+								value={routineName}
+								onChange={(e) => {
+									setRoutineName(e.target.value);
+									setHasUnsavedChanges(true);
+								}}
+								className="text-xl font-semibold bg-transparent border-none text-white focus-visible:ring-0 w-64 text-center"
+							/>
+						</div>
 
-      {/* Exercise Picker Modal */}
-      <AnimatePresence>
-        {showExercisePicker && (
-          <ExercisePickerModal
-            onClose={() => setShowExercisePicker(false)}
-            onSelect={(selectedExercises) => {
-              const newExercises: Exercise[] = selectedExercises.map((ex, i) => ({
-                id: (Date.now() + i).toString(),
-                ...ex,
-                sets: 3,
-                reps: 10,
-                weight: 0,
-                rest: 90,
-                mode: 'Old School',
-              }));
-              setExercises([...exercises, ...newExercises]);
-              setShowExercisePicker(false);
-              setHasUnsavedChanges(true);
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setShowPreview(true)}
+								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+							>
+								<Eye className="w-4 h-4 mr-2" />
+								Preview
+							</Button>
+							<Button
+								size="sm"
+								onClick={handleSave}
+								disabled={isSaving}
+								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							>
+								{isSaving ? (
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+								) : (
+									<Save className="w-4 h-4 mr-2" />
+								)}
+								{isSaving ? "Saving..." : "Save Routine"}
+							</Button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{/* Main Content */}
+			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+					{/* Left: Exercise List */}
+					<div className="lg:col-span-2">
+						<div className="mb-4 flex items-center justify-between">
+							<div>
+								<h2 className="text-xl font-semibold text-white">Exercises</h2>
+								<p className="text-sm text-muted-foreground">
+									{exercises.length} exercises • ~{Math.round(totalDuration)}{" "}
+									min
+								</p>
+							</div>
+						</div>
+
+						<DragDropProvider onDragEnd={handleDragEnd}>
+							<div className="space-y-3">
+								{exercises.map((exercise, index) => (
+									<SortableExerciseItem
+										key={exercise.id}
+										exercise={exercise}
+										index={index}
+										isSelected={selectedExercise === exercise.id}
+										onSelect={() => setSelectedExercise(exercise.id)}
+										onDelete={() => handleDeleteExercise(exercise.id)}
+									/>
+								))}
+							</div>
+						</DragDropProvider>
+
+						<Button
+							onClick={() => setShowExercisePicker(true)}
+							variant="outline"
+							className="w-full mt-4 border-dashed border-2 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<Plus className="w-4 h-4 mr-2" />
+							Add Exercise
+						</Button>
+					</div>
+
+					{/* Right: Exercise Detail Panel */}
+					<div className="lg:col-span-1">
+						<AnimatePresence mode="wait">
+							{selectedExercise ? (
+								<ExerciseDetailPanel
+									exercise={exercises.find((ex) => ex.id === selectedExercise)!}
+									onUpdate={(updated) => {
+										setExercises(
+											exercises.map((ex) =>
+												ex.id === selectedExercise ? { ...ex, ...updated } : ex,
+											),
+										);
+										setHasUnsavedChanges(true);
+									}}
+									onClose={() => setSelectedExercise(null)}
+								/>
+							) : (
+								<EmptyDetailPanel />
+							)}
+						</AnimatePresence>
+					</div>
+				</div>
+			</div>
+
+			{/* Exercise Picker Modal */}
+			<AnimatePresence>
+				{showExercisePicker && (
+					<ExercisePickerModal
+						onClose={() => setShowExercisePicker(false)}
+						onSelect={(exercise) => {
+							const newExercise: Exercise = {
+								id: Date.now().toString(),
+								...exercise,
+								sets: 3,
+								reps: 10,
+								weight: 0,
+								rest: 90,
+								mode: "Old School",
+							};
+							setExercises([...exercises, newExercise]);
+							setShowExercisePicker(false);
+							setHasUnsavedChanges(true);
+						}}
+					/>
+				)}
+			</AnimatePresence>
+
+			{/* Unsaved Changes Dialog */}
+			<UnsavedChangesDialog
+				open={showUnsavedDialog}
+				onSave={() => {
+					setShowUnsavedDialog(false);
+					handleSave();
+				}}
+				onDiscard={() => {
+					setShowUnsavedDialog(false);
+					navigate("/routines");
+				}}
+				onCancel={() => setShowUnsavedDialog(false)}
+			/>
+
+			{/* Preview Dialog */}
+			<Dialog open={showPreview} onOpenChange={setShowPreview}>
+				<DialogContent className="bg-surface-2 border-secondary">
+					<DialogHeader>
+						<DialogTitle className="text-white">{routineName}</DialogTitle>
+						<DialogDescription>Routine summary</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="p-3 bg-background rounded-lg border border-secondary">
+								<div className="text-sm text-muted-foreground">Exercises</div>
+								<div className="text-2xl font-bold text-white">
+									{exercises.length}
+								</div>
+							</div>
+							<div className="p-3 bg-background rounded-lg border border-secondary">
+								<div className="text-sm text-muted-foreground">
+									Est. Duration
+								</div>
+								<div className="text-2xl font-bold text-white">
+									~{Math.round(totalDuration)} min
+								</div>
+							</div>
+						</div>
+						<div className="space-y-2">
+							{exercises.map((ex) => (
+								<div
+									key={ex.id}
+									className="flex items-center justify-between p-2 bg-background rounded-lg border border-secondary"
+								>
+									<div>
+										<div className="font-medium text-white text-sm">
+											{ex.name}
+										</div>
+										<div className="text-xs text-muted-foreground">
+											{ex.muscleGroup}
+										</div>
+									</div>
+									<div className="text-sm text-muted-foreground">
+										{ex.sets}x{ex.reps} @ {ex.weight}kg
+									</div>
+								</div>
+							))}
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
 }
 
 function SortableExerciseItem({
-  exercise,
-  isSelected,
-  onSelect,
-  onDelete,
+	exercise,
+	index,
+	isSelected,
+	onSelect,
+	onDelete,
 }: {
-  exercise: Exercise;
-  isSelected: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
+	exercise: Exercise;
+	index: number;
+	isSelected: boolean;
+	onSelect: () => void;
+	onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: exercise.id,
-  });
+	const { ref, handleRef, isDragging } = useSortable({
+		id: exercise.id,
+		index,
+	});
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
+	const getMuscleGroupColor = (group: string) => {
+		const colors: Record<string, string> = {
+			Chest: "bg-primary",
+			Back: "bg-success",
+			Shoulders: "bg-accent",
+			Legs: "bg-chart-2",
+			Arms: "bg-warning",
+		};
+		return colors[group] || "bg-muted";
+	};
 
-  const getMuscleGroupColor = (group: string) => {
-    const colors: Record<string, string> = {
-      Chest: 'bg-[#FF6B35]',
-      Back: 'bg-[#10B981]',
-      Shoulders: 'bg-[#F59E0B]',
-      Legs: 'bg-[#DC2626]',
-      Arms: 'bg-[#FBBF24]',
-    };
-    return colors[group] || 'bg-[#6B7280]';
-  };
+	return (
+		<div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }}>
+			<Card
+				onClick={onSelect}
+				className={`p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all ${
+					isSelected ? "border-primary ring-1 ring-primary" : ""
+				}`}
+			>
+				<div className="flex items-center gap-3">
+					<button
+						ref={handleRef}
+						className="cursor-grab active:cursor-grabbing text-muted hover:text-muted-foreground"
+					>
+						<GripVertical className="w-5 h-5" />
+					</button>
 
-  return (
-    <div ref={setNodeRef} style={style}>
-      <Card
-        onClick={onSelect}
-        className={`p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] hover:border-[#FF6B35]/50 cursor-pointer transition-all ${
-          isSelected ? 'border-[#FF6B35] ring-1 ring-[#FF6B35]' : ''
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-[#6B7280] hover:text-[#9CA3AF]"
-          >
-            <GripVertical className="w-5 h-5" />
-          </button>
+					<div className="flex-1">
+						<div className="flex items-center gap-2 mb-1">
+							<h3 className="font-semibold text-white">{exercise.name}</h3>
+							<Badge
+								className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
+							>
+								{exercise.muscleGroup}
+							</Badge>
+						</div>
+						<p className="text-sm text-muted-foreground">
+							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight} kg
+							• {exercise.mode}
+						</p>
+						<p className="text-xs text-muted mt-1">
+							Rest: {exercise.rest}s between sets
+						</p>
+					</div>
 
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-white">{exercise.name}</h3>
-              <Badge className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}>
-                {exercise.muscleGroup}
-              </Badge>
-            </div>
-            <p className="text-sm text-[#9CA3AF]">
-              {exercise.sets} sets • {exercise.reps} reps • {exercise.weight} kg • {exercise.mode}
-            </p>
-            <p className="text-xs text-[#6B7280] mt-1">Rest: {exercise.rest}s between sets</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect();
-              }}
-              className="border-[#374151] text-[#9CA3AF] hover:border-[#FF6B35] hover:text-[#FF6B35]"
-            >
-              <Edit className="w-4 h-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="border-[#374151] text-[#EF4444] hover:border-[#EF4444]"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
+					<div className="flex items-center gap-2">
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={(e) => {
+								e.stopPropagation();
+								onSelect();
+							}}
+							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<Edit className="w-4 h-4" />
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={(e) => {
+								e.stopPropagation();
+								onDelete();
+							}}
+							className="border-secondary text-destructive hover:border-destructive"
+						>
+							<X className="w-4 h-4" />
+						</Button>
+					</div>
+				</div>
+			</Card>
+		</div>
+	);
 }
 
 function ExerciseDetailPanel({
-  exercise,
-  onUpdate,
-  onClose,
+	exercise,
+	onUpdate,
+	onClose,
 }: {
-  exercise: Exercise;
-  onUpdate: (updates: Partial<Exercise>) => void;
-  onClose: () => void;
+	exercise: Exercise;
+	onUpdate: (updates: Partial<Exercise>) => void;
+	onClose: () => void;
 }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-    >
-      <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] sticky top-24">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-white">Exercise Settings</h3>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onClose}
-            className="text-[#9CA3AF] hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
+	return (
+		<motion.div
+			initial={{ opacity: 0, x: 20 }}
+			animate={{ opacity: 1, x: 0 }}
+			exit={{ opacity: 0, x: 20 }}
+		>
+			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
+				<div className="flex items-center justify-between mb-6">
+					<h3 className="text-lg font-semibold text-white">
+						Exercise Settings
+					</h3>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={onClose}
+						className="text-muted-foreground hover:text-white"
+					>
+						<X className="w-4 h-4" />
+					</Button>
+				</div>
 
-        <div className="space-y-6">
-          {/* Sets Configuration */}
-          <div>
-            <label className="text-sm font-medium text-[#E5E7EB] mb-3 block">Sets</label>
-            <div className="space-y-2">
-              {Array.from({ length: exercise.sets }).map((_, i) => (
-                <div key={i} className="grid grid-cols-3 gap-2 text-sm">
-                  <Input
-                    type="number"
-                    value={exercise.reps}
-                    onChange={(e) => onUpdate({ reps: parseInt(e.target.value) })}
-                    className="bg-[#0D0D0D] border-[#374151] text-white"
-                    placeholder="Reps"
-                  />
-                  <Input
-                    type="number"
-                    value={exercise.weight}
-                    onChange={(e) => onUpdate({ weight: parseInt(e.target.value) })}
-                    className="bg-[#0D0D0D] border-[#374151] text-white"
-                    placeholder="kg"
-                  />
-                  <Input
-                    type="number"
-                    value={exercise.rest}
-                    onChange={(e) => onUpdate({ rest: parseInt(e.target.value) })}
-                    className="bg-[#0D0D0D] border-[#374151] text-white"
-                    placeholder="Rest"
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onUpdate({ sets: exercise.sets + 1 })}
-                className="border-[#374151] text-[#9CA3AF] flex-1"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Set
-              </Button>
-              {exercise.sets > 1 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onUpdate({ sets: exercise.sets - 1 })}
-                  className="border-[#374151] text-[#EF4444] flex-1"
-                >
-                  Remove Set
-                </Button>
-              )}
-            </div>
-          </div>
+				<div className="space-y-6">
+					{/* Sets Configuration */}
+					<div>
+						<label className="text-sm font-medium text-secondary-foreground mb-3 block">
+							Sets
+						</label>
+						<div className="space-y-2">
+							{Array.from({ length: exercise.sets }).map((_, i) => (
+								<div key={i} className="grid grid-cols-3 gap-2 text-sm">
+									<Input
+										type="number"
+										value={exercise.reps}
+										onChange={(e) =>
+											onUpdate({ reps: parseInt(e.target.value, 10) || 0 })
+										}
+										className="bg-background border-secondary text-white"
+										placeholder="Reps"
+									/>
+									<Input
+										type="number"
+										value={exercise.weight}
+										onChange={(e) =>
+											onUpdate({ weight: parseInt(e.target.value, 10) || 0 })
+										}
+										className="bg-background border-secondary text-white"
+										placeholder="kg"
+									/>
+									<Input
+										type="number"
+										value={exercise.rest}
+										onChange={(e) =>
+											onUpdate({ rest: parseInt(e.target.value, 10) || 0 })
+										}
+										className="bg-background border-secondary text-white"
+										placeholder="Rest"
+									/>
+								</div>
+							))}
+						</div>
+						<div className="flex gap-2 mt-3">
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => onUpdate({ sets: exercise.sets + 1 })}
+								className="border-secondary text-muted-foreground flex-1"
+							>
+								<Plus className="w-4 h-4 mr-1" />
+								Add Set
+							</Button>
+							{exercise.sets > 1 && (
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() => onUpdate({ sets: exercise.sets - 1 })}
+									className="border-secondary text-destructive flex-1"
+								>
+									Remove Set
+								</Button>
+							)}
+						</div>
+					</div>
 
-          {/* Training Mode */}
-          <div>
-            <label className="text-sm font-medium text-[#E5E7EB] mb-2 block">
-              Training Mode
-            </label>
-            <select
-              value={exercise.mode}
-              onChange={(e) => onUpdate({ mode: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-[#0D0D0D] border border-[#374151] text-white text-sm focus:border-[#FF6B35] focus:outline-none"
-            >
-              <option>Old School</option>
-              <option>Pump</option>
-              <option>TUT</option>
-              <option>TUT Beast</option>
-              <option>Eccentric Only</option>
-              <option>Echo</option>
-            </select>
-            <p className="text-xs text-[#6B7280] mt-1">Traditional resistance training</p>
-          </div>
-        </div>
-      </Card>
-    </motion.div>
-  );
+					{/* Training Mode */}
+					<div>
+						<label className="text-sm font-medium text-secondary-foreground mb-2 block">
+							Training Mode
+						</label>
+						<select
+							value={exercise.mode}
+							onChange={(e) => onUpdate({ mode: e.target.value })}
+							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+						>
+							<option>Old School</option>
+							<option>Pump</option>
+							<option>TUT</option>
+							<option>TUT Beast</option>
+							<option>Eccentric Only</option>
+							<option>Echo</option>
+						</select>
+						<p className="text-xs text-muted mt-1">
+							Traditional resistance training
+						</p>
+					</div>
+				</div>
+			</Card>
+		</motion.div>
+	);
 }
 
 function EmptyDetailPanel() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <Card className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] sticky top-24">
-        <div className="text-center py-12">
-          <Dumbbell className="w-12 h-12 text-[#6B7280] mx-auto mb-4" />
-          <p className="text-[#9CA3AF]">Select an exercise to configure</p>
-        </div>
-      </Card>
-    </motion.div>
-  );
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+		>
+			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
+				<div className="text-center py-12">
+					<Dumbbell className="w-12 h-12 text-muted mx-auto mb-4" />
+					<p className="text-muted-foreground">
+						Select an exercise to configure
+					</p>
+				</div>
+			</Card>
+		</motion.div>
+	);
 }
 
 function ExercisePickerModal({
-  onClose,
-  onSelect,
+	onClose,
+	onSelect,
 }: {
-  onClose: () => void;
-  onSelect: (exercises: Array<{ name: string; muscleGroup: string }>) => void;
+	onClose: () => void;
+	onSelect: (exercise: { name: string; muscleGroup: string }) => void;
 }) {
-  const [selected, setSelected] = useState<Array<{ name: string; muscleGroup: string }>>([]);
-  const exercises = [
-    { name: 'Bench Press', muscleGroup: 'Chest' },
-    { name: 'Squat', muscleGroup: 'Legs' },
-    { name: 'Deadlift', muscleGroup: 'Back' },
-    { name: 'Overhead Press', muscleGroup: 'Shoulders' },
-    { name: 'Barbell Row', muscleGroup: 'Back' },
-    { name: 'Pull-ups', muscleGroup: 'Back' },
-  ];
+	const [searchQuery, setSearchQuery] = useState("");
+	const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
 
-  const handleToggle = (exercise: { name: string; muscleGroup: string }) => {
-    setSelected((prev) =>
-      prev.some((e) => e.name === exercise.name)
-        ? prev.filter((e) => e.name !== exercise.name)
-        : [...prev, exercise]
-    );
-  };
+	// Fetch user's exercises from Supabase
+	const { data: userExercises } = useQuery({
+		queryKey: ["exercises", "library"],
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("exercises")
+				.select("name, muscle_group")
+				.order("name");
+			if (error) return [];
+			return (data ?? []).map((e) => ({
+				name: e.name,
+				muscleGroup: e.muscle_group,
+			}));
+		},
+		staleTime: 5 * 60 * 1000,
+	});
 
-  return (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-      />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-[#0D0D0D] rounded-lg border border-[#374151] z-50 overflow-hidden flex flex-col max-h-[90vh]"
-      >
-        <div className="p-6 border-b border-[#374151] flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Add Exercises</h2>
-            <Button size="sm" variant="ghost" onClick={onClose} className="text-[#9CA3AF] hover:text-white">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+	// Merge user exercises with static library, deduplicate by name
+	const allExercises = useMemo(() => {
+		const map = new Map<string, { name: string; muscleGroup: string }>();
+		// Static library first (fallback)
+		for (const ex of EXERCISE_LIBRARY) {
+			map.set(ex.name.toLowerCase(), ex);
+		}
+		// User exercises override static entries
+		for (const ex of userExercises ?? []) {
+			map.set(ex.name.toLowerCase(), ex);
+		}
+		return Array.from(map.values()).sort((a, b) =>
+			a.name.localeCompare(b.name),
+		);
+	}, [userExercises]);
 
-        <div className="p-6 overflow-y-auto flex-1">
-          <div className="space-y-2">
-            {exercises.map((exercise) => {
-              const isSelected = selected.some((e) => e.name === exercise.name);
-              return (
-                <button
-                  key={exercise.name}
-                  onClick={() => handleToggle(exercise)}
-                  className={`w-full p-4 rounded-lg bg-[#1a1a1a] border transition-all text-left ${
-                    isSelected ? 'border-[#FF6B35]' : 'border-[#374151] hover:border-[#FF6B35]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-semibold text-white mb-1">{exercise.name}</h4>
-                      <Badge className="bg-[#FF6B35] text-white border-0 text-xs">
-                        {exercise.muscleGroup}
-                      </Badge>
-                    </div>
-                    {isSelected ? (
-                      <X className="w-5 h-5 text-[#FF6B35]" />
-                    ) : (
-                      <Plus className="w-5 h-5 text-[#9CA3AF]" />
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+	// Get unique muscle groups for filter buttons
+	const muscleGroups = useMemo(() => {
+		const groups = new Set(allExercises.map((e) => e.muscleGroup));
+		return Array.from(groups).sort();
+	}, [allExercises]);
 
-        <div className="p-6 border-t border-[#374151] bg-[#0D0D0D] flex-shrink-0 flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose} className="border-[#374151] text-[#9CA3AF] hover:text-white">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => onSelect(selected)}
-            disabled={selected.length === 0}
-            className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 text-white disabled:opacity-50"
-          >
-            Add {selected.length} Exercise{selected.length !== 1 ? 's' : ''}
-          </Button>
-        </div>
-      </motion.div>
-    </>
-  );
+	// Filter exercises by search and muscle group
+	const filteredExercises = useMemo(() => {
+		return allExercises.filter((ex) => {
+			const matchesSearch =
+				!searchQuery ||
+				ex.name.toLowerCase().includes(searchQuery.toLowerCase());
+			const matchesMuscle = !muscleFilter || ex.muscleGroup === muscleFilter;
+			return matchesSearch && matchesMuscle;
+		});
+	}, [allExercises, searchQuery, muscleFilter]);
+
+	return (
+		<>
+			<motion.div
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+				exit={{ opacity: 0 }}
+				onClick={onClose}
+				className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+			/>
+			<motion.div
+				initial={{ opacity: 0, scale: 0.95 }}
+				animate={{ opacity: 1, scale: 1 }}
+				exit={{ opacity: 0, scale: 0.95 }}
+				className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-background rounded-lg border border-secondary z-50 overflow-hidden flex flex-col max-h-[80vh]"
+			>
+				<div className="p-6 border-b border-secondary">
+					<div className="flex items-center justify-between mb-4">
+						<h2 className="text-xl font-semibold text-white">Add Exercise</h2>
+						<Button size="sm" variant="ghost" onClick={onClose}>
+							<X className="w-4 h-4" />
+						</Button>
+					</div>
+
+					{/* Search */}
+					<div className="relative mb-3">
+						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+						<Input
+							placeholder="Search exercises..."
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							className="pl-9 bg-surface-2 border-secondary text-white placeholder:text-muted"
+						/>
+					</div>
+
+					{/* Muscle group filter */}
+					<div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+						<Button
+							size="sm"
+							onClick={() => setMuscleFilter(null)}
+							className={
+								!muscleFilter
+									? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+									: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
+							}
+						>
+							All
+						</Button>
+						{muscleGroups.map((group) => (
+							<Button
+								key={group}
+								size="sm"
+								onClick={() =>
+									setMuscleFilter(muscleFilter === group ? null : group)
+								}
+								className={
+									muscleFilter === group
+										? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
+								}
+							>
+								{group}
+							</Button>
+						))}
+					</div>
+				</div>
+
+				<div className="p-6 overflow-y-auto flex-1">
+					{filteredExercises.length === 0 ? (
+						<div className="text-center py-8 text-muted-foreground">
+							<Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+							<p>No exercises found</p>
+						</div>
+					) : (
+						<div className="space-y-2">
+							{filteredExercises.map((exercise) => (
+								<button
+									key={exercise.name}
+									onClick={() => onSelect(exercise)}
+									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
+								>
+									<div className="flex items-center justify-between">
+										<div>
+											<h4 className="font-semibold text-white mb-1">
+												{exercise.name}
+											</h4>
+											<Badge className="bg-primary text-white border-0 text-xs">
+												{exercise.muscleGroup}
+											</Badge>
+										</div>
+										<Plus className="w-5 h-5 text-muted-foreground" />
+									</div>
+								</button>
+							))}
+						</div>
+					)}
+				</div>
+			</motion.div>
+		</>
+	);
 }
