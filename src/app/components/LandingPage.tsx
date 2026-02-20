@@ -14,10 +14,11 @@ import {
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
+import { useAuth } from "@/app/hooks/useAuth";
 import { z } from "zod";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -63,10 +64,19 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 export function LandingPage() {
+	const { user, loading } = useAuth();
+	const navigate = useNavigate();
 	const [showAuthDialog, setShowAuthDialog] = useState(false);
 	const [authLoading, setAuthLoading] = useState(false);
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
+
+	// Redirect authenticated users to dashboard
+	useEffect(() => {
+		if (!loading && user) {
+			navigate("/dashboard", { replace: true });
+		}
+	}, [user, loading, navigate]);
 
 	const handleResetPassword = async () => {
 		if (!resetEmail) {
