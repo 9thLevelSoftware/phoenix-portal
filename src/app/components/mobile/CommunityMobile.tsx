@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { toast } from 'sonner';
 import { Search, Star, Download, Heart, X, TrendingUp, Clock, Users } from 'lucide-react';
 
 interface Routine {
@@ -385,7 +386,7 @@ export function CommunityMobile() {
   ];
 
   const handleImportRoutine = () => {
-    console.log('Importing routine:', selectedRoutine?.id);
+    toast.success('Routine imported!', { description: `${selectedRoutine?.name} added to your library.` });
     setSelectedRoutine(null);
   };
 

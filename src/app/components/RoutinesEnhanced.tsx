@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
+import { Input } from '@/app/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import {
   DropdownMenu,
@@ -20,9 +21,11 @@ import {
   Copy,
   Trash2,
   Star,
+  Search,
   Heart,
   Share2,
 } from 'lucide-react';
+import { useAppContext } from '@/app/context/AppContext';
 
 interface Routine {
   id: string;
@@ -41,83 +44,25 @@ interface RoutinesEnhancedProps {
   onEditRoutine: (id: string) => void;
 }
 
-const mockRoutines: Routine[] = [
-  {
-    id: '1',
-    name: 'Push Day A',
-    description: 'Chest, shoulders, and triceps focus with progressive overload',
-    exercises: 6,
-    duration: 60,
-    timesCompleted: 24,
-    lastUsed: '2 days ago',
-    tags: ['Chest', 'Shoulders', 'Arms'],
-    isFavorite: true,
-  },
-  {
-    id: '2',
-    name: 'Pull Day B',
-    description: 'Back and biceps hypertrophy routine',
-    exercises: 6,
-    duration: 55,
-    timesCompleted: 22,
-    lastUsed: '3 days ago',
-    tags: ['Back', 'Arms'],
-    isFavorite: false,
-  },
-  {
-    id: '3',
-    name: 'Leg Day',
-    description: 'Quad and glute dominant with hamstring work',
-    exercises: 7,
-    duration: 70,
-    timesCompleted: 19,
-    lastUsed: '5 days ago',
-    tags: ['Legs'],
-    isFavorite: true,
-  },
-];
-
-const mockImported: Routine[] = [
-  {
-    id: '4',
-    name: 'Community PPL',
-    description: 'Popular push/pull/legs split from the community',
-    exercises: 8,
-    duration: 65,
-    timesCompleted: 0,
-    lastUsed: 'Never',
-    tags: ['Chest', 'Back', 'Legs'],
-    isFavorite: false,
-  },
-];
-
 export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnhancedProps) {
-  const [routines, setRoutines] = useState(mockRoutines);
-  const [imported, setImported] = useState(mockImported);
+  const {
+    routines,
+    importedRoutines: imported,
+    deleteRoutine: handleDelete,
+    duplicateRoutine: handleDuplicate,
+    toggleFavoriteRoutine: handleToggleFavorite,
+    deleteImportedRoutine,
+  } = useAppContext();
+  
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const handleDelete = (id: string) => {
-    setRoutines(routines.filter((r) => r.id !== id));
-  };
+  const filterRoutine = (r: Routine) =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const handleDuplicate = (id: string) => {
-    const routine = routines.find((r) => r.id === id);
-    if (routine) {
-      const newRoutine = {
-        ...routine,
-        id: Date.now().toString(),
-        name: `${routine.name} (Copy)`,
-        timesCompleted: 0,
-        lastUsed: 'Never',
-      };
-      setRoutines([...routines, newRoutine]);
-    }
-  };
-
-  const handleToggleFavorite = (id: string) => {
-    setRoutines(
-      routines.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r))
-    );
-  };
+  const filteredRoutines = routines.filter(filterRoutine);
+  const filteredImported = imported.filter(filterRoutine);
+  const filteredFavorites = routines.filter((r) => r.isFavorite && filterRoutine(r));
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] pb-24 md:pb-8">
@@ -152,24 +97,36 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="my-routines" className="w-full">
-          <TabsList className="bg-[#1a1a1a] border border-[#374151] mb-6">
-            <TabsTrigger value="my-routines" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
-              My Routines
-            </TabsTrigger>
-            <TabsTrigger value="imported" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
-              Imported
-            </TabsTrigger>
-            <TabsTrigger value="favorites" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
-              Favorites
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <TabsList className="bg-[#1a1a1a] border border-[#374151]">
+              <TabsTrigger value="my-routines" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
+                My Routines
+              </TabsTrigger>
+              <TabsTrigger value="imported" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
+                Imported
+              </TabsTrigger>
+              <TabsTrigger value="favorites" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF6B35] data-[state=active]:to-[#DC2626]">
+                Favorites
+              </TabsTrigger>
+            </TabsList>
+            
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+              <Input
+                placeholder="Search routines..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 bg-[#1a1a1a] border-[#374151] text-white focus:border-[#FF6B35]"
+              />
+            </div>
+          </div>
 
           <TabsContent value="my-routines">
-            {routines.length === 0 ? (
+            {filteredRoutines.length === 0 ? (
               <EmptyState onCreateRoutine={onCreateRoutine} />
             ) : (
               <RoutineGrid
-                routines={routines}
+                routines={filteredRoutines}
                 onEdit={onEditRoutine}
                 onDelete={handleDelete}
                 onDuplicate={handleDuplicate}
@@ -180,9 +137,9 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
 
           <TabsContent value="imported">
             <RoutineGrid
-              routines={imported}
+              routines={filteredImported}
               onEdit={onEditRoutine}
-              onDelete={(id) => setImported(imported.filter((r) => r.id !== id))}
+              onDelete={(id) => deleteImportedRoutine(id)}
               onDuplicate={handleDuplicate}
               onToggleFavorite={handleToggleFavorite}
             />
@@ -190,7 +147,7 @@ export function RoutinesEnhanced({ onCreateRoutine, onEditRoutine }: RoutinesEnh
 
           <TabsContent value="favorites">
             <RoutineGrid
-              routines={routines.filter((r) => r.isFavorite)}
+              routines={filteredFavorites}
               onEdit={onEditRoutine}
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}

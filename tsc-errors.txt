@@ -1,0 +1,6 @@
+src/app/components/Dashboard.tsx(68,6): error TS17008: JSX element 'div' has no corresponding closing tag.
+src/app/components/Dashboard.tsx(69,8): error TS17008: JSX element 'div' has no corresponding closing tag.
+src/app/components/Dashboard.tsx(408,10): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/app/components/Dashboard.tsx(411,4): error TS1005: '}' expected.
+src/app/components/Dashboard.tsx(412,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/app/components/Dashboard.tsx(412,2): error TS1005: '</' expected.

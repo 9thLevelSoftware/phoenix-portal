@@ -18,148 +18,9 @@ import {
   Target,
   Crown,
 } from 'lucide-react';
+import { useAppContext } from '@/app/context/AppContext';
 
-interface PR {
-  id: string;
-  exercise: string;
-  muscleGroup: string;
-  weight: number;
-  reps: number;
-  estimatedOneRM: number;
-  date: Date;
-  type: 'Weight PR' | 'Volume PR' | 'Rep PR';
-  isNew: boolean;
-}
 
-interface ExercisePRHistory {
-  exercise: string;
-  muscleGroup: string;
-  currentPR: { weight: number; reps: number };
-  estimatedOneRM: number;
-  lastPRDate: Date;
-  trend: 'improving' | 'stable' | 'plateau';
-  history: Array<{
-    date: Date;
-    weight: number;
-    reps: number;
-    estimatedOneRM: number;
-    mode: string;
-  }>;
-}
-
-// Mock data
-const recentPRs: PR[] = [
-  {
-    id: '1',
-    exercise: 'Bench Press',
-    muscleGroup: 'Chest',
-    weight: 120,
-    reps: 5,
-    estimatedOneRM: 135,
-    date: new Date(2026, 0, 18),
-    type: 'Weight PR',
-    isNew: true,
-  },
-  {
-    id: '2',
-    exercise: 'Squat',
-    muscleGroup: 'Legs',
-    weight: 150,
-    reps: 8,
-    estimatedOneRM: 187.5,
-    date: new Date(2026, 0, 17),
-    type: 'Volume PR',
-    isNew: true,
-  },
-  {
-    id: '3',
-    exercise: 'Deadlift',
-    muscleGroup: 'Back',
-    weight: 180,
-    reps: 3,
-    estimatedOneRM: 191,
-    date: new Date(2026, 0, 15),
-    type: 'Weight PR',
-    isNew: false,
-  },
-];
-
-const exercisePRs: ExercisePRHistory[] = [
-  {
-    exercise: 'Bench Press',
-    muscleGroup: 'Chest',
-    currentPR: { weight: 120, reps: 5 },
-    estimatedOneRM: 135,
-    lastPRDate: new Date(2026, 0, 18),
-    trend: 'improving',
-    history: [
-      { date: new Date(2026, 0, 18), weight: 120, reps: 5, estimatedOneRM: 135, mode: 'Eccentric' },
-      { date: new Date(2026, 0, 4), weight: 115, reps: 5, estimatedOneRM: 129, mode: 'Standard' },
-      { date: new Date(2025, 11, 20), weight: 110, reps: 5, estimatedOneRM: 124, mode: 'Standard' },
-    ],
-  },
-  {
-    exercise: 'Squat',
-    muscleGroup: 'Legs',
-    currentPR: { weight: 150, reps: 8 },
-    estimatedOneRM: 187.5,
-    lastPRDate: new Date(2026, 0, 17),
-    trend: 'improving',
-    history: [
-      { date: new Date(2026, 0, 17), weight: 150, reps: 8, estimatedOneRM: 187.5, mode: 'Chains' },
-      { date: new Date(2026, 0, 3), weight: 145, reps: 8, estimatedOneRM: 181, mode: 'Standard' },
-      { date: new Date(2025, 11, 15), weight: 140, reps: 8, estimatedOneRM: 175, mode: 'Standard' },
-    ],
-  },
-  {
-    exercise: 'Deadlift',
-    muscleGroup: 'Back',
-    currentPR: { weight: 180, reps: 3 },
-    estimatedOneRM: 191,
-    lastPRDate: new Date(2026, 0, 15),
-    trend: 'stable',
-    history: [
-      { date: new Date(2026, 0, 15), weight: 180, reps: 3, estimatedOneRM: 191, mode: 'Standard' },
-      { date: new Date(2025, 11, 28), weight: 175, reps: 3, estimatedOneRM: 186, mode: 'Standard' },
-    ],
-  },
-  {
-    exercise: 'Overhead Press',
-    muscleGroup: 'Shoulders',
-    currentPR: { weight: 65, reps: 6 },
-    estimatedOneRM: 75,
-    lastPRDate: new Date(2025, 10, 10),
-    trend: 'plateau',
-    history: [
-      { date: new Date(2025, 10, 10), weight: 65, reps: 6, estimatedOneRM: 75, mode: 'Standard' },
-      { date: new Date(2025, 9, 5), weight: 62.5, reps: 6, estimatedOneRM: 72, mode: 'Standard' },
-    ],
-  },
-  {
-    exercise: 'Barbell Row',
-    muscleGroup: 'Back',
-    currentPR: { weight: 95, reps: 8 },
-    estimatedOneRM: 118.75,
-    lastPRDate: new Date(2026, 0, 12),
-    trend: 'improving',
-    history: [
-      { date: new Date(2026, 0, 12), weight: 95, reps: 8, estimatedOneRM: 118.75, mode: 'Standard' },
-      { date: new Date(2025, 11, 25), weight: 90, reps: 8, estimatedOneRM: 112.5, mode: 'Standard' },
-    ],
-  },
-  {
-    exercise: 'Pull-ups',
-    muscleGroup: 'Back',
-    currentPR: { weight: 20, reps: 10 },
-    estimatedOneRM: 26.7,
-    lastPRDate: new Date(2026, 0, 16),
-    trend: 'improving',
-    history: [
-      { date: new Date(2026, 0, 16), weight: 20, reps: 10, estimatedOneRM: 26.7, mode: 'Weighted' },
-      { date: new Date(2025, 11, 30), weight: 15, reps: 10, estimatedOneRM: 20, mode: 'Weighted' },
-    ],
-  },
-];
 
 const milestones = [
   { id: '1', count: 100, name: '100th PR', icon: Crown, achieved: true, date: new Date(2026, 0, 15) },
@@ -168,7 +29,12 @@ const milestones = [
   { id: '4', count: 10, name: '10th PR', icon: Flame, achieved: true, date: new Date(2025, 8, 5) },
 ];
 
-export function PersonalRecords() {
+interface PersonalRecordsProps {
+  onNavigate: (page: string) => void;
+}
+
+export function PersonalRecords({ onNavigate }: PersonalRecordsProps) {
+  const { recentPRs, exercisePRs } = useAppContext();
   const [activeFilter, setActiveFilter] = useState('All');
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
@@ -331,7 +197,7 @@ export function PersonalRecords() {
                         {pr.type}
                       </Badge>
                       <span className="text-xs text-[#9CA3AF]">
-                        {pr.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   </div>
@@ -417,7 +283,7 @@ export function PersonalRecords() {
                     <p className="text-sm text-[#E5E7EB] mb-2">
                       No PR in{' '}
                       {Math.floor(
-                        (new Date().getTime() - exercise.lastPRDate.getTime()) /
+                        (new Date().getTime() - new Date(exercise.lastPRDate).getTime()) /
                           (1000 * 60 * 60 * 24 * 7)
                       )}{' '}
                       weeks
@@ -429,6 +295,7 @@ export function PersonalRecords() {
                   <Button
                     size="sm"
                     variant="outline"
+                    onClick={() => onNavigate('routines')}
                     className="border-[#FBBF24] text-[#FBBF24] hover:bg-[#FBBF24]/10"
                   >
                     Browse Routines
@@ -451,128 +318,138 @@ export function PersonalRecords() {
               className="space-y-3"
             >
               <h2 className="text-2xl font-semibold text-white mb-4">PR List by Exercise</h2>
-              {filteredExercises.map((exercise, index) => (
-                <motion.div
-                  key={exercise.exercise}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] overflow-hidden">
-                    {/* Exercise Header */}
-                    <button
-                      onClick={() => toggleExercise(exercise.exercise)}
-                      className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <h3 className="text-lg font-semibold text-white text-left">
-                            {exercise.exercise}
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge className={`bg-gradient-to-r ${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}>
-                              {exercise.muscleGroup}
-                            </Badge>
+              {filteredExercises.length === 0 ? (
+                <Card className="p-8 text-center bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151]">
+                  <Trophy className="w-12 h-12 text-[#6B7280] mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">No Records Found</h3>
+                  <p className="text-[#9CA3AF]">
+                    You haven't hit any personal records for this muscle group yet. Keep pushing!
+                  </p>
+                </Card>
+              ) : (
+                filteredExercises.map((exercise, index) => (
+                  <motion.div
+                    key={exercise.exercise}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border-[#374151] overflow-hidden">
+                      {/* Exercise Header */}
+                      <button
+                        onClick={() => toggleExercise(exercise.exercise)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-[#1a1a1a]/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-white text-left">
+                              {exercise.exercise}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge className={`bg-gradient-to-r ${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}>
+                                {exercise.muscleGroup}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-4">
-                        <div className="text-right hidden sm:block">
-                          <div className="text-lg font-semibold text-white">
-                            {exercise.currentPR.weight} kg × {exercise.currentPR.reps}
+                        <div className="flex items-center gap-4">
+                          <div className="text-right hidden sm:block">
+                            <div className="text-lg font-semibold text-white">
+                              {exercise.currentPR.weight} kg × {exercise.currentPR.reps}
+                            </div>
+                            <div className="text-sm text-[#9CA3AF]">
+                              1RM: ~{exercise.estimatedOneRM} kg
+                            </div>
                           </div>
-                          <div className="text-sm text-[#9CA3AF]">
-                            1RM: ~{exercise.estimatedOneRM} kg
+                          <div className="flex items-center gap-2">
+                            {getTrendIcon(exercise.trend)}
+                            <span className="text-sm text-[#9CA3AF] hidden sm:inline">
+                              {getTrendText(exercise.trend)}
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {getTrendIcon(exercise.trend)}
-                          <span className="text-sm text-[#9CA3AF] hidden sm:inline">
-                            {getTrendText(exercise.trend)}
-                          </span>
-                        </div>
-                        <span className="text-xs text-[#6B7280] hidden sm:inline">
-                          {exercise.lastPRDate.toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </span>
-                        {expandedExercises.includes(exercise.exercise) ? (
-                          <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
-                        )}
-                      </div>
-                    </button>
-
-                    {/* Expanded Content */}
-                    {expandedExercises.includes(exercise.exercise) && (
-                      <div className="border-t border-[#374151] p-4">
-                        {/* Mini Chart Placeholder */}
-                        <div className="mb-4 p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
-                          <div className="text-sm text-[#9CA3AF] mb-3">PR Progression</div>
-                          <div className="h-32 flex items-end justify-between gap-2">
-                            {exercise.history.map((entry, idx) => {
-                              const maxRM = Math.max(...exercise.history.map((h) => h.estimatedOneRM));
-                              const height = (entry.estimatedOneRM / maxRM) * 100;
-                              return (
-                                <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                                  <div className="w-full bg-gradient-to-t from-[#FF6B35] to-[#F59E0B] rounded-t transition-all hover:opacity-80" style={{ height: `${height}%` }} />
-                                  <div className="text-xs text-[#9CA3AF]">
-                                    {entry.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                  </div>
-                                </div>
-                              );
+                          <span className="text-xs text-[#6B7280] hidden sm:inline">
+                            {new Date(exercise.lastPRDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
                             })}
+                          </span>
+                          {expandedExercises.includes(exercise.exercise) ? (
+                            <ChevronUp className="w-5 h-5 text-[#9CA3AF]" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5 text-[#9CA3AF]" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Expanded Content */}
+                      {expandedExercises.includes(exercise.exercise) && (
+                        <div className="border-t border-[#374151] p-4">
+                          {/* Mini Chart Placeholder */}
+                          <div className="mb-4 p-4 rounded-lg bg-[#0D0D0D] border border-[#374151]">
+                            <div className="text-sm text-[#9CA3AF] mb-3">PR Progression</div>
+                            <div className="h-32 flex items-end justify-between gap-2">
+                              {exercise.history.map((entry, idx) => {
+                                const maxRM = Math.max(...exercise.history.map((h) => h.estimatedOneRM));
+                                const height = (entry.estimatedOneRM / maxRM) * 100;
+                                return (
+                                  <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                                    <div className="w-full bg-gradient-to-t from-[#FF6B35] to-[#F59E0B] rounded-t transition-all hover:opacity-80" style={{ height: `${height}%` }} />
+                                    <div className="text-xs text-[#9CA3AF]">
+                                      {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* History Table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-[#374151]">
+                                  <th className="text-left py-2 text-[#9CA3AF]">Date</th>
+                                  <th className="text-left py-2 text-[#9CA3AF]">Weight</th>
+                                  <th className="text-left py-2 text-[#9CA3AF]">Reps</th>
+                                  <th className="text-left py-2 text-[#9CA3AF]">Est. 1RM</th>
+                                  <th className="text-left py-2 text-[#9CA3AF]">Mode</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {exercise.history.map((entry, idx) => (
+                                  <tr key={idx} className="border-b border-[#374151]/50">
+                                    <td className="py-3 text-[#E5E7EB]">
+                                      {new Date(entry.date).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                      })}
+                                    </td>
+                                    <td className="py-3 text-[#E5E7EB]">{entry.weight} kg</td>
+                                    <td className="py-3 text-[#E5E7EB]">{entry.reps}</td>
+                                    <td className="py-3 text-white font-semibold">
+                                      {entry.estimatedOneRM} kg
+                                    </td>
+                                    <td className="py-3">
+                                      <Badge
+                                        variant="outline"
+                                        className="border-[#374151] text-[#9CA3AF]"
+                                      >
+                                        {entry.mode}
+                                      </Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-
-                        {/* History Table */}
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b border-[#374151]">
-                                <th className="text-left py-2 text-[#9CA3AF]">Date</th>
-                                <th className="text-left py-2 text-[#9CA3AF]">Weight</th>
-                                <th className="text-left py-2 text-[#9CA3AF]">Reps</th>
-                                <th className="text-left py-2 text-[#9CA3AF]">Est. 1RM</th>
-                                <th className="text-left py-2 text-[#9CA3AF]">Mode</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {exercise.history.map((entry, idx) => (
-                                <tr key={idx} className="border-b border-[#374151]/50">
-                                  <td className="py-3 text-[#E5E7EB]">
-                                    {entry.date.toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      year: 'numeric',
-                                    })}
-                                  </td>
-                                  <td className="py-3 text-[#E5E7EB]">{entry.weight} kg</td>
-                                  <td className="py-3 text-[#E5E7EB]">{entry.reps}</td>
-                                  <td className="py-3 text-white font-semibold">
-                                    {entry.estimatedOneRM} kg
-                                  </td>
-                                  <td className="py-3">
-                                    <Badge
-                                      variant="outline"
-                                      className="border-[#374151] text-[#9CA3AF]"
-                                    >
-                                      {entry.mode}
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-                </motion.div>
-              ))}
+                      )}
+                    </Card>
+                  </motion.div>
+                ))
+              )}
             </motion.div>
           ) : (
             <motion.div
@@ -666,7 +543,7 @@ export function PersonalRecords() {
                               {pr.type}
                             </Badge>
                             <div className="text-xs text-[#9CA3AF]">
-                              {pr.date.toLocaleDateString('en-US', {
+                              {new Date(pr.date).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric',

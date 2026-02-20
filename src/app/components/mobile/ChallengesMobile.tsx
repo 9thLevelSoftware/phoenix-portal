@@ -4,6 +4,7 @@ import { Card } from '@/app/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Trophy, Target, Flame, Users, TrendingUp, ChevronRight, ExternalLink } from 'lucide-react';
 import { Progress } from '@/app/components/ui/progress';
+import { toast } from 'sonner';
 
 interface Challenge {
   id: string;
@@ -222,11 +223,11 @@ export function ChallengesMobile() {
   ];
 
   const handleViewChallenge = (challengeId: string) => {
-    console.log('View challenge:', challengeId);
+    toast('Challenge details opened');
   };
 
   const handleLeaveChallenge = (challengeId: string) => {
-    console.log('Leave challenge:', challengeId);
+    toast('Left challenge');
   };
 
   return (

@@ -15,104 +15,22 @@ import {
   Award,
   X,
 } from 'lucide-react';
+import { useAppContext } from '@/app/context/AppContext';
 
 interface WorkoutHistoryProps {
   onViewSession: (sessionId: string) => void;
 }
 
-interface WorkoutSession {
-  id: string;
-  name: string;
-  date: Date;
-  duration: number;
-  volume: number;
-  sets: number;
-  exercises: number;
-  prCount: number;
-  routine?: string;
-}
 
-// Mock data
-const mockWorkouts: WorkoutSession[] = [
-  {
-    id: '1',
-    name: 'Upper Body Power',
-    date: new Date(2026, 0, 18),
-    duration: 65,
-    volume: 4250,
-    sets: 16,
-    exercises: 5,
-    prCount: 2,
-    routine: 'Push/Pull/Legs',
-  },
-  {
-    id: '2',
-    name: 'Lower Body Strength',
-    date: new Date(2026, 0, 17),
-    duration: 75,
-    volume: 5680,
-    sets: 18,
-    exercises: 6,
-    prCount: 1,
-    routine: 'Push/Pull/Legs',
-  },
-  {
-    id: '3',
-    name: 'Pull Focus',
-    date: new Date(2026, 0, 16),
-    duration: 60,
-    volume: 3890,
-    sets: 14,
-    exercises: 4,
-    prCount: 0,
-  },
-  {
-    id: '4',
-    name: 'Full Body',
-    date: new Date(2026, 0, 15),
-    duration: 55,
-    volume: 3200,
-    sets: 12,
-    exercises: 6,
-    prCount: 1,
-  },
-  {
-    id: '5',
-    name: 'Upper Body Hypertrophy',
-    date: new Date(2026, 0, 14),
-    duration: 70,
-    volume: 4100,
-    sets: 20,
-    exercises: 5,
-    prCount: 3,
-    routine: 'Push/Pull/Legs',
-  },
-  {
-    id: '6',
-    name: 'Leg Day',
-    date: new Date(2026, 0, 12),
-    duration: 80,
-    volume: 6200,
-    sets: 16,
-    exercises: 5,
-    prCount: 2,
-  },
-  {
-    id: '7',
-    name: 'Push Focus',
-    date: new Date(2026, 0, 11),
-    duration: 58,
-    volume: 3750,
-    sets: 15,
-    exercises: 4,
-    prCount: 0,
-  },
-];
 
 export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
+  const { workoutSessions } = useAppContext();
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [dateRange, setDateRange] = useState('Last 30 days');
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1));
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const getDaysInMonth = (date: Date) => {
@@ -129,8 +47,8 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
   const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
 
   const getWorkoutsForDay = (day: number) => {
-    return mockWorkouts.filter((workout) => {
-      const workoutDate = workout.date;
+    return workoutSessions.filter((workout) => {
+      const workoutDate = new Date(workout.date);
       return (
         workoutDate.getDate() === day &&
         workoutDate.getMonth() === month &&
@@ -253,7 +171,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="popLayout">
           {viewMode === 'calendar' ? (
             <motion.div
               key="calendar"
@@ -388,7 +306,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
               transition={{ duration: 0.3 }}
               className="space-y-4"
             >
-              {mockWorkouts.map((workout, index) => (
+              {workoutSessions.map((workout, index) => (
                 <motion.div
                   key={workout.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -407,7 +325,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                             <Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                           </div>
                           <div className="absolute -bottom-1 -right-1 bg-[#0D0D0D] rounded px-1.5 py-0.5 text-xs text-[#9CA3AF] border border-[#374151]">
-                            {workout.date.getDate()}
+                            {new Date(workout.date).getDate()}
                           </div>
                         </div>
 
@@ -417,7 +335,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                           </h3>
                           <div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
                             <span>
-                              {workout.date.toLocaleDateString('en-US', {
+                              {new Date(workout.date).toLocaleDateString('en-US', {
                                 weekday: 'short',
                                 month: 'short',
                                 day: 'numeric',
@@ -425,7 +343,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                             </span>
                             <span>•</span>
                             <span>
-                              {workout.date.toLocaleTimeString('en-US', {
+                              {new Date(workout.date).toLocaleTimeString('en-US', {
                                 hour: 'numeric',
                                 minute: '2-digit',
                               })}
@@ -537,7 +455,7 @@ export function WorkoutHistory({ onViewSession }: WorkoutHistoryProps) {
                       <div className="flex items-center justify-between text-[#E5E7EB]">
                         <span className="text-[#9CA3AF]">Time</span>
                         <span>
-                          {workout.date.toLocaleTimeString('en-US', {
+                          {new Date(workout.date).toLocaleTimeString('en-US', {
                             hour: 'numeric',
                             minute: '2-digit',
                           })}

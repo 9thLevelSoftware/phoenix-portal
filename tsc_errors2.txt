@@ -1,0 +1,6 @@
+src/app/components/celebrations/ChallengeWon.tsx(65,25): error TS2322: Type 'readonly ["#F59E0B", "#FBBF24", "#FFFFFF", "#FF6B35"] | readonly ["#E5E7EB", "#9CA3AF", "#FFFFFF"] | readonly ["#D97706", "#92400E", "#FF6B35", "#F59E0B"]' is not assignable to type 'string[]'.
+  The type 'readonly ["#F59E0B", "#FBBF24", "#FFFFFF", "#FF6B35"]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+src/app/components/celebrations/ChallengeWon.tsx(149,21): error TS2353: Object literal may only specify known properties, and 'ringColor' does not exist in type 'Properties<string | number, string & {}>'.
+src/app/components/CycleBuilder.tsx(450,20): error TS7006: Parameter 'routineId' implicitly has an 'any' type.
+src/app/components/PhoenixLogo.tsx(2,25): error TS2307: Cannot find module '@/assets/4aa483a986255912b80c24338a4e7f563d95eabd.png' or its corresponding type declarations.
+src/main.tsx(3,19): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.

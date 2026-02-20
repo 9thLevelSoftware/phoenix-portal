@@ -18,6 +18,8 @@ import { TrainingCycles } from '@/app/components/TrainingCycles';
 import { CelebrationDemo } from '@/app/components/CelebrationDemo';
 import { MobileBottomNav } from '@/app/components/MobileBottomNav';
 import { Toaster } from '@/app/components/ui/sonner';
+import { toast } from 'sonner';
+import { AppProvider } from '@/app/context/AppContext';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -88,6 +90,9 @@ export default function App() {
     console.log('Saving routine:', routine);
     setShowRoutineBuilder(false);
     setSelectedRoutineId(null);
+    toast.success('Routine Saved Successfully', {
+      description: `"${routine.name || 'Untitled Routine'}" has been updated.`,
+    });
   };
 
   const handleCreateCycle = () => {
@@ -117,49 +122,51 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0D0D0D]">
-      <Navigation currentPage={currentPage} onNavigate={handleNavigate} streak={streak} />
-      
-      {currentPage === 'dashboard' && <Dashboard />}
-      {currentPage === 'history' && selectedSessionId && <SessionDetail sessionId={selectedSessionId} onBack={handleBackFromSession} />}
-      {currentPage === 'history' && !selectedSessionId && <WorkoutHistory onViewSession={handleViewSession} />}
-      {currentPage === 'records' && <PersonalRecords />}
-      {currentPage === 'analytics' && <Analytics />}
-      {currentPage === 'challenges' && <Challenges />}
-      {currentPage === 'community' && <Community />}
-      
-      {/* Routines Page */}
-      {currentPage === 'routines' && !showRoutineBuilder && (
-        <RoutinesEnhanced onCreateRoutine={handleCreateRoutine} onEditRoutine={handleEditRoutine} />
-      )}
-      {currentPage === 'routines' && showRoutineBuilder && (
-        <RoutineBuilder 
-          routineId={selectedRoutineId || undefined}
-          onBack={handleBackFromRoutineBuilder}
-          onSave={handleSaveRoutine}
+    <AppProvider>
+      <div className="min-h-screen bg-[#0D0D0D]">
+        <Navigation currentPage={currentPage} onNavigate={handleNavigate} streak={streak} />
+        
+        {currentPage === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
+        {currentPage === 'history' && selectedSessionId && <SessionDetail sessionId={selectedSessionId} onBack={handleBackFromSession} />}
+        {currentPage === 'history' && !selectedSessionId && <WorkoutHistory onViewSession={handleViewSession} />}
+        {currentPage === 'records' && <PersonalRecords onNavigate={handleNavigate} />}
+        {currentPage === 'analytics' && <Analytics />}
+        {currentPage === 'challenges' && <Challenges />}
+        {currentPage === 'community' && <Community />}
+        
+        {/* Routines Page */}
+        {currentPage === 'routines' && !showRoutineBuilder && (
+          <RoutinesEnhanced onCreateRoutine={handleCreateRoutine} onEditRoutine={handleEditRoutine} />
+        )}
+        {currentPage === 'routines' && showRoutineBuilder && (
+          <RoutineBuilder 
+            routineId={selectedRoutineId || undefined}
+            onBack={handleBackFromRoutineBuilder}
+            onSave={handleSaveRoutine}
+          />
+        )}
+        
+        {/* Cycles Page */}
+        {currentPage === 'cycles' && <TrainingCycles onCreateCycle={handleCreateCycle} onEditCycle={handleEditCycle} />}
+        
+        {/* Celebration Demo Page (hidden - access via /celebrations) */}
+        {currentPage === 'celebrations' && <CelebrationDemo />}
+        
+        {currentPage === 'profile' && <Profile />}
+
+        {/* Mobile Bottom Navigation */}
+        <MobileBottomNav
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          streak={streak}
+          notifications={{
+            challenges: 3,
+            community: 5,
+          }}
         />
-      )}
-      
-      {/* Cycles Page */}
-      {currentPage === 'cycles' && <TrainingCycles onCreateCycle={handleCreateCycle} onEditCycle={handleEditCycle} />}
-      
-      {/* Celebration Demo Page (hidden - access via /celebrations) */}
-      {currentPage === 'celebrations' && <CelebrationDemo />}
-      
-      {currentPage === 'profile' && <Profile />}
 
-      {/* Mobile Bottom Navigation */}
-      <MobileBottomNav
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        streak={streak}
-        notifications={{
-          challenges: 3,
-          community: 5,
-        }}
-      />
-
-      <Toaster />
-    </div>
+        <Toaster />
+      </div>
+    </AppProvider>
   );
 }

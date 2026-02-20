@@ -62,7 +62,7 @@ export function ChallengeWon({
         {placement === 1 && <Spotlight />}
 
         {/* Confetti */}
-        <ConfettiEffect colors={config.confettiColors} count={config.confettiCount} trigger={showConfetti} />
+        <ConfettiEffect colors={config.confettiColors as unknown as string[]} count={config.confettiCount} trigger={showConfetti} />
 
         {/* Main content */}
         <div className="relative w-full h-full flex flex-col items-center justify-center px-4">
@@ -146,8 +146,8 @@ export function ChallengeWon({
                   className="w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-xl md:text-2xl font-bold text-white ring-4"
                   style={{
                     background: config.bgGradient,
-                    ringColor: config.color,
-                  }}
+                    '--tw-ring-color': config.color,
+                  } as React.CSSProperties}
                 >
                   {userAvatar}
                 </div>

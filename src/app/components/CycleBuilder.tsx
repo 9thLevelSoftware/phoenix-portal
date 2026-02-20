@@ -447,7 +447,7 @@ export function CycleBuilder({ cycleId, onBack, onSave }: CycleBuilderProps) {
         isOpen={showRoutinePicker}
         onClose={() => setShowRoutinePicker(false)}
         routines={mockRoutines}
-        onSelect={(routineId) => selectedDay && handleAssignRoutine(selectedDay, routineId)}
+        onSelect={(routineId: string) => selectedDay && handleAssignRoutine(selectedDay, routineId)}
       />
 
       {/* Preview Modal */}

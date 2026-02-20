@@ -100,33 +100,6 @@ export function Navigation({ currentPage, onNavigate, streak }: NavigationProps)
         </div>
       </nav>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0D0D0D]/95 backdrop-blur-lg border-t border-[#374151]">
-        <div className="flex items-center justify-around px-2 py-2">
-          {navItems.slice(0, 5).map((item) => (
-            <Button
-              key={item.id}
-              variant="ghost"
-              size="icon"
-              onClick={() => onNavigate(item.id)}
-              className={`relative flex flex-col items-center gap-1 h-auto py-2 px-4 ${
-                currentPage === item.id
-                  ? 'text-[#FF6B35]'
-                  : 'text-[#9CA3AF] hover:text-[#E5E7EB]'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="text-xs">{item.label}</span>
-              {currentPage === item.id && (
-                <motion.div
-                  layoutId="activeMobileTab"
-                  className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#FF6B35] to-[#DC2626]"
-                />
-              )}
-            </Button>
-          ))}
-        </div>
-      </nav>
     </>
   );
 }

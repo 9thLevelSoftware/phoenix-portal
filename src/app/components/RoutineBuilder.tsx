@@ -245,17 +245,17 @@ export function RoutineBuilder({ routineId, onBack, onSave }: RoutineBuilderProp
         {showExercisePicker && (
           <ExercisePickerModal
             onClose={() => setShowExercisePicker(false)}
-            onSelect={(exercise) => {
-              const newExercise: Exercise = {
-                id: Date.now().toString(),
-                ...exercise,
+            onSelect={(selectedExercises) => {
+              const newExercises: Exercise[] = selectedExercises.map((ex, i) => ({
+                id: (Date.now() + i).toString(),
+                ...ex,
                 sets: 3,
                 reps: 10,
                 weight: 0,
                 rest: 90,
                 mode: 'Old School',
-              };
-              setExercises([...exercises, newExercise]);
+              }));
+              setExercises([...exercises, ...newExercises]);
               setShowExercisePicker(false);
               setHasUnsavedChanges(true);
             }}
@@ -487,8 +487,9 @@ function ExercisePickerModal({
   onSelect,
 }: {
   onClose: () => void;
-  onSelect: (exercise: { name: string; muscleGroup: string }) => void;
+  onSelect: (exercises: Array<{ name: string; muscleGroup: string }>) => void;
 }) {
+  const [selected, setSelected] = useState<Array<{ name: string; muscleGroup: string }>>([]);
   const exercises = [
     { name: 'Bench Press', muscleGroup: 'Chest' },
     { name: 'Squat', muscleGroup: 'Legs' },
@@ -497,6 +498,14 @@ function ExercisePickerModal({
     { name: 'Barbell Row', muscleGroup: 'Back' },
     { name: 'Pull-ups', muscleGroup: 'Back' },
   ];
+
+  const handleToggle = (exercise: { name: string; muscleGroup: string }) => {
+    setSelected((prev) =>
+      prev.some((e) => e.name === exercise.name)
+        ? prev.filter((e) => e.name !== exercise.name)
+        : [...prev, exercise]
+    );
+  };
 
   return (
     <>
@@ -511,37 +520,59 @@ function ExercisePickerModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-[#0D0D0D] rounded-lg border border-[#374151] z-50 overflow-hidden"
+        className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-[#0D0D0D] rounded-lg border border-[#374151] z-50 overflow-hidden flex flex-col max-h-[90vh]"
       >
-        <div className="p-6 border-b border-[#374151]">
+        <div className="p-6 border-b border-[#374151] flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">Add Exercise</h2>
-            <Button size="sm" variant="ghost" onClick={onClose}>
+            <h2 className="text-xl font-semibold text-white">Add Exercises</h2>
+            <Button size="sm" variant="ghost" onClick={onClose} className="text-[#9CA3AF] hover:text-white">
               <X className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
-        <div className="p-6 max-h-96 overflow-y-auto">
+        <div className="p-6 overflow-y-auto flex-1">
           <div className="space-y-2">
-            {exercises.map((exercise) => (
-              <button
-                key={exercise.name}
-                onClick={() => onSelect(exercise)}
-                className="w-full p-4 rounded-lg bg-[#1a1a1a] border border-[#374151] hover:border-[#FF6B35] transition-all text-left"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-white mb-1">{exercise.name}</h4>
-                    <Badge className="bg-[#FF6B35] text-white border-0 text-xs">
-                      {exercise.muscleGroup}
-                    </Badge>
+            {exercises.map((exercise) => {
+              const isSelected = selected.some((e) => e.name === exercise.name);
+              return (
+                <button
+                  key={exercise.name}
+                  onClick={() => handleToggle(exercise)}
+                  className={`w-full p-4 rounded-lg bg-[#1a1a1a] border transition-all text-left ${
+                    isSelected ? 'border-[#FF6B35]' : 'border-[#374151] hover:border-[#FF6B35]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-white mb-1">{exercise.name}</h4>
+                      <Badge className="bg-[#FF6B35] text-white border-0 text-xs">
+                        {exercise.muscleGroup}
+                      </Badge>
+                    </div>
+                    {isSelected ? (
+                      <X className="w-5 h-5 text-[#FF6B35]" />
+                    ) : (
+                      <Plus className="w-5 h-5 text-[#9CA3AF]" />
+                    )}
                   </div>
-                  <Plus className="w-5 h-5 text-[#9CA3AF]" />
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
+        </div>
+
+        <div className="p-6 border-t border-[#374151] bg-[#0D0D0D] flex-shrink-0 flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose} className="border-[#374151] text-[#9CA3AF] hover:text-white">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onSelect(selected)}
+            disabled={selected.length === 0}
+            className="bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0 text-white disabled:opacity-50"
+          >
+            Add {selected.length} Exercise{selected.length !== 1 ? 's' : ''}
+          </Button>
         </div>
       </motion.div>
     </>

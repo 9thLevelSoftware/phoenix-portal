@@ -7,6 +7,7 @@ import { Star, Download, Heart, MessageCircle, Share2, Search, TrendingUp, Clock
 import { motion } from 'motion/react';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { CommunityMobile } from '@/app/components/mobile/CommunityMobile';
+import { toast } from 'sonner';
 
 export function Community() {
   const isMobile = useIsMobile();
@@ -211,13 +212,20 @@ export function Community() {
                         </div>
                       </div>
 
-                      {/* Actions */}
                       <div className="flex items-center gap-2 mt-4">
-                        <Button className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+                        <Button 
+                          onClick={() => toast.success('Routine saved!', { description: `${routine.name} has been added to your library.` })}
+                          className="flex-1 bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+                        >
                           <Download className="w-4 h-4 mr-2" />
                           Save to Library
                         </Button>
-                        <Button variant="outline" size="icon" className="border-[#374151] hover:border-[#FF6B35]">
+                        <Button 
+                          onClick={() => toast.success('Added to favorites')}
+                          variant="outline" 
+                          size="icon" 
+                          className="border-[#374151] hover:border-[#FF6B35]"
+                        >
                           <Heart className="w-4 h-4" />
                         </Button>
                       </div>
@@ -317,7 +325,10 @@ export function Community() {
                     </div>
 
                     {/* Action */}
-                    <Button className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0">
+                    <Button 
+                      onClick={() => toast.success('Program imported!', { description: `${cycle.name} is now available in your Training Cycles.` })}
+                      className="w-full bg-gradient-to-r from-[#FF6B35] to-[#DC2626] hover:from-[#DC2626] hover:to-[#F59E0B] border-0"
+                    >
                       <Download className="w-4 h-4 mr-2" />
                       Import Program
                     </Button>
@@ -350,15 +361,15 @@ export function Community() {
                       </div>
                       <p className="text-[#E5E7EB] mb-4">{post.content}</p>
                       <div className="flex items-center gap-6">
-                        <Button variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
+                        <Button onClick={() => toast.success('Post liked')} variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
                           <Heart className="w-4 h-4 mr-2" />
                           {post.likes}
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
+                        <Button onClick={() => toast('Comments opened')} variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
                           <MessageCircle className="w-4 h-4 mr-2" />
                           {post.comments}
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
+                        <Button onClick={() => toast('Share menu opened')} variant="ghost" size="sm" className="text-[#9CA3AF] hover:text-[#FF6B35] hover:bg-[#FF6B35]/10">
                           <Share2 className="w-4 h-4 mr-2" />
                           Share
                         </Button>
