@@ -240,7 +240,7 @@ export function MobileBottomNav() {
 						<div className="pb-8">
 							{moreGroups.map((group) => (
 								<div key={group.label}>
-									<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground px-4 pt-4 pb-1">
+									<p className="eyebrow text-muted-foreground px-4 pt-4 pb-1">
 										{group.label}
 									</p>
 									{group.items.map((item) => {
