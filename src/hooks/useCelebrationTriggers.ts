@@ -107,7 +107,7 @@ export function useCelebrationTriggers() {
 
 				// Fire WorkoutComplete for each new workout
 				for (const workout of newWorkouts) {
-					const duration = `${workout.duration_minutes} min`;
+					const duration = `${workout.duration_seconds} min`;
 					const volume = `${workout.total_volume.toLocaleString()} kg`;
 
 					trigger({

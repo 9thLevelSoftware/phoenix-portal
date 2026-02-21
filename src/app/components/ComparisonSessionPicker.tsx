@@ -109,7 +109,7 @@ export function ComparisonSessionPicker({
 											</span>
 											<span className="flex items-center gap-1">
 												<Clock className="w-3 h-3" />
-												{workout.duration_minutes}m
+												{workout.duration_seconds}m
 											</span>
 											<span>{workout.total_volume.toLocaleString()} kg</span>
 										</div>

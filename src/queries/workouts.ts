@@ -245,7 +245,7 @@ export function comparisonDetailOptions(sessionId: string) {
 				name: parsedSession.name,
 				startedAt: parsedSession.started_at,
 				totalVolume: parsedSession.total_volume,
-				duration: parsedSession.duration_minutes,
+				duration: parsedSession.duration_seconds,
 				exerciseCount: parsedSession.exercise_count,
 				setCount: parsedSession.set_count,
 				prCount: parsedSession.pr_count,

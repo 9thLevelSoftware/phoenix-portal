@@ -449,7 +449,7 @@ export function Dashboard() {
 														{workout.total_volume.toLocaleString()} kg
 													</div>
 													<div className="text-sm text-muted-foreground">
-														{workout.duration_minutes} min
+														{workout.duration_seconds} min
 													</div>
 												</div>
 											</div>

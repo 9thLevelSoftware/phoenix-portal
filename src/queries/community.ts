@@ -139,7 +139,7 @@ export function isFollowingOptions(followerId: string, followedId: string) {
 		queryKey: queryKeys.community.follows(followerId, followedId),
 		queryFn: async () => {
 			const { data, error } = await supabase
-				.from("creator_follows")
+				.from("creator_follows" as never)
 				.select("id")
 				.eq("follower_id", followerId)
 				.eq("followed_id", followedId)

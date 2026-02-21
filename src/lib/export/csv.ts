@@ -6,7 +6,7 @@ import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
  * Generate CSV content for workout history.
  * Accepts Zod-transformed WorkoutSession[] where:
  *   - started_at is a Date object
- *   - duration_minutes is already converted to minutes by the transform
+ *   - duration_seconds is already converted to minutes by the transform
  *   - total_volume is already multiplied by WEIGHT_MULTIPLIER
  */
 export function generateWorkoutCSV(workouts: WorkoutSession[]): string {
@@ -14,7 +14,7 @@ export function generateWorkoutCSV(workouts: WorkoutSession[]): string {
 		Date: format(w.started_at, "yyyy-MM-dd"),
 		Time: format(w.started_at, "HH:mm"),
 		"Workout Name": w.name,
-		"Duration (min)": w.duration_minutes ?? "",
+		"Duration (min)": w.duration_seconds ?? "",
 		"Total Volume (kg)": w.total_volume ?? "",
 		Sets: w.set_count ?? "",
 		Exercises: w.exercise_count ?? "",
