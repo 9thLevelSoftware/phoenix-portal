@@ -46,14 +46,14 @@ export function AppLayout() {
 
 	return (
 		<SidebarProvider defaultOpen={true}>
-			<div className="min-h-screen bg-background relative z-[10] flex w-full">
+			<div className="min-h-screen relative z-[10] flex w-full">
 				<OfflineBanner />
 
 				<div data-print-hide>
 					<AppSidebar />
 				</div>
 
-				<SidebarInset>
+				<SidebarInset className="bg-transparent">
 					{needsOnboarding && (
 						<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
 					)}
