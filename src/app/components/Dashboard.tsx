@@ -187,7 +187,7 @@ export function Dashboard() {
 
 	if (hasNoWorkouts) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				{/* Mobile welcome */}
 				<div className="block md:hidden px-4 py-12">
 					<motion.div
@@ -369,7 +369,7 @@ export function Dashboard() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Mobile compact header */}

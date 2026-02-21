@@ -338,7 +338,7 @@ export function Goals() {
 	// Tier gate for FREE users
 	if (!isPremium && !isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -371,7 +371,7 @@ export function Goals() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<motion.div

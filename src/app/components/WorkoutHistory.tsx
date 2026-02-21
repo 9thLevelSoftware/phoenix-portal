@@ -240,7 +240,7 @@ export function WorkoutHistory() {
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
 						<Skeleton className="h-10 w-64 mb-2" />
@@ -259,7 +259,7 @@ export function WorkoutHistory() {
 	// Empty state
 	if (!workouts || workouts.length === 0) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
 						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
@@ -285,7 +285,7 @@ export function WorkoutHistory() {
 	const initialPageFull = workouts.length >= WORKOUTS_PAGE_SIZE;
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
