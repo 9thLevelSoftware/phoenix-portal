@@ -28,7 +28,7 @@
 
 ### Visual Depth & Surfaces
 
-- [ ] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
+- [x] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
 - [x] **VIS-02**: Subtle PNG noise/grain texture overlay on body via `::after` pseudo-element
 - [x] **VIS-03**: Card surface hierarchy: hero cards (brand shadow + border glow), primary cards (elevated + blur), secondary cards (subtle surface)
 - [x] **VIS-04**: `--shadow-sm/md/lg` tokens actually applied to cards (currently defined but unused)
@@ -114,7 +114,7 @@
 | NAV-07 | Phase 15 | Complete |
 | NAV-08 | Phase 15 | Complete |
 | NAV-09 | Phase 15 | Complete |
-| VIS-01 | Phase 20 | Pending |
+| VIS-01 | Phase 20 | Complete |
 | VIS-02 | Phase 14 | Complete |
 | VIS-03 | Phase 16 | Complete |
 | VIS-04 | Phase 14 | Complete |

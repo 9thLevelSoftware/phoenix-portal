@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 20 of 20 (Gap Closure & Tech Debt)
-Plan: 2 of ? in current phase — plan 02 complete
+Plan: 1 of 2 in current phase — plan 01 complete
 Status: In progress
-Last activity: 2026-02-21 — 20-02 complete (inline fontFamily removed from LandingPage hero h1, Navigation.tsx deleted, MobileBottomNav drawer labels use .eyebrow utility)
+Last activity: 2026-02-21 — 20-01 complete (stripped bg-background from AppLayout shell, SidebarInset overridden with bg-transparent, all 16 authenticated page root wrappers cleaned — 38 instances removed; body::before ambient ember/flame glow now unoccluded through full render stack)
 
-Progress: [██░░░░░░░░] 10% (v1.2)
+Progress: [███░░░░░░░] 15% (v1.2)
 
 ## Performance Metrics
 
@@ -30,19 +30,14 @@ Progress: [██░░░░░░░░] 10% (v1.2)
 
 **Velocity (v1.2):**
 - Total plans completed: 6
-- Average duration: ~4.0 min
-- Total execution time: ~25 min
+- Average duration: ~4.3 min
+- Total execution time: ~26 min
 
 ## Accumulated Context
 
 ### Decisions
 
 All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
-
-**v1.2 Phase 20 decisions (from 20-02):**
-- Navigation.tsx safe to delete confirmed: grep found zero direct component imports (only SetNavigation/NavigationMenu reference "Navigation")
-- .eyebrow utility is canonical for drawer/section labels — never use manual text-xs/font-semibold/uppercase/tracking-widest (incorrect weight 600 vs 450, size 12px vs 11px, spacing ~0.1em vs 0.08em)
-- LandingPage hero h1 inline fontFamily was blocking CSS cascade — removal allows fonts.css @theme block to supply Inter correctly
 
 **v1.2 Phase 14 decisions (from 14-01):**
 - Inter Variable loaded with full wght axis (0,100..900;1,100..900) to unlock non-standard weights 450 and 625
@@ -95,6 +90,12 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - localStorage key "phoenix-sidebar-preferred-open" is source of truth for user preference; SidebarProvider cookie reflects current visual state
 - NavLink with useLocation() for isActive detection (not NavLink render prop) — avoids asChild anti-pattern
 
+**v1.2 Phase 20 decisions (from 20-01):**
+- SidebarInset overridden with bg-transparent at call site in AppLayout — shadcn primitive sidebar.tsx not edited (per Phase 15 pattern)
+- LandingPage, PrivacyPolicy, ResetPassword retain bg-background — they are outside AppLayout boundary and require their own opaque background
+- Sticky headers with bg-background/95 are intentionally untouched — /95 opacity modifier provides frosted glass effect, not the same as root wrapper opaque blocks
+- Authenticated page root wrappers use min-h-screen without bg-background — background provided by body via @apply in theme.css
+
 Key v1.2 constraints from research:
 - Max 3 backdrop-blur layers per viewport simultaneously — GPU overload on mobile otherwise
 - AnimatePresence requires useOutlet() not <Outlet> for React Router v7 — exit animations never fire with <Outlet>
@@ -124,5 +125,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 20-02-PLAN.md — inline fontFamily removed from LandingPage hero h1, Navigation.tsx deleted, MobileBottomNav drawer labels use .eyebrow utility
+Stopped at: Completed 20-01-PLAN.md — ambient glow unblocked: bg-background stripped from AppLayout shell + 16 authenticated page root wrappers (38 instances)
 Resume file: N/A
