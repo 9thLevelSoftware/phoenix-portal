@@ -28,11 +28,11 @@
 
 ### Visual Depth & Surfaces
 
-- [ ] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
-- [ ] **VIS-02**: Subtle PNG noise/grain texture overlay on body via `::after` pseudo-element
+- [x] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
+- [x] **VIS-02**: Subtle PNG noise/grain texture overlay on body via `::after` pseudo-element
 - [ ] **VIS-03**: Card surface hierarchy: hero cards (brand shadow + border glow), primary cards (elevated + blur), secondary cards (subtle surface)
-- [ ] **VIS-04**: `--shadow-sm/md/lg` tokens actually applied to cards (currently defined but unused)
-- [ ] **VIS-05**: Default card borders changed from `border-secondary` (#374151) to `rgba(255,255,255,0.06)` subtle separator
+- [x] **VIS-04**: `--shadow-sm/md/lg` tokens actually applied to cards (currently defined but unused)
+- [x] **VIS-05**: Default card borders changed from `border-secondary` (#374151) to `rgba(255,255,255,0.06)` subtle separator
 - [ ] **VIS-06**: Glassmorphism (`backdrop-blur + semi-transparent bg`) applied to 2-3 key cards per page only (max 3 blur layers per viewport)
 - [ ] **VIS-07**: Auth dialog uses dark glass treatment (blur + branded border + inner shadow)
 - [ ] **VIS-08**: Landing page feature cards have gradient borders and hover lift with glow bloom
@@ -114,11 +114,11 @@
 | NAV-07 | Phase 15 | Pending |
 | NAV-08 | Phase 15 | Pending |
 | NAV-09 | Phase 15 | Pending |
-| VIS-01 | Phase 14 | Pending |
-| VIS-02 | Phase 14 | Pending |
+| VIS-01 | Phase 14 | Complete |
+| VIS-02 | Phase 14 | Complete |
 | VIS-03 | Phase 16 | Pending |
-| VIS-04 | Phase 14 | Pending |
-| VIS-05 | Phase 14 | Pending |
+| VIS-04 | Phase 14 | Complete |
+| VIS-05 | Phase 14 | Complete |
 | VIS-06 | Phase 16 | Pending |
 | VIS-07 | Phase 16 | Pending |
 | VIS-08 | Phase 16 | Pending |

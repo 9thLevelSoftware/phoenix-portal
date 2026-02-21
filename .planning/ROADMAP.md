@@ -38,7 +38,7 @@
 
 **Milestone Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
 
-- [ ] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on
+- [x] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on (completed 2026-02-21)
 - [ ] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components
 - [ ] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments
 - [ ] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance
@@ -140,7 +140,7 @@ Plans:
 | 11. New Features | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
-| 14. CSS Foundation & Typography | 1/2 | In Progress|  | - |
+| 14. CSS Foundation & Typography | 2/2 | Complete   | 2026-02-21 | - |
 | 15. Navigation & Layout Shell | v1.2 | 0/TBD | Not started | - |
 | 16. Visual Depth & Surfaces | v1.2 | 0/TBD | Not started | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |

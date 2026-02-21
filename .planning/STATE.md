@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 14 of 19 (CSS Foundation & Typography)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase — PHASE COMPLETE
 Status: In progress
-Last activity: 2026-02-20 — 14-01 complete (Inter Variable typography foundation)
+Last activity: 2026-02-21 — 14-02 complete (ambient glows, grain texture, shadow tokens, surface-3)
 
 Progress: [█░░░░░░░░░] 5% (v1.2)
 
@@ -29,9 +29,9 @@ Progress: [█░░░░░░░░░] 5% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 2 min
-- Total execution time: ~2 min
+- Total execution time: ~4 min
 
 ## Accumulated Context
 
@@ -46,6 +46,13 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG fontFamily must use literal string "Inter, system-ui, sans-serif" — CSS vars don't resolve in SVG presentation attributes
 - h2 weight 625 (non-standard variable font weight) provides perceptible distinction from h1(700) and h3(500)
 - AppLayout gets relative z-[10] for Plan 02 compatibility with ambient glow body layers
+
+**v1.2 Phase 14 decisions (from 14-02):**
+- Tailwind shadow utilities require standalone @theme block (not @theme inline) — @theme inline only bridges existing vars, does not generate utility values
+- Circular var() self-references in @theme inline removed — they were no-ops; standalone @theme defines actual shadow values
+- SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
+- body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
+- .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
 
 Key v1.2 constraints from research:
 - Max 3 backdrop-blur layers per viewport simultaneously — GPU overload on mobile otherwise
@@ -76,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-20
-Stopped at: Completed 14-01-PLAN.md — Inter Variable typography foundation done, ready for 14-02
+Last session: 2026-02-21
+Stopped at: Completed 14-02-PLAN.md — Phase 14 CSS Foundation & Typography complete; ambient glows, shadow tokens, grain texture, surface-3, card elevation, border-secondary override done
 Resume file: N/A
