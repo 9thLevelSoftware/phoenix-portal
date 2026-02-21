@@ -65,11 +65,12 @@
   --surface-0: #0D0D0D;
   --surface-1: #141414;
   --surface-2: #1A1A1A;
+  --surface-3: #222222;
   --surface-overlay: rgba(13, 13, 13, 0.95);
 
-  /* Elevation shadows (brand-tinted) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* Elevation shadows (brand-tinted — warm ember undertone) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.03);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.04);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.05);
 
   /* Icon colors */
@@ -124,10 +125,15 @@
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
+}
+
+/* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
+@theme {
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.03);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.05);
 }
 
 @layer base {
@@ -137,6 +143,11 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* VIS-04: Default card elevation — warm shadow applied to all shadcn Card components */
+  [data-slot="card"] {
+    box-shadow: var(--shadow-sm);
   }
 
   /**
