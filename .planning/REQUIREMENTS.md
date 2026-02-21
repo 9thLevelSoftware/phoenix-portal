@@ -16,13 +16,13 @@
 
 ### Navigation & Layout
 
-- [ ] **NAV-01**: 13-item horizontal top nav replaced with collapsible left sidebar using shadcn/ui Sidebar component
-- [ ] **NAV-02**: Sidebar collapses to icon-only rail at narrower desktop widths
-- [ ] **NAV-03**: Sidebar items grouped into sections (Training, Social, Account)
-- [ ] **NAV-04**: Active sidebar item uses `bg-primary/10 text-primary` full-row highlight
-- [ ] **NAV-05**: Right-side nav cluster consolidated — avatar opens dropdown with profile/tier/streak/logout
+- [x] **NAV-01**: 13-item horizontal top nav replaced with collapsible left sidebar using shadcn/ui Sidebar component
+- [x] **NAV-02**: Sidebar collapses to icon-only rail at narrower desktop widths
+- [x] **NAV-03**: Sidebar items grouped into sections (Training, Social, Account)
+- [x] **NAV-04**: Active sidebar item uses `bg-primary/10 text-primary` full-row highlight
+- [x] **NAV-05**: Right-side nav cluster consolidated — avatar opens dropdown with profile/tier/streak/logout
 - [ ] **NAV-06**: Shared PageShell component replaces 30+ duplicated `max-w-7xl mx-auto px-4` patterns
-- [ ] **NAV-07**: `useIsMobile` initializes synchronously from `window.innerWidth` — no layout flash on mobile
+- [x] **NAV-07**: `useIsMobile` initializes synchronously from `window.innerWidth` — no layout flash on mobile
 - [ ] **NAV-08**: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile merged into CSS-responsive parent components
 - [ ] **NAV-09**: MobileBottomNav "More" drawer items grouped into labeled sections
 
@@ -105,13 +105,13 @@
 | TYPE-04 | Phase 14 | Complete |
 | TYPE-05 | Phase 14 | Complete |
 | TYPE-06 | Phase 14 | Complete |
-| NAV-01 | Phase 15 | Pending |
-| NAV-02 | Phase 15 | Pending |
-| NAV-03 | Phase 15 | Pending |
-| NAV-04 | Phase 15 | Pending |
-| NAV-05 | Phase 15 | Pending |
+| NAV-01 | Phase 15 | Complete |
+| NAV-02 | Phase 15 | Complete |
+| NAV-03 | Phase 15 | Complete |
+| NAV-04 | Phase 15 | Complete |
+| NAV-05 | Phase 15 | Complete |
 | NAV-06 | Phase 15 | Pending |
-| NAV-07 | Phase 15 | Pending |
+| NAV-07 | Phase 15 | Complete |
 | NAV-08 | Phase 15 | Pending |
 | NAV-09 | Phase 15 | Pending |
 | VIS-01 | Phase 14 | Complete |

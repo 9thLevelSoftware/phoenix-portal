@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 14: CSS Foundation & Typography
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 15: Navigation Layout Shell
 
 ## Current Position
 
-Phase: 14 of 19 (CSS Foundation & Typography)
-Plan: 2 of 2 in current phase — PHASE COMPLETE
+Phase: 15 of 19 (Navigation Layout Shell)
+Plan: 1 of 3 in current phase — plan 01 complete
 Status: In progress
-Last activity: 2026-02-21 — 14-02 complete (ambient glows, grain texture, shadow tokens, surface-3)
+Last activity: 2026-02-21 — 15-01 complete (sidebar shell, AppLayout restructure, useIsMobile sync init)
 
-Progress: [█░░░░░░░░░] 5% (v1.2)
+Progress: [██░░░░░░░░] 8% (v1.2)
 
 ## Performance Metrics
 
@@ -29,9 +29,9 @@ Progress: [█░░░░░░░░░] 5% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 2
-- Average duration: 2 min
-- Total execution time: ~4 min
+- Total plans completed: 3
+- Average duration: 2.3 min
+- Total execution time: ~7 min
 
 ## Accumulated Context
 
@@ -53,6 +53,14 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
 - body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
 - .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
+
+**v1.2 Phase 15 decisions (from 15-01):**
+- Auto-collapse uses isAutoCollapsing ref flag to distinguish viewport-driven collapse from user toggle — prevents localStorage overwrite during auto-collapse
+- SidebarProvider placed inside AppLayout (ProtectedRoute boundary), not at router root — sidebar not visible on LandingPage
+- Navigation.tsx kept with deprecation comment rather than deleted — safe to remove after Phase 15 verification
+- useAutoCollapse defined inside AppSidebar.tsx (co-located) — keeps collapse logic adjacent to sidebar component
+- localStorage key "phoenix-sidebar-preferred-open" is source of truth for user preference; SidebarProvider cookie reflects current visual state
+- NavLink with useLocation() for isActive detection (not NavLink render prop) — avoids asChild anti-pattern
 
 Key v1.2 constraints from research:
 - Max 3 backdrop-blur layers per viewport simultaneously — GPU overload on mobile otherwise
@@ -77,12 +85,11 @@ None.
 - 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
 - Recovery ACWR thresholds may need sport-science validation for cable resistance training
 
-**v1.2 pre-planning items (resolve before Phase 15 planning):**
-- Sidebar state deduplication: decide whether useUIStore (Zustand) or SidebarProvider cookie is the single source of truth for sidebar collapsed state — running both causes desync bugs
-- AnimatePresence + React 19 concurrent mode: validate useOutlet(context) prototype in isolation before applying to all 26 routes
+**v1.2 Phase 15 items resolved:**
+- Sidebar state deduplication: RESOLVED — SidebarProvider cookie handles visual state, localStorage handles user preference, Zustand NOT used for sidebar state
 
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 14-02-PLAN.md — Phase 14 CSS Foundation & Typography complete; ambient glows, shadow tokens, grain texture, surface-3, card elevation, border-secondary override done
+Stopped at: Completed 15-01-PLAN.md — sidebar shell (AppSidebar + AppLayout + useIsMobile sync init) complete
 Resume file: N/A
