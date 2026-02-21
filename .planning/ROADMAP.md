@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
 - ✅ **v1.1 Full UX Overhaul** — Phases 9-13 (shipped 2026-02-17)
-- 🚧 **v1.2 Premium Visual Overhaul** — Phases 14-19 (in progress)
+- 🚧 **v1.2 Premium Visual Overhaul** — Phases 14-20 (in progress)
 
 ## Phases
 
@@ -44,6 +44,7 @@
 - [ ] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance
 - [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix
 - [ ] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation
+- [ ] **Phase 20: Gap Closure & Tech Debt** - Fix ambient glow occlusion, remove inline system-ui fallback, delete dead Navigation.tsx, apply eyebrow utility, add SUMMARY frontmatter
 
 ## Phase Details
 
@@ -129,6 +130,19 @@ Plans:
   5. The `animate-flame-flicker` and `animate-phoenix-glow` CSS animations are applied to at least one visible UI element each — they are no longer dead declarations
 **Plans**: TBD
 
+### Phase 20: Gap Closure & Tech Debt
+**Goal**: Body-level ambient ember/flame glows are visible through the authenticated AppLayout shell; the last inline system-ui fallback is removed; dead code and documentation inconsistencies from Phases 14-16 are cleaned up.
+**Depends on**: Phase 16
+**Requirements**: TYPE-03, VIS-01
+**Gap Closure**: Closes gaps from v1.2 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. Ambient ember/flame glows are visually perceptible behind authenticated page content — not fully occluded by opaque AppLayout background
+  2. `LandingPage.tsx` hero h1 has no inline `style` prop — font-family inherits from global CSS
+  3. Glassmorphism cards blur against the ambient glow layer, not just adjacent page content
+  4. `Navigation.tsx` is deleted — zero dead nav files in the repo
+  5. MobileBottomNav drawer section labels use `.eyebrow` utility class instead of manual Tailwind
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -153,6 +167,7 @@ Plans:
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
+| 20. Gap Closure & Tech Debt | v1.2 | 0/TBD | Not started | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
