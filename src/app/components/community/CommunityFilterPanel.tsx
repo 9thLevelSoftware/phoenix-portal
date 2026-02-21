@@ -82,7 +82,19 @@ export function CommunityFilterPanel() {
 				)}
 			</Button>
 
-			<Sheet open={open} onOpenChange={setOpen}>
+			<Sheet
+				open={open}
+				onOpenChange={(next) => {
+					if (!next) {
+						// Auto-apply pending filter selections on dismiss
+						setFilters({
+							muscleGroup: localMuscle || undefined,
+							difficulty: localDifficulty || undefined,
+						});
+					}
+					setOpen(next);
+				}}
+			>
 				<SheetContent side="right" className="bg-background border-secondary">
 					<SheetHeader>
 						<SheetTitle className="text-white">Filters</SheetTitle>

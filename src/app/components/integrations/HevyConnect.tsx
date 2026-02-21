@@ -24,7 +24,7 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
-import { parseHevyCSV } from "@/lib/integrations/hevy";
+import { importHevyActivities, parseHevyCSV } from "@/lib/integrations/hevy";
 import type { NormalizedActivity } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
 
@@ -162,29 +162,9 @@ export function HevyConnect({
 
 		setIsImporting(true);
 		try {
-			// Insert all activities to external_activities via upsert
-			const rows = parsedActivities.map((a) => ({
-				user_id: userId,
-				external_id: a.external_id,
-				provider: "hevy",
-				name: a.name,
-				activity_type: a.activity_type,
-				started_at: a.started_at,
-				duration_seconds: a.duration_seconds,
-				distance_meters: a.distance_meters,
-				calories: a.calories,
-				avg_heart_rate: a.avg_heart_rate,
-				max_heart_rate: a.max_heart_rate,
-				elevation_gain_meters: a.elevation_gain_meters,
-			}));
+			const count = await importHevyActivities(userId, parsedActivities);
 
-			const { error } = await supabase
-				.from("external_activities")
-				.upsert(rows, { onConflict: "user_id,provider,external_id" });
-
-			if (error) throw error;
-
-			toast.success(`Imported ${parsedActivities.length} workouts from Hevy`);
+			toast.success(`Imported ${count} workouts from Hevy`);
 			setParsedActivities(null);
 			setCsvFileName(null);
 			if (fileInputRef.current) {

@@ -77,12 +77,22 @@ function CommentItem({
 		setIsEditing(false);
 	}
 
+	const avatarUrl = comment.profiles?.avatar_url;
+
 	return (
 		<div className="flex gap-3 py-3">
 			{/* Avatar */}
-			<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-xs shrink-0">
-				{authorName.charAt(0).toUpperCase()}
-			</div>
+			{avatarUrl ? (
+				<img
+					src={avatarUrl}
+					alt={authorName}
+					className="w-8 h-8 rounded-full object-cover shrink-0"
+				/>
+			) : (
+				<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-xs shrink-0">
+					{authorName.charAt(0).toUpperCase()}
+				</div>
+			)}
 
 			{/* Content */}
 			<div className="flex-1 min-w-0">
@@ -100,7 +110,7 @@ function CommentItem({
 							className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 						/>
 						<div className="flex items-center justify-between">
-							<span className="text-xs text-muted">{editBody.length}/500</span>
+							<span className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted"}`}>{editBody.length}/500</span>
 							<div className="flex gap-2">
 								<Button
 									variant="ghost"
@@ -256,7 +266,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 						className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 					/>
 					<div className="flex items-center justify-between">
-						<span className="text-xs text-muted">{newComment.length}/500</span>
+						<span className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted"}`}>{newComment.length}/500</span>
 						<Button
 							size="sm"
 							onClick={handlePost}

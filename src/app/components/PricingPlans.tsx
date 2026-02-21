@@ -120,13 +120,21 @@ export function PricingPlans() {
 	const [isAnnual, setIsAnnual] = useState(false);
 	const [loadingTier, setLoadingTier] = useState<SubscriptionTier | null>(null);
 
+	const isPriceConfigured = (tier: SubscriptionTier): boolean => {
+		if (tier === "FREE") return true;
+		const id = isAnnual ? PRICE_IDS[tier].annual : PRICE_IDS[tier].monthly;
+		return !!id;
+	};
+
 	const handleSubscribe = async (tier: SubscriptionTier) => {
 		if (tier === "FREE") return;
 
 		const priceId = isAnnual ? PRICE_IDS[tier].annual : PRICE_IDS[tier].monthly;
 
 		if (!priceId) {
-			toast.error("Price configuration missing. Please contact support.");
+			toast.info(
+				"Subscriptions are coming soon! We're still setting up payments.",
+			);
 			return;
 		}
 
@@ -170,10 +178,12 @@ export function PricingPlans() {
 		}
 
 		const isLoading = loadingTier === tierConfig.tier;
+		const priceReady = isPriceConfigured(tierConfig.tier);
 
 		return (
 			<Button
-				className={`w-full ${tierConfig.buttonClass}`}
+				className={`w-full ${priceReady ? tierConfig.buttonClass : ""}`}
+				variant={priceReady ? "default" : "outline"}
 				onClick={() => handleSubscribe(tierConfig.tier)}
 				disabled={isLoading || loadingTier !== null}
 			>
@@ -182,8 +192,10 @@ export function PricingPlans() {
 						<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 						Redirecting...
 					</>
-				) : (
+				) : priceReady ? (
 					`Subscribe to ${tierConfig.name}`
+				) : (
+					"Coming Soon"
 				)}
 			</Button>
 		);

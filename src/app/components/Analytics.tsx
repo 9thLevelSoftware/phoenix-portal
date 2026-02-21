@@ -664,7 +664,6 @@ export function Analytics() {
 														cx="50%"
 														cy="50%"
 														labelLine={false}
-														label={({ name, value }) => `${name} ${value}%`}
 														outerRadius={100}
 														fill="#8884d8"
 														dataKey="value"
@@ -680,6 +679,13 @@ export function Analytics() {
 															borderRadius: "8px",
 															color: "var(--secondary-foreground)",
 														}}
+													/>
+													<Legend
+														formatter={(value: string) => (
+															<span style={{ color: "var(--secondary-foreground)", fontSize: 12 }}>
+																{value}
+															</span>
+														)}
 													/>
 												</PieChart>
 											</ResponsiveContainer>

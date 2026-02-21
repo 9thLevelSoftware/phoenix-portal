@@ -52,12 +52,12 @@ function FactorBar({
 
 	return (
 		<div className="space-y-1.5">
-			<div className="flex items-center justify-between text-sm">
-				<div className="flex items-center gap-2 text-muted-foreground">
-					<Icon className="w-4 h-4" />
-					<span>{label}</span>
+			<div className="flex items-center justify-between text-xs sm:text-sm gap-2">
+				<div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground min-w-0">
+					<Icon className="w-4 h-4 flex-shrink-0" />
+					<span className="truncate">{label}</span>
 				</div>
-				<span className="text-white font-medium">{displayValue}</span>
+				<span className="text-white font-medium flex-shrink-0">{displayValue}</span>
 			</div>
 			<div className="relative h-2 bg-secondary rounded-full overflow-hidden">
 				{highlight && (
@@ -122,16 +122,16 @@ function FreeRecoveryView() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
-						<div className="flex items-center gap-3 mb-6">
-							<Moon className="w-6 h-6 text-primary" />
-							<h2 className="text-xl text-white">Rest Days This Week</h2>
+					<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<div className="flex items-center gap-3 mb-4 sm:mb-6">
+							<Moon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+							<h2 className="text-lg sm:text-xl text-white">Rest Days This Week</h2>
 						</div>
 
-						<div className="flex items-center gap-6">
-							<div className="text-5xl font-bold text-primary">{restDays}</div>
+						<div className="flex items-center gap-4 sm:gap-6">
+							<div className="text-4xl sm:text-5xl font-bold text-primary">{restDays}</div>
 							<div>
-								<p className="text-white mb-1">
+								<p className="text-sm sm:text-base text-white mb-1">
 									{restDays >= 2
 										? "Your rest day frequency appears adequate"
 										: restDays === 1
@@ -235,8 +235,8 @@ export function Recovery() {
 						animate={{ opacity: 1, y: 0 }}
 						className="mb-6"
 					>
-						<Card className="p-4 bg-gradient-to-br from-accent/10 to-background border-accent/30">
-							<div className="flex items-start gap-3">
+						<Card className="p-3 sm:p-4 bg-gradient-to-br from-accent/10 to-background border-accent/30">
+							<div className="flex items-start gap-2 sm:gap-3">
 								<Info className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
 								<div className="flex-1">
 									<p className="text-sm text-white mb-2">
@@ -272,27 +272,28 @@ export function Recovery() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.1 }}
 					>
-						<Card className="p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<div className="flex flex-col items-center text-center">
-								<AlertTriangle className="w-12 h-12 text-accent mb-4" />
-								<h2 className="text-xl text-white mb-3">
+								<AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-accent mb-3 sm:mb-4" />
+								<h2 className="text-lg sm:text-xl text-white mb-2 sm:mb-3">
 									Building Your Recovery Baseline
 								</h2>
-								<p className="text-muted-foreground mb-6 max-w-md">
+								<p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 max-w-md">
 									Recovery insights require at least {GATING_THRESHOLD_DAYS}{" "}
 									days of training data. You have {daysSinceFirstSession} day
 									{daysSinceFirstSession !== 1 ? "s" : ""} so far.
 								</p>
 								<div className="w-full max-w-xs">
 									<Progress
-										value={
-											(daysSinceFirstSession / GATING_THRESHOLD_DAYS) * 100
-										}
+										value={Math.min(
+											(daysSinceFirstSession / GATING_THRESHOLD_DAYS) * 100,
+											100,
+										)}
 										className="h-3"
 									/>
 									<p className="text-xs text-muted-foreground mt-2">
-										{GATING_THRESHOLD_DAYS - daysSinceFirstSession} day
-										{GATING_THRESHOLD_DAYS - daysSinceFirstSession !== 1
+										{Math.max(0, GATING_THRESHOLD_DAYS - daysSinceFirstSession)} day
+										{Math.max(0, GATING_THRESHOLD_DAYS - daysSinceFirstSession) !== 1
 											? "s"
 											: ""}{" "}
 										remaining
@@ -333,7 +334,7 @@ export function Recovery() {
 							transition={{ delay: 0.1 }}
 							className="mb-6"
 						>
-							<Card className="p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
 								<div className="flex flex-col items-center">
 									<RecoveryScore result={recovery} size="lg" />
 									{recovery.isClamped && (
@@ -352,13 +353,13 @@ export function Recovery() {
 							transition={{ delay: 0.2 }}
 							className="mb-6"
 						>
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h2 className="text-xl text-white mb-6 flex items-center gap-2">
+							<Card className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h2 className="text-lg sm:text-xl text-white mb-4 sm:mb-6 flex items-center gap-2">
 									<Activity className="w-5 h-5 text-primary" />
 									Contributing Factors
 								</h2>
 
-								<div className="space-y-5">
+								<div className="space-y-4 sm:space-y-5">
 									{/* ACWR */}
 									<FactorBar
 										label="Acute:Chronic Workload Ratio"
@@ -396,7 +397,11 @@ export function Recovery() {
 									{/* Chronic average */}
 									<FactorBar
 										label="Chronic Average (42d weekly)"
-										value={50}
+										value={(() => {
+											const chronicWeekly = recovery.factors.chronicVolume / 6;
+											const peak = Math.max(chronicWeekly, recovery.factors.weeklyVolume);
+											return peak > 0 ? (chronicWeekly / peak) * 100 : 0;
+										})()}
 										displayValue={`${(recovery.factors.chronicVolume / 6 / 1000).toFixed(1)}k`}
 										icon={Calendar}
 									/>
@@ -440,8 +445,8 @@ export function Recovery() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.3 }}
 						>
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-								<h2 className="text-xl text-white mb-4 flex items-center gap-2">
+							<Card className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h2 className="text-lg sm:text-xl text-white mb-3 sm:mb-4 flex items-center gap-2">
 									<Link2 className="w-5 h-5 text-primary" />
 									Wearable Recovery Data
 								</h2>
@@ -472,7 +477,7 @@ export function Recovery() {
 														</span>
 													</div>
 													{hasRecovery ? (
-														<div className="grid grid-cols-3 gap-2 text-sm">
+														<div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
 															{"recovery_score" in rawData && (
 																<div>
 																	<p className="text-muted-foreground text-xs">

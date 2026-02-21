@@ -221,14 +221,11 @@ export function ConsistencyCalendar({
 									fill={getIntensity(cell.count)}
 									style={{ cursor: "pointer" }}
 									onMouseEnter={(e) => {
-										const svgRect = (
-											e.currentTarget.ownerSVGElement as SVGSVGElement
-										).getBoundingClientRect();
 										setHoveredCell({
 											date: cell.date,
 											count: cell.count,
-											x: e.clientX - svgRect.left,
-											y: e.clientY - svgRect.top,
+											x: e.clientX,
+											y: e.clientY,
 										});
 									}}
 									onMouseLeave={() => setHoveredCell(null)}
@@ -241,15 +238,14 @@ export function ConsistencyCalendar({
 				{/* Tooltip */}
 				{hoveredCell && (
 					<div
-						className="pointer-events-none absolute z-10 rounded-md px-3 py-2 text-xs"
+						className="pointer-events-none fixed z-50 rounded-md px-3 py-2 text-xs"
 						style={{
-							left: hoveredCell.x + 16,
-							top: hoveredCell.y - 30,
+							left: hoveredCell.x + 12,
+							top: hoveredCell.y - 40,
 							background: "#1F2937",
 							color: "var(--secondary-foreground)",
 							border: "1px solid #374151",
 							whiteSpace: "nowrap",
-							position: "absolute",
 						}}
 					>
 						<div className="font-medium">

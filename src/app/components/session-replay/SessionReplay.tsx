@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Button } from "@/app/components/ui/button";
@@ -119,9 +119,32 @@ export function SessionReplay() {
 	// Playback hook
 	usePlayback(telemetryData?.durationMs ?? 0);
 
-	// Canvas dimensions
-	const canvasWidth = isMobile ? window.innerWidth - 32 : 600;
+	// Responsive canvas dimensions via resize observer
+	const canvasContainerRef = useRef<HTMLDivElement>(null);
+	const [canvasWidth, setCanvasWidth] = useState(
+		isMobile ? window.innerWidth - 32 : 600,
+	);
 	const canvasHeight = isMobile ? 200 : 300;
+
+	const handleResize = useCallback(
+		(entries: ResizeObserverEntry[]) => {
+			for (const entry of entries) {
+				const w = entry.contentRect.width;
+				if (w > 0) setCanvasWidth(w);
+			}
+		},
+		[],
+	);
+
+	useEffect(() => {
+		const el = canvasContainerRef.current;
+		if (!el) return;
+		const observer = new ResizeObserver(handleResize);
+		observer.observe(el);
+		// Initialize with actual width
+		setCanvasWidth(el.clientWidth);
+		return () => observer.disconnect();
+	}, [handleResize]);
 
 	if (!sessionId) {
 		return (
@@ -192,7 +215,7 @@ export function SessionReplay() {
 						</Tabs>
 
 						{/* Canvas container with quality badge */}
-						<div className="relative">
+						<div className="relative" ref={canvasContainerRef}>
 							<ReplayCanvas
 								data={telemetryData.telemetry}
 								repBoundaries={telemetryData.repBoundaries}
@@ -268,8 +291,25 @@ export function SessionReplay() {
 }
 
 /**
- * Derive rep boundaries from rep summaries.
- * Uses cumulative TUT to estimate start times.
+ * Derive approximate rep boundary timestamps from rep summaries.
+ *
+ * LIMITATION: This is a rough estimation, NOT actual recorded data.
+ *
+ * The current approach uses cumulative Time Under Tension (TUT) plus a fixed
+ * 500 ms inter-rep gap to estimate where each rep starts in the telemetry
+ * timeline. This produces inaccurate boundaries because:
+ *   1. Real rest periods between reps vary significantly and are not 500 ms.
+ *   2. TUT only measures the eccentric+concentric portion -- it excludes
+ *      lockout pauses, rack adjustments, and re-gripping time.
+ *   3. The telemetry stream may include setup/unrack time before rep 1.
+ *
+ * A more accurate implementation would detect rep boundaries directly from
+ * the raw telemetry data by finding force or velocity zero-crossings, or by
+ * consuming explicit rep start/end timestamps if the firmware provides them.
+ *
+ * The `_telemetry` parameter is accepted but unused; it is kept in the
+ * signature so a future implementation can use the raw data without changing
+ * the call site.
  */
 function deriveRepBoundaries(
 	repSummaries: RepSummary[],
@@ -277,13 +317,11 @@ function deriveRepBoundaries(
 ): number[] {
 	if (repSummaries.length === 0) return [];
 
-	// Simple approach: estimate boundaries from cumulative TUT
-	// First rep starts at 0
+	// Rough estimation: cumulative TUT + fixed 500 ms inter-rep gap
 	const boundaries: number[] = [0];
 	let cumulativeTime = 0;
 
 	for (let i = 0; i < repSummaries.length - 1; i++) {
-		// Add TUT of current rep plus a small gap (500ms rest between reps)
 		cumulativeTime += repSummaries[i].tut_ms + 500;
 		boundaries.push(cumulativeTime);
 	}

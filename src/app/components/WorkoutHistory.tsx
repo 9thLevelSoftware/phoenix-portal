@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Award,
 	BarChart3,
@@ -10,11 +10,13 @@ import {
 	Dumbbell,
 	Flame,
 	List,
+	Loader2,
+	Lock,
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useCallback, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -23,19 +25,58 @@ import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
-import { workoutListOptions } from "@/queries/workouts";
+import {
+	WORKOUTS_PAGE_SIZE,
+	workoutListOptions,
+	workoutListPageOptions,
+} from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 
 export function WorkoutHistory() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
-	const { data: workouts, isPending } = useQuery(workoutListOptions(user?.id));
+	const { data: workouts, isPending } = useQuery(
+		workoutListOptions(user?.id ?? ""),
+	);
 
-	const { isPremium } = useSubscription();
+	const { isPremium, tier } = useSubscription();
+	const queryClient = useQueryClient();
 	const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
 	const [dateRange, setDateRange] = useState("Last 30 days");
 	const [compareMode, setCompareMode] = useState(false);
 	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
+
+	// Pagination: load additional pages on demand
+	const [loadedPages, setLoadedPages] = useState(0);
+	const [extraWorkouts, setExtraWorkouts] = useState<WorkoutSession[]>([]);
+	const [isLoadingMore, setIsLoadingMore] = useState(false);
+	const [hasMore, setHasMore] = useState(true);
+
+	const allWorkouts = useMemo(() => {
+		if (!workouts) return [];
+		return [...workouts, ...extraWorkouts];
+	}, [workouts, extraWorkouts]);
+
+	const handleLoadMore = useCallback(async () => {
+		if (!user?.id || isLoadingMore) return;
+		setIsLoadingMore(true);
+		const nextOffset = (loadedPages + 1) * WORKOUTS_PAGE_SIZE;
+		try {
+			const opts = workoutListPageOptions(user.id, nextOffset);
+			const page = await queryClient.fetchQuery({
+				...opts,
+				queryKey: opts.queryKey,
+				queryFn: opts.queryFn!,
+			});
+			setExtraWorkouts((prev) => [...prev, ...page]);
+			setLoadedPages((prev) => prev + 1);
+			if (page.length < WORKOUTS_PAGE_SIZE) {
+				setHasMore(false);
+			}
+		} finally {
+			setIsLoadingMore(false);
+		}
+	}, [user?.id, isLoadingMore, loadedPages, queryClient]);
 
 	const toggleCompareSelection = (sessionId: string) => {
 		setSelectedForCompare((prev) => {
@@ -62,7 +103,7 @@ export function WorkoutHistory() {
 
 	// Filter workouts based on dateRange selection
 	const filteredWorkouts = useMemo(() => {
-		if (!workouts) return [];
+		if (allWorkouts.length === 0) return [];
 		const now = new Date();
 		let cutoffDays: number | null = null;
 		switch (dateRange) {
@@ -78,15 +119,14 @@ export function WorkoutHistory() {
 			case "Last 6 months":
 				cutoffDays = 180;
 				break;
-			case "All Time":
 			default:
 				cutoffDays = null;
 				break;
 		}
-		if (cutoffDays === null) return workouts;
+		if (cutoffDays === null) return allWorkouts;
 		const cutoff = new Date(now.getTime() - cutoffDays * 24 * 60 * 60 * 1000);
-		return workouts.filter((w) => w.started_at >= cutoff);
-	}, [workouts, dateRange]);
+		return allWorkouts.filter((w) => w.started_at >= cutoff);
+	}, [allWorkouts, dateRange]);
 	const [currentMonth, setCurrentMonth] = useState(() => {
 		const now = new Date();
 		return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -108,17 +148,17 @@ export function WorkoutHistory() {
 		getDaysInMonth(currentMonth);
 
 	// Index workouts by date string for fast calendar lookups
+	// Uses allWorkouts so loaded-more workouts appear on the calendar too
 	const workoutsByDate = useMemo(() => {
 		const map = new Map<string, WorkoutSession[]>();
-		if (!workouts) return map;
-		for (const w of workouts) {
+		for (const w of allWorkouts) {
 			const key = `${w.started_at.getFullYear()}-${w.started_at.getMonth()}-${w.started_at.getDate()}`;
 			const arr = map.get(key) ?? [];
 			arr.push(w);
 			map.set(key, arr);
 		}
 		return map;
-	}, [workouts]);
+	}, [allWorkouts]);
 
 	const getWorkoutsForDay = (day: number) => {
 		const key = `${year}-${month}-${day}`;
@@ -129,11 +169,21 @@ export function WorkoutHistory() {
 	const hasPR = (day: number) =>
 		getWorkoutsForDay(day).some((w) => w.pr_count > 0);
 
+	// Compute max single-day volume across all workouts for dynamic normalization
+	const maxDayVolume = useMemo(() => {
+		const dayVolumes = new Map<string, number>();
+		for (const w of allWorkouts) {
+			const key = `${w.started_at.getFullYear()}-${w.started_at.getMonth()}-${w.started_at.getDate()}`;
+			dayVolumes.set(key, (dayVolumes.get(key) ?? 0) + w.total_volume);
+		}
+		return Math.max(...dayVolumes.values(), 1);
+	}, [allWorkouts]);
+
 	const getVolumeIntensity = (day: number) => {
 		const dayWorkouts = getWorkoutsForDay(day);
 		if (dayWorkouts.length === 0) return 0;
 		const totalVolume = dayWorkouts.reduce((sum, w) => sum + w.total_volume, 0);
-		return Math.min(totalVolume / 5000, 1); // Normalize to 0-1
+		return Math.min(totalVolume / maxDayVolume, 1);
 	};
 
 	const isToday = (day: number) => {
@@ -150,10 +200,21 @@ export function WorkoutHistory() {
 		if (direction === "prev") {
 			newMonth.setMonth(newMonth.getMonth() - 1);
 		} else {
+			const now = new Date();
+			const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+			if (currentMonth.getTime() >= currentMonthStart.getTime()) return;
 			newMonth.setMonth(newMonth.getMonth() + 1);
 		}
 		setCurrentMonth(newMonth);
 	};
+
+	const isCurrentMonth = (() => {
+		const now = new Date();
+		return (
+			currentMonth.getFullYear() === now.getFullYear() &&
+			currentMonth.getMonth() === now.getMonth()
+		);
+	})();
 
 	const monthNames = [
 		"January",
@@ -173,7 +234,7 @@ export function WorkoutHistory() {
 	const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 	// Calculate streak from workout data (extracted to reusable hook)
-	const streak = useStreak(workouts);
+	const streak = useStreak(allWorkouts);
 
 	// Loading state
 	if (isPending) {
@@ -221,6 +282,9 @@ export function WorkoutHistory() {
 		);
 	}
 
+	// Whether the initial page was full (could be more)
+	const initialPageFull = workouts.length >= WORKOUTS_PAGE_SIZE;
+
 	return (
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
 			{/* Header */}
@@ -243,8 +307,8 @@ export function WorkoutHistory() {
 						</div>
 
 						<div className="flex flex-col sm:flex-row gap-3">
-							{/* Compare Toggle (premium only) */}
-							{isPremium && (
+							{/* Compare Toggle */}
+							{isPremium ? (
 								<Button
 									size="sm"
 									variant={compareMode ? "default" : "outline"}
@@ -264,6 +328,24 @@ export function WorkoutHistory() {
 								>
 									<BarChart3 className="w-4 h-4 mr-2" />
 									{compareMode ? "Exit Compare" : "Compare"}
+								</Button>
+							) : (
+								<Button
+									size="sm"
+									variant="outline"
+									asChild
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								>
+									<Link to="/pricing">
+										<Lock className="w-4 h-4 mr-2" />
+										Compare
+										<Badge
+											variant="outline"
+											className="ml-2 border-primary/30 text-primary text-[10px] px-1.5 py-0"
+										>
+											{tier === "FREE" ? "PHOENIX" : "UPGRADE"}
+										</Badge>
+									</Link>
 								</Button>
 							)}
 
@@ -341,7 +423,8 @@ export function WorkoutHistory() {
 									variant="outline"
 									size="sm"
 									onClick={() => navigateMonth("next")}
-									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									disabled={isCurrentMonth}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									Next
 									<ChevronRight className="w-4 h-4 ml-2" />
@@ -425,6 +508,28 @@ export function WorkoutHistory() {
 									})}
 								</div>
 							</Card>
+
+							{/* Load More for Calendar */}
+							{initialPageFull && hasMore && (
+								<div className="text-center mb-6">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handleLoadMore}
+										disabled={isLoadingMore}
+										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									>
+										{isLoadingMore ? (
+											<>
+												<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+												Loading...
+											</>
+										) : (
+											"Load older workouts"
+										)}
+									</Button>
+								</div>
+							)}
 
 							{/* Streak Counter */}
 							<motion.div
@@ -574,7 +679,7 @@ export function WorkoutHistory() {
 														</div>
 														<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
 															<Clock className="w-4 h-4" />
-															{workout.duration_seconds}m
+															{workout.duration_minutes}m
 														</div>
 													</div>
 													{workout.pr_count > 0 && (
@@ -592,6 +697,27 @@ export function WorkoutHistory() {
 									</motion.div>
 								);
 							})}
+
+							{/* Load More */}
+							{initialPageFull && hasMore && (
+								<div className="text-center pt-4">
+									<Button
+										variant="outline"
+										onClick={handleLoadMore}
+										disabled={isLoadingMore}
+										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									>
+										{isLoadingMore ? (
+											<>
+												<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+												Loading more workouts...
+											</>
+										) : (
+											"Load more workouts"
+										)}
+									</Button>
+								</div>
+							)}
 						</motion.div>
 					)}
 				</AnimatePresence>
@@ -671,7 +797,7 @@ export function WorkoutHistory() {
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Duration</span>
-												<span>{workout.duration_seconds} min</span>
+												<span>{workout.duration_minutes} min</span>
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Volume</span>

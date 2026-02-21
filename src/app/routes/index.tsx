@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
+import { NotFound } from "@/app/components/NotFound";
 import { PageLoading } from "@/app/components/PageLoading";
 import { AppLayout } from "./AppLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
@@ -146,7 +147,7 @@ export function AppRoutes() {
 						<Route path="/pricing" element={<PricingPlans />} />
 						<Route path="/celebrations" element={<CelebrationDemo />} />
 						{/* Catch-all for authenticated users */}
-						<Route path="*" element={<Navigate to="/dashboard" replace />} />
+						<Route path="*" element={<NotFound />} />
 					</Route>
 				</Route>
 

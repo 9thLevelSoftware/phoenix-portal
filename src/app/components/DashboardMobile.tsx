@@ -261,10 +261,18 @@ export function DashboardMobile() {
 										? "Keep the fire burning!"
 										: "Start your streak today!"}
 								</div>
-								<Progress
-									value={Math.min(streak * 10, 100)}
-									className="h-2 mt-2 bg-surface-2"
-								/>
+								<div className="flex items-center gap-2 mt-2">
+									<Progress
+										value={Math.min(
+											(streak / Math.max(Math.ceil(streak / 7) * 7, 7)) * 100,
+											100,
+										)}
+										className="h-2 flex-1 bg-surface-2"
+									/>
+									<span className="text-xs text-muted-foreground whitespace-nowrap">
+										{streak}/{Math.max(Math.ceil(streak / 7) * 7, 7)} day goal
+									</span>
+								</div>
 							</div>
 						</div>
 					</Card>
@@ -410,7 +418,7 @@ export function DashboardMobile() {
 											transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
 										/>
 										<span className="text-xs text-muted">
-											{["M", "T", "W", "T", "F", "S", "S"][i]}
+											{["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"][i]}
 										</span>
 									</div>
 								))}
@@ -478,7 +486,7 @@ export function DashboardMobile() {
 									title={workout.name}
 									time={formatRelativeTime(workout.started_at)}
 									volume={`${workout.total_volume.toLocaleString()} kg`}
-									duration={`${workout.duration_seconds} min`}
+									duration={`${workout.duration_minutes} min`}
 									prs={workout.pr_count}
 								/>
 							))}

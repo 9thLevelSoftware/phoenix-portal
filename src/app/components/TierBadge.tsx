@@ -1,4 +1,5 @@
 import { Badge } from "@/app/components/ui/badge";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { cn } from "@/app/components/ui/utils";
 import {
 	type SubscriptionTier,
@@ -21,7 +22,7 @@ export function TierBadge({ className }: { className?: string }) {
 	const { tier, isLoading } = useSubscription();
 
 	if (isLoading) {
-		return null;
+		return <Skeleton className={cn("h-5 w-16 rounded-full", className)} />;
 	}
 
 	return (

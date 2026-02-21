@@ -1,5 +1,6 @@
 import { readString } from "react-papaparse";
 import { z } from "zod";
+import { supabase } from "@/lib/supabase";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -165,6 +166,48 @@ export function parseHevyExercises(
 			rpe: row.rpe ? parseFloat(row.rpe) : null,
 		})),
 	}));
+}
+
+// =============================================================================
+// Hevy CSV Import (Supabase persistence)
+// =============================================================================
+
+/**
+ * Upsert parsed Hevy activities into the external_activities table.
+ *
+ * @param userId  The authenticated user's ID.
+ * @param activities  Activities previously obtained from `parseHevyCSV`.
+ * @returns The number of activities upserted.
+ * @throws Re-throws Supabase errors so callers can surface them.
+ */
+export async function importHevyActivities(
+	userId: string,
+	activities: NormalizedActivity[],
+): Promise<number> {
+	if (activities.length === 0) return 0;
+
+	const rows = activities.map((a) => ({
+		user_id: userId,
+		external_id: a.external_id,
+		provider: "hevy",
+		name: a.name,
+		activity_type: a.activity_type,
+		started_at: a.started_at,
+		duration_seconds: a.duration_seconds,
+		distance_meters: a.distance_meters,
+		calories: a.calories,
+		avg_heart_rate: a.avg_heart_rate,
+		max_heart_rate: a.max_heart_rate,
+		elevation_gain_meters: a.elevation_gain_meters,
+	}));
+
+	const { error } = await supabase
+		.from("external_activities")
+		.upsert(rows, { onConflict: "user_id,provider,external_id" });
+
+	if (error) throw error;
+
+	return activities.length;
 }
 
 // =============================================================================

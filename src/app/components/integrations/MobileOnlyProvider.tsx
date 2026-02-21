@@ -61,7 +61,7 @@ export function MobileOnlyProvider({
 								Synced from mobile
 							</Badge>
 							<p className="text-sm text-muted-foreground">
-								Last sync: {formatRelative(integration.last_sync_at)}
+								Last sync: {formatRelative(integration?.last_sync_at ?? null)}
 							</p>
 						</>
 					) : (

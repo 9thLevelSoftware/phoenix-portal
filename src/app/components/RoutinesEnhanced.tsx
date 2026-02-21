@@ -31,6 +31,11 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/app/components/ui/tooltip";
 import { useAuth } from "@/app/hooks/useAuth";
 import { routineListOptions } from "@/queries/routines";
 import type { Routine } from "@/schemas/transforms";
@@ -239,14 +244,22 @@ function RoutineGrid({
 									</p>
 								</div>
 								<div className="flex items-center gap-2 ml-2">
-									<button
-										onClick={() => onToggleFavorite(routine.id)}
-										className="text-muted-foreground hover:text-accent transition-colors"
-									>
-										<Heart
-											className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-accent" : ""}`}
-										/>
-									</button>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<button
+												onClick={() => onToggleFavorite(routine.id)}
+												aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+												className="text-muted-foreground hover:text-accent transition-colors"
+											>
+												<Heart
+													className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-accent" : ""}`}
+												/>
+											</button>
+										</TooltipTrigger>
+										<TooltipContent>
+											{favorite ? "Remove from favorites" : "Add to favorites"}
+										</TooltipContent>
+									</Tooltip>
 									<DropdownMenu>
 										<DropdownMenuTrigger asChild>
 											<button className="text-muted-foreground hover:text-white transition-colors">
