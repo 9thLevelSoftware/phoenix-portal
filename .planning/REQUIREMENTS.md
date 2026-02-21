@@ -99,65 +99,65 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TYPE-01 | — | Pending |
-| TYPE-02 | — | Pending |
-| TYPE-03 | — | Pending |
-| TYPE-04 | — | Pending |
-| TYPE-05 | — | Pending |
-| TYPE-06 | — | Pending |
-| NAV-01 | — | Pending |
-| NAV-02 | — | Pending |
-| NAV-03 | — | Pending |
-| NAV-04 | — | Pending |
-| NAV-05 | — | Pending |
-| NAV-06 | — | Pending |
-| NAV-07 | — | Pending |
-| NAV-08 | — | Pending |
-| NAV-09 | — | Pending |
-| VIS-01 | — | Pending |
-| VIS-02 | — | Pending |
-| VIS-03 | — | Pending |
-| VIS-04 | — | Pending |
-| VIS-05 | — | Pending |
-| VIS-06 | — | Pending |
-| VIS-07 | — | Pending |
-| VIS-08 | — | Pending |
-| VIS-09 | — | Pending |
-| MOT-01 | — | Pending |
-| MOT-02 | — | Pending |
-| MOT-03 | — | Pending |
-| MOT-04 | — | Pending |
-| MOT-05 | — | Pending |
-| MOT-06 | — | Pending |
-| MOT-07 | — | Pending |
-| MOT-08 | — | Pending |
-| MOT-09 | — | Pending |
-| MOT-10 | — | Pending |
-| VIZ-01 | — | Pending |
-| VIZ-02 | — | Pending |
-| VIZ-03 | — | Pending |
-| VIZ-04 | — | Pending |
-| VIZ-05 | — | Pending |
-| VIZ-06 | — | Pending |
-| VIZ-07 | — | Pending |
-| VIZ-08 | — | Pending |
-| VIZ-09 | — | Pending |
-| BUG-01 | — | Pending |
-| BUG-02 | — | Pending |
-| BUG-03 | — | Pending |
-| BUG-04 | — | Pending |
-| BUG-05 | — | Pending |
-| BUG-06 | — | Pending |
-| BUG-07 | — | Pending |
-| BUG-08 | — | Pending |
-| BUG-09 | — | Pending |
-| BUG-10 | — | Pending |
+| TYPE-01 | Phase 14 | Pending |
+| TYPE-02 | Phase 14 | Pending |
+| TYPE-03 | Phase 14 | Pending |
+| TYPE-04 | Phase 14 | Pending |
+| TYPE-05 | Phase 14 | Pending |
+| TYPE-06 | Phase 14 | Pending |
+| NAV-01 | Phase 15 | Pending |
+| NAV-02 | Phase 15 | Pending |
+| NAV-03 | Phase 15 | Pending |
+| NAV-04 | Phase 15 | Pending |
+| NAV-05 | Phase 15 | Pending |
+| NAV-06 | Phase 15 | Pending |
+| NAV-07 | Phase 15 | Pending |
+| NAV-08 | Phase 15 | Pending |
+| NAV-09 | Phase 15 | Pending |
+| VIS-01 | Phase 14 | Pending |
+| VIS-02 | Phase 14 | Pending |
+| VIS-03 | Phase 16 | Pending |
+| VIS-04 | Phase 14 | Pending |
+| VIS-05 | Phase 14 | Pending |
+| VIS-06 | Phase 16 | Pending |
+| VIS-07 | Phase 16 | Pending |
+| VIS-08 | Phase 16 | Pending |
+| VIS-09 | Phase 16 | Pending |
+| MOT-01 | Phase 17 | Pending |
+| MOT-02 | Phase 17 | Pending |
+| MOT-03 | Phase 17 | Pending |
+| MOT-04 | Phase 17 | Pending |
+| MOT-05 | Phase 17 | Pending |
+| MOT-06 | Phase 17 | Pending |
+| MOT-07 | Phase 17 | Pending |
+| MOT-08 | Phase 17 | Pending |
+| MOT-09 | Phase 17 | Pending |
+| MOT-10 | Phase 17 | Pending |
+| VIZ-01 | Phase 18 | Pending |
+| VIZ-02 | Phase 18 | Pending |
+| VIZ-03 | Phase 18 | Pending |
+| VIZ-04 | Phase 18 | Pending |
+| VIZ-05 | Phase 18 | Pending |
+| VIZ-06 | Phase 18 | Pending |
+| VIZ-07 | Phase 18 | Pending |
+| VIZ-08 | Phase 18 | Pending |
+| VIZ-09 | Phase 18 | Pending |
+| BUG-01 | Phase 19 | Pending |
+| BUG-02 | Phase 19 | Pending |
+| BUG-03 | Phase 19 | Pending |
+| BUG-04 | Phase 19 | Pending |
+| BUG-05 | Phase 19 | Pending |
+| BUG-06 | Phase 19 | Pending |
+| BUG-07 | Phase 16 | Pending |
+| BUG-08 | Phase 14 | Pending |
+| BUG-09 | Phase 19 | Pending |
+| BUG-10 | Phase 19 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 53 total
-- Mapped to phases: 0
-- Unmapped: 53
+- Mapped to phases: 53
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-20*
-*Last updated: 2026-02-20 after initial definition*
+*Last updated: 2026-02-20 after roadmap creation — all 53 requirements mapped to Phases 14-19*
