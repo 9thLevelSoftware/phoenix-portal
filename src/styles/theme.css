@@ -291,6 +291,54 @@
 
 }
 
+@layer utilities {
+  /* VIS-06/07/08/09: Card tier hierarchy */
+
+  /* Hero tier — streak, active goal, recovery score (max 1 per page) */
+  .card-hero {
+    background: linear-gradient(135deg, rgba(255,107,53,0.12) 0%, rgba(220,38,38,0.06) 100%);
+    border: 2px solid rgba(255, 107, 53, 0.4);
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(255, 107, 53, 0.12);
+  }
+
+  /* Primary tier — key metric cards with glassmorphism (max 2 per viewport on desktop, 0 on mobile) */
+  .card-primary {
+    background: rgba(26, 26, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-md);
+  }
+  @media (min-width: 768px) {
+    .card-primary {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  }
+
+  /* Secondary tier — informational content (default) */
+  .card-secondary {
+    background: linear-gradient(135deg, var(--surface-2), var(--surface-0));
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Landing feature card — gradient border + hover lift/glow */
+  .card-landing-feature {
+    border: 1px solid transparent;
+    background:
+      padding-box linear-gradient(135deg, var(--surface-2), var(--surface-0)),
+      border-box linear-gradient(135deg,
+        rgba(255, 107, 53, 0.5) 0%,
+        rgba(220, 38, 38, 0.25) 50%,
+        rgba(245, 158, 11, 0.1) 100%);
+    box-shadow: var(--shadow-sm);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .card-landing-feature:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg), 0 0 24px rgba(255, 107, 53, 0.2);
+  }
+}
+
 /* Print-only utility: hidden on screen, visible in @media print */
 .print-only {
   display: none !important;
