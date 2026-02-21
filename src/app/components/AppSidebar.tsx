@@ -181,7 +181,7 @@ export function AppSidebar() {
 					className="flex items-center gap-3 cursor-pointer"
 				>
 					<PhoenixLogo size="sm" animated={false} />
-					<span className="text-base font-semibold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent group-data-[collapsible=icon]:hidden whitespace-nowrap">
+					<span className="text-base font-semibold text-primary group-data-[collapsible=icon]:hidden whitespace-nowrap">
 						Phoenix Portal
 					</span>
 				</NavLink>

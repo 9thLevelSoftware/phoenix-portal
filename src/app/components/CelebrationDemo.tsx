@@ -31,10 +31,8 @@ export function CelebrationDemo() {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center"
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Celebration Animations
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Celebration Animations
 						</h1>
 						<p className="text-muted-foreground">
 							Test all celebration animations and micro-interactions

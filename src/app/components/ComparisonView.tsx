@@ -508,10 +508,8 @@ export function ComparisonView() {
 							content="Compare two workout sessions side-by-side to track progression"
 							side="bottom"
 						>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Session Comparison
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								Session Comparison
 							</h1>
 						</FeatureHint>
 						<div className="flex items-center gap-3">

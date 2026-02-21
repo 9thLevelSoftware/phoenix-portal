@@ -62,7 +62,7 @@ export function Navigation() {
 						className="flex items-center gap-3 cursor-pointer"
 					>
 						<PhoenixLogo size="sm" />
-						<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+						<span className="text-xl text-primary">
 							Project Phoenix
 						</span>
 					</Link>

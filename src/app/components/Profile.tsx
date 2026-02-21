@@ -487,7 +487,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Total Volume Lifted
 										</div>
-										<div className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+										<div className="text-3xl text-primary">
 											{statsLoading
 												? "..."
 												: formatVolume(stats?.totalVolume ?? 0)}
