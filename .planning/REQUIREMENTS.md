@@ -9,7 +9,7 @@
 
 - [x] **TYPE-01**: Inter font-family declared on body/html — entire app renders in Inter, not browser default
 - [x] **TYPE-02**: Dead CSS variables (`--font-size-xs` through `--font-size-3xl`) removed or wired to actual heading styles
-- [ ] **TYPE-03**: Hardcoded `fontFamily: "system-ui"` removed from LandingPage hero h1
+- [x] **TYPE-03**: Hardcoded `fontFamily: "system-ui"` removed from LandingPage hero h1
 - [x] **TYPE-04**: Headings use differentiated font-weights (page titles heavier than section headers than card titles)
 - [x] **TYPE-05**: Uppercase labels use `letter-spacing: 0.05-0.1em` and small font size for eyebrow treatment
 - [x] **TYPE-06**: Inter Variable loaded with non-standard weights (450/625) for premium type contrast
@@ -101,7 +101,7 @@
 |-------------|-------|--------|
 | TYPE-01 | Phase 14 | Complete |
 | TYPE-02 | Phase 14 | Complete |
-| TYPE-03 | Phase 20 | Pending |
+| TYPE-03 | Phase 20 | Complete |
 | TYPE-04 | Phase 14 | Complete |
 | TYPE-05 | Phase 14 | Complete |
 | TYPE-06 | Phase 14 | Complete |

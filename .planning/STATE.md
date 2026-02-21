@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 16: Visual Depth & Surfaces
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 20: Gap Closure & Tech Debt
 
 ## Current Position
 
-Phase: 16 of 19 (Visual Depth & Surfaces)
+Phase: 20 of 20 (Gap Closure & Tech Debt)
 Plan: 2 of ? in current phase — plan 02 complete
 Status: In progress
-Last activity: 2026-02-21 — 16-02 complete (gradient text sweep: 45 of 47 instances replaced; hero h1 gradient reserved for LandingPage + Dashboard welcome h1 only)
+Last activity: 2026-02-21 — 20-02 complete (inline fontFamily removed from LandingPage hero h1, Navigation.tsx deleted, MobileBottomNav drawer labels use .eyebrow utility)
 
 Progress: [██░░░░░░░░] 10% (v1.2)
 
@@ -29,15 +29,20 @@ Progress: [██░░░░░░░░] 10% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 5
-- Average duration: ~4.6 min
-- Total execution time: ~23 min
+- Total plans completed: 6
+- Average duration: ~4.0 min
+- Total execution time: ~25 min
 
 ## Accumulated Context
 
 ### Decisions
 
 All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
+
+**v1.2 Phase 20 decisions (from 20-02):**
+- Navigation.tsx safe to delete confirmed: grep found zero direct component imports (only SetNavigation/NavigationMenu reference "Navigation")
+- .eyebrow utility is canonical for drawer/section labels — never use manual text-xs/font-semibold/uppercase/tracking-widest (incorrect weight 600 vs 450, size 12px vs 11px, spacing ~0.1em vs 0.08em)
+- LandingPage hero h1 inline fontFamily was blocking CSS cascade — removal allows fonts.css @theme block to supply Inter correctly
 
 **v1.2 Phase 14 decisions (from 14-01):**
 - Inter Variable loaded with full wght axis (0,100..900;1,100..900) to unlock non-standard weights 450 and 625
@@ -119,5 +124,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 16-02-PLAN.md — gradient text sweep: 45/47 instances replaced, hero h1 gradient reserved for LandingPage + Dashboard welcome h1
+Stopped at: Completed 20-02-PLAN.md — inline fontFamily removed from LandingPage hero h1, Navigation.tsx deleted, MobileBottomNav drawer labels use .eyebrow utility
 Resume file: N/A
