@@ -119,10 +119,8 @@ export function Community() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="flex items-center justify-between px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold">
-						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-							Community
-						</span>
+					<h1 className="text-2xl font-bold text-white">
+						Community
 					</h1>
 				</header>
 
@@ -257,10 +255,8 @@ export function Community() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Community Hub
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Community Hub
 						</h1>
 						<p className="text-muted-foreground">
 							Discover, share, and connect with fellow athletes

@@ -198,10 +198,8 @@ export function Dashboard() {
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-8 h-8 text-primary" fill={PHOENIX.ember} />
 						</div>
-						<h1 className="text-3xl font-bold mb-3">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Welcome to Phoenix Portal
-							</span>
+						<h1 className="text-3xl font-bold mb-3 text-white">
+							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
 							Your training journey starts here. Complete your first workout in
@@ -294,10 +292,8 @@ export function Dashboard() {
 						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-10 h-10 text-primary" />
 						</div>
-						<h1 className="text-4xl sm:text-5xl mb-4">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Welcome to Phoenix Portal
-							</span>
+						<h1 className="text-4xl sm:text-5xl mb-4 text-white">
+							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
 							Your training journey starts here. Complete your first workout in
@@ -739,7 +735,7 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="text-right">
-											<div className="text-4xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+											<div className="text-4xl text-primary">
 												{"\u{1F525}"}
 											</div>
 										</div>
