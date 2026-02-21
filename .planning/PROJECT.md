@@ -82,9 +82,20 @@ Premium subscribers see data and insights about their training that they cannot 
 
 ### Active
 
-<!-- Next milestone scope — to be defined via /gsd:new-milestone -->
+<!-- Current milestone: v1.2 Premium Visual Overhaul -->
 
-(None yet — run `/gsd:new-milestone` to define v1.2 scope)
+## Current Milestone: v1.2 Premium Visual Overhaul
+
+**Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
+
+**Target areas:**
+- Typography: declare Inter on body, fix dead CSS vars, remove hardcoded system-ui, add letter-spacing/tracking
+- Navigation: replace 13-item horizontal nav with collapsible sidebar
+- Visual depth: ambient background gradients, glassmorphism, brand-tinted shadows, card surface hierarchy
+- Motion design: page transitions, spring-physics hover states, stagger animations, stat counting, scroll parallax
+- Data visualization: custom tooltips, styled axes, chart animations, donut charts, muscle heatmap fix
+- Bug fixes: pricing data mismatch, dead notification logic, useIsMobile flash, hardcoded colors
+- Consistent page shell with shared max-width/padding
 
 ### Out of Scope
 
@@ -161,4 +172,4 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 | Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-17 after v1.1 milestone*
+*Last updated: 2026-02-20 after v1.2 milestone start*

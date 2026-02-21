@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-17)
+See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Planning next milestone (v1.2)
+**Current focus:** v1.2 Premium Visual Overhaul
 
 ## Current Position
 
-Phase: N/A — between milestones
-Plan: N/A
-Status: v1.1 milestone complete — awaiting `/gsd:new-milestone` for v1.2
-Last activity: 2026-02-17 — v1.1 Full UX Overhaul shipped
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-20 — Milestone v1.2 started
 
-Progress: [██████████] 100% (v1.0: 9 phases/41 plans | v1.1: 5 phases/22 plans)
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -27,16 +27,6 @@ Progress: [██████████] 100% (v1.0: 9 phases/41 plans | v1.1:
 - Total plans completed: 22
 - Average duration: 6.0 min
 - Total execution time: ~131 min
-
-**By Phase (v1.1):**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
-| 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
-| 11-new-features | 5/5 | 32 min | 6.4 min |
-| 12-schedule-dependent-features-delivery | 4/4 | 16 min | 4.0 min |
-| 13-hardening-polish | 3/3 | 11 min | 3.7 min |
 
 ## Accumulated Context
 
@@ -62,6 +52,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-17
-Stopped at: v1.1 milestone complete — all archived
-Resume file: N/A — run `/gsd:new-milestone` for v1.2
+Last session: 2026-02-20
+Stopped at: v1.2 milestone initialization — defining requirements
+Resume file: N/A
