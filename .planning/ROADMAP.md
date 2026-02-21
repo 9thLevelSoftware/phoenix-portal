@@ -149,7 +149,7 @@ Plans:
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
 | 15. Navigation & Layout Shell | 3/3 | Complete    | 2026-02-21 | - |
-| 16. Visual Depth & Surfaces | 2/2 | Complete   | 2026-02-21 | - |
+| 16. Visual Depth & Surfaces | 2/2 | Complete    | 2026-02-21 | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
