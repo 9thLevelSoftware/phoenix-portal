@@ -185,7 +185,7 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 								fill={PHOENIX.mutedForeground}
 								fontSize={9}
 								textAnchor={region.labelAnchor}
-								fontFamily="system-ui"
+								fontFamily="Inter, system-ui, sans-serif"
 							>
 								{region.name}
 							</text>
