@@ -38,8 +38,6 @@
   --input: rgba(55, 65, 81, 0.5);
   --input-background: rgba(55, 65, 81, 0.3);
   --switch-background: #374151;
-  --font-weight-medium: 600;
-  --font-weight-normal: 400;
   --ring: #FF6B35;
 
   /* Phoenix gradient colors for charts */
@@ -74,20 +72,6 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.05);
 
-  /* Typography scale (1.25 modular ratio) */
-  --font-size-xs: 0.75rem;    /* 12px */
-  --font-size-sm: 0.875rem;   /* 14px */
-  --font-size-base: 1rem;     /* 16px */
-  --font-size-lg: 1.125rem;   /* 18px */
-  --font-size-xl: 1.25rem;    /* 20px */
-  --font-size-2xl: 1.5rem;    /* 24px */
-  --font-size-3xl: 1.875rem;  /* 30px */
-
-  /* Line heights */
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.75;
-
   /* Icon colors */
   --icon-default: var(--foreground);
   --icon-muted: var(--muted-foreground);
@@ -96,6 +80,7 @@
   --icon-warning: var(--phoenix-gold);
   --icon-danger: var(--phoenix-crimson);
 }
+
 
 @theme inline {
   --color-background: var(--background);
@@ -163,46 +148,56 @@
     font-size: var(--font-size);
   }
 
+  /* Typography hierarchy — Inter Variable weights */
   h1 {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-size: 1.875rem;  /* 30px */
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
   h2 {
-    font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-size: 1.25rem;  /* 20px */
+    font-weight: 625;
+    line-height: 1.25;
   }
 
   h3 {
-    font-size: var(--text-lg);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;  /* 16px */
+    font-weight: 500;
     line-height: 1.5;
   }
 
   h4 {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 0.875rem;  /* 14px */
+    font-weight: 500;
     line-height: 1.5;
   }
 
   label {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;
+    font-weight: 500;
     line-height: 1.5;
   }
 
   button {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;
+    font-weight: 500;
     line-height: 1.5;
   }
 
   input {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-normal);
+    font-size: 1rem;
+    font-weight: 400;
     line-height: 1.5;
+  }
+
+  /* Eyebrow / stat label treatment */
+  .eyebrow {
+    font-weight: 450;
+    font-size: 0.6875rem;  /* 11px */
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   /* Phoenix Project Custom Animations */

@@ -42,7 +42,7 @@ export function AppLayout() {
 	} = useOnboarding();
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D]">
+		<div className="min-h-screen bg-background relative z-[10]">
 			<OfflineBanner />
 
 			<div data-print-hide>

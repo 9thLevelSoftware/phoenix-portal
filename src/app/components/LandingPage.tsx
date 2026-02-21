@@ -548,7 +548,7 @@ export function LandingPage() {
 
 					<motion.h1
 						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
-						style={{ fontFamily: "system-ui" }}
+						style={{ fontFamily: "Inter, system-ui, sans-serif" }}
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
