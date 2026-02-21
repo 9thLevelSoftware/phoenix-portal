@@ -1,12 +1,13 @@
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Outlet } from "react-router";
+import { AppSidebar } from "@/app/components/AppSidebar";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
 import { MobileBottomNav } from "@/app/components/MobileBottomNav";
-import { Navigation } from "@/app/components/Navigation";
 import { OfflineBanner } from "@/app/components/OfflineBanner";
 import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
+import { SidebarInset, SidebarProvider } from "@/app/components/ui/sidebar";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
 import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
@@ -18,7 +19,7 @@ import { useStreakSync } from "@/hooks/useStreakSync";
 
 /**
  * Authenticated shell layout.
- * Renders Navigation + page content (Outlet) + MobileBottomNav + Toaster.
+ * Renders AppSidebar (desktop left nav) + page content (Outlet) + MobileBottomNav + Toaster.
  * useRealtimeSync is mounted here so it only runs when authenticated
  * and persists across route changes.
  *
@@ -27,7 +28,9 @@ import { useStreakSync } from "@/hooks/useStreakSync";
  * - Returning users (v1.0 mobile/web) see WhatsNewBanner above page content
  * - v1.1 users who completed onboarding see nothing
  *
- * Navigation and MobileBottomNav use NavLink + Zustand internally (no props needed).
+ * SidebarProvider must live inside AppLayout (inside ProtectedRoute), NOT at router root.
+ * AppSidebar and SidebarInset must be direct children of SidebarProvider's inner wrapper
+ * for CSS peer selectors to work correctly.
  */
 export function AppLayout() {
 	useRealtimeSync();
@@ -42,33 +45,37 @@ export function AppLayout() {
 	} = useOnboarding();
 
 	return (
-		<div className="min-h-screen bg-background relative z-[10]">
-			<OfflineBanner />
+		<SidebarProvider defaultOpen={true}>
+			<div className="min-h-screen bg-background relative z-[10] flex w-full">
+				<OfflineBanner />
 
-			<div data-print-hide>
-				<Navigation />
+				<div data-print-hide>
+					<AppSidebar />
+				</div>
+
+				<SidebarInset>
+					{needsOnboarding && (
+						<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
+					)}
+
+					{needsWhatsNew && (
+						<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
+					)}
+
+					<ErrorBoundary FallbackComponent={PageErrorFallback}>
+						<Suspense fallback={<PageLoading />}>
+							<Outlet />
+						</Suspense>
+					</ErrorBoundary>
+
+					<div data-print-hide>
+						<MobileBottomNav />
+					</div>
+				</SidebarInset>
+
+				<CelebrationOverlay />
+				<Toaster />
 			</div>
-
-			{needsOnboarding && (
-				<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
-			)}
-
-			{needsWhatsNew && (
-				<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
-			)}
-
-			<ErrorBoundary FallbackComponent={PageErrorFallback}>
-				<Suspense fallback={<PageLoading />}>
-					<Outlet />
-				</Suspense>
-			</ErrorBoundary>
-
-			<div data-print-hide>
-				<MobileBottomNav />
-			</div>
-
-			<CelebrationOverlay />
-			<Toaster />
-		</div>
+		</SidebarProvider>
 	);
 }

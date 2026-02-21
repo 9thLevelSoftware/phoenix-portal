@@ -1,3 +1,6 @@
+// DEPRECATED: Replaced by AppSidebar in Phase 15. Safe to delete after Phase 15 verification.
+// No files import this component directly anymore — kept to prevent accidental import errors during development.
+
 import {
 	Activity,
 	Award,
