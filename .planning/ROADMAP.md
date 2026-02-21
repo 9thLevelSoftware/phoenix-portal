@@ -145,7 +145,7 @@ Plans:
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
-| 15. Navigation & Layout Shell | 1/3 | In Progress|  | - |
+| 15. Navigation & Layout Shell | 2/3 | In Progress|  | - |
 | 16. Visual Depth & Surfaces | v1.2 | 0/TBD | Not started | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |

@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 15 of 19 (Navigation Layout Shell)
-Plan: 1 of 3 in current phase — plan 01 complete
+Plan: 2 of 3 in current phase — plan 02 complete
 Status: In progress
-Last activity: 2026-02-21 — 15-01 complete (sidebar shell, AppLayout restructure, useIsMobile sync init)
+Last activity: 2026-02-20 — 15-02 complete (PageShell component + threading through all authenticated pages)
 
 Progress: [██░░░░░░░░] 8% (v1.2)
 
@@ -29,9 +29,9 @@ Progress: [██░░░░░░░░] 8% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 3
-- Average duration: 2.3 min
-- Total execution time: ~7 min
+- Total plans completed: 4
+- Average duration: ~4.5 min
+- Total execution time: ~18 min
 
 ## Accumulated Context
 
@@ -53,6 +53,12 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
 - body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
 - .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
+
+**v1.2 Phase 15 decisions (from 15-02):**
+- PageShell import uses @/app/components/ui/utils (not @/lib/utils — no utils.ts exists in src/lib/)
+- Sticky-header pages apply PageShell only to content section — sticky gradient headers must remain full-bleed
+- SessionDetail and ComparisonView skipped — use max-w-5xl and sticky headers, different width constraint
+- Four plan file names (GoalsDashboard, RecoveryDashboard, IntegrationsDashboard, SubscriptionPage) not found in codebase — actual files use max-w-4xl intentionally
 
 **v1.2 Phase 15 decisions (from 15-01):**
 - Auto-collapse uses isAutoCollapsing ref flag to distinguish viewport-driven collapse from user toggle — prevents localStorage overwrite during auto-collapse
@@ -90,6 +96,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-21
-Stopped at: Completed 15-01-PLAN.md — sidebar shell (AppSidebar + AppLayout + useIsMobile sync init) complete
+Last session: 2026-02-20
+Stopped at: Completed 15-02-PLAN.md — PageShell component + threading through all authenticated pages complete
 Resume file: N/A

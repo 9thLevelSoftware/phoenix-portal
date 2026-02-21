@@ -21,7 +21,7 @@
 - [x] **NAV-03**: Sidebar items grouped into sections (Training, Social, Account)
 - [x] **NAV-04**: Active sidebar item uses `bg-primary/10 text-primary` full-row highlight
 - [x] **NAV-05**: Right-side nav cluster consolidated — avatar opens dropdown with profile/tier/streak/logout
-- [ ] **NAV-06**: Shared PageShell component replaces 30+ duplicated `max-w-7xl mx-auto px-4` patterns
+- [x] **NAV-06**: Shared PageShell component replaces 30+ duplicated `max-w-7xl mx-auto px-4` patterns
 - [x] **NAV-07**: `useIsMobile` initializes synchronously from `window.innerWidth` — no layout flash on mobile
 - [ ] **NAV-08**: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile merged into CSS-responsive parent components
 - [ ] **NAV-09**: MobileBottomNav "More" drawer items grouped into labeled sections
@@ -110,7 +110,7 @@
 | NAV-03 | Phase 15 | Complete |
 | NAV-04 | Phase 15 | Complete |
 | NAV-05 | Phase 15 | Complete |
-| NAV-06 | Phase 15 | Pending |
+| NAV-06 | Phase 15 | Complete |
 | NAV-07 | Phase 15 | Complete |
 | NAV-08 | Phase 15 | Pending |
 | NAV-09 | Phase 15 | Pending |
