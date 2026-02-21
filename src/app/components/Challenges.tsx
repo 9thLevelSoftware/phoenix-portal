@@ -486,7 +486,7 @@ export function Challenges() {
 
 	if (challengesLoading) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				{/* Mobile loading */}
 				<div className="block md:hidden">
 					<header className="px-4 py-4 border-b border-secondary">
@@ -515,7 +515,7 @@ export function Challenges() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Mobile Header */}

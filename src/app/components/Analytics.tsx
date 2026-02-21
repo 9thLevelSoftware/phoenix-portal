@@ -428,7 +428,7 @@ export function Analytics() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				{/* Mobile loading skeleton */}
 				<div className="block md:hidden">
 					<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
@@ -470,7 +470,7 @@ export function Analytics() {
 		volumeData.length > 0 || muscleGroupData.length > 0 || externalCount > 0;
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Compact Header */}

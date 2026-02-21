@@ -80,7 +80,7 @@ export function SessionDetail() {
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -129,7 +129,7 @@ export function SessionDetail() {
 	// Error state
 	if (error || !session) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -181,7 +181,7 @@ export function SessionDetail() {
 			: expandedExercises ?? [];
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Print-only report header (visible only in print) */}
 			<div className="print-only mb-6 border-b border-gray-300 pb-4">
 				<h1 className="text-2xl font-bold text-black">{session.name}</h1>

@@ -114,7 +114,7 @@ export function Community() {
 	);
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Mobile Header */}

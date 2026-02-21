@@ -247,7 +247,7 @@ export function Profile() {
 	];
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			<PageShell>
 				{/* Profile Header */}
 				<motion.div

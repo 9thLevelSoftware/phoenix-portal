@@ -175,7 +175,7 @@ export function PersonalRecords() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Skeleton className="h-10 w-64 mb-2" />
@@ -201,7 +201,7 @@ export function PersonalRecords() {
 
 	if (!records || records.length === 0) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex items-center gap-3 mb-2">
@@ -224,7 +224,7 @@ export function PersonalRecords() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
