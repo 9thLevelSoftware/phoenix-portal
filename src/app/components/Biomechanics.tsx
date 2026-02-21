@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Activity,
@@ -507,7 +508,7 @@ function BiomechanicsContent() {
 // -- Exported page component with subscription gate --
 export function Biomechanics() {
 	return (
-		<div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+		<PageShell className="min-h-screen">
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold text-white">Biomechanics</h1>
 				<p className="text-muted-foreground mt-1">
@@ -518,6 +519,6 @@ export function Biomechanics() {
 			<SubscriptionGate requiredTier="PHOENIX">
 				<BiomechanicsContent />
 			</SubscriptionGate>
-		</div>
+		</PageShell>
 	);
 }

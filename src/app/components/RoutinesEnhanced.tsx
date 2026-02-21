@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Clock,
@@ -87,13 +88,13 @@ export function RoutinesEnhanced() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<PageShell>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
 							<RoutineCardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -131,7 +132,7 @@ export function RoutinesEnhanced() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				<Tabs defaultValue="my-routines" className="w-full">
 					<TabsList className="bg-surface-2 border border-secondary mb-6">
 						<TabsTrigger
@@ -185,7 +186,7 @@ export function RoutinesEnhanced() {
 						)}
 					</TabsContent>
 				</Tabs>
-			</div>
+			</PageShell>
 
 			<ShareContentDialog
 				open={shareDialogOpen}
