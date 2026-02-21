@@ -38,8 +38,8 @@
 
 **Milestone Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
 
-- [x] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on (completed 2026-02-21)
-- [x] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components (completed 2026-02-21)
+- [x] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on (completed 2026-02-21)
+- [x] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components (completed 2026-02-21)
 - [ ] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments
 - [ ] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance
 - [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix
@@ -88,7 +88,10 @@ Plans:
   3. The auth dialog has a dark glass treatment — blurred background, branded border, inner glow — distinguishable from a plain modal
   4. Landing page feature cards show gradient borders and lift on hover — the page feels interactive before any click
   5. Gradient text is used only on hero headlines — section headers and card titles use solid white or ember color
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 16-01-PLAN.md — Card tier CSS utilities, card hierarchy on Dashboard, glassmorphism, auth dialog glass, landing gradient borders, icon differentiation
+- [ ] 16-02-PLAN.md — Gradient text sweep (BUG-07) across 23 files, reserving gradient for hero h1 only
 
 ### Phase 17: Motion Design System
 **Goal**: All animations reference a single `src/lib/animations.ts` preset library; page transitions fire on every route change; stat cards spring on hover; card grids stagger on mount; key dashboard numbers count up from zero; all animations respect prefers-reduced-motion.
@@ -146,7 +149,7 @@ Plans:
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
 | 15. Navigation & Layout Shell | 3/3 | Complete    | 2026-02-21 | - |
-| 16. Visual Depth & Surfaces | v1.2 | 0/TBD | Not started | - |
+| 16. Visual Depth & Surfaces | v1.2 | 0/2 | Not started | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
@@ -154,4 +157,4 @@ Plans:
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
 *Full v1.1 details: `.planning/milestones/v1.1-ROADMAP.md`*
-*Last updated: 2026-02-20 after v1.2 roadmap creation*
+*Last updated: 2026-02-20 after Phase 16 planning*
