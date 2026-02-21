@@ -30,13 +30,13 @@
 
 - [x] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
 - [x] **VIS-02**: Subtle PNG noise/grain texture overlay on body via `::after` pseudo-element
-- [ ] **VIS-03**: Card surface hierarchy: hero cards (brand shadow + border glow), primary cards (elevated + blur), secondary cards (subtle surface)
+- [x] **VIS-03**: Card surface hierarchy: hero cards (brand shadow + border glow), primary cards (elevated + blur), secondary cards (subtle surface)
 - [x] **VIS-04**: `--shadow-sm/md/lg` tokens actually applied to cards (currently defined but unused)
 - [x] **VIS-05**: Default card borders changed from `border-secondary` (#374151) to `rgba(255,255,255,0.06)` subtle separator
-- [ ] **VIS-06**: Glassmorphism (`backdrop-blur + semi-transparent bg`) applied to 2-3 key cards per page only (max 3 blur layers per viewport)
-- [ ] **VIS-07**: Auth dialog uses dark glass treatment (blur + branded border + inner shadow)
-- [ ] **VIS-08**: Landing page feature cards have gradient borders and hover lift with glow bloom
-- [ ] **VIS-09**: Icon containers upgraded from uniform `w-12 h-12 rounded-lg` to differentiated treatments (primary: rounded-full + glow, secondary: no container)
+- [x] **VIS-06**: Glassmorphism (`backdrop-blur + semi-transparent bg`) applied to 2-3 key cards per page only (max 3 blur layers per viewport)
+- [x] **VIS-07**: Auth dialog uses dark glass treatment (blur + branded border + inner shadow)
+- [x] **VIS-08**: Landing page feature cards have gradient borders and hover lift with glow bloom
+- [x] **VIS-09**: Icon containers upgraded from uniform `w-12 h-12 rounded-lg` to differentiated treatments (primary: rounded-full + glow, secondary: no container)
 
 ### Motion & Animation
 
@@ -116,13 +116,13 @@
 | NAV-09 | Phase 15 | Complete |
 | VIS-01 | Phase 14 | Complete |
 | VIS-02 | Phase 14 | Complete |
-| VIS-03 | Phase 16 | Pending |
+| VIS-03 | Phase 16 | Complete |
 | VIS-04 | Phase 14 | Complete |
 | VIS-05 | Phase 14 | Complete |
-| VIS-06 | Phase 16 | Pending |
-| VIS-07 | Phase 16 | Pending |
-| VIS-08 | Phase 16 | Pending |
-| VIS-09 | Phase 16 | Pending |
+| VIS-06 | Phase 16 | Complete |
+| VIS-07 | Phase 16 | Complete |
+| VIS-08 | Phase 16 | Complete |
+| VIS-09 | Phase 16 | Complete |
 | MOT-01 | Phase 17 | Pending |
 | MOT-02 | Phase 17 | Pending |
 | MOT-03 | Phase 17 | Pending |

@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 
 ## Current Position
 
-Phase: 15 of 19 (Navigation Layout Shell)
-Plan: 3 of 3 in current phase — plan 03 complete (phase complete)
+Phase: 16 of 19 (Visual Depth & Surfaces)
+Plan: 1 of ? in current phase — plan 01 complete
 Status: In progress
-Last activity: 2026-02-20 — 15-03 complete (MobileBottomNav 5-item + grouped More drawer; 4 mobile variants merged into CSS-responsive parents, mobile files deleted)
+Last activity: 2026-02-21 — 16-01 complete (card-hero/primary/secondary/landing-feature utilities; Dashboard 3-tier hierarchy; landing glass dialog + gradient border cards)
 
 Progress: [██░░░░░░░░] 8% (v1.2)
 
@@ -53,6 +53,13 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
 - body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
 - .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
+
+**v1.2 Phase 16 decisions (from 16-01):**
+- card-primary backdrop-filter applies desktop-only (min-width: 768px) — mobile blur budget consumed by MobileBottomNav + sticky header
+- GoalDashboardWidget and RecoveryDashboardWidget render Cards internally — card-primary applied inside widget files, not at Dashboard call site
+- card-landing-feature uses padding-box/border-box background shorthand for gradient borders (border-image breaks border-radius)
+- Feature icons use rounded-full bg-primary/15 ring-1 ring-primary/30 (Role A) vs. gradient square (Role C for action CTAs)
+- backdrop-blur-sm added to DialogOverlay baseline; auth dialog backdrop-blur-xl acceptable as overlay displaces other layers
 
 **v1.2 Phase 15 decisions (from 15-03):**
 - MobileBottomNav primary bar: Dashboard, Workouts, Analytics, Community, More (5 items) — Profile moved to More drawer
@@ -103,6 +110,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-20
-Stopped at: Completed 15-03-PLAN.md — MobileBottomNav 5-item + grouped More drawer; 4 mobile variants merged; phase 15 complete
+Last session: 2026-02-21
+Stopped at: Completed 16-01-PLAN.md — card tier utilities, Dashboard hierarchy, landing page glass + gradient borders
 Resume file: N/A
