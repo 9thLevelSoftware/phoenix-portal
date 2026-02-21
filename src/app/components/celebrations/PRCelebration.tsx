@@ -135,7 +135,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 									/>
 
 									<div className="relative z-10 text-center">
-										<h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+										<h2 className="text-2xl font-bold mb-6 text-white">
 											{getTitle()}
 										</h2>
 

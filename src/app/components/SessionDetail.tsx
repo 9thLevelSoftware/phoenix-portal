@@ -227,10 +227,8 @@ export function SessionDetail() {
 							</SubscriptionGate>
 						</div>
 
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								{session.name}
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							{session.name}
 						</h1>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 							<span>
@@ -313,7 +311,7 @@ export function SessionDetail() {
 									<Award className="w-5 h-5 text-warning" />
 									<div className="text-sm text-muted-foreground">PRs</div>
 								</div>
-								<div className="text-2xl font-semibold bg-gradient-to-r from-accent to-warning bg-clip-text text-transparent">
+								<div className="text-2xl font-semibold text-primary">
 									{prCount}
 								</div>
 							</div>

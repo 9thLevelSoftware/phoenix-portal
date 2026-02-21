@@ -120,7 +120,7 @@ export function GoalCelebration({
 											<Icon className="w-12 h-12 text-accent" />
 										</div>
 
-										<h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+										<h2 className="text-2xl font-bold mb-4 text-white">
 											GOAL ACHIEVED!
 										</h2>
 

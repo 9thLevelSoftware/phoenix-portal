@@ -76,10 +76,8 @@ export function RoutinesEnhanced() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-										My Routines
-									</span>
+								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+									My Routines
 								</h1>
 								<p className="text-muted-foreground">
 									Build your perfect workout
@@ -110,10 +108,8 @@ export function RoutinesEnhanced() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									My Routines
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								My Routines
 							</h1>
 							<p className="text-muted-foreground">
 								Build your perfect workout
