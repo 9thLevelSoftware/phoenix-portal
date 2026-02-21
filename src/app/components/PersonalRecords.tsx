@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -186,14 +187,14 @@ export function PersonalRecords() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<PageShell>
 					<Skeleton className="h-8 w-40 mb-4" />
 					<div className="space-y-3">
 						{Array.from({ length: 4 }).map((_, i) => (
 							<CardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -213,13 +214,13 @@ export function PersonalRecords() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Trophy}
 						title="No personal records yet"
 						description="Your PRs will appear here as you push your limits. Every new best is worth celebrating."
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -296,7 +297,7 @@ export function PersonalRecords() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				{/* Recent PRs Spotlight */}
 				{recentPRs.length > 0 && (
 					<motion.div
@@ -785,7 +786,7 @@ export function PersonalRecords() {
 						</motion.div>
 					)}
 				</AnimatePresence>
-			</div>
+			</PageShell>
 		</div>
 	);
 }

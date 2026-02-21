@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Award,
@@ -246,11 +247,11 @@ export function WorkoutHistory() {
 						<Skeleton className="h-5 w-48" />
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+				<PageShell>
 					{Array.from({ length: 5 }).map((_, i) => (
 						<WorkoutCardSkeleton key={i} />
 					))}
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -271,13 +272,13 @@ export function WorkoutHistory() {
 						</p>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Dumbbell}
 						title="No workouts yet"
 						description="Complete your first workout in the mobile app to see your training history here."
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -395,7 +396,7 @@ export function WorkoutHistory() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				<AnimatePresence mode="wait">
 					{viewMode === "calendar" ? (
 						<motion.div
@@ -721,7 +722,7 @@ export function WorkoutHistory() {
 						</motion.div>
 					)}
 				</AnimatePresence>
-			</div>
+			</PageShell>
 
 			{/* Day Detail Slide-Out Panel */}
 			<AnimatePresence>

@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	BedDouble,
@@ -66,14 +67,14 @@ export function TrainingCycles() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+				<PageShell>
 					<CardSkeleton />
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
 							<CardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -106,7 +107,7 @@ export function TrainingCycles() {
 						</motion.div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Calendar}
 						title="Plan your training cycle"
@@ -114,7 +115,7 @@ export function TrainingCycles() {
 						actionLabel="Create Cycle"
 						actionHref="/cycles/new"
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -150,7 +151,7 @@ export function TrainingCycles() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+			<PageShell>
 				{/* Active Cycle Card */}
 				{activeCycle && (
 					<motion.div
@@ -356,7 +357,7 @@ export function TrainingCycles() {
 						})}
 					</div>
 				</div>
-			</div>
+			</PageShell>
 
 			<ShareContentDialog
 				open={shareDialogOpen}
