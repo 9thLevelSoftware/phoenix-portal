@@ -99,7 +99,7 @@ function QuickStatCard({
 	gradient: string;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary min-w-[120px] flex-shrink-0">
+		<Card className="p-4 card-secondary min-w-[120px] flex-shrink-0">
 			<div
 				className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
 			>
@@ -125,7 +125,7 @@ function MobileRecentActivityCard({
 	prs: number;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
+		<Card className="p-4 card-secondary active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
 				<h4 className="font-semibold text-white">{title}</h4>
 				<span className="text-xs text-muted">{time}</span>
@@ -215,7 +215,7 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
 						>
-							<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex items-center gap-4">
 									<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center flex-shrink-0">
 										<TrendingUp className="w-5 h-5 text-white" />
@@ -238,7 +238,7 @@ export function Dashboard() {
 							transition={{ delay: 0.2 }}
 						>
 							<Link to="/routines/new">
-								<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-5 card-secondary">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
 											<Dumbbell className="w-5 h-5 text-white" />
@@ -263,7 +263,7 @@ export function Dashboard() {
 							transition={{ delay: 0.3 }}
 						>
 							<Link to="/challenges">
-								<Card className="p-5 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-5 card-secondary">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center flex-shrink-0">
 											<Trophy className="w-5 h-5 text-white" />
@@ -311,7 +311,7 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
 						>
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+							<Card className="p-6 card-secondary h-full">
 								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-white" />
 								</div>
@@ -331,7 +331,7 @@ export function Dashboard() {
 							transition={{ delay: 0.2 }}
 						>
 							<Link to="/routines/new" className="block h-full">
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+								<Card className="p-6 card-secondary h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
 										<Dumbbell className="w-6 h-6 text-white" />
 									</div>
@@ -352,7 +352,7 @@ export function Dashboard() {
 							transition={{ delay: 0.3 }}
 						>
 							<Link to="/challenges" className="block h-full">
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all h-full">
+								<Card className="p-6 card-secondary h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center mb-4">
 										<Trophy className="w-6 h-6 text-white" />
 									</div>
@@ -412,7 +412,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.1 }}
 					>
-						<Card className="p-6 bg-gradient-to-br from-primary/20 to-chart-2/20 border-2 border-primary/50">
+						<Card className="p-6 card-hero">
 							<div className="flex items-center gap-4">
 								<motion.div
 									animate={{
@@ -472,7 +472,7 @@ export function Dashboard() {
 						{activeCycle ? (
 							<NextWorkoutWidget cycleId={activeCycle.id} />
 						) : (
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Calendar className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -507,7 +507,7 @@ export function Dashboard() {
 								{Array.from({ length: 4 }).map((_, i) => (
 									<Card
 										key={i}
-										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary min-w-[120px] flex-shrink-0"
+										className="p-4 card-secondary min-w-[120px] flex-shrink-0"
 									>
 										<Skeleton className="w-10 h-10 rounded-lg mb-3" />
 										<Skeleton className="h-7 w-16 mb-1" />
@@ -557,13 +557,13 @@ export function Dashboard() {
 					>
 						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
 						{statsLoading ? (
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 card-secondary">
 								<Skeleton className="h-8 w-32 mb-1" />
 								<Skeleton className="h-4 w-40 mb-4" />
 								<Skeleton className="h-32 w-full" />
 							</Card>
 						) : weeklyTotal === 0 ? (
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 card-secondary">
 								<div className="flex flex-col items-center justify-center py-8 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -575,7 +575,7 @@ export function Dashboard() {
 								</div>
 							</Card>
 						) : (
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 card-secondary">
 								<div className="mb-4">
 									<div className="text-3xl font-bold text-white mb-1">
 										{Math.round(weeklyTotal).toLocaleString()} kg
@@ -650,7 +650,7 @@ export function Dashboard() {
 								))}
 							</div>
 						) : recentWorkouts.length === 0 ? (
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
@@ -720,7 +720,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.1 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2">
+								<Card className="p-6 card-hero">
 									<div className="flex items-center justify-between">
 										<div>
 											<div className="flex items-center gap-3 mb-2">
@@ -756,7 +756,7 @@ export function Dashboard() {
 								{activeCycle ? (
 									<NextWorkoutWidget cycleId={activeCycle.id} />
 								) : (
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300">
+									<Card className="p-6 card-secondary">
 										<div className="flex items-center justify-between mb-4">
 											<h3 className="text-xl text-white">Scheduled Workout</h3>
 										</div>
@@ -791,7 +791,7 @@ export function Dashboard() {
 								{statsLoading ? (
 									<ChartSkeleton />
 								) : (
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+									<Card className="p-6 card-secondary">
 										<h3 className="text-xl text-white mb-6">Weekly Volume</h3>
 										{weeklyTotal === 0 ? (
 											<div className="flex flex-col items-center justify-center py-12 text-center">
@@ -874,7 +874,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-6 card-secondary">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="text-xl text-white">Recent Activity</h3>
 										<Button
@@ -949,7 +949,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.2 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Quick Stats</h3>
 									{workoutsLoading ? (
 										<div className="space-y-4">
@@ -1030,7 +1030,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.3 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
@@ -1088,7 +1088,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<div className="flex flex-col items-center justify-center py-6 text-center">
 										<Trophy className="w-8 h-8 text-secondary mb-2" />
@@ -1116,7 +1116,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.5 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									<div className="flex flex-col items-center justify-center py-6 text-center">
 										<Award className="w-8 h-8 text-secondary mb-2" />
