@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 15: Navigation Layout Shell
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 16: Visual Depth & Surfaces
 
 ## Current Position
 
 Phase: 16 of 19 (Visual Depth & Surfaces)
-Plan: 1 of ? in current phase — plan 01 complete
+Plan: 2 of ? in current phase — plan 02 complete
 Status: In progress
-Last activity: 2026-02-21 — 16-01 complete (card-hero/primary/secondary/landing-feature utilities; Dashboard 3-tier hierarchy; landing glass dialog + gradient border cards)
+Last activity: 2026-02-21 — 16-02 complete (gradient text sweep: 45 of 47 instances replaced; hero h1 gradient reserved for LandingPage + Dashboard welcome h1 only)
 
-Progress: [██░░░░░░░░] 8% (v1.2)
+Progress: [██░░░░░░░░] 10% (v1.2)
 
 ## Performance Metrics
 
@@ -29,9 +29,9 @@ Progress: [██░░░░░░░░] 8% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 4
-- Average duration: ~4.5 min
-- Total execution time: ~18 min
+- Total plans completed: 5
+- Average duration: ~4.6 min
+- Total execution time: ~23 min
 
 ## Accumulated Context
 
@@ -53,6 +53,14 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
 - body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
 - .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
+
+**v1.2 Phase 16 decisions (from 16-02):**
+- Gradient text (bg-clip-text text-transparent) reserved for hero h1 only — 2 instances globally: LandingPage hero h1 and Dashboard welcome h1 username span
+- Section h1/h2 headers across all pages use solid text-white — not gradient
+- Brand/logo spans (AppSidebar, Navigation, auth dialogs, footer) use solid text-primary
+- Stat number displays (PR values, volume totals, PR counts) use text-primary — not gradient
+- Celebration modal h2 headlines use text-white — gradient in modal context does not signal hero status
+- ChallengeWon dynamic config.gradient template literal removed — replaced with static text-white
 
 **v1.2 Phase 16 decisions (from 16-01):**
 - card-primary backdrop-filter applies desktop-only (min-width: 768px) — mobile blur budget consumed by MobileBottomNav + sticky header
@@ -111,5 +119,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 16-01-PLAN.md — card tier utilities, Dashboard hierarchy, landing page glass + gradient borders
+Stopped at: Completed 16-02-PLAN.md — gradient text sweep: 45/47 instances replaced, hero h1 gradient reserved for LandingPage + Dashboard welcome h1
 Resume file: N/A

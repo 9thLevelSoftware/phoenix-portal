@@ -40,7 +40,7 @@
 
 - [x] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on (completed 2026-02-21)
 - [x] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components (completed 2026-02-21)
-- [ ] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments
+- [x] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments (completed 2026-02-21)
 - [ ] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance
 - [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix
 - [ ] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation
@@ -149,7 +149,7 @@ Plans:
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
 | 15. Navigation & Layout Shell | 3/3 | Complete    | 2026-02-21 | - |
-| 16. Visual Depth & Surfaces | 1/2 | In Progress|  | - |
+| 16. Visual Depth & Surfaces | 2/2 | Complete   | 2026-02-21 | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |

@@ -71,7 +71,7 @@
 - [ ] **BUG-04**: Streak card raw emoji replaced with styled Lucide Flame icon + phoenix-glow animation
 - [ ] **BUG-05**: Hardcoded `#374151` hex in Recharts tooltip styles replaced with CSS variable references
 - [ ] **BUG-06**: Hardcoded `#60A5FA` on Analytics external activity bar replaced with palette constant
-- [ ] **BUG-07**: Gradient text reserved for hero headlines only — section headers use solid `text-white` or `text-primary`
+- [x] **BUG-07**: Gradient text reserved for hero headlines only — section headers use solid `text-white` or `text-primary`
 - [x] **BUG-08**: AppLayout `bg-[#0D0D0D]` changed to `bg-background` for design system consistency
 - [ ] **BUG-09**: Footer nav `<li>` elements wrapped in proper `<Link>` or `<a>` tags
 - [ ] **BUG-10**: Custom CSS animations (`animate-flame-flicker`, `animate-phoenix-glow`) applied to relevant UI elements instead of sitting unused
@@ -148,7 +148,7 @@
 | BUG-04 | Phase 19 | Pending |
 | BUG-05 | Phase 19 | Pending |
 | BUG-06 | Phase 19 | Pending |
-| BUG-07 | Phase 16 | Pending |
+| BUG-07 | Phase 16 | Complete |
 | BUG-08 | Phase 14 | Complete |
 | BUG-09 | Phase 19 | Pending |
 | BUG-10 | Phase 19 | Pending |
