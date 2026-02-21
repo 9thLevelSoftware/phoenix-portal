@@ -177,10 +177,8 @@ DECLARE
   sr2 uuid := gen_random_uuid();
   sc1 uuid := gen_random_uuid();
 
-  -- Goal IDs
+  -- Goal IDs (free tier = 1 active goal)
   g1 uuid := gen_random_uuid();
-  g2 uuid := gen_random_uuid();
-  g3 uuid := gen_random_uuid();
 
 BEGIN
   -- Get the authenticated user
@@ -1833,14 +1831,9 @@ BEGIN
   -- ============================================================
   -- USER GOALS
   -- ============================================================
+  -- Free tier limit: 1 active goal
   INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)
   VALUES (g1, uid, 'frequency', 5, 'workouts', NULL, 'weekly', 'active', '2026-02-06 18:00:00+00');
-
-  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)
-  VALUES (g2, uid, 'pr', 20, 'kg', 'Bench Press', 'monthly', 'active', '2026-02-10 18:00:00+00');
-
-  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)
-  VALUES (g3, uid, 'volume', 10000, 'kg', NULL, 'monthly', 'active', '2026-02-13 18:00:00+00');
 
   -- ============================================================
   -- EXERCISE PROGRESS (trending data)
