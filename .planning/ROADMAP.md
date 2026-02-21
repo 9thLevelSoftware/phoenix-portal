@@ -141,7 +141,10 @@ Plans:
   3. Glassmorphism cards blur against the ambient glow layer, not just adjacent page content
   4. `Navigation.tsx` is deleted — zero dead nav files in the repo
   5. MobileBottomNav drawer section labels use `.eyebrow` utility class instead of manual Tailwind
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 20-01-PLAN.md — Strip bg-background from AppLayout + SidebarInset + 16 page root wrappers to reveal ambient glows
+- [ ] 20-02-PLAN.md — Remove inline system-ui fontFamily, delete Navigation.tsx, apply .eyebrow utility
 
 ## Progress
 
@@ -167,7 +170,7 @@ Plans:
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
-| 20. Gap Closure & Tech Debt | v1.2 | 0/TBD | Not started | - |
+| 20. Gap Closure & Tech Debt | v1.2 | 0/2 | Not started | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
