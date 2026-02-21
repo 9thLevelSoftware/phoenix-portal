@@ -486,7 +486,7 @@ export function DashboardMobile() {
 									title={workout.name}
 									time={formatRelativeTime(workout.started_at)}
 									volume={`${workout.total_volume.toLocaleString()} kg`}
-									duration={`${workout.duration_minutes} min`}
+									duration={`${workout.duration_seconds} min`}
 									prs={workout.pr_count}
 								/>
 							))}

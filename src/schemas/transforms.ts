@@ -29,13 +29,14 @@ export const workoutSessionSchema = z.object({
 	user_id: z.string().uuid(),
 	name: z.string(),
 	started_at: z.string().transform((s) => new Date(s)),
-	duration_minutes: z.number().transform((s) => Math.round(s / 60)),
+	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
 	total_volume: weightTransform,
 	set_count: z.number(),
 	exercise_count: z.number(),
 	pr_count: z.number(),
 	routine_name: z.string().nullable(),
 	workout_mode: workoutModeSchema,
+	notes: z.string().nullable().optional(),
 });
 
 export const workoutListSchema = z.array(workoutSessionSchema);

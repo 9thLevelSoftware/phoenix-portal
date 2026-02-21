@@ -14,7 +14,7 @@ import {
 	TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
@@ -25,6 +25,7 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useSaveSessionNotes } from "@/mutations/workouts";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -44,6 +45,12 @@ export function SessionDetail() {
 	);
 	const [notes, setNotes] = useState("");
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const saveNotes = useSaveSessionNotes();
+
+	// Load existing notes from session
+	useEffect(() => {
+		if (session?.notes) setNotes(session.notes);
+	}, [session?.notes]);
 
 	if (!sessionId) {
 		return <Navigate to="/history" replace />;
@@ -181,7 +188,7 @@ export function SessionDetail() {
 				<div className="flex gap-6 text-sm text-gray-600 mt-2">
 					<span>Date: {session.started_at.toLocaleDateString()}</span>
 					{session.routine_name && <span>Routine: {session.routine_name}</span>}
-					<span>Duration: {session.duration_minutes} min</span>
+					<span>Duration: {session.duration_seconds} min</span>
 					<span>Volume: {session.total_volume.toLocaleString()} kg</span>
 				</div>
 			</div>
@@ -280,7 +287,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
-									{session.duration_minutes}m
+									{session.duration_seconds}m
 								</div>
 							</div>
 							<div className="text-center">
@@ -517,8 +524,12 @@ export function SessionDetail() {
 						<Button
 							size="sm"
 							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							disabled={saveNotes.isPending}
+							onClick={() =>
+								saveNotes.mutate({ sessionId: sessionId!, notes })
+							}
 						>
-							Save Notes
+							{saveNotes.isPending ? "Saving..." : "Save Notes"}
 						</Button>
 					</Card>
 				</motion.div>

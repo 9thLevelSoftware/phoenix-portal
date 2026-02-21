@@ -138,7 +138,7 @@ export function useFollowCreator() {
 			if (!user) throw new Error("Must be logged in to follow");
 
 			const { data: existing, error: checkError } = await supabase
-				.from("creator_follows")
+				.from("creator_follows" as never)
 				.select("id")
 				.eq("follower_id", user.id)
 				.eq("followed_id", followedId)
@@ -148,16 +148,16 @@ export function useFollowCreator() {
 
 			if (existing) {
 				const { error } = await supabase
-					.from("creator_follows")
+					.from("creator_follows" as never)
 					.delete()
-					.eq("id", existing.id);
+					.eq("id", (existing as { id: string }).id);
 				if (error) throw error;
 				return { action: "unfollowed" as const };
 			}
-			const { error } = await supabase.from("creator_follows").insert({
+			const { error } = await supabase.from("creator_follows" as never).insert({
 				follower_id: user.id,
 				followed_id: followedId,
-			});
+			} as never);
 			if (error) throw error;
 			return { action: "followed" as const };
 		},
@@ -170,7 +170,7 @@ export function useFollowCreator() {
 			}
 		},
 
-		onError: (error) => {
+		onError: (error: Error) => {
 			toast.error(`Failed to update follow: ${error.message}`);
 		},
 	});

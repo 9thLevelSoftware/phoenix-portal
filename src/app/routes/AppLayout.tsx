@@ -9,9 +9,12 @@ import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
+import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
+import { useCelebrationTriggers } from "@/hooks/useCelebrationTriggers";
 import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { useStreakSync } from "@/hooks/useStreakSync";
 
 /**
  * Authenticated shell layout.
@@ -29,6 +32,8 @@ import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 export function AppLayout() {
 	useRealtimeSync();
 	useNotificationSync();
+	useStreakSync();
+	useCelebrationTriggers();
 	const {
 		needsOnboarding,
 		needsWhatsNew,
@@ -62,6 +67,7 @@ export function AppLayout() {
 				<MobileBottomNav />
 			</div>
 
+			<CelebrationOverlay />
 			<Toaster />
 		</div>
 	);
