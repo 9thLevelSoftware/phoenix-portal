@@ -55,6 +55,8 @@ export const queryKeys = {
 	},
 	progress: {
 		all: ["progress"] as const,
+		exercises: (userId: string) =>
+			[...queryKeys.progress.all, "exercises", userId] as const,
 		byExercise: (userId: string, exerciseName: string) =>
 			[...queryKeys.progress.all, userId, exerciseName] as const,
 		summary: (userId: string, period: string) =>
@@ -98,6 +100,8 @@ export const queryKeys = {
 			[...queryKeys.community.all, "saves", userId] as const,
 		votes: (userId: string) =>
 			[...queryKeys.community.all, "votes", userId] as const,
+		follows: (followerId: string, followedId: string) =>
+			[...queryKeys.community.all, "follows", followerId, followedId] as const,
 	},
 	challenges: {
 		all: ["challenges"] as const,

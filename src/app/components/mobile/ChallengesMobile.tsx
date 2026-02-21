@@ -8,6 +8,16 @@ import {
 } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -208,6 +218,7 @@ export function ChallengesMobile() {
 	const userId = user?.id ?? "";
 	const [activeTab, setActiveTab] = useState("active");
 	const [expandedId, setExpandedId] = useState<string | null>(null);
+	const [leaveConfirmId, setLeaveConfirmId] = useState<string | null>(null);
 
 	const { data: challenges, isPending } = useQuery(challengeListOptions());
 	const { data: userChallenges } = useQuery(userChallengesOptions(userId));
@@ -251,7 +262,14 @@ export function ChallengesMobile() {
 	};
 
 	const handleLeaveChallenge = (challengeId: string) => {
-		leaveMutation.mutate(challengeId);
+		setLeaveConfirmId(challengeId);
+	};
+
+	const confirmLeave = () => {
+		if (leaveConfirmId) {
+			leaveMutation.mutate(leaveConfirmId);
+			setLeaveConfirmId(null);
+		}
 	};
 
 	return (
@@ -308,21 +326,56 @@ export function ChallengesMobile() {
 							{activeChallenges
 								.filter((c) => joinedIds.has(c.id))
 								.map((challenge) => (
-									<SwipeableCard
-										key={challenge.id}
-										onSwipeRight={() => handleViewChallenge(challenge.id)}
-										onSwipeLeft={() => handleLeaveChallenge(challenge.id)}
-									>
-										<MobileChallengeCard
-											challenge={challenge}
-											isJoined={true}
-											userId={userId}
-										/>
-									</SwipeableCard>
+									<div key={challenge.id}>
+										<SwipeableCard
+											onSwipeRight={() => handleViewChallenge(challenge.id)}
+											onSwipeLeft={() => handleLeaveChallenge(challenge.id)}
+										>
+											<MobileChallengeCard
+												challenge={challenge}
+												isJoined={true}
+												userId={userId}
+											/>
+										</SwipeableCard>
+										{expandedId === challenge.id && (
+											<Card className="p-4 mt-1 bg-surface-2 border-secondary rounded-xl">
+												<p className="text-sm text-secondary-foreground mb-2">
+													{challenge.description}
+												</p>
+												<div className="flex items-center gap-4 text-xs text-muted-foreground">
+													<span className="capitalize">{challenge.challenge_type}</span>
+													<span>Target: {challenge.target_value}</span>
+													{challenge.prize && (
+														<span className="text-accent">{challenge.prize}</span>
+													)}
+												</div>
+											</Card>
+										)}
+									</div>
 								))}
 						</>
 					)}
 				</TabsContent>
+
+				{/* Leave confirmation dialog */}
+				<AlertDialog open={!!leaveConfirmId} onOpenChange={(open) => !open && setLeaveConfirmId(null)}>
+					<AlertDialogContent className="bg-background border-secondary">
+						<AlertDialogHeader>
+							<AlertDialogTitle className="text-white">Leave challenge?</AlertDialogTitle>
+							<AlertDialogDescription>
+								Your progress in this challenge will be lost. This action cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel className="border-secondary text-muted-foreground" onClick={() => setLeaveConfirmId(null)}>
+								Cancel
+							</AlertDialogCancel>
+							<AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={confirmLeave}>
+								Leave
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 
 				{/* Past Challenges */}
 				<TabsContent value="past" className="px-4 py-12 mt-0">

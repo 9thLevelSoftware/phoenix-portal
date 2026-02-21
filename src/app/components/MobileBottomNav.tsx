@@ -16,7 +16,7 @@ import {
 	Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 import {
 	Drawer,
@@ -56,6 +56,31 @@ export function MobileBottomNav() {
 	const isMoreActive = moreItems.some(
 		(item) => location.pathname === item.path,
 	);
+
+	// Handle browser back button to close drawer
+	const handleDrawerChange = useCallback((open: boolean) => {
+		if (open) {
+			// Push a history entry so the back button can close the drawer
+			window.history.pushState({ moreDrawer: true }, "");
+		} else {
+			// If closing programmatically (not via popstate), clean up the history entry
+			if (window.history.state?.moreDrawer) {
+				window.history.back();
+			}
+		}
+		setMoreOpen(open);
+	}, []);
+
+	useEffect(() => {
+		function onPopState() {
+			if (moreOpen) {
+				setMoreOpen(false);
+			}
+		}
+
+		window.addEventListener("popstate", onPopState);
+		return () => window.removeEventListener("popstate", onPopState);
+	}, [moreOpen]);
 
 	return (
 		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-secondary pb-safe">
@@ -162,7 +187,7 @@ export function MobileBottomNav() {
 				))}
 
 				{/* More button with drawer */}
-				<Drawer open={moreOpen} onOpenChange={setMoreOpen}>
+				<Drawer open={moreOpen} onOpenChange={handleDrawerChange}>
 					<DrawerTrigger asChild>
 						<button className="relative flex flex-col items-center gap-1 py-2 px-3 min-w-[60px] transition-colors">
 							{/* Active indicator line when a "more" page is active */}

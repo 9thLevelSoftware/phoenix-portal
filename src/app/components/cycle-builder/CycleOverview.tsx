@@ -1,4 +1,5 @@
 import { Calendar } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -27,7 +28,8 @@ export function CycleOverview({
 	onStartDateChange,
 }: CycleOverviewProps) {
 	const durationPresets = [3, 4, 5, 6, 7];
-	const isCustomDuration = !durationPresets.includes(duration);
+	const [customMode, setCustomMode] = useState(!durationPresets.includes(duration));
+	const isCustomDuration = customMode || !durationPresets.includes(duration);
 
 	return (
 		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
@@ -71,8 +73,8 @@ export function CycleOverview({
 							<Button
 								key={days}
 								size="sm"
-								variant={duration === days ? "default" : "outline"}
-								onClick={() => onDurationChange(days)}
+								variant={duration === days && !isCustomDuration ? "default" : "outline"}
+								onClick={() => { setCustomMode(false); onDurationChange(days); }}
 								className={
 									duration === days
 										? "bg-primary hover:bg-chart-2 border-0"
@@ -85,11 +87,7 @@ export function CycleOverview({
 						<Button
 							size="sm"
 							variant={isCustomDuration ? "default" : "outline"}
-							onClick={() => {
-								if (!isCustomDuration) {
-									onDurationChange(14);
-								}
-							}}
+							onClick={() => setCustomMode(true)}
 							className={
 								isCustomDuration
 									? "bg-primary hover:bg-chart-2 border-0"
@@ -125,6 +123,7 @@ export function CycleOverview({
 						type="date"
 						value={startDate}
 						onChange={(e) => onStartDateChange(e.target.value)}
+						min={new Date().toISOString().split("T")[0]}
 						className="bg-background border-secondary focus:border-primary focus:ring-primary/20"
 					/>
 					<p className="text-xs text-muted mt-1">

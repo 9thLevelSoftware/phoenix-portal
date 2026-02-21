@@ -19,7 +19,7 @@ interface ProgressionSettings {
 	type: "percentage" | "fixed" | "manual";
 	amount: number;
 	frequency: number;
-	trigger: "all-sets" | "target-rpe" | "cycle-complete";
+	trigger: "all_sets" | "target_rpe" | "cycle_complete";
 	upperIncrement: number;
 	lowerIncrement: number;
 }
@@ -96,6 +96,49 @@ export function useSaveCycle() {
 
 		onSuccess: () => {
 			toast.success("Training cycle saved");
+			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+		},
+
+		onError: (error: Error) => {
+			toast.error(error.message);
+		},
+	});
+}
+
+export function useActivateCycle() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async (cycleId: string) => {
+			if (!user) throw new Error("Must be logged in to activate cycles");
+
+			// Deactivate any currently active cycle for this user
+			const { error: deactivateError } = await supabase
+				.from("training_cycles")
+				.update({ status: "draft" as const })
+				.eq("user_id", user.id)
+				.eq("status", "active");
+
+			if (deactivateError) throw deactivateError;
+
+			// Activate the selected cycle and set last_used_at
+			const { error: activateError } = await supabase
+				.from("training_cycles")
+				.update({
+					status: "active" as const,
+					started_at: new Date().toISOString(),
+					last_used_at: new Date().toISOString(),
+				})
+				.eq("id", cycleId);
+
+			if (activateError) throw activateError;
+
+			return { id: cycleId };
+		},
+
+		onSuccess: () => {
+			toast.success("Training cycle activated");
 			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
 		},
 

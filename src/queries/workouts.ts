@@ -15,6 +15,8 @@ import { queryKeys } from "./keys";
  * Paginated workout session list for a user.
  * Returns Zod-transformed WorkoutSession[] (weights doubled, dates as Date, duration as minutes).
  */
+export const WORKOUTS_PAGE_SIZE = 50;
+
 export function workoutListOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.list(userId),
@@ -24,7 +26,26 @@ export function workoutListOptions(userId: string) {
 				.select("*")
 				.eq("user_id", userId)
 				.order("started_at", { ascending: false })
-				.limit(50);
+				.limit(WORKOUTS_PAGE_SIZE);
+			if (error) throw error;
+			return workoutListSchema.parse(data);
+		},
+	});
+}
+
+/**
+ * Fetch the next page of workout sessions, offset by the number already loaded.
+ */
+export function workoutListPageOptions(userId: string, offset: number) {
+	return queryOptions({
+		queryKey: [...queryKeys.workouts.list(userId), "page", offset] as const,
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("workout_sessions")
+				.select("*")
+				.eq("user_id", userId)
+				.order("started_at", { ascending: false })
+				.range(offset, offset + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
 			return workoutListSchema.parse(data);
 		},
@@ -224,7 +245,7 @@ export function comparisonDetailOptions(sessionId: string) {
 				name: parsedSession.name,
 				startedAt: parsedSession.started_at,
 				totalVolume: parsedSession.total_volume,
-				duration: parsedSession.duration_seconds,
+				duration: parsedSession.duration_minutes,
 				exerciseCount: parsedSession.exercise_count,
 				setCount: parsedSession.set_count,
 				prCount: parsedSession.pr_count,

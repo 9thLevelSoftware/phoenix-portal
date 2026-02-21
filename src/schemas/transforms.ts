@@ -29,7 +29,7 @@ export const workoutSessionSchema = z.object({
 	user_id: z.string().uuid(),
 	name: z.string(),
 	started_at: z.string().transform((s) => new Date(s)),
-	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
+	duration_minutes: z.number().transform((s) => Math.round(s / 60)),
 	total_volume: weightTransform,
 	set_count: z.number(),
 	exercise_count: z.number(),
@@ -119,11 +119,17 @@ export const trainingCycleSchema = z.object({
 	id: z.string().uuid(),
 	user_id: z.string().uuid(),
 	name: z.string(),
+	description: z.string().nullable().optional(),
 	duration_weeks: z.number(),
 	current_week: z.number(),
 	status: z.enum(["active", "completed", "draft"]),
 	workout_days: z.number(),
 	rest_days: z.number(),
+	started_at: z
+		.string()
+		.nullable()
+		.optional()
+		.transform((s) => (s ? new Date(s) : null)),
 	last_used_at: z
 		.string()
 		.nullable()

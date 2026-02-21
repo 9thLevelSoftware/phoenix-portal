@@ -33,7 +33,14 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			return data ?? [];
 		},
 		enabled: !!userId,
-		refetchInterval: 15_000, // Poll every 15s while visible
+		refetchInterval: (query) => {
+			// Only poll when there's pending or processing work
+			const items = query.state.data ?? [];
+			const hasPending = items.some(
+				(q: any) => q.status === "pending" || q.status === "processing",
+			);
+			return hasPending ? 15_000 : false;
+		},
 	});
 
 	const pending = queue?.filter((q) => q.status === "pending").length ?? 0;

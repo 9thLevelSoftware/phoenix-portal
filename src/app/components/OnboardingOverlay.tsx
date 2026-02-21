@@ -102,7 +102,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 
 	return (
 		<Dialog open onOpenChange={(open) => !open && onComplete()}>
-			<DialogContent className="sm:max-w-md border-[#FF6B35]/30 bg-[#1A1A1A] overflow-hidden">
+			<DialogContent className="sm:max-w-md border-primary/30 bg-surface-2 overflow-hidden">
 				<AnimatePresence mode="wait" custom={direction}>
 					<motion.div
 						key={currentStep}
@@ -130,19 +130,19 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 											ease: "easeInOut",
 										}}
 									>
-										<Flame className="size-16 text-[#FF6B35]" />
+										<Flame className="size-16 text-primary" />
 									</motion.div>
 								</div>
 							)}
 							{currentStep === 2 && (
 								<div className="flex justify-center mb-4">
-									<Rocket className="size-16 text-[#F59E0B]" />
+									<Rocket className="size-16 text-accent" />
 								</div>
 							)}
 							<DialogTitle className="text-xl text-center text-white">
 								{step.title}
 							</DialogTitle>
-							<DialogDescription className="text-center text-[#9CA3AF]">
+							<DialogDescription className="text-center text-muted-foreground">
 								{step.description}
 							</DialogDescription>
 						</DialogHeader>
@@ -154,12 +154,12 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 										key={feature.label}
 										className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
 									>
-										<feature.icon className="size-5 shrink-0 text-[#FF6B35] mt-0.5" />
+										<feature.icon className="size-5 shrink-0 text-primary mt-0.5" />
 										<div>
 											<p className="text-sm font-medium text-white">
 												{feature.label}
 											</p>
-											<p className="text-xs text-[#9CA3AF]">{feature.detail}</p>
+											<p className="text-xs text-muted-foreground">{feature.detail}</p>
 										</div>
 									</div>
 								))}
@@ -172,13 +172,19 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 					{/* Progress dots */}
 					<div className="flex gap-1.5">
 						{steps.map((_, i) => (
-							<div
+							<button
 								key={`step-dot-${i}`}
-								className={`size-2 rounded-full transition-colors ${
+								type="button"
+								aria-label={`Go to step ${i + 1}`}
+								onClick={() => {
+									setDirection(i > currentStep ? 1 : -1);
+									setCurrentStep(i);
+								}}
+								className={`size-2 rounded-full transition-colors cursor-pointer hover:scale-150 ${
 									i === currentStep
-										? "bg-[#FF6B35]"
+										? "bg-primary"
 										: i < currentStep
-											? "bg-[#FF6B35]/50"
+											? "bg-primary/50"
 											: "bg-white/20"
 								}`}
 							/>

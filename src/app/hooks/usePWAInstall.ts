@@ -22,8 +22,18 @@ interface UsePWAInstallOptions {
 	minWorkouts?: number;
 }
 
+/** Detect iOS Safari (which never fires beforeinstallprompt) */
+function isIOSSafari(): boolean {
+	if (typeof navigator === "undefined") return false;
+	const ua = navigator.userAgent;
+	const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+	const isStandalone = "standalone" in navigator && (navigator as any).standalone;
+	return isIOS && !isStandalone;
+}
+
 interface UsePWAInstallResult {
 	canInstall: boolean;
+	isIOSSafari: boolean;
 	promptInstall: () => Promise<void>;
 	dismiss: () => void;
 }
@@ -59,8 +69,9 @@ export function usePWAInstall({
 		return () => window.removeEventListener("beforeinstallprompt", handler);
 	}, []);
 
+	const iosSafari = isIOSSafari();
 	const canInstall =
-		promptAvailable && workoutCount >= minWorkouts && !dismissed;
+		(promptAvailable || iosSafari) && workoutCount >= minWorkouts && !dismissed;
 
 	const promptInstall = useCallback(async () => {
 		if (!deferredPrompt) return;
@@ -82,5 +93,5 @@ export function usePWAInstall({
 		setDismissed(true);
 	}, []);
 
-	return { canInstall, promptInstall, dismiss };
+	return { canInstall, isIOSSafari: iosSafari, promptInstall, dismiss };
 }

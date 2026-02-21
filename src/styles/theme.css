@@ -243,9 +243,15 @@
     animation: phoenix-glow 2s ease-in-out infinite;
   }
 
-  .print-only {
-    display: none;
-  }
+}
+
+/* Print-only utility: hidden on screen, visible in @media print */
+.print-only {
+  display: none !important;
+}
+
+[data-print-hide] {
+  /* no-op on screen; hidden by @media print rule below */
 }
 
 @media print {

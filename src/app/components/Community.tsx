@@ -58,14 +58,8 @@ function CommunityDesktop() {
 	const setActiveTab = useCommunityStore((s) => s.setActiveTab);
 	const setSort = useCommunityStore((s) => s.setSort);
 	const setSelectedItemId = useCommunityStore((s) => s.setSelectedItemId);
-	const resetAll = useCommunityStore((s) => s.resetAll);
 
 	const debouncedSearch = useDebounce(search, 300);
-
-	// Reset state on mount
-	useEffect(() => {
-		resetAll();
-	}, [resetAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// Wire realtime
 	useCommunityRealtime();
@@ -78,6 +72,7 @@ function CommunityDesktop() {
 		isFetchingNextPage,
 		isLoading,
 		isError,
+		refetch,
 	} = useInfiniteQuery(
 		communityFeedOptions({
 			tab: activeTab,
@@ -219,9 +214,15 @@ function CommunityDesktop() {
 						) : isError ? (
 							<div className="text-center py-16 text-muted">
 								<p className="text-lg mb-2">Something went wrong</p>
-								<p className="text-sm">
+								<p className="text-sm mb-4">
 									Failed to load community feed. Please try again.
 								</p>
+								<button
+									onClick={() => refetch()}
+									className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors"
+								>
+									Retry
+								</button>
 							</div>
 						) : allItems.length === 0 ? (
 							<div className="text-center py-16 text-muted">
@@ -251,12 +252,14 @@ function CommunityDesktop() {
 						)}
 
 						{/* Infinite scroll sentinel */}
-						<div ref={sentinelRef} className="h-4" />
-						{isFetchingNextPage && (
-							<div className="flex justify-center py-4">
+						<div ref={sentinelRef} className="h-10 flex items-center justify-center">
+							{isFetchingNextPage && (
 								<div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-							</div>
-						)}
+							)}
+							{hasNextPage && !isFetchingNextPage && (
+								<p className="text-xs text-muted-foreground">Scroll for more</p>
+							)}
+						</div>
 					</>
 				)}
 

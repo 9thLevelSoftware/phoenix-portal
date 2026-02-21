@@ -39,7 +39,9 @@ export function SessionDetail() {
 		enabled: !!sessionId,
 	});
 	const { isPremium } = useSubscription();
-	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
+	const [expandedExercises, setExpandedExercises] = useState<string[] | null>(
+		null,
+	);
 	const [notes, setNotes] = useState("");
 	const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -48,11 +50,12 @@ export function SessionDetail() {
 	}
 
 	const toggleExercise = (exerciseId: string) => {
-		setExpandedExercises((prev) =>
-			prev.includes(exerciseId)
-				? prev.filter((id) => id !== exerciseId)
-				: [...prev, exerciseId],
-		);
+		setExpandedExercises((prev) => {
+			const current = prev ?? [];
+			return current.includes(exerciseId)
+				? current.filter((id) => id !== exerciseId)
+				: [...current, exerciseId];
+		});
 	};
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
@@ -164,11 +167,11 @@ export function SessionDetail() {
 		0,
 	);
 
-	// Auto-expand first exercise if none expanded
+	// Auto-expand first exercise on initial load, but allow collapsing all
 	const effectiveExpanded =
-		expandedExercises.length === 0 && session.exercises.length > 0
+		expandedExercises === null && session.exercises.length > 0
 			? [session.exercises[0].id]
-			: expandedExercises;
+			: expandedExercises ?? [];
 
 	return (
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
@@ -178,7 +181,7 @@ export function SessionDetail() {
 				<div className="flex gap-6 text-sm text-gray-600 mt-2">
 					<span>Date: {session.started_at.toLocaleDateString()}</span>
 					{session.routine_name && <span>Routine: {session.routine_name}</span>}
-					<span>Duration: {session.duration_seconds} min</span>
+					<span>Duration: {session.duration_minutes} min</span>
 					<span>Volume: {session.total_volume.toLocaleString()} kg</span>
 				</div>
 			</div>
@@ -277,7 +280,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
-									{session.duration_seconds}m
+									{session.duration_minutes}m
 								</div>
 							</div>
 							<div className="text-center">

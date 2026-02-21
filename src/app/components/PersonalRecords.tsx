@@ -27,13 +27,16 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { personalRecordsOptions } from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 
-// Milestones are motivational UI content, not user data
+// Milestones are motivational UI content, sorted ascending (chronological
+// order of achievement: the lower thresholds are reached first).
 const milestones = [
-	{ id: "1", count: 100, name: "100th PR", icon: Crown },
-	{ id: "2", count: 50, name: "50th PR", icon: Trophy },
-	{ id: "3", count: 25, name: "25th PR", icon: Award },
 	{ id: "4", count: 10, name: "10th PR", icon: Flame },
+	{ id: "3", count: 25, name: "25th PR", icon: Award },
+	{ id: "2", count: 50, name: "50th PR", icon: Trophy },
+	{ id: "1", count: 100, name: "100th PR", icon: Crown },
 ];
+
+const TIMELINE_INITIAL_LIMIT = 3;
 
 export function PersonalRecords() {
 	const { user } = useAuth();
@@ -44,8 +47,11 @@ export function PersonalRecords() {
 	const [activeFilter, setActiveFilter] = useState("All");
 	const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
 	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
+	const [showAllTimeline, setShowAllTimeline] = useState(false);
+	const [hoveredBarIndex, setHoveredBarIndex] = useState<string | null>(null);
 
-	const filters = ["All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
+	const knownGroups = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
+	const filters = ["All", ...knownGroups, "Other"];
 
 	// Derive stats from real data
 	const totalPRs = records?.length ?? 0;
@@ -89,7 +95,15 @@ export function PersonalRecords() {
 		};
 	});
 
-	// Recent PRs (top 3 most recent)
+	// All PRs sorted by date for the timeline view
+	const allPRsSorted = [...(records ?? [])].sort(
+		(a, b) => b.achieved_at.getTime() - a.achieved_at.getTime(),
+	);
+	const timelinePRs = showAllTimeline
+		? allPRsSorted
+		: allPRsSorted.slice(0, TIMELINE_INITIAL_LIMIT);
+
+	// Recent PRs (top 3 most recent) for the spotlight
 	const recentPRs = (records ?? []).slice(0, 3);
 
 	// Most improved exercise (most PRs)
@@ -149,7 +163,9 @@ export function PersonalRecords() {
 	const filteredExercises =
 		activeFilter === "All"
 			? exercisePRs
-			: exercisePRs.filter((ex) => ex.muscleGroup === activeFilter);
+			: activeFilter === "Other"
+				? exercisePRs.filter((ex) => !knownGroups.includes(ex.muscleGroup))
+				: exercisePRs.filter((ex) => ex.muscleGroup === activeFilter);
 
 	const plateauExercises = exercisePRs.filter((ex) => ex.trend === "plateau");
 
@@ -528,24 +544,64 @@ export function PersonalRecords() {
 
 											{expandedExercises.includes(exercise.exercise) && (
 												<div className="border-t border-secondary p-4">
+													{/* M33: PR Progression bar chart with tooltips */}
 													<div className="mb-4 p-4 rounded-lg bg-background border border-secondary">
 														<div className="text-sm text-muted-foreground mb-3">
 															PR Progression
 														</div>
 														<div className="h-32 flex items-end justify-between gap-2">
-															{exercise.history.map((entry, idx) => {
+															{[...exercise.history].reverse().map((entry, idx) => {
 																const maxVal = Math.max(
 																	...exercise.history.map((h) => h.value),
 																);
 																const height =
 																	maxVal > 0 ? (entry.value / maxVal) * 100 : 0;
+																const barKey = `${exercise.exercise}-${idx}`;
+																const isHovered = hoveredBarIndex === barKey;
 																return (
 																	<div
 																		key={idx}
-																		className="flex-1 flex flex-col items-center gap-2"
+																		role="group"
+																		aria-label={`${entry.value} ${entry.unit} on ${entry.achieved_at.toLocaleDateString()}`}
+																		className="flex-1 flex flex-col items-center gap-2 relative"
+																		onMouseEnter={() =>
+																			setHoveredBarIndex(barKey)
+																		}
+																		onMouseLeave={() =>
+																			setHoveredBarIndex(null)
+																		}
 																	>
+																		{/* Tooltip */}
+																		{isHovered && (
+																			<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
+																				<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
+																					<div className="text-sm font-semibold text-white">
+																						{entry.value} {entry.unit}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						{entry.record_type}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						{entry.achieved_at.toLocaleDateString(
+																							"en-US",
+																							{
+																								month: "short",
+																								day: "numeric",
+																								year: "numeric",
+																							},
+																						)}
+																					</div>
+																				</div>
+																			</div>
+																		)}
+																		{/* Value label on hover */}
 																		<div
-																			className="w-full bg-gradient-to-t from-primary to-accent rounded-t transition-all hover:opacity-80"
+																			className={`text-xs font-semibold text-primary transition-opacity ${isHovered ? "opacity-100" : "opacity-0"}`}
+																		>
+																			{entry.value}
+																		</div>
+																		<div
+																			className={`w-full bg-gradient-to-t from-primary to-accent rounded-t transition-all cursor-pointer ${isHovered ? "opacity-100 scale-x-110" : "hover:opacity-80"}`}
 																			style={{ height: `${height}%` }}
 																		/>
 																		<div className="text-xs text-muted-foreground">
@@ -661,8 +717,8 @@ export function PersonalRecords() {
 										</motion.div>
 									))}
 
-									{/* Recent PRs in Timeline */}
-									{recentPRs.map((pr, index) => (
+									{/* PRs in Timeline (M32: show all or limited) */}
+									{timelinePRs.map((pr, index) => (
 										<motion.div
 											key={pr.id}
 											initial={{ opacity: 0, x: -20 }}
@@ -711,6 +767,21 @@ export function PersonalRecords() {
 									))}
 								</div>
 							</div>
+
+							{/* M32: "See all" / "Show less" toggle */}
+							{allPRsSorted.length > TIMELINE_INITIAL_LIMIT && (
+								<div className="text-center mt-8">
+									<Button
+										variant="outline"
+										onClick={() => setShowAllTimeline((prev) => !prev)}
+										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									>
+										{showAllTimeline
+											? "Show less"
+											: `See all ${allPRsSorted.length} PRs`}
+									</Button>
+								</div>
+							)}
 						</motion.div>
 					)}
 				</AnimatePresence>

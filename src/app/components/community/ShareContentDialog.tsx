@@ -1,7 +1,8 @@
 import { Check, Share2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 import {
 	Dialog,
 	DialogContent,
@@ -79,6 +80,16 @@ export function ShareContentDialog({
 	const [showSuccess, setShowSuccess] = useState(false);
 
 	const shareContent = useShareContent();
+	const successTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+	// Clean up success timer on unmount
+	useEffect(() => {
+		return () => {
+			if (successTimerRef.current) {
+				clearTimeout(successTimerRef.current);
+			}
+		};
+	}, []);
 
 	const sourceItems = contentType === "routine" ? routines : cycles;
 	const selectedSource = sourceItems.find(
@@ -130,7 +141,7 @@ export function ShareContentDialog({
 			{
 				onSuccess: () => {
 					setShowSuccess(true);
-					setTimeout(() => {
+					successTimerRef.current = setTimeout(() => {
 						setOpen(false);
 						resetForm();
 					}, 1200);
@@ -240,11 +251,10 @@ export function ShareContentDialog({
 						{/* Name */}
 						<div className="space-y-2">
 							<Label>Name</Label>
-							<input
+							<Input
 								type="text"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
-								className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 								placeholder="Give it a catchy name..."
 							/>
 						</div>

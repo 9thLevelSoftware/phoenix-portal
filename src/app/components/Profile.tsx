@@ -4,6 +4,7 @@ import {
 	Award,
 	Bell,
 	Calendar,
+	Camera,
 	CreditCard,
 	Dumbbell,
 	Flame,
@@ -14,7 +15,7 @@ import {
 	Trophy,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ExportSection } from "@/app/components/profile/ExportSection";
@@ -40,6 +41,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
+import { supabase } from "@/lib/supabase";
 import { openCustomerPortal } from "@/lib/stripe";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
@@ -115,6 +117,55 @@ export function Profile() {
 	const streak = useStreak(workouts);
 	const updateProfile = useUpdateProfile(userId || undefined);
 
+	// Avatar upload state
+	const avatarInputRef = useRef<HTMLInputElement>(null);
+	const [avatarUploading, setAvatarUploading] = useState(false);
+
+	const handleAvatarUpload = useCallback(
+		async (e: React.ChangeEvent<HTMLInputElement>) => {
+			const file = e.target.files?.[0];
+			if (!file || !userId) return;
+
+			// Validate file type and size (max 2 MB)
+			if (!file.type.startsWith("image/")) {
+				toast.error("Please select an image file.");
+				return;
+			}
+			if (file.size > 2 * 1024 * 1024) {
+				toast.error("Image must be under 2 MB.");
+				return;
+			}
+
+			setAvatarUploading(true);
+			try {
+				const ext = file.name.split(".").pop() ?? "jpg";
+				const path = `${userId}/avatar.${ext}`;
+
+				const { error: uploadError } = await supabase.storage
+					.from("avatars")
+					.upload(path, file, { upsert: true });
+				if (uploadError) throw uploadError;
+
+				const {
+					data: { publicUrl },
+				} = supabase.storage.from("avatars").getPublicUrl(path);
+
+				// Append cache-buster so the browser picks up the new image
+				const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+				updateProfile.mutate({ avatar_url: avatarUrl });
+			} catch (err) {
+				toast.error(
+					err instanceof Error ? err.message : "Avatar upload failed.",
+				);
+			} finally {
+				setAvatarUploading(false);
+				// Reset input so re-selecting the same file triggers onChange
+				if (avatarInputRef.current) avatarInputRef.current.value = "";
+			}
+		},
+		[userId, updateProfile],
+	);
+
 	// Local settings state, initialized from profile query
 	const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
 	const [emailDigests, setEmailDigests] = useState(true);
@@ -148,7 +199,7 @@ export function Profile() {
 			toast("Checkout cancelled.");
 			setSearchParams({}, { replace: true });
 		}
-	}, [searchParams.get, setSearchParams, tier]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [searchParams, setSearchParams, tier]);
 
 	async function handleManageSubscription() {
 		setPortalLoading(true);
@@ -208,15 +259,37 @@ export function Profile() {
 						<div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-chart-2/10 opacity-50" />
 
 						<div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
-							{/* Avatar */}
-							<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
-								{profile?.avatar_url ? (
-									<AvatarImage src={profile.avatar_url} alt={displayName} />
-								) : null}
-								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
-									{profileLoading ? "..." : initials}
-								</AvatarFallback>
-							</Avatar>
+							{/* Avatar with upload overlay */}
+							<div className="relative group">
+								<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
+									{profile?.avatar_url ? (
+										<AvatarImage src={profile.avatar_url} alt={displayName} />
+									) : null}
+									<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
+										{profileLoading ? "..." : initials}
+									</AvatarFallback>
+								</Avatar>
+								<button
+									type="button"
+									className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+									disabled={avatarUploading}
+									onClick={() => avatarInputRef.current?.click()}
+									aria-label="Change avatar"
+								>
+									{avatarUploading ? (
+										<Loader2 className="w-6 h-6 text-white animate-spin" />
+									) : (
+										<Camera className="w-6 h-6 text-white" />
+									)}
+								</button>
+								<input
+									ref={avatarInputRef}
+									type="file"
+									accept="image/*"
+									className="hidden"
+									onChange={handleAvatarUpload}
+								/>
+							</div>
 
 							{/* Info */}
 							<div className="flex-1 text-center md:text-left">
@@ -238,9 +311,7 @@ export function Profile() {
 									<span className="text-white">{streak} day streak</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
-									<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
-										Phoenix Member
-									</Badge>
+									<TierBadge className="text-sm px-3 py-1" />
 								</div>
 							</div>
 
@@ -562,6 +633,10 @@ export function Profile() {
 								<Bell className="w-5 h-5" />
 								Notification Settings
 							</h3>
+							<p className="text-sm text-muted-foreground mb-4 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
+								Notification delivery is not yet active. These preferences are
+								saved and will take effect once the notification system is live.
+							</p>
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
@@ -644,9 +719,14 @@ export function Profile() {
 								General Settings
 							</h3>
 							<div className="space-y-4">
-								<div>
-									<Label className="text-white mb-2 block">Weight Unit</Label>
-									<div className="flex gap-2">
+								{/* TODO: Pass weightUnit preference through a React context so all
+							   components displaying weights can respect it app-wide. */}
+							<div>
+								<Label className="text-white mb-2 block">Weight Unit</Label>
+								<p className="text-xs text-muted-foreground mb-2">
+									Your preference is saved. App-wide unit conversion is coming soon.
+								</p>
+								<div className="flex gap-2">
 										<Button
 											className={
 												weightUnit === "kg"
@@ -698,6 +778,9 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Make your profile visible to others
 										</div>
+										<div className="text-xs text-amber-400 mt-1">
+											Coming soon -- your preference is saved
+										</div>
 									</div>
 									<Switch
 										checked={profileVisible}
@@ -715,6 +798,9 @@ export function Profile() {
 										<div className="text-white">Leaderboard participation</div>
 										<div className="text-sm text-muted-foreground">
 											Appear on public leaderboards
+										</div>
+										<div className="text-xs text-amber-400 mt-1">
+											Coming soon -- your preference is saved
 										</div>
 									</div>
 									<Switch

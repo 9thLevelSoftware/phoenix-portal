@@ -9,6 +9,7 @@ import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
+import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
@@ -27,6 +28,7 @@ import { useRealtimeSync } from "@/hooks/useRealtimeSync";
  */
 export function AppLayout() {
 	useRealtimeSync();
+	useNotificationSync();
 	const {
 		needsOnboarding,
 		needsWhatsNew,
