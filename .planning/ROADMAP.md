@@ -72,7 +72,11 @@ Plans:
   3. The user avatar in the right cluster opens a dropdown showing profile name, tier badge, streak count, and logout — no separate profile nav item needed
   4. On mobile, the sidebar is hidden and MobileBottomNav with labeled "More" drawer sections remains the navigation surface — no layout flash on first render
   5. All 26 routes smoke-test without white-screen or layout breakage; chart widths remain correct at 768px breakpoint
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 15-01-PLAN.md — AppLayout restructure with SidebarProvider, AppSidebar component, useIsMobile sync fix
+- [ ] 15-02-PLAN.md — PageShell creation and threading through all authenticated page components
+- [ ] 15-03-PLAN.md — MobileBottomNav grouped drawer sections, mobile component variant merges
 
 ### Phase 16: Visual Depth & Surfaces
 **Goal**: Cards have three perceptible elevation levels (hero, primary, secondary); glassmorphism is applied only to 2-3 priority cards per page within the blur budget; landing page feature cards have gradient borders and hover glow; icon containers are differentiated by role rather than uniform rounded squares.
@@ -141,7 +145,7 @@ Plans:
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
-| 15. Navigation & Layout Shell | v1.2 | 0/TBD | Not started | - |
+| 15. Navigation & Layout Shell | v1.2 | 0/3 | Not started | - |
 | 16. Visual Depth & Surfaces | v1.2 | 0/TBD | Not started | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
