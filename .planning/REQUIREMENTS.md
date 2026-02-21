@@ -23,8 +23,8 @@
 - [x] **NAV-05**: Right-side nav cluster consolidated — avatar opens dropdown with profile/tier/streak/logout
 - [x] **NAV-06**: Shared PageShell component replaces 30+ duplicated `max-w-7xl mx-auto px-4` patterns
 - [x] **NAV-07**: `useIsMobile` initializes synchronously from `window.innerWidth` — no layout flash on mobile
-- [ ] **NAV-08**: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile merged into CSS-responsive parent components
-- [ ] **NAV-09**: MobileBottomNav "More" drawer items grouped into labeled sections
+- [x] **NAV-08**: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile merged into CSS-responsive parent components
+- [x] **NAV-09**: MobileBottomNav "More" drawer items grouped into labeled sections
 
 ### Visual Depth & Surfaces
 
@@ -112,8 +112,8 @@
 | NAV-05 | Phase 15 | Complete |
 | NAV-06 | Phase 15 | Complete |
 | NAV-07 | Phase 15 | Complete |
-| NAV-08 | Phase 15 | Pending |
-| NAV-09 | Phase 15 | Pending |
+| NAV-08 | Phase 15 | Complete |
+| NAV-09 | Phase 15 | Complete |
 | VIS-01 | Phase 14 | Complete |
 | VIS-02 | Phase 14 | Complete |
 | VIS-03 | Phase 16 | Pending |

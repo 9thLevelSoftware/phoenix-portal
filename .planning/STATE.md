@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 15 of 19 (Navigation Layout Shell)
-Plan: 2 of 3 in current phase — plan 02 complete
+Plan: 3 of 3 in current phase — plan 03 complete (phase complete)
 Status: In progress
-Last activity: 2026-02-20 — 15-02 complete (PageShell component + threading through all authenticated pages)
+Last activity: 2026-02-20 — 15-03 complete (MobileBottomNav 5-item + grouped More drawer; 4 mobile variants merged into CSS-responsive parents, mobile files deleted)
 
 Progress: [██░░░░░░░░] 8% (v1.2)
 
@@ -53,6 +53,13 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
 - body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
 - .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
+
+**v1.2 Phase 15 decisions (from 15-03):**
+- MobileBottomNav primary bar: Dashboard, Workouts, Analytics, Community, More (5 items) — Profile moved to More drawer
+- More drawer grouped into Training/Social/Account with eyebrow labels, not flat list
+- Mobile variants merged via block md:hidden / hidden md:block (not responsive grid) — markup was fundamentally different between mobile and desktop
+- useCommunityRealtime() called once at top-level Community component — CommunityDesktop inner function dissolved
+- Mobile component files deleted after merge: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile
 
 **v1.2 Phase 15 decisions (from 15-02):**
 - PageShell import uses @/app/components/ui/utils (not @/lib/utils — no utils.ts exists in src/lib/)
@@ -97,5 +104,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 15-02-PLAN.md — PageShell component + threading through all authenticated pages complete
+Stopped at: Completed 15-03-PLAN.md — MobileBottomNav 5-item + grouped More drawer; 4 mobile variants merged; phase 15 complete
 Resume file: N/A
