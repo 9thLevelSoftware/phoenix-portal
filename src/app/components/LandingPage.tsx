@@ -266,7 +266,7 @@ export function LandingPage() {
 				}
 			}}
 		>
-			<DialogContent className="bg-surface-2 border-secondary max-w-md p-6">
+			<DialogContent className="bg-surface-2/80 backdrop-blur-xl border border-primary/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_0_40px_rgba(0,0,0,0.6)] max-w-md p-6">
 				<DialogTitle className="sr-only">Sign in to Phoenix Portal</DialogTitle>
 				<DialogDescription className="sr-only">
 					Enter your credentials to access the dashboard
@@ -642,9 +642,9 @@ export function LandingPage() {
 								viewport={{ once: true }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300 group cursor-pointer h-full">
-									<div className="mb-4 w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-										<feature.icon className="w-6 h-6 text-white" />
+								<Card className="p-6 card-landing-feature group cursor-pointer h-full">
+									<div className="mb-4 w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
+										<feature.icon className="w-5 h-5 text-primary" />
 									</div>
 									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
 									<p className="text-muted-foreground">{feature.description}</p>
