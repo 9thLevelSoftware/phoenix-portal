@@ -57,7 +57,10 @@
   3. Uppercase stat labels have visible letter-spacing and are smaller than body text — distinguishable as an "eyebrow" treatment
   4. The background behind any dashboard page has visible ember/flame ambient glow orbs at low opacity — distinct from solid #0D0D0D
   5. All CSS variable tokens (`--surface-1`, `--surface-2`, shadow tokens) are resolvable in Chrome DevTools `:root` panel — zero undefined vars
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 14-01-PLAN.md — Inter Variable font loading, typography hierarchy, dead CSS cleanup, system-ui fixes, BUG-08
+- [ ] 14-02-PLAN.md — Ambient glows, grain texture, shadow token wiring, border-secondary override, surface-3 token
 
 ### Phase 15: Navigation & Layout Shell
 **Goal**: The 13-item horizontal top nav is gone; a collapsible left sidebar with grouped nav items is the primary navigation surface on desktop; all pages render through a shared PageShell that owns max-width and padding; the useIsMobile flash is eliminated; mobile component variants are merged into their CSS-responsive parents.
@@ -137,7 +140,7 @@
 | 11. New Features | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
-| 14. CSS Foundation & Typography | v1.2 | 0/TBD | Not started | - |
+| 14. CSS Foundation & Typography | v1.2 | 0/2 | Not started | - |
 | 15. Navigation & Layout Shell | v1.2 | 0/TBD | Not started | - |
 | 16. Visual Depth & Surfaces | v1.2 | 0/TBD | Not started | - |
 | 17. Motion Design System | v1.2 | 0/TBD | Not started | - |
