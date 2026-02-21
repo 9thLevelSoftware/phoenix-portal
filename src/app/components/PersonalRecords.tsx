@@ -206,10 +206,8 @@ export function PersonalRecords() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Personal Records
-								</span>
+							<h1 className="text-3xl sm:text-4xl text-white">
+								Personal Records
 							</h1>
 						</div>
 					</div>
@@ -236,10 +234,8 @@ export function PersonalRecords() {
 					>
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Personal Records
-								</span>
+							<h1 className="text-3xl sm:text-4xl text-white">
+								Personal Records
 							</h1>
 						</div>
 						<p className="text-muted-foreground">Celebrate every victory</p>
@@ -338,7 +334,7 @@ export function PersonalRecords() {
 												>
 													{pr.muscle_group}
 												</Badge>
-												<div className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
+												<div className="text-3xl font-bold text-primary mb-2">
 													{pr.value} {pr.unit}
 												</div>
 												{pr.previous_value && (
@@ -743,7 +739,7 @@ export function PersonalRecords() {
 																{pr.muscle_group}
 															</Badge>
 														</div>
-														<p className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+														<p className="text-xl font-bold text-primary">
 															{pr.value} {pr.unit}
 														</p>
 													</div>

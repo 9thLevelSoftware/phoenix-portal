@@ -476,10 +476,8 @@ export function Analytics() {
 				{/* Compact Header */}
 				<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
-						<h1 className="text-xl font-bold">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Analytics Hub
-							</span>
+						<h1 className="text-xl font-bold text-white">
+							Analytics Hub
 						</h1>
 						<div className="flex items-center gap-2">
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
@@ -845,10 +843,8 @@ export function Analytics() {
 				{/* Header */}
 				<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 					<div>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Analytics Hub
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Analytics Hub
 						</h1>
 						<p className="text-muted-foreground">
 							Comprehensive insights into your training

@@ -108,7 +108,7 @@ function FreeRecoveryView() {
 				>
 					<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 						<HeartPulse className="w-8 h-8 text-primary" />
-						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+						<span className="text-white">
 							Recovery
 						</span>
 					</h1>
@@ -218,7 +218,7 @@ export function Recovery() {
 					>
 						<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 							<HeartPulse className="w-8 h-8 text-primary" />
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-white">
 								Recovery Readiness
 							</span>
 						</h1>
