@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 ## Current Position
 
 Phase: 14 of 19 (CSS Foundation & Typography)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-20 — v1.2 roadmap created (6 phases, 53 requirements mapped)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-20 — 14-01 complete (Inter Variable typography foundation)
 
-Progress: [░░░░░░░░░░] 0% (v1.2)
+Progress: [█░░░░░░░░░] 5% (v1.2)
 
 ## Performance Metrics
 
@@ -28,11 +28,24 @@ Progress: [░░░░░░░░░░] 0% (v1.2)
 - Average duration: 6.0 min
 - Total execution time: ~131 min
 
+**Velocity (v1.2):**
+- Total plans completed: 1
+- Average duration: 2 min
+- Total execution time: ~2 min
+
 ## Accumulated Context
 
 ### Decisions
 
 All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
+
+**v1.2 Phase 14 decisions (from 14-01):**
+- Inter Variable loaded with full wght axis (0,100..900;1,100..900) to unlock non-standard weights 450 and 625
+- Bebas Neue removed entirely — not used anywhere in the app
+- fonts.css uses @theme block (not @layer base) so Tailwind v4 generates html/:host font-family rule automatically
+- SVG fontFamily must use literal string "Inter, system-ui, sans-serif" — CSS vars don't resolve in SVG presentation attributes
+- h2 weight 625 (non-standard variable font weight) provides perceptible distinction from h1(700) and h3(500)
+- AppLayout gets relative z-[10] for Plan 02 compatibility with ambient glow body layers
 
 Key v1.2 constraints from research:
 - Max 3 backdrop-blur layers per viewport simultaneously — GPU overload on mobile otherwise
@@ -64,5 +77,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: v1.2 roadmap created — ready to plan Phase 14
+Stopped at: Completed 14-01-PLAN.md — Inter Variable typography foundation done, ready for 14-02
 Resume file: N/A
