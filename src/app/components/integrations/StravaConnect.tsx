@@ -1,6 +1,7 @@
 import { Activity, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/app/components/ui/button";
+import { useAuth } from "@/app/hooks/useAuth";
 import { initiateStravaConnect } from "@/lib/integrations/strava";
 
 interface StravaConnectProps {
@@ -12,20 +13,27 @@ interface StravaConnectProps {
 /**
  * Strava connection button component.
  *
- * When clicked, initiates the OAuth flow by redirecting the user to
- * Strava's authorization page. After authorization, the user is
- * redirected back to /integrations?connected=strava.
+ * When clicked, initiates the OAuth flow via the initiate-oauth Edge Function
+ * which generates a CSRF state token and returns the Strava authorization URL.
+ * After authorization, the user is redirected back to /integrations?connected=strava.
  */
 export function StravaConnect({
 	userId,
 	isConnected,
 	onDisconnect,
 }: StravaConnectProps) {
+	const { session } = useAuth();
 	const [isRedirecting, setIsRedirecting] = useState(false);
 
-	function handleConnect() {
+	async function handleConnect() {
 		setIsRedirecting(true);
-		initiateStravaConnect(userId);
+		const accessToken = session?.access_token;
+		if (!accessToken) {
+			console.error("No access token available");
+			setIsRedirecting(false);
+			return;
+		}
+		await initiateStravaConnect(accessToken);
 		// Browser will redirect; loading state provides visual feedback
 	}
 

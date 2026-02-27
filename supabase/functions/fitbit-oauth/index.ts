@@ -8,10 +8,12 @@ const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
 /**
  * Fitbit OAuth 2.0 callback handler.
  *
- * Fitbit uses standard Authorization Code flow but requires Basic auth header
- * for the token exchange (base64-encoded client_id:client_secret).
+ * Validates the CSRF state token against oauth_states, exchanges the
+ * authorization code for tokens via Fitbit Basic auth, stores tokens
+ * in oauth_tokens (server-only), and redirects to the app.
  *
- * Flow: User redirected from Fitbit -> this function -> exchanges code -> stores tokens -> redirects to app.
+ * Flow: User redirected from Fitbit -> this function -> validates state ->
+ *       exchanges code -> stores tokens -> redirects to app.
  */
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
@@ -23,11 +25,47 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state'); // Contains user_id
+    const state = url.searchParams.get('state');
 
     if (!code || !state) {
       return Response.redirect(`${APP_URL}/integrations?error=missing_params`);
     }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    // Clean up expired state tokens (prevents table bloat)
+    await supabase
+      .from('oauth_states')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
+
+    // Validate CSRF state token
+    const { data: stateRow, error: stateError } = await supabase
+      .from('oauth_states')
+      .select('user_id, provider, expires_at')
+      .eq('state_token', state)
+      .single();
+
+    if (stateError || !stateRow) {
+      return Response.redirect(`${APP_URL}/integrations?error=invalid_state`);
+    }
+
+    if (new Date(stateRow.expires_at) < new Date()) {
+      await supabase.from('oauth_states').delete().eq('state_token', state);
+      return Response.redirect(`${APP_URL}/integrations?error=state_expired`);
+    }
+
+    if (stateRow.provider !== 'fitbit') {
+      return Response.redirect(`${APP_URL}/integrations?error=provider_mismatch`);
+    }
+
+    const userId = stateRow.user_id;
+
+    // Delete used state token (single-use)
+    await supabase.from('oauth_states').delete().eq('state_token', state);
 
     // Fitbit requires Basic auth: base64(client_id:client_secret)
     const basicAuth = btoa(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`);
@@ -59,20 +97,30 @@ Deno.serve(async (req) => {
     // Calculate token expiry from expires_in (seconds from now)
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-    // Store tokens using service role (bypasses RLS for write access to token fields)
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
-
-    const { error: upsertError } = await supabase.from('user_integrations').upsert(
+    // Store tokens in oauth_tokens (server-only table)
+    const { error: tokenError } = await supabase.from('oauth_tokens').upsert(
       {
-        user_id: state,
+        user_id: userId,
         provider: 'fitbit',
-        provider_user_id: tokens.user_id,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         token_expires_at: tokenExpiresAt,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,provider' },
+    );
+
+    if (tokenError) {
+      console.error('Failed to store Fitbit tokens:', tokenError);
+      return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
+    }
+
+    // Update user_integrations with non-sensitive fields only
+    const { error: upsertError } = await supabase.from('user_integrations').upsert(
+      {
+        user_id: userId,
+        provider: 'fitbit',
+        provider_user_id: tokens.user_id,
         connected_at: new Date().toISOString(),
         status: 'connected',
         error_message: null,
@@ -81,13 +129,13 @@ Deno.serve(async (req) => {
     );
 
     if (upsertError) {
-      console.error('Failed to store Fitbit tokens:', upsertError);
+      console.error('Failed to update Fitbit integration:', upsertError);
       return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
     }
 
     // Queue initial sync
     await supabase.from('sync_queue').insert({
-      user_id: state,
+      user_id: userId,
       provider: 'fitbit',
       sync_type: 'initial',
       status: 'pending',

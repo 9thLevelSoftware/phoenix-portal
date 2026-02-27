@@ -31,39 +31,35 @@ export type StravaActivity = z.infer<typeof StravaActivitySchema>;
 // =============================================================================
 
 /**
- * Initiate Strava OAuth connection by redirecting the user to Strava's
- * authorization page. After authorization, Strava redirects to our
- * strava-oauth Edge Function with the authorization code.
+ * Initiate Strava OAuth connection via the initiate-oauth Edge Function.
+ * The server generates a cryptographic CSRF state token and returns
+ * the Strava authorization URL.
  *
- * @param userId - The authenticated user's ID, passed as OAuth state parameter
+ * @param accessToken - The authenticated user's Supabase JWT access token
  */
-export function initiateStravaConnect(userId: string): void {
-	const clientId = import.meta.env.VITE_STRAVA_CLIENT_ID;
+export async function initiateStravaConnect(accessToken: string): Promise<void> {
 	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
-	if (!clientId) {
-		console.error("VITE_STRAVA_CLIENT_ID is not configured");
-		return;
-	}
-
 	if (!supabaseUrl) {
 		console.error("VITE_SUPABASE_URL is not configured");
 		return;
 	}
 
-	// The redirect_uri points to our strava-oauth Edge Function
-	const redirectUri = `${supabaseUrl}/functions/v1/strava-oauth`;
-
-	const params = new URLSearchParams({
-		client_id: clientId,
-		redirect_uri: redirectUri,
-		response_type: "code",
-		scope: "activity:read_all",
-		state: userId,
-		approval_prompt: "auto",
+	const response = await fetch(`${supabaseUrl}/functions/v1/initiate-oauth`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ provider: "strava" }),
 	});
 
-	window.location.href = `https://www.strava.com/oauth/authorize?${params}`;
+	if (!response.ok) {
+		console.error("Failed to initiate Strava OAuth:", await response.text());
+		return;
+	}
+
+	const { url } = await response.json();
+	window.location.href = url;
 }
 
 // =============================================================================

@@ -70,20 +70,35 @@ export function normalizeFitbitActivity(raw: unknown): NormalizedActivity {
 }
 
 /**
- * Initiate Fitbit OAuth 2.0 connection flow.
- * Redirects user to Fitbit authorization page.
+ * Initiate Fitbit OAuth 2.0 connection via the initiate-oauth Edge Function.
+ * The server generates a cryptographic CSRF state token and returns
+ * the Fitbit authorization URL.
  *
- * Scope: activity (for activity data access)
- * Response type: code (Authorization Code flow)
+ * @param accessToken - The authenticated user's Supabase JWT access token
  */
-export function initiateFitbitConnect(userId: string): void {
-	const params = new URLSearchParams({
-		client_id: import.meta.env.VITE_FITBIT_CLIENT_ID,
-		redirect_uri: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fitbit-oauth`,
-		response_type: "code",
-		scope: "activity",
-		state: userId,
+export async function initiateFitbitConnect(
+	accessToken: string,
+): Promise<void> {
+	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+	if (!supabaseUrl) {
+		console.error("VITE_SUPABASE_URL is not configured");
+		return;
+	}
+
+	const response = await fetch(`${supabaseUrl}/functions/v1/initiate-oauth`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ provider: "fitbit" }),
 	});
 
-	window.location.href = `https://www.fitbit.com/oauth2/authorize?${params}`;
+	if (!response.ok) {
+		console.error("Failed to initiate Fitbit OAuth:", await response.text());
+		return;
+	}
+
+	const { url } = await response.json();
+	window.location.href = url;
 }
