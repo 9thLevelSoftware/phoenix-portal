@@ -14,8 +14,8 @@ Requirements for launch readiness. Each maps to roadmap phases.
 - [ ] **SEC-03**: OAuth initiation uses cryptographic CSRF state tokens with 10-minute expiry
 - [x] **SEC-04**: Source maps hidden from production CDN, uploaded to Sentry only
 - [x] **SEC-05**: Content Security Policy headers deployed (report-only first, then enforcement)
-- [ ] **SEC-06**: Garmin webhook validates shared secret before processing
-- [ ] **SEC-07**: Hevy sync endpoint extracts user from JWT, rejects unauthenticated requests
+- [x] **SEC-06**: Garmin webhook validates shared secret before processing
+- [x] **SEC-07**: Hevy sync endpoint extracts user from JWT, rejects unauthenticated requests
 - [x] **SEC-08**: Stripe checkout/portal redirects use APP_URL env var, not request origin header
 
 ### Legal & Compliance
@@ -99,8 +99,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEC-03 | Phase 14 | Pending |
 | SEC-04 | Phase 14 | Complete |
 | SEC-05 | Phase 14 | Complete |
-| SEC-06 | Phase 14 | Pending |
-| SEC-07 | Phase 14 | Pending |
+| SEC-06 | Phase 14 | Complete |
+| SEC-07 | Phase 14 | Complete |
 | SEC-08 | Phase 14 | Complete |
 | LEGAL-01 | Phase 16 | Pending |
 | LEGAL-02 | Phase 16 | Pending |

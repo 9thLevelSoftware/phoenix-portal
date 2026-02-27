@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 14 — first of 7 phases in v1.2 (Security Hardening)
-Plan: 2 of 4 complete
+Plan: 3 of 4 complete
 Status: Executing
-Last activity: 2026-02-27 — Completed 14-02-PLAN.md (CORS hardening + Stripe redirect fix)
+Last activity: 2026-02-27 — Completed 14-03-PLAN.md (Endpoint auth hardening)
 
-Progress: [▓▓░░░░░░░░] 7% (v1.2)
+Progress: [▓▓▓░░░░░░░] 10% (v1.2)
 
 ## Performance Metrics
 
@@ -29,14 +29,15 @@ Progress: [▓▓░░░░░░░░] 7% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: 4 min
-- Total execution time: ~7 min
+- Total execution time: ~11 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 14 | 01 | 2m 26s | 2 | 2 |
 | 14 | 02 | 5m 14s | 2 | 10 |
+| 14 | 03 | 3m 58s | 2 | 4 |
 
 ## Accumulated Context
 
@@ -52,6 +53,9 @@ v1.2 decisions:
 - [14-02] Vary: Origin header to prevent CDN/proxy caching responses for wrong origin
 - [14-02] Static corsHeaders retained for non-browser endpoints (webhooks, cron)
 - [14-02] strava-oauth excluded from CORS migration (redirect-only, no CORS headers)
+- [14-03] Conditional GARMIN_WEBHOOK_SECRET -- graceful degradation if env var not set
+- [14-03] Dual-auth pattern: JWT via auth.getUser() for browser, body.user_id for service-role queue calls
+- [14-03] Auth client uses SUPABASE_ANON_KEY for JWT verification, service-role client for DB only
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -77,5 +81,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 14-02-PLAN.md (CORS hardening + Stripe redirect fix)
-Resume file: .planning/phases/14-security-hardening/14-03-PLAN.md
+Stopped at: Completed 14-03-PLAN.md (Endpoint auth hardening)
+Resume file: .planning/phases/14-security-hardening/14-04-PLAN.md

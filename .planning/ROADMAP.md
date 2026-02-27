@@ -170,7 +170,7 @@ Plans:
 | 11. New Features | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
-| 14. Security Hardening | 2/4 | In Progress|  | - |
+| 14. Security Hardening | 3/4 | In Progress|  | - |
 | 15. CI/CD & Database Foundation | v1.2 | 0/? | Not started | - |
 | 16. Legal & Pricing | v1.2 | 0/? | Not started | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |
