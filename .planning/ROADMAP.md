@@ -75,11 +75,11 @@ Plans:
   2. Playwright E2E tests run automatically on every push with browser caching and environment-aware test skipping
   3. The dual subscription table situation is resolved — queries use a single authoritative source for subscription status
   4. Sets and rep_summaries queries no longer require joins to workouts/sessions tables for RLS checks
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 15-01: TBD
-- [ ] 15-02: TBD
+- [ ] 15-01-PLAN.md — GitHub Actions CI pipeline with Biome, TypeScript, Vitest, Playwright, and build jobs
+- [ ] 15-02-PLAN.md — RLS denormalization (sets, rep_summaries, rep_telemetry) and subscription table deprecation
 
 ### Phase 16: Legal & Pricing
 **Goal**: Users encounter accurate legal documents and consistent pricing before any payment flow
@@ -170,7 +170,7 @@ Plans:
 | 11. New Features | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
-| 14. Security Hardening | v1.2 | 4/4 | Complete | 2026-02-27 |
+| 14. Security Hardening | v1.2 | Complete    | 2026-02-27 | 2026-02-27 |
 | 15. CI/CD & Database Foundation | v1.2 | 0/? | Not started | - |
 | 16. Legal & Pricing | v1.2 | 0/? | Not started | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |
