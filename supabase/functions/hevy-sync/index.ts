@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 /**
  * Hevy Sync Edge Function
@@ -34,9 +34,11 @@ interface HevyWorkout {
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
@@ -47,7 +49,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'user_id is required' }),
         {
           status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -78,7 +80,7 @@ Deno.serve(async (req) => {
           JSON.stringify({ error: 'Failed to store API key' }),
           {
             status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...cors, 'Content-Type': 'application/json' },
           }
         );
       }
@@ -102,7 +104,7 @@ Deno.serve(async (req) => {
         }),
         {
           status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -135,7 +137,7 @@ Deno.serve(async (req) => {
           }),
           {
             status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...cors, 'Content-Type': 'application/json' },
           }
         );
       }
@@ -162,7 +164,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: `Hevy API error: ${fetchError.message}` }),
         {
           status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -227,7 +229,7 @@ Deno.serve(async (req) => {
         total: workouts.length,
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   } catch (err) {
@@ -236,7 +238,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ error: err.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   }

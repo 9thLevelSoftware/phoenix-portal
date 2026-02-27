@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
@@ -141,8 +141,10 @@ function mapFitbitActivityType(typeId: number): string {
  * Called by the sync queue processor or manually via integration management UI.
  */
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
@@ -151,7 +153,7 @@ Deno.serve(async (req) => {
     if (!user_id) {
       return new Response(
         JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -171,7 +173,7 @@ Deno.serve(async (req) => {
     if (fetchError || !integration) {
       return new Response(
         JSON.stringify({ error: 'Fitbit integration not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -222,7 +224,7 @@ Deno.serve(async (req) => {
 
           return new Response(
             JSON.stringify({ error: 'Rate limited', synced: totalSynced }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } },
           );
         }
 
@@ -285,13 +287,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
     console.error('Fitbit sync error:', err);
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 });

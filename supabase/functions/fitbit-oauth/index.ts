@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
@@ -14,8 +14,10 @@ const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
  * Flow: User redirected from Fitbit -> this function -> exchanges code -> stores tokens -> redirects to app.
  */
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {

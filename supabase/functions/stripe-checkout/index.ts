@@ -1,18 +1,21 @@
 import Stripe from 'https://esm.sh/stripe@14?target=denonext';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2024-11-20',
 });
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
+    const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
     // Get authenticated user from Supabase JWT
     const authHeader = req.headers.get('Authorization')!;
     const supabase = createClient(
@@ -26,7 +29,7 @@ Deno.serve(async (req) => {
     if (!user) {
       return new Response('Unauthorized', {
         status: 401,
-        headers: corsHeaders,
+        headers: cors,
       });
     }
 
@@ -36,7 +39,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'priceId is required' }),
         {
           status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -66,12 +69,12 @@ Deno.serve(async (req) => {
       customer: customerId,
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${req.headers.get('origin')}/profile?checkout=success`,
-      cancel_url: `${req.headers.get('origin')}/profile?checkout=cancel`,
+      success_url: `${APP_URL}/profile?checkout=success`,
+      cancel_url: `${APP_URL}/profile?checkout=cancel`,
     });
 
     return new Response(JSON.stringify({ url: session.url }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     });
   } catch (err) {
     console.error('Checkout error:', err);
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ error: err.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   }
