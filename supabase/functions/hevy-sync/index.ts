@@ -6,7 +6,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
  *
  * Unlike OAuth providers, Hevy uses API key authentication.
  * - Receives { user_id, api_key? } in request body
- * - If api_key provided, stores it in user_integrations.api_key
+ * - If api_key provided, stores it in oauth_tokens.api_key (server-only)
  * - Fetches workouts from Hevy API (requires Hevy PRO subscription)
  * - Falls back gracefully if API returns 401/403
  * - Normalizes and upserts to external_activities
@@ -87,23 +87,22 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // If api_key provided, store it in user_integrations
+    // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
-      const { error: upsertError } = await supabase
-        .from('user_integrations')
+      const { error: tokenUpsertError } = await supabase
+        .from('oauth_tokens')
         .upsert(
           {
             user_id: userId,
             provider: 'hevy',
             api_key,
-            status: 'connected',
-            connected_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
           { onConflict: 'user_id,provider' }
         );
 
-      if (upsertError) {
-        console.error('Failed to store Hevy API key:', upsertError);
+      if (tokenUpsertError) {
+        console.error('Failed to store Hevy API key:', tokenUpsertError);
         return new Response(
           JSON.stringify({ error: 'Failed to store API key' }),
           {
@@ -112,17 +111,30 @@ Deno.serve(async (req) => {
           }
         );
       }
+
+      // Update user_integrations with non-sensitive status only
+      await supabase
+        .from('user_integrations')
+        .upsert(
+          {
+            user_id: userId,
+            provider: 'hevy',
+            status: 'connected',
+            connected_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,provider' }
+        );
     }
 
-    // Retrieve the stored API key for this user
-    const { data: integration } = await supabase
-      .from('user_integrations')
+    // Retrieve the stored API key from oauth_tokens (server-only)
+    const { data: tokenData } = await supabase
+      .from('oauth_tokens')
       .select('api_key')
       .eq('user_id', userId)
       .eq('provider', 'hevy')
       .single();
 
-    const storedApiKey = integration?.api_key;
+    const storedApiKey = tokenData?.api_key;
 
     if (!storedApiKey) {
       return new Response(
