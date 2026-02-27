@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-17)
+See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Planning next milestone (v1.2)
+**Current focus:** Phase 14: Security Hardening (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: N/A — between milestones
-Plan: N/A
-Status: v1.1 milestone complete — awaiting `/gsd:new-milestone` for v1.2
-Last activity: 2026-02-17 — v1.1 Full UX Overhaul shipped
+Phase: 14 — first of 7 phases in v1.2 (Security Hardening)
+Plan: 1 of 4 complete
+Status: Executing
+Last activity: 2026-02-27 — Completed 14-01-PLAN.md (source map concealment + CSP report-only)
 
-Progress: [██████████] 100% (v1.0: 9 phases/41 plans | v1.1: 5 phases/22 plans)
+Progress: [▓░░░░░░░░░] 4% (v1.2)
 
 ## Performance Metrics
 
@@ -28,22 +28,29 @@ Progress: [██████████] 100% (v1.0: 9 phases/41 plans | v1.1:
 - Average duration: 6.0 min
 - Total execution time: ~131 min
 
-**By Phase (v1.1):**
+**Velocity (v1.2):**
+- Total plans completed: 1
+- Average duration: 2 min
+- Total execution time: ~2 min
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 09-foundation-toolchain | 5/5 | 33 min | 6.6 min |
-| 10-wire-up-mock-purge | 5/5 | 39 min | 7.8 min |
-| 11-new-features | 5/5 | 32 min | 6.4 min |
-| 12-schedule-dependent-features-delivery | 4/4 | 16 min | 4.0 min |
-| 13-hardening-polish | 3/3 | 11 min | 3.7 min |
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 14 | 01 | 2m 26s | 2 | 2 |
 
 ## Accumulated Context
 
 ### Decisions
 
-All v1.0 decisions archived in PROJECT.md Key Decisions table.
-All v1.1 decisions archived in PROJECT.md Key Decisions table and `.planning/milestones/v1.1-ROADMAP.md`.
+All v1.0/v1.1 decisions archived in PROJECT.md Key Decisions table.
+
+v1.2 decisions:
+- [14-01] Used CSP meta tag (not HTTP header) because hosting platform not yet confirmed
+- [14-01] CSP in report-only mode to establish violation baseline before enforcement
+- [14-01] unsafe-inline required in style-src for shadcn/ui Radix inline styles
+
+v1.2 decisions pending:
+- Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
+- Pricing final values ($9.99 vs $14.99) must be resolved before Phase 16
 
 ### Pending Todos
 
@@ -51,17 +58,19 @@ None.
 
 ### Blockers/Concerns
 
-**Non-blocking items for human verification (carried forward):**
+**Carried from v1.1 (human verification):**
 - Stripe checkout/portal/webhooks (needs Stripe test environment)
 - OAuth flows with real credentials (Strava, Fitbit, Garmin)
-- Session replay animations and mobile layout (needs live testing)
 - 11 Supabase Edge Functions (needs deployment)
-- TOOL-09: database.types.ts — Supabase schema only has user_subscriptions deployed; run migrations then `npm run gen:types`
 - 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
-- Recovery ACWR thresholds may need sport-science validation for cable resistance training
+
+**v1.2 research flags:**
+- GDPR account deletion: Stripe customer deletion vs financial record retention (verify against Stripe DPA before Phase 17)
+- Celebration animation fallback design: opacity-only fade vs static banner under reduced-motion (decide before Phase 19)
+- Navigation restructure pattern: dropdown menus vs sidebar (decide before Phase 19)
 
 ## Session Continuity
 
-Last session: 2026-02-17
-Stopped at: v1.1 milestone complete — all archived
-Resume file: N/A — run `/gsd:new-milestone` for v1.2
+Last session: 2026-02-27
+Stopped at: Completed 14-01-PLAN.md (source map concealment + CSP report-only)
+Resume file: .planning/phases/14-security-hardening/14-02-PLAN.md
