@@ -9,14 +9,14 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Security
 
-- [ ] **SEC-01**: CORS restricted to deployment domain on all browser-facing Edge Functions
+- [x] **SEC-01**: CORS restricted to deployment domain on all browser-facing Edge Functions
 - [ ] **SEC-02**: OAuth tokens isolated to server-only table, removed from client-readable user_integrations
 - [ ] **SEC-03**: OAuth initiation uses cryptographic CSRF state tokens with 10-minute expiry
 - [x] **SEC-04**: Source maps hidden from production CDN, uploaded to Sentry only
 - [x] **SEC-05**: Content Security Policy headers deployed (report-only first, then enforcement)
 - [ ] **SEC-06**: Garmin webhook validates shared secret before processing
 - [ ] **SEC-07**: Hevy sync endpoint extracts user from JWT, rejects unauthenticated requests
-- [ ] **SEC-08**: Stripe checkout/portal redirects use APP_URL env var, not request origin header
+- [x] **SEC-08**: Stripe checkout/portal redirects use APP_URL env var, not request origin header
 
 ### Legal & Compliance
 
@@ -94,14 +94,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | Phase 14 | Pending |
+| SEC-01 | Phase 14 | Complete |
 | SEC-02 | Phase 14 | Pending |
 | SEC-03 | Phase 14 | Pending |
 | SEC-04 | Phase 14 | Complete |
 | SEC-05 | Phase 14 | Complete |
 | SEC-06 | Phase 14 | Pending |
 | SEC-07 | Phase 14 | Pending |
-| SEC-08 | Phase 14 | Pending |
+| SEC-08 | Phase 14 | Complete |
 | LEGAL-01 | Phase 16 | Pending |
 | LEGAL-02 | Phase 16 | Pending |
 | LEGAL-03 | Phase 16 | Pending |
