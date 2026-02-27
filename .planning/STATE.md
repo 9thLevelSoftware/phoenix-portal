@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: unknown
-last_updated: "2026-02-27T21:27:29.227Z"
+last_updated: "2026-02-27T22:00:22.000Z"
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 14: Security Hardening (v1.2 Launch Readiness)
+**Current focus:** Phase 15: CI/CD & Database Foundation (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: 14 — first of 7 phases in v1.2 (Security Hardening)
-Plan: 4 of 4 complete
-Status: Phase Complete
-Last activity: 2026-02-27 — Completed 14-04-PLAN.md (OAuth token isolation and CSRF state tokens)
+Phase: 15 — second of 7 phases in v1.2 (CI/CD & Database Foundation)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-27 — Completed 15-01-PLAN.md (GitHub Actions CI pipeline)
 
-Progress: [▓▓▓▓░░░░░░] 14% (v1.2)
+Progress: [▓▓▓▓▓░░░░░] 18% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓░░░░░░] 14% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 5 min
-- Total execution time: ~18 min
+- Total execution time: ~19 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -52,6 +52,7 @@ Progress: [▓▓▓▓░░░░░░] 14% (v1.2)
 | 14 | 02 | 5m 14s | 2 | 10 |
 | 14 | 03 | 3m 58s | 2 | 4 |
 | 14 | 04 | 6m 41s | 3 | 13 |
+| 15 | 01 | 1m 25s | 2 | 2 |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ v1.2 decisions:
 - [14-04] CSRF state tokens via crypto.randomUUID() with 10-min expiry, single-use deletion
 - [14-04] Client OAuth functions changed from sync(userId) to async(accessToken) via initiate-oauth Edge Function
 - [14-04] Token columns dropped from user_integrations after migration to oauth_tokens
+- [15-01] Biome installed via biomejs/setup-biome (standalone binary, no node_modules needed for lint job)
+- [15-01] All 5 CI jobs run in parallel with no dependencies between them
+- [15-01] Playwright installs only chromium to save CI time
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -99,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 14-04-PLAN.md (OAuth token isolation and CSRF state tokens) - Phase 14 complete
-Resume file: .planning/phases/15-cicd-database/15-01-PLAN.md
+Stopped at: Completed 15-01-PLAN.md (GitHub Actions CI pipeline)
+Resume file: .planning/phases/15-ci-cd-database-foundation/15-02-PLAN.md

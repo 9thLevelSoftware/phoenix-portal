@@ -33,7 +33,7 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Operations
 
-- [ ] **OPS-01**: GitHub Actions CI pipeline with biome, vitest, playwright, deploy gates
+- [x] **OPS-01**: GitHub Actions CI pipeline with biome, vitest, playwright, deploy gates
 - [ ] **OPS-02**: Stripe webhook integration tests for all 5 event types
 - [ ] **OPS-03**: FAQ page and contact form for basic support
 - [ ] **OPS-04**: Mobile-to-portal sync pipeline validated end-to-end
@@ -109,7 +109,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LEGAL-05 | Phase 16 | Pending |
 | GDPR-01 | Phase 17 | Pending |
 | GDPR-02 | Phase 17 | Pending |
-| OPS-01 | Phase 15 | Pending |
+| OPS-01 | Phase 15 | Complete |
 | OPS-02 | Phase 20 | Pending |
 | OPS-03 | Phase 20 | Pending |
 | OPS-04 | Phase 20 | Pending |
