@@ -121,6 +121,20 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Validate webhook shared secret if configured
+    const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
+    if (WEBHOOK_SECRET) {
+      // Check common webhook authentication headers
+      const providedSecret = req.headers.get('x-webhook-secret')
+        ?? req.headers.get('authorization')?.replace('Bearer ', '');
+      if (providedSecret !== WEBHOOK_SECRET) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
     const payload: GarminWebhookPayload = await req.json();
     const activities = payload.activities ?? payload.activityDetails ?? [];
 
