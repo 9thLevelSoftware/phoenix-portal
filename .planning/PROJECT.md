@@ -82,9 +82,23 @@ Premium subscribers see data and insights about their training that they cannot 
 
 ### Active
 
-<!-- Next milestone scope — to be defined via /gsd:new-milestone -->
+## Current Milestone: v1.2 Launch Readiness
 
-(None yet — run `/gsd:new-milestone` to define v1.2 scope)
+**Goal:** Address all board-identified blockers (legal, security, operational, UX) to make Phoenix Portal launch-ready for public release with paid tiers.
+
+**Target features:**
+- Legal compliance (Privacy Policy, Terms of Service, GDPR data rights)
+- Security hardening (OAuth tokens, CORS, CSP, webhook auth, source maps)
+- Pricing consistency and free-tier gating enforcement
+- CI/CD pipeline with automated testing and deploy gates
+- Stripe billing path test coverage
+- Desktop navigation restructure and accessibility improvements
+- Content moderation tools for community features
+- Database optimization (subscription table unification, RLS denormalization)
+- Support infrastructure (FAQ, contact channel)
+- Mobile-to-portal sync end-to-end validation
+
+**Source:** Board of Directors Resolution 2026-02-27 (`.planning/board/resolution-2026-02-27.md`)
 
 ### Out of Scope
 
@@ -161,4 +175,4 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 | Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-17 after v1.1 milestone*
+*Last updated: 2026-02-27 after v1.2 milestone start*
