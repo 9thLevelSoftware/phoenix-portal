@@ -123,14 +123,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id, sync_type = 'incremental' } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const sync_type = body.sync_type ?? 'incremental';
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -143,7 +174,7 @@ Deno.serve(async (req) => {
     const { data: integration, error: fetchError } = await supabase
       .from('user_integrations')
       .select('access_token, refresh_token, token_expires_at, last_sync_at')
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'strava')
       .eq('status', 'connected')
       .single();
@@ -178,7 +209,7 @@ Deno.serve(async (req) => {
           refresh_token: refreshed.refresh_token,
           token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'strava');
     }
 
@@ -211,7 +242,7 @@ Deno.serve(async (req) => {
         await supabase
           .from('user_integrations')
           .update({ status: 'token_expired', error_message: 'Access token revoked or invalid' })
-          .eq('user_id', user_id)
+          .eq('user_id', userId)
           .eq('provider', 'strava');
       }
 
@@ -237,7 +268,7 @@ Deno.serve(async (req) => {
           .from('external_activities')
           .upsert(
             {
-              user_id,
+              user_id: userId,
               ...normalized,
               raw_data: raw,
               synced_at: new Date().toISOString(),
@@ -261,7 +292,7 @@ Deno.serve(async (req) => {
     await supabase
       .from('user_integrations')
       .update({ last_sync_at: new Date().toISOString(), error_message: null })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'strava');
 
     // Update sync_queue entry if one exists
@@ -271,7 +302,7 @@ Deno.serve(async (req) => {
         status: errors.length > 0 ? 'completed_with_errors' : 'completed',
         completed_at: new Date().toISOString(),
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'strava')
       .eq('status', 'pending')
       .order('created_at', { ascending: false })

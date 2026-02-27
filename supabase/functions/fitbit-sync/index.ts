@@ -148,14 +148,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id, sync_type } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const { sync_type } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -166,7 +197,7 @@ Deno.serve(async (req) => {
     const { data: integration, error: fetchError } = await supabase
       .from('user_integrations')
       .select('access_token, refresh_token, token_expires_at, last_sync_at')
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'fitbit')
       .single();
 
@@ -178,7 +209,7 @@ Deno.serve(async (req) => {
     }
 
     // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, user_id, integration as FitbitTokens);
+    const tokens = await refreshTokenIfNeeded(supabase, userId, integration as FitbitTokens);
 
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
@@ -241,7 +272,7 @@ Deno.serve(async (req) => {
 
       // Normalize and upsert activities
       const normalized = activities.map((activity: Record<string, unknown>) => ({
-        user_id,
+        user_id: userId,
         ...normalizeFitbitActivity(activity),
         raw_data: activity,
         synced_at: new Date().toISOString(),
@@ -273,7 +304,7 @@ Deno.serve(async (req) => {
         status: 'connected',
         error_message: null,
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'fitbit');
 
     // Update rate limit tracking
