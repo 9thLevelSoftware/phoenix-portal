@@ -42,17 +42,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id, api_key, sync_type } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        {
-          status: 400,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        }
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const { api_key, sync_type } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -65,7 +93,7 @@ Deno.serve(async (req) => {
         .from('user_integrations')
         .upsert(
           {
-            user_id,
+            user_id: userId,
             provider: 'hevy',
             api_key,
             status: 'connected',
@@ -90,7 +118,7 @@ Deno.serve(async (req) => {
     const { data: integration } = await supabase
       .from('user_integrations')
       .select('api_key')
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'hevy')
       .single();
 
@@ -127,7 +155,7 @@ Deno.serve(async (req) => {
             status: 'error',
             error_message: 'API key invalid or Hevy PRO subscription required',
           })
-          .eq('user_id', user_id)
+          .eq('user_id', userId)
           .eq('provider', 'hevy');
 
         return new Response(
@@ -157,7 +185,7 @@ Deno.serve(async (req) => {
           status: 'error',
           error_message: `Sync failed: ${fetchError.message}`,
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
@@ -180,7 +208,7 @@ Deno.serve(async (req) => {
         .from('external_activities')
         .upsert(
           {
-            user_id,
+            user_id: userId,
             external_id: `hevy-${workout.id}`,
             provider: 'hevy',
             name: workout.title,
@@ -206,7 +234,7 @@ Deno.serve(async (req) => {
         status: 'connected',
         error_message: null,
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'hevy');
 
     // Mark sync queue entry as completed
@@ -217,7 +245,7 @@ Deno.serve(async (req) => {
           status: 'completed',
           completed_at: new Date().toISOString(),
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'hevy')
         .eq('status', 'pending');
     }
