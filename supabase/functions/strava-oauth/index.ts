@@ -4,12 +4,13 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
  * Strava OAuth Callback Edge Function
  *
  * Handles the redirect from Strava after user authorizes the app.
- * Exchanges the authorization code for tokens, stores them in user_integrations,
+ * Validates the CSRF state token against oauth_states, exchanges the
+ * authorization code for tokens, stores them in oauth_tokens (server-only),
  * and queues an initial sync.
  *
  * Expected query params:
  *   - code: Authorization code from Strava
- *   - state: User ID (passed through OAuth state parameter)
+ *   - state: Cryptographic state token (validated against oauth_states table)
  *   - scope: Granted scopes (informational)
  *
  * Environment variables:
@@ -25,7 +26,7 @@ const APP_URL = () => Deno.env.get('APP_URL') ?? 'http://localhost:5173';
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state'); // user_id
+  const state = url.searchParams.get('state');
 
   // ------------------------------------------------------------------
   // Validate required params
@@ -37,9 +38,48 @@ Deno.serve(async (req) => {
     );
   }
 
-  const userId = state;
-
   try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    // ----------------------------------------------------------------
+    // Clean up expired state tokens (prevents table bloat)
+    // ----------------------------------------------------------------
+    await supabase
+      .from('oauth_states')
+      .delete()
+      .lt('expires_at', new Date().toISOString());
+
+    // ----------------------------------------------------------------
+    // Validate CSRF state token
+    // ----------------------------------------------------------------
+    const { data: stateRow, error: stateError } = await supabase
+      .from('oauth_states')
+      .select('user_id, provider, expires_at')
+      .eq('state_token', state)
+      .single();
+
+    if (stateError || !stateRow) {
+      return Response.redirect(`${APP_URL()}/integrations?error=invalid_state`, 302);
+    }
+
+    if (new Date(stateRow.expires_at) < new Date()) {
+      // Clean up expired token
+      await supabase.from('oauth_states').delete().eq('state_token', state);
+      return Response.redirect(`${APP_URL()}/integrations?error=state_expired`, 302);
+    }
+
+    if (stateRow.provider !== 'strava') {
+      return Response.redirect(`${APP_URL()}/integrations?error=provider_mismatch`, 302);
+    }
+
+    const userId = stateRow.user_id;
+
+    // Delete used state token (single-use)
+    await supabase.from('oauth_states').delete().eq('state_token', state);
+
     // ----------------------------------------------------------------
     // Exchange authorization code for tokens
     // ----------------------------------------------------------------
@@ -75,13 +115,33 @@ Deno.serve(async (req) => {
     const tokenExpiresAt = new Date(tokens.expires_at * 1000).toISOString();
 
     // ----------------------------------------------------------------
-    // Store tokens in user_integrations (service role for server-side write)
+    // Store tokens in oauth_tokens (server-only table)
     // ----------------------------------------------------------------
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const { error: tokenError } = await supabase
+      .from('oauth_tokens')
+      .upsert(
+        {
+          user_id: userId,
+          provider: 'strava',
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expires_at: tokenExpiresAt,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' }
+      );
 
+    if (tokenError) {
+      console.error('Failed to store Strava tokens:', tokenError);
+      return Response.redirect(
+        `${APP_URL()}/integrations?error=save_failed`,
+        302
+      );
+    }
+
+    // ----------------------------------------------------------------
+    // Update user_integrations with non-sensitive fields only
+    // ----------------------------------------------------------------
     const { error: upsertError } = await supabase
       .from('user_integrations')
       .upsert(
@@ -89,9 +149,6 @@ Deno.serve(async (req) => {
           user_id: userId,
           provider: 'strava',
           provider_user_id: providerUserId,
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          token_expires_at: tokenExpiresAt,
           status: 'connected',
           connected_at: new Date().toISOString(),
           error_message: null,
@@ -100,7 +157,7 @@ Deno.serve(async (req) => {
       );
 
     if (upsertError) {
-      console.error('Failed to store Strava tokens:', upsertError);
+      console.error('Failed to update Strava integration:', upsertError);
       return Response.redirect(
         `${APP_URL()}/integrations?error=save_failed`,
         302

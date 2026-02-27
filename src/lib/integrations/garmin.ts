@@ -83,20 +83,38 @@ export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
 }
 
 /**
- * Initiate Garmin Connect OAuth 1.0a connection flow.
+ * Initiate Garmin Connect OAuth 1.0a connection via the initiate-oauth Edge Function.
+ * The server generates a cryptographic CSRF state token and returns
+ * the Garmin OAuth initiation URL.
  *
- * Unlike OAuth 2.0, OAuth 1.0a requires a server-side request token step first.
- * We redirect to the garmin-oauth Edge Function which handles the full 3-legged flow:
- * 1. Edge Function gets request token from Garmin
- * 2. Edge Function redirects user to Garmin authorization
- * 3. Garmin redirects back to Edge Function callback
- * 4. Edge Function exchanges for access token and stores
+ * @param accessToken - The authenticated user's Supabase JWT access token
  *
  * NOTE: Garmin developer program approval may be pending.
  * This function is ready but untested until credentials are available.
  */
-export function initiateGarminConnect(userId: string): void {
+export async function initiateGarminConnect(
+	accessToken: string,
+): Promise<void> {
 	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-	// Redirect to the garmin-oauth Edge Function which handles the OAuth 1.0a initiation
-	window.location.href = `${supabaseUrl}/functions/v1/garmin-oauth?user_id=${encodeURIComponent(userId)}`;
+	if (!supabaseUrl) {
+		console.error("VITE_SUPABASE_URL is not configured");
+		return;
+	}
+
+	const response = await fetch(`${supabaseUrl}/functions/v1/initiate-oauth`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ provider: "garmin" }),
+	});
+
+	if (!response.ok) {
+		console.error("Failed to initiate Garmin OAuth:", await response.text());
+		return;
+	}
+
+	const { url } = await response.json();
+	window.location.href = url;
 }

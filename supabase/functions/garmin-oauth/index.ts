@@ -9,11 +9,12 @@ const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
  * Garmin Connect OAuth 1.0a callback handler.
  *
  * Garmin uses OAuth 1.0a (NOT OAuth 2.0), which is a multi-step flow:
- * 1. Get request token (handled by client-side initiation)
+ * 1. Validate CSRF state token, get request token (initiation step)
  * 2. User authorizes at Garmin (redirects back here with oauth_token + oauth_verifier)
- * 3. Exchange for access token (this function)
+ * 3. Exchange for access token (this function, callback step)
  *
  * OAuth 1.0a requires HMAC-SHA1 signature generation for requests.
+ * Tokens are stored in oauth_tokens (server-only table).
  *
  * NOTE: Garmin developer program approval may be pending.
  * Edge Function is ready but untested until credentials are available.
@@ -86,9 +87,10 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
 
-    // Check if this is the initiation step (get request token) or callback step
+    // Check if this is the initiation step (has state param) or callback step (has oauth_token)
     const oauthToken = url.searchParams.get('oauth_token');
     const oauthVerifier = url.searchParams.get('oauth_verifier');
+    const stateParam = url.searchParams.get('state');
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -96,14 +98,44 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
-    // Step 1: Initiate - Get request token and redirect to Garmin for auth
-    // Called from client-side when user clicks "Connect Garmin"
+    // Step 1: Initiate - Validate CSRF state, get request token, redirect
+    // Called when initiate-oauth redirects here with a state token
     // =========================================================================
     if (!oauthToken && !oauthVerifier) {
-      const userId = url.searchParams.get('user_id');
-      if (!userId) {
-        return Response.redirect(`${APP_URL}/integrations?error=missing_user_id`);
+      if (!stateParam) {
+        return Response.redirect(`${APP_URL}/integrations?error=missing_state`);
       }
+
+      // Clean up expired state tokens
+      await supabase
+        .from('oauth_states')
+        .delete()
+        .lt('expires_at', new Date().toISOString());
+
+      // Validate CSRF state token
+      const { data: stateRow, error: stateError } = await supabase
+        .from('oauth_states')
+        .select('user_id, provider, expires_at')
+        .eq('state_token', stateParam)
+        .single();
+
+      if (stateError || !stateRow) {
+        return Response.redirect(`${APP_URL}/integrations?error=invalid_state`);
+      }
+
+      if (new Date(stateRow.expires_at) < new Date()) {
+        await supabase.from('oauth_states').delete().eq('state_token', stateParam);
+        return Response.redirect(`${APP_URL}/integrations?error=state_expired`);
+      }
+
+      if (stateRow.provider !== 'garmin') {
+        return Response.redirect(`${APP_URL}/integrations?error=provider_mismatch`);
+      }
+
+      const userId = stateRow.user_id;
+
+      // Delete used state token (single-use)
+      await supabase.from('oauth_states').delete().eq('state_token', stateParam);
 
       const requestTokenUrl = 'https://connectapi.garmin.com/oauth-service/oauth/request_token';
       const callbackUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/garmin-oauth`;
@@ -146,14 +178,23 @@ Deno.serve(async (req) => {
       const requestToken = responseParams.get('oauth_token')!;
       const requestTokenSecret = responseParams.get('oauth_token_secret')!;
 
-      // Temporarily store the request token secret and user_id for the callback
-      // Using user_integrations with a 'pending' status
-      await supabase.from('user_integrations').upsert(
+      // Store request token temporarily in oauth_tokens (server-only)
+      await supabase.from('oauth_tokens').upsert(
         {
           user_id: userId,
           provider: 'garmin',
           access_token: requestToken, // Temporarily store request token
           refresh_token: requestTokenSecret, // Temporarily store request token secret
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' },
+      );
+
+      // Update user_integrations with non-sensitive status
+      await supabase.from('user_integrations').upsert(
+        {
+          user_id: userId,
+          provider: 'garmin',
           status: 'disconnected', // Not yet connected
           connected_at: new Date().toISOString(),
         },
@@ -170,22 +211,21 @@ Deno.serve(async (req) => {
     // Garmin redirects here after user authorizes
     // =========================================================================
     if (oauthToken && oauthVerifier) {
-      // Look up the stored request token secret by matching the oauth_token
-      const { data: pendingIntegration, error: lookupError } = await supabase
-        .from('user_integrations')
+      // Look up the stored request token secret in oauth_tokens
+      const { data: pendingToken, error: lookupError } = await supabase
+        .from('oauth_tokens')
         .select('user_id, refresh_token')
         .eq('provider', 'garmin')
         .eq('access_token', oauthToken) // We stored request token here
-        .eq('status', 'disconnected')
         .single();
 
-      if (lookupError || !pendingIntegration) {
-        console.error('Garmin pending integration not found:', lookupError);
+      if (lookupError || !pendingToken) {
+        console.error('Garmin pending token not found:', lookupError);
         return Response.redirect(`${APP_URL}/integrations?error=garmin_state_lost`);
       }
 
-      const requestTokenSecret = pendingIntegration.refresh_token!;
-      const userId = pendingIntegration.user_id;
+      const requestTokenSecret = pendingToken.refresh_token!;
+      const userId = pendingToken.user_id;
 
       const accessTokenUrl = 'https://connectapi.garmin.com/oauth-service/oauth/access_token';
       const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -229,15 +269,25 @@ Deno.serve(async (req) => {
       const accessToken = responseParams.get('oauth_token')!;
       const accessTokenSecret = responseParams.get('oauth_token_secret')!;
 
-      // Store the permanent access token and secret
+      // Store the permanent access token in oauth_tokens (server-only)
       // OAuth 1.0a tokens don't expire (no refresh_token concept)
-      await supabase.from('user_integrations').upsert(
+      await supabase.from('oauth_tokens').upsert(
         {
           user_id: userId,
           provider: 'garmin',
           access_token: accessToken,
           refresh_token: accessTokenSecret, // OAuth 1.0a token secret
           token_expires_at: null, // OAuth 1.0a tokens don't expire
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' },
+      );
+
+      // Update user_integrations with non-sensitive data only
+      await supabase.from('user_integrations').upsert(
+        {
+          user_id: userId,
+          provider: 'garmin',
           connected_at: new Date().toISOString(),
           status: 'connected',
           error_message: null,
