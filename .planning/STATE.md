@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: unknown
-last_updated: "2026-02-27T22:00:22.000Z"
+last_updated: "2026-02-27T22:02:00.000Z"
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 15 — second of 7 phases in v1.2 (CI/CD & Database Foundation)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-27 — Completed 15-01-PLAN.md (GitHub Actions CI pipeline)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-27 — Completed 15-02-PLAN.md (RLS denormalization and subscription deprecation)
 
-Progress: [▓▓▓▓▓░░░░░] 18% (v1.2)
+Progress: [▓▓▓▓▓▓░░░░] 21% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓░░░░░] 18% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 5
-- Average duration: 5 min
-- Total execution time: ~19 min
+- Total plans completed: 6
+- Average duration: 4 min
+- Total execution time: ~22 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -53,6 +53,7 @@ Progress: [▓▓▓▓▓░░░░░] 18% (v1.2)
 | 14 | 03 | 3m 58s | 2 | 4 |
 | 14 | 04 | 6m 41s | 3 | 13 |
 | 15 | 01 | 1m 25s | 2 | 2 |
+| 15 | 02 | 2m 52s | 2 | 2 |
 
 ## Accumulated Context
 
@@ -78,6 +79,10 @@ v1.2 decisions:
 - [15-01] Biome installed via biomejs/setup-biome (standalone binary, no node_modules needed for lint job)
 - [15-01] All 5 CI jobs run in parallel with no dependencies between them
 - [15-01] Playwright installs only chromium to save CI time
+- [15-02] Deprecated user_subscriptions via SQL COMMENT rather than DROP (mobile app safety)
+- [15-02] Included rep_telemetry denormalization despite not being explicitly in DB-02 (identical anti-pattern)
+- [15-02] All RLS policies use (select auth.uid()) wrapper for initPlan caching (~20x perf gain)
+- [15-02] New RLS policy created before old dropped to avoid security gap window
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -103,5 +108,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 15-01-PLAN.md (GitHub Actions CI pipeline)
-Resume file: .planning/phases/15-ci-cd-database-foundation/15-02-PLAN.md
+Stopped at: Completed 15-02-PLAN.md (RLS denormalization and subscription deprecation) - Phase 15 complete
+Resume file: Next phase

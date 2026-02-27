@@ -56,8 +56,8 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Database
 
-- [ ] **DB-01**: Dual subscription tables unified or user_subscriptions explicitly deprecated
-- [ ] **DB-02**: user_id denormalized onto sets and rep_summaries tables for RLS performance
+- [x] **DB-01**: Dual subscription tables unified or user_subscriptions explicitly deprecated
+- [x] **DB-02**: user_id denormalized onto sets and rep_summaries tables for RLS performance
 
 ## Future Requirements
 
@@ -120,8 +120,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | A11Y-02 | Phase 19 | Pending |
 | A11Y-03 | Phase 19 | Pending |
 | NAV-01 | Phase 19 | Pending |
-| DB-01 | Phase 15 | Pending |
-| DB-02 | Phase 15 | Pending |
+| DB-01 | Phase 15 | Complete |
+| DB-02 | Phase 15 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 28 total

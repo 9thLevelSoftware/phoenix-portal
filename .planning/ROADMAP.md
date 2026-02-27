@@ -39,7 +39,7 @@
 **Milestone Goal:** Address all board-identified blockers (legal, security, operational, UX) to make Phoenix Portal launch-ready for public release with paid tiers.
 
 - [x] **Phase 14: Security Hardening** - Fix live vulnerabilities: CORS, OAuth tokens, CSRF, source maps, webhook auth, Stripe origin validation
-- [ ] **Phase 15: CI/CD & Database Foundation** - Automated quality gates and database optimization for safe deployment of irreversible operations
+- [x] **Phase 15: CI/CD & Database Foundation** - Automated quality gates and database optimization for safe deployment of irreversible operations (completed 2026-02-27)
 - [ ] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement
 - [ ] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent
 - [ ] **Phase 18: Community Safety** - Content reporting and user blocking for community features
@@ -171,7 +171,7 @@ Plans:
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. Security Hardening | v1.2 | Complete    | 2026-02-27 | 2026-02-27 |
-| 15. CI/CD & Database Foundation | 1/2 | In Progress|  | - |
+| 15. CI/CD & Database Foundation | 2/2 | Complete   | 2026-02-27 | - |
 | 16. Legal & Pricing | v1.2 | 0/? | Not started | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |
 | 18. Community Safety | v1.2 | 0/? | Not started | - |
