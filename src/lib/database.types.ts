@@ -202,6 +202,53 @@ export type Database = {
           },
         ]
       }
+      exercise_progress: {
+        Row: {
+          estimated_1rm_kg: number
+          exercise_name: string
+          id: string
+          max_reps: number
+          max_weight_kg: number
+          recorded_at: string
+          session_id: string
+          set_count: number
+          total_volume_kg: number
+          user_id: string
+        }
+        Insert: {
+          estimated_1rm_kg?: number
+          exercise_name: string
+          id?: string
+          max_reps?: number
+          max_weight_kg?: number
+          recorded_at?: string
+          session_id: string
+          set_count?: number
+          total_volume_kg?: number
+          user_id: string
+        }
+        Update: {
+          estimated_1rm_kg?: number
+          exercise_name?: string
+          id?: string
+          max_reps?: number
+          max_weight_kg?: number
+          recorded_at?: string
+          session_id?: string
+          set_count?: number
+          total_volume_kg?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_progress_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exercises: {
         Row: {
           id: string
@@ -417,6 +464,7 @@ export type Database = {
           rom_mm: number | null
           set_id: string
           tut_ms: number | null
+          user_id: string
           vbt_zone: string | null
         }
         Insert: {
@@ -433,6 +481,7 @@ export type Database = {
           rom_mm?: number | null
           set_id: string
           tut_ms?: number | null
+          user_id: string
           vbt_zone?: string | null
         }
         Update: {
@@ -449,6 +498,7 @@ export type Database = {
           rom_mm?: number | null
           set_id?: string
           tut_ms?: number | null
+          user_id?: string
           vbt_zone?: string | null
         }
         Relationships: [
@@ -469,6 +519,7 @@ export type Database = {
           position_mm: number | null
           set_id: string
           timestamp_ms: number
+          user_id: string
           velocity_mps: number | null
         }
         Insert: {
@@ -478,6 +529,7 @@ export type Database = {
           position_mm?: number | null
           set_id: string
           timestamp_ms: number
+          user_id: string
           velocity_mps?: number | null
         }
         Update: {
@@ -487,6 +539,7 @@ export type Database = {
           position_mm?: number | null
           set_id?: string
           timestamp_ms?: number
+          user_id?: string
           velocity_mps?: number | null
         }
         Relationships: [
@@ -622,6 +675,7 @@ export type Database = {
           rpe: number | null
           set_number: number
           target_reps: number | null
+          user_id: string
           weight_kg: number
         }
         Insert: {
@@ -633,6 +687,7 @@ export type Database = {
           rpe?: number | null
           set_number: number
           target_reps?: number | null
+          user_id: string
           weight_kg?: number
         }
         Update: {
@@ -644,6 +699,7 @@ export type Database = {
           rpe?: number | null
           set_number?: number
           target_reps?: number | null
+          user_id?: string
           weight_kg?: number
         }
         Relationships: [
@@ -1074,6 +1130,7 @@ export type Database = {
           exercise_count: number
           id: string
           name: string | null
+          notes: string | null
           pr_count: number
           routine_name: string | null
           set_count: number
@@ -1087,6 +1144,7 @@ export type Database = {
           exercise_count?: number
           id?: string
           name?: string | null
+          notes?: string | null
           pr_count?: number
           routine_name?: string | null
           set_count?: number
@@ -1100,6 +1158,7 @@ export type Database = {
           exercise_count?: number
           id?: string
           name?: string | null
+          notes?: string | null
           pr_count?: number
           routine_name?: string | null
           set_count?: number
@@ -1112,6 +1171,17 @@ export type Database = {
       }
     }
     Views: {
+      creator_stats: {
+        Row: {
+          avatar_url: string | null
+          display_name: string | null
+          featured_count: number | null
+          total_shares: number | null
+          total_upvotes: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
       telemetry_points: {
         Row: {
           cable: string | null
