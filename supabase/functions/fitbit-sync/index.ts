@@ -60,13 +60,14 @@ async function refreshTokenIfNeeded(
   const refreshed = await response.json();
   const newTokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
-  // Update stored tokens
+  // Update stored tokens in oauth_tokens (server-only table)
   await supabase
-    .from('user_integrations')
+    .from('oauth_tokens')
     .update({
       access_token: refreshed.access_token,
       refresh_token: refreshed.refresh_token,
       token_expires_at: newTokenExpiresAt,
+      updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId)
     .eq('provider', 'fitbit');
@@ -193,15 +194,22 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Get user's Fitbit integration
-    const { data: integration, error: fetchError } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token, token_expires_at, last_sync_at')
+    // Get user's Fitbit tokens from oauth_tokens (server-only table)
+    const { data: tokenData, error: tokenFetchError } = await supabase
+      .from('oauth_tokens')
+      .select('access_token, refresh_token, token_expires_at')
       .eq('user_id', userId)
       .eq('provider', 'fitbit')
       .single();
 
-    if (fetchError || !integration) {
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at, status')
+      .eq('user_id', userId)
+      .eq('provider', 'fitbit')
+      .single();
+
+    if (tokenFetchError || !tokenData) {
       return new Response(
         JSON.stringify({ error: 'Fitbit integration not found' }),
         { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
@@ -209,13 +217,13 @@ Deno.serve(async (req) => {
     }
 
     // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, userId, integration as FitbitTokens);
+    const tokens = await refreshTokenIfNeeded(supabase, userId, tokenData as FitbitTokens);
 
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
-    const afterDate = sync_type === 'initial' || !integration.last_sync_at
+    const afterDate = sync_type === 'initial' || !integration?.last_sync_at
       ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      : integration.last_sync_at.split('T')[0];
+      : (integration.last_sync_at as string).split('T')[0];
 
     // Fetch activities with pagination
     let offset = 0;

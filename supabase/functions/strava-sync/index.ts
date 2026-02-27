@@ -169,27 +169,33 @@ Deno.serve(async (req) => {
     );
 
     // ---------------------------------------------------------------
-    // Fetch user's Strava tokens
+    // Fetch user's Strava tokens from oauth_tokens (server-only table)
     // ---------------------------------------------------------------
-    const { data: integration, error: fetchError } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token, token_expires_at, last_sync_at')
+    const { data: tokens, error: tokenError } = await supabase
+      .from('oauth_tokens')
+      .select('access_token, refresh_token, token_expires_at')
       .eq('user_id', userId)
       .eq('provider', 'strava')
-      .eq('status', 'connected')
       .single();
 
-    if (fetchError || !integration) {
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at, status')
+      .eq('user_id', userId)
+      .eq('provider', 'strava')
+      .single();
+
+    if (tokenError || !tokens || integration?.status !== 'connected') {
       return new Response(
         JSON.stringify({ error: 'Strava integration not found or not connected' }),
         { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
-    let accessToken = integration.access_token as string;
-    const refreshToken = integration.refresh_token as string;
-    const tokenExpiresAt = integration.token_expires_at
-      ? new Date(integration.token_expires_at).getTime()
+    let accessToken = tokens.access_token as string;
+    const refreshToken = tokens.refresh_token as string;
+    const tokenExpiresAt = tokens.token_expires_at
+      ? new Date(tokens.token_expires_at).getTime()
       : 0;
 
     // ---------------------------------------------------------------
@@ -201,13 +207,14 @@ Deno.serve(async (req) => {
 
       accessToken = refreshed.access_token;
 
-      // Persist new tokens
+      // Persist new tokens in oauth_tokens (server-only table)
       await supabase
-        .from('user_integrations')
+        .from('oauth_tokens')
         .update({
           access_token: refreshed.access_token,
           refresh_token: refreshed.refresh_token,
           token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId)
         .eq('provider', 'strava');
