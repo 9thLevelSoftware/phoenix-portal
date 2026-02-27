@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	AlertCircle,
 	ArrowLeft,
+	ArrowLeftRight,
 	Crown,
 	Minus,
 	TrendingDown,
@@ -281,7 +282,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 }
 
 export function ComparisonView() {
-	const [searchParams] = useSearchParams();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
 	const { isPremium, isLoading: subLoading } = useSubscription();
@@ -478,6 +479,10 @@ export function ComparisonView() {
 		);
 	}
 
+	const swapSessions = () => {
+		setSearchParams({ a: sessionBId, b: sessionAId });
+	};
+
 	const result = compareSessions(summaryA, summaryB);
 
 	return (
@@ -509,9 +514,21 @@ export function ComparisonView() {
 								</span>
 							</h1>
 						</FeatureHint>
-						<p className="text-muted-foreground">
-							{summaryA.name} vs {summaryB.name}
-						</p>
+						<div className="flex items-center gap-3">
+							<p className="text-muted-foreground">
+								{summaryA.name} vs {summaryB.name}
+							</p>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={swapSessions}
+								className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								aria-label="Swap sessions A and B"
+							>
+								<ArrowLeftRight className="w-4 h-4 mr-2" />
+								Swap
+							</Button>
+						</div>
 					</motion.div>
 				</div>
 			</div>

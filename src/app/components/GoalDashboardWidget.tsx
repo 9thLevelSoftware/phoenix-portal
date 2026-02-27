@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Target } from "lucide-react";
+import { ArrowRight, Lock, Target } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -12,13 +12,42 @@ import { useGoalProgress } from "./Goals";
 export function GoalDashboardWidget() {
 	const { user } = useAuth();
 	const { isPremium } = useSubscription();
-	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
+	const { data: goals } = useQuery({
+		...goalsOptions(user?.id ?? ""),
+		enabled: isPremium && !!user?.id,
+	});
 
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
 	const progressMap = useGoalProgress();
 
-	// Only render for premium users
-	if (!isPremium) return null;
+	if (!isPremium) {
+		return (
+			<Card className="relative overflow-hidden p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-chart-2/5 pointer-events-none" />
+				<div className="relative z-10">
+					<div className="flex items-center justify-between mb-3">
+						<h3 className="text-xl text-white flex items-center gap-2">
+							<Target className="w-5 h-5 text-primary" />
+							Goals
+						</h3>
+						<Lock className="w-4 h-4 text-muted-foreground" />
+					</div>
+					<p className="text-sm text-muted-foreground mb-3">
+						Set custom frequency, volume, and PR targets. Track progress
+						with visual rings and stay on top of your training plan.
+					</p>
+					<Button
+						variant="outline"
+						size="sm"
+						className="border-primary text-primary hover:bg-primary/10"
+						asChild
+					>
+						<Link to="/pricing">Upgrade to unlock</Link>
+					</Button>
+				</div>
+			</Card>
+		);
+	}
 
 	return (
 		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">

@@ -43,15 +43,22 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 						<QualityFactorRow
 							label="Velocity Consistency"
 							value={factors.velocityConsistency}
+							hint="Higher is better"
 						/>
-						<QualityFactorRow label="ROM Score" value={factors.romScore} />
+						<QualityFactorRow
+							label="ROM Score"
+							value={factors.romScore}
+							hint="Higher is better"
+						/>
 						<QualityFactorRow
 							label="Balance"
 							value={factors.asymmetryPenalty}
+							hint="Higher is more balanced"
 						/>
 						<QualityFactorRow
 							label="Time Under Tension"
 							value={factors.tutScore}
+							hint="Higher is better"
 						/>
 					</div>
 					<div className="pt-2 border-t border-border">
@@ -73,15 +80,25 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 interface QualityFactorRowProps {
 	label: string;
 	value: number;
+	hint?: string;
 }
 
-function QualityFactorRow({ label, value }: QualityFactorRowProps) {
+function QualityFactorRow({ label, value, hint }: QualityFactorRowProps) {
 	return (
 		<div className="flex justify-between items-center text-sm">
-			<span className="text-muted-foreground">{label}</span>
-			<span className={value < 60 ? "text-amber-500" : "text-foreground"}>
-				{value}%
+			<span className="text-muted-foreground" title={hint}>
+				{label}
 			</span>
+			<div className="flex items-center gap-1.5">
+				<span className={value < 60 ? "text-amber-500" : "text-foreground"}>
+					{value}%
+				</span>
+				{hint && (
+					<span className="text-[10px] text-muted-foreground/60">
+						{value >= 80 ? "Good" : value >= 60 ? "OK" : "Low"}
+					</span>
+				)}
+			</div>
 		</div>
 	);
 }

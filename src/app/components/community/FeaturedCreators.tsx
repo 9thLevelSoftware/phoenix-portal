@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Avatar,
 	AvatarFallback,
@@ -22,6 +24,30 @@ function getInitials(name: string): string {
 
 export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 	const { data: creators, isLoading } = useQuery(featuredCreatorsOptions());
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const [canScrollLeft, setCanScrollLeft] = useState(false);
+	const [canScrollRight, setCanScrollRight] = useState(false);
+
+	const updateScrollState = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		setCanScrollLeft(el.scrollLeft > 0);
+		setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+	}, []);
+
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		updateScrollState();
+		el.addEventListener("scroll", updateScrollState, { passive: true });
+		return () => el.removeEventListener("scroll", updateScrollState);
+	}, [updateScrollState, creators]);
+
+	const scroll = (direction: "left" | "right") => {
+		const el = scrollRef.current;
+		if (!el) return;
+		el.scrollBy({ left: direction === "left" ? -200 : 200, behavior: "smooth" });
+	};
 
 	// Hide entire section if no featured creators
 	if (!isLoading && (!creators || creators.length === 0)) return null;
@@ -32,7 +58,33 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 				Featured Creators
 			</p>
 
+			<div className="relative">
+				{canScrollLeft && (
+					<>
+						<div className="absolute left-0 top-0 bottom-2 w-8 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
+						<button
+							onClick={() => scroll("left")}
+							className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+							aria-label="Scroll left"
+						>
+							<ChevronLeft className="w-4 h-4" />
+						</button>
+					</>
+				)}
+				{canScrollRight && (
+					<>
+						<div className="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
+						<button
+							onClick={() => scroll("right")}
+							className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+							aria-label="Scroll right"
+						>
+							<ChevronRight className="w-4 h-4" />
+						</button>
+					</>
+				)}
 			<div
+				ref={scrollRef}
 				className="flex gap-3 overflow-x-auto snap-x scrollbar-hide pb-2"
 				style={{ WebkitOverflowScrolling: "touch" }}
 			>
@@ -70,6 +122,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 								</span>
 							</button>
 						))}
+			</div>
 			</div>
 		</div>
 	);

@@ -14,7 +14,7 @@ import {
 	TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
@@ -25,6 +25,7 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useSaveSessionNotes } from "@/mutations/workouts";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -39,20 +40,29 @@ export function SessionDetail() {
 		enabled: !!sessionId,
 	});
 	const { isPremium } = useSubscription();
-	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
+	const [expandedExercises, setExpandedExercises] = useState<string[] | null>(
+		null,
+	);
 	const [notes, setNotes] = useState("");
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const saveNotes = useSaveSessionNotes();
+
+	// Load existing notes from session
+	useEffect(() => {
+		if (session?.notes) setNotes(session.notes);
+	}, [session?.notes]);
 
 	if (!sessionId) {
 		return <Navigate to="/history" replace />;
 	}
 
 	const toggleExercise = (exerciseId: string) => {
-		setExpandedExercises((prev) =>
-			prev.includes(exerciseId)
-				? prev.filter((id) => id !== exerciseId)
-				: [...prev, exerciseId],
-		);
+		setExpandedExercises((prev) => {
+			const current = prev ?? [];
+			return current.includes(exerciseId)
+				? current.filter((id) => id !== exerciseId)
+				: [...current, exerciseId];
+		});
 	};
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
@@ -164,11 +174,11 @@ export function SessionDetail() {
 		0,
 	);
 
-	// Auto-expand first exercise if none expanded
+	// Auto-expand first exercise on initial load, but allow collapsing all
 	const effectiveExpanded =
-		expandedExercises.length === 0 && session.exercises.length > 0
+		expandedExercises === null && session.exercises.length > 0
 			? [session.exercises[0].id]
-			: expandedExercises;
+			: expandedExercises ?? [];
 
 	return (
 		<div className="min-h-screen bg-background pb-24 md:pb-8">
@@ -514,8 +524,12 @@ export function SessionDetail() {
 						<Button
 							size="sm"
 							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							disabled={saveNotes.isPending}
+							onClick={() =>
+								saveNotes.mutate({ sessionId: sessionId!, notes })
+							}
 						>
-							Save Notes
+							{saveNotes.isPending ? "Saving..." : "Save Notes"}
 						</Button>
 					</Card>
 				</motion.div>

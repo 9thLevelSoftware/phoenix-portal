@@ -1,5 +1,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ArrowBigUp, ArrowLeft, Share2, Star } from "lucide-react";
+import {
+	ArrowBigUp,
+	ArrowLeft,
+	Share2,
+	Star,
+	UserMinus,
+	UserPlus,
+} from "lucide-react";
 import { CommunityFeedCard } from "@/app/components/community/CommunityFeedCard";
 import {
 	Avatar,
@@ -9,10 +16,12 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { useFollowCreator } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import {
 	communityFeedOptions,
 	creatorStatsOptions,
+	isFollowingOptions,
 	userVotesOptions,
 } from "@/queries/community";
 
@@ -64,6 +73,12 @@ export function CreatorProfile({
 		enabled: !!user?.id,
 	});
 
+	const { data: isFollowing } = useQuery(
+		isFollowingOptions(user?.id ?? "", userId),
+	);
+	const followMutation = useFollowCreator();
+	const isSelf = user?.id === userId;
+
 	const routineItems = feedData?.pages.flat() ?? [];
 	const cycleItems = cycleData?.pages.flat() ?? [];
 	const allItems = [...routineItems, ...cycleItems];
@@ -109,9 +124,40 @@ export function CreatorProfile({
 						</Avatar>
 
 						<div className="flex-1 min-w-0">
-							<h2 className="text-xl font-bold text-white mb-3 truncate">
-								{stats.display_name}
-							</h2>
+							<div className="flex items-center gap-3 mb-3">
+								<h2 className="text-xl font-bold text-white truncate">
+									{stats.display_name}
+								</h2>
+								{user && !isSelf && (
+									<Button
+										size="sm"
+										variant={isFollowing ? "outline" : "default"}
+										className={
+											isFollowing
+												? "border-secondary text-muted-foreground hover:text-white hover:border-destructive gap-1.5 h-8 text-xs"
+												: "bg-primary hover:bg-primary/90 gap-1.5 h-8 text-xs"
+										}
+										onClick={() =>
+											followMutation.mutate({
+												followedId: userId,
+											})
+										}
+										disabled={followMutation.isPending}
+									>
+										{isFollowing ? (
+											<>
+												<UserMinus className="w-3.5 h-3.5" />
+												Unfollow
+											</>
+										) : (
+											<>
+												<UserPlus className="w-3.5 h-3.5" />
+												Follow
+											</>
+										)}
+									</Button>
+								)}
+							</div>
 							<div className="flex gap-4">
 								{/* Total Shares */}
 								<div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2">

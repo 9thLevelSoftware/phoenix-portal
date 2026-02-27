@@ -93,8 +93,8 @@ export function CycleBuilder() {
 	const [progressionAmount, setProgressionAmount] = useState(2.5);
 	const [progressionFrequency, setProgressionFrequency] = useState(1);
 	const [progressionTrigger, setProgressionTrigger] = useState<
-		"all-sets" | "target-rpe" | "cycle-complete"
-	>("target-rpe");
+		"all_sets" | "target_rpe" | "cycle_complete"
+	>("target_rpe");
 	const [upperBodyIncrement, setUpperBodyIncrement] = useState(2.5);
 	const [lowerBodyIncrement, setLowerBodyIncrement] = useState(5.0);
 	const [includeDeload, setIncludeDeload] = useState(true);
@@ -121,6 +121,7 @@ export function CycleBuilder() {
 	useEffect(() => {
 		if (existingCycle) {
 			setCycleName(existingCycle.name);
+			setDescription(existingCycle.description ?? "");
 			setDuration(existingCycle.duration_weeks);
 			if (existingCycle.cycle_days.length > 0) {
 				setDays(
@@ -365,21 +366,6 @@ export function CycleBuilder() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
 								<Label className="text-secondary-foreground mb-2">
-									Cycle Name
-								</Label>
-								<Input
-									value={cycleName}
-									onChange={(e) => {
-										setCycleName(e.target.value);
-										setHasUnsavedChanges(true);
-									}}
-									className="bg-background border-secondary"
-									placeholder="e.g., 12-Week Strength Builder"
-								/>
-							</div>
-
-							<div>
-								<Label className="text-secondary-foreground mb-2">
 									Duration (Days)
 								</Label>
 								<div className="flex items-center gap-2">
@@ -443,6 +429,7 @@ export function CycleBuilder() {
 										setHasUnsavedChanges(true);
 									}}
 									className="bg-background border-secondary"
+									{...(!isEditing && { min: new Date().toISOString().split("T")[0] })}
 								/>
 								<p className="text-xs text-muted mt-1">
 									Leave blank to start anytime
@@ -545,7 +532,7 @@ export function CycleBuilder() {
 						}}
 						progressionTrigger={progressionTrigger}
 						onProgressionTriggerChange={(
-							v: "all-sets" | "target-rpe" | "cycle-complete",
+							v: "all_sets" | "target_rpe" | "cycle_complete",
 						) => {
 							setProgressionTrigger(v);
 							setHasUnsavedChanges(true);
@@ -594,38 +581,37 @@ export function CycleBuilder() {
 							Week at a Glance
 						</h2>
 
-						<div className="grid grid-cols-7 gap-2 mb-6">
-							{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-								(dayName, i) => {
-									const day = days[i];
-									return (
-										<div key={dayName} className="text-center">
-											<div className="text-xs text-muted-foreground mb-2">
-												{dayName}
-											</div>
-											<div
-												className={`h-16 rounded-lg flex items-center justify-center text-2xl ${
-													day?.type === "workout"
-														? "bg-primary/20 border border-primary/30"
-														: "bg-secondary/20 border border-secondary"
-												}`}
-											>
-												{day?.type === "workout" ? (
-													<Dumbbell className="w-6 h-6 text-primary" />
-												) : (
-													<span className="text-muted-foreground text-sm">
-														REST
-													</span>
-												)}
-											</div>
-											<div className="text-xs text-muted mt-1 truncate">
-												{day?.routineName ||
-													(day?.type === "rest" ? "REST" : "-")}
-											</div>
+						<div className={`grid gap-2 mb-6 ${days.length <= 7 ? "grid-cols-7" : "grid-cols-7 overflow-x-auto"}`} style={days.length > 7 ? { gridTemplateColumns: `repeat(${days.length}, minmax(80px, 1fr))` } : undefined}>
+							{days.map((day, i) => {
+								const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+								const label = days.length <= 7 ? weekdayLabels[i] : `Day ${day.dayNumber}`;
+								return (
+									<div key={day.dayNumber} className="text-center">
+										<div className="text-xs text-muted-foreground mb-2">
+											{label}
 										</div>
-									);
-								},
-							)}
+										<div
+											className={`h-16 rounded-lg flex items-center justify-center text-2xl ${
+												day.type === "workout"
+													? "bg-primary/20 border border-primary/30"
+													: "bg-secondary/20 border border-secondary"
+											}`}
+										>
+											{day.type === "workout" ? (
+												<Dumbbell className="w-6 h-6 text-primary" />
+											) : (
+												<span className="text-muted-foreground text-sm">
+													REST
+												</span>
+											)}
+										</div>
+										<div className="text-xs text-muted mt-1 truncate">
+											{day.routineName ||
+												(day.type === "rest" ? "REST" : "-")}
+										</div>
+									</div>
+								);
+							})}
 						</div>
 
 						<div className="text-sm text-secondary-foreground mb-4">
@@ -751,17 +737,15 @@ function DayCard({
 					</div>
 				)}
 
-				{day.dayNumber > 1 && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							onRemove();
-						}}
-						className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
-					>
-						<X className="w-3 h-3 text-destructive" />
-					</button>
-				)}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						onRemove();
+					}}
+					className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
+				>
+					<X className="w-3 h-3 text-destructive" />
+				</button>
 			</Card>
 		</motion.div>
 	);
@@ -1018,9 +1002,9 @@ function ProgressionRules({
 	onProgressionAmountChange: (v: number) => void;
 	progressionFrequency: number;
 	onProgressionFrequencyChange: (v: number) => void;
-	progressionTrigger: "all-sets" | "target-rpe" | "cycle-complete";
+	progressionTrigger: "all_sets" | "target_rpe" | "cycle_complete";
 	onProgressionTriggerChange: (
-		v: "all-sets" | "target-rpe" | "cycle-complete",
+		v: "all_sets" | "target_rpe" | "cycle_complete",
 	) => void;
 	upperBodyIncrement: number;
 	onUpperBodyIncrementChange: (v: number) => void;
@@ -1122,7 +1106,7 @@ function ProgressionRules({
 							value={progressionTrigger}
 							onValueChange={(v) =>
 								onProgressionTriggerChange(
-									v as "all-sets" | "target-rpe" | "cycle-complete",
+									v as "all_sets" | "target_rpe" | "cycle_complete",
 								)
 							}
 						>
@@ -1130,9 +1114,9 @@ function ProgressionRules({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="all-sets">All Sets Completed</SelectItem>
-								<SelectItem value="target-rpe">Target RPE Met</SelectItem>
-								<SelectItem value="cycle-complete">Cycle Complete</SelectItem>
+								<SelectItem value="all_sets">All Sets Completed</SelectItem>
+								<SelectItem value="target_rpe">Target RPE Met</SelectItem>
+								<SelectItem value="cycle_complete">Cycle Complete</SelectItem>
 							</SelectContent>
 						</Select>
 						<p className="text-xs text-muted mt-1">When to advance weight</p>
@@ -1368,7 +1352,7 @@ function PreviewModal({
 							<div className="text-sm text-white">
 								Trigger:{" "}
 								<span className="text-primary">
-									{cycle.progression.trigger.replace(/-/g, " ")}
+									{cycle.progression.trigger.replace(/_/g, " ")}
 								</span>
 							</div>
 						</div>

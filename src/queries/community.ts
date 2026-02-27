@@ -134,6 +134,23 @@ export function savedItemsOptions(userId: string) {
 	});
 }
 
+export function isFollowingOptions(followerId: string, followedId: string) {
+	return queryOptions({
+		queryKey: queryKeys.community.follows(followerId, followedId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("creator_follows" as never)
+				.select("id")
+				.eq("follower_id", followerId)
+				.eq("followed_id", followedId)
+				.maybeSingle();
+			if (error) throw error;
+			return !!data;
+		},
+		enabled: !!followerId && !!followedId && followerId !== followedId,
+	});
+}
+
 export function userVotesOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.votes(userId),

@@ -45,7 +45,7 @@ export function Integrations() {
 			toast.error(`Connection failed: ${error}`);
 			setSearchParams({}, { replace: true });
 		}
-	}, [searchParams.get, setSearchParams]); // Run on mount only
+	}, [searchParams, setSearchParams]);
 
 	const { data: integrations, isLoading } = useQuery({
 		...integrationsOptions(userId),

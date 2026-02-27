@@ -23,9 +23,7 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { estimateOneRepMax } from "@/lib/biomechanics";
 import { PHOENIX, SURFACE } from "@/lib/colors";
-import { supabase } from "@/lib/supabase";
-import { queryKeys } from "@/queries/keys";
-import { exerciseProgressOptions } from "@/queries/progress";
+import { exerciseListOptions, exerciseProgressOptions } from "@/queries/progress";
 import type { ExerciseProgress as ExerciseProgressType } from "@/schemas/telemetry";
 
 export interface ExerciseProgressProps {
@@ -48,22 +46,6 @@ const TOOLTIP_STYLE = {
 	color: "var(--secondary-foreground)",
 };
 
-/** Fetch distinct exercise names for the user */
-function exerciseListOptions(userId: string) {
-	return {
-		queryKey: [...queryKeys.progress.all, "exercises", userId] as const,
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("exercise_progress")
-				.select("exercise_name")
-				.eq("user_id", userId)
-				.order("exercise_name");
-			if (error) throw error;
-			const names = [...new Set((data ?? []).map((d) => d.exercise_name))];
-			return names as string[];
-		},
-	};
-}
 
 function formatDate(date: Date): string {
 	return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });

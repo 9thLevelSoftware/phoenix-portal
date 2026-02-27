@@ -23,7 +23,11 @@ export interface SummaryReportProps {
 	userId: string;
 }
 
-const DEFAULT_TARGET_DAYS = 5;
+/** Reasonable default workout targets per period.
+ *  Week: 5 days (standard training week). Month: 20 days (~5 per week). */
+function getTargetDays(period: "week" | "month"): number {
+	return period === "week" ? 5 : 20;
+}
 
 interface PeriodSummary {
 	totalVolume: number;
@@ -31,7 +35,7 @@ interface PeriodSummary {
 	prs: Array<{ exercise: string; improvement: number }>;
 	consistencyScore: number;
 	dailyVolume: Array<{ day: string; volume: number }>;
-	dailyWorkouts: Array<{ day: string; worked: number }>;
+	dailyWorkouts: Array<{ day: string; sessions: number }>;
 	bestSessionVolume: number;
 	bestSessionDate: string;
 	mostImprovedExercise: string;
@@ -39,6 +43,7 @@ interface PeriodSummary {
 	longestStreak: number;
 	previousVolume: number;
 	previousWorkoutDays: number;
+	targetDays: number;
 }
 
 function computeSummary(
@@ -60,6 +65,7 @@ function computeSummary(
 			longestStreak: 0,
 			previousVolume: 0,
 			previousWorkoutDays: 0,
+			targetDays: getTargetDays(period),
 		};
 	}
 
@@ -90,9 +96,10 @@ function computeSummary(
 	).size;
 
 	// Consistency
+	const targetDays = getTargetDays(period);
 	const consistencyScore = Math.min(
 		100,
-		Math.round((workoutDays / DEFAULT_TARGET_DAYS) * 100),
+		Math.round((workoutDays / targetDays) * 100),
 	);
 
 	// PRs: exercises where current max weight > previous max weight
@@ -108,13 +115,21 @@ function computeSummary(
 		if (d.max_weight_kg > existing)
 			exerciseMaxPrevious.set(d.exercise_name, d.max_weight_kg);
 	}
-	const prs: Array<{ exercise: string; improvement: number }> = [];
+	const prs: Array<{ exercise: string; improvement: number; isFirstPR: boolean }> = [];
 	for (const [name, maxWeight] of exerciseMaxCurrent) {
 		const prevMax = exerciseMaxPrevious.get(name) ?? 0;
-		if (maxWeight > prevMax && prevMax > 0) {
+		if (prevMax > 0 && maxWeight > prevMax) {
 			prs.push({
 				exercise: name,
 				improvement: Math.round((maxWeight - prevMax) * 10) / 10,
+				isFirstPR: false,
+			});
+		} else if (prevMax === 0) {
+			// First-ever PR for this exercise
+			prs.push({
+				exercise: name,
+				improvement: maxWeight,
+				isFirstPR: true,
 			});
 		}
 	}
@@ -131,7 +146,7 @@ function computeSummary(
 			dayKey,
 			(dailyVolumeMap.get(dayKey) ?? 0) + d.total_volume_kg,
 		);
-		dailyWorkoutMap.set(dayKey, 1);
+		dailyWorkoutMap.set(dayKey, (dailyWorkoutMap.get(dayKey) ?? 0) + 1);
 	}
 	const dailyVolume = Array.from(dailyVolumeMap.entries()).map(
 		([day, volume]) => ({
@@ -140,9 +155,9 @@ function computeSummary(
 		}),
 	);
 	const dailyWorkouts = Array.from(dailyWorkoutMap.entries()).map(
-		([day, worked]) => ({
+		([day, sessions]) => ({
 			day,
-			worked,
+			sessions,
 		}),
 	);
 
@@ -211,6 +226,7 @@ function computeSummary(
 		longestStreak,
 		previousVolume,
 		previousWorkoutDays,
+		targetDays,
 	};
 }
 
@@ -453,7 +469,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.workoutDays}{" "}
 							<span className="text-sm text-muted-foreground">
-								of {DEFAULT_TARGET_DAYS} target
+								of {summary.targetDays} target
 							</span>
 						</div>
 						{summary.dailyWorkouts.length > 0 && (
@@ -461,7 +477,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<ResponsiveContainer width="100%" height={40}>
 									<BarChart data={summary.dailyWorkouts}>
 										<Bar
-											dataKey="worked"
+											dataKey="sessions"
 											fill={PHOENIX.gold}
 											radius={[2, 2, 0, 0]}
 										/>
@@ -514,7 +530,11 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										className="text-xs text-muted-foreground truncate"
 									>
 										{pr.exercise}{" "}
-										<span className="text-success">+{pr.improvement}kg</span>
+										<span className="text-success">
+											{pr.isFirstPR
+												? `${pr.improvement}kg (first!)`
+												: `+${pr.improvement}kg`}
+										</span>
 									</div>
 								))}
 							</div>
@@ -554,7 +574,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 									{summary.consistencyScore}%
 								</div>
 								<div className="text-xs text-muted-foreground">
-									{summary.workoutDays}/{DEFAULT_TARGET_DAYS} days
+									{summary.workoutDays}/{summary.targetDays} days
 								</div>
 							</div>
 						</div>

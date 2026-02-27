@@ -2,10 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	Archive,
 	Award,
+	Check,
+	ChevronsUpDown,
 	ChevronDown,
 	ChevronUp,
 	Edit2,
 	Plus,
+	RotateCcw,
 	Target,
 	TrendingUp,
 } from "lucide-react";
@@ -14,6 +17,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FeatureHint } from "@/app/components/FeatureHint";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/app/components/ui/command";
 import {
 	Dialog,
 	DialogContent,
@@ -24,11 +35,17 @@ import { EmptyState } from "@/app/components/ui/empty-state";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/app/components/ui/popover";
+import {
 	Tabs,
 	TabsContent,
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { cn } from "@/app/components/ui/utils";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
@@ -154,12 +171,93 @@ function getProgressText(goal: Goal, progress: number): string {
 	}
 }
 
+// ---------- Exercise Name Combobox (M26) ----------
+
+function ExerciseNameCombobox({
+	value,
+	onChange,
+	exerciseNames,
+}: {
+	value: string;
+	onChange: (value: string) => void;
+	exerciseNames: string[];
+}) {
+	const [open, setOpen] = useState(false);
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					variant="outline"
+					role="combobox"
+					aria-expanded={open}
+					className={cn(
+						"w-full justify-between mt-1 bg-input/30 border-secondary font-normal",
+						!value && "text-muted-foreground",
+					)}
+				>
+					{value || "Select or type exercise..."}
+					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent className="w-[--radix-popover-trigger-width] p-0 border-secondary" align="start">
+				<Command>
+					<CommandInput
+						placeholder="Search exercises..."
+						onValueChange={(search) => {
+							// Allow typing a custom name even if not in the list
+							if (search && !exerciseNames.some(
+								(n) => n.toLowerCase() === search.toLowerCase(),
+							)) {
+								onChange(search);
+							}
+						}}
+					/>
+					<CommandList>
+						<CommandEmpty>
+							<span className="text-muted-foreground">No matching exercises.</span>
+							<br />
+							<span className="text-xs text-muted">The typed name will be used as-is.</span>
+						</CommandEmpty>
+						<CommandGroup>
+							{exerciseNames.map((name) => (
+								<CommandItem
+									key={name}
+									value={name}
+									onSelect={(selected) => {
+										onChange(selected === value ? "" : selected);
+										setOpen(false);
+									}}
+								>
+									<Check
+										className={cn(
+											"mr-2 h-4 w-4",
+											value.toLowerCase() === name.toLowerCase()
+												? "opacity-100"
+												: "opacity-0",
+										)}
+									/>
+									{name}
+								</CommandItem>
+							))}
+						</CommandGroup>
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
 // ---------- Goals Page ----------
 
 export function Goals() {
 	const { user } = useAuth();
-	const { isPremium } = useSubscription();
+	const { isPremium, isElite } = useSubscription();
 	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
+	const { data: records } = useQuery({
+		...personalRecordsOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 	const progressMap = useGoalProgress();
 	const createGoal = useCreateGoal();
 	const updateGoal = useUpdateGoal();
@@ -168,6 +266,7 @@ export function Goals() {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editGoal, setEditGoal] = useState<Goal | null>(null);
 	const [showCompleted, setShowCompleted] = useState(false);
+	const [showArchived, setShowArchived] = useState(false);
 	const [celebration, setCelebration] = useState<{
 		isOpen: boolean;
 		goalType: "frequency" | "volume" | "pr";
@@ -182,9 +281,18 @@ export function Goals() {
 
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
+	const archivedGoals = goals?.filter((g) => g.status === "archived") ?? [];
 
-	const maxGoals = isPremium ? 3 : 1;
+	// M24: ELITE = unlimited goals, PHOENIX = 3, FREE = 1
+	const maxGoals = isElite ? Infinity : isPremium ? 3 : 1;
 	const atLimit = activeGoals.length >= maxGoals;
+
+	// M26: Derive distinct exercise names from personal records for autocomplete
+	const knownExerciseNames = useMemo(() => {
+		if (!records) return [];
+		const names = [...new Set(records.map((r) => r.exercise_name))];
+		return names.sort((a, b) => a.localeCompare(b));
+	}, [records]);
 
 	// Track which goals we have already celebrated to avoid re-triggering
 	const celebratedRef = useRef(new Set<string>());
@@ -293,7 +401,7 @@ export function Goals() {
 							disabled={atLimit}
 							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 							title={
-								atLimit
+								atLimit && maxGoals !== Infinity
 									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
 									: "Create new goal"
 							}
@@ -435,6 +543,74 @@ export function Goals() {
 					</motion.div>
 				)}
 
+				{/* M27: Archived Goals */}
+				{archivedGoals.length > 0 && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.35 }}
+						className="mt-4"
+					>
+						<button
+							onClick={() => setShowArchived(!showArchived)}
+							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+						>
+							{showArchived ? (
+								<ChevronUp className="w-4 h-4" />
+							) : (
+								<ChevronDown className="w-4 h-4" />
+							)}
+							<span className="text-sm font-medium">
+								Archived Goals ({archivedGoals.length})
+							</span>
+						</button>
+
+						{showArchived && (
+							<div className="space-y-3">
+								{archivedGoals.map((goal) => {
+									const Icon = goalTypeIcons[goal.goal_type];
+									return (
+										<Card
+											key={goal.id}
+											className="p-4 bg-surface-2/30 border-secondary/50"
+										>
+											<div className="flex items-center gap-3">
+												<div className="w-8 h-8 rounded-full bg-muted/20 flex items-center justify-center">
+													<Icon className="w-4 h-4 text-muted-foreground" />
+												</div>
+												<div className="flex-1">
+													<p className="text-sm text-muted-foreground">
+														{getGoalDescription(goal)}
+													</p>
+													<p className="text-xs text-muted mt-0.5">
+														Archived{" "}
+														{goal.updated_at.toLocaleDateString()}
+													</p>
+												</div>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() =>
+														updateGoal.mutate({
+															goalId: goal.id,
+															updates: { status: "active" },
+														})
+													}
+													className="hover:bg-primary/10 text-muted-foreground hover:text-white"
+													title="Restore goal"
+												>
+													<RotateCcw className="w-4 h-4 mr-1" />
+													Restore
+												</Button>
+											</div>
+										</Card>
+									);
+								})}
+							</div>
+						)}
+					</motion.div>
+				)}
+
 				{/* Limit indicator */}
 				<motion.div
 					initial={{ opacity: 0 }}
@@ -443,8 +619,9 @@ export function Goals() {
 					className="mt-6 text-center"
 				>
 					<p className="text-xs text-muted">
-						{activeGoals.length}/{maxGoals} active goal
-						{maxGoals > 1 ? "s" : ""}
+						{isElite
+							? `${activeGoals.length} active goal${activeGoals.length !== 1 ? "s" : ""} (unlimited)`
+							: `${activeGoals.length}/${maxGoals} active goal${maxGoals > 1 ? "s" : ""}`}
 						{!isPremium && " (upgrade for more)"}
 					</p>
 				</motion.div>
@@ -455,6 +632,7 @@ export function Goals() {
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 				title="Create Goal"
+				exerciseNames={knownExerciseNames}
 				onSubmit={(data) => {
 					createGoal.mutate(data);
 					setCreateOpen(false);
@@ -469,6 +647,8 @@ export function Goals() {
 						if (!open) setEditGoal(null);
 					}}
 					title="Edit Goal"
+					isEdit
+					exerciseNames={knownExerciseNames}
 					defaultValues={{
 						goal_type: editGoal.goal_type,
 						target_value: editGoal.target_value,
@@ -514,6 +694,10 @@ interface GoalFormDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	title: string;
+	/** When true, goal type tabs are hidden (type cannot change after creation). */
+	isEdit?: boolean;
+	/** Known exercise names for PR goal autocomplete. */
+	exerciseNames?: string[];
 	defaultValues?: {
 		goal_type: "frequency" | "volume" | "pr";
 		target_value: number;
@@ -535,6 +719,8 @@ function GoalFormDialog({
 	open,
 	onOpenChange,
 	title,
+	isEdit = false,
+	exerciseNames = [],
 	defaultValues,
 	onSubmit,
 }: GoalFormDialogProps) {
@@ -607,24 +793,46 @@ function GoalFormDialog({
 					{/* Goal Type Tabs */}
 					<Tabs
 						value={goalType}
-						onValueChange={(v) =>
-							setGoalType(v as "frequency" | "volume" | "pr")
-						}
+						onValueChange={(v) => {
+							if (!isEdit)
+								setGoalType(v as "frequency" | "volume" | "pr");
+						}}
 					>
-						<TabsList className="w-full">
-							<TabsTrigger value="frequency" className="flex-1">
-								<Target className="w-4 h-4 mr-1" />
-								Frequency
-							</TabsTrigger>
-							<TabsTrigger value="volume" className="flex-1">
-								<TrendingUp className="w-4 h-4 mr-1" />
-								Volume
-							</TabsTrigger>
-							<TabsTrigger value="pr" className="flex-1">
-								<Award className="w-4 h-4 mr-1" />
-								PR
-							</TabsTrigger>
-						</TabsList>
+						{/* M25: Hide type tabs in edit mode -- type cannot change after creation */}
+						{isEdit ? (
+							<div className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
+								{goalType === "frequency" && (
+									<Target className="w-4 h-4 text-primary" />
+								)}
+								{goalType === "volume" && (
+									<TrendingUp className="w-4 h-4 text-primary" />
+								)}
+								{goalType === "pr" && (
+									<Award className="w-4 h-4 text-primary" />
+								)}
+								<span className="capitalize">
+									{goalType === "pr" ? "Personal Record" : goalType}
+								</span>
+								<span className="text-muted text-xs">
+									(type cannot be changed)
+								</span>
+							</div>
+						) : (
+							<TabsList className="w-full">
+								<TabsTrigger value="frequency" className="flex-1">
+									<Target className="w-4 h-4 mr-1" />
+									Frequency
+								</TabsTrigger>
+								<TabsTrigger value="volume" className="flex-1">
+									<TrendingUp className="w-4 h-4 mr-1" />
+									Volume
+								</TabsTrigger>
+								<TabsTrigger value="pr" className="flex-1">
+									<Award className="w-4 h-4 mr-1" />
+									PR
+								</TabsTrigger>
+							</TabsList>
+						)}
 
 						<TabsContent value="frequency" className="space-y-4 mt-4">
 							<div>
@@ -724,15 +932,13 @@ function GoalFormDialog({
 						</TabsContent>
 
 						<TabsContent value="pr" className="space-y-4 mt-4">
+							{/* M26: Exercise name combobox with autocomplete from known exercises */}
 							<div>
-								<Label htmlFor="pr-exercise">Exercise Name</Label>
-								<Input
-									id="pr-exercise"
-									type="text"
-									placeholder="e.g. Bench Press"
+								<Label>Exercise Name</Label>
+								<ExerciseNameCombobox
 									value={exerciseName}
-									onChange={(e) => setExerciseName(e.target.value)}
-									className="mt-1 bg-input/30"
+									onChange={setExerciseName}
+									exerciseNames={exerciseNames}
 								/>
 							</div>
 							<div>

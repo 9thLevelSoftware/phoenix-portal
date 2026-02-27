@@ -1,4 +1,5 @@
 import { Pause, Play } from "lucide-react";
+import { useEffect } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -17,6 +18,24 @@ const SPEED_OPTIONS: Speed[] = [0.25, 0.5, 1, 2, 4];
  */
 export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 	const { isPlaying, speed, togglePlayPause, setSpeed } = useReplayStore();
+
+	// Space bar keyboard shortcut for play/pause
+	useEffect(() => {
+		if (disabled) return;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (
+				e.code === "Space" &&
+				!["INPUT", "TEXTAREA", "SELECT"].includes(
+					(e.target as HTMLElement).tagName,
+				)
+			) {
+				e.preventDefault();
+				togglePlayPause();
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [disabled, togglePlayPause]);
 
 	return (
 		<div className="flex items-center gap-4">

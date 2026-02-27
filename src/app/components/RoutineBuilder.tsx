@@ -33,6 +33,7 @@ import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
 import { supabase } from "@/lib/supabase";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
+import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 
 interface Exercise {
@@ -50,6 +51,8 @@ export function RoutineBuilder() {
 	const { routineId } = useParams<{ routineId: string }>();
 	const navigate = useNavigate();
 	const { user } = useAuth();
+	const { data: profile } = useQuery(profileOptions(user?.id ?? ""));
+	const weightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 	const saveMutation = useSaveRoutine();
 	const updateMutation = useUpdateRoutine();
 	const isEditing = !!routineId;
@@ -124,11 +127,19 @@ export function RoutineBuilder() {
 		if (isEditing && routineId) {
 			updateMutation.mutate(
 				{ ...payload, routineId },
-				{ onSuccess: () => setHasUnsavedChanges(false) },
+				{
+					onSuccess: () => {
+						setHasUnsavedChanges(false);
+						navigate("/routines");
+					},
+				},
 			);
 		} else {
 			saveMutation.mutate(payload, {
-				onSuccess: () => setHasUnsavedChanges(false),
+				onSuccess: () => {
+					setHasUnsavedChanges(false);
+					navigate("/routines");
+				},
 			});
 		}
 	};
@@ -171,7 +182,7 @@ export function RoutineBuilder() {
 							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
-							Cancel
+							{isEditing ? "Back" : "Cancel"}
 						</Button>
 
 						<div className="flex items-center gap-3">
@@ -189,7 +200,7 @@ export function RoutineBuilder() {
 									setRoutineName(e.target.value);
 									setHasUnsavedChanges(true);
 								}}
-								className="text-xl font-semibold bg-transparent border-none text-white focus-visible:ring-0 w-64 text-center"
+								className="text-xl font-semibold bg-transparent border-none text-white focus-visible:ring-0 w-full max-w-xs md:max-w-md text-center"
 							/>
 						</div>
 
@@ -246,6 +257,7 @@ export function RoutineBuilder() {
 										isSelected={selectedExercise === exercise.id}
 										onSelect={() => setSelectedExercise(exercise.id)}
 										onDelete={() => handleDeleteExercise(exercise.id)}
+										weightUnit={weightUnit}
 									/>
 								))}
 							</div>
@@ -292,7 +304,7 @@ export function RoutineBuilder() {
 						onClose={() => setShowExercisePicker(false)}
 						onSelect={(exercise) => {
 							const newExercise: Exercise = {
-								id: Date.now().toString(),
+								id: crypto.randomUUID(),
 								...exercise,
 								sets: 3,
 								reps: 10,
@@ -361,7 +373,7 @@ export function RoutineBuilder() {
 										</div>
 									</div>
 									<div className="text-sm text-muted-foreground">
-										{ex.sets}x{ex.reps} @ {ex.weight}kg
+										{ex.sets}x{ex.reps} @ {ex.weight} {weightUnit}
 									</div>
 								</div>
 							))}
@@ -379,12 +391,14 @@ function SortableExerciseItem({
 	isSelected,
 	onSelect,
 	onDelete,
+	weightUnit,
 }: {
 	exercise: Exercise;
 	index: number;
 	isSelected: boolean;
 	onSelect: () => void;
 	onDelete: () => void;
+	weightUnit: string;
 }) {
 	const { ref, handleRef, isDragging } = useSortable({
 		id: exercise.id,
@@ -428,7 +442,7 @@ function SortableExerciseItem({
 							</Badge>
 						</div>
 						<p className="text-sm text-muted-foreground">
-							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight} kg
+							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight} {weightUnit}
 							• {exercise.mode}
 						</p>
 						<p className="text-xs text-muted mt-1">
@@ -576,7 +590,17 @@ function ExerciseDetailPanel({
 							<option>Echo</option>
 						</select>
 						<p className="text-xs text-muted mt-1">
-							Traditional resistance training
+							{exercise.mode === "Pump"
+								? "High-rep hypertrophy focused training"
+								: exercise.mode === "TUT"
+									? "Time under tension for muscle growth"
+									: exercise.mode === "TUT Beast"
+										? "Extended time under tension with slow eccentrics"
+										: exercise.mode === "Eccentric Only"
+											? "Negative-only reps for maximum muscle damage"
+											: exercise.mode === "Echo"
+												? "Alternating intensity echo sets"
+												: "Traditional resistance training"}
 						</p>
 					</div>
 				</div>
