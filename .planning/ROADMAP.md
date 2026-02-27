@@ -38,7 +38,7 @@
 
 **Milestone Goal:** Address all board-identified blockers (legal, security, operational, UX) to make Phoenix Portal launch-ready for public release with paid tiers.
 
-- [ ] **Phase 14: Security Hardening** - Fix live vulnerabilities: CORS, OAuth tokens, CSRF, source maps, webhook auth, Stripe origin validation
+- [x] **Phase 14: Security Hardening** - Fix live vulnerabilities: CORS, OAuth tokens, CSRF, source maps, webhook auth, Stripe origin validation
 - [ ] **Phase 15: CI/CD & Database Foundation** - Automated quality gates and database optimization for safe deployment of irreversible operations
 - [ ] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement
 - [ ] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent
@@ -62,9 +62,9 @@
 
 Plans:
 - [x] 14-01-PLAN.md — Source map concealment and CSP report-only meta tag
-- [ ] 14-02-PLAN.md — CORS origin validation and Stripe redirect hardening
-- [ ] 14-03-PLAN.md — Garmin webhook auth and sync function JWT auth
-- [ ] 14-04-PLAN.md — OAuth token isolation and CSRF state tokens
+- [x] 14-02-PLAN.md — CORS origin validation and Stripe redirect hardening
+- [x] 14-03-PLAN.md — Garmin webhook auth and sync function JWT auth
+- [x] 14-04-PLAN.md — OAuth token isolation and CSRF state tokens
 
 ### Phase 15: CI/CD & Database Foundation
 **Goal**: Every push to main is validated by automated quality gates, and database tables are optimized for RLS performance
@@ -170,7 +170,7 @@ Plans:
 | 11. New Features | v1.1 | 5/5 | Complete | 2026-02-17 |
 | 12. Schedule-Dependent Features & Delivery | v1.1 | 4/4 | Complete | 2026-02-17 |
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
-| 14. Security Hardening | 3/4 | In Progress|  | - |
+| 14. Security Hardening | v1.2 | 4/4 | Complete | 2026-02-27 |
 | 15. CI/CD & Database Foundation | v1.2 | 0/? | Not started | - |
 | 16. Legal & Pricing | v1.2 | 0/? | Not started | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |

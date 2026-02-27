@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 14 — first of 7 phases in v1.2 (Security Hardening)
-Plan: 3 of 4 complete
-Status: Executing
-Last activity: 2026-02-27 — Completed 14-03-PLAN.md (Endpoint auth hardening)
+Plan: 4 of 4 complete
+Status: Phase Complete
+Last activity: 2026-02-27 — Completed 14-04-PLAN.md (OAuth token isolation and CSRF state tokens)
 
-Progress: [▓▓▓░░░░░░░] 10% (v1.2)
+Progress: [▓▓▓▓░░░░░░] 14% (v1.2)
 
 ## Performance Metrics
 
@@ -29,15 +29,16 @@ Progress: [▓▓▓░░░░░░░] 10% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 3
-- Average duration: 4 min
-- Total execution time: ~11 min
+- Total plans completed: 4
+- Average duration: 5 min
+- Total execution time: ~18 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 14 | 01 | 2m 26s | 2 | 2 |
 | 14 | 02 | 5m 14s | 2 | 10 |
 | 14 | 03 | 3m 58s | 2 | 4 |
+| 14 | 04 | 6m 41s | 3 | 13 |
 
 ## Accumulated Context
 
@@ -56,6 +57,10 @@ v1.2 decisions:
 - [14-03] Conditional GARMIN_WEBHOOK_SECRET -- graceful degradation if env var not set
 - [14-03] Dual-auth pattern: JWT via auth.getUser() for browser, body.user_id for service-role queue calls
 - [14-03] Auth client uses SUPABASE_ANON_KEY for JWT verification, service-role client for DB only
+- [14-04] oauth_tokens table: RLS enabled with zero policies (only service_role can access)
+- [14-04] CSRF state tokens via crypto.randomUUID() with 10-min expiry, single-use deletion
+- [14-04] Client OAuth functions changed from sync(userId) to async(accessToken) via initiate-oauth Edge Function
+- [14-04] Token columns dropped from user_integrations after migration to oauth_tokens
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -81,5 +86,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 14-03-PLAN.md (Endpoint auth hardening)
-Resume file: .planning/phases/14-security-hardening/14-04-PLAN.md
+Stopped at: Completed 14-04-PLAN.md (OAuth token isolation and CSRF state tokens) - Phase 14 complete
+Resume file: .planning/phases/15-cicd-database/15-01-PLAN.md
