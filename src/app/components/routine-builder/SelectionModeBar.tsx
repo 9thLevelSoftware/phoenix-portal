@@ -5,18 +5,21 @@ import { Card } from "@/app/components/ui/card";
 
 interface SelectionModeBarProps {
 	selectedCount: number;
+	isActive?: boolean;
 	onCreateSuperset: () => void;
 	onCancel: () => void;
 }
 
 export function SelectionModeBar({
 	selectedCount,
+	isActive = false,
 	onCreateSuperset,
 	onCancel,
 }: SelectionModeBarProps) {
+	const visible = isActive || selectedCount >= 2;
 	return (
 		<AnimatePresence>
-			{selectedCount >= 2 && (
+			{visible && (
 				<motion.div
 					initial={{ y: 100, opacity: 0 }}
 					animate={{ y: 0, opacity: 1 }}
@@ -30,7 +33,9 @@ export function SelectionModeBar({
 								<Check className="w-5 h-5 text-success" />
 								<span className="font-semibold">{selectedCount}</span>
 								<span className="text-muted-foreground">
-									exercises selected
+									{selectedCount < 2
+										? "Select at least 2 exercises"
+										: "exercises selected"}
 								</span>
 							</div>
 
@@ -39,7 +44,8 @@ export function SelectionModeBar({
 							<div className="flex items-center gap-3">
 								<Button
 									onClick={onCreateSuperset}
-									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									disabled={selectedCount < 2}
+									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 disabled:opacity-50"
 								>
 									Create Superset
 								</Button>

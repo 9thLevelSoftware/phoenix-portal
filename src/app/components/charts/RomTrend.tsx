@@ -74,15 +74,15 @@ function RomChart({
 		[data.length, innerWidth],
 	);
 
-	const yScale = useMemo(
-		() =>
-			scaleLinear<number>({
-				domain: [minRom * 0.9, maxRom * 1.1],
-				range: [innerHeight, 0],
-				nice: true,
-			}),
-		[minRom, maxRom, innerHeight],
-	);
+	const yScale = useMemo(() => {
+		// Add minimum padding so the axis doesn't collapse when all values are equal
+		const padding = minRom === maxRom ? Math.max(minRom * 0.1, 5) : 0;
+		return scaleLinear<number>({
+			domain: [minRom * 0.9 - padding, maxRom * 1.1 + padding],
+			range: [innerHeight, 0],
+			nice: true,
+		});
+	}, [minRom, maxRom, innerHeight]);
 
 	const getX = (d: RomPoint) => xScale(d.rep);
 	const getY = (d: RomPoint) => yScale(d.rom);

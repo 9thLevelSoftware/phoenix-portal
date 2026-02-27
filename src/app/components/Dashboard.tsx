@@ -211,7 +211,14 @@ export function Dashboard() {
 					<h1 className="text-3xl sm:text-4xl mb-2">
 						Welcome back,{" "}
 						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-							{user?.email?.split("@")[0] ?? "Athlete"}
+							{user?.user_metadata?.display_name ??
+								user?.user_metadata?.full_name ??
+								user?.email
+									?.split("@")[0]
+									?.split("+")[0]
+									?.replace(/\./g, " ")
+									?.replace(/\b\w/g, (c) => c.toUpperCase()) ??
+								"Athlete"}
 						</span>
 					</h1>
 					<p className="text-muted-foreground">

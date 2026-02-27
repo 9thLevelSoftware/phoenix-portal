@@ -123,6 +123,59 @@ export function useShareContent() {
 	});
 }
 
+// ---------- useFollowCreator ----------
+
+interface FollowCreatorArgs {
+	followedId: string;
+}
+
+export function useFollowCreator() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async ({ followedId }: FollowCreatorArgs) => {
+			if (!user) throw new Error("Must be logged in to follow");
+
+			const { data: existing, error: checkError } = await supabase
+				.from("creator_follows" as never)
+				.select("id")
+				.eq("follower_id", user.id)
+				.eq("followed_id", followedId)
+				.maybeSingle();
+
+			if (checkError) throw checkError;
+
+			if (existing) {
+				const { error } = await supabase
+					.from("creator_follows" as never)
+					.delete()
+					.eq("id", (existing as { id: string }).id);
+				if (error) throw error;
+				return { action: "unfollowed" as const };
+			}
+			const { error } = await supabase.from("creator_follows" as never).insert({
+				follower_id: user.id,
+				followed_id: followedId,
+			} as never);
+			if (error) throw error;
+			return { action: "followed" as const };
+		},
+
+		onSuccess: (_data, variables) => {
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.follows(user.id, variables.followedId),
+				});
+			}
+		},
+
+		onError: (error: Error) => {
+			toast.error(`Failed to update follow: ${error.message}`);
+		},
+	});
+}
+
 // ---------- useSaveItem ----------
 
 interface SaveItemArgs {

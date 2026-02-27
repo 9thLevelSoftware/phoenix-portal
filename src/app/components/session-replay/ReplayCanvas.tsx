@@ -50,6 +50,12 @@ export function ReplayCanvas({
 	}, [data, currentTimeMs, width, height, activeChart, repBoundaries]);
 
 	return (
-		<canvas ref={canvasRef} className="rounded-lg" style={{ width, height }} />
+		<canvas
+			ref={canvasRef}
+			className="rounded-lg"
+			style={{ width, height }}
+			role="img"
+			aria-label="Session replay visualization chart"
+		/>
 	);
 }

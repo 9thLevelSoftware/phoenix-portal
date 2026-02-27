@@ -15,10 +15,10 @@ export const replaySessionOptions = (sessionId: string) =>
 				.select(`
           id,
           started_at,
-          exercises:session_exercises (
+          exercises (
             id,
-            exercise_name,
-            sets:exercise_sets (
+            exercise_name:name,
+            sets (
               id,
               set_number
             )

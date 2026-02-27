@@ -69,19 +69,42 @@ export function useUpdateComment() {
 		mutationFn: async ({ commentId, body, createdAt }: UpdateCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to edit");
 
-			// Client-side check: 5-minute edit window
+			// Client-side check: 5-minute edit window.
+			// LIMITATION: Client clock manipulation can bypass
+			// this check. The server-side .gte("created_at")
+			// filter below provides a secondary guard, but a
+			// proper RLS policy is the real fix:
+			//   CREATE POLICY "enforce_edit_window"
+			//     ON community_comments FOR UPDATE
+			//     USING (
+			//       auth.uid() = user_id
+			//       AND created_at > now() - interval '5 min'
+			//     );
 			const elapsed = Date.now() - createdAt.getTime();
 			if (elapsed > 5 * 60 * 1000) {
 				throw new Error("Edit window has expired");
 			}
 
-			const { error } = await supabase
+			// Server-side belt-and-suspenders: the .gte filter
+			// causes a 0-row match if the comment is too old,
+			// making the update a no-op even if the client
+			// check was bypassed.
+			const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+			const { error, count } = await supabase
 				.from("community_comments")
-				.update({ body, updated_at: new Date().toISOString() })
+				.update({
+					body,
+					updated_at: new Date().toISOString(),
+				})
 				.eq("id", commentId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.gte("created_at", fiveMinutesAgo);
 
 			if (error) throw error;
+			if (count === 0) {
+				throw new Error("Edit window has expired");
+			}
 		},
 
 		onSuccess: (_data, variables) => {

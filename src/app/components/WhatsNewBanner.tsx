@@ -61,7 +61,7 @@ export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 							<Button
 								variant="ghost"
 								size="icon"
-								className="shrink-0 size-7 text-[#9CA3AF] hover:text-white"
+								className="shrink-0 min-w-[44px] min-h-[44px] text-[#9CA3AF] hover:text-white"
 								onClick={handleDismiss}
 								aria-label="Dismiss what's new banner"
 							>

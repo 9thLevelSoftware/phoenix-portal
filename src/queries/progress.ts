@@ -4,6 +4,23 @@ import { supabase } from "@/lib/supabase";
 import { exerciseProgressSchema } from "@/schemas/telemetry";
 import { queryKeys } from "./keys";
 
+/** Fetch distinct exercise names for the user */
+export function exerciseListOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.progress.exercises(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("exercise_progress")
+				.select("exercise_name")
+				.eq("user_id", userId)
+				.order("exercise_name");
+			if (error) throw error;
+			const names = [...new Set((data ?? []).map((d) => d.exercise_name))];
+			return names as string[];
+		},
+	});
+}
+
 /** Exercise-specific progress over time (1RM, volume, weight trends) */
 export function exerciseProgressOptions(userId: string, exerciseName: string) {
 	return queryOptions({

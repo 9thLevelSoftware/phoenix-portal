@@ -160,10 +160,15 @@ function VelocityProfileInner({
 										fontSize={9}
 										fontWeight={500}
 									>
-										{zone.label
-											.split(" ")
-											.map((w) => w[0])
-											.join("")}
+										{zone.zone === "absolute-strength"
+											? "Abs"
+											: zone.zone === "accelerative-strength"
+												? "Acc"
+												: zone.zone === "strength-speed"
+													? "SS"
+													: zone.zone === "speed-strength"
+														? "SpS"
+														: "Sta"}
 									</text>
 								)}
 							</Group>

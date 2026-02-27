@@ -1,4 +1,4 @@
-import { ArrowRight, HeartPulse } from "lucide-react";
+import { ArrowRight, HeartPulse, Lock } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -11,8 +11,35 @@ export function RecoveryDashboardWidget() {
 	const { isPremium } = useSubscription();
 	const { recovery, isLoading, daysSinceFirstSession } = useRecoveryScore();
 
-	// Only render for premium users
-	if (!isPremium) return null;
+	if (!isPremium) {
+		return (
+			<Card className="relative overflow-hidden p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-chart-2/5 pointer-events-none" />
+				<div className="relative z-10">
+					<div className="flex items-center justify-between mb-3">
+						<h3 className="text-xl text-white flex items-center gap-2">
+							<HeartPulse className="w-5 h-5 text-primary" />
+							Recovery
+						</h3>
+						<Lock className="w-4 h-4 text-muted-foreground" />
+					</div>
+					<p className="text-sm text-muted-foreground mb-3">
+						Monitor your recovery readiness between sessions. Get
+						personalized training load insights based on your workout
+						history.
+					</p>
+					<Button
+						variant="outline"
+						size="sm"
+						className="border-primary text-primary hover:bg-primary/10"
+						asChild
+					>
+						<Link to="/pricing">Upgrade to unlock</Link>
+					</Button>
+				</div>
+			</Card>
+		);
+	}
 
 	if (isLoading) {
 		return (

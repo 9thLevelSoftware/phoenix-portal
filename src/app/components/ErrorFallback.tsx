@@ -1,5 +1,6 @@
 import { AlertCircle } from "lucide-react";
 import type { FallbackProps } from "react-error-boundary";
+import { Button } from "@/app/components/ui/button";
 
 export function PageErrorFallback({
 	error,
@@ -13,12 +14,7 @@ export function PageErrorFallback({
 					Something went wrong
 				</h2>
 				<p className="text-muted-foreground mb-6 text-sm">{error.message}</p>
-				<button
-					onClick={resetErrorBoundary}
-					className="px-4 py-2 bg-gradient-to-r from-primary to-chart-2 text-white rounded-lg hover:opacity-90 transition-opacity"
-				>
-					Try Again
-				</button>
+				<Button onClick={resetErrorBoundary}>Try Again</Button>
 			</div>
 		</div>
 	);

@@ -16,7 +16,7 @@ const TIER_BENEFITS: Record<PaidTier, { icon: typeof Flame; label: string }[]> =
 		ELITE: [
 			{ icon: Crown, label: "Session replay" },
 			{ icon: Zap, label: "50Hz telemetry" },
-			{ icon: Flame, label: "Priority support" },
+			{ icon: Flame, label: "Unlimited data export" },
 		],
 	};
 

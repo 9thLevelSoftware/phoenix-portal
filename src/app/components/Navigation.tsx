@@ -9,6 +9,7 @@ import {
 	History,
 	LayoutDashboard,
 	Link2,
+	Loader2,
 	LogOut,
 	Repeat,
 	Target,
@@ -17,6 +18,7 @@ import {
 	Users,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useState } from "react";
 import { Link, NavLink } from "react-router";
 import { TierBadge } from "@/app/components/TierBadge";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
@@ -45,6 +47,7 @@ const navItems = [
 export function Navigation() {
 	const { signOut } = useAuth();
 	const streak = useUIStore((s) => s.streak);
+	const [signingOut, setSigningOut] = useState(false);
 
 	return (
 		<nav className="hidden md:block sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-secondary">
@@ -125,12 +128,22 @@ export function Navigation() {
 							variant="ghost"
 							size="icon"
 							title="Sign out"
+							disabled={signingOut}
 							className="hover:bg-chart-2/10 hover:text-chart-2"
 							onClick={async () => {
-								await signOut();
+								setSigningOut(true);
+								try {
+									await signOut();
+								} finally {
+									setSigningOut(false);
+								}
 							}}
 						>
-							<LogOut className="w-5 h-5 text-secondary-foreground" />
+							{signingOut ? (
+								<Loader2 className="w-5 h-5 text-secondary-foreground animate-spin" />
+							) : (
+								<LogOut className="w-5 h-5 text-secondary-foreground" />
+							)}
 						</Button>
 					</div>
 				</div>
