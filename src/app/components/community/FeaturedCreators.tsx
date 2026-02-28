@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useBlockedUsers } from "@/hooks/useBlockedUsers";
 import {
 	Avatar,
 	AvatarFallback,
@@ -23,7 +24,11 @@ function getInitials(name: string): string {
 }
 
 export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
-	const { data: creators, isLoading } = useQuery(featuredCreatorsOptions());
+	const { data: rawCreators, isLoading } = useQuery(featuredCreatorsOptions());
+	const { blockedUserIds } = useBlockedUsers();
+	const creators = rawCreators?.filter(
+		(c) => !blockedUserIds.has(c.user_id),
+	);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [canScrollLeft, setCanScrollLeft] = useState(false);
 	const [canScrollRight, setCanScrollRight] = useState(false);

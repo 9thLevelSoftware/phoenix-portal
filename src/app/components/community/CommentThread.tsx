@@ -16,6 +16,7 @@ import {
 } from "@/app/components/ui/alert-dialog";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
+import { useBlockedUsers } from "@/hooks/useBlockedUsers";
 import { useCommentRealtime } from "@/hooks/useCommentRealtime";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
@@ -26,6 +27,7 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { commentsOptions } from "@/queries/comments";
 import type { Comment } from "@/schemas/comments";
+import { ContentActionMenu } from "./ContentActionMenu";
 
 interface CommentThreadProps {
 	itemId: string;
@@ -38,10 +40,12 @@ function CommentItem({
 	comment,
 	isOwn,
 	itemId,
+	currentUserId,
 }: {
 	comment: Comment;
 	isOwn: boolean;
 	itemId: string;
+	currentUserId?: string;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [editBody, setEditBody] = useState(comment.body);
@@ -52,7 +56,10 @@ function CommentItem({
 	const canEdit =
 		isOwn && Date.now() - comment.created_at.getTime() < EDIT_WINDOW_MS;
 
-	const authorName = comment.profiles?.display_name ?? "Unknown";
+	const isDeletedUser = comment.user_id === null;
+	const authorName = isDeletedUser
+		? "[Deleted User]"
+		: (comment.profiles?.display_name ?? "Unknown");
 	const timeAgo = formatDistanceToNow(comment.created_at, {
 		addSuffix: true,
 	});
@@ -96,9 +103,19 @@ function CommentItem({
 
 			{/* Content */}
 			<div className="flex-1 min-w-0">
-				<div className="flex items-center gap-2">
-					<span className="text-sm text-white font-medium">{authorName}</span>
-					<span className="text-xs text-muted">{timeAgo}</span>
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<span className="text-sm text-white font-medium">{authorName}</span>
+						<span className="text-xs text-muted">{timeAgo}</span>
+					</div>
+					{currentUserId && !isOwn && (
+						<ContentActionMenu
+							contentId={comment.id}
+							contentType="comment"
+							authorId={comment.user_id}
+							currentUserId={currentUserId}
+						/>
+					)}
 				</div>
 
 				{isEditing ? (
@@ -199,6 +216,7 @@ function CommentItem({
 export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 	const { user } = useAuth();
 	const { isPremium } = useSubscription();
+	const { blockedUserIds } = useBlockedUsers();
 	const [newComment, setNewComment] = useState("");
 
 	const { data: comments, isLoading } = useQuery(commentsOptions(itemId));
@@ -240,14 +258,20 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 				</div>
 			) : comments && comments.length > 0 ? (
 				<div className="divide-y divide-secondary">
-					{comments.map((comment) => (
-						<CommentItem
-							key={comment.id}
-							comment={comment}
-							isOwn={comment.user_id === user?.id}
-							itemId={itemId}
-						/>
-					))}
+					{comments
+						.filter(
+							(c) =>
+								c.user_id === null || !blockedUserIds.has(c.user_id),
+						)
+						.map((comment) => (
+							<CommentItem
+								key={comment.id}
+								comment={comment}
+								isOwn={comment.user_id === user?.id}
+								itemId={itemId}
+								currentUserId={user?.id}
+							/>
+						))}
 				</div>
 			) : (
 				<div className="py-6 text-center text-sm text-muted-foreground">
