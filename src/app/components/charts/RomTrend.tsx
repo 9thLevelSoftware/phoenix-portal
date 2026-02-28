@@ -277,22 +277,45 @@ export function RomTrend({
 	}));
 
 	const average = data.reduce((sum, d) => sum + d.rom, 0) / data.length;
+	const repCount = repSummaries.length;
 
 	return (
-		<div style={{ position: "relative", height }}>
-			<ParentSize>
-				{({ width }) =>
-					width > 0 ? (
-						<RomChart
-							data={data}
-							average={average}
-							showAverage={showAverage}
-							width={width}
-							height={height}
-						/>
-					) : null
-				}
-			</ParentSize>
+		<div
+			role="img"
+			aria-label={`Range of motion trend chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Average ROM: ${average.toFixed(0)} mm.`}
+		>
+			<div aria-hidden="true" style={{ position: "relative", height }}>
+				<ParentSize>
+					{({ width }) =>
+						width > 0 ? (
+							<RomChart
+								data={data}
+								average={average}
+								showAverage={showAverage}
+								width={width}
+								height={height}
+							/>
+						) : null
+					}
+				</ParentSize>
+			</div>
+			<table className="sr-only">
+				<caption>Range of motion data by rep</caption>
+				<thead>
+					<tr>
+						<th>Rep</th>
+						<th>ROM (mm)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{data.map((d) => (
+						<tr key={d.rep}>
+							<td>Rep {d.rep}</td>
+							<td>{d.rom.toFixed(1)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</div>
 	);
 }
