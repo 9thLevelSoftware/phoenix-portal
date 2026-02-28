@@ -36,6 +36,7 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { EmberParticles } from "./EmberParticles";
 import { PhoenixLogo } from "./PhoenixLogo";
@@ -208,51 +209,19 @@ export function LandingPage() {
 		},
 	];
 
-	const pricingTiers = [
-		{
-			name: "Free",
-			price: "$0",
-			period: "forever",
-			features: [
-				"Basic workout tracking",
-				"30-day history",
-				"Community access",
-				"Routine sharing",
-			],
-			cta: "Get Started",
-			highlight: false,
-		},
-		{
-			name: "Phoenix",
-			price: "$9.99",
-			period: "per month",
-			features: [
-				"Unlimited workout history",
-				"Advanced analytics",
-				"Training cycles",
-				"Priority challenges",
-				"All integrations",
-				"Export data",
-			],
-			cta: "Rise Now",
-			highlight: true,
-		},
-		{
-			name: "Elite",
-			price: "$19.99",
-			period: "per month",
-			features: [
-				"Everything in Phoenix",
-				"AI-powered insights",
-				"Personal coaching",
-				"Custom badge creation",
-				"API access",
-				"Priority support",
-			],
-			cta: "Forge Ahead",
-			highlight: false,
-		},
-	];
+	const pricingTiers = TIER_PRICING.map((t) => ({
+		name: t.name,
+		price: t.monthlyPrice,
+		period: t.tier === "FREE" ? "forever" : "per month",
+		features: t.features,
+		cta:
+			t.tier === "FREE"
+				? "Get Started"
+				: t.tier === "PHOENIX"
+					? "Rise Now"
+					: "Forge Ahead",
+		highlight: t.tier === "PHOENIX",
+	}));
 
 	// Auth dialog using Radix Dialog for accessibility (focus trap, ARIA, keyboard nav)
 	const authDialog = (
