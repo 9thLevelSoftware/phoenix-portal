@@ -14,40 +14,79 @@ import {
 	Repeat,
 	Target,
 	Trophy,
-	User,
 	Users,
 } from "lucide-react";
-import { motion } from "motion/react";
+import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
-import { Link, NavLink } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { TierBadge } from "@/app/components/TierBadge";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
+import {
+	NavigationMenu,
+	NavigationMenuContent,
+	NavigationMenuItem,
+	NavigationMenuLink,
+	NavigationMenuList,
+	NavigationMenuTrigger,
+} from "@/app/components/ui/navigation-menu";
+import { cn } from "@/app/components/ui/utils";
 import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
 import { useUIStore } from "@/stores/useUIStore";
 import { PhoenixLogo } from "./PhoenixLogo";
 
-const navItems = [
-	{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-	{ path: "/history", label: "History", icon: History },
-	{ path: "/records", label: "Records", icon: Award },
-	{ path: "/analytics", label: "Analytics", icon: BarChart3 },
-	{ path: "/biomechanics", label: "Biomechanics", icon: Activity },
-	{ path: "/challenges", label: "Challenges", icon: Trophy },
-	{ path: "/goals", label: "Goals", icon: Target },
-	{ path: "/recovery", label: "Recovery", icon: HeartPulse },
-	{ path: "/community", label: "Community", icon: Users },
-	{ path: "/routines", label: "Routines", icon: Dumbbell },
-	{ path: "/cycles", label: "Cycles", icon: Repeat },
-	{ path: "/integrations", label: "Integrations", icon: Link2 },
-	{ path: "/profile", label: "Profile", icon: User },
+interface NavItem {
+	path: string;
+	label: string;
+	icon: LucideIcon;
+}
+
+interface NavGroup {
+	label: string;
+	items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+	{
+		label: "Training",
+		items: [
+			{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+			{ path: "/history", label: "History", icon: History },
+			{ path: "/analytics", label: "Analytics", icon: BarChart3 },
+			{ path: "/records", label: "Records", icon: Award },
+		],
+	},
+	{
+		label: "Programs",
+		items: [
+			{ path: "/routines", label: "Routines", icon: Dumbbell },
+			{ path: "/cycles", label: "Cycles", icon: Repeat },
+			{ path: "/goals", label: "Goals", icon: Target },
+			{ path: "/challenges", label: "Challenges", icon: Trophy },
+		],
+	},
+	{
+		label: "Body",
+		items: [
+			{ path: "/biomechanics", label: "Biomechanics", icon: Activity },
+			{ path: "/recovery", label: "Recovery", icon: HeartPulse },
+		],
+	},
+	{
+		label: "Social",
+		items: [
+			{ path: "/community", label: "Community", icon: Users },
+			{ path: "/integrations", label: "Integrations", icon: Link2 },
+		],
+	},
 ];
 
 export function Navigation() {
 	const { signOut } = useAuth();
 	const streak = useUIStore((s) => s.streak);
 	const [signingOut, setSigningOut] = useState(false);
+	const location = useLocation();
 
 	return (
 		<nav className="hidden md:block sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-secondary">
@@ -65,32 +104,52 @@ export function Navigation() {
 					</Link>
 
 					{/* Navigation Items */}
-					<div className="flex items-center gap-1">
-						{navItems.map((item) => (
-							<NavLink
-								key={item.path}
-								to={item.path}
-								className={({ isActive }) =>
-									`relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-secondary-foreground hover:text-white hover:bg-primary/10 ${
-										isActive ? "text-white" : ""
-									}`
-								}
-							>
-								{({ isActive }) => (
-									<>
-										<item.icon className="w-4 h-4 mr-2" />
-										{item.label}
-										{isActive && (
-											<motion.div
-												layoutId="activeTab"
-												className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2"
-											/>
-										)}
-									</>
-								)}
-							</NavLink>
-						))}
-					</div>
+					<NavigationMenu>
+						<NavigationMenuList>
+							{NAV_GROUPS.map((group) => {
+								const isGroupActive = group.items.some(
+									(item) =>
+										location.pathname === item.path ||
+										location.pathname.startsWith(item.path + "/"),
+								);
+								return (
+									<NavigationMenuItem key={group.label}>
+										<NavigationMenuTrigger
+											className={cn(
+												"bg-transparent text-secondary-foreground hover:bg-primary/10 hover:text-white data-[state=open]:bg-primary/10",
+												isGroupActive && "text-white",
+											)}
+										>
+											{group.label}
+										</NavigationMenuTrigger>
+										<NavigationMenuContent>
+											<ul className="grid w-[240px] gap-1 p-2">
+												{group.items.map((item) => (
+													<li key={item.path}>
+														<NavigationMenuLink asChild>
+															<NavLink
+																to={item.path}
+																className={({ isActive }) =>
+																	cn(
+																		"flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+																		"text-secondary-foreground hover:bg-primary/10 hover:text-white",
+																		isActive && "bg-primary/10 text-white",
+																	)
+																}
+															>
+																<item.icon className="w-4 h-4" />
+																{item.label}
+															</NavLink>
+														</NavigationMenuLink>
+													</li>
+												))}
+											</ul>
+										</NavigationMenuContent>
+									</NavigationMenuItem>
+								);
+							})}
+						</NavigationMenuList>
+					</NavigationMenu>
 
 					{/* Right Side */}
 					<div className="flex items-center gap-4">
