@@ -46,13 +46,13 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Accessibility
 
-- [ ] **A11Y-01**: All Framer Motion animations respect prefers-reduced-motion OS setting
-- [ ] **A11Y-02**: Skip-to-content link visible on keyboard focus
+- [x] **A11Y-01**: All Framer Motion animations respect prefers-reduced-motion OS setting
+- [x] **A11Y-02**: Skip-to-content link visible on keyboard focus
 - [ ] **A11Y-03**: All charts have descriptive aria-labels; Canvas charts have text alternatives
 
 ### Navigation
 
-- [ ] **NAV-01**: Desktop navigation restructured into grouped categories (all 26 route paths preserved)
+- [x] **NAV-01**: Desktop navigation restructured into grouped categories (all 26 route paths preserved)
 
 ### Database
 
@@ -116,10 +116,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-05 | Phase 20 | Pending |
 | MOD-01 | Phase 18 | Complete |
 | MOD-02 | Phase 18 | Complete |
-| A11Y-01 | Phase 19 | Pending |
-| A11Y-02 | Phase 19 | Pending |
+| A11Y-01 | Phase 19 | Complete |
+| A11Y-02 | Phase 19 | Complete |
 | A11Y-03 | Phase 19 | Pending |
-| NAV-01 | Phase 19 | Pending |
+| NAV-01 | Phase 19 | Complete |
 | DB-01 | Phase 15 | Complete |
 | DB-02 | Phase 15 | Complete |
 

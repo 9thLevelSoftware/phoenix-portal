@@ -184,7 +184,7 @@ Plans:
 | 16. Legal & Pricing | 3/3 | Complete    | 2026-02-28 | - |
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
-| 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |
+| 19. Accessibility & Navigation | 2/3 | In Progress|  | - |
 | 20. Operations & Validation | v1.2 | 0/? | Not started | - |
 
 ---

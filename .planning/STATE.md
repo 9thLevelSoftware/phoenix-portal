@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T15:11:38Z"
+last_updated: "2026-02-28T15:37:37Z"
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 18
+  completed_plans: 17
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 18 complete — all 3 plans done (v1.2 Launch Readiness - Community Safety)
+**Current focus:** Phase 19 in progress — Accessibility & Navigation (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: 18 — fifth of 7 phases in v1.2 (Community Safety)
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-02-28 — Completed 18-03-PLAN.md (Schema nullability fix for deleted-user data)
+Phase: 19 — sixth of 7 phases in v1.2 (Accessibility & Navigation)
+Plan: 2 of 3 complete (19-01, 19-03 done; 19-02 pending)
+Status: In Progress
+Last activity: 2026-02-28 — Completed 19-01-PLAN.md (Accessibility: reduced motion, skip-to-content, SubscriptionGate fix)
 
-Progress: [▓▓▓▓▓▓▓▓▓▓] 50% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 56% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓▓▓] 50% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 15
-- Average duration: 3.4 min
-- Total execution time: ~51 min
+- Total plans completed: 17
+- Average duration: 3.2 min
+- Total execution time: ~55 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -63,6 +63,8 @@ Progress: [▓▓▓▓▓▓▓▓▓▓] 50% (v1.2)
 | 18 | 01 | 3m 25s | 2 | 7 |
 | 18 | 02 | 7m 31s | 3 | 11 |
 | 18 | 03 | 0m 56s | 1 | 2 |
+| 19 | 01 | 2m 17s | 2 | 4 |
+| 19 | 03 | 1m 38s | 1 | 1 |
 
 ## Accumulated Context
 
@@ -122,6 +124,13 @@ v1.2 decisions:
 - [18-02] Block filtering applied to both desktop and mobile community components independently
 - [18-02] Comments query also converted from !inner to left join (consistency with feed query fix)
 
+- [19-01] animate-spin exempted from reduced-motion suppression (functional loading indicator, not decorative)
+- [19-01] SkipToContent placed before OfflineBanner as first focusable element in DOM
+- [19-01] main element wraps ErrorBoundary+Suspense+Outlet, not the full page
+- [19-03] Profile excluded from dropdown groups, kept accessible via avatar link in right-side controls
+- [19-03] 12 nav items in 4 groups (Training 4, Programs 4, Body 2, Social 2) with Profile via avatar
+- [19-03] Removed motion/framer layoutId active indicator in favor of className-based active states
+
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
 - ~~Pricing final values ($9.99 vs $14.99) must be resolved before Phase 16~~ RESOLVED: $14.99/$24.99 confirmed in 16-01
@@ -140,11 +149,11 @@ None.
 
 **v1.2 research flags:**
 - ~~GDPR account deletion: Stripe customer deletion vs financial record retention~~ RESOLVED in 17-03: Stripe customer retained, only subscription cancelled
-- Celebration animation fallback design: opacity-only fade vs static banner under reduced-motion (decide before Phase 19)
-- Navigation restructure pattern: dropdown menus vs sidebar (decide before Phase 19)
+- ~~Celebration animation fallback design: opacity-only fade vs static banner under reduced-motion~~ RESOLVED in 19-01: MotionConfig reducedMotion="user" preserves opacity, CSS suppresses decorative keyframes
+- ~~Navigation restructure pattern: dropdown menus vs sidebar~~ RESOLVED in 19-03: Radix NavigationMenu dropdowns with 4 category groups
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 18-03-PLAN.md (Schema nullability fix for deleted-user data)
-Resume file: Phase 18 fully complete (3/3 plans). Next phase: 19
+Stopped at: Completed 19-01-PLAN.md (Accessibility: reduced motion, skip-to-content, SubscriptionGate fix)
+Resume file: Phase 19 in progress (2/3 plans done: 19-01, 19-03). Remaining: 19-02
