@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { AnalyticsMobile } from "@/app/components/mobile/AnalyticsMobile";
+import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -416,6 +417,7 @@ export function Analytics() {
 					</div>
 				</div>
 
+				<SubscriptionGate requiredTier="PHOENIX" featureName="Advanced Analytics">
 				{!hasData ? (
 					<EmptyState
 						icon={TrendingUp}
@@ -978,6 +980,7 @@ export function Analytics() {
 						</Tabs>
 					</>
 				)}
+				</SubscriptionGate>
 			</div>
 		</div>
 	);

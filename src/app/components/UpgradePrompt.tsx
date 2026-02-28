@@ -3,22 +3,34 @@ import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
+import { TIER_PRICING } from "@/lib/pricing";
 
 type PaidTier = "PHOENIX" | "ELITE";
 
-const TIER_BENEFITS: Record<PaidTier, { icon: typeof Flame; label: string }[]> =
-	{
-		PHOENIX: [
-			{ icon: Flame, label: "Advanced analytics" },
-			{ icon: Zap, label: "Force curves & VBT zones" },
-			{ icon: Crown, label: "Community sharing" },
-		],
-		ELITE: [
-			{ icon: Crown, label: "Session replay" },
-			{ icon: Zap, label: "50Hz telemetry" },
-			{ icon: Flame, label: "Unlimited data export" },
-		],
-	};
+// Icon sets per tier for display alongside benefit labels
+const TIER_ICONS: Record<PaidTier, (typeof Flame)[]> = {
+	PHOENIX: [Flame, Zap, Crown],
+	ELITE: [Crown, Zap, Flame],
+};
+
+// Derive benefits from shared pricing constants (single source of truth)
+const TIER_BENEFITS: Record<
+	PaidTier,
+	{ icon: typeof Flame; label: string }[]
+> = Object.fromEntries(
+	(["PHOENIX", "ELITE"] as const).map((tier) => {
+		const pricing = TIER_PRICING.find((t) => t.tier === tier)!;
+		const icons = TIER_ICONS[tier];
+		// Skip "Everything in X" entries, take up to 3 features
+		const features = pricing.features
+			.filter((f) => !f.startsWith("Everything in"))
+			.slice(0, 3);
+		return [
+			tier,
+			features.map((label, i) => ({ icon: icons[i] ?? Flame, label })),
+		];
+	}),
+) as Record<PaidTier, { icon: typeof Flame; label: string }[]>;
 
 const TIER_COLORS: Record<
 	PaidTier,
