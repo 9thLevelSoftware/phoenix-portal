@@ -172,83 +172,66 @@ export async function exportAllUserData(
 		// Nested data (joined through parent tables)
 		// ──────────────────────────────────────
 
-		// Exercises via workout IDs
+		// Exercises via workout IDs (exercises table does NOT have user_id)
 		const workoutIds = workoutResult?.map((w) => w.id) ?? [];
-		let exerciseIds: string[] = [];
 
 		if (workoutIds.length > 0) {
-			const exerciseResult = await addTable("exercises", "exercises",
+			await addTable("exercises", "exercises",
 				supabase
 					.from("exercises")
 					.select("*")
 					.in("workout_id", workoutIds),
 			);
-			exerciseIds = exerciseResult?.map((e) => e.id) ?? [];
 		} else {
 			progress("Skipping exercises (no workouts)...");
 		}
 
-		// Sets via exercise IDs
-		let setIds: string[] = [];
+		// Sets — direct user_id query (denormalized in Phase 15 DB-02)
+		await addTable("sets", "sets",
+			supabase
+				.from("sets")
+				.select("*")
+				.eq("user_id", userId),
+		);
 
-		if (exerciseIds.length > 0) {
-			const setResult = await addTable("sets", "sets",
-				supabase
-					.from("sets")
-					.select("*")
-					.in("exercise_id", exerciseIds),
-			);
-			setIds = setResult?.map((s) => s.id) ?? [];
-		} else {
-			progress("Skipping sets (no exercises)...");
-		}
+		// Rep summaries — direct user_id query (denormalized in Phase 15 DB-02)
+		await addTable("rep_summaries", "rep-summaries",
+			supabase
+				.from("rep_summaries")
+				.select("*")
+				.eq("user_id", userId),
+		);
 
-		// Rep summaries via set IDs
-		if (setIds.length > 0) {
-			await addTable("rep_summaries", "rep-summaries",
-				supabase
-					.from("rep_summaries")
-					.select("*")
-					.in("set_id", setIds),
-			);
-		} else {
-			progress("Skipping rep summaries (no sets)...");
-		}
+		// Rep telemetry — LARGE table, paginated at 1000 rows, direct user_id query
+		progress("Exporting rep_telemetry (paginated)...");
+		const PAGE_SIZE = 1000;
+		const allTelemetry: Record<string, unknown>[] = [];
+		let offset = 0;
+		let hasMore = true;
 
-		// Rep telemetry — LARGE table, paginated at 1000 rows
-		if (setIds.length > 0) {
-			progress("Exporting rep_telemetry (paginated)...");
-			const PAGE_SIZE = 1000;
-			const allTelemetry: Record<string, unknown>[] = [];
-			let offset = 0;
-			let hasMore = true;
+		while (hasMore) {
+			const { data, error } = await supabase
+				.from("rep_telemetry")
+				.select("*")
+				.eq("user_id", userId)
+				.range(offset, offset + PAGE_SIZE - 1);
 
-			while (hasMore) {
-				const { data, error } = await supabase
-					.from("rep_telemetry")
-					.select("*")
-					.in("set_id", setIds)
-					.range(offset, offset + PAGE_SIZE - 1);
-
-				if (error) {
-					console.warn("Failed to export rep_telemetry page:", error);
-					break;
-				}
-
-				if (data && data.length > 0) {
-					allTelemetry.push(...data);
-					offset += PAGE_SIZE;
-					hasMore = data.length === PAGE_SIZE;
-				} else {
-					hasMore = false;
-				}
+			if (error) {
+				console.warn("Failed to export rep_telemetry page:", error);
+				break;
 			}
 
-			if (allTelemetry.length > 0) {
-				zip.file("telemetry.json", JSON.stringify(allTelemetry, null, 2));
+			if (data && data.length > 0) {
+				allTelemetry.push(...data);
+				offset += PAGE_SIZE;
+				hasMore = data.length === PAGE_SIZE;
+			} else {
+				hasMore = false;
 			}
-		} else {
-			progress("Skipping rep telemetry (no sets)...");
+		}
+
+		if (allTelemetry.length > 0) {
+			zip.file("telemetry.json", JSON.stringify(allTelemetry, null, 2));
 		}
 
 		// Routine exercises via routine IDs
