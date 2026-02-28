@@ -36,8 +36,8 @@ Requirements for launch readiness. Each maps to roadmap phases.
 - [x] **OPS-01**: GitHub Actions CI pipeline with biome, vitest, playwright, deploy gates
 - [x] **OPS-02**: Stripe webhook integration tests for all 5 event types
 - [x] **OPS-03**: FAQ page and contact form for basic support
-- [ ] **OPS-04**: Mobile-to-portal sync pipeline validated end-to-end
-- [ ] **OPS-05**: CLAUDE.md updated to reflect actual architecture
+- [x] **OPS-04**: Mobile-to-portal sync pipeline validated end-to-end
+- [x] **OPS-05**: CLAUDE.md updated to reflect actual architecture
 
 ### Community Moderation
 
@@ -112,8 +112,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-01 | Phase 15 | Complete |
 | OPS-02 | Phase 20 | Complete |
 | OPS-03 | Phase 20 | Complete |
-| OPS-04 | Phase 20 | Pending |
-| OPS-05 | Phase 20 | Pending |
+| OPS-04 | Phase 20 | Complete |
+| OPS-05 | Phase 20 | Complete |
 | MOD-01 | Phase 18 | Complete |
 | MOD-02 | Phase 18 | Complete |
 | A11Y-01 | Phase 19 | Complete |

@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
 - ✅ **v1.1 Full UX Overhaul** — Phases 9-13 (shipped 2026-02-17)
-- 🚧 **v1.2 Launch Readiness** — Phases 14-20 (in progress)
+- ✅ **v1.2 Launch Readiness** — Phases 14-20 (shipped 2026-02-28)
 
 ## Phases
 
@@ -34,7 +34,7 @@
 
 </details>
 
-### 🚧 v1.2 Launch Readiness (In Progress)
+### ✅ v1.2 Launch Readiness (Shipped 2026-02-28)
 
 **Milestone Goal:** Address all board-identified blockers (legal, security, operational, UX) to make Phoenix Portal launch-ready for public release with paid tiers.
 
@@ -44,7 +44,7 @@
 - [x] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent (completed 2026-02-28)
 - [x] **Phase 18: Community Safety** - Content reporting and user blocking for community features (completed 2026-02-28)
 - [x] **Phase 19: Accessibility & Navigation** - Reduced-motion support, skip-to-content, chart accessibility, desktop nav restructure (completed 2026-02-28)
-- [ ] **Phase 20: Operations & Validation** - Stripe billing tests, support infrastructure, sync validation, documentation update
+- [x] **Phase 20: Operations & Validation** - Stripe billing tests, support infrastructure, sync validation, documentation update (completed 2026-02-28)
 
 ## Phase Details
 
@@ -160,8 +160,8 @@ Plans:
 Plans:
 - [x] 20-01-PLAN.md — CI pipeline fix (.npmrc + build env vars) and data-export.ts join-path optimization (gap closure)
 - [x] 20-02-PLAN.md — Stripe webhook integration tests for all 5 event types (TDD)
-- [ ] 20-03-PLAN.md — FAQ page with support contact information and route registration
-- [ ] 20-04-PLAN.md — CLAUDE.md accuracy rewrite and mobile-to-portal sync pipeline documentation
+- [x] 20-03-PLAN.md — FAQ page with support contact information and route registration
+- [x] 20-04-PLAN.md — CLAUDE.md accuracy rewrite and mobile-to-portal sync pipeline documentation
 
 ## Progress
 
@@ -187,7 +187,7 @@ Plans:
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
 | 19. Accessibility & Navigation | 3/3 | Complete    | 2026-02-28 | - |
-| 20. Operations & Validation | 3/4 | In Progress|  | - |
+| 20. Operations & Validation | 4/4 | Complete | 2026-02-28 | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*

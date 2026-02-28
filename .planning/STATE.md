@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
-status: in-progress
-last_updated: "2026-02-28T16:22:29Z"
+status: complete
+last_updated: "2026-02-28T16:27:38Z"
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 20 in progress — Operations & Validation (v1.2 Launch Readiness)
+**Current focus:** v1.2 Launch Readiness milestone COMPLETE -- all 22 plans across 7 phases executed
 
 ## Current Position
 
 Phase: 20 — seventh of 7 phases in v1.2 (Operations & Validation)
-Plan: 3 of 4 complete (20-01, 20-02, 20-03 done)
-Status: In Progress
-Last activity: 2026-02-28 — Completed 20-03-PLAN.md (FAQ page and support contact)
+Plan: 4 of 4 complete (20-01, 20-02, 20-03, 20-04 done)
+Status: Complete
+Last activity: 2026-02-28 — Completed 20-04-PLAN.md (CLAUDE.md accuracy rewrite)
 
-Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░] 95% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░] 95% (v1
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 20
-- Average duration: 3.2 min
-- Total execution time: ~64 min
+- Total plans completed: 22
+- Average duration: 3.1 min
+- Total execution time: ~66 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -69,6 +69,7 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░] 95% (v1
 | 20 | 01 | 1m 41s | 2 | 3 |
 | 20 | 02 | 2m 14s | 1 | 1 |
 | 20 | 03 | 2m 33s | 2 | 3 |
+| 20 | 04 | 2m 14s | 1 | 1 |
 
 ## Accumulated Context
 
@@ -144,6 +145,9 @@ v1.2 decisions:
 - [20-02] getTierFromPriceId accepts priceMapping parameter for testability (avoids Deno.env dependency)
 - [20-03] GitHub issues as sole support channel (solo dev, no email support SLA)
 - [20-03] FAQ answers use React.ReactNode for inline Link components to /pricing and /privacy
+- [20-04] Corrected query file count to 18 (17 hooks + keys.ts) vs plan's 17
+- [20-04] E2E test directory documented as e2e/ (actual) not tests/ (plan assumed)
+- [20-04] Documented 13 hooks in src/hooks/ with named examples for completeness
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -169,5 +173,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 20-03-PLAN.md (FAQ page and support contact)
-Resume file: Phase 20 in progress (3/4 plans done: 20-01, 20-02, 20-03). Next: 20-04.
+Stopped at: Completed 20-04-PLAN.md (CLAUDE.md accuracy rewrite) -- v1.2 MILESTONE COMPLETE
+Resume file: All v1.2 plans complete (22/22). Phase 20 done (4/4). Milestone v1.2 Launch Readiness shipped.
