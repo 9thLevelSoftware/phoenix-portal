@@ -153,7 +153,9 @@ export function TermsOfService() {
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">Billing:</span> Paid
-										subscriptions are billed monthly or annually via Stripe
+										subscriptions are billed monthly or annually through the
+										Phoenix mobile app via the Apple App Store or Google Play
+										Store
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -168,7 +170,8 @@ export function TermsOfService() {
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">Refunds:</span> Refunds are
-										handled per Stripe's policies
+										handled per your app store's policies (Apple App Store or
+										Google Play Store)
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -176,6 +179,15 @@ export function TermsOfService() {
 									<span>
 										<span className="font-semibold">Price Changes:</span> We may
 										change pricing with 30 days notice to existing subscribers
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Portal Access:</span> The
+										Phoenix Portal is a companion dashboard. All subscription
+										management (signup, upgrades, downgrades, cancellations) is
+										handled in the Phoenix mobile app
 									</span>
 								</li>
 							</ul>

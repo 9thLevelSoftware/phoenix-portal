@@ -100,7 +100,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Subscription tier and billing status (managed via Stripe)
+										Subscription tier and billing status (managed via the
+									Phoenix mobile app through your app store)
 									</span>
 								</li>
 							</ul>
@@ -263,8 +264,13 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Stripe:</span> Payment
-										processing for subscriptions (we do not store card details)
+										<span className="font-semibold">
+											App Store Billing:
+										</span>{" "}
+										Subscription payments are processed by Apple (App Store) or
+										Google (Play Store) through the Phoenix mobile app. We do
+										not store payment card details. Subscription status is
+										synced to the Portal via RevenueCat webhooks.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -351,7 +357,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Stripe processes payment information for subscriptions
+										Subscription payments are processed through the Apple App
+										Store or Google Play Store via the Phoenix mobile app
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
