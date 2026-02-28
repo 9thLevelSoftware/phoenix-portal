@@ -53,7 +53,7 @@
 **Milestone Goal:** Replace Stripe with RevenueCat as the subscription billing provider, making the portal a consumer of subscription status managed by the mobile app. Net reduction in code and infrastructure.
 
 - [x] **Phase 21: Database Schema & Webhook Handler** - Evolve subscriptions table, build RevenueCat webhook Edge Function, define tier mapping, and test the data pipeline (3/3 complete)
-- [ ] **Phase 22: UI Migration & Stripe Removal** - Update all user-facing subscription touchpoints and completely remove Stripe infrastructure
+- [x] **Phase 22: UI Migration & Stripe Removal** - Update all user-facing subscription touchpoints and completely remove Stripe infrastructure
 - [ ] **Phase 23: Verification & Polish** - Add reliability features, verify end-to-end subscription flow, and confirm zero regressions
 
 ## Phase Details
@@ -88,9 +88,9 @@ Plans:
 **Plans**: 3 (all planned)
 
 Plans:
-- [ ] 22-01: UI Component Migration (wave 1) — Remove Stripe checkout/portal from PricingPlans, Profile, UpgradePrompt; add "Subscribe in App" CTAs
+- [x] 22-01: UI Component Migration (wave 1) — Remove Stripe checkout/portal from PricingPlans, Profile, UpgradePrompt; add "Subscribe in App" CTAs
 - [x] 22-02: Stripe Infrastructure Removal (wave 2) — Delete stripe.ts, 3 Edge Functions, @stripe/stripe-js dep, CSP directive, test file; modify delete-account
-- [ ] 22-03: Legal Pages & Verification (wave 3) — Update TermsOfService and PrivacyPolicy; run comprehensive Stripe audit
+- [x] 22-03: Legal Pages & Verification (wave 3) — Update TermsOfService and PrivacyPolicy; run comprehensive Stripe audit
 
 ### Phase 23: Verification & Polish
 **Goal**: Subscription flow is reliable end-to-end with graceful handling of edge cases and zero regressions
@@ -119,7 +119,7 @@ Phases execute in numeric order: 21 -> 22 -> 23
 | 9-13 | v1.1 | 22/22 | Complete | 2026-02-17 |
 | 14-20 | v1.2 | 22/22 | Complete | 2026-02-28 |
 | 21. Database Schema & Webhook Handler | v1.3 | 3/3 | Complete | 2026-02-28 |
-| 22. UI Migration & Stripe Removal | v1.3 | 2/3 | In progress | - |
+| 22. UI Migration & Stripe Removal | v1.3 | 3/3 | Complete | 2026-02-28 |
 | 23. Verification & Polish | v1.3 | 0/2 | Not started | - |
 
 ---

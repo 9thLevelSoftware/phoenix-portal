@@ -1,267 +1,304 @@
-# Feature Research: v1.2 Launch Readiness Hardening
+# Feature Research: RevenueCat Billing Migration
 
-**Domain:** Security, legal compliance, accessibility, operational infrastructure for premium SaaS web app
-**Researched:** 2026-02-27
-**Confidence:** HIGH
+**Domain:** Subscription billing migration (Stripe to RevenueCat) for web companion app
+**Researched:** 2026-02-28
+**Confidence:** HIGH (existing codebase thoroughly audited, RevenueCat docs verified)
 
-## Scope
+## Context
 
-This research covers ONLY the new features needed for v1.2 launch readiness, as identified by the Board of Directors resolution. All existing features (analytics, community, session replay, billing, PWA, etc.) are considered shipped. The focus is on what's missing to responsibly accept payments from real users.
+Phoenix Portal currently uses Stripe for web subscription billing (checkout, portal, webhooks). The mobile app uses RevenueCat. This migration makes the portal a **consumer** of subscription status managed by RevenueCat, not a billing originator. The portal will no longer initiate purchases -- users subscribe through the mobile app, and the portal reads that status.
+
+**Existing Stripe surface area (6 source files + 3 Edge Functions + 1 SQL migration):**
+- `src/lib/stripe.ts` -- `redirectToCheckout()`, `openCustomerPortal()`, `@stripe/stripe-js` import
+- `src/app/components/PricingPlans.tsx` -- checkout flow with `PRICE_IDS`, `redirectToCheckout()` calls
+- `src/app/components/Profile.tsx` -- imports `openCustomerPortal` for subscription management
+- `src/lib/__tests__/stripe-webhook-handlers.test.ts` -- webhook handler tests
+- `src/lib/database.types.ts` -- `subscriptions` table with `stripe_customer_id`, `stripe_subscription_id`
+- `src/lib/export/data-export.ts` -- references subscription data for GDPR export
+- `supabase/functions/stripe-checkout/` -- creates Stripe Checkout sessions
+- `supabase/functions/stripe-portal/` -- creates Stripe Customer Portal sessions
+- `supabase/functions/stripe-webhooks/` -- handles 5 Stripe webhook events, writes to `subscriptions` table
+- `supabase/migrations/00001_create_subscriptions.sql` -- Stripe-oriented `subscriptions` table + `user_subscription_tier()` function
+- 6 `VITE_STRIPE_*` environment variables in client config
+
+**Pre-existing RevenueCat infrastructure (from mobile app, already in Supabase):**
+- `user_subscriptions` table exists with columns: `revenuecat_customer_id`, `product_id`, `subscription_status`, `expires_at`, `last_verified_at`, `user_id`
+- Table currently marked DEPRECATED in migration `20260228_rls_denormalization.sql` (must be un-deprecated)
+- No `tier` column exists on `user_subscriptions` -- must be added or derived from `product_id`
 
 ---
 
 ## Feature Landscape
 
-### Table Stakes (Users Expect These)
+### Table Stakes: Core Migration (Must Ship Together)
 
-Features users assume exist when they pay money for a SaaS product. Missing any of these is a launch blocker.
+Features that must deploy atomically. Missing any one = broken billing system.
 
-| Feature | Why Expected | Complexity | Depends On | Notes |
-|---------|--------------|------------|------------|-------|
-| **Privacy Policy (rewritten)** | Legal requirement; current policy says "we collect nothing" while storing data in Supabase with Sentry, Stripe, and 4 OAuth providers | LOW | Nothing | The existing `PrivacyPolicy.tsx` is the mobile app's policy, not the portal's. Must be rewritten from scratch to disclose: Supabase data storage, Stripe payment processing, Sentry error monitoring, OAuth data from Strava/Fitbit/Garmin/Hevy, cookies/local storage, biometric/health data handling. Board P0 item. |
-| **Terms of Service** | Cannot legally charge customers without ToS. Stripe requires merchant ToS. | LOW | Nothing | No ToS exists anywhere in the codebase. Needs: acceptable use policy, subscription terms, refund policy, limitation of liability, content ownership for community-shared routines, data retention. Board P0 item. |
-| **Pricing consistency fix** | $9.99 on landing page vs $14.99 on pricing page destroys trust | LOW | Nothing | Not a feature build -- just a content fix. But it's a P0 blocker. Board P0 item. |
-| **Free-tier gating enforcement** | Pricing page promises limits (e.g., 30 sessions of history) that code doesn't enforce | MEDIUM | Existing `SubscriptionGate` component | Current `SubscriptionGate` only gates entire features (PHOENIX/ELITE). Free tier needs usage-limit enforcement: capped history, restricted analytics depth, limited community interactions. Must enforce at both UI and RLS level. Board P0 item. |
-| **CI/CD pipeline** | Any SaaS accepting payments needs automated build/test/deploy with rollback capability | MEDIUM | Existing Vitest + Playwright configs | No GitHub Actions workflows exist. Need: PR validation (biome lint + vitest + playwright), deploy gate, environment secrets management. Playwright config already supports CI mode (`forbidOnly`, `retries: 2`, `workers: 1`). Board P1 item. |
-| **GDPR data export** | Article 20 (right to data portability). EU users can request all their data in machine-readable format | MEDIUM | Supabase Edge Functions | Must export: profile, workout history, personal records, routines, cycles, goals, community posts/comments, integration data. CSV export for workouts already exists (v1.0), but GDPR export needs ALL data, not just workouts. Edge Function to compile and deliver as ZIP. Board P1 item. |
-| **GDPR account deletion** | Article 17 (right to erasure). 2025 GDPR enforcement priority. Must delete across ALL systems including Stripe and Sentry | HIGH | Supabase Edge Functions, Stripe API, Sentry API | Must cascade: Supabase user data (all tables), Supabase Auth account, Stripe customer record, Sentry user data, OAuth tokens at third-party providers. Must handle: confirmation flow, grace period (30 days recommended), data that must be retained for legal/tax purposes (invoices). Board P1 item. |
-| **Basic support infrastructure (FAQ + contact)** | Paying customers need a way to get help | LOW | Nothing | No FAQ page, no contact form, no support email exists. Minimum: static FAQ page covering common questions (billing, data sync, account management), contact form that sends to a shared inbox (Supabase Edge Function to email, or embed a form service). Board P1 item. |
-| **Content moderation (report/flag/block)** | Community features without moderation tools are a liability | MEDIUM | Existing community components | Zero report/flag/block mechanisms exist in the community components. Need: report button on community posts and comments, report categories (spam, offensive, copyright, other), user blocking (client-side mute + server-side), admin review queue (can be simple DB table + future admin UI). Board P2 item but should be P1 for paid launch -- community content is user-generated. |
+| Feature | Why Required | Complexity | Existing Code Affected |
+|---------|-------------|------------|----------------------|
+| RevenueCat webhook Edge Function | Receives subscription lifecycle events (INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION, BILLING_ISSUE, PRODUCT_CHANGE, UNCANCELLATION) and writes to `user_subscriptions` table. Replaces `stripe-webhooks` Edge Function. | MEDIUM | New Edge Function; replaces `supabase/functions/stripe-webhooks/` (203 lines) |
+| Webhook authorization | Validate incoming webhook requests via Authorization header. RevenueCat does NOT support HMAC signature verification -- only a shared secret header. Simpler than Stripe's `constructEventAsync` but less secure. | LOW | Part of new Edge Function. Store secret as `REVENUECAT_WEBHOOK_SECRET` env var. |
+| RevenueCat REST API verification call | After receiving webhook, call `GET /v1/subscribers/{app_user_id}` to get authoritative subscription state. RevenueCat best practice: never trust webhook payload alone -- always verify with API. | MEDIUM | Outbound HTTP call from Edge Function. Requires `REVENUECAT_API_KEY` env var (secret key). |
+| Webhook idempotency | RevenueCat retries failed webhooks up to 5 times (delays: 5, 10, 20, 40, 80 minutes). Edge Function must handle duplicate events via upsert on `user_id`. | LOW | Same upsert pattern as existing `stripe-webhooks` handler. |
+| Subscription table migration | Switch portal from `subscriptions` table (Stripe) to `user_subscriptions` table (RevenueCat). Un-deprecate `user_subscriptions`. Add `tier` column derived from `product_id` or RevenueCat entitlement. | MEDIUM | `useSubscription.ts` query target, `00001_create_subscriptions.sql` function body, RLS policies in comments and goals migrations |
+| `user_subscription_tier()` SQL function update | Change function body from querying `subscriptions` table to querying `user_subscriptions` table. This SECURITY DEFINER function is called by RLS policies for community comments (PHOENIX+ only) and goal limit enforcement. | HIGH (risk) | Function used in `20260218_phase11_comments.sql` and `20260219_phase11_goals.sql`. Must be atomic -- no window where tier check returns wrong value. |
+| `useSubscription` hook rewrite | Change query from `subscriptions` table to `user_subscriptions` table. Map RevenueCat fields (`subscription_status`, `product_id`, `expires_at`) to existing `SubscriptionTier` and `SubscriptionStatus` types. Return interface MUST stay identical. | MEDIUM | `src/hooks/useSubscription.ts` (105 lines). Consumed by 15+ components including SubscriptionGate, TierBadge, PricingPlans, Profile, Analytics, Biomechanics, Recovery, Goals, Integrations, SessionReplay, ComparisonView, CommentThread. |
+| Realtime subscription listener update | Current `useSubscription` listens to `postgres_changes` on `subscriptions` table. Must switch channel to `user_subscriptions` table. | LOW | Channel target in `useSubscription.ts` changes from `subscriptions` to `user_subscriptions`. |
+| Product-to-tier mapping | Map RevenueCat `product_id` values (e.g., `phoenix_monthly`, `elite_annual`) to FREE/PHOENIX/ELITE tiers. Replaces `getTierFromPriceId()` in webhook handler and `PRICE_IDS` in PricingPlans. | LOW | New constant in `src/lib/pricing.ts`. Centralizes mapping alongside existing `TIER_PRICING`. |
+| Entitlement-to-tier mapping | RevenueCat uses entitlements (e.g., "phoenix_access", "elite_access") not tier names. Must map entitlement IDs from webhook `entitlement_ids` array and REST API response to FREE/PHOENIX/ELITE. | LOW | Additional mapping function in `src/lib/pricing.ts`. |
+| PricingPlans page rewrite | Remove checkout buttons, Stripe price IDs, `redirectToCheckout()`. Replace with "Subscribe in the Phoenix App" CTAs pointing to app store or deep link. Keep tier comparison cards, feature lists, and monthly/annual toggle for price display. | MEDIUM | `src/app/components/PricingPlans.tsx` (321 lines). Remove `@stripe/stripe-js` import, `PRICE_IDS` constant, `handleSubscribe()`, `isPriceConfigured()`. Replace CTA buttons. |
+| UpgradePrompt update | Current CTA button links to `/pricing` which shows checkout buttons. After migration, the prompt must say "Subscribe in the Phoenix App" or "Upgrade in the Phoenix App". | LOW | `src/app/components/UpgradePrompt.tsx` (114 lines). Change button text + optionally add app store links. |
+| Profile subscription management update | Remove `openCustomerPortal()` import and "Manage Subscription" button that opens Stripe portal. Replace with subscription status display + "Manage in App" guidance. | LOW | `src/app/components/Profile.tsx` -- single import from `src/lib/stripe`, one button handler. |
+| Remove Stripe client library | Delete `src/lib/stripe.ts` and uninstall `@stripe/stripe-js` package. Eliminates the lazy-loaded Stripe JS chunk (`stripe-CuNEbjmv.js`). | LOW | `src/lib/stripe.ts` (45 lines), `package.json` dependency, build artifact. |
+| Delete Stripe Edge Functions | Remove `stripe-checkout`, `stripe-portal`, `stripe-webhooks` directories. | LOW | 3 directories, ~365 lines total. |
+| Remove Stripe environment variables | Delete 6 `VITE_STRIPE_*` vars and 4 server-side `STRIPE_*` vars from `.env.example`, deployment configs, and Edge Function env. Add `REVENUECAT_WEBHOOK_SECRET` and `REVENUECAT_API_KEY`. | LOW | `.env.example`, deployment configuration. |
+| Delete/replace Stripe webhook tests | Remove `src/lib/__tests__/stripe-webhook-handlers.test.ts`. Write equivalent tests for RevenueCat webhook handler. | MEDIUM | Test file replacement with new event type coverage. |
 
-### Differentiators (Competitive Advantage)
+### Table Stakes: Identity Mapping (Portal-Side Requirement)
 
-Features that go beyond baseline expectations and demonstrate product maturity.
+| Feature | Why Required | Complexity | Notes |
+|---------|-------------|------------|-------|
+| Supabase user ID as RevenueCat `app_user_id` | RevenueCat webhook payloads contain `app_user_id`. This must match Supabase `auth.uid()` so the webhook handler can write to the correct user's row. The mobile app must call `Purchases.logIn(supabaseUserId)` after authentication. | LOW (portal side) | Portal webhook handler extracts `event.app_user_id` from payload and uses it as `user_id` in `user_subscriptions` table. If mobile app sends `$RCAnonymousID` instead, matching fails. This is a mobile app requirement, not portal code. |
 
-| Feature | Value Proposition | Complexity | Depends On | Notes |
-|---------|-------------------|------------|------------|-------|
-| **Reduced-motion support** | 35% of adults over 40 experience vestibular dysfunction. Framer Motion's `MotionConfig` with `reducedMotion="user"` automatically disables transform/layout animations while preserving opacity. Shows care for accessibility beyond checkbox compliance. | LOW | Nothing | Zero `prefers-reduced-motion` support exists. Framer Motion provides `useReducedMotion` hook and `MotionConfig reducedMotion="user"` prop. Wrapping the app's `MotionConfig` provider is the simplest approach -- one change, global effect. Custom CSS animations (`animate-flame-flicker`, `animate-ember-rise`, `animate-phoenix-glow`) also need `@media (prefers-reduced-motion: reduce)` overrides in theme.css. |
-| **Chart accessibility** | Recharts 3.x has `accessibilityLayer` enabled by default, but charts need descriptive `aria-label` attributes and `role="application"` for JAWS/NVDA Forms Mode. Tabular data fallbacks for screen readers make data truly accessible. | MEDIUM | Existing Recharts/visx charts | Currently only one `aria-label` exists across all chart components (Analytics time period selector). Each chart container needs `role="img"` with descriptive `aria-label` summarizing the data, or `role="application"` for keyboard-navigable charts. visx force curves (Canvas-based) need separate text descriptions since Canvas is opaque to screen readers. |
-| **Skip-to-content link** | Keyboard users can bypass the 13-item navigation. Standard WCAG 2.1 AA requirement that most SaaS apps implement. | LOW | Nothing | Does not exist. A visually-hidden link at the top of the page that becomes visible on focus, jumping past the navigation to `main` content. Single component, ~20 lines. |
-| **Desktop navigation restructure** | 13 flat navigation items violates Hick's Law. Grouped navigation with collapsible sections reduces cognitive load and scales better for future features. | MEDIUM | Nothing | Current `Navigation.tsx` renders 13 `NavLink` items in a flat horizontal bar. shadcn/ui provides a sidebar component. Recommended grouping: **Training** (Dashboard, History, Records), **Analysis** (Analytics, Biomechanics, Recovery), **Program** (Routines, Cycles, Goals, Challenges), **Social** (Community, Integrations), **Account** (Profile). Switch from horizontal nav bar to collapsible sidebar. |
-| **Stripe billing path test coverage** | Revenue-critical path is the least tested path. Integration tests for webhook handling prove the payment pipeline works. | MEDIUM | Existing Stripe Edge Functions | Zero test coverage on Stripe checkout, portal, or webhook handlers. Need: mock webhook payloads for all 5 event types, verify subscription state transitions, test checkout redirect flow. Can use Stripe's test mode and fixtures. |
-| **Cookie consent banner** | Required by GDPR for any cookies or tracking. Sentry and Supabase auth both use cookies/local storage. | LOW | Privacy Policy | Simple banner with accept/reject, stores preference in localStorage. No third-party consent management needed at this scale. |
+### Differentiators (Valuable but Not Blocking Migration)
 
-### Anti-Features (Commonly Requested, Often Problematic)
+Features that improve the migration UX but can ship after the core migration is verified working.
 
-Features that seem valuable but would cause more harm than good at this stage.
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Grace period / billing issue UI | When BILLING_ISSUE event fires, show a warning banner ("Payment issue detected -- update your payment method in the app") but keep access active. RevenueCat keeps entitlements active during grace period (3-16 days depending on store). Only revoke on EXPIRATION. | MEDIUM | New status mapping in `useSubscription`: billing_issue status keeps `isPremium: true` but adds a `hasBillingIssue: boolean` flag. New banner component reads this flag. |
+| Subscription status banner | Contextual banner for degraded states: billing issue, expiring soon (< 7 days), recently downgraded, subscription paused (Play Store only). More informative than the current simple TierBadge. | MEDIUM | New component. Reads `expires_at`, `subscription_status` from `user_subscriptions`. Conditionally renders warning/info banner. |
+| Smart app store redirect | Detect user's platform (iOS/Android/desktop) and link directly to correct app store listing when showing "Subscribe in App" CTAs. | MEDIUM | User-Agent or `navigator.userAgentData` detection. Requires mobile app's App Store and Play Store URLs. Falls back to generic "open the Phoenix App" on desktop. |
+| QR code for desktop subscribe | On desktop browsers, show a QR code on the pricing page that deep-links to the mobile app's subscription page. Bridges the gap when user is on a computer. | LOW | Small library like `qrcode.react` (~3KB). Points to app store URL or universal link. |
+| Subscription sync health check | Background verification that subscription status in database matches RevenueCat's source of truth. Catches missed webhooks. Run via Edge Function on app load, cached for 5+ minutes. | HIGH | New Edge Function `verify-subscription` calling RevenueCat REST API v1 `GET /subscribers/{app_user_id}`. Compares with `user_subscriptions` row and updates if drifted. Triggered by TanStack Query with long `staleTime`. |
+| Manage Subscription deep link | Instead of just text saying "manage in app", provide a deep link that opens the mobile app directly to its subscription management screen. | LOW | Requires mobile app to register a custom URL scheme (e.g., `phoenix://settings/subscription`). Portal renders it as `<a href>`. |
+| Migration transition banner | For existing Stripe subscribers during the cutover window, show one-time banner explaining the billing change: "Your subscription is now managed through the Phoenix App." | LOW | Temporary component. Check if user has entry in old `subscriptions` table but not in `user_subscriptions`. Show dismissible banner. Remove component after migration window closes. |
+| Offline-resilient entitlement cache | Persist last-known subscription tier in localStorage so gated features don't flash "upgrade" prompt during momentary network issues. | LOW | TanStack Query already caches, but localStorage provides persistence across page reloads. Write tier to localStorage on every successful fetch. Read from localStorage as initial data in `useQuery`. |
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| **Full admin dashboard** | Content moderation and user management seem to need admin UI | Massive scope (user list, ban management, content review, analytics, support tickets). Solo developer doesn't need a UI to query their own database. | Use Supabase Studio dashboard for admin queries. Store report/flag data in DB tables. Build admin UI in a future milestone when scale demands it. |
-| **AI-powered content moderation** | Automated detection of toxic content in community posts/comments | Requires ML infrastructure, ongoing training, false positive management. Community is niche (fitness enthusiasts sharing routines) -- toxicity risk is low. | Manual moderation via report queue. Community self-policing through report/flag system. Block feature for user-level muting. |
-| **Real-time chat / support widget** | Live support for paying customers | High ongoing cost, requires staffing, creates SLA expectations a solo developer cannot meet. Intercom/Zendesk adds $50-200/mo overhead. | FAQ page + contact form to shared inbox. Set expectation of 24-48hr response time. Discord server for community support. |
-| **SOC 2 / ISO 27001 certification** | Enterprise compliance checkbox | Costs $10K-50K for audit. Overkill for a niche fitness companion app with <1000 users. No enterprise customers requiring it. | Document security practices in a public security page. GDPR compliance covers the actual user rights. Revisit only if enterprise customers appear. |
-| **Multi-language / i18n** | Expand to non-English markets | Vitruvian Trainer community is predominantly English-speaking (AU/US/UK/EU markets). Translation maintenance cost for a solo developer is unsustainable. | English-only. Revisit only if non-English community segment grows significantly. |
-| **Automated GDPR data processing records** | Full GDPR Article 30 compliance | Requires Data Protection Officer, formal processing records, ongoing documentation. Proportionality principle: small-scale processing by a solo developer doesn't require the same level as a large enterprise. | Maintain a simple data map document. Update Privacy Policy when data practices change. Respond to individual requests manually. |
-| **Feature flag service (LaunchDarkly, etc.)** | Dynamic feature gating without deploys | Over-engineered for this use case. Subscription gating is the feature flag. Adding a third-party service adds cost, complexity, and a runtime dependency for something that changes rarely. | Use existing `SubscriptionGate` component with tier-based gating. Hard-code limits in a config file. Change limits via deploy. |
-| **PII scrubbing in Sentry** | CSO flagged health/biometric data in error reports | Sentry's `beforeSend` callback can strip PII, but over-scrubbing makes error reports useless. The real risk is low -- Sentry captures error context, not full workout data. | Add `beforeSend` to strip `user.email` and any `body` fields containing workout data. Don't scrub everything -- keep stack traces and component names. Low priority, not a launch blocker. |
+### Anti-Features (Do NOT Build)
+
+| Anti-Feature | Why Requested | Why Problematic | Alternative |
+|--------------|---------------|-----------------|-------------|
+| Web checkout via RevenueCat Web Billing | "Keep web purchase option alongside mobile" | RevenueCat Web Billing uses Stripe under the hood (2.9% + 30c fees per transaction), adds complexity of two billing paths, creates entitlement conflict scenarios when same user has both web and mobile subscriptions, defeats the purpose of unifying billing through mobile. | Remove web checkout entirely. Single billing path through mobile app stores. |
+| RevenueCat JS SDK in portal | "Use `@revenuecat/purchases-js` to check entitlements client-side" | Adds client-side dependency (~50KB), requires exposing a public API key, creates two sources of truth (SDK cache vs database), conflicts with portal's server-state-first architecture (TanStack Query + Supabase). | Read from `user_subscriptions` database table via Supabase. Server is the source of truth, populated by webhooks. |
+| Stripe fallback / dual billing | "Keep Stripe as fallback during migration" | Two active billing systems = two webhook handlers, two subscription tables, reconciliation nightmares, users could have conflicting tiers between systems. | Hard cutover. Migrate all existing Stripe subscribers to RevenueCat first (outside portal scope, handled by mobile team), then deploy portal changes. |
+| Client-side RevenueCat API calls | "Call RevenueCat REST API directly from browser" | Exposes secret API key in client bundle. RevenueCat secret keys grant read/write access to all customer data. Never put in frontend code. | All RevenueCat API calls happen in Edge Functions (server-side). Portal reads database only. |
+| Automatic tier downgrade on CANCELLATION | "Immediately revoke access when cancellation webhook fires" | CANCELLATION means the user canceled, but they retain access until the end of their billing period. Grace periods can extend 60+ days during billing retry. Revoking on CANCELLATION = angry paying customers. | Only downgrade tier when EXPIRATION event fires. RevenueCat handles the timing -- trust `expires_at` date and `isActive` status from the API verification call. |
+| In-portal subscription tier change | "Let users upgrade/downgrade tiers from the web" | App store billing rules (Apple, Google) require subscription modifications through the store that originated the purchase. A web portal cannot modify an App Store or Play Store subscription. | Show current tier + "Change plan in the Phoenix App" with link or deep link. |
+| Custom billing retry / dunning emails | "Implement our own retry logic for failed payments" | RevenueCat + app stores handle billing retry automatically (Apple: up to 60 days, Google: up to 30 days). Custom retry interferes with platform behavior and can cause duplicate charges. | Let RevenueCat handle retry. Show user a "payment issue" banner on the portal. |
+| Subscription analytics / MRR dashboard | "Show subscription revenue metrics in portal" | This is an admin/ops concern, not a user feature. RevenueCat Dashboard already provides this. Building it in the portal exposes sensitive business data to users. | Use RevenueCat Dashboard for subscription analytics. Defer admin dashboard to a future milestone. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Privacy Policy (rewrite)
-    └── Cookie Consent Banner (references privacy policy for details)
-    └── GDPR Data Export (privacy policy must disclose export right)
-    └── GDPR Account Deletion (privacy policy must disclose deletion right)
+[RevenueCat Webhook Edge Function]
+    |-- requires --> [Webhook Authorization]
+    |-- requires --> [REST API Verification Call]
+    |-- requires --> [Product-to-Tier Mapping]
+    |-- requires --> [Entitlement-to-Tier Mapping]
+    |-- writes to --> [user_subscriptions table]
 
-Terms of Service
-    └── Content Moderation (ToS defines acceptable use policy that moderation enforces)
+[user_subscription_tier() SQL Update]
+    |-- requires --> [user_subscriptions table un-deprecation + tier column]
+    |-- blocks  --> [RLS Policy Correctness] (comments INSERT, goal limit trigger)
 
-Free-Tier Gating Enforcement
-    └── Pricing Consistency Fix (must know the final limits before coding them)
+[useSubscription Hook Rewrite]
+    |-- requires --> [user_subscriptions table schema finalized]
+    |-- requires --> [Product/Entitlement-to-Tier Mapping]
+    |-- blocks  --> [PricingPlans Rewrite] (needs hook to show current tier)
+    |-- blocks  --> [Profile Subscription Management] (needs hook for status display)
+    |-- blocks  --> [UpgradePrompt Update] (needs hook for current tier)
+    |-- stable-interface --> [SubscriptionGate] (NO changes if hook interface stays same)
+    |-- stable-interface --> [TierBadge] (NO changes if hook interface stays same)
 
-CI/CD Pipeline
-    └── Stripe Billing Tests (tests run in CI pipeline)
+[Realtime Listener Update]
+    |-- requires --> [user_subscriptions table un-deprecation]
 
-Content Moderation (report/flag/block)
-    └── Community features (already built -- moderation adds to existing components)
+[Remove Stripe Client Library]
+    |-- requires --> [PricingPlans Rewrite] (last consumer of redirectToCheckout)
+    |-- requires --> [Profile Subscription Management] (last consumer of openCustomerPortal)
 
-Desktop Nav Restructure
-    (independent -- no dependencies, no dependents for v1.2)
+[Delete Stripe Edge Functions]
+    |-- requires --> [RevenueCat Webhook Edge Function deployed and verified]
 
-Accessibility (reduced-motion, skip-to-content, chart a11y)
-    (independent -- each can be done separately, no cross-dependencies)
+[Grace Period Handling]
+    |-- enhances --> [useSubscription Hook] (new hasBillingIssue flag)
+    |-- enhances --> [Subscription Status Banner]
 
-GDPR Account Deletion
-    └── requires Supabase Edge Function
-    └── requires Stripe Customer API integration
-    └── requires cascade logic across all DB tables
+[Smart App Store Redirect]
+    |-- enhances --> [PricingPlans Rewrite]
+    |-- enhances --> [UpgradePrompt Update]
+
+[Subscription Sync Health Check]
+    |-- requires --> [RevenueCat REST API verification infrastructure]
+    |-- enhances --> [useSubscription Hook] (background validation)
+
+[Migration Transition Banner]
+    |-- requires --> [Both subscription tables readable]
+    |-- temporary --> [Remove after cutover window closes]
 ```
 
 ### Dependency Notes
 
-- **Cookie Consent requires Privacy Policy:** The consent banner links to the privacy policy for details on what cookies/tracking are used. Write the policy first.
-- **GDPR export/deletion require Privacy Policy:** The privacy policy must disclose these rights before the features can be offered. Policy first, features second.
-- **Content Moderation requires Terms of Service:** The ToS defines what content is acceptable. Moderation enforces those rules. Write ToS first.
-- **Free-tier gating requires pricing fix:** Cannot code usage limits until the actual tier limits are finalized and consistent between landing page and pricing page.
-- **Stripe tests require CI/CD:** Tests exist to run in the pipeline. Build the pipeline, then add the tests.
-- **GDPR Account Deletion is the most complex dependency chain:** Must cascade across Supabase (15+ tables), Stripe (customer deletion), Sentry (user deletion), and potentially revoke OAuth tokens at third-party providers. This is the highest-risk feature in v1.2.
+- **`user_subscription_tier()` is the critical path**: This SECURITY DEFINER function is called by RLS policies for comments (PHOENIX+ INSERT) and goals (limit enforcement trigger). If it queries the wrong table or the table schema doesn't match, all tier-gated database operations fail silently. The SQL migration must update this function atomically within a transaction.
+- **`useSubscription` interface stability is the highest-leverage design decision**: 15+ components consume `useSubscription()` and depend on the `SubscriptionData` return type (`tier`, `status`, `currentPeriodEnd`, `cancelAtPeriodEnd`, `isLoading`, `isPremium`, `isElite`). If this interface stays identical, `SubscriptionGate`, `TierBadge`, and all ~10 gated pages (`Analytics`, `Biomechanics`, `Recovery`, `Integrations`, `SessionReplay`, `ComparisonView`, `CommentThread`, `Goals`, etc.) need ZERO changes.
+- **Stripe removal must be the final step**: Do not delete `src/lib/stripe.ts` or Edge Functions until every consumer is updated and verified. Dependency chain: update consumers -> verify builds -> delete infrastructure.
+- **Mobile app `logIn(supabaseUserId)` is a hard prerequisite**: If the mobile app doesn't call `Purchases.logIn()` with the Supabase user ID, webhook payloads will contain `$RCAnonymousID` instead of the user's UUID, and the webhook handler cannot map events to users. This must be coordinated with the mobile team.
+- **Smart App Store Redirect and QR code enhance but don't block**: The migration works with a simple "Subscribe in the Phoenix App" text. Platform-specific redirects are polish.
 
 ---
 
 ## MVP Definition
 
-### Phase 0: Legal and Security (Must ship before ANY public launch)
+### Ship Together (Atomic Migration Release)
 
-- [x] **Pricing consistency fix** -- resolve $9.99 vs $14.99 discrepancy
-- [ ] **Privacy Policy rewrite** -- accurate to portal's actual data practices
-- [ ] **Terms of Service** -- subscription terms, acceptable use, liability limitation
-- [ ] **Free-tier gating enforcement** -- match pricing page promises in code + RLS
+All of these must deploy in a single coordinated release. Partial deployment = broken billing.
 
-### Phase 1: Operational Infrastructure (Must ship before paid tiers activate)
+- [ ] RevenueCat webhook Edge Function with authorization + REST API verification
+- [ ] Un-deprecate `user_subscriptions` table, ensure `tier` column exists (or derive in hook)
+- [ ] Update `user_subscription_tier()` SQL function to query `user_subscriptions`
+- [ ] Rewrite `useSubscription` hook to read from `user_subscriptions` (same return interface)
+- [ ] Update Realtime listener to watch `user_subscriptions` table
+- [ ] Rewrite PricingPlans to "subscribe in app" pattern (remove all checkout logic)
+- [ ] Update UpgradePrompt CTA text to "Subscribe in the Phoenix App"
+- [ ] Update Profile page -- remove Stripe portal button, show subscription status
+- [ ] Add product-to-tier and entitlement-to-tier mapping in `src/lib/pricing.ts`
+- [ ] Remove `src/lib/stripe.ts` and uninstall `@stripe/stripe-js`
+- [ ] Delete 3 Stripe Edge Functions
+- [ ] Remove Stripe environment variables, add RevenueCat env vars
+- [ ] Replace Stripe webhook tests with RevenueCat webhook tests
 
-- [ ] **CI/CD pipeline** -- GitHub Actions with build, lint, test, deploy gates
-- [ ] **GDPR data export** -- Edge Function to compile all user data as downloadable ZIP
-- [ ] **GDPR account deletion** -- cascade deletion across all systems with 30-day grace period
-- [ ] **FAQ + contact form** -- static FAQ page and contact form to shared inbox
-- [ ] **Content moderation** -- report/flag/block on community posts and comments
-- [ ] **Stripe billing tests** -- webhook integration tests for all 5 event types
-- [ ] **Cookie consent banner** -- GDPR-compliant consent with accept/reject
+### Add After Verification (v1.3.1)
 
-### Phase 2: UX and Accessibility (Should ship before scale)
+Ship within 1-2 weeks once core migration is confirmed working in production.
 
-- [ ] **Reduced-motion support** -- `MotionConfig reducedMotion="user"` + CSS overrides
-- [ ] **Skip-to-content link** -- keyboard navigation bypass
-- [ ] **Chart accessibility** -- aria-labels, role attributes, text descriptions for screen readers
-- [ ] **Desktop navigation restructure** -- grouped sidebar replacing flat 13-item horizontal nav
+- [ ] Grace period / billing issue UI banner (trigger: first real BILLING_ISSUE event)
+- [ ] Subscription status banner with contextual messaging
+- [ ] Smart app store redirect with iOS/Android/desktop detection
+- [ ] Manage Subscription deep link to mobile app
 
-### Defer to v1.3+
+### Future Consideration (v1.3.x or later)
 
-- [ ] **Admin dashboard** -- defer until moderation volume justifies a UI
-- [ ] **Nested comment threads** -- already deferred from v1.1
-- [ ] **PII scrubbing in Sentry** -- low risk, add `beforeSend` filter when time permits
+- [ ] QR code for desktop-to-mobile subscribe flow
+- [ ] Subscription sync health check (background Edge Function verification)
+- [ ] Offline-resilient entitlement cache in localStorage
+- [ ] Migration transition banner (only during cutover window, then remove)
 
 ---
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Legal/Compliance Value | Implementation Cost | Priority |
-|---------|------------|------------------------|---------------------|----------|
-| Privacy Policy rewrite | LOW (users rarely read) | CRITICAL (launch blocker) | LOW | **P0** |
-| Terms of Service | LOW (users rarely read) | CRITICAL (launch blocker) | LOW | **P0** |
-| Pricing consistency fix | MEDIUM (trust) | HIGH (deceptive pricing) | LOW | **P0** |
-| Free-tier gating enforcement | MEDIUM (fairness) | HIGH (false advertising) | MEDIUM | **P0** |
-| CI/CD pipeline | LOW (invisible) | HIGH (operational safety) | MEDIUM | **P1** |
-| GDPR data export | LOW (rarely used) | HIGH (legal requirement) | MEDIUM | **P1** |
-| GDPR account deletion | LOW (rarely used) | HIGH (2025 enforcement priority) | HIGH | **P1** |
-| FAQ + contact form | MEDIUM (support expectation) | MEDIUM (customer trust) | LOW | **P1** |
-| Content moderation | MEDIUM (community safety) | HIGH (liability) | MEDIUM | **P1** |
-| Stripe billing tests | LOW (invisible) | HIGH (revenue protection) | MEDIUM | **P1** |
-| Cookie consent banner | LOW (annoyance) | MEDIUM (GDPR compliance) | LOW | **P1** |
-| Reduced-motion support | HIGH (a11y) | MEDIUM (WCAG 2.1 AA) | LOW | **P2** |
-| Skip-to-content link | MEDIUM (a11y) | MEDIUM (WCAG 2.1 AA) | LOW | **P2** |
-| Chart accessibility | MEDIUM (a11y) | MEDIUM (WCAG 2.1 AA) | MEDIUM | **P2** |
-| Desktop nav restructure | HIGH (UX) | LOW | MEDIUM | **P2** |
+| Feature | User Value | Implementation Cost | Priority | Risk |
+|---------|------------|---------------------|----------|------|
+| Webhook Edge Function | HIGH | MEDIUM | P1 | Core data pipeline. No subscription data flows without this. |
+| Webhook authorization | HIGH | LOW | P1 | Security. Without this, anyone can POST fake subscription events. |
+| REST API verification | MEDIUM | MEDIUM | P1 | Data integrity. Prevents acting on stale/incorrect webhook data. |
+| `user_subscription_tier()` update | HIGH | HIGH (risk) | P1 | RLS policies break if this queries wrong table. Highest-risk change. |
+| `useSubscription` rewrite | HIGH | MEDIUM | P1 | Every gated feature depends on this. Interface must stay stable. |
+| PricingPlans rewrite | HIGH | MEDIUM | P1 | Old checkout buttons will error after Stripe removal. |
+| UpgradePrompt update | HIGH | LOW | P1 | Broken CTA = confused users hitting dead checkout. |
+| Profile management update | MEDIUM | LOW | P1 | `openCustomerPortal()` will error after Stripe removal. |
+| Product/entitlement mapping | HIGH | LOW | P1 | Required by webhook handler and useSubscription. |
+| Realtime listener update | MEDIUM | LOW | P1 | Without this, UI doesn't reflect subscription changes. |
+| Stripe removal | MEDIUM | LOW | P1 | Dead code. But must be last step after all consumers updated. |
+| Webhook tests | MEDIUM | MEDIUM | P1 | Regression safety for the most critical business logic. |
+| Grace period handling | MEDIUM | MEDIUM | P2 | Users keep access by default. Banner is UX improvement. |
+| Status banner | MEDIUM | MEDIUM | P2 | Better UX for degraded subscription states. |
+| Smart app store redirect | MEDIUM | MEDIUM | P2 | Convenience. Plain text link works as fallback. |
+| Deep link to mobile | LOW | LOW | P2 | Requires mobile app support for URL scheme. |
+| QR code | LOW | LOW | P3 | Nice touch for desktop users. Not critical. |
+| Sync health check | LOW | HIGH | P3 | Insurance against missed webhooks. Overkill for launch. |
+| Entitlement cache | LOW | LOW | P3 | TanStack Query cache already handles most cases. |
 
 **Priority key:**
-- **P0:** Must have before any public launch (legal/compliance blockers)
-- **P1:** Must have before paid tiers activate (operational/safety requirements)
-- **P2:** Should have before scale (UX/accessibility improvements)
+- P1: Must ship in the migration release. Incomplete = broken product.
+- P2: Should ship within 1-2 weeks post-migration. Improves reliability and UX.
+- P3: Nice to have. Ship when convenient.
+
+---
+
+## Existing Code Impact Analysis
+
+### Files That Change (8 files)
+
+| File | Change Type | Complexity | Risk |
+|------|------------|------------|------|
+| `src/hooks/useSubscription.ts` | Rewrite query target + field mapping. Keep `SubscriptionData` interface identical. | MEDIUM | HIGH -- 15+ consumers depend on stable interface |
+| `src/lib/pricing.ts` | Add `PRODUCT_TO_TIER` and `ENTITLEMENT_TO_TIER` mappings alongside existing `TIER_PRICING` | LOW | LOW -- purely additive |
+| `src/app/components/PricingPlans.tsx` | Major rewrite. Remove checkout logic, add "subscribe in app" CTAs. Keep tier cards + feature lists. | MEDIUM | MEDIUM -- UI-only, no data flow risk |
+| `src/app/components/UpgradePrompt.tsx` | Change CTA button text from "View Plans" to "Subscribe in the Phoenix App" + optional app store link | LOW | LOW -- cosmetic |
+| `src/app/components/Profile.tsx` | Remove `openCustomerPortal` import + button. Add subscription status display with "Manage in App" text. | LOW | LOW -- removes one import, changes one button |
+| `src/lib/export/data-export.ts` | May need to read from `user_subscriptions` instead of `subscriptions` for GDPR export | LOW | LOW -- if GDPR export hasn't shipped yet, no change needed |
+| `.env.example` | Remove `VITE_STRIPE_*` vars, add `REVENUECAT_WEBHOOK_SECRET`, `REVENUECAT_API_KEY` | LOW | LOW |
+| `package.json` | Remove `@stripe/stripe-js` dependency | LOW | LOW |
+
+### Files Created (3 files)
+
+| File | Purpose | Complexity |
+|------|---------|------------|
+| `supabase/functions/revenuecat-webhooks/index.ts` | New Edge Function handling RevenueCat webhook events | MEDIUM |
+| `supabase/migrations/YYYYMMDD_revenuecat_migration.sql` | Update `user_subscription_tier()`, un-deprecate `user_subscriptions`, add `tier` column if needed, deprecate old `subscriptions` table | HIGH (risk) |
+| `src/lib/__tests__/revenuecat-webhook-handlers.test.ts` | Tests for new webhook handler covering all event types | MEDIUM |
+
+### Files Deleted (7 files)
+
+| File | Lines | Reason |
+|------|-------|--------|
+| `src/lib/stripe.ts` | 45 | No more Stripe client needed |
+| `src/lib/__tests__/stripe-webhook-handlers.test.ts` | ~100 | Replaced by RevenueCat tests |
+| `supabase/functions/stripe-checkout/index.ts` | 89 | No more web checkout |
+| `supabase/functions/stripe-portal/index.ts` | 72 | No more Stripe portal |
+| `supabase/functions/stripe-webhooks/index.ts` | 203 | Replaced by `revenuecat-webhooks` |
+| `dist/assets/stripe-CuNEbjmv.js` | (build) | Build artifact of removed Stripe JS |
+| `dist/assets/stripe-CuNEbjmv.js.map` | (build) | Build artifact |
+
+### Files That Do NOT Change (critical stability points)
+
+| File | Why Stable |
+|------|-----------|
+| `src/app/components/SubscriptionGate.tsx` | Consumes `useSubscription()` -- interface stays identical |
+| `src/app/components/TierBadge.tsx` | Consumes `useSubscription()` -- interface stays identical |
+| All ~10 components using `SubscriptionGate` | Gate component is the abstraction layer; they never touch subscription data directly |
+| `src/queries/keys.ts` | `subscription.byUser()` key shape unchanged |
+| `src/stores/` (all Zustand stores) | No subscription state in Zustand stores |
+| `src/providers/AuthProvider.tsx` | Auth is separate from billing |
+| `src/app/components/LandingPage.tsx` | References pricing but doesn't import Stripe |
+| `src/app/components/FAQ.tsx` | May need text updates but no code changes |
 
 ---
 
 ## Competitor Feature Analysis
 
-The competitive landscape for Phoenix Portal is unusual: it serves a niche community of Vitruvian Trainer owners whose machines lost official software support. Direct competitors are other fitness analytics platforms.
+| Pattern | Peloton | Strava | Whoop | Phoenix Portal (target) |
+|---------|---------|--------|-------|------------------------|
+| Billing origin | Web + mobile (both allowed) | Web + mobile (both allowed) | Mobile-first (app only) | Mobile-only (via RevenueCat) |
+| Web subscribe button | Yes (own checkout) | Yes (Stripe) | No -- "Get Whoop" links to app store | No -- "Subscribe in Phoenix App" |
+| Web manage subscription | Yes (account settings page) | Yes (settings with Stripe portal) | No -- "Manage in Whoop app" | No -- "Manage in Phoenix App" |
+| Subscription status on web | Shows tier + next billing date | Shows "Premium" badge in nav | Shows membership tier | Shows TierBadge + expiry + status |
+| Upgrade CTA on web | "Upgrade" button -> web checkout | "Go Premium" -> web checkout | "Subscribe in Whoop app" | "Subscribe in Phoenix App" -> app store link |
+| Billing issue handling | Maintains access + email notification | Maintains access, degrades features after expiry | Maintains access during grace period | Maintain access + billing issue banner (P2) |
 
-| Feature | Strava (web) | Fitbod (web) | TrainHeroic | Our Approach |
-|---------|--------------|--------------|-------------|--------------|
-| Privacy Policy | Comprehensive, lawyer-written | Standard SaaS policy | Detailed with DPA | Must rewrite for portal's actual data practices. Reference Strava's structure as template. |
-| Terms of Service | Extensive, covers user content | Standard subscription terms | Includes coach/athlete terms | Standard SaaS ToS covering subscription, content ownership, acceptable use |
-| GDPR data export | Bulk export via settings | Account data request | Data download button | Edge Function compiling all user data as ZIP. Offer in Profile/Settings page. |
-| Account deletion | Settings > Delete Account | Email request | Settings page | In-app flow with 30-day grace period. Must cascade across Supabase + Stripe. |
-| Content moderation | Flag/report on activities | N/A (no community) | Report on programs | Report button on posts/comments, category picker, block user |
-| Free tier limits | Time-gated features | 3 free workouts | Limited athlete count | Usage-count limits matching pricing page promises |
-| Support | Help center + email | In-app chat | Email + knowledge base | FAQ page + contact form. Appropriate for scale. |
-| Reduced motion | Partial | No | No | Full support via MotionConfig. Differentiator over most fitness platforms. |
-| Navigation | Left sidebar, grouped | Bottom tabs (mobile-first) | Left sidebar, grouped | Switch to grouped left sidebar. Current 13-item flat bar is worst-in-class. |
-
----
-
-## Implementation Notes by Feature
-
-### Privacy Policy Rewrite
-The existing `PrivacyPolicy.tsx` component has good page structure (header, sections, footer) but entirely wrong content. The mobile app policy says "We do not collect any personal information" and "No Cloud Sync" -- both false for the portal. Rewrite content in-place, keeping the component structure. Must disclose:
-- Supabase: account data, workout history, community content stored in cloud Postgres
-- Stripe: payment information processed by Stripe (PCI-compliant, Phoenix never sees card numbers)
-- Sentry: error reports with device/browser info and potentially user context
-- OAuth providers: data synced from Strava, Fitbit, Garmin, Hevy
-- Cookies/localStorage: auth tokens, preferences, PWA state
-- Health/biometric data: workout metrics, force curves, recovery scores (sensitive data category under GDPR)
-
-### Terms of Service
-New page, new route. Mirror the `PrivacyPolicy.tsx` component structure. Key sections: acceptance of terms, account responsibilities, subscription and billing (defer to Stripe terms), community content (user retains ownership, grants license for display), acceptable use, termination, limitation of liability, governing law.
-
-### Free-Tier Gating Enforcement
-The `SubscriptionGate` component handles feature-level gating (PHOENIX/ELITE). Free-tier needs usage-level gating: a hook like `useFreeTierLimits` that checks counts against configured limits. Enforce at query level (TanStack Query) and RLS level (Supabase). Show upgrade prompt when limit is reached, not a hard error. Best practice from research: "Don't hide premium features -- showcase them. When a free user attempts a gated action, show exactly what they'd unlock and why it matters."
-
-### CI/CD Pipeline
-Playwright config already has CI-aware settings. Vitest is configured in `vite.config.ts`. GitHub Actions workflow needs:
-1. **PR validation:** biome check, vitest run, playwright test (Chromium only for speed)
-2. **Deploy gate:** only deploy on main after all checks pass
-3. **Secrets:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_TEST_EMAIL`, `SUPABASE_TEST_PASSWORD`
-4. **Caching:** node_modules (npm lockfile hash), Playwright browsers, Vite build cache
-
-### GDPR Account Deletion (Highest Complexity)
-Cascade order matters:
-1. Export user data first (offer download before deletion)
-2. Cancel Stripe subscription via API
-3. Delete Stripe customer record (or anonymize per Stripe retention requirements)
-4. Delete all user-owned rows across 15+ Supabase tables (workouts, records, routines, cycles, goals, community posts, comments, integrations, telemetry)
-5. Anonymize community content that other users have interacted with (don't delete comments with replies -- set author to "Deleted User")
-6. Revoke OAuth tokens at third-party providers
-7. Delete Supabase Auth user
-8. Clear Sentry user data
-9. Send confirmation email
-Implement as Supabase Edge Function with transaction-like behavior. 30-day grace period via `deletion_requested_at` column.
-
-### Content Moderation
-Minimum viable moderation for a niche community:
-- **Report button:** 3-dot menu on community feed cards and comments. Categories: spam, offensive content, copyright violation, other.
-- **Block user:** Adds to `blocked_users` table. Blocked user's content hidden client-side. Not a ban -- they can still post, you just don't see them.
-- **Report storage:** `content_reports` table with reporter_id, content_type, content_id, category, status (pending/reviewed/dismissed/actioned), created_at.
-- **No admin UI yet:** Review reports via Supabase Studio. Build admin UI when volume justifies it.
-
-### Desktop Navigation Restructure
-Replace 13-item horizontal `NavLink` bar with grouped sidebar. Use shadcn/ui sidebar component. Categories:
-- **Training:** Dashboard, History, Records (daily use)
-- **Analysis:** Analytics, Biomechanics, Recovery (deep dive)
-- **Program:** Routines, Cycles, Goals, Challenges (planning)
-- **Social:** Community, Integrations (connection)
-- **Account:** Profile (settings)
-
-Collapsible on desktop (icon-only mode). Persists open/closed state in localStorage. Must not break mobile bottom nav -- sidebar is desktop-only.
-
-### Reduced-Motion Support
-Two-part implementation:
-1. **Framer Motion:** Wrap app in `<MotionConfig reducedMotion="user">`. This automatically disables transform and layout animations when OS setting is enabled, while preserving opacity transitions. One line of code, global effect.
-2. **CSS animations:** Add `@media (prefers-reduced-motion: reduce)` block in `theme.css` to disable `animate-flame-flicker`, `animate-ember-rise`, `animate-phoenix-glow`, and any `animate-pulse` usage.
-
-### Chart Accessibility
-Three levels of improvement:
-1. **Quick wins:** Add `role="img"` and descriptive `aria-label` to every chart container div (e.g., "Bar chart showing weekly workout volume over the past 8 weeks").
-2. **Keyboard nav:** Recharts 3.x `accessibilityLayer` is enabled by default. Add `role="application"` to chart containers for JAWS/NVDA Forms Mode support.
-3. **Screen reader fallback:** For complex visx Canvas charts (force curves, session replay), add visually-hidden `<table>` with the underlying data as text alternative.
+**Phoenix Portal's pattern most closely matches Whoop's model**: mobile-first billing where the web dashboard is a read-only consumer of subscription status. This is the correct architecture for a companion dashboard whose primary user experience is the mobile app.
 
 ---
 
 ## Sources
 
-- [Supabase GDPR Discussion](https://github.com/orgs/supabase/discussions/2341) -- Supabase compliance status and DPA
-- [GDPR Right to Erasure (Art. 17)](https://gdpr-info.eu/art-17-gdpr/) -- Official regulation text
-- [GDPR Right to Erasure Enforcement Priority 2025](https://www.compliancepoint.com/privacy/gdpr-right-to-erasure-an-enforcement-priority-in-2025/) -- CEF 2025 focus
-- [Recharts Accessibility Wiki](https://github.com/recharts/recharts/wiki/Recharts-and-accessibility) -- accessibilityLayer, keyboard nav, screen reader support
-- [Recharts Accessibility Discussion](https://github.com/recharts/recharts/discussions/4484) -- Community discussion on a11y improvements
-- [Motion for React Accessibility](https://motion.dev/docs/react-accessibility) -- reducedMotion, useReducedMotion
-- [useReducedMotion Hook](https://www.framer.com/motion/use-reduced-motion/) -- Framer Motion API reference
-- [Content Moderation Best Practices 2025](https://arena.im/uncategorized/content-moderation-best-practices-for-2025/) -- Hybrid moderation approaches
-- [Playwright CI Setup](https://playwright.dev/docs/ci-intro) -- Official CI integration guide
-- [SaaS Privacy Compliance 2025](https://secureprivacy.ai/blog/saas-privacy-compliance-requirements-2025-guide) -- Compliance requirements overview
-- [WCAG 2.1](https://www.w3.org/TR/WCAG21/) -- Web Content Accessibility Guidelines
-- [Feature Gating Best Practices](https://www.withorb.com/blog/feature-gating) -- Hard limits vs soft limits for free tiers
+- [RevenueCat Webhooks Documentation](https://www.revenuecat.com/docs/integrations/webhooks) -- HIGH confidence
+- [RevenueCat Webhook Event Types and Fields](https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields) -- HIGH confidence
+- [RevenueCat Entitlements](https://www.revenuecat.com/docs/getting-started/entitlements) -- HIGH confidence
+- [RevenueCat Getting Customer Info / Subscription Status](https://www.revenuecat.com/docs/customers/customer-info) -- HIGH confidence
+- [RevenueCat Billing Issues and Grace Periods](https://www.revenuecat.com/docs/subscription-guidance/how-grace-periods-work) -- HIGH confidence
+- [RevenueCat Web Billing Overview](https://www.revenuecat.com/docs/web/web-billing/overview) -- HIGH confidence (evaluated and rejected as anti-feature)
+- [RevenueCat REST API v1](https://www.revenuecat.com/docs/api-v1) -- MEDIUM confidence (page rendering issues during fetch)
+- [RevenueCat Community: Webhook Security](https://community.revenuecat.com/general-questions-7/how-to-secure-revenuecat-webhooks-with-an-api-key-5705) -- MEDIUM confidence
+- [RevenueCat Community: Authorization Header Validation](https://community.revenuecat.com/third-party-integrations-53/is-the-authorization-header-enough-for-validating-webhook-s-claims-5886) -- MEDIUM confidence
+- [RevenueCat Community: Supabase User ID Mapping](https://community.revenuecat.com/general-questions-7/setting-up-revenuecat-with-and-without-authenticated-users-3513) -- MEDIUM confidence
+- [RevenueCat Community: Supabase Webhook Handler](https://community.revenuecat.com/third-party-integrations-53/error-extracting-app-user-id-from-webhook-in-supabase-400-user-id-not-found-6557) -- MEDIUM confidence
+- Codebase audit: direct file reads of `src/hooks/useSubscription.ts`, `src/lib/stripe.ts`, `src/app/components/PricingPlans.tsx`, `src/app/components/UpgradePrompt.tsx`, `src/app/components/SubscriptionGate.tsx`, `src/app/components/Profile.tsx`, `src/app/components/TierBadge.tsx`, `supabase/functions/stripe-*/`, `supabase/migrations/00001_create_subscriptions.sql`, `supabase/migrations/20260228_rls_denormalization.sql`, `src/lib/database.types.ts`, `src/lib/pricing.ts` -- HIGH confidence
 
 ---
-*Feature research for: Phoenix Portal v1.2 Launch Readiness*
-*Researched: 2026-02-27*
+*Feature research for: RevenueCat billing migration in Phoenix Portal (v1.3)*
+*Researched: 2026-02-28*
