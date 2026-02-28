@@ -6,7 +6,7 @@ export const commentSchema = z.object({
 	id: z.string().uuid(),
 	item_id: z.string().uuid(),
 	item_type: z.enum(["routine", "cycle"]),
-	user_id: z.string().uuid(),
+	user_id: z.string().uuid().nullable(),
 	body: z.string(),
 	created_at: z.string().transform((s) => new Date(s)),
 	updated_at: z.string().transform((s) => new Date(s)),
@@ -19,7 +19,8 @@ export const commentSchema = z.object({
 			display_name: z.string(),
 			avatar_url: z.string().nullable(),
 		})
-		.optional(),
+		.optional()
+		.nullable(),
 });
 
 export type Comment = z.infer<typeof commentSchema>;
