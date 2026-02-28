@@ -365,23 +365,84 @@ export function AsymmetryGauge({
 		);
 	}
 
+	const repCount = repSummaries.length;
+
 	if (mode === "summary") {
-		return <SummaryDisplay repSummaries={repSummaries} />;
+		const avgAsymmetry =
+			repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0) /
+			repCount;
+		return (
+			<div
+				role="img"
+				aria-label={`Left-right force asymmetry summary. Average asymmetry: ${Math.abs(avgAsymmetry).toFixed(1)}% across ${repCount} rep${repCount !== 1 ? "s" : ""}.`}
+			>
+				<div aria-hidden="true">
+					<SummaryDisplay repSummaries={repSummaries} />
+				</div>
+				<table className="sr-only">
+					<caption>Asymmetry data by rep</caption>
+					<thead>
+						<tr>
+							<th>Rep</th>
+							<th>Left Force (N)</th>
+							<th>Right Force (N)</th>
+							<th>Asymmetry (%)</th>
+						</tr>
+					</thead>
+					<tbody>
+						{repSummaries.map((rep, i) => (
+							<tr key={i}>
+								<td>Rep {rep.rep_number ?? i + 1}</td>
+								<td>{rep.left_force_avg.toFixed(1)}</td>
+								<td>{rep.right_force_avg.toFixed(1)}</td>
+								<td>{getAsymmetry(rep).toFixed(1)}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		);
 	}
 
 	return (
-		<div style={{ position: "relative", height }}>
-			<ParentSize>
-				{({ width }) =>
-					width > 0 ? (
-						<PerRepChart
-							repSummaries={repSummaries}
-							width={width}
-							height={height}
-						/>
-					) : null
-				}
-			</ParentSize>
+		<div
+			role="img"
+			aria-label={`Left-right force asymmetry chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}.`}
+		>
+			<div aria-hidden="true" style={{ position: "relative", height }}>
+				<ParentSize>
+					{({ width }) =>
+						width > 0 ? (
+							<PerRepChart
+								repSummaries={repSummaries}
+								width={width}
+								height={height}
+							/>
+						) : null
+					}
+				</ParentSize>
+			</div>
+			<table className="sr-only">
+				<caption>Asymmetry data by rep</caption>
+				<thead>
+					<tr>
+						<th>Rep</th>
+						<th>Left Force (N)</th>
+						<th>Right Force (N)</th>
+						<th>Asymmetry (%)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{repSummaries.map((rep, i) => (
+						<tr key={i}>
+							<td>Rep {rep.rep_number ?? i + 1}</td>
+							<td>{rep.left_force_avg.toFixed(1)}</td>
+							<td>{rep.right_force_avg.toFixed(1)}</td>
+							<td>{getAsymmetry(rep).toFixed(1)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</div>
 	);
 }
