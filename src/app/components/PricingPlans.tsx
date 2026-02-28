@@ -15,6 +15,7 @@ import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
+import { TIER_PRICING } from "@/lib/pricing";
 import { redirectToCheckout } from "@/lib/stripe";
 
 const PRICE_IDS = {
@@ -32,14 +33,8 @@ interface TierFeature {
 	label: string;
 }
 
-interface TierConfig {
-	name: string;
-	tier: SubscriptionTier;
+interface TierDisplayConfig {
 	icon: typeof Flame;
-	monthlyPrice: string;
-	annualPrice: string;
-	annualMonthly: string;
-	features: TierFeature[];
 	accentBorder: string;
 	accentBg: string;
 	accentText: string;
@@ -47,38 +42,26 @@ interface TierConfig {
 	popular?: boolean;
 }
 
-const TIERS: TierConfig[] = [
-	{
-		name: "Free",
-		tier: "FREE",
+interface TierConfig extends TierDisplayConfig {
+	name: string;
+	tier: SubscriptionTier;
+	monthlyPrice: string;
+	annualPrice: string;
+	annualMonthly: string;
+	features: TierFeature[];
+}
+
+// Display-only configuration per tier (no prices here — prices come from TIER_PRICING)
+const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
+	FREE: {
 		icon: Flame,
-		monthlyPrice: "$0",
-		annualPrice: "$0",
-		annualMonthly: "$0",
-		features: [
-			{ label: "Basic workout tracking" },
-			{ label: "Limited session history" },
-			{ label: "Community browsing" },
-		],
 		accentBorder: "border-zinc-700",
 		accentBg: "from-zinc-800/50 to-zinc-900/50",
 		accentText: "text-zinc-400",
 		buttonClass: "",
 	},
-	{
-		name: "Phoenix",
-		tier: "PHOENIX",
+	PHOENIX: {
 		icon: Flame,
-		monthlyPrice: "$14.99",
-		annualPrice: "$149.99",
-		annualMonthly: "$12.50",
-		features: [
-			{ label: "Everything in Free" },
-			{ label: "Advanced analytics" },
-			{ label: "Force curves & VBT zones" },
-			{ label: "Community sharing" },
-			{ label: "Unlimited history" },
-		],
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
@@ -86,27 +69,26 @@ const TIERS: TierConfig[] = [
 			"bg-gradient-to-r from-primary to-chart-2 hover:from-primary/90 hover:to-chart-2/90 text-white border-0",
 		popular: true,
 	},
-	{
-		name: "Elite",
-		tier: "ELITE",
+	ELITE: {
 		icon: Crown,
-		monthlyPrice: "$24.99",
-		annualPrice: "$249.99",
-		annualMonthly: "$20.83",
-		features: [
-			{ label: "Everything in Phoenix" },
-			{ label: "Session replay" },
-			{ label: "50Hz telemetry data" },
-			{ label: "Advanced VBT analytics" },
-			{ label: "Priority support" },
-		],
 		accentBorder: "border-accent",
 		accentBg: "from-accent/10 to-[#B45309]/10",
 		accentText: "text-accent",
 		buttonClass:
 			"bg-gradient-to-r from-accent to-[#B45309] hover:from-accent/90 hover:to-[#B45309]/90 text-black border-0",
 	},
-];
+};
+
+// Merge shared pricing data with display config — no hardcoded prices in this file
+const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
+	...TIER_DISPLAY[pricing.tier],
+	name: pricing.name,
+	tier: pricing.tier,
+	monthlyPrice: pricing.monthlyPrice,
+	annualPrice: pricing.annualPrice,
+	annualMonthly: pricing.annualMonthly,
+	features: pricing.features.map((f) => ({ label: f })),
+}));
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,
