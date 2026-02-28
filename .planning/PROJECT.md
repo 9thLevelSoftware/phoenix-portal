@@ -82,23 +82,19 @@ Premium subscribers see data and insights about their training that they cannot 
 
 ### Active
 
-## Current Milestone: v1.2 Launch Readiness
+## Current Milestone: v1.3 RevenueCat Billing Migration
 
-**Goal:** Address all board-identified blockers (legal, security, operational, UX) to make Phoenix Portal launch-ready for public release with paid tiers.
+**Goal:** Replace Stripe with RevenueCat as the subscription billing provider, making the portal a consumer of subscription status managed by the mobile app.
 
 **Target features:**
-- Legal compliance (Privacy Policy, Terms of Service, GDPR data rights)
-- Security hardening (OAuth tokens, CORS, CSP, webhook auth, source maps)
-- Pricing consistency and free-tier gating enforcement
-- CI/CD pipeline with automated testing and deploy gates
-- Stripe billing path test coverage
-- Desktop navigation restructure and accessibility improvements
-- Content moderation tools for community features
-- Database optimization (subscription table unification, RLS denormalization)
-- Support infrastructure (FAQ, contact channel)
-- Mobile-to-portal sync end-to-end validation
-
-**Source:** Board of Directors Resolution 2026-02-27 (`.planning/board/resolution-2026-02-27.md`)
+- Research optimal sync mechanism (RevenueCat webhooks vs REST API vs JS SDK)
+- Remove all Stripe infrastructure (3 Edge Functions, stripe_customer_id, webhook handler)
+- Build RevenueCat subscription status sync (Edge Function + database schema)
+- Update Pricing page to show tiers with "subscribe in app" CTAs (no web checkout)
+- Update SubscriptionGate and upgrade prompts to direct users to mobile app
+- Maintain existing tier structure (FREE / PHOENIX / ELITE) with same feature gating
+- Update RLS policies to work with new subscription data source
+- Remove Stripe-related environment variables and configuration
 
 ### Out of Scope
 
@@ -175,4 +171,4 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 | Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-27 after v1.2 milestone start*
+*Last updated: 2026-02-28 after v1.3 milestone start*
