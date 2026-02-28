@@ -302,7 +302,11 @@ export function Analytics() {
 	});
 
 	if (isMobile) {
-		return <AnalyticsMobile />;
+		return (
+			<SubscriptionGate requiredTier="PHOENIX" featureName="Advanced Analytics">
+				<AnalyticsMobile />
+			</SubscriptionGate>
+		);
 	}
 
 	const isPending = volumePending || musclePending || strengthPending;
