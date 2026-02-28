@@ -48,7 +48,7 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 - [x] **A11Y-01**: All Framer Motion animations respect prefers-reduced-motion OS setting
 - [x] **A11Y-02**: Skip-to-content link visible on keyboard focus
-- [ ] **A11Y-03**: All charts have descriptive aria-labels; Canvas charts have text alternatives
+- [x] **A11Y-03**: All charts have descriptive aria-labels; Canvas charts have text alternatives
 
 ### Navigation
 
@@ -118,7 +118,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MOD-02 | Phase 18 | Complete |
 | A11Y-01 | Phase 19 | Complete |
 | A11Y-02 | Phase 19 | Complete |
-| A11Y-03 | Phase 19 | Pending |
+| A11Y-03 | Phase 19 | Complete |
 | NAV-01 | Phase 19 | Complete |
 | DB-01 | Phase 15 | Complete |
 | DB-02 | Phase 15 | Complete |

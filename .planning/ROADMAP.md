@@ -43,7 +43,7 @@
 - [x] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement (completed 2026-02-28)
 - [x] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent (completed 2026-02-28)
 - [x] **Phase 18: Community Safety** - Content reporting and user blocking for community features (completed 2026-02-28)
-- [ ] **Phase 19: Accessibility & Navigation** - Reduced-motion support, skip-to-content, chart accessibility, desktop nav restructure
+- [x] **Phase 19: Accessibility & Navigation** - Reduced-motion support, skip-to-content, chart accessibility, desktop nav restructure (completed 2026-02-28)
 - [ ] **Phase 20: Operations & Validation** - Stripe billing tests, support infrastructure, sync validation, documentation update
 
 ## Phase Details
@@ -139,9 +139,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 19-01-PLAN.md — Reduced-motion support (MotionConfig + CSS), skip-to-content link, AnalyticsMobile SubscriptionGate fix
-- [ ] 19-02-PLAN.md — Chart accessibility (aria-labels, sr-only data tables for visx; aria-label wrappers for Recharts)
-- [ ] 19-03-PLAN.md — Desktop navigation restructure (grouped NavigationMenu dropdowns)
+- [x] 19-01-PLAN.md — Reduced-motion support (MotionConfig + CSS), skip-to-content link, AnalyticsMobile SubscriptionGate fix
+- [x] 19-02-PLAN.md — Chart accessibility (aria-labels, sr-only data tables for visx; aria-label wrappers for Recharts)
+- [x] 19-03-PLAN.md — Desktop navigation restructure (grouped NavigationMenu dropdowns)
 
 ### Phase 20: Operations & Validation
 **Goal**: Revenue-critical paths have test coverage, users have a support channel, and the mobile-to-portal sync pipeline is validated end-to-end
@@ -184,7 +184,7 @@ Plans:
 | 16. Legal & Pricing | 3/3 | Complete    | 2026-02-28 | - |
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
-| 19. Accessibility & Navigation | 2/3 | In Progress|  | - |
+| 19. Accessibility & Navigation | 3/3 | Complete    | 2026-02-28 | - |
 | 20. Operations & Validation | v1.2 | 0/? | Not started | - |
 
 ---
