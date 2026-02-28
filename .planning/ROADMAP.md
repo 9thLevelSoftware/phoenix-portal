@@ -155,11 +155,13 @@ Plans:
   4. CLAUDE.md accurately reflects the current architecture, commands, and project state
   5. GitHub Actions CI pipeline builds successfully with Supabase env secrets configured (or stubbed for CI)
   6. data-export.ts queries use denormalized user_id columns instead of join-path traversal
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 20-01: TBD
-- [ ] 20-02: TBD
+- [ ] 20-01-PLAN.md — CI pipeline fix (.npmrc + build env vars) and data-export.ts join-path optimization (gap closure)
+- [ ] 20-02-PLAN.md — Stripe webhook integration tests for all 5 event types (TDD)
+- [ ] 20-03-PLAN.md — FAQ page with support contact information and route registration
+- [ ] 20-04-PLAN.md — CLAUDE.md accuracy rewrite and mobile-to-portal sync pipeline documentation
 
 ## Progress
 
