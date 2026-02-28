@@ -38,7 +38,7 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 Phase: 20 — seventh of 7 phases in v1.2 (Operations & Validation)
 Plan: 4 of 4 complete (20-01, 20-02, 20-03, 20-04 done)
 Status: Complete
-Last activity: 2026-02-28 — Completed quick task 3: Add Playwright E2E tests for key user flows
+Last activity: 2026-02-28 — Completed quick task 4: Bundle size optimization (vendor chunks + Sentry deferral)
 
 Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100% (v1.2)
 
@@ -190,9 +190,10 @@ None.
 | 1 | Resolve v1.2 audit tech debt: CookieConsentBanner MotionConfig, CSP enforcement note | 2026-02-28 | 36eb315 | [1-resolve-v1-2-audit-tech-debt-cookieconse](./quick/1-resolve-v1-2-audit-tech-debt-cookieconse/) |
 | 2 | Fix pre-existing bugs/lint errors: 0 biome errors (was 102), 48/48 tests green (was 38) | 2026-02-28 | 46d7e6a | [2-fix-pre-existing-bugs-lint-errors-and-co](./quick/2-fix-pre-existing-bugs-lint-errors-and-co/) |
 | 3 | Add Playwright E2E tests: 18 CI-friendly tests for public pages, auth redirects, navigation | 2026-02-28 | 748db95 | [3-add-playwright-e2e-tests-for-key-user-fl](./quick/3-add-playwright-e2e-tests-for-key-user-fl/) |
+| 4 | Bundle optimization: vendor-recharts/visx chunks, Sentry deferred, chart.tsx dead code removed | 2026-02-28 | 170b775 | [4-performance-optimization-bundle-size-ana](./quick/4-performance-optimization-bundle-size-ana/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 3 (18 E2E tests for public pages, auth redirects, navigation)
-Resume file: All v1.2 plans complete (22/22). Quick tasks 1-3 done.
+Stopped at: Completed quick task 4 (vendor chunks + Sentry lazy loading, index chunk -11.5KB)
+Resume file: All v1.2 plans complete (22/22). Quick tasks 1-4 done.
