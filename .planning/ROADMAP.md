@@ -42,7 +42,7 @@
 - [x] **Phase 15: CI/CD & Database Foundation** - Automated quality gates and database optimization for safe deployment of irreversible operations (completed 2026-02-27)
 - [x] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement (completed 2026-02-28)
 - [x] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent (completed 2026-02-28)
-- [ ] **Phase 18: Community Safety** - Content reporting and user blocking for community features
+- [x] **Phase 18: Community Safety** - Content reporting and user blocking for community features (completed 2026-02-28)
 - [ ] **Phase 19: Accessibility & Navigation** - Reduced-motion support, skip-to-content, chart accessibility, desktop nav restructure
 - [ ] **Phase 20: Operations & Validation** - Stripe billing tests, support infrastructure, sync validation, documentation update
 
@@ -182,7 +182,7 @@ Plans:
 | 15. CI/CD & Database Foundation | 2/2 | Complete    | 2026-02-27 | - |
 | 16. Legal & Pricing | 3/3 | Complete    | 2026-02-28 | - |
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
-| 18. Community Safety | 1/2 | In Progress|  | - |
+| 18. Community Safety | 2/2 | Complete   | 2026-02-28 | - |
 | 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |
 | 20. Operations & Validation | v1.2 | 0/? | Not started | - |
 

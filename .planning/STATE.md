@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T03:54:44Z"
+last_updated: "2026-02-28T04:05:42Z"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 18 in progress (v1.2 Launch Readiness - Community Safety)
+**Current focus:** Phase 18 complete (v1.2 Launch Readiness - Community Safety)
 
 ## Current Position
 
 Phase: 18 — fifth of 7 phases in v1.2 (Community Safety)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-28 — Completed 18-01-PLAN.md (Community safety data layer)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-28 — Completed 18-02-PLAN.md (Community safety UI components)
 
-Progress: [▓▓▓▓▓▓▓▓▓░] 45% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓▓] 50% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 45% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 13
-- Average duration: 3.3 min
-- Total execution time: ~42 min
+- Total plans completed: 14
+- Average duration: 3.6 min
+- Total execution time: ~50 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -61,6 +61,7 @@ Progress: [▓▓▓▓▓▓▓▓▓░] 45% (v1.2)
 | 17 | 02 | 2m 59s | 2 | 3 |
 | 17 | 03 | 3m 05s | 2 | 5 |
 | 18 | 01 | 3m 25s | 2 | 7 |
+| 18 | 02 | 7m 31s | 3 | 11 |
 
 ## Accumulated Context
 
@@ -115,6 +116,10 @@ v1.2 decisions:
 - [18-01] 'as never' type assertions for content_reports and user_blocks (not yet in generated Supabase types)
 - [18-01] localStorage key 'phoenix-blocked-users' for instant blocked user hydration on page load
 - [18-01] useAuth imported from @/providers/AuthProvider (corrected from plan's @/queries/auth)
+- [18-02] ContentActionMenu accepts authorId as string|null for deleted user safety
+- [18-02] CommunityFeedCard props extended with optional currentUserId/contentType for backward compatibility
+- [18-02] Block filtering applied to both desktop and mobile community components independently
+- [18-02] Comments query also converted from !inner to left join (consistency with feed query fix)
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -140,5 +145,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 18-01-PLAN.md (Community safety data layer)
-Resume file: 18-02-PLAN.md (Community safety UI components)
+Stopped at: Completed 18-02-PLAN.md (Community safety UI components)
+Resume file: Phase 18 complete. Next phase: 19
