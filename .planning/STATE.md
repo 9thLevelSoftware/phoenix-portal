@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T02:19:00.000Z"
+last_updated: "2026-02-28T02:24:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 16 — third of 7 phases in v1.2 (Legal & Pricing)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: In Progress
-Last activity: 2026-02-28 — Completed 16-01-PLAN.md (Pricing constants and Privacy Policy disclosures)
+Last activity: 2026-02-28 — Completed 16-02-PLAN.md (Terms of Service page and route wiring)
 
-Progress: [▓▓▓▓▓▓▓░░░] 24% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓░░] 27% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓░░░] 24% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 7
-- Average duration: 4 min
-- Total execution time: ~25 min
+- Total plans completed: 8
+- Average duration: 3.4 min
+- Total execution time: ~27 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -55,6 +55,7 @@ Progress: [▓▓▓▓▓▓▓░░░] 24% (v1.2)
 | 15 | 01 | 1m 25s | 2 | 2 |
 | 15 | 02 | 2m 52s | 2 | 2 |
 | 16 | 01 | 2m 30s | 2 | 4 |
+| 16 | 02 | 2m 20s | 2 | 3 |
 
 ## Accumulated Context
 
@@ -89,6 +90,9 @@ v1.2 decisions:
 - [16-01] PricingPlans uses TIER_DISPLAY record merged with TIER_PRICING to separate display config from prices
 - [16-01] LandingPage derives pricingTiers via TIER_PRICING.map() — no hardcoded dollar amounts
 - [16-01] Privacy Policy biometric-adjacent data notice distinguishes from actual biometric data
+- [16-02] ToS effective date set to February 27, 2026 (plan creation date)
+- [16-02] Limitation of Liability uses highlighted callout box for community project "as is" warning
+- [16-02] Contact section mirrors Privacy Policy (GitHub issues + ko-fi link) for consistency
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -114,5 +118,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 16-01-PLAN.md (Pricing constants and Privacy Policy disclosures)
-Resume file: 16-02-PLAN.md
+Stopped at: Completed 16-02-PLAN.md (Terms of Service page and route wiring)
+Resume file: 16-03-PLAN.md

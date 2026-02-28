@@ -172,7 +172,7 @@ Plans:
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. Security Hardening | v1.2 | Complete    | 2026-02-27 | 2026-02-27 |
 | 15. CI/CD & Database Foundation | 2/2 | Complete    | 2026-02-27 | - |
-| 16. Legal & Pricing | 1/3 | In Progress|  | - |
+| 16. Legal & Pricing | 2/3 | In Progress|  | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |
 | 18. Community Safety | v1.2 | 0/? | Not started | - |
 | 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |

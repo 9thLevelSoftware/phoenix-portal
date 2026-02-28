@@ -21,7 +21,7 @@ Requirements for launch readiness. Each maps to roadmap phases.
 ### Legal & Compliance
 
 - [x] **LEGAL-01**: Privacy Policy rewritten to accurately disclose portal data practices
-- [ ] **LEGAL-02**: Terms of Service created covering subscriptions, content, acceptable use
+- [x] **LEGAL-02**: Terms of Service created covering subscriptions, content, acceptable use
 - [x] **LEGAL-03**: Pricing page and landing page show consistent pricing
 - [ ] **LEGAL-04**: Cookie consent banner with accept/reject, conditionally initializes Sentry
 - [ ] **LEGAL-05**: Free-tier usage limits enforced at UI and RLS level matching pricing page
@@ -103,7 +103,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEC-07 | Phase 14 | Complete |
 | SEC-08 | Phase 14 | Complete |
 | LEGAL-01 | Phase 16 | Complete |
-| LEGAL-02 | Phase 16 | Pending |
+| LEGAL-02 | Phase 16 | Complete |
 | LEGAL-03 | Phase 16 | Complete |
 | LEGAL-04 | Phase 17 | Pending |
 | LEGAL-05 | Phase 16 | Pending |
