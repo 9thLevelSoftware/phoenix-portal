@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { getConsentStatus, setConsentStatus } from "@/lib/consent";
-import { initSentry } from "@/lib/sentry";
 
 export function CookieConsentBanner() {
 	const [visible, setVisible] = useState(false);
@@ -20,7 +19,7 @@ export function CookieConsentBanner() {
 
 	const handleAccept = () => {
 		setConsentStatus("accepted");
-		initSentry();
+		import("@/lib/sentry").then(({ initSentry }) => initSentry());
 		setVisible(false);
 	};
 
