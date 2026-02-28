@@ -10,7 +10,7 @@ export function commentsOptions(itemId: string) {
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("community_comments")
-				.select("*, profiles!inner(display_name, avatar_url)")
+				.select("*, profiles(display_name, avatar_url)")
 				.eq("item_id", itemId)
 				.is("deleted_at", null)
 				.order("created_at", { ascending: true });
