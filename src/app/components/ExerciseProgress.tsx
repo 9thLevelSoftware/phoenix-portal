@@ -308,6 +308,7 @@ export function ExerciseProgress({
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Max Weight Trend
 								</h4>
+								<div role="img" aria-label="Exercise volume trend over time">
 								<ResponsiveContainer width="100%" height={250}>
 									<AreaChart data={chartData}>
 										<defs>
@@ -356,6 +357,7 @@ export function ExerciseProgress({
 										/>
 									</AreaChart>
 								</ResponsiveContainer>
+								</div>
 							</Card>
 						</motion.div>
 
@@ -369,6 +371,7 @@ export function ExerciseProgress({
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Total Volume Trend
 								</h4>
+								<div role="img" aria-label="Estimated one-rep max trend over time">
 								<ResponsiveContainer width="100%" height={250}>
 									<AreaChart data={chartData}>
 										<defs>
@@ -417,6 +420,7 @@ export function ExerciseProgress({
 										/>
 									</AreaChart>
 								</ResponsiveContainer>
+								</div>
 							</Card>
 						</motion.div>
 
@@ -430,6 +434,7 @@ export function ExerciseProgress({
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Estimated 1RM Trend
 								</h4>
+								<div role="img" aria-label="Average velocity trend over time">
 								<ResponsiveContainer width="100%" height={250}>
 									<AreaChart data={chartData}>
 										<defs>
@@ -478,6 +483,7 @@ export function ExerciseProgress({
 										/>
 									</AreaChart>
 								</ResponsiveContainer>
+								</div>
 							</Card>
 						</motion.div>
 					</div>

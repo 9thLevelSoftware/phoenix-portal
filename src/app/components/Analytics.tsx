@@ -602,6 +602,7 @@ export function Analytics() {
 											Volume Over Time
 										</h3>
 										{volumeData.length > 0 ? (
+											<div role="img" aria-label="Weekly training volume area chart showing volume in kilograms over time">
 											<ResponsiveContainer width="100%" height={300}>
 												<AreaChart data={volumeData}>
 													<defs>
@@ -650,6 +651,7 @@ export function Analytics() {
 													/>
 												</AreaChart>
 											</ResponsiveContainer>
+											</div>
 										) : (
 											<div className="h-[300px] flex items-center justify-center text-muted">
 												No volume data for this period
@@ -663,6 +665,7 @@ export function Analytics() {
 											Muscle Group Distribution
 										</h3>
 										{muscleGroupData.length > 0 ? (
+											<div role="img" aria-label="Muscle group distribution pie chart showing workout volume by body part">
 											<ResponsiveContainer width="100%" height={300}>
 												<PieChart>
 													<Pie
@@ -695,6 +698,7 @@ export function Analytics() {
 													/>
 												</PieChart>
 											</ResponsiveContainer>
+											</div>
 										) : (
 											<div className="h-[300px] flex items-center justify-center text-muted">
 												No muscle group data yet
@@ -709,6 +713,7 @@ export function Analytics() {
 								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 									<h3 className="text-xl text-white mb-6">1RM Progression</h3>
 									{strengthProgressData.length > 0 ? (
+										<div role="img" aria-label="Strength progress line chart showing estimated one-rep max trends over time">
 										<ResponsiveContainer width="100%" height={400}>
 											<LineChart data={strengthProgressData}>
 												<CartesianGrid
@@ -745,6 +750,7 @@ export function Analytics() {
 												))}
 											</LineChart>
 										</ResponsiveContainer>
+										</div>
 									) : (
 										<div className="h-[400px] flex items-center justify-center text-muted">
 											No strength progress data yet. Set some PRs to see your
@@ -855,6 +861,7 @@ export function Analytics() {
 											<h3 className="text-xl text-white mb-6">
 												External Activity Duration
 											</h3>
+											<div role="img" aria-label="Training frequency bar chart showing workout sessions per time period">
 											<ResponsiveContainer width="100%" height={300}>
 												<BarChart
 													data={externalChartData.slice(0, 20).reverse()}
@@ -908,6 +915,7 @@ export function Analytics() {
 													/>
 												</BarChart>
 											</ResponsiveContainer>
+											</div>
 										</Card>
 
 										{/* Recent External Activities List */}
