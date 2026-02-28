@@ -41,8 +41,8 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Community Moderation
 
-- [ ] **MOD-01**: User can report community posts and comments with category selection
-- [ ] **MOD-02**: User can block other users (content hidden client-side, not banned)
+- [x] **MOD-01**: User can report community posts and comments with category selection
+- [x] **MOD-02**: User can block other users (content hidden client-side, not banned)
 
 ### Accessibility
 
@@ -114,8 +114,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OPS-03 | Phase 20 | Pending |
 | OPS-04 | Phase 20 | Pending |
 | OPS-05 | Phase 20 | Pending |
-| MOD-01 | Phase 18 | Pending |
-| MOD-02 | Phase 18 | Pending |
+| MOD-01 | Phase 18 | Complete |
+| MOD-02 | Phase 18 | Complete |
 | A11Y-01 | Phase 19 | Pending |
 | A11Y-02 | Phase 19 | Pending |
 | A11Y-03 | Phase 19 | Pending |

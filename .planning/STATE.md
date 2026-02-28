@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T03:14:48Z"
+last_updated: "2026-02-28T03:54:44Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 14
+  completed_plans: 13
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 17 complete. Next: Phase 18 (v1.2 Launch Readiness)
+**Current focus:** Phase 18 in progress (v1.2 Launch Readiness - Community Safety)
 
 ## Current Position
 
-Phase: 17 — fourth of 7 phases in v1.2 (GDPR & Privacy) -- COMPLETE
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-02-28 — Completed 17-03-PLAN.md (GDPR account deletion)
+Phase: 18 — fifth of 7 phases in v1.2 (Community Safety)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-28 — Completed 18-01-PLAN.md (Community safety data layer)
 
-Progress: [▓▓▓▓▓▓▓▓░░] 40% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓░] 45% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 3.3 min
-- Total execution time: ~39 min
+- Total execution time: ~42 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -60,6 +60,7 @@ Progress: [▓▓▓▓▓▓▓▓░░] 40% (v1.2)
 | 17 | 01 | 2m 07s | 2 | 4 |
 | 17 | 02 | 2m 59s | 2 | 3 |
 | 17 | 03 | 3m 05s | 2 | 5 |
+| 18 | 01 | 3m 25s | 2 | 7 |
 
 ## Accumulated Context
 
@@ -111,6 +112,9 @@ v1.2 decisions:
 - [17-03] Edge Function logs but continues past Stripe/storage errors to preserve right to erasure
 - [17-03] DangerZone placed between ExportSection and Sign Out card in settings tab
 - [17-03] Native toLocaleDateString for date formatting (keep DangerZone self-contained, no date-fns import)
+- [18-01] 'as never' type assertions for content_reports and user_blocks (not yet in generated Supabase types)
+- [18-01] localStorage key 'phoenix-blocked-users' for instant blocked user hydration on page load
+- [18-01] useAuth imported from @/providers/AuthProvider (corrected from plan's @/queries/auth)
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -136,5 +140,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 17-03-PLAN.md (GDPR account deletion)
-Resume file: Phase 18 (next phase in v1.2)
+Stopped at: Completed 18-01-PLAN.md (Community safety data layer)
+Resume file: 18-02-PLAN.md (Community safety UI components)
