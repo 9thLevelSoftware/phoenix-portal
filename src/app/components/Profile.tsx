@@ -18,6 +18,7 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { DangerZone } from "@/app/components/profile/DangerZone";
 import { ExportSection } from "@/app/components/profile/ExportSection";
 import { TierBadge } from "@/app/components/TierBadge";
 import {
@@ -819,6 +820,9 @@ export function Profile() {
 
 						{/* Data Export - available to all tiers (no SubscriptionGate) */}
 						<ExportSection />
+
+						{/* Account Deletion - available to all tiers (GDPR right to erasure) */}
+						<DangerZone />
 
 						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
