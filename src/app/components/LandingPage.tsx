@@ -781,7 +781,14 @@ export function LandingPage() {
 										Privacy
 									</Link>
 								</li>
-								<li className="hover:text-primary cursor-pointer">Terms</li>
+								<li>
+								<Link
+									to="/terms"
+									className="hover:text-primary cursor-pointer"
+								>
+									Terms of Service
+								</Link>
+							</li>
 								<li className="hover:text-primary cursor-pointer">Security</li>
 							</ul>
 						</div>
@@ -808,9 +815,15 @@ export function LandingPage() {
 								related marks are trademarks of their respective owners.
 							</p>
 							<p>
-								By downloading or using Project Phoenix, you agree to our Terms
-								of Service, which includes important safety warnings and
-								liability disclaimers.
+								By downloading or using Project Phoenix, you agree to our{" "}
+								<Link
+									to="/terms"
+									className="text-primary hover:underline"
+								>
+									Terms of Service
+								</Link>
+								, which includes important safety warnings and liability
+								disclaimers.
 							</p>
 						</div>
 						<p className="text-muted text-xs">
