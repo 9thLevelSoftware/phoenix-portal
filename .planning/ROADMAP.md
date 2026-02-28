@@ -119,10 +119,11 @@ Plans:
   1. User can report a community post or comment via a menu option, selecting a report category; reported content is stored in a review queue accessible via Supabase Studio
   2. User can block another user from their profile or content; blocked user's posts and comments are hidden from the blocking user's view without affecting other users
   3. Community posts/comments from deleted accounts display "[Deleted User]" instead of "Unknown"
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 18-01: TBD
+- [ ] 18-01-PLAN.md — Database migration, schemas, mutations, queries, and blocked users hook
+- [ ] 18-02-PLAN.md — UI components (ContentActionMenu, ReportDialog), wiring into community components, deleted user display fix
 
 ### Phase 19: Accessibility & Navigation
 **Goal**: The app respects OS accessibility preferences, supports keyboard navigation patterns, and organizes desktop navigation into logical groups
