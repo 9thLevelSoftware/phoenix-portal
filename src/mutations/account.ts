@@ -83,10 +83,9 @@ export function useCancelDeletion(userId: string) {
 /**
  * Execute account deletion after the 30-day grace period has expired.
  * Invokes the delete-account Edge Function which:
- *   1. Cancels Stripe subscription
- *   2. Removes avatar storage objects
- *   3. Marks the deletion request as executed
- *   4. Deletes the auth user (cascading to all private data)
+ *   1. Removes avatar storage objects
+ *   2. Marks the deletion request as executed
+ *   3. Deletes the auth user (cascading to all private data)
  */
 export function useExecuteDeletion() {
 	return useMutation({

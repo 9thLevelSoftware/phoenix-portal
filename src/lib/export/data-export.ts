@@ -7,7 +7,7 @@ type ProgressCallback = (step: string, current: number, total: number) => void;
  * Export all user-owned data as a downloadable ZIP file containing JSON files.
  * Implements GDPR Article 20 data portability requirements.
  *
- * Sensitive fields (Stripe IDs, OAuth tokens, API keys) are excluded.
+ * Sensitive fields (RevenueCat IDs, OAuth tokens, API keys) are excluded.
  * Large tables (rep_telemetry) are paginated at 1000 rows per page.
  */
 export async function exportAllUserData(
@@ -45,7 +45,7 @@ export async function exportAllUserData(
 		// Direct user-owned tables
 		// ──────────────────────────────────────
 
-		// profiles — exclude stripe_customer_id (sensitive)
+		// profiles — explicit select to exclude sensitive fields
 		await addTable(
 			"profiles",
 			"profile",
@@ -139,7 +139,7 @@ export async function exportAllUserData(
 			supabase.from("challenge_participants").select("*").eq("user_id", userId),
 		);
 
-		// subscriptions — EXCLUDE stripe_customer_id, stripe_subscription_id
+		// subscriptions — explicit select to exclude provider-specific fields
 		await addTable(
 			"subscriptions",
 			"subscription",

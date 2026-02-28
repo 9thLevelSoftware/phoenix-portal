@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: RevenueCat Billing Migration
-status: defining-requirements
-last_updated: "2026-02-28T21:00:00.000Z"
+status: executing
+last_updated: "2026-02-28T21:16:00.000Z"
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 8
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.3 RevenueCat Billing Migration — replacing Stripe with RevenueCat, portal becomes subscription status consumer
+**Current focus:** v1.3 Phase 22 -- UI Migration & Stripe Removal
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-28 — Milestone v1.3 started
+Phase: 22 of 23 (UI Migration & Stripe Removal)
+Plan: 1 of 3 in current phase (22-01 complete, 22-02 and 22-03 remaining)
+Status: Executing Phase 22
+Last activity: 2026-02-28 -- Completed 22-01 (UI component migration: PricingPlans, Profile, UpgradePrompt)
 
-Progress: [░░░░░░░░░░░░░░░░░░░░] 0% (v1.3)
+Progress: [██████████░░░░░░░░░░] 50% (v1.3: 4/8 plans)
 
 ## Performance Metrics
 
@@ -46,6 +46,11 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 0% (v1.
 - Average duration: 3.1 min
 - Total execution time: ~66 min
 
+**Velocity (v1.3):**
+- Plans completed: 4
+- Average duration: ~2.3 min
+- Total execution time: ~9 min
+
 ## Accumulated Context
 
 ### Decisions
@@ -55,13 +60,15 @@ All v1.0/v1.1/v1.2 decisions archived in PROJECT.md Key Decisions table.
 v1.3 decisions:
 - [milestone] Billing moves entirely to mobile app via RevenueCat; web portal reads subscription status only
 - [milestone] Remove all Stripe code completely (not deprecate gradually)
-- [milestone] Pricing page becomes "subscribe in app" — no web checkout
+- [milestone] Pricing page becomes "subscribe in app" -- no web checkout
 - [milestone] Tier structure unchanged: FREE / PHOENIX / ELITE with same feature gating
-- [milestone] Portal-side prep first; mobile RevenueCat integration happens separately/later
-- [milestone] Research needed: optimal sync mechanism (webhooks vs API vs SDK)
-
-v1.3 decisions pending:
-- RevenueCat sync mechanism not yet determined (research phase)
+- [research] Evolve-in-place strategy (Option A): evolve `subscriptions` table, zero changes to RLS/Realtime/useSubscription interface/15+ consumer components
+- [research] Entitlement-based tier mapping (not product-based) -- cross-platform stable
+- [research] Zero new npm packages; net reduction (remove @stripe/stripe-js)
+- [research] Webhook + manual refresh button to mitigate RevenueCat delivery delays (up to 6h)
+- [execution] Used `20260303` date prefix for migration file (after existing `20260302_community_safety.sql`)
+- [execution] Extracted pure functions to `src/lib/revenuecat.ts` for testability; Edge Function maintains synced copy (Deno can't import from src/)
+- [execution] UI components migrated from Stripe checkout/portal to "subscribe in mobile app" CTAs (22-01)
 
 ### Pending Todos
 
@@ -69,16 +76,10 @@ None.
 
 ### Blockers/Concerns
 
-**Carried from v1.2 (human verification):**
-- Stripe checkout/portal/webhooks (needs Stripe test environment) — WILL BE REMOVED in v1.3
-- OAuth flows with real credentials (Strava, Fitbit, Garmin)
-- 12 Supabase Edge Functions (needs deployment) — 3 Stripe functions to be removed
-- 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
-
-**v1.3 concerns:**
-- RevenueCat SDK/API availability for web (not just mobile) needs research
-- Database migration: subscriptions table schema may change
-- Existing RLS policies reference stripe_customer_id — must be updated
+- **app_user_id mapping:** Must confirm mobile app uses Supabase auth.uid as RevenueCat appUserId. If not, need mapping table. (Assumed for Phase 21, should verify before production.)
+- **Entitlement IDs:** Used `phoenix` / `elite` as placeholders. Actual names from RevenueCat dashboard needed before production webhook handler.
+- **Existing Stripe subscribers:** Need count and migration timeline before decommissioning Stripe.
+- **RevenueCat Pro plan:** Webhooks require Pro plan. Confirm plan is active.
 
 ### Quick Tasks Completed
 
@@ -93,5 +94,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Milestone v1.3 initialized, defining requirements
-Resume file: v1.2 complete (22/22 plans + 5 quick tasks). Starting v1.3 RevenueCat Billing Migration.
+Stopped at: Completed 22-01-PLAN.md (UI Component Migration). Next: execute 22-02 and 22-03.
+Resume file: None. Next step: Continue Phase 22 execution (22-02, 22-03).
