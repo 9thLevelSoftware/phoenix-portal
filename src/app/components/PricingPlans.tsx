@@ -16,18 +16,6 @@ import {
 	useSubscription,
 } from "@/hooks/useSubscription";
 import { TIER_PRICING } from "@/lib/pricing";
-import { redirectToCheckout } from "@/lib/stripe";
-
-const PRICE_IDS = {
-	PHOENIX: {
-		monthly: import.meta.env.VITE_STRIPE_PHOENIX_MONTHLY_PRICE_ID ?? "",
-		annual: import.meta.env.VITE_STRIPE_PHOENIX_ANNUAL_PRICE_ID ?? "",
-	},
-	ELITE: {
-		monthly: import.meta.env.VITE_STRIPE_ELITE_MONTHLY_PRICE_ID ?? "",
-		annual: import.meta.env.VITE_STRIPE_ELITE_ANNUAL_PRICE_ID ?? "",
-	},
-} as const;
 
 interface TierFeature {
 	label: string;
@@ -100,35 +88,12 @@ export function PricingPlans() {
 	const { tier: currentTier, isLoading: subscriptionLoading } =
 		useSubscription();
 	const [isAnnual, setIsAnnual] = useState(false);
-	const [loadingTier, setLoadingTier] = useState<SubscriptionTier | null>(null);
 
-	const isPriceConfigured = (tier: SubscriptionTier): boolean => {
-		if (tier === "FREE") return true;
-		const id = isAnnual ? PRICE_IDS[tier].annual : PRICE_IDS[tier].monthly;
-		return !!id;
-	};
-
-	const handleSubscribe = async (tier: SubscriptionTier) => {
+	const handleSubscribe = (tier: SubscriptionTier) => {
 		if (tier === "FREE") return;
-
-		const priceId = isAnnual ? PRICE_IDS[tier].annual : PRICE_IDS[tier].monthly;
-
-		if (!priceId) {
-			toast.info(
-				"Subscriptions are coming soon! We're still setting up payments.",
-			);
-			return;
-		}
-
-		setLoadingTier(tier);
-		try {
-			await redirectToCheckout(priceId);
-		} catch (err) {
-			toast.error(
-				err instanceof Error ? err.message : "Failed to start checkout",
-			);
-			setLoadingTier(null);
-		}
+		toast.info(
+			"Subscriptions are managed in the Phoenix mobile app. Download the app to subscribe!",
+		);
 	};
 
 	const renderCTA = (tierConfig: TierConfig) => {
@@ -159,26 +124,12 @@ export function PricingPlans() {
 			);
 		}
 
-		const isLoading = loadingTier === tierConfig.tier;
-		const priceReady = isPriceConfigured(tierConfig.tier);
-
 		return (
 			<Button
-				className={`w-full ${priceReady ? tierConfig.buttonClass : ""}`}
-				variant={priceReady ? "default" : "outline"}
+				className={`w-full ${tierConfig.buttonClass}`}
 				onClick={() => handleSubscribe(tierConfig.tier)}
-				disabled={isLoading || loadingTier !== null}
 			>
-				{isLoading ? (
-					<>
-						<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-						Redirecting...
-					</>
-				) : priceReady ? (
-					`Subscribe to ${tierConfig.name}`
-				) : (
-					"Coming Soon"
-				)}
+				Subscribe in the App
 			</Button>
 		);
 	};
