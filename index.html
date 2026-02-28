@@ -4,6 +4,14 @@
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <!--
+        CSP Enforcement Roadmap:
+        1. Currently in report-only mode to establish a violation baseline.
+        2. Before enforcing: check browser console for CSP violation reports during QA/staging.
+        3. To enforce: change "Content-Security-Policy-Report-Only" to "Content-Security-Policy" in http-equiv.
+        4. When hosting platform is confirmed, migrate from meta tag to HTTP header (more secure, supports report-uri).
+        5. 'unsafe-inline' in style-src is required by shadcn/ui (Radix) inline styles and cannot be removed.
+      -->
       <meta http-equiv="Content-Security-Policy-Report-Only" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io; frame-src 'self' https://js.stripe.com; worker-src 'self' blob:;">
       <title>Phoenix Project Fitness Portal</title>
       <!-- Preconnect to Google Fonts domains for faster font loading -->
