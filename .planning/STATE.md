@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
-status: unknown
-last_updated: "2026-02-27T22:06:31.450Z"
+status: in-progress
+last_updated: "2026-02-28T02:19:00.000Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
----
-
----
-gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Launch Readiness
-status: unknown
-last_updated: "2026-02-27T22:02:00.000Z"
-progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 7
 ---
 
 # Project State
@@ -31,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 15: CI/CD & Database Foundation (v1.2 Launch Readiness)
+**Current focus:** Phase 16: Legal & Pricing (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: 15 — second of 7 phases in v1.2 (CI/CD & Database Foundation)
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-02-27 — Completed 15-02-PLAN.md (RLS denormalization and subscription deprecation)
+Phase: 16 — third of 7 phases in v1.2 (Legal & Pricing)
+Plan: 1 of 3 complete
+Status: In Progress
+Last activity: 2026-02-28 — Completed 16-01-PLAN.md (Pricing constants and Privacy Policy disclosures)
 
-Progress: [▓▓▓▓▓▓░░░░] 21% (v1.2)
+Progress: [▓▓▓▓▓▓▓░░░] 24% (v1.2)
 
 ## Performance Metrics
 
@@ -55,9 +42,9 @@ Progress: [▓▓▓▓▓▓░░░░] 21% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 4 min
-- Total execution time: ~22 min
+- Total execution time: ~25 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -67,6 +54,7 @@ Progress: [▓▓▓▓▓▓░░░░] 21% (v1.2)
 | 14 | 04 | 6m 41s | 3 | 13 |
 | 15 | 01 | 1m 25s | 2 | 2 |
 | 15 | 02 | 2m 52s | 2 | 2 |
+| 16 | 01 | 2m 30s | 2 | 4 |
 
 ## Accumulated Context
 
@@ -97,9 +85,14 @@ v1.2 decisions:
 - [15-02] All RLS policies use (select auth.uid()) wrapper for initPlan caching (~20x perf gain)
 - [15-02] New RLS policy created before old dropped to avoid security gap window
 
+- [16-01] TIER_PRICING array in src/lib/pricing.ts as single source of truth for all tier prices
+- [16-01] PricingPlans uses TIER_DISPLAY record merged with TIER_PRICING to separate display config from prices
+- [16-01] LandingPage derives pricingTiers via TIER_PRICING.map() — no hardcoded dollar amounts
+- [16-01] Privacy Policy biometric-adjacent data notice distinguishes from actual biometric data
+
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
-- Pricing final values ($9.99 vs $14.99) must be resolved before Phase 16
+- ~~Pricing final values ($9.99 vs $14.99) must be resolved before Phase 16~~ RESOLVED: $14.99/$24.99 confirmed in 16-01
 
 ### Pending Todos
 
@@ -120,6 +113,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-27
-Stopped at: Completed 15-02-PLAN.md (RLS denormalization and subscription deprecation) - Phase 15 complete
-Resume file: Next phase
+Last session: 2026-02-28
+Stopped at: Completed 16-01-PLAN.md (Pricing constants and Privacy Policy disclosures)
+Resume file: 16-02-PLAN.md
