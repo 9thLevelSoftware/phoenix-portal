@@ -767,7 +767,14 @@ export function LandingPage() {
 								<li className="hover:text-primary cursor-pointer">About</li>
 								<li className="hover:text-primary cursor-pointer">Blog</li>
 								<li className="hover:text-primary cursor-pointer">Careers</li>
-								<li className="hover:text-primary cursor-pointer">Contact</li>
+								<li>
+									<Link
+										to="/faq"
+										className="hover:text-primary"
+									>
+										FAQ & Contact
+									</Link>
+								</li>
 							</ul>
 						</div>
 						<div>
