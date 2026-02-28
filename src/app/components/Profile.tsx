@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link } from "react-router";
 import { toast } from "sonner";
 import { DangerZone } from "@/app/components/profile/DangerZone";
 import { ExportSection } from "@/app/components/profile/ExportSection";
@@ -42,7 +42,6 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
-import { openCustomerPortal } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
@@ -93,8 +92,6 @@ export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
 	const { tier, currentPeriodEnd, cancelAtPeriodEnd } = useSubscription();
-	const [searchParams, setSearchParams] = useSearchParams();
-	const [portalLoading, setPortalLoading] = useState(false);
 
 	// Real data queries
 	const { data: profile, isPending: profileLoading } = useQuery({
@@ -189,28 +186,6 @@ export function Profile() {
 			setLeaderboardParticipation(profile.leaderboard_participation ?? true);
 		}
 	}, [profile]);
-
-	// Handle checkout return query params
-	useEffect(() => {
-		const checkout = searchParams.get("checkout");
-		if (checkout === "success") {
-			toast.success(`Subscription activated! Welcome to ${tier}.`);
-			setSearchParams({}, { replace: true });
-		} else if (checkout === "cancel") {
-			toast("Checkout cancelled.");
-			setSearchParams({}, { replace: true });
-		}
-	}, [searchParams, setSearchParams, tier]);
-
-	async function handleManageSubscription() {
-		setPortalLoading(true);
-		try {
-			await openCustomerPortal();
-		} catch {
-			toast.error("Could not open subscription portal. Please try again.");
-			setPortalLoading(false);
-		}
-	}
 
 	// Derived profile data
 	const displayName =
@@ -372,17 +347,9 @@ export function Profile() {
 									</Button>
 								) : (
 									<>
-										<Button
-											variant="outline"
-											className="border-secondary text-white hover:bg-secondary/50"
-											onClick={handleManageSubscription}
-											disabled={portalLoading}
-										>
-											{portalLoading && (
-												<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-											)}
-											Manage Subscription
-										</Button>
+										<p className="text-sm text-muted-foreground">
+											Manage your subscription in the Phoenix mobile app
+										</p>
 										{tier === "PHOENIX" && (
 											<Button
 												asChild

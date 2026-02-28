@@ -84,7 +84,7 @@ export function UpgradePrompt({
 					</h3>
 					<p className="text-sm text-zinc-400">
 						Unlock {featureName ?? "this feature"} and more with a{" "}
-						{requiredTier} subscription.
+						{requiredTier} subscription in the Phoenix mobile app.
 					</p>
 				</div>
 
@@ -106,7 +106,7 @@ export function UpgradePrompt({
 					asChild
 					className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white px-8"
 				>
-					<Link to="/pricing">View Plans</Link>
+					<Link to="/pricing">Compare Plans</Link>
 				</Button>
 			</div>
 		</Card>
