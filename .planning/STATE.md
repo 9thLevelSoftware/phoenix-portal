@@ -8,7 +8,7 @@ progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 17 — fourth of 7 phases in v1.2 (GDPR & Privacy)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: In Progress
-Last activity: 2026-02-28 — Completed 17-01-PLAN.md (Cookie consent banner gating Sentry)
+Last activity: 2026-02-28 — Completed 17-02-PLAN.md (GDPR data export with JSZip)
 
-Progress: [▓▓▓▓▓▓▓▓░░] 33% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓░░] 37% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓░░] 33% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 3.3 min
-- Total execution time: ~33 min
+- Total execution time: ~36 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -58,6 +58,7 @@ Progress: [▓▓▓▓▓▓▓▓░░] 33% (v1.2)
 | 16 | 02 | 2m 20s | 2 | 3 |
 | 16 | 03 | 4m 31s | 2 | 4 |
 | 17 | 01 | 2m 07s | 2 | 4 |
+| 17 | 02 | 2m 59s | 2 | 3 |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ v1.2 decisions:
 - [17-01] Equal-weight outline buttons for Accept/Reject (GDPR requirement, no dark patterns)
 - [17-01] localStorage key 'phoenix-cookie-consent' for consent persistence
 - [17-01] Banner rendered inside BrowserRouter but outside AuthProvider/QueryProvider (needs Link, not auth)
+- [17-02] Excluded stripe_customer_id from profiles export (sensitive field not in plan but present in schema)
+- [17-02] Used --legacy-peer-deps for JSZip install due to pre-existing @visx/axis React 19 peer conflict
+- [17-02] Profiles queried by id (primary key = auth UID) rather than user_id (nullable FK)
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -127,5 +131,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 17-01-PLAN.md (Cookie consent banner gating Sentry)
-Resume file: 17-02-PLAN.md
+Stopped at: Completed 17-02-PLAN.md (GDPR data export with JSZip)
+Resume file: 17-03-PLAN.md

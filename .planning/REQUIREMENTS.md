@@ -28,7 +28,7 @@ Requirements for launch readiness. Each maps to roadmap phases.
 
 ### Data Rights
 
-- [ ] **GDPR-01**: User can export all personal data as downloadable ZIP
+- [x] **GDPR-01**: User can export all personal data as downloadable ZIP
 - [ ] **GDPR-02**: User can request account deletion with 30-day grace period and cascade
 
 ### Operations
@@ -107,7 +107,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LEGAL-03 | Phase 16 | Complete |
 | LEGAL-04 | Phase 17 | Complete |
 | LEGAL-05 | Phase 16 | Complete |
-| GDPR-01 | Phase 17 | Pending |
+| GDPR-01 | Phase 17 | Complete |
 | GDPR-02 | Phase 17 | Pending |
 | OPS-01 | Phase 15 | Complete |
 | OPS-02 | Phase 20 | Pending |
