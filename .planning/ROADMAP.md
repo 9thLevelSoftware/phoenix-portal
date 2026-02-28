@@ -40,7 +40,7 @@
 
 - [x] **Phase 14: Security Hardening** - Fix live vulnerabilities: CORS, OAuth tokens, CSRF, source maps, webhook auth, Stripe origin validation
 - [x] **Phase 15: CI/CD & Database Foundation** - Automated quality gates and database optimization for safe deployment of irreversible operations (completed 2026-02-27)
-- [ ] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement
+- [x] **Phase 16: Legal & Pricing** - Privacy Policy, Terms of Service, pricing consistency, and free-tier gating enforcement (completed 2026-02-28)
 - [ ] **Phase 17: GDPR & Privacy** - User data export, account deletion with cascade, and cookie consent
 - [ ] **Phase 18: Community Safety** - Content reporting and user blocking for community features
 - [ ] **Phase 19: Accessibility & Navigation** - Reduced-motion support, skip-to-content, chart accessibility, desktop nav restructure
@@ -172,7 +172,7 @@ Plans:
 | 13. Hardening & Polish | v1.1 | 3/3 | Complete | 2026-02-17 |
 | 14. Security Hardening | v1.2 | Complete    | 2026-02-27 | 2026-02-27 |
 | 15. CI/CD & Database Foundation | 2/2 | Complete    | 2026-02-27 | - |
-| 16. Legal & Pricing | 2/3 | In Progress|  | - |
+| 16. Legal & Pricing | 3/3 | Complete   | 2026-02-28 | - |
 | 17. GDPR & Privacy | v1.2 | 0/? | Not started | - |
 | 18. Community Safety | v1.2 | 0/? | Not started | - |
 | 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |
