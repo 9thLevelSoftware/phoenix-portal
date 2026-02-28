@@ -16,12 +16,14 @@ interface SubscriptionGateProps {
 	requiredTier: "PHOENIX" | "ELITE";
 	children: ReactNode;
 	fallback?: ReactNode;
+	featureName?: string;
 }
 
 export function SubscriptionGate({
 	requiredTier,
 	children,
 	fallback,
+	featureName,
 }: SubscriptionGateProps) {
 	const { tier, isLoading } = useSubscription();
 
@@ -36,7 +38,11 @@ export function SubscriptionGate({
 	return (
 		<>
 			{fallback ?? (
-				<UpgradePrompt requiredTier={requiredTier} currentTier={tier} />
+				<UpgradePrompt
+					requiredTier={requiredTier}
+					currentTier={tier}
+					featureName={featureName}
+				/>
 			)}
 		</>
 	);
