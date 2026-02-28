@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
-status: unknown
-last_updated: "2026-02-28T15:57:06.610Z"
-progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
----
-
----
-gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T15:45:42Z"
+last_updated: "2026-02-28T16:17:00Z"
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 22
+  completed_plans: 19
 ---
 
 # Project State
@@ -31,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 19 complete — Accessibility & Navigation (v1.2 Launch Readiness)
+**Current focus:** Phase 20 in progress — Operations & Validation (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: 19 — sixth of 7 phases in v1.2 (Accessibility & Navigation) -- COMPLETE
-Plan: 3 of 3 complete (19-01, 19-02, 19-03 done)
-Status: Phase Complete
-Last activity: 2026-02-28 — Completed 19-02-PLAN.md (Chart accessibility: aria-labels and sr-only data tables)
+Phase: 20 — seventh of 7 phases in v1.2 (Operations & Validation)
+Plan: 1 of 4 complete (20-01 done)
+Status: In Progress
+Last activity: 2026-02-28 — Completed 20-01-PLAN.md (CI pipeline fix and data export optimization)
 
-Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 60% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░] 86% (v1.2)
 
 ## Performance Metrics
 
@@ -55,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 60% (v1
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 18
-- Average duration: 3.3 min
-- Total execution time: ~60 min
+- Total plans completed: 19
+- Average duration: 3.2 min
+- Total execution time: ~62 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -79,6 +66,7 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 60% (v1
 | 19 | 01 | 2m 17s | 2 | 4 |
 | 19 | 02 | 5m 01s | 2 | 10 |
 | 19 | 03 | 1m 38s | 1 | 1 |
+| 20 | 01 | 1m 41s | 2 | 3 |
 
 ## Accumulated Context
 
@@ -147,6 +135,9 @@ v1.2 decisions:
 - [19-02] AsymmetryGauge summary mode also wrapped with accessibility (not just per-rep chart mode)
 - [19-03] Removed motion/framer layoutId active indicator in favor of className-based active states
 
+- [20-01] Stub Supabase env vars (not real secrets) sufficient for CI build validation
+- [20-01] TOTAL_STEPS unchanged at 23 despite query refactor (same number of progress steps per path)
+
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
 - ~~Pricing final values ($9.99 vs $14.99) must be resolved before Phase 16~~ RESOLVED: $14.99/$24.99 confirmed in 16-01
@@ -171,5 +162,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 19-02-PLAN.md (Chart accessibility: aria-labels and sr-only data tables)
-Resume file: Phase 19 complete (3/3 plans done: 19-01, 19-02, 19-03). Ready for Phase 20.
+Stopped at: Completed 20-01-PLAN.md (CI pipeline fix and data export optimization)
+Resume file: Phase 20 in progress (1/4 plans done: 20-01). Next: 20-02.

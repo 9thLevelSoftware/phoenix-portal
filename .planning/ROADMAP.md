@@ -187,7 +187,7 @@ Plans:
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
 | 19. Accessibility & Navigation | 3/3 | Complete    | 2026-02-28 | - |
-| 20. Operations & Validation | v1.2 | 0/? | Not started | - |
+| 20. Operations & Validation | 1/4 | In Progress|  | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
