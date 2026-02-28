@@ -114,6 +114,9 @@ const Goals = lazy(() =>
 const Recovery = lazy(() =>
 	import("@/app/components/Recovery").then((m) => ({ default: m.Recovery })),
 );
+const FAQ = lazy(() =>
+	import("@/app/components/FAQ").then((m) => ({ default: m.FAQ })),
+);
 
 // ---------- Route tree ----------
 
@@ -125,6 +128,7 @@ export function AppRoutes() {
 				<Route path="/" element={<LandingPage />} />
 				<Route path="/privacy" element={<PrivacyPolicy />} />
 				<Route path="/terms" element={<TermsOfService />} />
+				<Route path="/faq" element={<FAQ />} />
 				<Route path="/auth/reset-password" element={<ResetPassword />} />
 
 				{/* Protected routes */}
