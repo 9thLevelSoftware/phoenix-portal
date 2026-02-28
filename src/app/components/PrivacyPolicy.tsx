@@ -403,6 +403,15 @@ export function PrivacyPolicy() {
 										the Integrations page
 									</span>
 								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Cookie Preferences:</span>{" "}
+										You can manage your cookie preferences at any time. A consent
+										banner appears on your first visit. To reset your preference,
+										clear your browser's local storage for this site.
+									</span>
+								</li>
 							</ul>
 						</section>
 

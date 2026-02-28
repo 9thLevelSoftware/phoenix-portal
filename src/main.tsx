@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import App from "./app/App.tsx";
+import { CookieConsentBanner } from "./app/components/CookieConsentBanner";
 import { getConsentStatus } from "./lib/consent";
 import { initSentry, sentryErrorHandler } from "./lib/sentry";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -25,5 +26,6 @@ root.render(
 				<App />
 			</QueryProvider>
 		</AuthProvider>
+		<CookieConsentBanner />
 	</BrowserRouter>,
 );
