@@ -151,6 +151,22 @@ export function isFollowingOptions(followerId: string, followedId: string) {
 	});
 }
 
+export function blockedUsersOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.community.blocks(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("user_blocks" as never)
+				.select("blocked_id")
+				.eq("blocker_id", userId);
+			if (error) throw error;
+			return (data as { blocked_id: string }[]).map(
+				(row) => row.blocked_id,
+			);
+		},
+	});
+}
+
 export function userVotesOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.votes(userId),

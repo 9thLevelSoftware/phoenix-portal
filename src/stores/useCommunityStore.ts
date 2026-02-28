@@ -11,11 +11,13 @@ interface CommunityState {
 	search: string;
 	filters: CommunityFilters;
 	selectedItemId: string | null;
+	blockedUserIds: Set<string>;
 	setActiveTab: (tab: "routines" | "cycles") => void;
 	setSort: (sort: "hot" | "top" | "new") => void;
 	setSearch: (search: string) => void;
 	setFilters: (filters: CommunityFilters) => void;
 	setSelectedItemId: (id: string | null) => void;
+	setBlockedUserIds: (ids: Set<string>) => void;
 	resetAll: () => void;
 }
 
@@ -25,6 +27,7 @@ const initialState = {
 	search: "",
 	filters: {},
 	selectedItemId: null,
+	blockedUserIds: new Set<string>(),
 };
 
 export const useCommunityStore = create<CommunityState>()((set) => ({
@@ -34,5 +37,6 @@ export const useCommunityStore = create<CommunityState>()((set) => ({
 	setSearch: (search) => set({ search }),
 	setFilters: (filters) => set({ filters }),
 	setSelectedItemId: (selectedItemId) => set({ selectedItemId }),
+	setBlockedUserIds: (blockedUserIds) => set({ blockedUserIds }),
 	resetAll: () => set(initialState),
 }));
