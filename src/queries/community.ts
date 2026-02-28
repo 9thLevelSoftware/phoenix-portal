@@ -44,7 +44,7 @@ export function communityFeedOptions(params: FeedParams) {
 		queryFn: async ({ pageParam = 0 }) => {
 			let query = supabase
 				.from(table)
-				.select("*, profiles!inner(display_name, avatar_url)");
+				.select("*, profiles(display_name, avatar_url)");
 
 			// Sort
 			if (params.sort === "new") {
