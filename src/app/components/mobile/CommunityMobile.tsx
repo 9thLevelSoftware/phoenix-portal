@@ -14,6 +14,7 @@ import { FeaturedCreators } from "@/app/components/community/FeaturedCreators";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { useBlockedUsers } from "@/hooks/useBlockedUsers";
 import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useVote } from "@/mutations/community";
@@ -100,8 +101,11 @@ export function CommunityMobile() {
 	}, [queryClient]);
 
 	const voteMutation = useVote();
+	const { blockedUserIds } = useBlockedUsers();
 
-	const allItems: CommunityFeedItem[] = data?.pages.flat() ?? [];
+	const allItems: CommunityFeedItem[] = (data?.pages.flat() ?? []).filter(
+		(item) => item.user_id === null || !blockedUserIds.has(item.user_id),
+	);
 
 	const selectedItem = selectedItemId
 		? (allItems.find((item) => item.id === selectedItemId) ?? null)
@@ -231,6 +235,8 @@ export function CommunityMobile() {
 									isVoted={votedIds?.has(item.id) ?? false}
 									onVote={handleVote}
 									onAuthorClick={setViewingCreatorId}
+									currentUserId={user?.id}
+									contentType={activeTab === "routines" ? "routine" : "cycle"}
 								/>
 							))
 						)}
