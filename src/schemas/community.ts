@@ -27,7 +27,8 @@ export const sharedRoutineSchema = z.object({
 			display_name: z.string(),
 			avatar_url: z.string().nullable(),
 		})
-		.optional(),
+		.optional()
+		.nullable(),
 });
 
 export type SharedRoutine = z.infer<typeof sharedRoutineSchema>;
@@ -54,7 +55,8 @@ export const sharedCycleSchema = z.object({
 			display_name: z.string(),
 			avatar_url: z.string().nullable(),
 		})
-		.optional(),
+		.optional()
+		.nullable(),
 });
 
 export type SharedCycle = z.infer<typeof sharedCycleSchema>;
