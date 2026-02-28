@@ -114,9 +114,11 @@ Plans:
 **Goal**: Users can report inappropriate content and block other users in community features
 **Depends on**: Phase 16 (ToS must define acceptable use before reports can reference policy violations)
 **Requirements**: MOD-01, MOD-02
+**Gap Closure**: Fixes community "Unknown" display → "[Deleted User]" for deleted accounts (audit flow gap)
 **Success Criteria** (what must be TRUE):
   1. User can report a community post or comment via a menu option, selecting a report category; reported content is stored in a review queue accessible via Supabase Studio
   2. User can block another user from their profile or content; blocked user's posts and comments are hidden from the blocking user's view without affecting other users
+  3. Community posts/comments from deleted accounts display "[Deleted User]" instead of "Unknown"
 **Plans**: TBD
 
 Plans:
@@ -126,11 +128,13 @@ Plans:
 **Goal**: The app respects OS accessibility preferences, supports keyboard navigation patterns, and organizes desktop navigation into logical groups
 **Depends on**: Phase 15 (axe-core CI regression gate must be running before accessibility changes ship)
 **Requirements**: A11Y-01, A11Y-02, A11Y-03, NAV-01
+**Gap Closure**: Fixes AnalyticsMobile bypassing SubscriptionGate for free-tier mobile users (audit flow gap)
 **Success Criteria** (what must be TRUE):
   1. With prefers-reduced-motion enabled at the OS level, all Framer Motion animations and CSS keyframe animations (flame-flicker, ember-rise, phoenix-glow) are suppressed or reduced to opacity-only transitions
   2. A keyboard user pressing Tab on page load can activate a visible skip-to-content link that jumps focus to the main content area
   3. Screen reader users encounter descriptive labels on all chart containers; Canvas-based visx charts have a text-based alternative accessible to assistive technology
   4. Desktop navigation groups 13+ items into logical categories via dropdown menus; all 26 existing route paths continue to work without changes
+  5. Free-tier mobile users see SubscriptionGate before accessing premium analytics (AnalyticsMobile gating fix)
 **Plans**: TBD
 
 Plans:
@@ -141,11 +145,14 @@ Plans:
 **Goal**: Revenue-critical paths have test coverage, users have a support channel, and the mobile-to-portal sync pipeline is validated end-to-end
 **Depends on**: Phase 14 (Stripe origin fix must be in place before billing tests validate it), Phase 15 (CI pipeline runs the tests)
 **Requirements**: OPS-02, OPS-03, OPS-04, OPS-05
+**Gap Closure**: Fixes CI env secrets for Supabase build + data-export.ts join-path optimization (audit integration gaps)
 **Success Criteria** (what must be TRUE):
   1. Automated tests cover all 5 Stripe webhook event types (checkout.session.completed, subscription.created, subscription.updated, subscription.deleted, invoice.payment_failed) with mock payloads
   2. Users can find answers to common questions on a FAQ page and contact the team via email or Discord link
   3. A workout performed on the mobile app appears in the portal's workout history within the expected sync window, verified end-to-end
   4. CLAUDE.md accurately reflects the current architecture, commands, and project state
+  5. GitHub Actions CI pipeline builds successfully with Supabase env secrets configured (or stubbed for CI)
+  6. data-export.ts queries use denormalized user_id columns instead of join-path traversal
 **Plans**: TBD
 
 Plans:
@@ -173,7 +180,7 @@ Plans:
 | 14. Security Hardening | v1.2 | Complete    | 2026-02-27 | 2026-02-27 |
 | 15. CI/CD & Database Foundation | 2/2 | Complete    | 2026-02-27 | - |
 | 16. Legal & Pricing | 3/3 | Complete    | 2026-02-28 | - |
-| 17. GDPR & Privacy | 3/3 | Complete   | 2026-02-28 | - |
+| 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | v1.2 | 0/? | Not started | - |
 | 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |
 | 20. Operations & Validation | v1.2 | 0/? | Not started | - |
