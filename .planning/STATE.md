@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T03:08:11Z"
+last_updated: "2026-02-28T03:14:48Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** Phase 17: GDPR & Privacy (v1.2 Launch Readiness)
+**Current focus:** Phase 17 complete. Next: Phase 18 (v1.2 Launch Readiness)
 
 ## Current Position
 
-Phase: 17 — fourth of 7 phases in v1.2 (GDPR & Privacy)
-Plan: 2 of 3 complete
-Status: In Progress
-Last activity: 2026-02-28 — Completed 17-02-PLAN.md (GDPR data export with JSZip)
+Phase: 17 — fourth of 7 phases in v1.2 (GDPR & Privacy) -- COMPLETE
+Plan: 3 of 3 complete
+Status: Phase Complete
+Last activity: 2026-02-28 — Completed 17-03-PLAN.md (GDPR account deletion)
 
-Progress: [▓▓▓▓▓▓▓▓░░] 37% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓░░] 40% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓░░] 37% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 3.3 min
-- Total execution time: ~36 min
+- Total execution time: ~39 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -59,6 +59,7 @@ Progress: [▓▓▓▓▓▓▓▓░░] 37% (v1.2)
 | 16 | 03 | 4m 31s | 2 | 4 |
 | 17 | 01 | 2m 07s | 2 | 4 |
 | 17 | 02 | 2m 59s | 2 | 3 |
+| 17 | 03 | 3m 05s | 2 | 5 |
 
 ## Accumulated Context
 
@@ -106,6 +107,10 @@ v1.2 decisions:
 - [17-02] Excluded stripe_customer_id from profiles export (sensitive field not in plan but present in schema)
 - [17-02] Used --legacy-peer-deps for JSZip install due to pre-existing @visx/axis React 19 peer conflict
 - [17-02] Profiles queried by id (primary key = auth UID) rather than user_id (nullable FK)
+- [17-03] Stripe customer NOT deleted on account deletion (Stripe DPA requires financial record retention)
+- [17-03] Edge Function logs but continues past Stripe/storage errors to preserve right to erasure
+- [17-03] DangerZone placed between ExportSection and Sign Out card in settings tab
+- [17-03] Native toLocaleDateString for date formatting (keep DangerZone self-contained, no date-fns import)
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -120,16 +125,16 @@ None.
 **Carried from v1.1 (human verification):**
 - Stripe checkout/portal/webhooks (needs Stripe test environment)
 - OAuth flows with real credentials (Strava, Fitbit, Garmin)
-- 11 Supabase Edge Functions (needs deployment)
+- 12 Supabase Edge Functions (needs deployment)
 - 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
 
 **v1.2 research flags:**
-- GDPR account deletion: Stripe customer deletion vs financial record retention (verify against Stripe DPA before Phase 17)
+- ~~GDPR account deletion: Stripe customer deletion vs financial record retention~~ RESOLVED in 17-03: Stripe customer retained, only subscription cancelled
 - Celebration animation fallback design: opacity-only fade vs static banner under reduced-motion (decide before Phase 19)
 - Navigation restructure pattern: dropdown menus vs sidebar (decide before Phase 19)
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 17-02-PLAN.md (GDPR data export with JSZip)
-Resume file: 17-03-PLAN.md
+Stopped at: Completed 17-03-PLAN.md (GDPR account deletion)
+Resume file: Phase 18 (next phase in v1.2)
