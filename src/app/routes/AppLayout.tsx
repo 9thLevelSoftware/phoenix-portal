@@ -1,3 +1,4 @@
+import { MotionConfig } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Outlet } from "react-router";
@@ -7,6 +8,7 @@ import { Navigation } from "@/app/components/Navigation";
 import { OfflineBanner } from "@/app/components/OfflineBanner";
 import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
+import { SkipToContent } from "@/app/components/SkipToContent";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
 import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
@@ -42,33 +44,38 @@ export function AppLayout() {
 	} = useOnboarding();
 
 	return (
-		<div className="min-h-screen bg-[#0D0D0D]">
-			<OfflineBanner />
+		<MotionConfig reducedMotion="user">
+			<div className="min-h-screen bg-[#0D0D0D]">
+				<SkipToContent />
+				<OfflineBanner />
 
-			<div data-print-hide>
-				<Navigation />
+				<div data-print-hide>
+					<Navigation />
+				</div>
+
+				{needsOnboarding && (
+					<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
+				)}
+
+				{needsWhatsNew && (
+					<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
+				)}
+
+				<main id="main-content" tabIndex={-1}>
+					<ErrorBoundary FallbackComponent={PageErrorFallback}>
+						<Suspense fallback={<PageLoading />}>
+							<Outlet />
+						</Suspense>
+					</ErrorBoundary>
+				</main>
+
+				<div data-print-hide>
+					<MobileBottomNav />
+				</div>
+
+				<CelebrationOverlay />
+				<Toaster />
 			</div>
-
-			{needsOnboarding && (
-				<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
-			)}
-
-			{needsWhatsNew && (
-				<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
-			)}
-
-			<ErrorBoundary FallbackComponent={PageErrorFallback}>
-				<Suspense fallback={<PageLoading />}>
-					<Outlet />
-				</Suspense>
-			</ErrorBoundary>
-
-			<div data-print-hide>
-				<MobileBottomNav />
-			</div>
-
-			<CelebrationOverlay />
-			<Toaster />
-		</div>
+		</MotionConfig>
 	);
 }
