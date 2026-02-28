@@ -342,6 +342,7 @@ export function AnalyticsMobile() {
 								{/* Volume Chart */}
 								<ChartCard title="VOLUME OVER TIME">
 									{volumeData.length > 0 ? (
+										<div role="img" aria-label="Training volume over time area chart">
 										<ResponsiveContainer width="100%" height={200}>
 											<AreaChart data={volumeData}>
 												<defs>
@@ -395,6 +396,7 @@ export function AnalyticsMobile() {
 												/>
 											</AreaChart>
 										</ResponsiveContainer>
+										</div>
 									) : (
 										<div className="h-[200px] flex items-center justify-center text-muted text-sm">
 											No volume data for this period
@@ -406,6 +408,7 @@ export function AnalyticsMobile() {
 								<ChartCard title="MUSCLE DISTRIBUTION">
 									{muscleData.length > 0 ? (
 										<>
+											<div role="img" aria-label="Muscle group distribution pie chart">
 											<ResponsiveContainer width="100%" height={200}>
 												<PieChart>
 													<Pie
@@ -431,6 +434,7 @@ export function AnalyticsMobile() {
 													/>
 												</PieChart>
 											</ResponsiveContainer>
+											</div>
 											<div className="flex flex-wrap gap-2 mt-3 justify-center">
 												{muscleData.map((muscle) => (
 													<div
@@ -460,6 +464,7 @@ export function AnalyticsMobile() {
 						{activeTab === "strength" && (
 							<ChartCard title="TOP LIFTS (1RM)">
 								{strengthData.length > 0 ? (
+									<div role="img" aria-label="Top lifts by estimated one-rep max bar chart">
 									<ResponsiveContainer width="100%" height={250}>
 										<BarChart data={strengthData} layout="vertical">
 											<XAxis
@@ -490,6 +495,7 @@ export function AnalyticsMobile() {
 											/>
 										</BarChart>
 									</ResponsiveContainer>
+									</div>
 								) : (
 									<div className="h-[250px] flex items-center justify-center text-muted text-sm">
 										No strength data yet. Set some PRs!
@@ -501,6 +507,7 @@ export function AnalyticsMobile() {
 						{activeTab === "trends" && (
 							<ChartCard title="VOLUME TREND">
 								{volumeData.length > 0 ? (
+									<div role="img" aria-label="Volume trend area chart">
 									<ResponsiveContainer width="100%" height={250}>
 										<AreaChart data={volumeData}>
 											<defs>
@@ -556,6 +563,7 @@ export function AnalyticsMobile() {
 											/>
 										</AreaChart>
 									</ResponsiveContainer>
+									</div>
 								) : (
 									<div className="text-center py-12 text-muted">
 										<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />

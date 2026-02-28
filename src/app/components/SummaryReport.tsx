@@ -424,6 +424,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						</div>
 						{summary.dailyVolume.length > 0 && (
 							<div className="mb-2">
+								<div role="img" aria-label="Daily volume sparkline">
 								<ResponsiveContainer width="100%" height={40}>
 									<LineChart data={summary.dailyVolume}>
 										<Line
@@ -435,6 +436,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										/>
 									</LineChart>
 								</ResponsiveContainer>
+								</div>
 							</div>
 						)}
 						<div className="flex items-center gap-1 text-xs">
@@ -474,6 +476,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						</div>
 						{summary.dailyWorkouts.length > 0 && (
 							<div className="mb-2">
+								<div role="img" aria-label="Daily workout count sparkline">
 								<ResponsiveContainer width="100%" height={40}>
 									<BarChart data={summary.dailyWorkouts}>
 										<Bar
@@ -483,6 +486,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										/>
 									</BarChart>
 								</ResponsiveContainer>
+								</div>
 							</div>
 						)}
 						<div className="flex items-center gap-1 text-xs">

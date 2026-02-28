@@ -325,6 +325,7 @@ export function Dashboard() {
 										</div>
 									) : (
 										<>
+											<div role="img" aria-label="Weekly training volume area chart">
 											<ResponsiveContainer width="100%" height={200}>
 												<AreaChart data={weeklyVolumeData}>
 													<defs>
@@ -373,6 +374,7 @@ export function Dashboard() {
 													/>
 												</AreaChart>
 											</ResponsiveContainer>
+											</div>
 											<div className="mt-4 flex items-center justify-between text-sm">
 												<span className="text-muted-foreground">
 													Total this week
