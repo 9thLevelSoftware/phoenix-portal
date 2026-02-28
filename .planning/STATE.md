@@ -38,7 +38,7 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 Phase: 20 — seventh of 7 phases in v1.2 (Operations & Validation)
 Plan: 4 of 4 complete (20-01, 20-02, 20-03, 20-04 done)
 Status: Complete
-Last activity: 2026-02-28 — Completed 20-04-PLAN.md (CLAUDE.md accuracy rewrite)
+Last activity: 2026-02-28 — Completed quick task 2: Fix pre-existing lint errors + failing tests
 
 Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100% (v1.2)
 
@@ -183,8 +183,15 @@ None.
 - ~~Celebration animation fallback design: opacity-only fade vs static banner under reduced-motion~~ RESOLVED in 19-01: MotionConfig reducedMotion="user" preserves opacity, CSS suppresses decorative keyframes
 - ~~Navigation restructure pattern: dropdown menus vs sidebar~~ RESOLVED in 19-03: Radix NavigationMenu dropdowns with 4 category groups
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Resolve v1.2 audit tech debt: CookieConsentBanner MotionConfig, CSP enforcement note | 2026-02-28 | 36eb315 | [1-resolve-v1-2-audit-tech-debt-cookieconse](./quick/1-resolve-v1-2-audit-tech-debt-cookieconse/) |
+| 2 | Fix pre-existing bugs/lint errors: 0 biome errors (was 102), 48/48 tests green (was 38) | 2026-02-28 | 46d7e6a | [2-fix-pre-existing-bugs-lint-errors-and-co](./quick/2-fix-pre-existing-bugs-lint-errors-and-co/) |
+
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 1 (v1.2 audit tech debt: CookieConsentBanner MotionConfig + CSP comment)
-Resume file: All v1.2 plans complete (22/22). Quick task 1 done. Milestone v1.2 Launch Readiness fully clean.
+Stopped at: Completed quick task 2 (fix pre-existing lint errors + failing tests, clean CI baseline)
+Resume file: All v1.2 plans complete (22/22). Quick tasks 1-2 done. CI baseline fully green.
