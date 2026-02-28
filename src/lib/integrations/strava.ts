@@ -37,7 +37,9 @@ export type StravaActivity = z.infer<typeof StravaActivitySchema>;
  *
  * @param accessToken - The authenticated user's Supabase JWT access token
  */
-export async function initiateStravaConnect(accessToken: string): Promise<void> {
+export async function initiateStravaConnect(
+	accessToken: string,
+): Promise<void> {
 	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 	if (!supabaseUrl) {
 		console.error("VITE_SUPABASE_URL is not configured");

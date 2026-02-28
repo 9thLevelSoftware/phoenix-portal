@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import {
 	Activity,
 	Award,
@@ -16,7 +17,6 @@ import {
 	Trophy,
 	Users,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 import { TierBadge } from "@/app/components/TierBadge";

@@ -238,8 +238,7 @@ export function useBlockUser() {
 	return useMutation({
 		mutationFn: async ({ blockedId }: BlockUserArgs) => {
 			if (!user) throw new Error("Must be logged in to block a user");
-			if (blockedId === user.id)
-				throw new Error("You cannot block yourself");
+			if (blockedId === user.id) throw new Error("You cannot block yourself");
 
 			const { error } = await supabase.from("user_blocks" as never).insert({
 				blocker_id: user.id,

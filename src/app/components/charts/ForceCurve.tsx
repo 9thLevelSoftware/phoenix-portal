@@ -293,9 +293,7 @@ function ForceCurveInner({
 export function ForceCurve(props: ForceCurveProps) {
 	const repCount = props.repData.length;
 	const peakForces = props.repData.map((rep) =>
-		rep.points.length > 0
-			? Math.max(...rep.points.map((p) => p.force_n))
-			: 0,
+		rep.points.length > 0 ? Math.max(...rep.points.map((p) => p.force_n)) : 0,
 	);
 	const maxForce = peakForces.length > 0 ? Math.max(...peakForces) : 0;
 

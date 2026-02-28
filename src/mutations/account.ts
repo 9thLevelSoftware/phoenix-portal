@@ -91,9 +91,7 @@ export function useCancelDeletion(userId: string) {
 export function useExecuteDeletion() {
 	return useMutation({
 		mutationFn: async () => {
-			const { data, error } = await supabase.functions.invoke(
-				"delete-account",
-			);
+			const { data, error } = await supabase.functions.invoke("delete-account");
 			if (error) throw error;
 			return data;
 		},
@@ -102,7 +100,9 @@ export function useExecuteDeletion() {
 			await supabase.auth.signOut();
 		},
 		onError: (error: Error) => {
-			toast.error(error.message || "Failed to delete account. Please try again.");
+			toast.error(
+				error.message || "Failed to delete account. Please try again.",
+			);
 		},
 	});
 }

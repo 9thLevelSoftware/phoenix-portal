@@ -192,7 +192,9 @@ export function CreatorProfile({
 													? unblockMutation.mutate({ blockedId: userId })
 													: setShowBlockConfirm(true)
 											}
-											disabled={blockMutation.isPending || unblockMutation.isPending}
+											disabled={
+												blockMutation.isPending || unblockMutation.isPending
+											}
 										>
 											<Ban className="w-3.5 h-3.5" />
 											{isBlocked ? "Unblock" : "Block"}
@@ -283,8 +285,8 @@ export function CreatorProfile({
 							Block this user?
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							Their posts and comments will be hidden from your feed.
-							You can unblock them later in Settings.
+							Their posts and comments will be hidden from your feed. You can
+							unblock them later in Settings.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -292,9 +294,7 @@ export function CreatorProfile({
 							Cancel
 						</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={() =>
-								blockMutation.mutate({ blockedId: userId })
-							}
+							onClick={() => blockMutation.mutate({ blockedId: userId })}
 							className="bg-destructive hover:bg-destructive/90"
 						>
 							Block

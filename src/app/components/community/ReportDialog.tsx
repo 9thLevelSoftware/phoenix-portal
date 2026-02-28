@@ -53,7 +53,8 @@ export function ReportDialog({
 			{
 				contentId,
 				contentType,
-				category: selectedCategory as (typeof REPORT_CATEGORIES)[number]["value"],
+				category:
+					selectedCategory as (typeof REPORT_CATEGORIES)[number]["value"],
 				...(description.trim() ? { description: description.trim() } : {}),
 			},
 			{
@@ -68,8 +69,8 @@ export function ReportDialog({
 				<DialogHeader>
 					<DialogTitle className="text-white">Report Content</DialogTitle>
 					<DialogDescription>
-						Select a reason for reporting this content. Reports are
-						reviewed by moderators.
+						Select a reason for reporting this content. Reports are reviewed by
+						moderators.
 					</DialogDescription>
 				</DialogHeader>
 

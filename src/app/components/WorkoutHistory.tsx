@@ -435,8 +435,7 @@ export function WorkoutHistory() {
 											Extended history requires Phoenix
 										</p>
 										<p className="text-xs text-zinc-400">
-											Free accounts can view the last 30 days of workout
-											history
+											Free accounts can view the last 30 days of workout history
 										</p>
 									</div>
 									<Button
@@ -530,7 +529,9 @@ export function WorkoutHistory() {
 														setSelectedDay(new Date(year, month, day));
 													}
 												}}
-												whileHover={hasWorkoutDay && !dayLocked ? { scale: 1.05 } : {}}
+												whileHover={
+													hasWorkoutDay && !dayLocked ? { scale: 1.05 } : {}
+												}
 												className={`
                           aspect-square rounded-lg border-2 relative p-2 transition-all
                           ${
@@ -786,8 +787,7 @@ export function WorkoutHistory() {
 																		Volume
 																	</div>
 																	<div className="text-lg font-semibold text-white">
-																		{workout.total_volume.toLocaleString()}{" "}
-																		kg
+																		{workout.total_volume.toLocaleString()} kg
 																	</div>
 																</div>
 																<div className="text-center">

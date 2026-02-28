@@ -26,8 +26,11 @@ interface UsePWAInstallOptions {
 function isIOSSafari(): boolean {
 	if (typeof navigator === "undefined") return false;
 	const ua = navigator.userAgent;
-	const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-	const isStandalone = "standalone" in navigator && (navigator as any).standalone;
+	const isIOS =
+		/iPad|iPhone|iPod/.test(ua) ||
+		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+	const isStandalone =
+		"standalone" in navigator && (navigator as any).standalone;
 	return isIOS && !isStandalone;
 }
 

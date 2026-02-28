@@ -88,8 +88,8 @@ export function ContentActionMenu({
 							Block this user?
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							Their posts and comments will be hidden from your feed.
-							You can unblock them later in Settings.
+							Their posts and comments will be hidden from your feed. You can
+							unblock them later in Settings.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -97,9 +97,7 @@ export function ContentActionMenu({
 							Cancel
 						</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={() =>
-								blockMutation.mutate({ blockedId: authorId })
-							}
+							onClick={() => blockMutation.mutate({ blockedId: authorId })}
 							className="bg-destructive hover:bg-destructive/90"
 						>
 							Block

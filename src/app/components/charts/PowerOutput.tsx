@@ -237,9 +237,7 @@ export function PowerOutput(props: PowerOutputProps) {
 			<div aria-hidden="true">
 				<ParentSize>
 					{({ width }) =>
-						width > 0 ? (
-							<PowerOutputInner {...props} width={width} />
-						) : null
+						width > 0 ? <PowerOutputInner {...props} width={width} /> : null
 					}
 				</ParentSize>
 			</div>

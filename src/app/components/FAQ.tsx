@@ -1,4 +1,9 @@
-import { ArrowLeft, ExternalLink, HelpCircle, MessageSquare } from "lucide-react";
+import {
+	ArrowLeft,
+	ExternalLink,
+	HelpCircle,
+	MessageSquare,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -67,11 +72,11 @@ const faqCategories: FAQCategory[] = [
 				question: "What subscription tiers are available?",
 				answer: (
 					<p>
-						We offer three tiers: <strong>Free</strong> (basic workout tracking),{" "}
-						<strong>Phoenix</strong> ($14.99/mo — advanced analytics, force
-						curves, and routine sharing), and <strong>Elite</strong> ($24.99/mo
-						— everything in Phoenix plus biomechanics analysis, session replay,
-						and priority features). See the{" "}
+						We offer three tiers: <strong>Free</strong> (basic workout
+						tracking), <strong>Phoenix</strong> ($14.99/mo — advanced analytics,
+						force curves, and routine sharing), and <strong>Elite</strong>{" "}
+						($24.99/mo — everything in Phoenix plus biomechanics analysis,
+						session replay, and priority features). See the{" "}
 						<Link to="/pricing" className="text-primary hover:underline">
 							Pricing page
 						</Link>{" "}
@@ -171,9 +176,9 @@ const faqCategories: FAQCategory[] = [
 				question: "Can I share routines with the community?",
 				answer: (
 					<p>
-						Yes! You can share your routines and training cycles in the Community
-						section. Other users can browse, save, and adapt shared routines for
-						their own training.
+						Yes! You can share your routines and training cycles in the
+						Community section. Other users can browse, save, and adapt shared
+						routines for their own training.
 					</p>
 				),
 			},
@@ -254,8 +259,8 @@ export function FAQ() {
 						</h1>
 					</div>
 					<p className="text-xl text-muted-foreground mb-12">
-						Find answers to common questions about Phoenix Portal, your
-						training data, and account management.
+						Find answers to common questions about Phoenix Portal, your training
+						data, and account management.
 					</p>
 
 					{/* FAQ categories */}
@@ -300,13 +305,11 @@ export function FAQ() {
 									<div className="flex items-start gap-3">
 										<ExternalLink className="w-5 h-5 text-primary mt-0.5 shrink-0" />
 										<div>
-											<p className="font-medium text-white">
-												GitHub Issues
-											</p>
+											<p className="font-medium text-white">GitHub Issues</p>
 											<p className="text-muted-foreground text-sm">
 												For bug reports, feature requests, and technical
-												support, open an issue on our GitHub repository.
-												This is the primary support channel.
+												support, open an issue on our GitHub repository. This is
+												the primary support channel.
 											</p>
 											<a
 												href="https://github.com/dasBlueworker/phoenix-portal/issues"
@@ -323,23 +326,20 @@ export function FAQ() {
 									<div className="flex items-start gap-3">
 										<MessageSquare className="w-5 h-5 text-primary mt-0.5 shrink-0" />
 										<div>
-											<p className="font-medium text-white">
-												Community
-											</p>
+											<p className="font-medium text-white">Community</p>
 											<p className="text-muted-foreground text-sm">
-												For workout-related questions, training advice,
-												and routine sharing, check out the Community
-												section inside the app. Fellow Phoenix users are
-												happy to help.
+												For workout-related questions, training advice, and
+												routine sharing, check out the Community section inside
+												the app. Fellow Phoenix users are happy to help.
 											</p>
 										</div>
 									</div>
 								</div>
 
 								<p className="text-xs text-muted-foreground pt-2 border-t border-border">
-									Phoenix Portal is a solo-developer community project.
-									GitHub issues are monitored regularly and are the fastest
-									way to get a response.
+									Phoenix Portal is a solo-developer community project. GitHub
+									issues are monitored regularly and are the fastest way to get
+									a response.
 								</p>
 							</CardContent>
 						</Card>

@@ -346,7 +346,9 @@ export function TrainingCycles() {
 													disabled={activateMutation.isPending}
 													onClick={() => activateMutation.mutate(cycle.id)}
 												>
-													{activateMutation.isPending ? "Activating..." : "Activate"}
+													{activateMutation.isPending
+														? "Activating..."
+														: "Activate"}
 												</Button>
 											)}
 										</div>

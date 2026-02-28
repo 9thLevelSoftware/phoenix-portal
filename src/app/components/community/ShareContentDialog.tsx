@@ -2,7 +2,6 @@ import { Check, Share2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
-import { Input } from "@/app/components/ui/input";
 import {
 	Dialog,
 	DialogContent,
@@ -11,6 +10,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/app/components/ui/dialog";
+import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
 	Select,

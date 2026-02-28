@@ -255,9 +255,7 @@ export function VelocityProfile(props: VelocityProfileProps) {
 			<div aria-hidden="true">
 				<ParentSize>
 					{({ width }) =>
-						width > 0 ? (
-							<VelocityProfileInner {...props} width={width} />
-						) : null
+						width > 0 ? <VelocityProfileInner {...props} width={width} /> : null
 					}
 				</ParentSize>
 			</div>

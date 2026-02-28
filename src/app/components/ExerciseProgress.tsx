@@ -23,7 +23,10 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { estimateOneRepMax } from "@/lib/biomechanics";
 import { PHOENIX, SURFACE } from "@/lib/colors";
-import { exerciseListOptions, exerciseProgressOptions } from "@/queries/progress";
+import {
+	exerciseListOptions,
+	exerciseProgressOptions,
+} from "@/queries/progress";
 import type { ExerciseProgress as ExerciseProgressType } from "@/schemas/telemetry";
 
 export interface ExerciseProgressProps {
@@ -45,7 +48,6 @@ const TOOLTIP_STYLE = {
 	borderRadius: "8px",
 	color: "var(--secondary-foreground)",
 };
-
 
 function formatDate(date: Date): string {
 	return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -309,54 +311,54 @@ export function ExerciseProgress({
 									Max Weight Trend
 								</h4>
 								<div role="img" aria-label="Exercise volume trend over time">
-								<ResponsiveContainer width="100%" height={250}>
-									<AreaChart data={chartData}>
-										<defs>
-											<linearGradient
-												id="weightGradient"
-												x1="0"
-												y1="0"
-												x2="0"
-												y2="1"
-											>
-												<stop
-													offset="5%"
-													stopColor={PHOENIX.ember}
-													stopOpacity={0.3}
-												/>
-												<stop
-													offset="95%"
-													stopColor={PHOENIX.ember}
-													stopOpacity={0.05}
-												/>
-											</linearGradient>
-										</defs>
-										<CartesianGrid
-											strokeDasharray="3 3"
-											stroke={SURFACE.elevated}
-										/>
-										<XAxis
-											dataKey="date"
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<YAxis
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<Tooltip contentStyle={TOOLTIP_STYLE} />
-										<Area
-											type="monotone"
-											dataKey="maxWeight"
-											name="Max Weight (kg)"
-											stroke={PHOENIX.ember}
-											strokeWidth={2}
-											fill="url(#weightGradient)"
-											dot={{ fill: PHOENIX.ember, r: 3 }}
-											activeDot={{ r: 5 }}
-										/>
-									</AreaChart>
-								</ResponsiveContainer>
+									<ResponsiveContainer width="100%" height={250}>
+										<AreaChart data={chartData}>
+											<defs>
+												<linearGradient
+													id="weightGradient"
+													x1="0"
+													y1="0"
+													x2="0"
+													y2="1"
+												>
+													<stop
+														offset="5%"
+														stopColor={PHOENIX.ember}
+														stopOpacity={0.3}
+													/>
+													<stop
+														offset="95%"
+														stopColor={PHOENIX.ember}
+														stopOpacity={0.05}
+													/>
+												</linearGradient>
+											</defs>
+											<CartesianGrid
+												strokeDasharray="3 3"
+												stroke={SURFACE.elevated}
+											/>
+											<XAxis
+												dataKey="date"
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<YAxis
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Area
+												type="monotone"
+												dataKey="maxWeight"
+												name="Max Weight (kg)"
+												stroke={PHOENIX.ember}
+												strokeWidth={2}
+												fill="url(#weightGradient)"
+												dot={{ fill: PHOENIX.ember, r: 3 }}
+												activeDot={{ r: 5 }}
+											/>
+										</AreaChart>
+									</ResponsiveContainer>
 								</div>
 							</Card>
 						</motion.div>
@@ -371,55 +373,58 @@ export function ExerciseProgress({
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
 									Total Volume Trend
 								</h4>
-								<div role="img" aria-label="Estimated one-rep max trend over time">
-								<ResponsiveContainer width="100%" height={250}>
-									<AreaChart data={chartData}>
-										<defs>
-											<linearGradient
-												id="volumeGradientProgress"
-												x1="0"
-												y1="0"
-												x2="0"
-												y2="1"
-											>
-												<stop
-													offset="5%"
-													stopColor={PHOENIX.gold}
-													stopOpacity={0.3}
-												/>
-												<stop
-													offset="95%"
-													stopColor={PHOENIX.gold}
-													stopOpacity={0.05}
-												/>
-											</linearGradient>
-										</defs>
-										<CartesianGrid
-											strokeDasharray="3 3"
-											stroke={SURFACE.elevated}
-										/>
-										<XAxis
-											dataKey="date"
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<YAxis
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<Tooltip contentStyle={TOOLTIP_STYLE} />
-										<Area
-											type="monotone"
-											dataKey="totalVolume"
-											name="Volume (kg)"
-											stroke={PHOENIX.gold}
-											strokeWidth={2}
-											fill="url(#volumeGradientProgress)"
-											dot={{ fill: PHOENIX.gold, r: 3 }}
-											activeDot={{ r: 5 }}
-										/>
-									</AreaChart>
-								</ResponsiveContainer>
+								<div
+									role="img"
+									aria-label="Estimated one-rep max trend over time"
+								>
+									<ResponsiveContainer width="100%" height={250}>
+										<AreaChart data={chartData}>
+											<defs>
+												<linearGradient
+													id="volumeGradientProgress"
+													x1="0"
+													y1="0"
+													x2="0"
+													y2="1"
+												>
+													<stop
+														offset="5%"
+														stopColor={PHOENIX.gold}
+														stopOpacity={0.3}
+													/>
+													<stop
+														offset="95%"
+														stopColor={PHOENIX.gold}
+														stopOpacity={0.05}
+													/>
+												</linearGradient>
+											</defs>
+											<CartesianGrid
+												strokeDasharray="3 3"
+												stroke={SURFACE.elevated}
+											/>
+											<XAxis
+												dataKey="date"
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<YAxis
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Area
+												type="monotone"
+												dataKey="totalVolume"
+												name="Volume (kg)"
+												stroke={PHOENIX.gold}
+												strokeWidth={2}
+												fill="url(#volumeGradientProgress)"
+												dot={{ fill: PHOENIX.gold, r: 3 }}
+												activeDot={{ r: 5 }}
+											/>
+										</AreaChart>
+									</ResponsiveContainer>
 								</div>
 							</Card>
 						</motion.div>
@@ -435,54 +440,54 @@ export function ExerciseProgress({
 									Estimated 1RM Trend
 								</h4>
 								<div role="img" aria-label="Average velocity trend over time">
-								<ResponsiveContainer width="100%" height={250}>
-									<AreaChart data={chartData}>
-										<defs>
-											<linearGradient
-												id="oneRmGradient"
-												x1="0"
-												y1="0"
-												x2="0"
-												y2="1"
-											>
-												<stop
-													offset="5%"
-													stopColor={PHOENIX.forgeGreen}
-													stopOpacity={0.3}
-												/>
-												<stop
-													offset="95%"
-													stopColor={PHOENIX.forgeGreen}
-													stopOpacity={0.05}
-												/>
-											</linearGradient>
-										</defs>
-										<CartesianGrid
-											strokeDasharray="3 3"
-											stroke={SURFACE.elevated}
-										/>
-										<XAxis
-											dataKey="date"
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<YAxis
-											stroke={PHOENIX.mutedForeground}
-											tick={{ fontSize: 11 }}
-										/>
-										<Tooltip contentStyle={TOOLTIP_STYLE} />
-										<Area
-											type="monotone"
-											dataKey="estimated1RM"
-											name="Est. 1RM (kg)"
-											stroke={PHOENIX.forgeGreen}
-											strokeWidth={2}
-											fill="url(#oneRmGradient)"
-											dot={{ fill: PHOENIX.forgeGreen, r: 3 }}
-											activeDot={{ r: 5 }}
-										/>
-									</AreaChart>
-								</ResponsiveContainer>
+									<ResponsiveContainer width="100%" height={250}>
+										<AreaChart data={chartData}>
+											<defs>
+												<linearGradient
+													id="oneRmGradient"
+													x1="0"
+													y1="0"
+													x2="0"
+													y2="1"
+												>
+													<stop
+														offset="5%"
+														stopColor={PHOENIX.forgeGreen}
+														stopOpacity={0.3}
+													/>
+													<stop
+														offset="95%"
+														stopColor={PHOENIX.forgeGreen}
+														stopOpacity={0.05}
+													/>
+												</linearGradient>
+											</defs>
+											<CartesianGrid
+												strokeDasharray="3 3"
+												stroke={SURFACE.elevated}
+											/>
+											<XAxis
+												dataKey="date"
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<YAxis
+												stroke={PHOENIX.mutedForeground}
+												tick={{ fontSize: 11 }}
+											/>
+											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Area
+												type="monotone"
+												dataKey="estimated1RM"
+												name="Est. 1RM (kg)"
+												stroke={PHOENIX.forgeGreen}
+												strokeWidth={2}
+												fill="url(#oneRmGradient)"
+												dot={{ fill: PHOENIX.forgeGreen, r: 3 }}
+												activeDot={{ r: 5 }}
+											/>
+										</AreaChart>
+									</ResponsiveContainer>
 								</div>
 							</Card>
 						</motion.div>

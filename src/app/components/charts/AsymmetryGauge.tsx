@@ -369,8 +369,7 @@ export function AsymmetryGauge({
 
 	if (mode === "summary") {
 		const avgAsymmetry =
-			repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0) /
-			repCount;
+			repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0) / repCount;
 		return (
 			<div
 				role="img"

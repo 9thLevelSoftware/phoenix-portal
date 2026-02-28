@@ -325,55 +325,58 @@ export function Dashboard() {
 										</div>
 									) : (
 										<>
-											<div role="img" aria-label="Weekly training volume area chart">
-											<ResponsiveContainer width="100%" height={200}>
-												<AreaChart data={weeklyVolumeData}>
-													<defs>
-														<linearGradient
-															id="volumeGradient"
-															x1="0"
-															y1="0"
-															x2="0"
-															y2="1"
-														>
-															<stop
-																offset="5%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0.8}
-															/>
-															<stop
-																offset="95%"
-																stopColor={PHOENIX.flameRed}
-																stopOpacity={0.1}
-															/>
-														</linearGradient>
-													</defs>
-													<CartesianGrid
-														strokeDasharray="3 3"
-														stroke={PHOENIX.moltenSteel}
-													/>
-													<XAxis
-														dataKey="day"
-														stroke={PHOENIX.mutedForeground}
-													/>
-													<YAxis stroke={PHOENIX.mutedForeground} />
-													<Tooltip
-														contentStyle={{
-															backgroundColor: "var(--surface-2)",
-															border: "1px solid #374151",
-															borderRadius: "8px",
-															color: "var(--secondary-foreground)",
-														}}
-													/>
-													<Area
-														type="monotone"
-														dataKey="volume"
-														stroke={PHOENIX.ember}
-														strokeWidth={2}
-														fill="url(#volumeGradient)"
-													/>
-												</AreaChart>
-											</ResponsiveContainer>
+											<div
+												role="img"
+												aria-label="Weekly training volume area chart"
+											>
+												<ResponsiveContainer width="100%" height={200}>
+													<AreaChart data={weeklyVolumeData}>
+														<defs>
+															<linearGradient
+																id="volumeGradient"
+																x1="0"
+																y1="0"
+																x2="0"
+																y2="1"
+															>
+																<stop
+																	offset="5%"
+																	stopColor={PHOENIX.ember}
+																	stopOpacity={0.8}
+																/>
+																<stop
+																	offset="95%"
+																	stopColor={PHOENIX.flameRed}
+																	stopOpacity={0.1}
+																/>
+															</linearGradient>
+														</defs>
+														<CartesianGrid
+															strokeDasharray="3 3"
+															stroke={PHOENIX.moltenSteel}
+														/>
+														<XAxis
+															dataKey="day"
+															stroke={PHOENIX.mutedForeground}
+														/>
+														<YAxis stroke={PHOENIX.mutedForeground} />
+														<Tooltip
+															contentStyle={{
+																backgroundColor: "var(--surface-2)",
+																border: "1px solid #374151",
+																borderRadius: "8px",
+																color: "var(--secondary-foreground)",
+															}}
+														/>
+														<Area
+															type="monotone"
+															dataKey="volume"
+															stroke={PHOENIX.ember}
+															strokeWidth={2}
+															fill="url(#volumeGradient)"
+														/>
+													</AreaChart>
+												</ResponsiveContainer>
 											</div>
 											<div className="mt-4 flex items-center justify-between text-sm">
 												<span className="text-muted-foreground">

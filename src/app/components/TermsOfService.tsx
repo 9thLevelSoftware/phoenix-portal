@@ -53,10 +53,10 @@ export function TermsOfService() {
 					{/* Summary Box */}
 					<div className="mb-12 p-6 rounded-lg bg-gradient-to-br from-primary/10 to-chart-2/10 border-2 border-primary/30">
 						<p className="text-lg text-secondary-foreground">
-							<span className="font-semibold text-primary">Summary:</span>{" "}
-							These terms govern your use of Phoenix Portal, a
-							community-developed companion dashboard for Vitruvian Trainer
-							workout machines. By using the service, you agree to these terms.
+							<span className="font-semibold text-primary">Summary:</span> These
+							terms govern your use of Phoenix Portal, a community-developed
+							companion dashboard for Vitruvian Trainer workout machines. By
+							using the service, you agree to these terms.
 						</p>
 					</div>
 
@@ -121,9 +121,7 @@ export function TermsOfService() {
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
-									<span>
-										Maintain the security of your account credentials
-									</span>
+									<span>Maintain the security of your account credentials</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
@@ -184,9 +182,7 @@ export function TermsOfService() {
 						</section>
 
 						<section>
-							<h2 className="text-2xl mb-4 text-primary">
-								5. Acceptable Use
-							</h2>
+							<h2 className="text-2xl mb-4 text-primary">5. Acceptable Use</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								You agree not to:
 							</p>
@@ -315,9 +311,7 @@ export function TermsOfService() {
 						</section>
 
 						<section>
-							<h2 className="text-2xl mb-4 text-primary">
-								11. Governing Law
-							</h2>
+							<h2 className="text-2xl mb-4 text-primary">11. Governing Law</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								These Terms are governed by the laws of the jurisdiction in
 								which 9th Level Software LLC operates. Any disputes arising from
