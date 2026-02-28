@@ -245,6 +245,25 @@
 
 }
 
+/* Reduced-motion: suppress decorative animations, keep functional (spin) */
+@media (prefers-reduced-motion: reduce) {
+  /* Suppress decorative custom animations */
+  .animate-flame-flicker,
+  .animate-ember-rise,
+  .animate-phoenix-glow {
+    animation: none;
+  }
+
+  /* Suppress decorative Tailwind animations */
+  .animate-pulse,
+  .animate-bounce,
+  .animate-ping {
+    animation: none;
+  }
+
+  /* Keep animate-spin for loading indicators (functional, not decorative) */
+}
+
 /* Print-only utility: hidden on screen, visible in @media print */
 .print-only {
   display: none !important;

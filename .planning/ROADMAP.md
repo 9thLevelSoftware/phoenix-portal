@@ -136,11 +136,12 @@ Plans:
   3. Screen reader users encounter descriptive labels on all chart containers; Canvas-based visx charts have a text-based alternative accessible to assistive technology
   4. Desktop navigation groups 13+ items into logical categories via dropdown menus; all 26 existing route paths continue to work without changes
   5. Free-tier mobile users see SubscriptionGate before accessing premium analytics (AnalyticsMobile gating fix)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 19-01: TBD
-- [ ] 19-02: TBD
+- [ ] 19-01-PLAN.md — Reduced-motion support (MotionConfig + CSS), skip-to-content link, AnalyticsMobile SubscriptionGate fix
+- [ ] 19-02-PLAN.md — Chart accessibility (aria-labels, sr-only data tables for visx; aria-label wrappers for Recharts)
+- [ ] 19-03-PLAN.md — Desktop navigation restructure (grouped NavigationMenu dropdowns)
 
 ### Phase 20: Operations & Validation
 **Goal**: Revenue-critical paths have test coverage, users have a support channel, and the mobile-to-portal sync pipeline is validated end-to-end
@@ -182,7 +183,7 @@ Plans:
 | 15. CI/CD & Database Foundation | 2/2 | Complete    | 2026-02-27 | - |
 | 16. Legal & Pricing | 3/3 | Complete    | 2026-02-28 | - |
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
-| 18. Community Safety | 3/3 | Complete   | 2026-02-28 | - |
+| 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
 | 19. Accessibility & Navigation | v1.2 | 0/? | Not started | - |
 | 20. Operations & Validation | v1.2 | 0/? | Not started | - |
 
