@@ -1,10 +1,5 @@
-import Stripe from 'https://esm.sh/stripe@14?target=denonext';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
-
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2024-11-20',
-});
 
 // Service-role client for admin operations (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -66,29 +61,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // =========================================================================
-    // Step 1: Cancel Stripe subscription (if active)
-    // Do NOT delete the Stripe customer — Stripe retains financial records per DPA
-    // =========================================================================
-    try {
-      const { data: subscription } = await supabaseAdmin
-        .from('subscriptions')
-        .select('stripe_subscription_id')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (subscription?.stripe_subscription_id) {
-        await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
-        console.log(`Cancelled Stripe subscription ${subscription.stripe_subscription_id} for user ${userId}`);
-      }
-    } catch (stripeErr) {
-      // Log but continue — don't block user's right to erasure because of Stripe API failure
-      console.error('Stripe cancellation error (continuing with deletion):', stripeErr);
-    }
+    // Note: Subscription cancellation is handled automatically by RevenueCat
+    // when the user's app store subscription lapses after account deletion.
+    // No server-side cancellation needed — RevenueCat manages this via the app stores.
 
     // =========================================================================
-    // Step 2: Delete storage objects (avatars)
+    // Step 1: Delete storage objects (avatars)
     // =========================================================================
     try {
       const { data: avatarFiles } = await supabaseAdmin.storage
@@ -106,7 +84,7 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // Step 3: Mark deletion request as executed
+    // Step 2: Mark deletion request as executed
     // =========================================================================
     await supabaseAdmin
       .from('deletion_requests')
@@ -114,7 +92,7 @@ Deno.serve(async (req) => {
       .eq('id', request.id);
 
     // =========================================================================
-    // Step 4: Delete auth user (cascades to all private data)
+    // Step 3: Delete auth user (cascades to all private data)
     // CASCADE-deletes: profiles, workout_sessions (and children), personal_records,
     //   exercise_progress, routines, training_cycles, user_goals, external_activities,
     //   user_integrations, subscriptions, community_votes, saved_community_items,
