@@ -42,8 +42,8 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
-import { supabase } from "@/lib/supabase";
 import { openCustomerPortal } from "@/lib/stripe";
+import { supabase } from "@/lib/supabase";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
 import {
@@ -722,12 +722,13 @@ export function Profile() {
 							<div className="space-y-4">
 								{/* TODO: Pass weightUnit preference through a React context so all
 							   components displaying weights can respect it app-wide. */}
-							<div>
-								<Label className="text-white mb-2 block">Weight Unit</Label>
-								<p className="text-xs text-muted-foreground mb-2">
-									Your preference is saved. App-wide unit conversion is coming soon.
-								</p>
-								<div className="flex gap-2">
+								<div>
+									<Label className="text-white mb-2 block">Weight Unit</Label>
+									<p className="text-xs text-muted-foreground mb-2">
+										Your preference is saved. App-wide unit conversion is coming
+										soon.
+									</p>
+									<div className="flex gap-2">
 										<Button
 											className={
 												weightUnit === "kg"

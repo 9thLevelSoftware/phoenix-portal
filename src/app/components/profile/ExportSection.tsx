@@ -154,8 +154,8 @@ export function ExportSection() {
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">
 						Download all your data as a ZIP file containing JSON files. This
-						includes your complete workout history, telemetry, records, routines,
-						goals, comments, and account information.
+						includes your complete workout history, telemetry, records,
+						routines, goals, comments, and account information.
 					</p>
 					{exportProgress && (
 						<div className="mb-3 space-y-1">

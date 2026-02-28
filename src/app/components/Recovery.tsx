@@ -57,7 +57,9 @@ function FactorBar({
 					<Icon className="w-4 h-4 flex-shrink-0" />
 					<span className="truncate">{label}</span>
 				</div>
-				<span className="text-white font-medium flex-shrink-0">{displayValue}</span>
+				<span className="text-white font-medium flex-shrink-0">
+					{displayValue}
+				</span>
 			</div>
 			<div className="relative h-2 bg-secondary rounded-full overflow-hidden">
 				{highlight && (
@@ -125,11 +127,15 @@ function FreeRecoveryView() {
 					<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-center gap-3 mb-4 sm:mb-6">
 							<Moon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-							<h2 className="text-lg sm:text-xl text-white">Rest Days This Week</h2>
+							<h2 className="text-lg sm:text-xl text-white">
+								Rest Days This Week
+							</h2>
 						</div>
 
 						<div className="flex items-center gap-4 sm:gap-6">
-							<div className="text-4xl sm:text-5xl font-bold text-primary">{restDays}</div>
+							<div className="text-4xl sm:text-5xl font-bold text-primary">
+								{restDays}
+							</div>
 							<div>
 								<p className="text-sm sm:text-base text-white mb-1">
 									{restDays >= 2
@@ -292,8 +298,12 @@ export function Recovery() {
 										className="h-3"
 									/>
 									<p className="text-xs text-muted-foreground mt-2">
-										{Math.max(0, GATING_THRESHOLD_DAYS - daysSinceFirstSession)} day
-										{Math.max(0, GATING_THRESHOLD_DAYS - daysSinceFirstSession) !== 1
+										{Math.max(0, GATING_THRESHOLD_DAYS - daysSinceFirstSession)}{" "}
+										day
+										{Math.max(
+											0,
+											GATING_THRESHOLD_DAYS - daysSinceFirstSession,
+										) !== 1
 											? "s"
 											: ""}{" "}
 										remaining
@@ -399,7 +409,10 @@ export function Recovery() {
 										label="Chronic Average (42d weekly)"
 										value={(() => {
 											const chronicWeekly = recovery.factors.chronicVolume / 6;
-											const peak = Math.max(chronicWeekly, recovery.factors.weeklyVolume);
+											const peak = Math.max(
+												chronicWeekly,
+												recovery.factors.weeklyVolume,
+											);
 											return peak > 0 ? (chronicWeekly / peak) * 100 : 0;
 										})()}
 										displayValue={`${(recovery.factors.chronicVolume / 6 / 1000).toFixed(1)}k`}

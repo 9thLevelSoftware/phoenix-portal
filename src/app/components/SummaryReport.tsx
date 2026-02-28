@@ -115,7 +115,11 @@ function computeSummary(
 		if (d.max_weight_kg > existing)
 			exerciseMaxPrevious.set(d.exercise_name, d.max_weight_kg);
 	}
-	const prs: Array<{ exercise: string; improvement: number; isFirstPR: boolean }> = [];
+	const prs: Array<{
+		exercise: string;
+		improvement: number;
+		isFirstPR: boolean;
+	}> = [];
 	for (const [name, maxWeight] of exerciseMaxCurrent) {
 		const prevMax = exerciseMaxPrevious.get(name) ?? 0;
 		if (prevMax > 0 && maxWeight > prevMax) {
@@ -425,17 +429,17 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						{summary.dailyVolume.length > 0 && (
 							<div className="mb-2">
 								<div role="img" aria-label="Daily volume sparkline">
-								<ResponsiveContainer width="100%" height={40}>
-									<LineChart data={summary.dailyVolume}>
-										<Line
-											type="monotone"
-											dataKey="volume"
-											stroke={PHOENIX.ember}
-											strokeWidth={2}
-											dot={false}
-										/>
-									</LineChart>
-								</ResponsiveContainer>
+									<ResponsiveContainer width="100%" height={40}>
+										<LineChart data={summary.dailyVolume}>
+											<Line
+												type="monotone"
+												dataKey="volume"
+												stroke={PHOENIX.ember}
+												strokeWidth={2}
+												dot={false}
+											/>
+										</LineChart>
+									</ResponsiveContainer>
 								</div>
 							</div>
 						)}
@@ -477,15 +481,15 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						{summary.dailyWorkouts.length > 0 && (
 							<div className="mb-2">
 								<div role="img" aria-label="Daily workout count sparkline">
-								<ResponsiveContainer width="100%" height={40}>
-									<BarChart data={summary.dailyWorkouts}>
-										<Bar
-											dataKey="sessions"
-											fill={PHOENIX.gold}
-											radius={[2, 2, 0, 0]}
-										/>
-									</BarChart>
-								</ResponsiveContainer>
+									<ResponsiveContainer width="100%" height={40}>
+										<BarChart data={summary.dailyWorkouts}>
+											<Bar
+												dataKey="sessions"
+												fill={PHOENIX.gold}
+												radius={[2, 2, 0, 0]}
+											/>
+										</BarChart>
+									</ResponsiveContainer>
 								</div>
 							</div>
 						)}

@@ -343,10 +343,14 @@ export function ChallengesMobile() {
 													{challenge.description}
 												</p>
 												<div className="flex items-center gap-4 text-xs text-muted-foreground">
-													<span className="capitalize">{challenge.challenge_type}</span>
+													<span className="capitalize">
+														{challenge.challenge_type}
+													</span>
 													<span>Target: {challenge.target_value}</span>
 													{challenge.prize && (
-														<span className="text-accent">{challenge.prize}</span>
+														<span className="text-accent">
+															{challenge.prize}
+														</span>
 													)}
 												</div>
 											</Card>
@@ -358,19 +362,31 @@ export function ChallengesMobile() {
 				</TabsContent>
 
 				{/* Leave confirmation dialog */}
-				<AlertDialog open={!!leaveConfirmId} onOpenChange={(open) => !open && setLeaveConfirmId(null)}>
+				<AlertDialog
+					open={!!leaveConfirmId}
+					onOpenChange={(open) => !open && setLeaveConfirmId(null)}
+				>
 					<AlertDialogContent className="bg-background border-secondary">
 						<AlertDialogHeader>
-							<AlertDialogTitle className="text-white">Leave challenge?</AlertDialogTitle>
+							<AlertDialogTitle className="text-white">
+								Leave challenge?
+							</AlertDialogTitle>
 							<AlertDialogDescription>
-								Your progress in this challenge will be lost. This action cannot be undone.
+								Your progress in this challenge will be lost. This action cannot
+								be undone.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
-							<AlertDialogCancel className="border-secondary text-muted-foreground" onClick={() => setLeaveConfirmId(null)}>
+							<AlertDialogCancel
+								className="border-secondary text-muted-foreground"
+								onClick={() => setLeaveConfirmId(null)}
+							>
 								Cancel
 							</AlertDialogCancel>
-							<AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={confirmLeave}>
+							<AlertDialogAction
+								className="bg-destructive hover:bg-destructive/90"
+								onClick={confirmLeave}
+							>
 								Leave
 							</AlertDialogAction>
 						</AlertDialogFooter>

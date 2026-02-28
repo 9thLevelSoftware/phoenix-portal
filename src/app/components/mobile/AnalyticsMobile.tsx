@@ -342,60 +342,63 @@ export function AnalyticsMobile() {
 								{/* Volume Chart */}
 								<ChartCard title="VOLUME OVER TIME">
 									{volumeData.length > 0 ? (
-										<div role="img" aria-label="Training volume over time area chart">
-										<ResponsiveContainer width="100%" height={200}>
-											<AreaChart data={volumeData}>
-												<defs>
-													<linearGradient
-														id="volumeGradient"
-														x1="0"
-														y1="0"
-														x2="0"
-														y2="1"
-													>
-														<stop
-															offset="5%"
-															stopColor={PHOENIX.ember}
-															stopOpacity={0.3}
-														/>
-														<stop
-															offset="95%"
-															stopColor={PHOENIX.ember}
-															stopOpacity={0}
-														/>
-													</linearGradient>
-												</defs>
-												<XAxis
-													dataKey="date"
-													stroke={PHOENIX.ashGray}
-													style={{ fontSize: "12px" }}
-												/>
-												<YAxis
-													stroke={PHOENIX.ashGray}
-													style={{ fontSize: "12px" }}
-													tickFormatter={(value) => `${value / 1000}k`}
-												/>
-												<Tooltip
-													contentStyle={{
-														backgroundColor: "var(--surface-2)",
-														border: "1px solid #374151",
-														borderRadius: "8px",
-														color: "var(--foreground)",
-													}}
-													formatter={(value: number) => [
-														`${value.toLocaleString()} kg`,
-														"Volume",
-													]}
-												/>
-												<Area
-													type="monotone"
-													dataKey="volume"
-													stroke={PHOENIX.ember}
-													strokeWidth={2}
-													fill="url(#volumeGradient)"
-												/>
-											</AreaChart>
-										</ResponsiveContainer>
+										<div
+											role="img"
+											aria-label="Training volume over time area chart"
+										>
+											<ResponsiveContainer width="100%" height={200}>
+												<AreaChart data={volumeData}>
+													<defs>
+														<linearGradient
+															id="volumeGradient"
+															x1="0"
+															y1="0"
+															x2="0"
+															y2="1"
+														>
+															<stop
+																offset="5%"
+																stopColor={PHOENIX.ember}
+																stopOpacity={0.3}
+															/>
+															<stop
+																offset="95%"
+																stopColor={PHOENIX.ember}
+																stopOpacity={0}
+															/>
+														</linearGradient>
+													</defs>
+													<XAxis
+														dataKey="date"
+														stroke={PHOENIX.ashGray}
+														style={{ fontSize: "12px" }}
+													/>
+													<YAxis
+														stroke={PHOENIX.ashGray}
+														style={{ fontSize: "12px" }}
+														tickFormatter={(value) => `${value / 1000}k`}
+													/>
+													<Tooltip
+														contentStyle={{
+															backgroundColor: "var(--surface-2)",
+															border: "1px solid #374151",
+															borderRadius: "8px",
+															color: "var(--foreground)",
+														}}
+														formatter={(value: number) => [
+															`${value.toLocaleString()} kg`,
+															"Volume",
+														]}
+													/>
+													<Area
+														type="monotone"
+														dataKey="volume"
+														stroke={PHOENIX.ember}
+														strokeWidth={2}
+														fill="url(#volumeGradient)"
+													/>
+												</AreaChart>
+											</ResponsiveContainer>
 										</div>
 									) : (
 										<div className="h-[200px] flex items-center justify-center text-muted text-sm">
@@ -408,32 +411,38 @@ export function AnalyticsMobile() {
 								<ChartCard title="MUSCLE DISTRIBUTION">
 									{muscleData.length > 0 ? (
 										<>
-											<div role="img" aria-label="Muscle group distribution pie chart">
-											<ResponsiveContainer width="100%" height={200}>
-												<PieChart>
-													<Pie
-														data={muscleData}
-														cx="50%"
-														cy="50%"
-														innerRadius={50}
-														outerRadius={80}
-														paddingAngle={2}
-														dataKey="value"
-													>
-														{muscleData.map((entry, index) => (
-															<Cell key={`cell-${index}`} fill={entry.color} />
-														))}
-													</Pie>
-													<Tooltip
-														contentStyle={{
-															backgroundColor: "var(--surface-2)",
-															border: "1px solid #374151",
-															borderRadius: "8px",
-															color: "var(--foreground)",
-														}}
-													/>
-												</PieChart>
-											</ResponsiveContainer>
+											<div
+												role="img"
+												aria-label="Muscle group distribution pie chart"
+											>
+												<ResponsiveContainer width="100%" height={200}>
+													<PieChart>
+														<Pie
+															data={muscleData}
+															cx="50%"
+															cy="50%"
+															innerRadius={50}
+															outerRadius={80}
+															paddingAngle={2}
+															dataKey="value"
+														>
+															{muscleData.map((entry, index) => (
+																<Cell
+																	key={`cell-${index}`}
+																	fill={entry.color}
+																/>
+															))}
+														</Pie>
+														<Tooltip
+															contentStyle={{
+																backgroundColor: "var(--surface-2)",
+																border: "1px solid #374151",
+																borderRadius: "8px",
+																color: "var(--foreground)",
+															}}
+														/>
+													</PieChart>
+												</ResponsiveContainer>
 											</div>
 											<div className="flex flex-wrap gap-2 mt-3 justify-center">
 												{muscleData.map((muscle) => (
@@ -464,37 +473,40 @@ export function AnalyticsMobile() {
 						{activeTab === "strength" && (
 							<ChartCard title="TOP LIFTS (1RM)">
 								{strengthData.length > 0 ? (
-									<div role="img" aria-label="Top lifts by estimated one-rep max bar chart">
-									<ResponsiveContainer width="100%" height={250}>
-										<BarChart data={strengthData} layout="vertical">
-											<XAxis
-												type="number"
-												stroke={PHOENIX.ashGray}
-												style={{ fontSize: "12px" }}
-											/>
-											<YAxis
-												type="category"
-												dataKey="exercise"
-												stroke={PHOENIX.ashGray}
-												style={{ fontSize: "12px" }}
-												width={70}
-											/>
-											<Tooltip
-												contentStyle={{
-													backgroundColor: "var(--surface-2)",
-													border: "1px solid #374151",
-													borderRadius: "8px",
-													color: "var(--foreground)",
-												}}
-												formatter={(value: number) => [`${value} kg`, "1RM"]}
-											/>
-											<Bar
-												dataKey="weight"
-												fill={PHOENIX.ember}
-												radius={[0, 4, 4, 0]}
-											/>
-										</BarChart>
-									</ResponsiveContainer>
+									<div
+										role="img"
+										aria-label="Top lifts by estimated one-rep max bar chart"
+									>
+										<ResponsiveContainer width="100%" height={250}>
+											<BarChart data={strengthData} layout="vertical">
+												<XAxis
+													type="number"
+													stroke={PHOENIX.ashGray}
+													style={{ fontSize: "12px" }}
+												/>
+												<YAxis
+													type="category"
+													dataKey="exercise"
+													stroke={PHOENIX.ashGray}
+													style={{ fontSize: "12px" }}
+													width={70}
+												/>
+												<Tooltip
+													contentStyle={{
+														backgroundColor: "var(--surface-2)",
+														border: "1px solid #374151",
+														borderRadius: "8px",
+														color: "var(--foreground)",
+													}}
+													formatter={(value: number) => [`${value} kg`, "1RM"]}
+												/>
+												<Bar
+													dataKey="weight"
+													fill={PHOENIX.ember}
+													radius={[0, 4, 4, 0]}
+												/>
+											</BarChart>
+										</ResponsiveContainer>
 									</div>
 								) : (
 									<div className="h-[250px] flex items-center justify-center text-muted text-sm">
@@ -508,61 +520,61 @@ export function AnalyticsMobile() {
 							<ChartCard title="VOLUME TREND">
 								{volumeData.length > 0 ? (
 									<div role="img" aria-label="Volume trend area chart">
-									<ResponsiveContainer width="100%" height={250}>
-										<AreaChart data={volumeData}>
-											<defs>
-												<linearGradient
-													id="trendGradient"
-													x1="0"
-													y1="0"
-													x2="0"
-													y2="1"
-												>
-													<stop
-														offset="5%"
-														stopColor={PHOENIX.ember}
-														stopOpacity={0.3}
-													/>
-													<stop
-														offset="95%"
-														stopColor={PHOENIX.ember}
-														stopOpacity={0}
-													/>
-												</linearGradient>
-											</defs>
-											<XAxis
-												dataKey="date"
-												stroke={PHOENIX.ashGray}
-												style={{ fontSize: "12px" }}
-											/>
-											<YAxis
-												stroke={PHOENIX.ashGray}
-												style={{ fontSize: "12px" }}
-												tickFormatter={(value) =>
-													value >= 1000 ? `${value / 1000}k` : `${value}`
-												}
-											/>
-											<Tooltip
-												contentStyle={{
-													backgroundColor: "var(--surface-2)",
-													border: "1px solid #374151",
-													borderRadius: "8px",
-													color: "var(--foreground)",
-												}}
-												formatter={(value: number) => [
-													`${value.toLocaleString()} kg`,
-													"Volume",
-												]}
-											/>
-											<Area
-												type="monotone"
-												dataKey="volume"
-												stroke={PHOENIX.ember}
-												strokeWidth={2}
-												fill="url(#trendGradient)"
-											/>
-										</AreaChart>
-									</ResponsiveContainer>
+										<ResponsiveContainer width="100%" height={250}>
+											<AreaChart data={volumeData}>
+												<defs>
+													<linearGradient
+														id="trendGradient"
+														x1="0"
+														y1="0"
+														x2="0"
+														y2="1"
+													>
+														<stop
+															offset="5%"
+															stopColor={PHOENIX.ember}
+															stopOpacity={0.3}
+														/>
+														<stop
+															offset="95%"
+															stopColor={PHOENIX.ember}
+															stopOpacity={0}
+														/>
+													</linearGradient>
+												</defs>
+												<XAxis
+													dataKey="date"
+													stroke={PHOENIX.ashGray}
+													style={{ fontSize: "12px" }}
+												/>
+												<YAxis
+													stroke={PHOENIX.ashGray}
+													style={{ fontSize: "12px" }}
+													tickFormatter={(value) =>
+														value >= 1000 ? `${value / 1000}k` : `${value}`
+													}
+												/>
+												<Tooltip
+													contentStyle={{
+														backgroundColor: "var(--surface-2)",
+														border: "1px solid #374151",
+														borderRadius: "8px",
+														color: "var(--foreground)",
+													}}
+													formatter={(value: number) => [
+														`${value.toLocaleString()} kg`,
+														"Volume",
+													]}
+												/>
+												<Area
+													type="monotone"
+													dataKey="volume"
+													stroke={PHOENIX.ember}
+													strokeWidth={2}
+													fill="url(#trendGradient)"
+												/>
+											</AreaChart>
+										</ResponsiveContainer>
 									</div>
 								) : (
 									<div className="text-center py-12 text-muted">

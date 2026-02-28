@@ -421,577 +421,605 @@ export function Analytics() {
 					</div>
 				</div>
 
-				<SubscriptionGate requiredTier="PHOENIX" featureName="Advanced Analytics">
-				{!hasData ? (
-					<EmptyState
-						icon={TrendingUp}
-						title="Your analytics await"
-						description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
-					/>
-				) : (
-					<>
-						{/* Summary Cards */}
-						<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-							{[
-								{
-									label: "Total Volume",
-									value:
-										totalVolume > 1000
-											? `${(totalVolume / 1000).toFixed(1)}K kg`
-											: `${totalVolume} kg`,
-									change: "",
-									positive: true,
-								},
-								{
-									label: "Workouts",
-									value: `${totalWorkouts}`,
-									change: "",
-									positive: true,
-								},
-								{
-									label: "Muscle Groups",
-									value: `${muscleGroupData.length}`,
-									change: "",
-									positive: true,
-								},
-								{
-									label: "Exercises Tracked",
-									value: `${strengthExercises.length}`,
-									change: "",
-									positive: true,
-								},
-							].map((stat, index) => (
-								<motion.div
-									key={stat.label}
-									initial={{ opacity: 0, y: 20 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{ delay: index * 0.1 }}
-								>
-									<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<div className="text-sm text-muted-foreground mb-1">
-											{stat.label}
-										</div>
-										<div className="text-2xl text-white mb-1">{stat.value}</div>
-										{stat.change && (
-											<div
-												className={`text-xs flex items-center gap-1 ${
-													stat.positive ? "text-success" : "text-muted"
-												}`}
-											>
-												{stat.positive ? (
-													<TrendingUp className="w-3 h-3" />
-												) : (
-													<TrendingDown className="w-3 h-3" />
-												)}
-												{stat.change}
+				<SubscriptionGate
+					requiredTier="PHOENIX"
+					featureName="Advanced Analytics"
+				>
+					{!hasData ? (
+						<EmptyState
+							icon={TrendingUp}
+							title="Your analytics await"
+							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
+						/>
+					) : (
+						<>
+							{/* Summary Cards */}
+							<div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+								{[
+									{
+										label: "Total Volume",
+										value:
+											totalVolume > 1000
+												? `${(totalVolume / 1000).toFixed(1)}K kg`
+												: `${totalVolume} kg`,
+										change: "",
+										positive: true,
+									},
+									{
+										label: "Workouts",
+										value: `${totalWorkouts}`,
+										change: "",
+										positive: true,
+									},
+									{
+										label: "Muscle Groups",
+										value: `${muscleGroupData.length}`,
+										change: "",
+										positive: true,
+									},
+									{
+										label: "Exercises Tracked",
+										value: `${strengthExercises.length}`,
+										change: "",
+										positive: true,
+									},
+								].map((stat, index) => (
+									<motion.div
+										key={stat.label}
+										initial={{ opacity: 0, y: 20 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{ delay: index * 0.1 }}
+									>
+										<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+											<div className="text-sm text-muted-foreground mb-1">
+												{stat.label}
 											</div>
-										)}
-									</Card>
-								</motion.div>
-							))}
-						</div>
-
-						{/* Main Content Tabs */}
-						<Tabs defaultValue="overview" className="space-y-6">
-							<TabsList className="bg-surface-2 border border-secondary p-1">
-								<TabsTrigger
-									value="overview"
-									className="data-[state=active]:bg-primary"
-								>
-									Overview
-								</TabsTrigger>
-								<TabsTrigger
-									value="strength"
-									className="data-[state=active]:bg-primary"
-								>
-									Strength Progress
-								</TabsTrigger>
-								<TabsTrigger
-									value="insights"
-									className="data-[state=active]:bg-primary"
-								>
-									Trends & Insights
-								</TabsTrigger>
-								<TabsTrigger
-									value="body"
-									className="data-[state=active]:bg-primary"
-								>
-									Body Part Analysis
-								</TabsTrigger>
-								<TabsTrigger
-									value="external"
-									className="data-[state=active]:bg-primary"
-								>
-									External
-								</TabsTrigger>
-							</TabsList>
-
-							{/* Overview Tab */}
-							<TabsContent value="overview" className="space-y-6">
-								{/* Activity Sources Breakdown */}
-								{(totalWorkouts > 0 || externalCount > 0) && (
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-4">
-											Activity Sources
-										</h3>
-										<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-											<div>
-												<p className="text-2xl font-bold text-primary">
-													{totalWorkouts}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													Phoenix Workouts
-												</p>
+											<div className="text-2xl text-white mb-1">
+												{stat.value}
 											</div>
-											<div>
-												<p className="text-2xl font-bold text-blue-400">
-													{externalCount}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													External Activities
-												</p>
-											</div>
-											<div>
-												<p className="text-2xl font-bold text-white">
-													{totalWorkouts + externalCount}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													Total Activities
-												</p>
-											</div>
-											<div>
-												<p className="text-2xl font-bold text-emerald-400">
-													{externalChartData
-														.reduce((sum, a) => sum + a.calories, 0)
-														.toLocaleString()}
-												</p>
-												<p className="text-sm text-muted-foreground">
-													External Calories
-												</p>
-											</div>
-										</div>
-										{/* Provider badges */}
-										{externalCount > 0 && (
-											<div className="flex gap-2 mt-4 pt-4 border-t border-secondary">
-												{Array.from(
-													new Set(externalChartData.map((a) => a.provider)),
-												).map((provider) => {
-													const count = externalChartData.filter(
-														(a) => a.provider === provider,
-													).length;
-													return (
-														<Badge
-															key={provider}
-															variant="outline"
-															className="capitalize text-xs"
-														>
-															<Globe className="w-3 h-3 mr-1" />
-															{provider} ({count})
-														</Badge>
-													);
-												})}
-											</div>
-										)}
-									</Card>
-								)}
-
-								<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-									{/* Volume Over Time */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-6">
-											Volume Over Time
-										</h3>
-										{volumeData.length > 0 ? (
-											<div role="img" aria-label="Weekly training volume area chart showing volume in kilograms over time">
-											<ResponsiveContainer width="100%" height={300}>
-												<AreaChart data={volumeData}>
-													<defs>
-														<linearGradient
-															id="volumeGradientAnalytics"
-															x1="0"
-															y1="0"
-															x2="0"
-															y2="1"
-														>
-															<stop
-																offset="5%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0.8}
-															/>
-															<stop
-																offset="95%"
-																stopColor={PHOENIX.flameRed}
-																stopOpacity={0.1}
-															/>
-														</linearGradient>
-													</defs>
-													<CartesianGrid
-														strokeDasharray="3 3"
-														stroke={PHOENIX.moltenSteel}
-													/>
-													<XAxis
-														dataKey="date"
-														stroke={PHOENIX.mutedForeground}
-													/>
-													<YAxis stroke={PHOENIX.mutedForeground} />
-													<Tooltip
-														contentStyle={{
-															backgroundColor: "var(--surface-2)",
-															border: "1px solid #374151",
-															borderRadius: "8px",
-															color: "var(--secondary-foreground)",
-														}}
-													/>
-													<Area
-														type="monotone"
-														dataKey="volume"
-														stroke={PHOENIX.ember}
-														strokeWidth={2}
-														fill="url(#volumeGradientAnalytics)"
-													/>
-												</AreaChart>
-											</ResponsiveContainer>
-											</div>
-										) : (
-											<div className="h-[300px] flex items-center justify-center text-muted">
-												No volume data for this period
-											</div>
-										)}
-									</Card>
-
-									{/* Muscle Group Distribution */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-6">
-											Muscle Group Distribution
-										</h3>
-										{muscleGroupData.length > 0 ? (
-											<div role="img" aria-label="Muscle group distribution pie chart showing workout volume by body part">
-											<ResponsiveContainer width="100%" height={300}>
-												<PieChart>
-													<Pie
-														data={muscleGroupData}
-														cx="50%"
-														cy="50%"
-														labelLine={false}
-														outerRadius={100}
-														fill="#8884d8"
-														dataKey="value"
-													>
-														{muscleGroupData.map((entry, index) => (
-															<Cell key={`cell-${index}`} fill={entry.color} />
-														))}
-													</Pie>
-													<Tooltip
-														contentStyle={{
-															backgroundColor: "var(--surface-2)",
-															border: "1px solid #374151",
-															borderRadius: "8px",
-															color: "var(--secondary-foreground)",
-														}}
-													/>
-													<Legend
-														formatter={(value: string) => (
-															<span style={{ color: "var(--secondary-foreground)", fontSize: 12 }}>
-																{value}
-															</span>
-														)}
-													/>
-												</PieChart>
-											</ResponsiveContainer>
-											</div>
-										) : (
-											<div className="h-[300px] flex items-center justify-center text-muted">
-												No muscle group data yet
-											</div>
-										)}
-									</Card>
-								</div>
-							</TabsContent>
-
-							{/* Strength Progress Tab */}
-							<TabsContent value="strength" className="space-y-6">
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-									<h3 className="text-xl text-white mb-6">1RM Progression</h3>
-									{strengthProgressData.length > 0 ? (
-										<div role="img" aria-label="Strength progress line chart showing estimated one-rep max trends over time">
-										<ResponsiveContainer width="100%" height={400}>
-											<LineChart data={strengthProgressData}>
-												<CartesianGrid
-													strokeDasharray="3 3"
-													stroke={PHOENIX.moltenSteel}
-												/>
-												<XAxis
-													dataKey="date"
-													stroke={PHOENIX.mutedForeground}
-												/>
-												<YAxis stroke={PHOENIX.mutedForeground} />
-												<Tooltip
-													contentStyle={{
-														backgroundColor: "var(--surface-2)",
-														border: "1px solid #374151",
-														borderRadius: "8px",
-														color: "var(--secondary-foreground)",
-													}}
-												/>
-												<Legend />
-												{strengthExercises.map((exercise, i) => (
-													<Line
-														key={exercise}
-														type="monotone"
-														dataKey={exercise}
-														name={exercise}
-														stroke={EXERCISE_COLORS[i % EXERCISE_COLORS.length]}
-														strokeWidth={2}
-														dot={{
-															fill: EXERCISE_COLORS[i % EXERCISE_COLORS.length],
-															r: 4,
-														}}
-													/>
-												))}
-											</LineChart>
-										</ResponsiveContainer>
-										</div>
-									) : (
-										<div className="h-[400px] flex items-center justify-center text-muted">
-											No strength progress data yet. Set some PRs to see your
-											progression!
-										</div>
-									)}
-								</Card>
-							</TabsContent>
-
-							{/* Trends & Insights Tab */}
-							<TabsContent value="insights" className="space-y-6">
-								<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-									{insights.map((insight, index) => (
-										<motion.div
-											key={index}
-											initial={{ opacity: 0, y: 20 }}
-											animate={{ opacity: 1, y: 0 }}
-											transition={{ delay: index * 0.1 }}
-										>
-											<Card
-												className={`p-6 border-2 ${
-													insight.type === "positive"
-														? "bg-gradient-to-br from-success/10 to-background border-success"
-														: insight.type === "warning"
-															? "bg-gradient-to-br from-warning/10 to-background border-warning"
-															: "bg-gradient-to-br from-muted/10 to-background border-muted"
-												}`}
-											>
-												<div className="flex items-start gap-4">
-													<div
-														className={`p-3 rounded-lg ${
-															insight.type === "positive"
-																? "bg-success/20"
-																: insight.type === "warning"
-																	? "bg-warning/20"
-																	: "bg-muted/20"
-														}`}
-													>
-														<insight.icon
-															className={`w-6 h-6 ${
-																insight.type === "positive"
-																	? "text-success"
-																	: insight.type === "warning"
-																		? "text-warning"
-																		: "text-muted"
-															}`}
-														/>
-													</div>
-													<div className="flex-1">
-														<h4 className="text-white text-lg mb-1">
-															{insight.title}
-														</h4>
-														<p className="text-muted-foreground">
-															{insight.description}
-														</p>
-													</div>
-												</div>
-											</Card>
-										</motion.div>
-									))}
-								</div>
-							</TabsContent>
-
-							{/* Body Part Analysis Tab */}
-							<TabsContent value="body" className="space-y-6">
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-									<h3 className="text-xl text-white mb-6">
-										Muscle Group Frequency
-									</h3>
-									{muscleGroupData.length > 0 ? (
-										<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-											{muscleGroupData.map((muscle) => (
+											{stat.change && (
 												<div
-													key={muscle.name}
-													className="p-4 rounded-lg border-2 cursor-pointer hover:scale-105 transition-transform"
-													style={{
-														backgroundColor: `${muscle.color}20`,
-														borderColor: muscle.color,
-													}}
+													className={`text-xs flex items-center gap-1 ${
+														stat.positive ? "text-success" : "text-muted"
+													}`}
 												>
-													<div className="text-white mb-2">{muscle.name}</div>
-													<div
-														className="text-2xl mb-1"
-														style={{ color: muscle.color }}
-													>
-														{muscle.value}%
-													</div>
-													<div className="text-xs text-muted-foreground">
-														of total volume
-													</div>
+													{stat.positive ? (
+														<TrendingUp className="w-3 h-3" />
+													) : (
+														<TrendingDown className="w-3 h-3" />
+													)}
+													{stat.change}
 												</div>
-											))}
-										</div>
-									) : (
-										<div className="text-center py-12 text-muted">
-											No body part data yet
-										</div>
-									)}
-								</Card>
-							</TabsContent>
-
-							{/* External Activities Tab */}
-							<TabsContent value="external" className="space-y-6">
-								{externalCount > 0 ? (
-									<>
-										{/* External Activity Duration Chart */}
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-6">
-												External Activity Duration
-											</h3>
-											<div role="img" aria-label="Training frequency bar chart showing workout sessions per time period">
-											<ResponsiveContainer width="100%" height={300}>
-												<BarChart
-													data={externalChartData.slice(0, 20).reverse()}
-												>
-													<CartesianGrid
-														strokeDasharray="3 3"
-														stroke={PHOENIX.moltenSteel}
-													/>
-													<XAxis
-														dataKey="date"
-														stroke={PHOENIX.mutedForeground}
-														tickFormatter={(val: string) =>
-															new Date(val).toLocaleDateString(undefined, {
-																month: "short",
-																day: "numeric",
-															})
-														}
-													/>
-													<YAxis
-														stroke={PHOENIX.mutedForeground}
-														label={{
-															value: "min",
-															angle: -90,
-															position: "insideLeft",
-															fill: PHOENIX.mutedForeground,
-														}}
-													/>
-													<Tooltip
-														contentStyle={{
-															backgroundColor: "var(--surface-2)",
-															border: "1px solid #374151",
-															borderRadius: "8px",
-															color: "var(--secondary-foreground)",
-														}}
-														labelFormatter={(val: string) =>
-															new Date(val).toLocaleDateString(undefined, {
-																month: "short",
-																day: "numeric",
-																year: "numeric",
-															})
-														}
-														formatter={(value: number, name: string) => [
-															`${Math.round(value)} min`,
-															name === "duration" ? "Duration" : name,
-														]}
-													/>
-													<Bar
-														dataKey="duration"
-														fill="#60A5FA"
-														radius={[4, 4, 0, 0]}
-													/>
-												</BarChart>
-											</ResponsiveContainer>
-											</div>
+											)}
 										</Card>
+									</motion.div>
+								))}
+							</div>
 
-										{/* Recent External Activities List */}
+							{/* Main Content Tabs */}
+							<Tabs defaultValue="overview" className="space-y-6">
+								<TabsList className="bg-surface-2 border border-secondary p-1">
+									<TabsTrigger
+										value="overview"
+										className="data-[state=active]:bg-primary"
+									>
+										Overview
+									</TabsTrigger>
+									<TabsTrigger
+										value="strength"
+										className="data-[state=active]:bg-primary"
+									>
+										Strength Progress
+									</TabsTrigger>
+									<TabsTrigger
+										value="insights"
+										className="data-[state=active]:bg-primary"
+									>
+										Trends & Insights
+									</TabsTrigger>
+									<TabsTrigger
+										value="body"
+										className="data-[state=active]:bg-primary"
+									>
+										Body Part Analysis
+									</TabsTrigger>
+									<TabsTrigger
+										value="external"
+										className="data-[state=active]:bg-primary"
+									>
+										External
+									</TabsTrigger>
+								</TabsList>
+
+								{/* Overview Tab */}
+								<TabsContent value="overview" className="space-y-6">
+									{/* Activity Sources Breakdown */}
+									{(totalWorkouts > 0 || externalCount > 0) && (
 										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 											<h3 className="text-xl text-white mb-4">
-												Recent External Activities
+												Activity Sources
 											</h3>
-											<div className="space-y-3">
-												{externalChartData
-													.slice(0, 10)
-													.map((activity, index) => (
+											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+												<div>
+													<p className="text-2xl font-bold text-primary">
+														{totalWorkouts}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														Phoenix Workouts
+													</p>
+												</div>
+												<div>
+													<p className="text-2xl font-bold text-blue-400">
+														{externalCount}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														External Activities
+													</p>
+												</div>
+												<div>
+													<p className="text-2xl font-bold text-white">
+														{totalWorkouts + externalCount}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														Total Activities
+													</p>
+												</div>
+												<div>
+													<p className="text-2xl font-bold text-emerald-400">
+														{externalChartData
+															.reduce((sum, a) => sum + a.calories, 0)
+															.toLocaleString()}
+													</p>
+													<p className="text-sm text-muted-foreground">
+														External Calories
+													</p>
+												</div>
+											</div>
+											{/* Provider badges */}
+											{externalCount > 0 && (
+												<div className="flex gap-2 mt-4 pt-4 border-t border-secondary">
+													{Array.from(
+														new Set(externalChartData.map((a) => a.provider)),
+													).map((provider) => {
+														const count = externalChartData.filter(
+															(a) => a.provider === provider,
+														).length;
+														return (
+															<Badge
+																key={provider}
+																variant="outline"
+																className="capitalize text-xs"
+															>
+																<Globe className="w-3 h-3 mr-1" />
+																{provider} ({count})
+															</Badge>
+														);
+													})}
+												</div>
+											)}
+										</Card>
+									)}
+
+									<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+										{/* Volume Over Time */}
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+											<h3 className="text-xl text-white mb-6">
+												Volume Over Time
+											</h3>
+											{volumeData.length > 0 ? (
+												<div
+													role="img"
+													aria-label="Weekly training volume area chart showing volume in kilograms over time"
+												>
+													<ResponsiveContainer width="100%" height={300}>
+														<AreaChart data={volumeData}>
+															<defs>
+																<linearGradient
+																	id="volumeGradientAnalytics"
+																	x1="0"
+																	y1="0"
+																	x2="0"
+																	y2="1"
+																>
+																	<stop
+																		offset="5%"
+																		stopColor={PHOENIX.ember}
+																		stopOpacity={0.8}
+																	/>
+																	<stop
+																		offset="95%"
+																		stopColor={PHOENIX.flameRed}
+																		stopOpacity={0.1}
+																	/>
+																</linearGradient>
+															</defs>
+															<CartesianGrid
+																strokeDasharray="3 3"
+																stroke={PHOENIX.moltenSteel}
+															/>
+															<XAxis
+																dataKey="date"
+																stroke={PHOENIX.mutedForeground}
+															/>
+															<YAxis stroke={PHOENIX.mutedForeground} />
+															<Tooltip
+																contentStyle={{
+																	backgroundColor: "var(--surface-2)",
+																	border: "1px solid #374151",
+																	borderRadius: "8px",
+																	color: "var(--secondary-foreground)",
+																}}
+															/>
+															<Area
+																type="monotone"
+																dataKey="volume"
+																stroke={PHOENIX.ember}
+																strokeWidth={2}
+																fill="url(#volumeGradientAnalytics)"
+															/>
+														</AreaChart>
+													</ResponsiveContainer>
+												</div>
+											) : (
+												<div className="h-[300px] flex items-center justify-center text-muted">
+													No volume data for this period
+												</div>
+											)}
+										</Card>
+
+										{/* Muscle Group Distribution */}
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+											<h3 className="text-xl text-white mb-6">
+												Muscle Group Distribution
+											</h3>
+											{muscleGroupData.length > 0 ? (
+												<div
+													role="img"
+													aria-label="Muscle group distribution pie chart showing workout volume by body part"
+												>
+													<ResponsiveContainer width="100%" height={300}>
+														<PieChart>
+															<Pie
+																data={muscleGroupData}
+																cx="50%"
+																cy="50%"
+																labelLine={false}
+																outerRadius={100}
+																fill="#8884d8"
+																dataKey="value"
+															>
+																{muscleGroupData.map((entry, index) => (
+																	<Cell
+																		key={`cell-${index}`}
+																		fill={entry.color}
+																	/>
+																))}
+															</Pie>
+															<Tooltip
+																contentStyle={{
+																	backgroundColor: "var(--surface-2)",
+																	border: "1px solid #374151",
+																	borderRadius: "8px",
+																	color: "var(--secondary-foreground)",
+																}}
+															/>
+															<Legend
+																formatter={(value: string) => (
+																	<span
+																		style={{
+																			color: "var(--secondary-foreground)",
+																			fontSize: 12,
+																		}}
+																	>
+																		{value}
+																	</span>
+																)}
+															/>
+														</PieChart>
+													</ResponsiveContainer>
+												</div>
+											) : (
+												<div className="h-[300px] flex items-center justify-center text-muted">
+													No muscle group data yet
+												</div>
+											)}
+										</Card>
+									</div>
+								</TabsContent>
+
+								{/* Strength Progress Tab */}
+								<TabsContent value="strength" className="space-y-6">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+										<h3 className="text-xl text-white mb-6">1RM Progression</h3>
+										{strengthProgressData.length > 0 ? (
+											<div
+												role="img"
+												aria-label="Strength progress line chart showing estimated one-rep max trends over time"
+											>
+												<ResponsiveContainer width="100%" height={400}>
+													<LineChart data={strengthProgressData}>
+														<CartesianGrid
+															strokeDasharray="3 3"
+															stroke={PHOENIX.moltenSteel}
+														/>
+														<XAxis
+															dataKey="date"
+															stroke={PHOENIX.mutedForeground}
+														/>
+														<YAxis stroke={PHOENIX.mutedForeground} />
+														<Tooltip
+															contentStyle={{
+																backgroundColor: "var(--surface-2)",
+																border: "1px solid #374151",
+																borderRadius: "8px",
+																color: "var(--secondary-foreground)",
+															}}
+														/>
+														<Legend />
+														{strengthExercises.map((exercise, i) => (
+															<Line
+																key={exercise}
+																type="monotone"
+																dataKey={exercise}
+																name={exercise}
+																stroke={
+																	EXERCISE_COLORS[i % EXERCISE_COLORS.length]
+																}
+																strokeWidth={2}
+																dot={{
+																	fill: EXERCISE_COLORS[
+																		i % EXERCISE_COLORS.length
+																	],
+																	r: 4,
+																}}
+															/>
+														))}
+													</LineChart>
+												</ResponsiveContainer>
+											</div>
+										) : (
+											<div className="h-[400px] flex items-center justify-center text-muted">
+												No strength progress data yet. Set some PRs to see your
+												progression!
+											</div>
+										)}
+									</Card>
+								</TabsContent>
+
+								{/* Trends & Insights Tab */}
+								<TabsContent value="insights" className="space-y-6">
+									<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+										{insights.map((insight, index) => (
+											<motion.div
+												key={index}
+												initial={{ opacity: 0, y: 20 }}
+												animate={{ opacity: 1, y: 0 }}
+												transition={{ delay: index * 0.1 }}
+											>
+												<Card
+													className={`p-6 border-2 ${
+														insight.type === "positive"
+															? "bg-gradient-to-br from-success/10 to-background border-success"
+															: insight.type === "warning"
+																? "bg-gradient-to-br from-warning/10 to-background border-warning"
+																: "bg-gradient-to-br from-muted/10 to-background border-muted"
+													}`}
+												>
+													<div className="flex items-start gap-4">
 														<div
-															key={index}
-															className="flex items-center justify-between p-3 rounded-lg bg-surface-1 border border-secondary"
+															className={`p-3 rounded-lg ${
+																insight.type === "positive"
+																	? "bg-success/20"
+																	: insight.type === "warning"
+																		? "bg-warning/20"
+																		: "bg-muted/20"
+															}`}
 														>
-															<div className="flex items-center gap-3">
-																<div className="p-2 rounded-lg bg-blue-500/20">
-																	<Globe className="w-4 h-4 text-blue-400" />
-																</div>
-																<div>
-																	<p className="text-sm text-white capitalize">
-																		{activity.type}
-																	</p>
-																	<p className="text-xs text-muted-foreground">
-																		{new Date(activity.date).toLocaleDateString(
-																			undefined,
-																			{
+															<insight.icon
+																className={`w-6 h-6 ${
+																	insight.type === "positive"
+																		? "text-success"
+																		: insight.type === "warning"
+																			? "text-warning"
+																			: "text-muted"
+																}`}
+															/>
+														</div>
+														<div className="flex-1">
+															<h4 className="text-white text-lg mb-1">
+																{insight.title}
+															</h4>
+															<p className="text-muted-foreground">
+																{insight.description}
+															</p>
+														</div>
+													</div>
+												</Card>
+											</motion.div>
+										))}
+									</div>
+								</TabsContent>
+
+								{/* Body Part Analysis Tab */}
+								<TabsContent value="body" className="space-y-6">
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+										<h3 className="text-xl text-white mb-6">
+											Muscle Group Frequency
+										</h3>
+										{muscleGroupData.length > 0 ? (
+											<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+												{muscleGroupData.map((muscle) => (
+													<div
+														key={muscle.name}
+														className="p-4 rounded-lg border-2 cursor-pointer hover:scale-105 transition-transform"
+														style={{
+															backgroundColor: `${muscle.color}20`,
+															borderColor: muscle.color,
+														}}
+													>
+														<div className="text-white mb-2">{muscle.name}</div>
+														<div
+															className="text-2xl mb-1"
+															style={{ color: muscle.color }}
+														>
+															{muscle.value}%
+														</div>
+														<div className="text-xs text-muted-foreground">
+															of total volume
+														</div>
+													</div>
+												))}
+											</div>
+										) : (
+											<div className="text-center py-12 text-muted">
+												No body part data yet
+											</div>
+										)}
+									</Card>
+								</TabsContent>
+
+								{/* External Activities Tab */}
+								<TabsContent value="external" className="space-y-6">
+									{externalCount > 0 ? (
+										<>
+											{/* External Activity Duration Chart */}
+											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+												<h3 className="text-xl text-white mb-6">
+													External Activity Duration
+												</h3>
+												<div
+													role="img"
+													aria-label="Training frequency bar chart showing workout sessions per time period"
+												>
+													<ResponsiveContainer width="100%" height={300}>
+														<BarChart
+															data={externalChartData.slice(0, 20).reverse()}
+														>
+															<CartesianGrid
+																strokeDasharray="3 3"
+																stroke={PHOENIX.moltenSteel}
+															/>
+															<XAxis
+																dataKey="date"
+																stroke={PHOENIX.mutedForeground}
+																tickFormatter={(val: string) =>
+																	new Date(val).toLocaleDateString(undefined, {
+																		month: "short",
+																		day: "numeric",
+																	})
+																}
+															/>
+															<YAxis
+																stroke={PHOENIX.mutedForeground}
+																label={{
+																	value: "min",
+																	angle: -90,
+																	position: "insideLeft",
+																	fill: PHOENIX.mutedForeground,
+																}}
+															/>
+															<Tooltip
+																contentStyle={{
+																	backgroundColor: "var(--surface-2)",
+																	border: "1px solid #374151",
+																	borderRadius: "8px",
+																	color: "var(--secondary-foreground)",
+																}}
+																labelFormatter={(val: string) =>
+																	new Date(val).toLocaleDateString(undefined, {
+																		month: "short",
+																		day: "numeric",
+																		year: "numeric",
+																	})
+																}
+																formatter={(value: number, name: string) => [
+																	`${Math.round(value)} min`,
+																	name === "duration" ? "Duration" : name,
+																]}
+															/>
+															<Bar
+																dataKey="duration"
+																fill="#60A5FA"
+																radius={[4, 4, 0, 0]}
+															/>
+														</BarChart>
+													</ResponsiveContainer>
+												</div>
+											</Card>
+
+											{/* Recent External Activities List */}
+											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+												<h3 className="text-xl text-white mb-4">
+													Recent External Activities
+												</h3>
+												<div className="space-y-3">
+													{externalChartData
+														.slice(0, 10)
+														.map((activity, index) => (
+															<div
+																key={index}
+																className="flex items-center justify-between p-3 rounded-lg bg-surface-1 border border-secondary"
+															>
+																<div className="flex items-center gap-3">
+																	<div className="p-2 rounded-lg bg-blue-500/20">
+																		<Globe className="w-4 h-4 text-blue-400" />
+																	</div>
+																	<div>
+																		<p className="text-sm text-white capitalize">
+																			{activity.type}
+																		</p>
+																		<p className="text-xs text-muted-foreground">
+																			{new Date(
+																				activity.date,
+																			).toLocaleDateString(undefined, {
 																				month: "short",
 																				day: "numeric",
 																				year: "numeric",
-																			},
-																		)}
-																	</p>
-																</div>
-															</div>
-															<div className="flex items-center gap-4">
-																<div className="text-right">
-																	<p className="text-sm text-white">
-																		{Math.round(activity.duration)} min
-																	</p>
-																	{activity.calories > 0 && (
-																		<p className="text-xs text-muted-foreground">
-																			{activity.calories} kcal
+																			})}
 																		</p>
-																	)}
+																	</div>
 																</div>
-																<Badge
-																	variant="outline"
-																	className="capitalize text-xs"
-																>
-																	{activity.provider}
-																</Badge>
+																<div className="flex items-center gap-4">
+																	<div className="text-right">
+																		<p className="text-sm text-white">
+																			{Math.round(activity.duration)} min
+																		</p>
+																		{activity.calories > 0 && (
+																			<p className="text-xs text-muted-foreground">
+																				{activity.calories} kcal
+																			</p>
+																		)}
+																	</div>
+																	<Badge
+																		variant="outline"
+																		className="capitalize text-xs"
+																	>
+																		{activity.provider}
+																	</Badge>
+																</div>
 															</div>
-														</div>
-													))}
+														))}
+												</div>
+											</Card>
+										</>
+									) : (
+										<div className="text-center py-16">
+											<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-400/20 flex items-center justify-center">
+												<Globe className="w-12 h-12 text-blue-400" />
 											</div>
-										</Card>
-									</>
-								) : (
-									<div className="text-center py-16">
-										<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-400/20 flex items-center justify-center">
-											<Globe className="w-12 h-12 text-blue-400" />
+											<h3 className="text-2xl font-semibold text-white mb-2">
+												No external activities
+											</h3>
+											<p className="text-muted-foreground max-w-md mx-auto">
+												Connect fitness services in the Integrations page to see
+												external activities here.
+											</p>
 										</div>
-										<h3 className="text-2xl font-semibold text-white mb-2">
-											No external activities
-										</h3>
-										<p className="text-muted-foreground max-w-md mx-auto">
-											Connect fitness services in the Integrations page to see
-											external activities here.
-										</p>
-									</div>
-								)}
-							</TabsContent>
-						</Tabs>
-					</>
-				)}
+									)}
+								</TabsContent>
+							</Tabs>
+						</>
+					)}
 				</SubscriptionGate>
 			</div>
 		</div>

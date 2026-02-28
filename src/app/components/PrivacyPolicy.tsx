@@ -56,8 +56,8 @@ export function PrivacyPolicy() {
 							<span className="font-semibold text-primary">Summary:</span>{" "}
 							Project Phoenix uses Supabase for authentication and cloud data
 							storage, and Sentry for error monitoring. We collect only the data
-							needed to power your fitness dashboard. We never sell your personal
-							information.
+							needed to power your fitness dashboard. We never sell your
+							personal information.
 						</p>
 					</div>
 
@@ -133,14 +133,18 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Custom Routines &amp; Training Cycles:</span>{" "}
+										<span className="font-semibold">
+											Custom Routines &amp; Training Cycles:
+										</span>{" "}
 										Workout routines and periodization plans you create
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Goals &amp; Challenges:</span>{" "}
+										<span className="font-semibold">
+											Goals &amp; Challenges:
+										</span>{" "}
 										Fitness goals and community challenge participation
 									</span>
 								</li>
@@ -266,17 +270,21 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Fitness Integrations (optional):</span>{" "}
+										<span className="font-semibold">
+											Fitness Integrations (optional):
+										</span>{" "}
 										Strava, Fitbit, Garmin, and Hevy. When you connect these
-										services, we import activity data (duration, distance,
-										heart rate) to display alongside your Vitruvian workouts.
-										You can disconnect at any time.
+										services, we import activity data (duration, distance, heart
+										rate) to display alongside your Vitruvian workouts. You can
+										disconnect at any time.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Mobile Health (optional):</span>{" "}
+										<span className="font-semibold">
+											Mobile Health (optional):
+										</span>{" "}
 										Apple Health and Google Health Connect, synced via the
 										Phoenix mobile app
 									</span>
@@ -329,9 +337,7 @@ export function PrivacyPolicy() {
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">6. Data Sharing</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
-								<span className="font-semibold">
-									We do not sell your data.
-								</span>{" "}
+								<span className="font-semibold">We do not sell your data.</span>{" "}
 								Your data is shared only with the third-party services listed
 								above, and only as needed to provide the App's functionality:
 							</p>
@@ -407,9 +413,10 @@ export function PrivacyPolicy() {
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">Cookie Preferences:</span>{" "}
-										You can manage your cookie preferences at any time. A consent
-										banner appears on your first visit. To reset your preference,
-										clear your browser's local storage for this site.
+										You can manage your cookie preferences at any time. A
+										consent banner appears on your first visit. To reset your
+										preference, clear your browser's local storage for this
+										site.
 									</span>
 								</li>
 							</ul>

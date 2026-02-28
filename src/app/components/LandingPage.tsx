@@ -18,7 +18,6 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
-import { useAuth } from "@/app/hooks/useAuth";
 import { z } from "zod";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -36,6 +35,7 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { useAuth } from "@/app/hooks/useAuth";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { EmberParticles } from "./EmberParticles";
@@ -768,10 +768,7 @@ export function LandingPage() {
 								<li className="hover:text-primary cursor-pointer">Blog</li>
 								<li className="hover:text-primary cursor-pointer">Careers</li>
 								<li>
-									<Link
-										to="/faq"
-										className="hover:text-primary"
-									>
+									<Link to="/faq" className="hover:text-primary">
 										FAQ & Contact
 									</Link>
 								</li>
@@ -789,13 +786,13 @@ export function LandingPage() {
 									</Link>
 								</li>
 								<li>
-								<Link
-									to="/terms"
-									className="hover:text-primary cursor-pointer"
-								>
-									Terms of Service
-								</Link>
-							</li>
+									<Link
+										to="/terms"
+										className="hover:text-primary cursor-pointer"
+									>
+										Terms of Service
+									</Link>
+								</li>
 								<li className="hover:text-primary cursor-pointer">Security</li>
 							</ul>
 						</div>
@@ -823,10 +820,7 @@ export function LandingPage() {
 							</p>
 							<p>
 								By downloading or using Project Phoenix, you agree to our{" "}
-								<Link
-									to="/terms"
-									className="text-primary hover:underline"
-								>
+								<Link to="/terms" className="text-primary hover:underline">
 									Terms of Service
 								</Link>
 								, which includes important safety warnings and liability

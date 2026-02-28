@@ -74,7 +74,12 @@ export function DangerZone() {
 
 	// Days remaining in grace period
 	const daysRemaining = scheduledFor
-		? Math.max(0, Math.ceil((scheduledFor.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+		? Math.max(
+				0,
+				Math.ceil(
+					(scheduledFor.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+				),
+			)
 		: 0;
 
 	// Format the scheduled date
@@ -240,10 +245,7 @@ export function DangerZone() {
 			</Card>
 
 			{/* Confirmation dialog */}
-			<AlertDialog
-				open={showRequestDialog}
-				onOpenChange={setShowRequestDialog}
-			>
+			<AlertDialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
 				<AlertDialogContent className="border-red-900/50">
 					<AlertDialogHeader>
 						<AlertDialogTitle className="text-red-400">

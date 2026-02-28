@@ -442,8 +442,8 @@ function SortableExerciseItem({
 							</Badge>
 						</div>
 						<p className="text-sm text-muted-foreground">
-							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight} {weightUnit}
-							• {exercise.mode}
+							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight}{" "}
+							{weightUnit}• {exercise.mode}
 						</p>
 						<p className="text-xs text-muted mt-1">
 							Rest: {exercise.rest}s between sets

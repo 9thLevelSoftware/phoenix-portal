@@ -46,14 +46,20 @@ export async function exportAllUserData(
 		// ──────────────────────────────────────
 
 		// profiles — exclude stripe_customer_id (sensitive)
-		await addTable("profiles", "profile",
+		await addTable(
+			"profiles",
+			"profile",
 			supabase
 				.from("profiles")
-				.select("id, user_id, display_name, avatar_url, weight_unit, profile_visible, leaderboard_participation, push_notifications, email_digests, streak_reminders, challenge_updates, created_at, updated_at")
+				.select(
+					"id, user_id, display_name, avatar_url, weight_unit, profile_visible, leaderboard_participation, push_notifications, email_digests, streak_reminders, challenge_updates, created_at, updated_at",
+				)
 				.eq("id", userId),
 		);
 
-		const workoutResult = await addTable("workout_sessions", "workouts",
+		const workoutResult = await addTable(
+			"workout_sessions",
+			"workouts",
 			supabase
 				.from("workout_sessions")
 				.select("*")
@@ -61,111 +67,106 @@ export async function exportAllUserData(
 				.order("started_at", { ascending: false }),
 		);
 
-		await addTable("personal_records", "records",
-			supabase
-				.from("personal_records")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"personal_records",
+			"records",
+			supabase.from("personal_records").select("*").eq("user_id", userId),
 		);
 
-		await addTable("exercise_progress", "progress",
-			supabase
-				.from("exercise_progress")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"exercise_progress",
+			"progress",
+			supabase.from("exercise_progress").select("*").eq("user_id", userId),
 		);
 
-		const routineResult = await addTable("routines", "routines",
-			supabase
-				.from("routines")
-				.select("*")
-				.eq("user_id", userId),
+		const routineResult = await addTable(
+			"routines",
+			"routines",
+			supabase.from("routines").select("*").eq("user_id", userId),
 		);
 
-		const cycleResult = await addTable("training_cycles", "cycles",
-			supabase
-				.from("training_cycles")
-				.select("*")
-				.eq("user_id", userId),
+		const cycleResult = await addTable(
+			"training_cycles",
+			"cycles",
+			supabase.from("training_cycles").select("*").eq("user_id", userId),
 		);
 
-		await addTable("user_goals", "goals",
-			supabase
-				.from("user_goals")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"user_goals",
+			"goals",
+			supabase.from("user_goals").select("*").eq("user_id", userId),
 		);
 
-		await addTable("external_activities", "external-activities",
-			supabase
-				.from("external_activities")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"external_activities",
+			"external-activities",
+			supabase.from("external_activities").select("*").eq("user_id", userId),
 		);
 
 		// user_integrations — EXCLUDE sensitive token fields
-		await addTable("user_integrations", "integrations",
+		await addTable(
+			"user_integrations",
+			"integrations",
 			supabase
 				.from("user_integrations")
-				.select("id, user_id, provider, status, last_sync_at, connected_at, error_message, provider_user_id")
+				.select(
+					"id, user_id, provider, status, last_sync_at, connected_at, error_message, provider_user_id",
+				)
 				.eq("user_id", userId),
 		);
 
-		await addTable("community_comments", "comments",
-			supabase
-				.from("community_comments")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"community_comments",
+			"comments",
+			supabase.from("community_comments").select("*").eq("user_id", userId),
 		);
 
-		await addTable("community_votes", "votes",
-			supabase
-				.from("community_votes")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"community_votes",
+			"votes",
+			supabase.from("community_votes").select("*").eq("user_id", userId),
 		);
 
-		await addTable("saved_community_items", "saved-items",
-			supabase
-				.from("saved_community_items")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"saved_community_items",
+			"saved-items",
+			supabase.from("saved_community_items").select("*").eq("user_id", userId),
 		);
 
-		await addTable("challenge_participants", "challenges",
-			supabase
-				.from("challenge_participants")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"challenge_participants",
+			"challenges",
+			supabase.from("challenge_participants").select("*").eq("user_id", userId),
 		);
 
 		// subscriptions — EXCLUDE stripe_customer_id, stripe_subscription_id
-		await addTable("subscriptions", "subscription",
+		await addTable(
+			"subscriptions",
+			"subscription",
 			supabase
 				.from("subscriptions")
-				.select("id, user_id, tier, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at")
+				.select(
+					"id, user_id, tier, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at",
+				)
 				.eq("user_id", userId),
 		);
 
-		await addTable("user_onboarding", "onboarding",
-			supabase
-				.from("user_onboarding")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"user_onboarding",
+			"onboarding",
+			supabase.from("user_onboarding").select("*").eq("user_id", userId),
 		);
 
-		await addTable("shared_routines", "shared-routines",
-			supabase
-				.from("shared_routines")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"shared_routines",
+			"shared-routines",
+			supabase.from("shared_routines").select("*").eq("user_id", userId),
 		);
 
-		await addTable("shared_cycles", "shared-cycles",
-			supabase
-				.from("shared_cycles")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"shared_cycles",
+			"shared-cycles",
+			supabase.from("shared_cycles").select("*").eq("user_id", userId),
 		);
 
 		// ──────────────────────────────────────
@@ -176,30 +177,27 @@ export async function exportAllUserData(
 		const workoutIds = workoutResult?.map((w) => w.id) ?? [];
 
 		if (workoutIds.length > 0) {
-			await addTable("exercises", "exercises",
-				supabase
-					.from("exercises")
-					.select("*")
-					.in("workout_id", workoutIds),
+			await addTable(
+				"exercises",
+				"exercises",
+				supabase.from("exercises").select("*").in("workout_id", workoutIds),
 			);
 		} else {
 			progress("Skipping exercises (no workouts)...");
 		}
 
 		// Sets — direct user_id query (denormalized in Phase 15 DB-02)
-		await addTable("sets", "sets",
-			supabase
-				.from("sets")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"sets",
+			"sets",
+			supabase.from("sets").select("*").eq("user_id", userId),
 		);
 
 		// Rep summaries — direct user_id query (denormalized in Phase 15 DB-02)
-		await addTable("rep_summaries", "rep-summaries",
-			supabase
-				.from("rep_summaries")
-				.select("*")
-				.eq("user_id", userId),
+		await addTable(
+			"rep_summaries",
+			"rep-summaries",
+			supabase.from("rep_summaries").select("*").eq("user_id", userId),
 		);
 
 		// Rep telemetry — LARGE table, paginated at 1000 rows, direct user_id query
@@ -238,7 +236,9 @@ export async function exportAllUserData(
 		const routineIds = routineResult?.map((r) => r.id) ?? [];
 
 		if (routineIds.length > 0) {
-			await addTable("routine_exercises", "routine-exercises",
+			await addTable(
+				"routine_exercises",
+				"routine-exercises",
 				supabase
 					.from("routine_exercises")
 					.select("*")
@@ -252,7 +252,9 @@ export async function exportAllUserData(
 		const cycleIds = cycleResult?.map((c) => c.id) ?? [];
 
 		if (cycleIds.length > 0) {
-			await addTable("cycle_days", "cycle-days",
+			await addTable(
+				"cycle_days",
+				"cycle-days",
 				supabase
 					.from("cycle_days")
 					.select("*")

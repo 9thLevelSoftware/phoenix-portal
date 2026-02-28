@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import { blockedUsersOptions } from "@/queries/community";
 import { useCommunityStore } from "@/stores/useCommunityStore";

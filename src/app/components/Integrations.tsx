@@ -85,7 +85,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="strava"
 							integration={getIntegration("strava")}
-							onConnect={async () => { await initiateStravaConnect(accessToken); }}
+							onConnect={async () => {
+								await initiateStravaConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "strava" })
 							}
@@ -95,7 +97,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="fitbit"
 							integration={getIntegration("fitbit")}
-							onConnect={async () => { await initiateFitbitConnect(accessToken); }}
+							onConnect={async () => {
+								await initiateFitbitConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "fitbit" })
 							}
@@ -105,7 +109,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="garmin"
 							integration={getIntegration("garmin")}
-							onConnect={async () => { await initiateGarminConnect(accessToken); }}
+							onConnect={async () => {
+								await initiateGarminConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "garmin" })
 							}

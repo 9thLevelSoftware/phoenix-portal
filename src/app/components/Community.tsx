@@ -258,7 +258,10 @@ function CommunityDesktop() {
 						)}
 
 						{/* Infinite scroll sentinel */}
-						<div ref={sentinelRef} className="h-10 flex items-center justify-center">
+						<div
+							ref={sentinelRef}
+							className="h-10 flex items-center justify-center"
+						>
 							{isFetchingNextPage && (
 								<div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
 							)}

@@ -127,7 +127,11 @@ function CommentItem({
 							className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 						/>
 						<div className="flex items-center justify-between">
-							<span className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted"}`}>{editBody.length}/500</span>
+							<span
+								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted"}`}
+							>
+								{editBody.length}/500
+							</span>
 							<div className="flex gap-2">
 								<Button
 									variant="ghost"
@@ -259,10 +263,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 			) : comments && comments.length > 0 ? (
 				<div className="divide-y divide-secondary">
 					{comments
-						.filter(
-							(c) =>
-								c.user_id === null || !blockedUserIds.has(c.user_id),
-						)
+						.filter((c) => c.user_id === null || !blockedUserIds.has(c.user_id))
 						.map((comment) => (
 							<CommentItem
 								key={comment.id}
@@ -290,7 +291,11 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 						className="text-sm bg-surface-2 border-secondary text-white min-h-12"
 					/>
 					<div className="flex items-center justify-between">
-						<span className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted"}`}>{newComment.length}/500</span>
+						<span
+							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted"}`}
+						>
+							{newComment.length}/500
+						</span>
 						<Button
 							size="sm"
 							onClick={handlePost}

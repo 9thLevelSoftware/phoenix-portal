@@ -126,15 +126,12 @@ export function SessionReplay() {
 	);
 	const canvasHeight = isMobile ? 200 : 300;
 
-	const handleResize = useCallback(
-		(entries: ResizeObserverEntry[]) => {
-			for (const entry of entries) {
-				const w = entry.contentRect.width;
-				if (w > 0) setCanvasWidth(w);
-			}
-		},
-		[],
-	);
+	const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
+		for (const entry of entries) {
+			const w = entry.contentRect.width;
+			if (w > 0) setCanvasWidth(w);
+		}
+	}, []);
 
 	useEffect(() => {
 		const el = canvasContainerRef.current;

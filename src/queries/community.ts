@@ -160,9 +160,7 @@ export function blockedUsersOptions(userId: string) {
 				.select("blocked_id")
 				.eq("blocker_id", userId);
 			if (error) throw error;
-			return (data as { blocked_id: string }[]).map(
-				(row) => row.blocked_id,
-			);
+			return (data as { blocked_id: string }[]).map((row) => row.blocked_id);
 		},
 	});
 }
