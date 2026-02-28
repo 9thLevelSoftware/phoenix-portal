@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Launch Readiness
 status: in-progress
-last_updated: "2026-02-28T16:17:00Z"
+last_updated: "2026-02-28T16:22:29Z"
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 21
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-27)
 ## Current Position
 
 Phase: 20 — seventh of 7 phases in v1.2 (Operations & Validation)
-Plan: 1 of 4 complete (20-01 done)
+Plan: 3 of 4 complete (20-01, 20-02, 20-03 done)
 Status: In Progress
-Last activity: 2026-02-28 — Completed 20-01-PLAN.md (CI pipeline fix and data export optimization)
+Last activity: 2026-02-28 — Completed 20-03-PLAN.md (FAQ page and support contact)
 
-Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░] 86% (v1.2)
+Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░] 95% (v1.2)
 
 ## Performance Metrics
 
@@ -42,9 +42,9 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░] 86% (v1
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 3.2 min
-- Total execution time: ~62 min
+- Total execution time: ~64 min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -67,6 +67,8 @@ Progress: [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░] 86% (v1
 | 19 | 02 | 5m 01s | 2 | 10 |
 | 19 | 03 | 1m 38s | 1 | 1 |
 | 20 | 01 | 1m 41s | 2 | 3 |
+| 20 | 02 | 2m 14s | 1 | 1 |
+| 20 | 03 | 2m 33s | 2 | 3 |
 
 ## Accumulated Context
 
@@ -137,6 +139,11 @@ v1.2 decisions:
 
 - [20-01] Stub Supabase env vars (not real secrets) sufficient for CI build validation
 - [20-01] TOTAL_STEPS unchanged at 23 despite query refactor (same number of progress steps per path)
+- [20-02] Reimplemented handler business logic as testable functions (Deno imports incompatible with Vitest)
+- [20-02] Chainable Supabase mock tracks call sequences for assertion on table, method, and field values
+- [20-02] getTierFromPriceId accepts priceMapping parameter for testability (avoids Deno.env dependency)
+- [20-03] GitHub issues as sole support channel (solo dev, no email support SLA)
+- [20-03] FAQ answers use React.ReactNode for inline Link components to /pricing and /privacy
 
 v1.2 decisions pending:
 - Hosting platform not confirmed (CSP meta tag chosen as interim -- switch to HTTP header when hosting confirmed)
@@ -162,5 +169,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 20-01-PLAN.md (CI pipeline fix and data export optimization)
-Resume file: Phase 20 in progress (1/4 plans done: 20-01). Next: 20-02.
+Stopped at: Completed 20-03-PLAN.md (FAQ page and support contact)
+Resume file: Phase 20 in progress (3/4 plans done: 20-01, 20-02, 20-03). Next: 20-04.

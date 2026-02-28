@@ -158,8 +158,8 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 20-01-PLAN.md — CI pipeline fix (.npmrc + build env vars) and data-export.ts join-path optimization (gap closure)
-- [ ] 20-02-PLAN.md — Stripe webhook integration tests for all 5 event types (TDD)
+- [x] 20-01-PLAN.md — CI pipeline fix (.npmrc + build env vars) and data-export.ts join-path optimization (gap closure)
+- [x] 20-02-PLAN.md — Stripe webhook integration tests for all 5 event types (TDD)
 - [ ] 20-03-PLAN.md — FAQ page with support contact information and route registration
 - [ ] 20-04-PLAN.md — CLAUDE.md accuracy rewrite and mobile-to-portal sync pipeline documentation
 
@@ -187,7 +187,7 @@ Plans:
 | 17. GDPR & Privacy | 3/3 | Complete    | 2026-02-28 | - |
 | 18. Community Safety | 3/3 | Complete    | 2026-02-28 | - |
 | 19. Accessibility & Navigation | 3/3 | Complete    | 2026-02-28 | - |
-| 20. Operations & Validation | 1/4 | In Progress|  | - |
+| 20. Operations & Validation | 3/4 | In Progress|  | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
