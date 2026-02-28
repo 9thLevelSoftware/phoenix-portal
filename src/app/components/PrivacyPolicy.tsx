@@ -55,8 +55,9 @@ export function PrivacyPolicy() {
 						<p className="text-lg text-secondary-foreground">
 							<span className="font-semibold text-primary">Summary:</span>{" "}
 							Project Phoenix uses Supabase for authentication and cloud data
-							storage. We collect only the data needed to power your fitness
-							dashboard. We never sell your personal information.
+							storage, and Sentry for error monitoring. We collect only the data
+							needed to power your fitness dashboard. We never sell your personal
+							information.
 						</p>
 					</div>
 
@@ -152,6 +153,16 @@ export function PrivacyPolicy() {
 									</span>
 								</li>
 							</ul>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								<span className="font-semibold">
+									Biometric-Adjacent Data Notice:
+								</span>{" "}
+								Performance metrics derived from machine sensors — including
+								velocity, power output, force curves, and rep timing data — may
+								qualify as biometric-adjacent data in some jurisdictions. We
+								collect and store this data to provide training insights and are
+								transparent about its nature.
+							</p>
 						</section>
 
 						<section>
@@ -270,6 +281,28 @@ export function PrivacyPolicy() {
 										Phoenix mobile app
 									</span>
 								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Sentry:</span> Error
+										monitoring and crash reporting. When errors occur, Sentry
+										collects browser type, operating system, error messages, and
+										stack traces to help us diagnose and fix issues. No personal
+										workout data is included in error reports.
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Google &amp; Apple Sign-In:
+										</span>{" "}
+										When you use Google or Apple to sign in, the authentication
+										provider shares your email address and display name with us
+										to create your account. We do not receive or store your
+										Google/Apple password.
+									</span>
+								</li>
 							</ul>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								We do <span className="font-semibold">not</span> use:
@@ -277,7 +310,10 @@ export function PrivacyPolicy() {
 							<ul className="space-y-2 text-secondary-foreground ml-6">
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
-									<span>Analytics or tracking services (Google Analytics, etc.)</span>
+									<span>
+										Marketing analytics or advertising trackers (Google
+										Analytics, Facebook Pixel, etc.)
+									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
