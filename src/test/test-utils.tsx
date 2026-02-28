@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type RenderOptions, render } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router";
 
 function createTestQueryClient() {
 	return new QueryClient({
@@ -16,7 +17,9 @@ function createTestQueryClient() {
 function AllProviders({ children }: { children: ReactNode }) {
 	const queryClient = createTestQueryClient();
 	return (
-		<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+		<MemoryRouter>
+			<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+		</MemoryRouter>
 	);
 }
 
