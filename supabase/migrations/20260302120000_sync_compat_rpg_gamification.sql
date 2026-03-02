@@ -22,10 +22,13 @@ CREATE TABLE IF NOT EXISTS rpg_attributes (
 
 ALTER TABLE rpg_attributes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own RPG attributes" ON rpg_attributes;
 CREATE POLICY "Users can view own RPG attributes"
   ON rpg_attributes FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own RPG attributes" ON rpg_attributes;
 CREATE POLICY "Users can insert own RPG attributes"
   ON rpg_attributes FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own RPG attributes" ON rpg_attributes;
 CREATE POLICY "Users can update own RPG attributes"
   ON rpg_attributes FOR UPDATE USING (auth.uid() = user_id);
 
@@ -47,10 +50,13 @@ CREATE TABLE IF NOT EXISTS earned_badges (
 
 ALTER TABLE earned_badges ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own badges" ON earned_badges;
 CREATE POLICY "Users can view own badges"
   ON earned_badges FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own badges" ON earned_badges;
 CREATE POLICY "Users can insert own badges"
   ON earned_badges FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own badges" ON earned_badges;
 CREATE POLICY "Users can delete own badges"
   ON earned_badges FOR DELETE USING (auth.uid() = user_id);
 
@@ -74,10 +80,13 @@ CREATE TABLE IF NOT EXISTS gamification_stats (
 
 ALTER TABLE gamification_stats ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own gamification stats" ON gamification_stats;
 CREATE POLICY "Users can view own gamification stats"
   ON gamification_stats FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own gamification stats" ON gamification_stats;
 CREATE POLICY "Users can insert own gamification stats"
   ON gamification_stats FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own gamification stats" ON gamification_stats;
 CREATE POLICY "Users can update own gamification stats"
   ON gamification_stats FOR UPDATE USING (auth.uid() = user_id);
 

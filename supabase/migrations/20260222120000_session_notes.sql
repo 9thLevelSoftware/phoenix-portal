@@ -2,5 +2,6 @@
 ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- Allow users to update their own sessions (needed for saving notes)
+DROP POLICY IF EXISTS "Users can update own sessions" ON workout_sessions;
 CREATE POLICY "Users can update own sessions"
   ON workout_sessions FOR UPDATE USING (auth.uid() = user_id);
