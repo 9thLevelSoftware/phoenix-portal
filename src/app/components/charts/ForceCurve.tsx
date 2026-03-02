@@ -291,16 +291,46 @@ function ForceCurveInner({
  * and ParentSize for responsive sizing.
  */
 export function ForceCurve(props: ForceCurveProps) {
-	if (props.width) {
-		return <ForceCurveInner {...props} width={props.width} />;
-	}
+	const repCount = props.repData.length;
+	const peakForces = props.repData.map((rep) =>
+		rep.points.length > 0 ? Math.max(...rep.points.map((p) => p.force_n)) : 0,
+	);
+	const maxForce = peakForces.length > 0 ? Math.max(...peakForces) : 0;
 
 	return (
-		<ParentSize>
-			{({ width }) => {
-				if (width <= 0) return null;
-				return <ForceCurveInner {...props} width={width} />;
-			}}
-		</ParentSize>
+		<div
+			role="img"
+			aria-label={`Force curve chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak force: ${maxForce.toFixed(0)} Newtons.`}
+		>
+			<div aria-hidden="true">
+				{props.width ? (
+					<ForceCurveInner {...props} width={props.width} />
+				) : (
+					<ParentSize>
+						{({ width }) => {
+							if (width <= 0) return null;
+							return <ForceCurveInner {...props} width={width} />;
+						}}
+					</ParentSize>
+				)}
+			</div>
+			<table className="sr-only">
+				<caption>Force curve data by rep</caption>
+				<thead>
+					<tr>
+						<th>Rep</th>
+						<th>Peak Force (N)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{props.repData.map((rep, i) => (
+						<tr key={rep.repNumber}>
+							<td>Rep {rep.repNumber}</td>
+							<td>{peakForces[i]?.toFixed(1)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
 	);
 }

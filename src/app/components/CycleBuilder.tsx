@@ -429,7 +429,9 @@ export function CycleBuilder() {
 										setHasUnsavedChanges(true);
 									}}
 									className="bg-background border-secondary"
-									{...(!isEditing && { min: new Date().toISOString().split("T")[0] })}
+									{...(!isEditing && {
+										min: new Date().toISOString().split("T")[0],
+									})}
 								/>
 								<p className="text-xs text-muted mt-1">
 									Leave blank to start anytime
@@ -581,10 +583,28 @@ export function CycleBuilder() {
 							Week at a Glance
 						</h2>
 
-						<div className={`grid gap-2 mb-6 ${days.length <= 7 ? "grid-cols-7" : "grid-cols-7 overflow-x-auto"}`} style={days.length > 7 ? { gridTemplateColumns: `repeat(${days.length}, minmax(80px, 1fr))` } : undefined}>
+						<div
+							className={`grid gap-2 mb-6 ${days.length <= 7 ? "grid-cols-7" : "grid-cols-7 overflow-x-auto"}`}
+							style={
+								days.length > 7
+									? {
+											gridTemplateColumns: `repeat(${days.length}, minmax(80px, 1fr))`,
+										}
+									: undefined
+							}
+						>
 							{days.map((day, i) => {
-								const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-								const label = days.length <= 7 ? weekdayLabels[i] : `Day ${day.dayNumber}`;
+								const weekdayLabels = [
+									"Mon",
+									"Tue",
+									"Wed",
+									"Thu",
+									"Fri",
+									"Sat",
+									"Sun",
+								];
+								const label =
+									days.length <= 7 ? weekdayLabels[i] : `Day ${day.dayNumber}`;
 								return (
 									<div key={day.dayNumber} className="text-center">
 										<div className="text-xs text-muted-foreground mb-2">
@@ -606,8 +626,7 @@ export function CycleBuilder() {
 											)}
 										</div>
 										<div className="text-xs text-muted mt-1 truncate">
-											{day.routineName ||
-												(day.type === "rest" ? "REST" : "-")}
+											{day.routineName || (day.type === "rest" ? "REST" : "-")}
 										</div>
 									</div>
 								);

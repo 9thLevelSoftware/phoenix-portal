@@ -44,7 +44,7 @@ export function communityFeedOptions(params: FeedParams) {
 		queryFn: async ({ pageParam = 0 }) => {
 			let query = supabase
 				.from(table)
-				.select("*, profiles!inner(display_name, avatar_url)");
+				.select("*, profiles(display_name, avatar_url)");
 
 			// Sort
 			if (params.sort === "new") {
@@ -148,6 +148,20 @@ export function isFollowingOptions(followerId: string, followedId: string) {
 			return !!data;
 		},
 		enabled: !!followerId && !!followedId && followerId !== followedId,
+	});
+}
+
+export function blockedUsersOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.community.blocks(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("user_blocks" as never)
+				.select("blocked_id")
+				.eq("blocker_id", userId);
+			if (error) throw error;
+			return (data as { blocked_id: string }[]).map((row) => row.blocked_id);
+		},
 	});
 }
 

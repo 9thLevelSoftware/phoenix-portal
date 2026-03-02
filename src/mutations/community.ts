@@ -176,6 +176,143 @@ export function useFollowCreator() {
 	});
 }
 
+// ---------- useReportContent ----------
+
+interface ReportContentArgs {
+	contentId: string;
+	contentType: "routine" | "cycle" | "comment";
+	category: "harmful_content" | "impersonation" | "spam" | "malware" | "other";
+	description?: string;
+}
+
+export function useReportContent() {
+	const { user } = useAuth();
+
+	return useMutation({
+		mutationFn: async ({
+			contentId,
+			contentType,
+			category,
+			description,
+		}: ReportContentArgs) => {
+			if (!user) throw new Error("Must be logged in to report content");
+
+			const { error } = await supabase.from("content_reports" as never).insert({
+				reporter_id: user.id,
+				content_id: contentId,
+				content_type: contentType,
+				category,
+				...(description ? { description } : {}),
+			} as never);
+
+			if (error) {
+				if (error.code === "23505") {
+					throw new Error("You have already reported this content");
+				}
+				throw error;
+			}
+		},
+
+		onSuccess: () => {
+			toast.success(
+				"Report submitted. Thank you for keeping the community safe.",
+			);
+		},
+
+		onError: (error: Error) => {
+			toast.error(error.message);
+		},
+	});
+}
+
+// ---------- useBlockUser ----------
+
+interface BlockUserArgs {
+	blockedId: string;
+}
+
+export function useBlockUser() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async ({ blockedId }: BlockUserArgs) => {
+			if (!user) throw new Error("Must be logged in to block a user");
+			if (blockedId === user.id) throw new Error("You cannot block yourself");
+
+			const { error } = await supabase.from("user_blocks" as never).insert({
+				blocker_id: user.id,
+				blocked_id: blockedId,
+			} as never);
+
+			if (error) throw error;
+		},
+
+		onSuccess: () => {
+			toast.success("User blocked");
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.all,
+				});
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.comments.all,
+				});
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.blocks(user.id),
+				});
+			}
+		},
+
+		onError: (error: Error) => {
+			toast.error(error.message);
+		},
+	});
+}
+
+// ---------- useUnblockUser ----------
+
+interface UnblockUserArgs {
+	blockedId: string;
+}
+
+export function useUnblockUser() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async ({ blockedId }: UnblockUserArgs) => {
+			if (!user) throw new Error("Must be logged in to unblock a user");
+
+			const { error } = await supabase
+				.from("user_blocks" as never)
+				.delete()
+				.eq("blocker_id", user.id)
+				.eq("blocked_id", blockedId);
+
+			if (error) throw error;
+		},
+
+		onSuccess: () => {
+			toast.success("User unblocked");
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.all,
+				});
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.comments.all,
+				});
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.community.blocks(user.id),
+				});
+			}
+		},
+
+		onError: (error: Error) => {
+			toast.error(error.message);
+		},
+	});
+}
+
 // ---------- useSaveItem ----------
 
 interface SaveItemArgs {

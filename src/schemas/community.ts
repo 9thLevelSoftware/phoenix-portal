@@ -7,7 +7,7 @@ const itemTypeEnum = z.enum(["routine", "cycle"]);
 
 export const sharedRoutineSchema = z.object({
 	id: z.string().uuid(),
-	user_id: z.string().uuid(),
+	user_id: z.string().uuid().nullable(),
 	routine_id: z.string().uuid(),
 	name: z.string(),
 	description: z.string(),
@@ -27,7 +27,8 @@ export const sharedRoutineSchema = z.object({
 			display_name: z.string(),
 			avatar_url: z.string().nullable(),
 		})
-		.optional(),
+		.optional()
+		.nullable(),
 });
 
 export type SharedRoutine = z.infer<typeof sharedRoutineSchema>;
@@ -36,7 +37,7 @@ export type SharedRoutine = z.infer<typeof sharedRoutineSchema>;
 
 export const sharedCycleSchema = z.object({
 	id: z.string().uuid(),
-	user_id: z.string().uuid(),
+	user_id: z.string().uuid().nullable(),
 	cycle_id: z.string().uuid(),
 	name: z.string(),
 	description: z.string(),
@@ -54,7 +55,8 @@ export const sharedCycleSchema = z.object({
 			display_name: z.string(),
 			avatar_url: z.string().nullable(),
 		})
-		.optional(),
+		.optional()
+		.nullable(),
 });
 
 export type SharedCycle = z.infer<typeof sharedCycleSchema>;
@@ -95,6 +97,28 @@ export const creatorStatsSchema = z.object({
 });
 
 export type CreatorStats = z.infer<typeof creatorStatsSchema>;
+
+// --- Report & Block ---
+
+export const reportCategoryEnum = z.enum([
+	"harmful_content",
+	"impersonation",
+	"spam",
+	"malware",
+	"other",
+]);
+export type ReportCategory = z.infer<typeof reportCategoryEnum>;
+
+export const reportContentSchema = z.object({
+	contentId: z.string().uuid(),
+	contentType: z.enum(["routine", "cycle", "comment"]),
+	category: reportCategoryEnum,
+	description: z.string().max(500).optional(),
+});
+
+export const blockUserSchema = z.object({
+	blockedId: z.string().uuid(),
+});
 
 // --- Union type for feed items ---
 

@@ -44,6 +44,38 @@ export function WorkoutHistory() {
 	const queryClient = useQueryClient();
 	const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
 	const [dateRange, setDateRange] = useState("Last 30 days");
+
+	// Free-tier history gating: 30-day limit
+	const FREE_HISTORY_DAYS = 30;
+	const PREMIUM_DATE_RANGES = ["Last 90 days", "Last 6 months", "All Time"];
+	const isFreeTierExtendedRange =
+		tier === "FREE" && PREMIUM_DATE_RANGES.includes(dateRange);
+
+	const isEntryLocked = useCallback(
+		(startedAt: Date) => {
+			if (tier !== "FREE") return false;
+			const cutoff = new Date();
+			cutoff.setDate(cutoff.getDate() - FREE_HISTORY_DAYS);
+			return startedAt < cutoff;
+		},
+		[tier],
+	);
+
+	const isCalendarMonthLocked = useCallback(
+		(monthDate: Date) => {
+			if (tier !== "FREE") return false;
+			const cutoff = new Date();
+			cutoff.setDate(cutoff.getDate() - FREE_HISTORY_DAYS);
+			// A month is locked if its last day is before the cutoff
+			const lastDayOfMonth = new Date(
+				monthDate.getFullYear(),
+				monthDate.getMonth() + 1,
+				0,
+			);
+			return lastDayOfMonth < cutoff;
+		},
+		[tier],
+	);
 	const [compareMode, setCompareMode] = useState(false);
 	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
 
@@ -388,6 +420,33 @@ export function WorkoutHistory() {
 							</select>
 						</div>
 					</motion.div>
+
+					{/* Free-tier upgrade banner for extended date ranges */}
+					{isFreeTierExtendedRange && (
+						<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+							<Card className="p-4 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5">
+								<div className="flex items-center gap-3">
+									<Lock className="w-5 h-5 text-primary shrink-0" />
+									<div className="flex-1">
+										<p className="text-sm font-medium text-zinc-200">
+											Extended history requires Phoenix
+										</p>
+										<p className="text-xs text-zinc-400">
+											Free accounts can view the last 30 days of workout history
+										</p>
+									</div>
+									<Button
+										asChild
+										size="sm"
+										variant="outline"
+										className="ml-auto border-primary text-primary hover:bg-primary/10 shrink-0"
+									>
+										<Link to="/pricing">Upgrade</Link>
+									</Button>
+								</div>
+							</Card>
+						</div>
+					)}
 				</div>
 			</div>
 
@@ -456,22 +515,28 @@ export function WorkoutHistory() {
 										const hasWorkoutDay = hasWorkout(day);
 										const hasPRDay = hasPR(day);
 										const isTodayDay = isToday(day);
+										const dayDate = new Date(year, month, day);
+										const dayLocked = isEntryLocked(dayDate);
 
 										return (
 											<motion.button
 												key={day}
 												onClick={() => {
-													if (hasWorkoutDay) {
+													if (hasWorkoutDay && !dayLocked) {
 														setSelectedDay(new Date(year, month, day));
 													}
 												}}
-												whileHover={hasWorkoutDay ? { scale: 1.05 } : {}}
+												whileHover={
+													hasWorkoutDay && !dayLocked ? { scale: 1.05 } : {}
+												}
 												className={`
                           aspect-square rounded-lg border-2 relative p-2 transition-all
                           ${
-														hasWorkoutDay
-															? "cursor-pointer bg-gradient-to-br hover:border-primary"
-															: "bg-surface-2 border-secondary cursor-default"
+														dayLocked
+															? "cursor-default opacity-40"
+															: hasWorkoutDay
+																? "cursor-pointer bg-gradient-to-br hover:border-primary"
+																: "bg-surface-2 border-secondary cursor-default"
 													}
                           ${
 														isTodayDay
@@ -480,24 +545,34 @@ export function WorkoutHistory() {
 													}
                         `}
 												style={
-													hasWorkoutDay
+													hasWorkoutDay && !dayLocked
 														? {
 																backgroundColor: `rgba(255, 107, 53, ${intensity * 0.3})`,
 																borderColor: `rgba(255, 107, 53, ${intensity})`,
 															}
-														: {}
+														: dayLocked && hasWorkoutDay
+															? {
+																	backgroundColor: "rgba(255, 107, 53, 0.05)",
+																	borderColor: "rgba(255, 107, 53, 0.15)",
+																}
+															: {}
 												}
 											>
 												<span
 													className={`text-sm sm:text-base ${
-														hasWorkoutDay
-															? "text-white font-semibold"
-															: "text-muted"
+														dayLocked
+															? "text-muted/50"
+															: hasWorkoutDay
+																? "text-white font-semibold"
+																: "text-muted"
 													}`}
 												>
 													{day}
 												</span>
-												{hasPRDay && (
+												{dayLocked && hasWorkoutDay && (
+													<Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary/40 absolute top-1 right-1" />
+												)}
+												{!dayLocked && hasPRDay && (
 													<Flame className="w-3 h-3 sm:w-4 sm:h-4 text-accent absolute top-1 right-1" />
 												)}
 											</motion.button>
@@ -505,6 +580,31 @@ export function WorkoutHistory() {
 									})}
 								</div>
 							</Card>
+
+							{/* Calendar month locked banner (free-tier) */}
+							{isCalendarMonthLocked(currentMonth) && (
+								<Card className="p-4 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5 mb-6">
+									<div className="flex items-center gap-3">
+										<Lock className="w-5 h-5 text-primary shrink-0" />
+										<div className="flex-1">
+											<p className="text-sm font-medium text-zinc-200">
+												This month is outside your free history window
+											</p>
+											<p className="text-xs text-zinc-400">
+												Upgrade to Phoenix for unlimited workout history
+											</p>
+										</div>
+										<Button
+											asChild
+											size="sm"
+											variant="outline"
+											className="ml-auto border-primary text-primary hover:bg-primary/10 shrink-0"
+										>
+											<Link to="/pricing">Upgrade</Link>
+										</Button>
+									</div>
+								</Card>
+							)}
 
 							{/* Load More for Calendar */}
 							{initialPageFull && hasMore && (
@@ -573,127 +673,210 @@ export function WorkoutHistory() {
 									)}
 								</div>
 							)}
-							{filteredWorkouts.map((workout, index) => {
-								const isSelected = selectedForCompare.includes(workout.id);
+							{(() => {
+								const unlocked = filteredWorkouts.filter(
+									(w) => !isEntryLocked(w.started_at),
+								);
+								const locked = filteredWorkouts.filter((w) =>
+									isEntryLocked(w.started_at),
+								);
+								const lockedPreview = locked.slice(0, 3);
+								const hiddenLockedCount = Math.max(
+									0,
+									locked.length - lockedPreview.length,
+								);
+
 								return (
-									<motion.div
-										key={workout.id}
-										initial={{ opacity: 0, y: 20 }}
-										animate={{ opacity: 1, y: 0 }}
-										transition={{ delay: index * 0.05 }}
-									>
-										<Card
-											onClick={() => {
-												if (compareMode) {
-													toggleCompareSelection(workout.id);
-												} else {
-													navigate(`/history/${workout.id}`);
-												}
-											}}
-											className={`p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background transition-all cursor-pointer group ${
-												isSelected
-													? "border-primary ring-1 ring-primary/50"
-													: "border-secondary hover:border-primary/50"
-											}`}
-										>
-											<div className="flex flex-col sm:flex-row sm:items-center gap-4">
-												{/* Compare mode checkbox */}
-												{compareMode && (
-													<div
-														className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+									<>
+										{unlocked.map((workout, index) => {
+											const isSelected = selectedForCompare.includes(
+												workout.id,
+											);
+											return (
+												<motion.div
+													key={workout.id}
+													initial={{ opacity: 0, y: 20 }}
+													animate={{ opacity: 1, y: 0 }}
+													transition={{ delay: index * 0.05 }}
+												>
+													<Card
+														onClick={() => {
+															if (compareMode) {
+																toggleCompareSelection(workout.id);
+															} else {
+																navigate(`/history/${workout.id}`);
+															}
+														}}
+														className={`p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background transition-all cursor-pointer group ${
 															isSelected
-																? "bg-primary border-primary"
-																: "border-secondary"
+																? "border-primary ring-1 ring-primary/50"
+																: "border-secondary hover:border-primary/50"
 														}`}
 													>
-														{isSelected && (
-															<Check className="w-4 h-4 text-white" />
-														)}
-													</div>
-												)}
+														<div className="flex flex-col sm:flex-row sm:items-center gap-4">
+															{/* Compare mode checkbox */}
+															{compareMode && (
+																<div
+																	className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+																		isSelected
+																			? "bg-primary border-primary"
+																			: "border-secondary"
+																	}`}
+																>
+																	{isSelected && (
+																		<Check className="w-4 h-4 text-white" />
+																	)}
+																</div>
+															)}
 
-												{/* Left: Icon & Date */}
-												<div className="flex items-center gap-4">
-													<div className="relative">
-														<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
-															<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-														</div>
-														<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
-															{workout.started_at.getDate()}
-														</div>
-													</div>
+															{/* Left: Icon & Date */}
+															<div className="flex items-center gap-4">
+																<div className="relative">
+																	<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
+																		<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+																	</div>
+																	<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
+																		{workout.started_at.getDate()}
+																	</div>
+																</div>
 
-													<div>
-														<h3 className="text-lg font-semibold text-white mb-1">
-															{workout.name}
-														</h3>
-														<div className="flex items-center gap-2 text-sm text-muted-foreground">
-															<span>
-																{workout.started_at.toLocaleDateString(
-																	"en-US",
-																	{
-																		weekday: "short",
-																		month: "short",
-																		day: "numeric",
-																	},
+																<div>
+																	<h3 className="text-lg font-semibold text-white mb-1">
+																		{workout.name}
+																	</h3>
+																	<div className="flex items-center gap-2 text-sm text-muted-foreground">
+																		<span>
+																			{workout.started_at.toLocaleDateString(
+																				"en-US",
+																				{
+																					weekday: "short",
+																					month: "short",
+																					day: "numeric",
+																				},
+																			)}
+																		</span>
+																		<span>-</span>
+																		<span>
+																			{workout.started_at.toLocaleTimeString(
+																				"en-US",
+																				{
+																					hour: "numeric",
+																					minute: "2-digit",
+																				},
+																			)}
+																		</span>
+																	</div>
+																	{workout.routine_name && (
+																		<Badge
+																			variant="outline"
+																			className="mt-2 border-primary/30 text-primary text-xs"
+																		>
+																			{workout.routine_name}
+																		</Badge>
+																	)}
+																</div>
+															</div>
+
+															{/* Right: Stats */}
+															<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
+																<div className="text-center">
+																	<div className="text-sm text-muted-foreground mb-1">
+																		Volume
+																	</div>
+																	<div className="text-lg font-semibold text-white">
+																		{workout.total_volume.toLocaleString()} kg
+																	</div>
+																</div>
+																<div className="text-center">
+																	<div className="text-sm text-muted-foreground mb-1">
+																		Duration
+																	</div>
+																	<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
+																		<Clock className="w-4 h-4" />
+																		{workout.duration_seconds}m
+																	</div>
+																</div>
+																{workout.pr_count > 0 && (
+																	<div className="text-center col-span-2 sm:col-span-1">
+																		<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																			<Award className="w-3 h-3 mr-1" />
+																			{workout.pr_count} PR
+																			{workout.pr_count > 1 ? "s" : ""}
+																		</Badge>
+																	</div>
 																)}
-															</span>
-															<span>-</span>
-															<span>
-																{workout.started_at.toLocaleTimeString(
-																	"en-US",
-																	{
-																		hour: "numeric",
-																		minute: "2-digit",
-																	},
-																)}
-															</span>
+															</div>
 														</div>
-														{workout.routine_name && (
-															<Badge
-																variant="outline"
-																className="mt-2 border-primary/30 text-primary text-xs"
-															>
-																{workout.routine_name}
-															</Badge>
-														)}
-													</div>
-												</div>
+													</Card>
+												</motion.div>
+											);
+										})}
 
-												{/* Right: Stats */}
-												<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
-													<div className="text-center">
-														<div className="text-sm text-muted-foreground mb-1">
-															Volume
-														</div>
-														<div className="text-lg font-semibold text-white">
-															{workout.total_volume.toLocaleString()} kg
+										{/* Locked preview entries (free-tier) */}
+										{lockedPreview.map((workout, index) => (
+											<motion.div
+												key={workout.id}
+												initial={{ opacity: 0, y: 20 }}
+												animate={{ opacity: 0.5, y: 0 }}
+												transition={{
+													delay: (unlocked.length + index) * 0.05,
+												}}
+											>
+												<Card className="relative p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary pointer-events-none select-none">
+													{/* Lock overlay */}
+													<div className="absolute inset-0 flex items-center justify-center z-10">
+														<Lock className="w-6 h-6 text-primary/60" />
+													</div>
+													<div className="flex flex-col sm:flex-row sm:items-center gap-4 opacity-40">
+														<div className="flex items-center gap-4">
+															<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary/30 to-chart-2/30 flex items-center justify-center">
+																<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white/50" />
+															</div>
+															<div>
+																<h3 className="text-lg font-semibold text-white/60 mb-1">
+																	{workout.name}
+																</h3>
+																<div className="text-sm text-muted-foreground/60">
+																	{workout.started_at.toLocaleDateString(
+																		"en-US",
+																		{
+																			weekday: "short",
+																			month: "short",
+																			day: "numeric",
+																		},
+																	)}
+																</div>
+															</div>
 														</div>
 													</div>
-													<div className="text-center">
-														<div className="text-sm text-muted-foreground mb-1">
-															Duration
-														</div>
-														<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
-															<Clock className="w-4 h-4" />
-															{workout.duration_seconds}m
-														</div>
-													</div>
-													{workout.pr_count > 0 && (
-														<div className="text-center col-span-2 sm:col-span-1">
-															<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
-																<Award className="w-3 h-3 mr-1" />
-																{workout.pr_count} PR
-																{workout.pr_count > 1 ? "s" : ""}
-															</Badge>
-														</div>
-													)}
-												</div>
-											</div>
-										</Card>
-									</motion.div>
+												</Card>
+											</motion.div>
+										))}
+
+										{/* Upgrade banner after locked entries */}
+										{locked.length > 0 && (
+											<Card className="p-6 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5 text-center">
+												<Lock className="w-8 h-8 text-primary mx-auto mb-3" />
+												<h3 className="text-lg font-semibold text-zinc-200 mb-1">
+													Unlock your full workout history
+												</h3>
+												<p className="text-sm text-zinc-400 mb-4">
+													{hiddenLockedCount > 0
+														? `${locked.length} older workouts are locked. `
+														: `${locked.length} older workout${locked.length === 1 ? " is" : "s are"} locked. `}
+													Upgrade to Phoenix for unlimited history.
+												</p>
+												<Button
+													asChild
+													className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white"
+												>
+													<Link to="/pricing">View Plans</Link>
+												</Button>
+											</Card>
+										)}
+									</>
 								);
-							})}
+							})()}
 
 							{/* Load More */}
 							{initialPageFull && hasMore && (

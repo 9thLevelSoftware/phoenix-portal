@@ -245,7 +245,11 @@ function RoutineGrid({
 										<TooltipTrigger asChild>
 											<button
 												onClick={() => onToggleFavorite(routine.id)}
-												aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+												aria-label={
+													favorite
+														? "Remove from favorites"
+														: "Add to favorites"
+												}
 												className="text-muted-foreground hover:text-accent transition-colors"
 											>
 												<Heart

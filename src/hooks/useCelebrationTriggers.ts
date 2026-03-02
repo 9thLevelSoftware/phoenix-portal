@@ -75,10 +75,7 @@ export function useCelebrationTriggers() {
 
 		const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
 			// Only react to successful query updates
-			if (
-				event.type !== "updated" ||
-				event.action.type !== "success"
-			) {
+			if (event.type !== "updated" || event.action.type !== "success") {
 				return;
 			}
 
@@ -121,16 +118,10 @@ export function useCelebrationTriggers() {
 
 				// Check streak milestones
 				const currentStreak = computeStreak(workouts);
-				if (
-					lastStreak.current !== null &&
-					currentStreak > lastStreak.current
-				) {
+				if (lastStreak.current !== null && currentStreak > lastStreak.current) {
 					// Did we cross a milestone boundary?
 					for (const milestone of STREAK_MILESTONES) {
-						if (
-							lastStreak.current < milestone &&
-							currentStreak >= milestone
-						) {
+						if (lastStreak.current < milestone && currentStreak >= milestone) {
 							trigger({ type: "streak", streak: milestone });
 							break; // Only fire the highest crossed milestone
 						}
@@ -174,9 +165,7 @@ export function useCelebrationTriggers() {
 				}
 
 				// Detect new PRs
-				const newPRs = records.filter(
-					(r) => !seenPRIds.current.has(r.id),
-				);
+				const newPRs = records.filter((r) => !seenPRIds.current.has(r.id));
 				for (const r of records) seenPRIds.current.add(r.id);
 
 				// Fire PRCelebration for each new PR
@@ -205,9 +194,7 @@ export function useCelebrationTriggers() {
 				const prevPRCount = lastPRCount.current;
 				const newPRCount = records.length;
 				if (newPRCount > prevPRCount) {
-					for (const [countStr, badge] of Object.entries(
-						PR_COUNT_BADGES,
-					)) {
+					for (const [countStr, badge] of Object.entries(PR_COUNT_BADGES)) {
 						const count = Number(countStr);
 						if (prevPRCount < count && newPRCount >= count) {
 							trigger({
@@ -236,9 +223,7 @@ export function useCelebrationTriggers() {
 
 				if (!challengesInitialized.current) {
 					for (const uc of completedChallenges) {
-						lastChallengeCompletedIds.current.add(
-							uc.challenge_id ?? uc.id,
-						);
+						lastChallengeCompletedIds.current.add(uc.challenge_id ?? uc.id);
 					}
 					challengesInitialized.current = true;
 					return;
@@ -250,15 +235,13 @@ export function useCelebrationTriggers() {
 						lastChallengeCompletedIds.current.add(id);
 
 						// Extract challenge name from the nested join
-						const challengeName =
-							uc.challenges?.name ?? "Challenge Complete";
+						const challengeName = uc.challenges?.name ?? "Challenge Complete";
 
 						trigger({
 							type: "challenge_won",
 							placement: 1, // We don't have leaderboard placement yet
 							challengeName,
-							challengeType:
-								uc.challenges?.challenge_type ?? "Challenge",
+							challengeType: uc.challenges?.challenge_type ?? "Challenge",
 							rewards: [
 								{
 									type: "badge",

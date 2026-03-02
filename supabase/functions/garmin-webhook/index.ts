@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 /**
  * Garmin Connect webhook handler for activity push notifications.
@@ -97,16 +97,18 @@ function normalizeGarminWebhookActivity(
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   // Garmin sends GET for webhook verification (ping)
   if (req.method === 'GET') {
     return new Response('OK', {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
+      headers: { ...cors, 'Content-Type': 'text/plain' },
     });
   }
 
@@ -114,11 +116,25 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', {
       status: 405,
-      headers: corsHeaders,
+      headers: cors,
     });
   }
 
   try {
+    // Validate webhook shared secret if configured
+    const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
+    if (WEBHOOK_SECRET) {
+      // Check common webhook authentication headers
+      const providedSecret = req.headers.get('x-webhook-secret')
+        ?? req.headers.get('authorization')?.replace('Bearer ', '');
+      if (providedSecret !== WEBHOOK_SECRET) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
     const payload: GarminWebhookPayload = await req.json();
     const activities = payload.activities ?? payload.activityDetails ?? [];
 
@@ -126,7 +142,7 @@ Deno.serve(async (req) => {
       // Acknowledge receipt even if no activities (could be a ping or other event)
       return new Response(
         JSON.stringify({ received: true, processed: 0 }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -194,7 +210,7 @@ Deno.serve(async (req) => {
     // Always return 200 to acknowledge receipt (Garmin may retry on non-200)
     return new Response(
       JSON.stringify({ received: true, processed, errors }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
     console.error('Garmin webhook error:', err);
@@ -202,7 +218,7 @@ Deno.serve(async (req) => {
     // Log the error for debugging
     return new Response(
       JSON.stringify({ received: true, error: 'Processing error' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 });

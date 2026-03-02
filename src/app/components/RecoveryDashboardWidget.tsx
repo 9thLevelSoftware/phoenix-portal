@@ -24,9 +24,8 @@ export function RecoveryDashboardWidget() {
 						<Lock className="w-4 h-4 text-muted-foreground" />
 					</div>
 					<p className="text-sm text-muted-foreground mb-3">
-						Monitor your recovery readiness between sessions. Get
-						personalized training load insights based on your workout
-						history.
+						Monitor your recovery readiness between sessions. Get personalized
+						training load insights based on your workout history.
 					</p>
 					<Button
 						variant="outline"

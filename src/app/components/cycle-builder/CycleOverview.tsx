@@ -28,7 +28,9 @@ export function CycleOverview({
 	onStartDateChange,
 }: CycleOverviewProps) {
 	const durationPresets = [3, 4, 5, 6, 7];
-	const [customMode, setCustomMode] = useState(!durationPresets.includes(duration));
+	const [customMode, setCustomMode] = useState(
+		!durationPresets.includes(duration),
+	);
 	const isCustomDuration = customMode || !durationPresets.includes(duration);
 
 	return (
@@ -73,8 +75,13 @@ export function CycleOverview({
 							<Button
 								key={days}
 								size="sm"
-								variant={duration === days && !isCustomDuration ? "default" : "outline"}
-								onClick={() => { setCustomMode(false); onDurationChange(days); }}
+								variant={
+									duration === days && !isCustomDuration ? "default" : "outline"
+								}
+								onClick={() => {
+									setCustomMode(false);
+									onDurationChange(days);
+								}}
 								className={
 									duration === days
 										? "bg-primary hover:bg-chart-2 border-0"

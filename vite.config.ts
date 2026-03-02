@@ -67,6 +67,9 @@ export default defineConfig({
 						org: process.env.SENTRY_ORG || "phoenix-portal",
 						project: process.env.SENTRY_PROJECT || "phoenix-portal",
 						authToken: process.env.SENTRY_AUTH_TOKEN,
+						sourcemaps: {
+							filesToDeleteAfterUpload: ["./dist/**/*.map"],
+						},
 					}),
 				]
 			: []),
@@ -78,7 +81,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		sourcemap: true,
+		sourcemap: "hidden",
 		rollupOptions: {
 			output: {
 				manualChunks: {
@@ -132,6 +135,19 @@ export default defineConfig({
 					],
 					"vendor-zod": ["zod"],
 					"vendor-zustand": ["zustand"],
+				"vendor-recharts": ["recharts"],
+				"vendor-visx": [
+					"@visx/axis",
+					"@visx/curve",
+					"@visx/event",
+					"@visx/gradient",
+					"@visx/group",
+					"@visx/responsive",
+					"@visx/scale",
+					"@visx/shape",
+					"@visx/text",
+					"@visx/tooltip",
+				],
 				},
 			},
 		},

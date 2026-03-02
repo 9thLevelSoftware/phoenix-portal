@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Archive, Download, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
@@ -16,6 +16,7 @@ import {
 	generateRecordsCSV,
 	generateWorkoutCSV,
 } from "@/lib/export/csv";
+import { exportAllUserData } from "@/lib/export/data-export";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 
@@ -31,6 +32,11 @@ export function ExportSection() {
 	const [exporting, setExporting] = useState<"workouts" | "records" | null>(
 		null,
 	);
+	const [fullExporting, setFullExporting] = useState(false);
+	const [exportProgress, setExportProgress] = useState<{
+		step: string;
+		percent: number;
+	} | null>(null);
 
 	const handleExportWorkouts = () => {
 		if (!workouts?.length) {
@@ -49,6 +55,27 @@ export function ExportSection() {
 			console.error("Export error:", error);
 		} finally {
 			setExporting(null);
+		}
+	};
+
+	const handleFullExport = async () => {
+		if (!user?.id) return;
+		setFullExporting(true);
+		setExportProgress({ step: "Starting...", percent: 0 });
+		try {
+			await exportAllUserData(user.id, (step, current, total) => {
+				setExportProgress({
+					step,
+					percent: Math.round((current / total) * 100),
+				});
+			});
+			toast.success("Data export complete — check your downloads folder");
+		} catch (error) {
+			toast.error("Failed to export data");
+			console.error("Full export error:", error);
+		} finally {
+			setFullExporting(false);
+			setExportProgress(null);
 		}
 	};
 
@@ -120,6 +147,43 @@ export function ExportSection() {
 					CSV files can be opened in Excel, Google Sheets, or any spreadsheet
 					application.
 				</p>
+
+				<div className="border-t border-secondary pt-4 mt-4">
+					<p className="text-sm font-medium text-white mb-2">
+						Complete Data Export
+					</p>
+					<p className="text-xs text-muted-foreground mb-3">
+						Download all your data as a ZIP file containing JSON files. This
+						includes your complete workout history, telemetry, records,
+						routines, goals, comments, and account information.
+					</p>
+					{exportProgress && (
+						<div className="mb-3 space-y-1">
+							<p className="text-xs text-muted-foreground">
+								{exportProgress.step}
+							</p>
+							<div className="w-full bg-secondary/30 rounded-full h-2">
+								<div
+									className="bg-primary h-2 rounded-full transition-all duration-300"
+									style={{ width: `${exportProgress.percent}%` }}
+								/>
+							</div>
+						</div>
+					)}
+					<Button
+						variant="outline"
+						onClick={handleFullExport}
+						disabled={fullExporting}
+						className="w-full border-primary text-primary hover:bg-primary/10"
+					>
+						{fullExporting ? (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						) : (
+							<Archive className="mr-2 h-4 w-4" />
+						)}
+						{fullExporting ? "Exporting..." : "Download All My Data (ZIP)"}
+					</Button>
+				</div>
 			</CardContent>
 		</Card>
 	);

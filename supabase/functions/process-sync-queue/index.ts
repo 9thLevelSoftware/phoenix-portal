@@ -1,6 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { backOff } from 'npm:exponential-backoff@3.1.1';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 /**
  * Scheduled sync queue processor.
@@ -16,8 +16,10 @@ const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
 };
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   const supabase = createClient(
@@ -95,7 +97,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(JSON.stringify(results), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   });
 });
 

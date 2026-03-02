@@ -1,12 +1,12 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 /**
  * Hevy Sync Edge Function
  *
  * Unlike OAuth providers, Hevy uses API key authentication.
  * - Receives { user_id, api_key? } in request body
- * - If api_key provided, stores it in user_integrations.api_key
+ * - If api_key provided, stores it in oauth_tokens.api_key (server-only)
  * - Fetches workouts from Hevy API (requires Hevy PRO subscription)
  * - Falls back gracefully if API returns 401/403
  * - Normalizes and upserts to external_activities
@@ -34,65 +34,107 @@ interface HevyWorkout {
 }
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
-    const { user_id, api_key, sync_type } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const { api_key, sync_type } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // If api_key provided, store it in user_integrations
+    // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
-      const { error: upsertError } = await supabase
+      const { error: tokenUpsertError } = await supabase
+        .from('oauth_tokens')
+        .upsert(
+          {
+            user_id: userId,
+            provider: 'hevy',
+            api_key,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,provider' }
+        );
+
+      if (tokenUpsertError) {
+        console.error('Failed to store Hevy API key:', tokenUpsertError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to store API key' }),
+          {
+            status: 500,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+
+      // Update user_integrations with non-sensitive status only
+      await supabase
         .from('user_integrations')
         .upsert(
           {
-            user_id,
+            user_id: userId,
             provider: 'hevy',
-            api_key,
             status: 'connected',
             connected_at: new Date().toISOString(),
           },
           { onConflict: 'user_id,provider' }
         );
-
-      if (upsertError) {
-        console.error('Failed to store Hevy API key:', upsertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to store API key' }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
     }
 
-    // Retrieve the stored API key for this user
-    const { data: integration } = await supabase
-      .from('user_integrations')
+    // Retrieve the stored API key from oauth_tokens (server-only)
+    const { data: tokenData } = await supabase
+      .from('oauth_tokens')
       .select('api_key')
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'hevy')
       .single();
 
-    const storedApiKey = integration?.api_key;
+    const storedApiKey = tokenData?.api_key;
 
     if (!storedApiKey) {
       return new Response(
@@ -102,7 +144,7 @@ Deno.serve(async (req) => {
         }),
         {
           status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -125,7 +167,7 @@ Deno.serve(async (req) => {
             status: 'error',
             error_message: 'API key invalid or Hevy PRO subscription required',
           })
-          .eq('user_id', user_id)
+          .eq('user_id', userId)
           .eq('provider', 'hevy');
 
         return new Response(
@@ -135,7 +177,7 @@ Deno.serve(async (req) => {
           }),
           {
             status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            headers: { ...cors, 'Content-Type': 'application/json' },
           }
         );
       }
@@ -155,14 +197,14 @@ Deno.serve(async (req) => {
           status: 'error',
           error_message: `Sync failed: ${fetchError.message}`,
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
         JSON.stringify({ error: `Hevy API error: ${fetchError.message}` }),
         {
           status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );
     }
@@ -178,7 +220,7 @@ Deno.serve(async (req) => {
         .from('external_activities')
         .upsert(
           {
-            user_id,
+            user_id: userId,
             external_id: `hevy-${workout.id}`,
             provider: 'hevy',
             name: workout.title,
@@ -204,7 +246,7 @@ Deno.serve(async (req) => {
         status: 'connected',
         error_message: null,
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'hevy');
 
     // Mark sync queue entry as completed
@@ -215,7 +257,7 @@ Deno.serve(async (req) => {
           status: 'completed',
           completed_at: new Date().toISOString(),
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'hevy')
         .eq('status', 'pending');
     }
@@ -227,7 +269,7 @@ Deno.serve(async (req) => {
         total: workouts.length,
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   } catch (err) {
@@ -236,7 +278,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ error: err.message }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   }

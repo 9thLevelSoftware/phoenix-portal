@@ -53,8 +53,9 @@ export function PrivacyPolicy() {
 						<p className="text-lg text-secondary-foreground">
 							<span className="font-semibold text-primary">Summary:</span>{" "}
 							Project Phoenix uses Supabase for authentication and cloud data
-							storage. We collect only the data needed to power your fitness
-							dashboard. We never sell your personal information.
+							storage, and Sentry for error monitoring. We collect only the data
+							needed to power your fitness dashboard. We never sell your
+							personal information.
 						</p>
 					</div>
 
@@ -97,7 +98,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Subscription tier and billing status (managed via Stripe)
+										Subscription tier and billing status (managed via the
+									Phoenix mobile app through your app store)
 									</span>
 								</li>
 							</ul>
@@ -130,14 +132,18 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Custom Routines &amp; Training Cycles:</span>{" "}
+										<span className="font-semibold">
+											Custom Routines &amp; Training Cycles:
+										</span>{" "}
 										Workout routines and periodization plans you create
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Goals &amp; Challenges:</span>{" "}
+										<span className="font-semibold">
+											Goals &amp; Challenges:
+										</span>{" "}
 										Fitness goals and community challenge participation
 									</span>
 								</li>
@@ -150,6 +156,16 @@ export function PrivacyPolicy() {
 									</span>
 								</li>
 							</ul>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								<span className="font-semibold">
+									Biometric-Adjacent Data Notice:
+								</span>{" "}
+								Performance metrics derived from machine sensors — including
+								velocity, power output, force curves, and rep timing data — may
+								qualify as biometric-adjacent data in some jurisdictions. We
+								collect and store this data to provide training insights and are
+								transparent about its nature.
+							</p>
 						</section>
 
 						<section>
@@ -246,26 +262,57 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Stripe:</span> Payment
-										processing for subscriptions (we do not store card details)
+										<span className="font-semibold">
+											App Store Billing:
+										</span>{" "}
+										Subscription payments are processed by Apple (App Store) or
+										Google (Play Store) through the Phoenix mobile app. We do
+										not store payment card details. Subscription status is
+										synced to the Portal via RevenueCat webhooks.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Fitness Integrations (optional):</span>{" "}
+										<span className="font-semibold">
+											Fitness Integrations (optional):
+										</span>{" "}
 										Strava, Fitbit, Garmin, and Hevy. When you connect these
-										services, we import activity data (duration, distance,
-										heart rate) to display alongside your Vitruvian workouts.
-										You can disconnect at any time.
+										services, we import activity data (duration, distance, heart
+										rate) to display alongside your Vitruvian workouts. You can
+										disconnect at any time.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Mobile Health (optional):</span>{" "}
+										<span className="font-semibold">
+											Mobile Health (optional):
+										</span>{" "}
 										Apple Health and Google Health Connect, synced via the
 										Phoenix mobile app
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Sentry:</span> Error
+										monitoring and crash reporting. When errors occur, Sentry
+										collects browser type, operating system, error messages, and
+										stack traces to help us diagnose and fix issues. No personal
+										workout data is included in error reports.
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Google &amp; Apple Sign-In:
+										</span>{" "}
+										When you use Google or Apple to sign in, the authentication
+										provider shares your email address and display name with us
+										to create your account. We do not receive or store your
+										Google/Apple password.
 									</span>
 								</li>
 							</ul>
@@ -275,7 +322,10 @@ export function PrivacyPolicy() {
 							<ul className="space-y-2 text-secondary-foreground ml-6">
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
-									<span>Analytics or tracking services (Google Analytics, etc.)</span>
+									<span>
+										Marketing analytics or advertising trackers (Google
+										Analytics, Facebook Pixel, etc.)
+									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
@@ -291,9 +341,7 @@ export function PrivacyPolicy() {
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">6. Data Sharing</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
-								<span className="font-semibold">
-									We do not sell your data.
-								</span>{" "}
+								<span className="font-semibold">We do not sell your data.</span>{" "}
 								Your data is shared only with the third-party services listed
 								above, and only as needed to provide the App's functionality:
 							</p>
@@ -307,7 +355,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Stripe processes payment information for subscriptions
+										Subscription payments are processed through the Apple App
+										Store or Google Play Store via the Phoenix mobile app
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -363,6 +412,16 @@ export function PrivacyPolicy() {
 										<span className="font-semibold">Disconnect:</span> You can
 										disconnect third-party fitness integrations at any time from
 										the Integrations page
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Cookie Preferences:</span>{" "}
+										You can manage your cookie preferences at any time. A
+										consent banner appears on your first visit. To reset your
+										preference, clear your browser's local storage for this
+										site.
 									</span>
 								</li>
 							</ul>
