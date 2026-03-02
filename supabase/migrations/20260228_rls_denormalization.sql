@@ -27,7 +27,12 @@ BEGIN;
 -- public.subscriptions (Stripe). Rather than dropping and breaking the mobile
 -- app, we mark it deprecated so portal code never queries it.
 
-COMMENT ON TABLE user_subscriptions IS 'DEPRECATED: RevenueCat mobile subscription table. Portal uses public.subscriptions (Stripe). Do not query from portal code. See Phase 15 DB-01.';
+-- user_subscriptions table may have been removed by RevenueCat migration
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'user_subscriptions') THEN
+    COMMENT ON TABLE user_subscriptions IS 'DEPRECATED: RevenueCat mobile subscription table. Portal uses public.subscriptions (Stripe). Do not query from portal code. See Phase 15 DB-01.';
+  END IF;
+END $$;
 
 -- =============================================================================
 -- Section 2: Denormalize user_id onto sets table (DB-02)
