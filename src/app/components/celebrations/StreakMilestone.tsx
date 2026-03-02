@@ -105,7 +105,7 @@ export function StreakMilestone({
 									className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -z-10"
 								>
 									<div
-										className="text-[12rem] font-bold bg-gradient-to-br from-primary to-chart-2 bg-clip-text text-transparent"
+										className="text-[12rem] font-bold text-white"
 										style={{
 											filter: "drop-shadow(0 0 30px rgba(255, 107, 53, 0.5))",
 										}}

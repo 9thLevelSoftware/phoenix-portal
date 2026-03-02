@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	BedDouble,
@@ -51,36 +52,34 @@ export function TrainingCycles() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-										Training Cycles
-									</span>
+								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+				<PageShell>
 					<CardSkeleton />
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
 							<CardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
 
 	if (allCycles.length === 0) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<motion.div
@@ -89,10 +88,8 @@ export function TrainingCycles() {
 							className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 						>
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-										Training Cycles
-									</span>
+								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
@@ -106,7 +103,7 @@ export function TrainingCycles() {
 						</motion.div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Calendar}
 						title="Plan your training cycle"
@@ -114,13 +111,13 @@ export function TrainingCycles() {
 						actionLabel="Create Cycle"
 						actionHref="/cycles/new"
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -130,10 +127,8 @@ export function TrainingCycles() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Training Cycles
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								Training Cycles
 							</h1>
 							<p className="text-muted-foreground">Periodize your progress</p>
 						</div>
@@ -150,7 +145,7 @@ export function TrainingCycles() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+			<PageShell>
 				{/* Active Cycle Card */}
 				{activeCycle && (
 					<motion.div
@@ -358,7 +353,7 @@ export function TrainingCycles() {
 						})}
 					</div>
 				</div>
-			</div>
+			</PageShell>
 
 			<ShareContentDialog
 				open={shareDialogOpen}

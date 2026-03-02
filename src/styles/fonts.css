@@ -1,17 +1,11 @@
-/* Phoenix Project Typography */
+/* Phoenix Typography — Inter Variable */
 
-/* Headlines - Bold, aggressive */
-h1, h2, h3 {
-  font-family: 'Bebas Neue', 'Inter', system-ui, sans-serif;
-  letter-spacing: 0.02em;
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --default-font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Body - Clean, readable */
-body, p, span, div {
-  font-family: 'Inter', system-ui, sans-serif;
-}
-
-/* Data/Numbers - Tabular figures */
+/* Data/Numbers — Tabular figures */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }

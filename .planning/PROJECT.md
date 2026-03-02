@@ -82,19 +82,20 @@ Premium subscribers see data and insights about their training that they cannot 
 
 ### Active
 
-## Current Milestone: v1.3 RevenueCat Billing Migration
+<!-- Current milestone: v1.2 Premium Visual Overhaul -->
 
-**Goal:** Replace Stripe with RevenueCat as the subscription billing provider, making the portal a consumer of subscription status managed by the mobile app.
+## Current Milestone: v1.2 Premium Visual Overhaul
 
-**Target features:**
-- Research optimal sync mechanism (RevenueCat webhooks vs REST API vs JS SDK)
-- Remove all Stripe infrastructure (3 Edge Functions, stripe_customer_id, webhook handler)
-- Build RevenueCat subscription status sync (Edge Function + database schema)
-- Update Pricing page to show tiers with "subscribe in app" CTAs (no web checkout)
-- Update SubscriptionGate and upgrade prompts to direct users to mobile app
-- Maintain existing tier structure (FREE / PHOENIX / ELITE) with same feature gating
-- Update RLS policies to work with new subscription data source
-- Remove Stripe-related environment variables and configuration
+**Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
+
+**Target areas:**
+- Typography: declare Inter on body, fix dead CSS vars, remove hardcoded system-ui, add letter-spacing/tracking
+- Navigation: replace 13-item horizontal nav with collapsible sidebar
+- Visual depth: ambient background gradients, glassmorphism, brand-tinted shadows, card surface hierarchy
+- Motion design: page transitions, spring-physics hover states, stagger animations, stat counting, scroll parallax
+- Data visualization: custom tooltips, styled axes, chart animations, donut charts, muscle heatmap fix
+- Bug fixes: pricing data mismatch, dead notification logic, useIsMobile flash, hardcoded colors
+- Consistent page shell with shared max-width/padding
 
 ### Out of Scope
 
@@ -171,4 +172,4 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 | Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-28 after v1.3 milestone start*
+*Last updated: 2026-02-20 after v1.2 milestone start*

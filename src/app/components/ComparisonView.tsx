@@ -304,7 +304,7 @@ export function ComparisonView() {
 	// Tier gate: FREE users see upgrade prompt
 	if (!subLoading && !isPremium) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -341,7 +341,7 @@ export function ComparisonView() {
 	// Same-session validation (COMP-06)
 	if (sessionAId && sessionBId && sessionAId === sessionBId) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -377,7 +377,7 @@ export function ComparisonView() {
 	// Missing params
 	if (!sessionAId || !sessionBId) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -413,7 +413,7 @@ export function ComparisonView() {
 	// Loading
 	if (pendingA || pendingB || subLoading) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -444,7 +444,7 @@ export function ComparisonView() {
 	// Error
 	if (errorA || errorB || !summaryA || !summaryB) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -486,7 +486,7 @@ export function ComparisonView() {
 	const result = compareSessions(summaryA, summaryB);
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -508,10 +508,8 @@ export function ComparisonView() {
 							content="Compare two workout sessions side-by-side to track progression"
 							side="bottom"
 						>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Session Comparison
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								Session Comparison
 							</h1>
 						</FeatureHint>
 						<div className="flex items-center gap-3">

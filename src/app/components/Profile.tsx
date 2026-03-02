@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -222,8 +223,8 @@ export function Profile() {
 	];
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+		<div className="min-h-screen pb-20 md:pb-8">
+			<PageShell>
 				{/* Profile Header */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
@@ -454,7 +455,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Total Volume Lifted
 										</div>
-										<div className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+										<div className="text-3xl text-primary">
 											{statsLoading
 												? "..."
 												: formatVolume(stats?.totalVolume ?? 0)}
@@ -814,7 +815,7 @@ export function Profile() {
 						</Card>
 					</TabsContent>
 				</Tabs>
-			</div>
+			</PageShell>
 		</div>
 	);
 }

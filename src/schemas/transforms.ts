@@ -13,6 +13,9 @@ const workoutModeMap: Record<string, string> = {
 	OLD_SCHOOL: "Old School",
 	ECHO: "Echo",
 	PUMP: "Pump",
+	TUT: "TUT",
+	TUT_BEAST: "TUT Beast",
+	ECCENTRIC_ONLY: "Eccentric Only",
 	POWER: "Power",
 	CLASSIC: "Old School", // Android alias
 };

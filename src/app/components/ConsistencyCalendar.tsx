@@ -182,7 +182,7 @@ export function ConsistencyCalendar({
 							y={12}
 							fill={PHOENIX.ashGray}
 							fontSize={9}
-							fontFamily="system-ui"
+							fontFamily="Inter, system-ui, sans-serif"
 						>
 							{ml.month}
 						</text>
@@ -197,7 +197,7 @@ export function ConsistencyCalendar({
 							fill={PHOENIX.ashGray}
 							fontSize={8}
 							textAnchor="end"
-							fontFamily="system-ui"
+							fontFamily="Inter, system-ui, sans-serif"
 						>
 							{label}
 						</text>

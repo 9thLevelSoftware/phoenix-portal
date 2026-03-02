@@ -160,7 +160,7 @@ export function RoutineBuilder() {
 
 	if (isEditing && isLoadingRoutine) {
 		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
+			<div className="min-h-screen flex items-center justify-center">
 				<div className="flex flex-col items-center gap-4">
 					<Loader2 className="w-8 h-8 text-primary animate-spin" />
 					<p className="text-muted-foreground">Loading routine...</p>
@@ -170,7 +170,7 @@ export function RoutineBuilder() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Top Bar */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
