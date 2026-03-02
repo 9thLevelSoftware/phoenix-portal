@@ -18,7 +18,6 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
-import { useAuth } from "@/app/hooks/useAuth";
 import { z } from "zod";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -36,6 +35,8 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { useAuth } from "@/app/hooks/useAuth";
+import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { EmberParticles } from "./EmberParticles";
 import { PhoenixLogo } from "./PhoenixLogo";
@@ -208,51 +209,19 @@ export function LandingPage() {
 		},
 	];
 
-	const pricingTiers = [
-		{
-			name: "Free",
-			price: "$0",
-			period: "forever",
-			features: [
-				"Basic workout tracking",
-				"30-day history",
-				"Community access",
-				"Routine sharing",
-			],
-			cta: "Get Started",
-			highlight: false,
-		},
-		{
-			name: "Phoenix",
-			price: "$9.99",
-			period: "per month",
-			features: [
-				"Unlimited workout history",
-				"Advanced analytics",
-				"Training cycles",
-				"Priority challenges",
-				"All integrations",
-				"Export data",
-			],
-			cta: "Rise Now",
-			highlight: true,
-		},
-		{
-			name: "Elite",
-			price: "$19.99",
-			period: "per month",
-			features: [
-				"Everything in Phoenix",
-				"AI-powered insights",
-				"Personal coaching",
-				"Custom badge creation",
-				"API access",
-				"Priority support",
-			],
-			cta: "Forge Ahead",
-			highlight: false,
-		},
-	];
+	const pricingTiers = TIER_PRICING.map((t) => ({
+		name: t.name,
+		price: t.monthlyPrice,
+		period: t.tier === "FREE" ? "forever" : "per month",
+		features: t.features,
+		cta:
+			t.tier === "FREE"
+				? "Get Started"
+				: t.tier === "PHOENIX"
+					? "Rise Now"
+					: "Forge Ahead",
+		highlight: t.tier === "PHOENIX",
+	}));
 
 	// Auth dialog using Radix Dialog for accessibility (focus trap, ARIA, keyboard nav)
 	const authDialog = (
@@ -791,7 +760,11 @@ export function LandingPage() {
 								<li className="hover:text-primary cursor-pointer">About</li>
 								<li className="hover:text-primary cursor-pointer">Blog</li>
 								<li className="hover:text-primary cursor-pointer">Careers</li>
-								<li className="hover:text-primary cursor-pointer">Contact</li>
+								<li>
+									<Link to="/faq" className="hover:text-primary">
+										FAQ & Contact
+									</Link>
+								</li>
 							</ul>
 						</div>
 						<div>
@@ -805,7 +778,14 @@ export function LandingPage() {
 										Privacy
 									</Link>
 								</li>
-								<li className="hover:text-primary cursor-pointer">Terms</li>
+								<li>
+									<Link
+										to="/terms"
+										className="hover:text-primary cursor-pointer"
+									>
+										Terms of Service
+									</Link>
+								</li>
 								<li className="hover:text-primary cursor-pointer">Security</li>
 							</ul>
 						</div>
@@ -832,9 +812,12 @@ export function LandingPage() {
 								related marks are trademarks of their respective owners.
 							</p>
 							<p>
-								By downloading or using Project Phoenix, you agree to our Terms
-								of Service, which includes important safety warnings and
-								liability disclaimers.
+								By downloading or using Project Phoenix, you agree to our{" "}
+								<Link to="/terms" className="text-primary hover:underline">
+									Terms of Service
+								</Link>
+								, which includes important safety warnings and liability
+								disclaimers.
 							</p>
 						</div>
 						<p className="text-muted text-xs">

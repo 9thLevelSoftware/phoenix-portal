@@ -3,8 +3,8 @@ import {
 	Archive,
 	Award,
 	Check,
-	ChevronsUpDown,
 	ChevronDown,
+	ChevronsUpDown,
 	ChevronUp,
 	Edit2,
 	Plus,
@@ -200,24 +200,34 @@ function ExerciseNameCombobox({
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[--radix-popover-trigger-width] p-0 border-secondary" align="start">
+			<PopoverContent
+				className="w-[--radix-popover-trigger-width] p-0 border-secondary"
+				align="start"
+			>
 				<Command>
 					<CommandInput
 						placeholder="Search exercises..."
 						onValueChange={(search) => {
 							// Allow typing a custom name even if not in the list
-							if (search && !exerciseNames.some(
-								(n) => n.toLowerCase() === search.toLowerCase(),
-							)) {
+							if (
+								search &&
+								!exerciseNames.some(
+									(n) => n.toLowerCase() === search.toLowerCase(),
+								)
+							) {
 								onChange(search);
 							}
 						}}
 					/>
 					<CommandList>
 						<CommandEmpty>
-							<span className="text-muted-foreground">No matching exercises.</span>
+							<span className="text-muted-foreground">
+								No matching exercises.
+							</span>
 							<br />
-							<span className="text-xs text-muted">The typed name will be used as-is.</span>
+							<span className="text-xs text-muted">
+								The typed name will be used as-is.
+							</span>
 						</CommandEmpty>
 						<CommandGroup>
 							{exerciseNames.map((name) => (
@@ -579,8 +589,7 @@ export function Goals() {
 														{getGoalDescription(goal)}
 													</p>
 													<p className="text-xs text-muted mt-0.5">
-														Archived{" "}
-														{goal.updated_at.toLocaleDateString()}
+														Archived {goal.updated_at.toLocaleDateString()}
 													</p>
 												</div>
 												<Button
@@ -790,8 +799,7 @@ function GoalFormDialog({
 					<Tabs
 						value={goalType}
 						onValueChange={(v) => {
-							if (!isEdit)
-								setGoalType(v as "frequency" | "volume" | "pr");
+							if (!isEdit) setGoalType(v as "frequency" | "volume" | "pr");
 						}}
 					>
 						{/* M25: Hide type tabs in edit mode -- type cannot change after creation */}

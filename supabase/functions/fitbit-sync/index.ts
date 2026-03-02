@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
@@ -60,13 +60,14 @@ async function refreshTokenIfNeeded(
   const refreshed = await response.json();
   const newTokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
-  // Update stored tokens
+  // Update stored tokens in oauth_tokens (server-only table)
   await supabase
-    .from('user_integrations')
+    .from('oauth_tokens')
     .update({
       access_token: refreshed.access_token,
       refresh_token: refreshed.refresh_token,
       token_expires_at: newTokenExpiresAt,
+      updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId)
     .eq('provider', 'fitbit');
@@ -141,48 +142,88 @@ function mapFitbitActivityType(typeId: number): string {
  * Called by the sync queue processor or manually via integration management UI.
  */
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
-    const { user_id, sync_type } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const { sync_type } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Get user's Fitbit integration
-    const { data: integration, error: fetchError } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token, token_expires_at, last_sync_at')
-      .eq('user_id', user_id)
+    // Get user's Fitbit tokens from oauth_tokens (server-only table)
+    const { data: tokenData, error: tokenFetchError } = await supabase
+      .from('oauth_tokens')
+      .select('access_token, refresh_token, token_expires_at')
+      .eq('user_id', userId)
       .eq('provider', 'fitbit')
       .single();
 
-    if (fetchError || !integration) {
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at, status')
+      .eq('user_id', userId)
+      .eq('provider', 'fitbit')
+      .single();
+
+    if (tokenFetchError || !tokenData) {
       return new Response(
         JSON.stringify({ error: 'Fitbit integration not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
     // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, user_id, integration as FitbitTokens);
+    const tokens = await refreshTokenIfNeeded(supabase, userId, tokenData as FitbitTokens);
 
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
-    const afterDate = sync_type === 'initial' || !integration.last_sync_at
+    const afterDate = sync_type === 'initial' || !integration?.last_sync_at
       ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      : integration.last_sync_at.split('T')[0];
+      : (integration.last_sync_at as string).split('T')[0];
 
     // Fetch activities with pagination
     let offset = 0;
@@ -222,7 +263,7 @@ Deno.serve(async (req) => {
 
           return new Response(
             JSON.stringify({ error: 'Rate limited', synced: totalSynced }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } },
           );
         }
 
@@ -239,7 +280,7 @@ Deno.serve(async (req) => {
 
       // Normalize and upsert activities
       const normalized = activities.map((activity: Record<string, unknown>) => ({
-        user_id,
+        user_id: userId,
         ...normalizeFitbitActivity(activity),
         raw_data: activity,
         synced_at: new Date().toISOString(),
@@ -271,7 +312,7 @@ Deno.serve(async (req) => {
         status: 'connected',
         error_message: null,
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'fitbit');
 
     // Update rate limit tracking
@@ -285,13 +326,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
     console.error('Fitbit sync error:', err);
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 });

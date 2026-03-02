@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 /**
  * Strava Activity Sync Edge Function
@@ -115,20 +115,53 @@ async function refreshAccessToken(
 // ---------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   try {
-    const { user_id, sync_type = 'incremental' } = await req.json();
+    // Parse request body first (needed for both auth paths)
+    const body = await req.json();
 
-    if (!user_id) {
+    // ---- Auth: Dual-path (browser JWT or service-role key) ----
+    const authHeader = req.headers.get('Authorization');
+
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+
+    let userId: string;
+
+    // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
+
+    if (jwtUser) {
+      // Browser-initiated: use JWT-verified user ID, ignore body.user_id
+      userId = jwtUser.id;
+    } else {
+      // Not a valid user JWT -- could be service-role call from process-sync-queue
+      // Service role key calls pass user_id in the body
+      if (!body.user_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      userId = body.user_id;
+    }
+
+    const sync_type = body.sync_type ?? 'incremental';
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -136,27 +169,33 @@ Deno.serve(async (req) => {
     );
 
     // ---------------------------------------------------------------
-    // Fetch user's Strava tokens
+    // Fetch user's Strava tokens from oauth_tokens (server-only table)
     // ---------------------------------------------------------------
-    const { data: integration, error: fetchError } = await supabase
-      .from('user_integrations')
-      .select('access_token, refresh_token, token_expires_at, last_sync_at')
-      .eq('user_id', user_id)
+    const { data: tokens, error: tokenError } = await supabase
+      .from('oauth_tokens')
+      .select('access_token, refresh_token, token_expires_at')
+      .eq('user_id', userId)
       .eq('provider', 'strava')
-      .eq('status', 'connected')
       .single();
 
-    if (fetchError || !integration) {
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at, status')
+      .eq('user_id', userId)
+      .eq('provider', 'strava')
+      .single();
+
+    if (tokenError || !tokens || integration?.status !== 'connected') {
       return new Response(
         JSON.stringify({ error: 'Strava integration not found or not connected' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
-    let accessToken = integration.access_token as string;
-    const refreshToken = integration.refresh_token as string;
-    const tokenExpiresAt = integration.token_expires_at
-      ? new Date(integration.token_expires_at).getTime()
+    let accessToken = tokens.access_token as string;
+    const refreshToken = tokens.refresh_token as string;
+    const tokenExpiresAt = tokens.token_expires_at
+      ? new Date(tokens.token_expires_at).getTime()
       : 0;
 
     // ---------------------------------------------------------------
@@ -168,15 +207,16 @@ Deno.serve(async (req) => {
 
       accessToken = refreshed.access_token;
 
-      // Persist new tokens
+      // Persist new tokens in oauth_tokens (server-only table)
       await supabase
-        .from('user_integrations')
+        .from('oauth_tokens')
         .update({
           access_token: refreshed.access_token,
           refresh_token: refreshed.refresh_token,
           token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
         })
-        .eq('user_id', user_id)
+        .eq('user_id', userId)
         .eq('provider', 'strava');
     }
 
@@ -209,13 +249,13 @@ Deno.serve(async (req) => {
         await supabase
           .from('user_integrations')
           .update({ status: 'token_expired', error_message: 'Access token revoked or invalid' })
-          .eq('user_id', user_id)
+          .eq('user_id', userId)
           .eq('provider', 'strava');
       }
 
       return new Response(
         JSON.stringify({ error: 'Failed to fetch Strava activities', details: errorText }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -235,7 +275,7 @@ Deno.serve(async (req) => {
           .from('external_activities')
           .upsert(
             {
-              user_id,
+              user_id: userId,
               ...normalized,
               raw_data: raw,
               synced_at: new Date().toISOString(),
@@ -259,7 +299,7 @@ Deno.serve(async (req) => {
     await supabase
       .from('user_integrations')
       .update({ last_sync_at: new Date().toISOString(), error_message: null })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'strava');
 
     // Update sync_queue entry if one exists
@@ -269,7 +309,7 @@ Deno.serve(async (req) => {
         status: errors.length > 0 ? 'completed_with_errors' : 'completed',
         completed_at: new Date().toISOString(),
       })
-      .eq('user_id', user_id)
+      .eq('user_id', userId)
       .eq('provider', 'strava')
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
@@ -277,13 +317,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ synced_count: syncedCount, errors }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
     console.error('Strava sync error:', err);
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
 });

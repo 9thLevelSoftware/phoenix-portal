@@ -2,12 +2,24 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	ArrowBigUp,
 	ArrowLeft,
+	Ban,
 	Share2,
 	Star,
 	UserMinus,
 	UserPlus,
 } from "lucide-react";
+import { useState } from "react";
 import { CommunityFeedCard } from "@/app/components/community/CommunityFeedCard";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import {
 	Avatar,
 	AvatarFallback,
@@ -16,7 +28,12 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import { useFollowCreator } from "@/mutations/community";
+import { useBlockedUsers } from "@/hooks/useBlockedUsers";
+import {
+	useBlockUser,
+	useFollowCreator,
+	useUnblockUser,
+} from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import {
 	communityFeedOptions,
@@ -77,6 +94,11 @@ export function CreatorProfile({
 		isFollowingOptions(user?.id ?? "", userId),
 	);
 	const followMutation = useFollowCreator();
+	const blockMutation = useBlockUser();
+	const unblockMutation = useUnblockUser();
+	const { blockedUserIds } = useBlockedUsers();
+	const isBlocked = blockedUserIds.has(userId);
+	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
 	const isSelf = user?.id === userId;
 
 	const routineItems = feedData?.pages.flat() ?? [];
@@ -129,33 +151,55 @@ export function CreatorProfile({
 									{stats.display_name}
 								</h2>
 								{user && !isSelf && (
-									<Button
-										size="sm"
-										variant={isFollowing ? "outline" : "default"}
-										className={
-											isFollowing
-												? "border-secondary text-muted-foreground hover:text-white hover:border-destructive gap-1.5 h-8 text-xs"
-												: "bg-primary hover:bg-primary/90 gap-1.5 h-8 text-xs"
-										}
-										onClick={() =>
-											followMutation.mutate({
-												followedId: userId,
-											})
-										}
-										disabled={followMutation.isPending}
-									>
-										{isFollowing ? (
-											<>
-												<UserMinus className="w-3.5 h-3.5" />
-												Unfollow
-											</>
-										) : (
-											<>
-												<UserPlus className="w-3.5 h-3.5" />
-												Follow
-											</>
-										)}
-									</Button>
+									<>
+										<Button
+											size="sm"
+											variant={isFollowing ? "outline" : "default"}
+											className={
+												isFollowing
+													? "border-secondary text-muted-foreground hover:text-white hover:border-destructive gap-1.5 h-8 text-xs"
+													: "bg-primary hover:bg-primary/90 gap-1.5 h-8 text-xs"
+											}
+											onClick={() =>
+												followMutation.mutate({
+													followedId: userId,
+												})
+											}
+											disabled={followMutation.isPending}
+										>
+											{isFollowing ? (
+												<>
+													<UserMinus className="w-3.5 h-3.5" />
+													Unfollow
+												</>
+											) : (
+												<>
+													<UserPlus className="w-3.5 h-3.5" />
+													Follow
+												</>
+											)}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											className={
+												isBlocked
+													? "border-secondary text-muted-foreground hover:text-white gap-1.5 h-8 text-xs"
+													: "border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1.5 h-8 text-xs"
+											}
+											onClick={() =>
+												isBlocked
+													? unblockMutation.mutate({ blockedId: userId })
+													: setShowBlockConfirm(true)
+											}
+											disabled={
+												blockMutation.isPending || unblockMutation.isPending
+											}
+										>
+											<Ban className="w-3.5 h-3.5" />
+											{isBlocked ? "Unblock" : "Block"}
+										</Button>
+									</>
 								)}
 							</div>
 							<div className="flex gap-4">
@@ -232,6 +276,32 @@ export function CreatorProfile({
 					))}
 				</div>
 			)}
+
+			{/* Block confirmation dialog */}
+			<AlertDialog open={showBlockConfirm} onOpenChange={setShowBlockConfirm}>
+				<AlertDialogContent className="bg-background border-secondary">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-white">
+							Block this user?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Their posts and comments will be hidden from your feed. You can
+							unblock them later in Settings.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel className="border-secondary text-muted-foreground">
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => blockMutation.mutate({ blockedId: userId })}
+							className="bg-destructive hover:bg-destructive/90"
+						>
+							Block
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

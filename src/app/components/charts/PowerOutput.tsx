@@ -217,11 +217,53 @@ function PowerOutputInner({
 }
 
 export function PowerOutput(props: PowerOutputProps) {
+	const repCount = props.repSummaries.length;
+	const peakPower =
+		repCount > 0
+			? Math.max(
+					...props.repSummaries.map((r) =>
+						r.power_watts && r.power_watts > 0
+							? r.power_watts
+							: calculatePower(r.mean_force_n, r.mean_velocity_mps),
+					),
+				)
+			: 0;
+
 	return (
-		<ParentSize>
-			{({ width }) =>
-				width > 0 ? <PowerOutputInner {...props} width={width} /> : null
-			}
-		</ParentSize>
+		<div
+			role="img"
+			aria-label={`Power output chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak power: ${peakPower} watts.`}
+		>
+			<div aria-hidden="true">
+				<ParentSize>
+					{({ width }) =>
+						width > 0 ? <PowerOutputInner {...props} width={width} /> : null
+					}
+				</ParentSize>
+			</div>
+			<table className="sr-only">
+				<caption>Power output data by rep</caption>
+				<thead>
+					<tr>
+						<th>Rep</th>
+						<th>Power (W)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{props.repSummaries.map((rep, i) => {
+						const watts =
+							rep.power_watts && rep.power_watts > 0
+								? rep.power_watts
+								: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
+						return (
+							<tr key={i}>
+								<td>Rep {i + 1}</td>
+								<td>{watts}</td>
+							</tr>
+						);
+					})}
+				</tbody>
+			</table>
+		</div>
 	);
 }

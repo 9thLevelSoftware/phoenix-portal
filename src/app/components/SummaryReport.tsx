@@ -115,7 +115,11 @@ function computeSummary(
 		if (d.max_weight_kg > existing)
 			exerciseMaxPrevious.set(d.exercise_name, d.max_weight_kg);
 	}
-	const prs: Array<{ exercise: string; improvement: number; isFirstPR: boolean }> = [];
+	const prs: Array<{
+		exercise: string;
+		improvement: number;
+		isFirstPR: boolean;
+	}> = [];
 	for (const [name, maxWeight] of exerciseMaxCurrent) {
 		const prevMax = exerciseMaxPrevious.get(name) ?? 0;
 		if (prevMax > 0 && maxWeight > prevMax) {
@@ -424,17 +428,19 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						</div>
 						{summary.dailyVolume.length > 0 && (
 							<div className="mb-2">
-								<ResponsiveContainer width="100%" height={40}>
-									<LineChart data={summary.dailyVolume}>
-										<Line
-											type="monotone"
-											dataKey="volume"
-											stroke={PHOENIX.ember}
-											strokeWidth={2}
-											dot={false}
-										/>
-									</LineChart>
-								</ResponsiveContainer>
+								<div role="img" aria-label="Daily volume sparkline">
+									<ResponsiveContainer width="100%" height={40}>
+										<LineChart data={summary.dailyVolume}>
+											<Line
+												type="monotone"
+												dataKey="volume"
+												stroke={PHOENIX.ember}
+												strokeWidth={2}
+												dot={false}
+											/>
+										</LineChart>
+									</ResponsiveContainer>
+								</div>
 							</div>
 						)}
 						<div className="flex items-center gap-1 text-xs">
@@ -474,15 +480,17 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 						</div>
 						{summary.dailyWorkouts.length > 0 && (
 							<div className="mb-2">
-								<ResponsiveContainer width="100%" height={40}>
-									<BarChart data={summary.dailyWorkouts}>
-										<Bar
-											dataKey="sessions"
-											fill={PHOENIX.gold}
-											radius={[2, 2, 0, 0]}
-										/>
-									</BarChart>
-								</ResponsiveContainer>
+								<div role="img" aria-label="Daily workout count sparkline">
+									<ResponsiveContainer width="100%" height={40}>
+										<BarChart data={summary.dailyWorkouts}>
+											<Bar
+												dataKey="sessions"
+												fill={PHOENIX.gold}
+												radius={[2, 2, 0, 0]}
+											/>
+										</BarChart>
+									</ResponsiveContainer>
+								</div>
 							</div>
 						)}
 						<div className="flex items-center gap-1 text-xs">

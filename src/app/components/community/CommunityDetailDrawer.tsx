@@ -34,6 +34,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { savedItemsOptions } from "@/queries/community";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
 import { CommentThread } from "./CommentThread";
+import { ContentActionMenu } from "./ContentActionMenu";
 
 interface CommunityDetailDrawerProps {
 	item: CommunityFeedItem | null;
@@ -47,7 +48,10 @@ function isRoutine(item: CommunityFeedItem): item is SharedRoutine {
 
 function DetailContent({ item }: { item: CommunityFeedItem }) {
 	const { user } = useAuth();
-	const authorName = item.profiles?.display_name ?? "Unknown";
+	const isDeletedUser = item.user_id === null;
+	const authorName = isDeletedUser
+		? "[Deleted User]"
+		: (item.profiles?.display_name ?? "Unknown");
 	const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
 	const itemType = isRoutine(item) ? "routine" : "cycle";
 
@@ -67,14 +71,24 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 	return (
 		<div className="space-y-4">
 			{/* Author */}
-			<div className="flex items-center gap-2">
-				<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-sm">
-					{authorName.charAt(0).toUpperCase()}
+			<div className="flex items-center justify-between">
+				<div className="flex items-center gap-2">
+					<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-sm">
+						{authorName.charAt(0).toUpperCase()}
+					</div>
+					<div>
+						<p className="text-sm text-white">{authorName}</p>
+						<p className="text-xs text-muted">Shared {sharedAgo}</p>
+					</div>
 				</div>
-				<div>
-					<p className="text-sm text-white">{authorName}</p>
-					<p className="text-xs text-muted">Shared {sharedAgo}</p>
-				</div>
+				{user && (
+					<ContentActionMenu
+						contentId={item.id}
+						contentType={itemType}
+						authorId={item.user_id}
+						currentUserId={user.id}
+					/>
+				)}
 			</div>
 
 			{/* Description */}

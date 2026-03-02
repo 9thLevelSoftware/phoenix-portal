@@ -159,7 +159,9 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 											<p className="text-sm font-medium text-white">
 												{feature.label}
 											</p>
-											<p className="text-xs text-muted-foreground">{feature.detail}</p>
+											<p className="text-xs text-muted-foreground">
+												{feature.detail}
+											</p>
 										</div>
 									</div>
 								))}

@@ -1,16 +1,18 @@
+import { MotionConfig } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Outlet } from "react-router";
 import { AppSidebar } from "@/app/components/AppSidebar";
+import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
 import { MobileBottomNav } from "@/app/components/MobileBottomNav";
 import { OfflineBanner } from "@/app/components/OfflineBanner";
 import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
+import { SkipToContent } from "@/app/components/SkipToContent";
 import { SidebarInset, SidebarProvider } from "@/app/components/ui/sidebar";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
-import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
 import { useCelebrationTriggers } from "@/hooks/useCelebrationTriggers";
 import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -46,36 +48,39 @@ export function AppLayout() {
 
 	return (
 		<SidebarProvider defaultOpen={true}>
-			<div className="min-h-screen relative z-[10] flex w-full">
-				<OfflineBanner />
-
-				<div data-print-hide>
-					<AppSidebar />
-				</div>
-
-				<SidebarInset className="bg-transparent">
-					{needsOnboarding && (
-						<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
-					)}
-
-					{needsWhatsNew && (
-						<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
-					)}
-
-					<ErrorBoundary FallbackComponent={PageErrorFallback}>
-						<Suspense fallback={<PageLoading />}>
-							<Outlet />
-						</Suspense>
-					</ErrorBoundary>
+			<MotionConfig reducedMotion="user">
+				<div className="min-h-screen relative z-[10] flex w-full">
+					<SkipToContent />
+					<OfflineBanner />
 
 					<div data-print-hide>
-						<MobileBottomNav />
+						<AppSidebar />
 					</div>
-				</SidebarInset>
 
-				<CelebrationOverlay />
-				<Toaster />
-			</div>
+					<SidebarInset className="bg-transparent">
+						{needsOnboarding && (
+							<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
+						)}
+
+						{needsWhatsNew && (
+							<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
+						)}
+
+						<ErrorBoundary FallbackComponent={PageErrorFallback}>
+							<Suspense fallback={<PageLoading />}>
+								<Outlet />
+							</Suspense>
+						</ErrorBoundary>
+
+						<div data-print-hide>
+							<MobileBottomNav />
+						</div>
+					</SidebarInset>
+
+					<CelebrationOverlay />
+					<Toaster />
+				</div>
+			</MotionConfig>
 		</SidebarProvider>
 	);
 }

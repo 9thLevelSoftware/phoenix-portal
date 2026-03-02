@@ -26,8 +26,9 @@ import {
 } from "@/queries/integrations";
 
 export function Integrations() {
-	const { user } = useAuth();
+	const { user, session } = useAuth();
 	const userId = user?.id ?? "";
+	const accessToken = session?.access_token ?? "";
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	// Handle OAuth callback URL params (?connected=provider or ?error=type)
@@ -84,7 +85,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="strava"
 							integration={getIntegration("strava")}
-							onConnect={() => initiateStravaConnect(userId)}
+							onConnect={async () => {
+								await initiateStravaConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "strava" })
 							}
@@ -94,7 +97,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="fitbit"
 							integration={getIntegration("fitbit")}
-							onConnect={() => initiateFitbitConnect(userId)}
+							onConnect={async () => {
+								await initiateFitbitConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "fitbit" })
 							}
@@ -104,7 +109,9 @@ export function Integrations() {
 						<ProviderCard
 							provider="garmin"
 							integration={getIntegration("garmin")}
-							onConnect={() => initiateGarminConnect(userId)}
+							onConnect={async () => {
+								await initiateGarminConnect(accessToken);
+							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "garmin" })
 							}

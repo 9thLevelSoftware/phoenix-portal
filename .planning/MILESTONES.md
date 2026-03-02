@@ -1,5 +1,14 @@
 # Milestones
 
+## v1.2 Launch Readiness (Shipped: 2026-02-28)
+
+**Phases completed:** 7 phases, 22 plans, 1 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v1.0 MVP (Shipped: 2026-02-16)
 
 **Phases completed:** 9 phases (0-8), 41 plans

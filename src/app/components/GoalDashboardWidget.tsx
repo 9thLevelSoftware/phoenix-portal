@@ -33,8 +33,8 @@ export function GoalDashboardWidget() {
 						<Lock className="w-4 h-4 text-muted-foreground" />
 					</div>
 					<p className="text-sm text-muted-foreground mb-3">
-						Set custom frequency, volume, and PR targets. Track progress
-						with visual rings and stay on top of your training plan.
+						Set custom frequency, volume, and PR targets. Track progress with
+						visual rings and stay on top of your training plan.
 					</p>
 					<Button
 						variant="outline"

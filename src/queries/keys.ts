@@ -96,6 +96,10 @@ export const queryKeys = {
 			profile: (userId: string) =>
 				[...queryKeys.community.creators.all, userId] as const,
 		},
+		blocks: (userId: string) =>
+			[...queryKeys.community.all, "blocks", userId] as const,
+		reports: (userId: string) =>
+			[...queryKeys.community.all, "reports", userId] as const,
 		saves: (userId: string) =>
 			[...queryKeys.community.all, "saves", userId] as const,
 		votes: (userId: string) =>

@@ -178,7 +178,7 @@ export function SessionDetail() {
 	const effectiveExpanded =
 		expandedExercises === null && session.exercises.length > 0
 			? [session.exercises[0].id]
-			: expandedExercises ?? [];
+			: (expandedExercises ?? []);
 
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
@@ -523,9 +523,7 @@ export function SessionDetail() {
 							size="sm"
 							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 							disabled={saveNotes.isPending}
-							onClick={() =>
-								saveNotes.mutate({ sessionId: sessionId!, notes })
-							}
+							onClick={() => saveNotes.mutate({ sessionId: sessionId!, notes })}
 						>
 							{saveNotes.isPending ? "Saving..." : "Save Notes"}
 						</Button>

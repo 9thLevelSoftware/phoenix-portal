@@ -241,11 +241,43 @@ function VelocityProfileInner({
 }
 
 export function VelocityProfile(props: VelocityProfileProps) {
+	const repCount = props.repSummaries.length;
+	const peakVelocity =
+		repCount > 0
+			? Math.max(...props.repSummaries.map((r) => r.mean_velocity_mps))
+			: 0;
+
 	return (
-		<ParentSize>
-			{({ width }) =>
-				width > 0 ? <VelocityProfileInner {...props} width={width} /> : null
-			}
-		</ParentSize>
+		<div
+			role="img"
+			aria-label={`Velocity profile chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak mean velocity: ${peakVelocity.toFixed(2)} m/s.`}
+		>
+			<div aria-hidden="true">
+				<ParentSize>
+					{({ width }) =>
+						width > 0 ? <VelocityProfileInner {...props} width={width} /> : null
+					}
+				</ParentSize>
+			</div>
+			<table className="sr-only">
+				<caption>Velocity profile data by rep</caption>
+				<thead>
+					<tr>
+						<th>Rep</th>
+						<th>Mean Velocity (m/s)</th>
+						<th>Peak Velocity (m/s)</th>
+					</tr>
+				</thead>
+				<tbody>
+					{props.repSummaries.map((rep, i) => (
+						<tr key={rep.id ?? i}>
+							<td>Rep {i + 1}</td>
+							<td>{rep.mean_velocity_mps.toFixed(2)}</td>
+							<td>{rep.peak_velocity_mps.toFixed(2)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
 	);
 }

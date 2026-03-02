@@ -4,13 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Phoenix Portal is a React web companion dashboard for Project Phoenix, a community rescue project for Vitruvian Trainer workout machines. This is a **view-only companion app** - all workout control happens in the mobile app.
+Phoenix Portal is a React web companion dashboard for Project Phoenix, a community rescue project for Vitruvian Trainer workout machines. This is a **view-only companion app** -- all workout control happens in the mobile app. It is a full-stack application with a Supabase backend (PostgreSQL, Auth, Realtime, Storage), 13 Edge Functions, and Stripe subscription billing.
 
 ## Commands
 
 ```bash
-npm run dev     # Start Vite dev server at http://localhost:5173
-npm run build   # Production build to /dist
+npm run dev        # Start Vite dev server at http://localhost:5173
+npm run build      # Production build to /dist
+npm test           # Run Vitest unit tests
+npm run typecheck  # TypeScript type checking
+npm run test:e2e   # Run Playwright E2E tests
 npm run gen:types  # Regenerate Supabase types (requires SUPABASE_PROJECT_REF env var)
 ```
 
@@ -19,39 +22,88 @@ npm run gen:types  # Regenerate Supabase types (requires SUPABASE_PROJECT_REF en
 Copy `.env.example` to `.env.local` and fill in values:
 - `VITE_SUPABASE_URL` - Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` - Supabase anon/public key
-
-No test framework or linter is configured.
+- `SENTRY_DSN` - Sentry error monitoring DSN (optional; only initialized if user accepts cookies)
 
 ## Architecture
 
 ### Tech Stack
-- **Vite 6** with React 18 and TypeScript
+- **Vite 7** with React 19 and TypeScript
 - **Tailwind CSS v4** with @tailwindcss/vite plugin
 - **shadcn/ui** components (50+ Radix UI primitives in `src/app/components/ui/`)
-- **Recharts** for data visualization
-- **Framer Motion** (motion package) for animations
+- **Zustand 5** for client state (4 stores)
+- **TanStack Query 5** for server state (17 query hooks, 10 mutation hooks)
+- **Zod 4** for runtime schema validation
+- **React Router v7** with lazy-loaded routes
+- **Recharts 3** + **@visx** for data visualization
+- **Framer Motion** (motion package) for animations with reduced-motion support
+- **Supabase** for database, auth, realtime, storage, and Edge Functions
+- **Stripe** for subscription billing (webhooks, checkout, portal)
+- **Sentry** for error monitoring (conditionally initialized based on cookie consent)
+- **Biome 2.4** for linting and formatting
+- **Vitest 4** + Testing Library for unit/integration tests
+- **Playwright 1.58** for E2E tests
 
 ### Path Alias
-`@` maps to `./src` (configured in vite.config.ts)
+`@` maps to `./src` (configured in vite.config.ts and tsconfig.json)
 
 ### State Management
-Props drilling from `App.tsx` root - no Redux/Context/Zustand. All page navigation and auth state lives in App.tsx useState hooks.
+- **Client state:** Zustand 5 stores (celebration, community, replay, UI) in `src/stores/`
+- **Server state:** TanStack Query with Supabase client, query hooks in `src/queries/`, mutation hooks in `src/mutations/`
+- **Auth state:** AuthProvider context with Supabase Auth
 
 ### Component Organization
 ```
-src/app/
-├── App.tsx                 # Root: auth, navigation, page routing
-├── components/
-│   ├── [Feature].tsx       # Feature pages (Dashboard, Analytics, etc.)
-│   ├── [Feature]Mobile.tsx # Mobile variants for complex features
-│   ├── ui/                 # shadcn/ui primitives
-│   ├── celebrations/       # Achievement animations
-│   ├── routine-builder/    # Routine creation subcomponents
-│   ├── cycle-builder/      # Training cycle subcomponents
-│   └── mobile/             # Mobile-specific feature implementations
-└── hooks/
-    └── useIsMobile.ts      # Mobile detection (768px breakpoint)
+src/
+├── app/
+│   ├── components/
+│   │   ├── [Feature].tsx          # Feature pages (Dashboard, Analytics, etc.)
+│   │   ├── [Feature]Mobile.tsx    # Mobile variants
+│   │   ├── ui/                    # shadcn/ui primitives (50+)
+│   │   ├── celebrations/          # Achievement animations
+│   │   ├── routine-builder/       # Routine creation subcomponents
+│   │   ├── cycle-builder/         # Training cycle subcomponents
+│   │   ├── session-replay/        # Session replay components
+│   │   ├── mobile/                # Mobile-specific implementations
+│   │   └── __tests__/             # Component unit tests
+│   ├── routes/                    # Route definitions, AppLayout, ProtectedRoute
+│   └── hooks/                     # useAuth, useIsMobile, usePWAInstall
+├── hooks/                         # 13 hooks: useRealtimeSync, useSubscription, useStreak, etc.
+├── queries/                       # TanStack Query hooks (18 files incl. keys.ts)
+├── mutations/                     # Mutation hooks (10 files)
+├── schemas/                       # Zod validation schemas (7 files)
+├── providers/                     # AuthProvider, QueryProvider
+├── stores/                        # Zustand stores (4 stores)
+├── lib/
+│   ├── supabase.ts               # Supabase client
+│   ├── pricing.ts                # Tier pricing source of truth
+│   ├── sentry.ts                 # Sentry initialization (cookie-consent-gated)
+│   ├── export/                    # GDPR data export
+│   ├── integrations/              # OAuth client helpers
+│   └── __tests__/                 # Library unit tests
+├── styles/                        # Theme CSS, Tailwind config
+└── test/                          # Test setup + utilities
 ```
+
+### Data Flow
+- **Database:** Supabase (PostgreSQL with RLS policies)
+- **Auth:** Supabase Auth with email/password, managed via AuthProvider
+- **Realtime:** Supabase Broadcast for mobile-to-portal sync
+- **Payments:** Stripe checkout/portal via Edge Functions, webhook handler for subscription lifecycle
+
+### Mobile-to-Portal Sync Pipeline
+1. User completes workout on mobile app
+2. Mobile app writes workout data to `workout_sessions` table (via Supabase client)
+3. Mobile app sends Supabase Broadcast event on channel `sync:{userId}` with event type `sync_complete`
+4. Portal's `useRealtimeSync` hook (in `src/hooks/useRealtimeSync.ts`) listens for Broadcast events
+5. On receiving `sync_complete`, hook invalidates relevant TanStack Query caches (workouts, records, analytics, routines, cycles)
+6. UI components re-render with fresh data from cache refetch
+
+### Edge Functions
+13 Supabase Edge Functions in `supabase/functions/`:
+- **Auth/OAuth:** initiate-oauth, strava-oauth, fitbit-oauth, garmin-oauth
+- **Sync:** strava-sync, fitbit-sync, hevy-sync, garmin-webhook, process-sync-queue
+- **Billing:** stripe-checkout, stripe-portal, stripe-webhooks
+- **Account:** delete-account
 
 ### Styling
 - Dark theme by default (background: #0D0D0D)
@@ -64,23 +116,30 @@ src/app/
 - CSS variables exposed via `@theme inline` for Tailwind v4
 
 ### Navigation Flow
-1. `LandingPage` (unauthenticated)
+1. `LandingPage` (unauthenticated) -- also /privacy, /terms, /faq as public routes
 2. `Dashboard` (authenticated default)
-3. Feature pages selected via `Navigation` (desktop) or `MobileBottomNav` (mobile)
-4. Detail views (SessionDetail, RoutineBuilder) accessed from list pages
+3. Feature pages via desktop `Navigation` (grouped dropdown menus) or `MobileBottomNav` (mobile)
+4. Detail views (SessionDetail, RoutineBuilder, CycleBuilder, SessionReplay) from list pages
 
 ### Mobile Responsiveness
 - 768px breakpoint for mobile detection
 - Separate mobile component variants exist for Dashboard, Analytics, Challenges, Community
 - `MobileBottomNav` replaces desktop Navigation on small screens
 
-### Data
-Currently uses mock data embedded in components - no API integration yet.
-
 ## Key Files
-- `src/app/App.tsx` - Application state and routing logic
+- `src/app/routes/index.tsx` - Route definitions and lazy imports
+- `src/providers/AuthProvider.tsx` - Authentication state management
+- `src/providers/QueryProvider.tsx` - TanStack Query configuration
+- `src/hooks/useRealtimeSync.ts` - Mobile-to-portal sync listener
+- `src/lib/supabase.ts` - Supabase client configuration
+- `src/lib/pricing.ts` - Subscription tier pricing (single source of truth)
 - `src/styles/theme.css` - Phoenix color palette and custom animations
-- `vite.config.ts` - Path aliases and plugin configuration
+- `vite.config.ts` - Path aliases, plugins, test configuration
+
+## Testing
+- **Unit/Integration:** Vitest with jsdom, Testing Library React. Tests in `src/app/components/__tests__/` and `src/lib/__tests__/`
+- **E2E:** Playwright with Chromium. Tests in `e2e/` directory
+- **Linting:** Biome for formatting and lint rules
 
 ## The Daem0n's Covenant
 

@@ -136,7 +136,10 @@ export function BottomSheet({
 					</div>
 
 					{/* Safe area for notched devices */}
-					<div className="bg-background" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
+					<div
+						className="bg-background"
+						style={{ height: "env(safe-area-inset-bottom, 0px)" }}
+					/>
 				</div>
 			</motion.div>
 		</>
