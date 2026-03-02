@@ -235,7 +235,7 @@ export function LandingPage() {
 				}
 			}}
 		>
-			<DialogContent className="bg-surface-2 border-secondary max-w-md p-6">
+			<DialogContent className="bg-surface-2/80 backdrop-blur-xl border border-primary/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_0_40px_rgba(0,0,0,0.6)] max-w-md p-6">
 				<DialogTitle className="sr-only">Sign in to Phoenix Portal</DialogTitle>
 				<DialogDescription className="sr-only">
 					Enter your credentials to access the dashboard
@@ -243,7 +243,7 @@ export function LandingPage() {
 
 				<div className="flex items-center justify-center gap-2 mb-6">
 					<PhoenixLogo size="sm" animated={false} />
-					<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
+					<span className="text-xl text-primary font-semibold">
 						Project Phoenix
 					</span>
 				</div>
@@ -517,7 +517,6 @@ export function LandingPage() {
 
 					<motion.h1
 						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
-						style={{ fontFamily: "system-ui" }}
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
@@ -592,10 +591,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Elevate Your Training
-							</span>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+							Elevate Your Training
 						</h2>
 						<p className="text-xl text-muted">
 							Everything you need to reach your fitness goals
@@ -611,9 +608,9 @@ export function LandingPage() {
 								viewport={{ once: true }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300 group cursor-pointer h-full">
-									<div className="mb-4 w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-										<feature.icon className="w-6 h-6 text-white" />
+								<Card className="p-6 card-landing-feature group cursor-pointer h-full">
+									<div className="mb-4 w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
+										<feature.icon className="w-5 h-5 text-primary" />
 									</div>
 									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
 									<p className="text-muted-foreground">{feature.description}</p>
@@ -633,10 +630,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Choose Your Path
-							</span>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+							Choose Your Path
 						</h2>
 						<p className="text-xl text-muted">
 							Select the plan that fits your journey
@@ -669,7 +664,7 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+										<span className="text-5xl text-primary">
 											{tier.price}
 										</span>
 										<span className="text-muted-foreground ml-2">
@@ -713,10 +708,8 @@ export function LandingPage() {
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
-						<h2 className="text-4xl sm:text-5xl mb-6">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Ready to Transform?
-							</span>
+						<h2 className="text-4xl sm:text-5xl mb-6 text-white">
+							Ready to Transform?
 						</h2>
 						<p className="text-xl text-secondary-foreground mb-8">
 							Join thousands of athletes who are already rising stronger
@@ -742,7 +735,7 @@ export function LandingPage() {
 						<div>
 							<div className="flex items-center gap-2 mb-4">
 								<PhoenixLogo size="sm" animated={false} />
-								<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+								<span className="text-xl text-primary">
 									Project Phoenix
 								</span>
 							</div>
@@ -799,7 +792,7 @@ export function LandingPage() {
 					</div>
 					<div className="pt-8 border-t border-secondary text-center space-y-3">
 						<p className="text-muted-foreground text-sm">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-semibold">
+							<span className="text-primary font-semibold">
 								Project Phoenix
 							</span>{" "}
 							is a community preservation project by{" "}

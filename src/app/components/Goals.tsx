@@ -348,16 +348,14 @@ export function Goals() {
 	// Tier gate for FREE users
 	if (!isPremium && !isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Training Goals
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Training Goals
 						</h1>
 						<p className="text-muted-foreground mb-8">
 							Set targets, track progress, achieve greatness.
@@ -383,7 +381,7 @@ export function Goals() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<motion.div
@@ -392,10 +390,8 @@ export function Goals() {
 					className="flex items-center justify-between mb-8"
 				>
 					<div>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Training Goals
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Training Goals
 						</h1>
 						<p className="text-muted-foreground">
 							Set targets, track progress, achieve greatness.

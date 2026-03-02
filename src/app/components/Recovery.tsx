@@ -101,7 +101,7 @@ function FreeRecoveryView() {
 	const restDays = 7 - trainingDays.size;
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
@@ -110,7 +110,7 @@ function FreeRecoveryView() {
 				>
 					<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 						<HeartPulse className="w-8 h-8 text-primary" />
-						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+						<span className="text-white">
 							Recovery
 						</span>
 					</h1>
@@ -196,7 +196,7 @@ export function Recovery() {
 
 	if (isLoading) {
 		return (
-			<div className="min-h-screen bg-background pb-20 md:pb-8">
+			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<div className="animate-pulse space-y-6">
 						<div className="h-10 w-64 bg-secondary rounded" />
@@ -209,7 +209,7 @@ export function Recovery() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-20 md:pb-8">
+		<div className="min-h-screen pb-20 md:pb-8">
 			<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 				{/* Header */}
 				<motion.div
@@ -224,7 +224,7 @@ export function Recovery() {
 					>
 						<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 							<HeartPulse className="w-8 h-8 text-primary" />
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-white">
 								Recovery Readiness
 							</span>
 						</h1>

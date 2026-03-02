@@ -280,7 +280,7 @@ export function CycleBuilder() {
 
 	if (isEditing && isLoadingCycle) {
 		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
+			<div className="min-h-screen flex items-center justify-center">
 				<div className="flex flex-col items-center gap-4">
 					<Loader2 className="w-8 h-8 text-primary animate-spin" />
 					<p className="text-muted-foreground">Loading cycle...</p>
@@ -290,7 +290,7 @@ export function CycleBuilder() {
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-8">
+		<div className="min-h-screen pb-8">
 			{/* Sticky Top Bar */}
 			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">

@@ -22,7 +22,7 @@ export function GoalDashboardWidget() {
 
 	if (!isPremium) {
 		return (
-			<Card className="relative overflow-hidden p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+			<Card className="relative overflow-hidden p-6 card-primary">
 				<div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-chart-2/5 pointer-events-none" />
 				<div className="relative z-10">
 					<div className="flex items-center justify-between mb-3">
@@ -50,7 +50,7 @@ export function GoalDashboardWidget() {
 	}
 
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 card-primary">
 			<div className="flex items-center justify-between mb-4">
 				<h3 className="text-xl text-white flex items-center gap-2">
 					<Target className="w-5 h-5 text-primary" />

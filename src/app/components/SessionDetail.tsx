@@ -80,7 +80,7 @@ export function SessionDetail() {
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -129,7 +129,7 @@ export function SessionDetail() {
 	// Error state
 	if (error || !session) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
@@ -181,7 +181,7 @@ export function SessionDetail() {
 			: (expandedExercises ?? []);
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Print-only report header (visible only in print) */}
 			<div className="print-only mb-6 border-b border-gray-300 pb-4">
 				<h1 className="text-2xl font-bold text-black">{session.name}</h1>
@@ -227,10 +227,8 @@ export function SessionDetail() {
 							</SubscriptionGate>
 						</div>
 
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								{session.name}
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							{session.name}
 						</h1>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 							<span>
@@ -313,7 +311,7 @@ export function SessionDetail() {
 									<Award className="w-5 h-5 text-warning" />
 									<div className="text-sm text-muted-foreground">PRs</div>
 								</div>
-								<div className="text-2xl font-semibold bg-gradient-to-r from-accent to-warning bg-clip-text text-transparent">
+								<div className="text-2xl font-semibold text-primary">
 									{prCount}
 								</div>
 							</div>

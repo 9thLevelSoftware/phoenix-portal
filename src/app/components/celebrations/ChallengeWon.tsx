@@ -175,7 +175,7 @@ export function ChallengeWon({
 									>
 										<span className="text-2xl">✨</span>
 										<span
-											className={`text-3xl md:text-4xl font-bold bg-gradient-to-r ${config.gradient} bg-clip-text text-transparent`}
+											className="text-3xl md:text-4xl font-bold text-white"
 											style={{
 												textShadow: `0 0 20px ${config.color}80`,
 											}}

@@ -1,16 +1,14 @@
 import {
-	Activity,
 	Award,
 	BarChart3,
+	CreditCard,
 	Dumbbell,
 	Flame,
-	HeartPulse,
 	History,
 	LayoutDashboard,
 	Link2,
 	MoreHorizontal,
 	Repeat,
-	Target,
 	Trophy,
 	User,
 	Users,
@@ -29,32 +27,47 @@ import { PHOENIX } from "@/lib/colors";
 import { useUIStore } from "@/stores/useUIStore";
 
 const primaryItems = [
-	{ path: "/dashboard", label: "Home", icon: LayoutDashboard },
-	{ path: "/history", label: "History", icon: History },
+	{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+	{ path: "/history", label: "Workouts", icon: History },
 	{ path: "/analytics", label: "Analytics", icon: BarChart3 },
-	{ path: "/profile", label: "Profile", icon: User },
+	{ path: "/community", label: "Community", icon: Users },
 ];
 
-const moreItems = [
-	{ path: "/records", label: "Records", icon: Award },
-	{ path: "/biomechanics", label: "Biomechanics", icon: Activity },
-	{ path: "/challenges", label: "Challenges", icon: Trophy },
-	{ path: "/goals", label: "Goals", icon: Target },
-	{ path: "/recovery", label: "Recovery", icon: HeartPulse },
-	{ path: "/community", label: "Community", icon: Users },
-	{ path: "/routines", label: "Routines", icon: Dumbbell },
-	{ path: "/cycles", label: "Cycles", icon: Repeat },
-	{ path: "/integrations", label: "Integrations", icon: Link2 },
+const moreGroups = [
+	{
+		label: "Training",
+		items: [
+			{ path: "/routines", label: "Routines", icon: Dumbbell },
+			{ path: "/cycles", label: "Cycles", icon: Repeat },
+		],
+	},
+	{
+		label: "Social",
+		items: [
+			{ path: "/challenges", label: "Challenges", icon: Trophy },
+			{ path: "/records", label: "Leaderboard", icon: Award },
+		],
+	},
+	{
+		label: "Account",
+		items: [
+			{ path: "/profile", label: "Profile", icon: User },
+			{ path: "/integrations", label: "Settings", icon: Link2 },
+			{ path: "/pricing", label: "Subscription", icon: CreditCard },
+		],
+	},
 ];
+
+// Flat list of all "more" paths for active state detection
+const moreItemPaths = moreGroups.flatMap((g) => g.items.map((i) => i.path));
 
 export function MobileBottomNav() {
 	const [moreOpen, setMoreOpen] = useState(false);
 	const location = useLocation();
 	const streak = useUIStore((s) => s.streak);
-	const notifications = useUIStore((s) => s.notifications);
 
-	const isMoreActive = moreItems.some(
-		(item) => location.pathname === item.path,
+	const isMoreActive = moreItemPaths.some(
+		(path) => location.pathname === path,
 	);
 
 	// Handle browser back button to close drawer
@@ -82,6 +95,8 @@ export function MobileBottomNav() {
 		return () => window.removeEventListener("popstate", onPopState);
 	}, [moreOpen]);
 
+	const closeDrawer = () => setMoreOpen(false);
+
 	return (
 		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-secondary pb-safe">
 			<div className="flex items-center justify-around px-2 py-2 max-w-screen-xl mx-auto">
@@ -93,9 +108,6 @@ export function MobileBottomNav() {
 					>
 						{({ isActive }) => {
 							const Icon = item.icon;
-							const hasNotification =
-								(item.path === "/challenges" && notifications.challenges) ||
-								(item.path === "/community" && notifications.community);
 
 							return (
 								<>
@@ -112,7 +124,7 @@ export function MobileBottomNav() {
 										/>
 									)}
 
-									{/* Icon with notification badge */}
+									{/* Icon */}
 									<div className="relative">
 										<Icon
 											className={`w-6 h-6 transition-all ${
@@ -121,19 +133,6 @@ export function MobileBottomNav() {
 													: "text-muted-foreground"
 											}`}
 										/>
-
-										{/* Notification badge */}
-										{hasNotification && (
-											<motion.span
-												initial={{ scale: 0 }}
-												animate={{ scale: 1 }}
-												className="absolute -top-1 -right-1 w-4 h-4 bg-chart-2 text-white text-[10px] font-bold rounded-full flex items-center justify-center"
-											>
-												{item.path === "/challenges" && notifications.challenges
-													? notifications.challenges
-													: notifications.community}
-											</motion.span>
-										)}
 
 										{/* Streak indicator on dashboard */}
 										{item.path === "/dashboard" && streak > 0 && !isActive && (
@@ -236,37 +235,35 @@ export function MobileBottomNav() {
 
 					<DrawerContent className="bg-background border-secondary">
 						<DrawerHeader>
-							<DrawerTitle className="text-white">More Pages</DrawerTitle>
+							<DrawerTitle className="text-white">More</DrawerTitle>
 						</DrawerHeader>
-						<div className="px-4 pb-6 flex flex-col gap-1">
-							{moreItems.map((item) => {
-								const hasNotification =
-									(item.path === "/challenges" && notifications.challenges) ||
-									(item.path === "/community" && notifications.community);
-
-								return (
-									<Link
-										key={item.path}
-										to={item.path}
-										onClick={() => setMoreOpen(false)}
-										className={`flex items-center gap-3 px-4 py-3 rounded-lg ${
-											location.pathname === item.path
-												? "bg-primary/10 text-primary"
-												: "text-secondary-foreground hover:bg-secondary"
-										}`}
-									>
-										<item.icon className="w-5 h-5" />
-										<span className="text-sm font-medium">{item.label}</span>
-										{hasNotification && (
-											<span className="ml-auto w-5 h-5 bg-chart-2 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-												{item.path === "/challenges"
-													? notifications.challenges
-													: notifications.community}
-											</span>
-										)}
-									</Link>
-								);
-							})}
+						<div className="pb-8">
+							{moreGroups.map((group) => (
+								<div key={group.label}>
+									<p className="eyebrow text-muted-foreground px-4 pt-4 pb-1">
+										{group.label}
+									</p>
+									{group.items.map((item) => {
+										const Icon = item.icon;
+										const isActive = location.pathname === item.path;
+										return (
+											<Link
+												key={item.path}
+												to={item.path}
+												onClick={closeDrawer}
+												className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+													isActive
+														? "bg-primary/10 text-primary"
+														: "text-secondary-foreground hover:bg-secondary"
+												}`}
+											>
+												<Icon className="h-5 w-5" />
+												<span className="text-sm font-medium">{item.label}</span>
+											</Link>
+										);
+									})}
+								</div>
+							))}
 						</div>
 					</DrawerContent>
 				</Drawer>

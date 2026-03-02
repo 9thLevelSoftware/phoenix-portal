@@ -136,7 +136,7 @@ function RomChart({
 								fill={AVG_LINE_COLOR}
 								fontSize={10}
 								verticalAnchor="middle"
-								fontFamily="system-ui"
+								fontFamily="Inter, system-ui, sans-serif"
 							>
 								Avg: {average.toFixed(0)}mm
 							</Text>
@@ -181,7 +181,7 @@ function RomChart({
 							fill: CHART_COLORS.axisText,
 							fontSize: 11,
 							textAnchor: "middle" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 						}}
 						stroke={CHART_COLORS.axisText}
 						tickStroke={CHART_COLORS.axisText}
@@ -189,7 +189,7 @@ function RomChart({
 							fill: CHART_COLORS.axisText,
 							fontSize: 10,
 							textAnchor: "middle" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 						})}
 					/>
 					<AxisLeft
@@ -201,7 +201,7 @@ function RomChart({
 							fill: CHART_COLORS.axisText,
 							fontSize: 11,
 							textAnchor: "middle" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 						}}
 						stroke={CHART_COLORS.axisText}
 						tickStroke={CHART_COLORS.axisText}
@@ -209,7 +209,7 @@ function RomChart({
 							fill: CHART_COLORS.axisText,
 							fontSize: 10,
 							textAnchor: "end" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 							dx: -4,
 						})}
 					/>
@@ -228,7 +228,7 @@ function RomChart({
 						borderRadius: 6,
 						padding: "8px 12px",
 						fontSize: 12,
-						fontFamily: "system-ui",
+						fontFamily: "Inter, system-ui, sans-serif",
 						lineHeight: 1.5,
 						boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
 					}}

@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Clock,
@@ -70,15 +71,13 @@ export function RoutinesEnhanced() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2">
-									<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-										My Routines
-									</span>
+								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+									My Routines
 								</h1>
 								<p className="text-muted-foreground">
 									Build your perfect workout
@@ -87,19 +86,19 @@ export function RoutinesEnhanced() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<PageShell>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
 							<RoutineCardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -109,10 +108,8 @@ export function RoutinesEnhanced() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									My Routines
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								My Routines
 							</h1>
 							<p className="text-muted-foreground">
 								Build your perfect workout
@@ -131,7 +128,7 @@ export function RoutinesEnhanced() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				<Tabs defaultValue="my-routines" className="w-full">
 					<TabsList className="bg-surface-2 border border-secondary mb-6">
 						<TabsTrigger
@@ -185,7 +182,7 @@ export function RoutinesEnhanced() {
 						)}
 					</TabsContent>
 				</Tabs>
-			</div>
+			</PageShell>
 
 			<ShareContentDialog
 				open={shareDialogOpen}

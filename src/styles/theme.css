@@ -38,8 +38,6 @@
   --input: rgba(55, 65, 81, 0.5);
   --input-background: rgba(55, 65, 81, 0.3);
   --switch-background: #374151;
-  --font-weight-medium: 600;
-  --font-weight-normal: 400;
   --ring: #FF6B35;
 
   /* Phoenix gradient colors for charts */
@@ -67,26 +65,13 @@
   --surface-0: #0D0D0D;
   --surface-1: #141414;
   --surface-2: #1A1A1A;
+  --surface-3: #222222;
   --surface-overlay: rgba(13, 13, 13, 0.95);
 
-  /* Elevation shadows (brand-tinted) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* Elevation shadows (brand-tinted — warm ember undertone) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.03);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.04);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.05);
-
-  /* Typography scale (1.25 modular ratio) */
-  --font-size-xs: 0.75rem;    /* 12px */
-  --font-size-sm: 0.875rem;   /* 14px */
-  --font-size-base: 1rem;     /* 16px */
-  --font-size-lg: 1.125rem;   /* 18px */
-  --font-size-xl: 1.25rem;    /* 20px */
-  --font-size-2xl: 1.5rem;    /* 24px */
-  --font-size-3xl: 1.875rem;  /* 30px */
-
-  /* Line heights */
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.75;
 
   /* Icon colors */
   --icon-default: var(--foreground);
@@ -96,6 +81,7 @@
   --icon-warning: var(--phoenix-gold);
   --icon-danger: var(--phoenix-crimson);
 }
+
 
 @theme inline {
   --color-background: var(--background);
@@ -139,10 +125,15 @@
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
+}
+
+/* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
+@theme {
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.03);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.05);
 }
 
 @layer base {
@@ -152,6 +143,46 @@
 
   body {
     @apply bg-background text-foreground;
+    position: relative;
+  }
+
+  /* Ambient ember/flame glow — cinematic but restrained */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      radial-gradient(
+        ellipse 50vw 50vh at 0% 0%,
+        rgba(255, 107, 53, 0.08) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 50vw 50vh at 100% 100%,
+        rgba(220, 38, 38, 0.06) 0%,
+        transparent 70%
+      );
+  }
+
+  /* Grain/noise texture — nearly invisible depth layer */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.025;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 200px 200px;
+  }
+
+  /* VIS-04: Default card elevation — warm shadow applied to all shadcn Card components */
+  [data-slot="card"] {
+    box-shadow: var(--shadow-sm);
   }
 
   /**
@@ -163,46 +194,56 @@
     font-size: var(--font-size);
   }
 
+  /* Typography hierarchy — Inter Variable weights */
   h1 {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-size: 1.875rem;  /* 30px */
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
   h2 {
-    font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    font-size: 1.25rem;  /* 20px */
+    font-weight: 625;
+    line-height: 1.25;
   }
 
   h3 {
-    font-size: var(--text-lg);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;  /* 16px */
+    font-weight: 500;
     line-height: 1.5;
   }
 
   h4 {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 0.875rem;  /* 14px */
+    font-weight: 500;
     line-height: 1.5;
   }
 
   label {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;
+    font-weight: 500;
     line-height: 1.5;
   }
 
   button {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
+    font-size: 1rem;
+    font-weight: 500;
     line-height: 1.5;
   }
 
   input {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-normal);
+    font-size: 1rem;
+    font-weight: 400;
     line-height: 1.5;
+  }
+
+  /* Eyebrow / stat label treatment */
+  .eyebrow {
+    font-weight: 450;
+    font-size: 0.6875rem;  /* 11px */
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   /* Phoenix Project Custom Animations */
@@ -243,6 +284,59 @@
     animation: phoenix-glow 2s ease-in-out infinite;
   }
 
+  /* VIS-05: Subtle card borders replacing heavier #374151 */
+  .border-secondary {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+  }
+
+}
+
+@layer utilities {
+  /* VIS-06/07/08/09: Card tier hierarchy */
+
+  /* Hero tier — streak, active goal, recovery score (max 1 per page) */
+  .card-hero {
+    background: linear-gradient(135deg, rgba(255,107,53,0.12) 0%, rgba(220,38,38,0.06) 100%);
+    border: 2px solid rgba(255, 107, 53, 0.4);
+    box-shadow: var(--shadow-lg), 0 0 20px rgba(255, 107, 53, 0.12);
+  }
+
+  /* Primary tier — key metric cards with glassmorphism (max 2 per viewport on desktop, 0 on mobile) */
+  .card-primary {
+    background: rgba(26, 26, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-md);
+  }
+  @media (min-width: 768px) {
+    .card-primary {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  }
+
+  /* Secondary tier — informational content (default) */
+  .card-secondary {
+    background: linear-gradient(135deg, var(--surface-2), var(--surface-0));
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Landing feature card — gradient border + hover lift/glow */
+  .card-landing-feature {
+    border: 1px solid transparent;
+    background:
+      padding-box linear-gradient(135deg, var(--surface-2), var(--surface-0)),
+      border-box linear-gradient(135deg,
+        rgba(255, 107, 53, 0.5) 0%,
+        rgba(220, 38, 38, 0.25) 50%,
+        rgba(245, 158, 11, 0.1) 100%);
+    box-shadow: var(--shadow-sm);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .card-landing-feature:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg), 0 0 24px rgba(255, 107, 53, 0.2);
+  }
 }
 
 /* Reduced-motion: suppress decorative animations, keep functional (spin) */

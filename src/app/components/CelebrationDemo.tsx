@@ -22,7 +22,7 @@ export function CelebrationDemo() {
 	const [selectedPlacement, setSelectedPlacement] = useState<1 | 2 | 3>(1);
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -31,10 +31,8 @@ export function CelebrationDemo() {
 						animate={{ opacity: 1, y: 0 }}
 						className="text-center"
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Celebration Animations
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Celebration Animations
 						</h1>
 						<p className="text-muted-foreground">
 							Test all celebration animations and micro-interactions

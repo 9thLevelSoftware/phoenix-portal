@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -174,7 +175,7 @@ export function PersonalRecords() {
 
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Skeleton className="h-10 w-64 mb-2" />
@@ -186,46 +187,44 @@ export function PersonalRecords() {
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				<PageShell>
 					<Skeleton className="h-8 w-40 mb-4" />
 					<div className="space-y-3">
 						{Array.from({ length: 4 }).map((_, i) => (
 							<CardSkeleton key={i} />
 						))}
 					</div>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
 
 	if (!records || records.length === 0) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Personal Records
-								</span>
+							<h1 className="text-3xl sm:text-4xl text-white">
+								Personal Records
 							</h1>
 						</div>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Trophy}
 						title="No personal records yet"
 						description="Your PRs will appear here as you push your limits. Every new best is worth celebrating."
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -235,10 +234,8 @@ export function PersonalRecords() {
 					>
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Personal Records
-								</span>
+							<h1 className="text-3xl sm:text-4xl text-white">
+								Personal Records
 							</h1>
 						</div>
 						<p className="text-muted-foreground">Celebrate every victory</p>
@@ -296,7 +293,7 @@ export function PersonalRecords() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				{/* Recent PRs Spotlight */}
 				{recentPRs.length > 0 && (
 					<motion.div
@@ -337,7 +334,7 @@ export function PersonalRecords() {
 												>
 													{pr.muscle_group}
 												</Badge>
-												<div className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
+												<div className="text-3xl font-bold text-primary mb-2">
 													{pr.value} {pr.unit}
 												</div>
 												{pr.previous_value && (
@@ -746,7 +743,7 @@ export function PersonalRecords() {
 																{pr.muscle_group}
 															</Badge>
 														</div>
-														<p className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+														<p className="text-xl font-bold text-primary">
 															{pr.value} {pr.unit}
 														</p>
 													</div>
@@ -789,7 +786,7 @@ export function PersonalRecords() {
 						</motion.div>
 					)}
 				</AnimatePresence>
-			</div>
+			</PageShell>
 		</div>
 	);
 }

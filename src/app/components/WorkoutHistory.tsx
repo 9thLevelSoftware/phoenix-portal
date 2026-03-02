@@ -1,3 +1,4 @@
+import { PageShell } from "@/app/components/PageShell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Award,
@@ -271,18 +272,18 @@ export function WorkoutHistory() {
 	// Loading state
 	if (isPending) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
 						<Skeleton className="h-10 w-64 mb-2" />
 						<Skeleton className="h-5 w-48" />
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+				<PageShell>
 					{Array.from({ length: 5 }).map((_, i) => (
 						<WorkoutCardSkeleton key={i} />
 					))}
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -290,26 +291,24 @@ export function WorkoutHistory() {
 	// Empty state
 	if (!workouts || workouts.length === 0) {
 		return (
-			<div className="min-h-screen bg-background pb-24 md:pb-8">
+			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
-						<h1 className="text-3xl sm:text-4xl mb-2">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-								Workout History
-							</span>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							Workout History
 						</h1>
 						<p className="text-muted-foreground">
 							Your training journey, documented
 						</p>
 					</div>
 				</div>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<PageShell>
 					<EmptyState
 						icon={Dumbbell}
 						title="No workouts yet"
 						description="Complete your first workout in the mobile app to see your training history here."
 					/>
-				</div>
+				</PageShell>
 			</div>
 		);
 	}
@@ -318,7 +317,7 @@ export function WorkoutHistory() {
 	const initialPageFull = workouts.length >= WORKOUTS_PAGE_SIZE;
 
 	return (
-		<div className="min-h-screen bg-background pb-24 md:pb-8">
+		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -328,10 +327,8 @@ export function WorkoutHistory() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2">
-								<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-									Workout History
-								</span>
+							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								Workout History
 							</h1>
 							<p className="text-muted-foreground">
 								Your training journey, documented
@@ -454,7 +451,7 @@ export function WorkoutHistory() {
 			</div>
 
 			{/* Content */}
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<PageShell>
 				<AnimatePresence mode="wait">
 					{viewMode === "calendar" ? (
 						<motion.div
@@ -904,7 +901,7 @@ export function WorkoutHistory() {
 						</motion.div>
 					)}
 				</AnimatePresence>
-			</div>
+			</PageShell>
 
 			{/* Day Detail Slide-Out Panel */}
 			<AnimatePresence>

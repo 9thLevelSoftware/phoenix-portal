@@ -14,7 +14,7 @@ export function PrivacyPolicy() {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<PhoenixLogo size="sm" animated={false} />
-							<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-xl text-primary">
 								Project Phoenix
 							</span>
 						</div>
@@ -38,10 +38,8 @@ export function PrivacyPolicy() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.5 }}
 				>
-					<h1 className="text-4xl sm:text-5xl mb-4">
-						<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-							Privacy Policy
-						</span>
+					<h1 className="text-4xl sm:text-5xl mb-4 text-white">
+						Privacy Policy
 					</h1>
 					<p className="text-xl text-muted-foreground mb-2">
 						Project Phoenix - Vitruvian Trainer Companion App

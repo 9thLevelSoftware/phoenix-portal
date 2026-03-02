@@ -123,7 +123,7 @@ function PerRepChart({
 						fill={COLOR_TEXT}
 						fontSize={11}
 						textAnchor="middle"
-						fontFamily="system-ui"
+						fontFamily="Inter, system-ui, sans-serif"
 					>
 						Left Dominant
 					</Text>
@@ -133,7 +133,7 @@ function PerRepChart({
 						fill={COLOR_TEXT}
 						fontSize={11}
 						textAnchor="middle"
-						fontFamily="system-ui"
+						fontFamily="Inter, system-ui, sans-serif"
 					>
 						Right Dominant
 					</Text>
@@ -203,7 +203,7 @@ function PerRepChart({
 									fontSize={10}
 									textAnchor={a >= 0 ? "start" : "end"}
 									verticalAnchor="middle"
-									fontFamily="system-ui"
+									fontFamily="Inter, system-ui, sans-serif"
 								>
 									{getAsymmetryLabel(a)}
 								</Text>
@@ -225,7 +225,7 @@ function PerRepChart({
 							fill: COLOR_TEXT,
 							fontSize: 10,
 							textAnchor: "middle" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 						})}
 					/>
 					<AxisLeft
@@ -237,7 +237,7 @@ function PerRepChart({
 							fill: COLOR_TEXT,
 							fontSize: 10,
 							textAnchor: "end" as const,
-							fontFamily: "system-ui",
+							fontFamily: "Inter, system-ui, sans-serif",
 							dx: -4,
 						})}
 					/>
@@ -256,7 +256,7 @@ function PerRepChart({
 						borderRadius: 6,
 						padding: "8px 12px",
 						fontSize: 12,
-						fontFamily: "system-ui",
+						fontFamily: "Inter, system-ui, sans-serif",
 						lineHeight: 1.5,
 					}}
 				>
