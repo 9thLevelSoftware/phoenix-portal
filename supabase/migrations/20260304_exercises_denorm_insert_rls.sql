@@ -58,6 +58,7 @@ ALTER TABLE exercises ALTER COLUMN user_id SET NOT NULL;
 -- Old policy used session_id IN (subquery) — O(n) JOIN cost.
 -- New policy uses direct user_id equality — simple index scan.
 
+DROP POLICY IF EXISTS "Users can view own exercises" ON exercises;
 CREATE POLICY "Users can view own exercises"
   ON exercises FOR SELECT
   TO authenticated
@@ -69,6 +70,7 @@ DROP POLICY IF EXISTS "Users can view exercises in own sessions" ON exercises;
 -- Section 3: Add INSERT policy on exercises (PORTAL-03)
 -- =============================================================================
 
+DROP POLICY IF EXISTS "Users can insert own exercises" ON exercises;
 CREATE POLICY "Users can insert own exercises"
   ON exercises FOR INSERT
   TO authenticated
@@ -81,18 +83,21 @@ CREATE POLICY "Users can insert own exercises"
 -- They have SELECT policies but lack INSERT policies — added here for defense-in-depth.
 
 -- sets (user_id added in 20260228_rls_denormalization.sql)
+DROP POLICY IF EXISTS "Users can insert own sets" ON sets;
 CREATE POLICY "Users can insert own sets"
   ON sets FOR INSERT
   TO authenticated
   WITH CHECK ((select auth.uid()) = user_id);
 
 -- rep_summaries (user_id added in 20260228_rls_denormalization.sql)
+DROP POLICY IF EXISTS "Users can insert own rep summaries" ON rep_summaries;
 CREATE POLICY "Users can insert own rep summaries"
   ON rep_summaries FOR INSERT
   TO authenticated
   WITH CHECK ((select auth.uid()) = user_id);
 
 -- rep_telemetry (user_id added in 20260228_rls_denormalization.sql)
+DROP POLICY IF EXISTS "Users can insert own telemetry" ON rep_telemetry;
 CREATE POLICY "Users can insert own telemetry"
   ON rep_telemetry FOR INSERT
   TO authenticated

@@ -11,14 +11,17 @@ create table if not exists creator_follows (
 -- RLS
 alter table creator_follows enable row level security;
 
+drop policy if exists "Users can view follows" on creator_follows;
 create policy "Users can view follows"
   on creator_follows for select
   using (true);
 
+drop policy if exists "Users can follow others" on creator_follows;
 create policy "Users can follow others"
   on creator_follows for insert
   with check (auth.uid() = follower_id);
 
+drop policy if exists "Users can unfollow" on creator_follows;
 create policy "Users can unfollow"
   on creator_follows for delete
   using (auth.uid() = follower_id);
