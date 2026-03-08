@@ -1,17 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+	Activity,
 	Apple,
 	ArrowRight,
 	BarChart3,
-	Calendar,
-	Check,
 	Chrome,
+	ExternalLink,
+	Flame,
 	Loader2,
 	Mail,
+	Play,
 	Share2,
+	Target,
 	Trophy,
-	Users,
-	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -64,6 +65,12 @@ const signUpSchema = z
 type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
+const TIER_BADGE_STYLES: Record<string, string> = {
+	FREE: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+	PHOENIX: "bg-primary/20 text-primary border-primary/30",
+	ELITE: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+};
+
 export function LandingPage() {
 	const { user, loading } = useAuth();
 	const navigate = useNavigate();
@@ -71,6 +78,7 @@ export function LandingPage() {
 	const [authLoading, setAuthLoading] = useState(false);
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
+	const [scrolled, setScrolled] = useState(false);
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -78,6 +86,13 @@ export function LandingPage() {
 			navigate("/dashboard", { replace: true });
 		}
 	}, [user, loading, navigate]);
+
+	// Track scroll for sticky nav
+	useEffect(() => {
+		const handleScroll = () => setScrolled(window.scrollY > 20);
+		window.addEventListener("scroll", handleScroll, { passive: true });
+		return () => window.removeEventListener("scroll", handleScroll);
+	}, []);
 
 	const handleResetPassword = async () => {
 		if (!resetEmail) {
@@ -170,42 +185,52 @@ export function LandingPage() {
 
 	const openAuth = () => setShowAuthDialog(true);
 
+	const scrollToSection = (id: string) => {
+		document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+	};
+
 	const features = [
 		{
+			icon: Activity,
+			title: "Force Curve Analysis",
+			badge: "PHOENIX",
+			description:
+				"Visualize concentric and eccentric force output with LTTB-downsampled curves. See exactly where you're strongest — and where you stall.",
+		},
+		{
 			icon: BarChart3,
-			title: "Real-time Analytics",
+			title: "VBT & Power Analytics",
+			badge: "PHOENIX",
 			description:
-				"Track every rep, set, and workout with comprehensive data visualization.",
+				"Velocity-based training zones classify every rep into strength, power, or speed. Track power output and ROM trends over time.",
 		},
 		{
-			icon: Trophy,
-			title: "Personal Records",
+			icon: Target,
+			title: "Asymmetry Detection",
+			badge: "PHOENIX",
 			description:
-				"Celebrate your victories with automatic PR detection and tracking.",
+				"L/R force threshold flagging catches muscle imbalances before they become injuries. Full biomechanics dashboard with muscle heatmap.",
 		},
 		{
-			icon: Calendar,
-			title: "Training Cycles",
+			icon: Play,
+			title: "Session Replay",
+			badge: "ELITE",
 			description:
-				"Plan and execute periodized training programs with precision.",
-		},
-		{
-			icon: Users,
-			title: "Community Challenges",
-			description:
-				"Compete with athletes worldwide in dynamic fitness challenges.",
+				"Relive every workout with Canvas 2D telemetry playback at 50Hz. Scrub through sets, analyze rep quality, and detect fatigue.",
 		},
 		{
 			icon: Share2,
-			title: "Routine Sharing",
+			title: "Community Hub",
+			badge: "FREE",
 			description:
-				"Discover and share proven workout routines with the community.",
+				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
 		},
 		{
-			icon: Zap,
-			title: "Multi-App Sync",
+			icon: Trophy,
+			title: "Challenges & Leaderboards",
+			badge: "FREE",
 			description:
-				"Seamlessly integrate with your favorite fitness apps and wearables.",
+				"Compete in community challenges, climb leaderboards, and earn badges. See how you stack up against other Vitruvian athletes.",
 		},
 	];
 
@@ -244,7 +269,7 @@ export function LandingPage() {
 				<div className="flex items-center justify-center gap-2 mb-6">
 					<PhoenixLogo size="sm" animated={false} />
 					<span className="text-xl text-primary font-semibold">
-						Project Phoenix
+						Phoenix Portal
 					</span>
 				</div>
 
@@ -505,8 +530,68 @@ export function LandingPage() {
 
 			{authDialog}
 
+			{/* Sticky Nav Header */}
+			<nav
+				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+					scrolled
+						? "bg-background/80 backdrop-blur-lg border-b border-secondary/50"
+						: "bg-transparent"
+				}`}
+			>
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+					<div className="flex items-center gap-2">
+						<PhoenixLogo size="sm" animated={false} />
+						<span className="text-lg font-semibold text-primary">
+							Phoenix Portal
+						</span>
+					</div>
+					<div className="hidden sm:flex items-center gap-6">
+						<button
+							type="button"
+							onClick={() => scrollToSection("features")}
+							className="text-sm text-muted-foreground hover:text-white transition-colors"
+						>
+							Features
+						</button>
+						<button
+							type="button"
+							onClick={() => scrollToSection("pricing")}
+							className="text-sm text-muted-foreground hover:text-white transition-colors"
+						>
+							Pricing
+						</button>
+						<a
+							href="https://ko-fi.com/vitruvianredux"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-sm text-muted-foreground hover:text-white transition-colors"
+						>
+							Support
+						</a>
+					</div>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={openAuth}
+						className="border-primary/50 text-primary hover:bg-primary/10"
+					>
+						Sign In
+					</Button>
+				</div>
+			</nav>
+
 			{/* Hero Section */}
 			<section className="relative min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
+				{/* Phoenix hero background */}
+				<div className="absolute inset-0 overflow-hidden">
+					<img
+						src="/phoenix-hero.png"
+						alt=""
+						className="absolute inset-0 w-full h-full object-cover opacity-30"
+					/>
+					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
+				</div>
+
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
@@ -522,7 +607,7 @@ export function LandingPage() {
 						transition={{ delay: 0.2 }}
 					>
 						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
-							Project Phoenix
+							Your workouts, unlocked.
 						</span>
 					</motion.h1>
 
@@ -536,12 +621,14 @@ export function LandingPage() {
 					</motion.p>
 
 					<motion.p
-						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto"
+						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						Community-driven analytics for Vitruvian Trainer
+						Phoenix Portal turns your Vitruvian Force data into force curves,
+						biomechanics insights, recovery readiness scores, and a community of
+						athletes — all synced from the Project Phoenix app.
 					</motion.p>
 
 					<motion.div
@@ -556,18 +643,28 @@ export function LandingPage() {
 							className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
 						>
 							<span className="relative z-10 flex items-center gap-2">
-								Get Started
+								Get Started Free
 								<ArrowRight className="w-5 h-5" />
 							</span>
 						</Button>
 						<Button
 							size="lg"
 							variant="outline"
+							onClick={() => scrollToSection("pricing")}
 							className="border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
 						>
-							View Features
+							View Plans
 						</Button>
 					</motion.div>
+
+					<motion.p
+						className="mt-4 text-sm text-muted"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 1.0 }}
+					>
+						Requires the Project Phoenix mobile app for workout data sync
+					</motion.p>
 				</motion.div>
 
 				<motion.div
@@ -583,7 +680,10 @@ export function LandingPage() {
 			</section>
 
 			{/* Features Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-surface-2">
+			<section
+				id="features"
+				className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-surface-2"
+			>
 				<div className="max-w-7xl mx-auto">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -592,10 +692,11 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
-							Elevate Your Training
+							Built for serious athletes.
 						</h2>
-						<p className="text-xl text-muted">
-							Everything you need to reach your fitness goals
+						<p className="text-xl text-muted max-w-2xl mx-auto">
+							The insights your Vitruvian machine captures but never shows you —
+							from force output to recovery readiness.
 						</p>
 					</motion.div>
 
@@ -609,8 +710,15 @@ export function LandingPage() {
 								transition={{ delay: index * 0.1 }}
 							>
 								<Card className="p-6 card-landing-feature group cursor-pointer h-full">
-									<div className="mb-4 w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
-										<feature.icon className="w-5 h-5 text-primary" />
+									<div className="flex items-center justify-between mb-4">
+										<div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
+											<feature.icon className="w-5 h-5 text-primary" />
+										</div>
+										<span
+											className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${TIER_BADGE_STYLES[feature.badge]}`}
+										>
+											{feature.badge}
+										</span>
 									</div>
 									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
 									<p className="text-muted-foreground">{feature.description}</p>
@@ -622,7 +730,10 @@ export function LandingPage() {
 			</section>
 
 			{/* Pricing Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
+			<section
+				id="pricing"
+				className="relative py-24 px-4 sm:px-6 lg:px-8"
+			>
 				<div className="max-w-7xl mx-auto">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -677,7 +788,19 @@ export function LandingPage() {
 												key={feature}
 												className="flex items-start gap-2 text-secondary-foreground"
 											>
-												<Check className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+												<svg
+													className="w-5 h-5 text-success flex-shrink-0 mt-0.5"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+													strokeWidth={2}
+												>
+													<path
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														d="M5 13l4 4L19 7"
+													/>
+												</svg>
 												<span>{feature}</span>
 											</li>
 										))}
@@ -701,29 +824,50 @@ export function LandingPage() {
 			</section>
 
 			{/* CTA Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-surface-2 to-background">
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-amber-900/20 via-background to-background">
 				<div className="max-w-4xl mx-auto text-center">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
+						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
 						<h2 className="text-4xl sm:text-5xl mb-6 text-white">
-							Ready to Transform?
+							Rise from the ashes.
 						</h2>
-						<p className="text-xl text-secondary-foreground mb-8">
-							Join thousands of athletes who are already rising stronger
+						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
+							Your Vitruvian machine captures incredible data every rep. Phoenix
+							Portal finally lets you see it all — force curves, biomechanics,
+							recovery, and a community that trains like you do.
 						</p>
-						<Button
-							size="lg"
-							onClick={openAuth}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
-						>
-							<span className="flex items-center gap-2">
-								Start Your Journey
-								<ArrowRight className="w-5 h-5" />
-							</span>
-						</Button>
+						<div className="flex flex-col sm:flex-row gap-4 justify-center">
+							<Button
+								size="lg"
+								onClick={openAuth}
+								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
+							>
+								<span className="flex items-center gap-2">
+									Start Free
+									<ArrowRight className="w-5 h-5" />
+								</span>
+							</Button>
+							<a
+								href="https://ko-fi.com/vitruvianredux"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<Button
+									size="lg"
+									variant="outline"
+									className="border-2 border-primary text-primary hover:bg-primary/10 text-lg px-8 py-6"
+								>
+									<span className="flex items-center gap-2">
+										Support on Ko-fi
+										<ExternalLink className="w-4 h-4" />
+									</span>
+								</Button>
+							</a>
+						</div>
 					</motion.div>
 				</div>
 			</section>
@@ -736,7 +880,7 @@ export function LandingPage() {
 							<div className="flex items-center gap-2 mb-4">
 								<PhoenixLogo size="sm" animated={false} />
 								<span className="text-xl text-primary">
-									Project Phoenix
+									Phoenix Portal
 								</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
@@ -746,8 +890,24 @@ export function LandingPage() {
 						<div>
 							<h4 className="text-white mb-4">Product</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
-								<li className="hover:text-primary cursor-pointer">Features</li>
-								<li className="hover:text-primary cursor-pointer">Pricing</li>
+								<li>
+									<button
+										type="button"
+										onClick={() => scrollToSection("features")}
+										className="hover:text-primary"
+									>
+										Features
+									</button>
+								</li>
+								<li>
+									<button
+										type="button"
+										onClick={() => scrollToSection("pricing")}
+										className="hover:text-primary"
+									>
+										Pricing
+									</button>
+								</li>
 								<li className="hover:text-primary cursor-pointer">
 									Integrations
 								</li>
@@ -755,11 +915,34 @@ export function LandingPage() {
 							</ul>
 						</div>
 						<div>
-							<h4 className="text-white mb-4">Company</h4>
+							<h4 className="text-white mb-4">Project</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
-								<li className="hover:text-primary cursor-pointer">About</li>
-								<li className="hover:text-primary cursor-pointer">Blog</li>
-								<li className="hover:text-primary cursor-pointer">Careers</li>
+								<li>
+									<a
+										href="#"
+										className="hover:text-primary"
+									>
+										Mobile App
+									</a>
+								</li>
+								<li>
+									<a
+										href="#"
+										className="hover:text-primary"
+									>
+										Portal Source
+									</a>
+								</li>
+								<li>
+									<a
+										href="https://ko-fi.com/vitruvianredux"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="hover:text-primary"
+									>
+										Ko-fi
+									</a>
+								</li>
 								<li>
 									<Link to="/faq" className="hover:text-primary">
 										FAQ & Contact
@@ -793,7 +976,7 @@ export function LandingPage() {
 					<div className="pt-8 border-t border-secondary text-center space-y-3">
 						<p className="text-muted-foreground text-sm">
 							<span className="text-primary font-semibold">
-								Project Phoenix
+								Phoenix Portal
 							</span>{" "}
 							is a community preservation project by{" "}
 							<span className="text-white font-semibold">
