@@ -1488,6 +1488,7 @@ export function Analytics() {
 						</Tabs>
 					</>
 				)}
+			</SubscriptionGate>
 			</PageShell>
 			</div>
 		</div>
