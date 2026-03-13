@@ -28,7 +28,6 @@ async function fetchSubscription(userId: string) {
 		.from("subscriptions")
 		.select("tier, status, current_period_end, cancel_at_period_end")
 		.eq("user_id", userId)
-		.in("status", ["active", "trialing"])
 		.maybeSingle();
 
 	if (error) {

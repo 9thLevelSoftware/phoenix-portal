@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom";
 
+// Keep component tests bootable even when local Supabase env vars are absent.
+vi.stubEnv("VITE_SUPABASE_URL", "https://test-project.supabase.co");
+vi.stubEnv("VITE_SUPABASE_ANON_KEY", "test-anon-key");
+
 // Mock window.matchMedia for components using useIsMobile and responsive queries
 Object.defineProperty(window, "matchMedia", {
 	writable: true,

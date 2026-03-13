@@ -13,6 +13,18 @@ interface RoutineExerciseInput {
 	rest_seconds: number;
 	mode: string;
 	order_index: number;
+	superset_id?: string | null;
+	superset_color?: string | null;
+	superset_order?: number | null;
+	per_set_weights?: unknown;
+	per_set_rest?: unknown;
+	is_amrap?: boolean;
+	pr_percentage?: number | null;
+	rep_count_timing?: string | null;
+	stop_at_position?: string | null;
+	stall_detection?: boolean;
+	eccentric_load?: string | null;
+	echo_level?: string | null;
 }
 
 interface SaveRoutineInput {
@@ -72,6 +84,18 @@ export function useSaveRoutine() {
 							rest_seconds: ex.rest_seconds,
 							mode: ex.mode,
 							order_index: i,
+							superset_id: ex.superset_id ?? null,
+							superset_color: ex.superset_color ?? null,
+							superset_order: ex.superset_order ?? null,
+							per_set_weights: ex.per_set_weights ?? null,
+							per_set_rest: ex.per_set_rest ?? null,
+							is_amrap: ex.is_amrap ?? false,
+							pr_percentage: ex.pr_percentage ?? null,
+							rep_count_timing: ex.rep_count_timing ?? null,
+							stop_at_position: ex.stop_at_position ?? null,
+							stall_detection: ex.stall_detection ?? false,
+							eccentric_load: ex.eccentric_load ?? null,
+							echo_level: ex.echo_level ?? null,
 						})),
 					);
 				if (exError) throw exError;
@@ -140,6 +164,18 @@ export function useUpdateRoutine() {
 							rest_seconds: ex.rest_seconds,
 							mode: ex.mode,
 							order_index: i,
+							superset_id: ex.superset_id ?? null,
+							superset_color: ex.superset_color ?? null,
+							superset_order: ex.superset_order ?? null,
+							per_set_weights: ex.per_set_weights ?? null,
+							per_set_rest: ex.per_set_rest ?? null,
+							is_amrap: ex.is_amrap ?? false,
+							pr_percentage: ex.pr_percentage ?? null,
+							rep_count_timing: ex.rep_count_timing ?? null,
+							stop_at_position: ex.stop_at_position ?? null,
+							stall_detection: ex.stall_detection ?? false,
+							eccentric_load: ex.eccentric_load ?? null,
+							echo_level: ex.echo_level ?? null,
 						})),
 					);
 				if (exError) throw exError;

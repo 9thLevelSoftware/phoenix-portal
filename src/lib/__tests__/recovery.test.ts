@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	computeReadinessScore,
 	type RecoveryInput,
@@ -41,6 +41,15 @@ function makeSessionsInWindow(
 }
 
 describe("computeReadinessScore", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-03-01T12:00:00Z"));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	// Test 1: User with 0 sessions
 	it("returns isGated=true and score=0 for user with 0 sessions", () => {
 		const result = computeReadinessScore({

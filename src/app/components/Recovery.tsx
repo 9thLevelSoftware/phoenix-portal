@@ -291,6 +291,7 @@ export function Recovery() {
 								</p>
 								<div className="w-full max-w-xs">
 									<Progress
+										aria-label="Recovery baseline progress"
 										value={Math.min(
 											(daysSinceFirstSession / GATING_THRESHOLD_DAYS) * 100,
 											100,

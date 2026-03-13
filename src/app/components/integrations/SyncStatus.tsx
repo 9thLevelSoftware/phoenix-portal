@@ -8,6 +8,7 @@ import {
 	CardTitle,
 } from "@/app/components/ui/card";
 import { supabase } from "@/lib/supabase";
+import { queryKeys } from "@/queries/keys";
 
 interface SyncStatusProps {
 	userId: string;
@@ -22,7 +23,7 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 
 export function SyncStatus({ userId }: SyncStatusProps) {
 	const { data: queue } = useQuery({
-		queryKey: ["sync-queue", userId],
+		queryKey: queryKeys.integrations.syncQueue(userId),
 		queryFn: async () => {
 			const { data } = await supabase
 				.from("sync_queue")

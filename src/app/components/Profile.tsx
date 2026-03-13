@@ -47,8 +47,11 @@ import { supabase } from "@/lib/supabase";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
 import {
+	earnedBadgesOptions,
+	gamificationStatsOptions,
 	profileOptions,
 	profileStatsOptions,
+	rpgAttributesOptions,
 	topExercisesOptions,
 } from "@/queries/profile";
 import { workoutListOptions } from "@/queries/workouts";
@@ -110,6 +113,18 @@ export function Profile() {
 	});
 	const { data: integrations, isPending: integrationsLoading } = useQuery({
 		...integrationsOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: earnedBadges, isPending: badgesLoading } = useQuery({
+		...earnedBadgesOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: rpgAttributes } = useQuery({
+		...rpgAttributesOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: gamificationStats } = useQuery({
+		...gamificationStatsOptions(userId),
 		enabled: !!userId,
 	});
 
@@ -484,21 +499,172 @@ export function Profile() {
 
 					{/* Badges Tab */}
 					<TabsContent value="badges" className="space-y-6">
-						<div className="flex flex-col items-center justify-center py-16 text-center">
-							<Award className="w-16 h-16 text-secondary mb-4" />
-							<h3 className="text-xl text-white mb-2">Badges Coming Soon</h3>
-							<p className="text-muted-foreground max-w-md mb-4">
-								Earn badges by completing challenges, hitting milestones, and
-								maintaining streaks
-							</p>
-							<Button
-								variant="outline"
-								className="border-primary text-primary hover:bg-primary/10"
-								asChild
-							>
-								<Link to="/challenges">Browse Challenges</Link>
-							</Button>
+						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<Award className="w-5 h-5 text-primary" />
+									Badge Summary
+								</h3>
+								<div className="space-y-4">
+									<div className="p-4 bg-background rounded-lg border border-secondary">
+										<div className="text-sm text-muted-foreground">
+											Badges Earned
+										</div>
+										<div className="text-3xl text-white">
+											{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
+										</div>
+									</div>
+									<div className="p-4 bg-background rounded-lg border border-secondary">
+										<div className="text-sm text-muted-foreground">
+											Current Streak
+										</div>
+										<div className="text-3xl text-primary">
+											{gamificationStats?.current_streak ?? streak} days
+										</div>
+									</div>
+									<div className="p-4 bg-background rounded-lg border border-secondary">
+										<div className="text-sm text-muted-foreground">
+											Longest Streak
+										</div>
+										<div className="text-3xl text-success">
+											{gamificationStats?.longest_streak ?? stats?.bestStreak ?? 0} days
+										</div>
+									</div>
+								</div>
+							</Card>
+
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<Shield className="w-5 h-5 text-accent" />
+									RPG Attributes
+								</h3>
+								{rpgAttributes ? (
+									<div className="space-y-3">
+										<div className="flex items-center justify-between text-sm">
+											<span className="text-muted-foreground">Class</span>
+											<span className="text-white">
+												{rpgAttributes.character_class ?? "PHOENIX"}
+											</span>
+										</div>
+										{[
+											["Strength", rpgAttributes.strength],
+											["Power", rpgAttributes.power],
+											["Stamina", rpgAttributes.stamina],
+											["Consistency", rpgAttributes.consistency],
+											["Mastery", rpgAttributes.mastery],
+										].map(([label, value]) => (
+											<div key={label as string}>
+												<div className="flex items-center justify-between text-sm mb-1">
+													<span className="text-muted-foreground">{label}</span>
+													<span className="text-white">{value as number}</span>
+												</div>
+												<div className="h-2 rounded-full bg-background overflow-hidden">
+													<div
+														className="h-full bg-gradient-to-r from-primary to-chart-2"
+														style={{ width: `${Math.min(value as number, 100)}%` }}
+													/>
+												</div>
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="flex flex-col items-center justify-center py-8 text-center">
+										<Shield className="w-10 h-10 text-secondary mb-3" />
+										<p className="text-muted-foreground mb-1">
+											No RPG profile yet
+										</p>
+										<p className="text-sm text-muted">
+											Train and sync from the mobile app to generate your class and attributes
+										</p>
+									</div>
+								)}
+							</Card>
+
+							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<Flame className="w-5 h-5 text-warning" />
+									Gamification
+								</h3>
+								<div className="space-y-4">
+									<div className="flex items-center justify-between py-2 border-b border-secondary">
+										<span className="text-muted-foreground">Total Workouts</span>
+										<span className="text-white">
+											{gamificationStats?.total_workouts ?? stats?.totalWorkouts ?? 0}
+										</span>
+									</div>
+									<div className="flex items-center justify-between py-2 border-b border-secondary">
+										<span className="text-muted-foreground">Total Reps</span>
+										<span className="text-white">
+											{gamificationStats?.total_reps ?? 0}
+										</span>
+									</div>
+									<div className="flex items-center justify-between py-2">
+										<span className="text-muted-foreground">Total Volume</span>
+										<span className="text-primary">
+											{formatVolume(gamificationStats?.total_volume_kg ?? stats?.totalVolume ?? 0)}
+										</span>
+									</div>
+								</div>
+							</Card>
 						</div>
+
+						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<div className="flex items-center justify-between mb-6">
+								<h3 className="text-xl text-white">Earned Badges</h3>
+								{earnedBadges && earnedBadges.length > 0 && (
+									<Badge className="bg-primary/20 text-primary border-primary/30">
+										{earnedBadges.length} total
+									</Badge>
+								)}
+							</div>
+							{badgesLoading ? (
+								<div className="space-y-3">
+									{Array.from({ length: 4 }).map((_, i) => (
+										<div
+											key={i}
+											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
+										>
+											<Skeleton className="h-5 w-32" />
+											<Skeleton className="h-5 w-16" />
+										</div>
+									))}
+								</div>
+							) : !earnedBadges || earnedBadges.length === 0 ? (
+								<div className="flex flex-col items-center justify-center py-12 text-center">
+									<Award className="w-12 h-12 text-secondary mb-3" />
+									<p className="text-muted-foreground mb-1">
+										No badges earned yet
+									</p>
+									<p className="text-sm text-muted">
+										Complete workouts in the mobile app to start earning badges
+									</p>
+								</div>
+							) : (
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+									{earnedBadges.map((badge) => (
+										<div
+											key={`${badge.badge_id}-${badge.earned_at.toISOString()}`}
+											className="p-4 bg-background rounded-lg border border-secondary"
+										>
+											<div className="flex items-start justify-between gap-3">
+												<div>
+													<div className="text-white">{badge.badge_name}</div>
+													<div className="text-sm text-muted-foreground">
+														{badge.badge_description ?? badge.badge_id}
+													</div>
+													<div className="text-xs text-muted mt-2">
+														Earned {format(badge.earned_at, "MMM d, yyyy")}
+													</div>
+												</div>
+												<Badge className="bg-accent/20 text-accent border-accent/30 uppercase">
+													{badge.badge_tier}
+												</Badge>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+						</Card>
 					</TabsContent>
 
 					{/* Integrations Tab */}

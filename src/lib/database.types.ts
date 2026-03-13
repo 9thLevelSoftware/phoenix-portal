@@ -202,6 +202,36 @@ export type Database = {
 					},
 				];
 			};
+			earned_badges: {
+				Row: {
+					badge_description: string | null;
+					badge_id: string;
+					badge_name: string;
+					badge_tier: string;
+					earned_at: string;
+					id: string;
+					user_id: string;
+				};
+				Insert: {
+					badge_description?: string | null;
+					badge_id: string;
+					badge_name: string;
+					badge_tier: string;
+					earned_at?: string;
+					id?: string;
+					user_id: string;
+				};
+				Update: {
+					badge_description?: string | null;
+					badge_id?: string;
+					badge_name?: string;
+					badge_tier?: string;
+					earned_at?: string;
+					id?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			exercise_progress: {
 				Row: {
 					estimated_1rm_kg: number;
@@ -331,6 +361,42 @@ export type Database = {
 					raw_data?: Json | null;
 					started_at?: string;
 					synced_at?: string | null;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
+			gamification_stats: {
+				Row: {
+					current_streak: number;
+					id: string;
+					longest_streak: number;
+					total_reps: number;
+					total_time_seconds: number;
+					total_volume_kg: number;
+					total_workouts: number;
+					updated_at: string | null;
+					user_id: string;
+				};
+				Insert: {
+					current_streak?: number;
+					id?: string;
+					longest_streak?: number;
+					total_reps?: number;
+					total_time_seconds?: number;
+					total_volume_kg?: number;
+					total_workouts?: number;
+					updated_at?: string | null;
+					user_id: string;
+				};
+				Update: {
+					current_streak?: number;
+					id?: string;
+					longest_streak?: number;
+					total_reps?: number;
+					total_time_seconds?: number;
+					total_volume_kg?: number;
+					total_workouts?: number;
+					updated_at?: string | null;
 					user_id?: string;
 				};
 				Relationships: [];
@@ -552,42 +618,120 @@ export type Database = {
 					},
 				];
 			};
+			rpg_attributes: {
+				Row: {
+					character_class: string | null;
+					consistency: number;
+					experience_points: number;
+					id: string;
+					level: number;
+					mastery: number;
+					power: number;
+					strength: number;
+					stamina: number;
+					updated_at: string | null;
+					user_id: string;
+				};
+				Insert: {
+					character_class?: string | null;
+					consistency?: number;
+					experience_points?: number;
+					id?: string;
+					level?: number;
+					mastery?: number;
+					power?: number;
+					strength?: number;
+					stamina?: number;
+					updated_at?: string | null;
+					user_id: string;
+				};
+				Update: {
+					character_class?: string | null;
+					consistency?: number;
+					experience_points?: number;
+					id?: string;
+					level?: number;
+					mastery?: number;
+					power?: number;
+					strength?: number;
+					stamina?: number;
+					updated_at?: string | null;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			routine_exercises: {
 				Row: {
 					created_at: string;
+					echo_level: string | null;
+					eccentric_load: string | null;
 					id: string;
+					is_amrap: boolean;
 					mode: string;
 					muscle_group: string;
 					name: string;
 					order_index: number;
+					per_set_rest: Json | null;
+					per_set_weights: Json | null;
+					pr_percentage: number | null;
+					rep_count_timing: string | null;
 					reps: number;
 					rest_seconds: number;
+					stall_detection: boolean;
+					stop_at_position: string | null;
+					superset_color: string | null;
+					superset_id: string | null;
+					superset_order: number | null;
 					routine_id: string;
 					sets: number;
 					weight: number;
 				};
 				Insert: {
 					created_at?: string;
+					echo_level?: string | null;
+					eccentric_load?: string | null;
 					id?: string;
+					is_amrap?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name: string;
 					order_index?: number;
+					per_set_rest?: Json | null;
+					per_set_weights?: Json | null;
+					pr_percentage?: number | null;
+					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
+					stall_detection?: boolean;
+					stop_at_position?: string | null;
+					superset_color?: string | null;
+					superset_id?: string | null;
+					superset_order?: number | null;
 					routine_id: string;
 					sets?: number;
 					weight?: number;
 				};
 				Update: {
 					created_at?: string;
+					echo_level?: string | null;
+					eccentric_load?: string | null;
 					id?: string;
+					is_amrap?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name?: string;
 					order_index?: number;
+					per_set_rest?: Json | null;
+					per_set_weights?: Json | null;
+					pr_percentage?: number | null;
+					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
+					stall_detection?: boolean;
+					stop_at_position?: string | null;
+					superset_color?: string | null;
+					superset_id?: string | null;
+					superset_order?: number | null;
 					routine_id?: string;
 					sets?: number;
 					weight?: number;
@@ -1142,6 +1286,7 @@ export type Database = {
 					notes: string | null;
 					pr_count: number;
 					routine_name: string | null;
+					routine_session_id: string | null;
 					set_count: number;
 					started_at: string;
 					total_volume: number;
@@ -1156,6 +1301,7 @@ export type Database = {
 					notes?: string | null;
 					pr_count?: number;
 					routine_name?: string | null;
+					routine_session_id?: string | null;
 					set_count?: number;
 					started_at?: string;
 					total_volume?: number;
@@ -1170,6 +1316,7 @@ export type Database = {
 					notes?: string | null;
 					pr_count?: number;
 					routine_name?: string | null;
+					routine_session_id?: string | null;
 					set_count?: number;
 					started_at?: string;
 					total_volume?: number;

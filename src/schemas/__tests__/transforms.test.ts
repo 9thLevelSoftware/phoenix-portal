@@ -101,6 +101,14 @@ describe("workoutSessionSchema", () => {
 		});
 		expect(result.workout_mode).toBeNull();
 	});
+
+	it("falls back when synced session name is null", () => {
+		const result = workoutSessionSchema.parse({
+			...validSession,
+			name: null,
+		});
+		expect(result.name).toBe("Untitled Workout");
+	});
 });
 
 describe("setSchema", () => {
@@ -128,6 +136,14 @@ describe("setSchema", () => {
 		expect(result.actual_reps).toBe(8);
 		expect(result.rpe).toBe(8.5);
 		expect(result.is_pr).toBe(false);
+	});
+
+	it("accepts null target_reps from mobile-synced sets", () => {
+		const result = setSchema.parse({
+			...validSet,
+			target_reps: null,
+		});
+		expect(result.target_reps).toBeNull();
 	});
 });
 

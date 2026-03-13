@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
-import { test as authedTest, expect as authedExpect } from "./fixtures/auth";
+import { mockAuthenticatedApp } from "./support/mockSupabase";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -62,14 +62,13 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 	}
 });
 
-authedTest.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
-	const skip = !process.env.SUPABASE_TEST_EMAIL;
+test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
+	test.beforeEach(async ({ page }) => {
+		await mockAuthenticatedApp(page, { tier: "ELITE" });
+	});
 
 	for (const { name, path } of authedPages) {
-		authedTest(`${name} has no critical WCAG violations`, async ({
-			authedPage: page,
-		}) => {
-			authedTest.skip(skip, "No test credentials");
+		test(`${name} has no critical WCAG violations`, async ({ page }) => {
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
 			// Wait for any entrance animations to settle
@@ -95,7 +94,7 @@ authedTest.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 				(v) =>
 					v.impact === "critical" || v.impact === "serious",
 			);
-			authedExpect(
+			expect(
 				critical,
 				`${name} has ${critical.length} critical/serious a11y violations`,
 			).toHaveLength(0);

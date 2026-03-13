@@ -26,20 +26,20 @@ test.describe("Public pages - render and content", () => {
 			await expect(page).toHaveTitle(/Phoenix/i);
 
 			// Hero heading
-			await expect(page.getByText("Project Phoenix").first()).toBeVisible();
+			await expect(
+				page.getByRole("heading", { name: "Your workouts, unlocked." }),
+			).toBeVisible();
 
 			// Tagline
 			await expect(
 				page.getByText("Rise From the Ashes. Forge Your Strength.").first(),
 			).toBeVisible();
 
-			// CTA buttons (use .first() since "Get Started" appears in hero AND pricing Free tier)
+			// Primary hero CTAs
 			await expect(
-				page.getByRole("button", { name: /Get Started/i }).first(),
+				page.getByRole("button", { name: "Get Started Free" }),
 			).toBeVisible();
-			await expect(
-				page.getByRole("button", { name: /View Features/i }),
-			).toBeVisible();
+			await expect(page.getByRole("button", { name: "View Plans" })).toBeVisible();
 
 			// No console errors during page load
 			expect(errors).toHaveLength(0);
@@ -75,11 +75,8 @@ test.describe("Public pages - render and content", () => {
 		}) => {
 			await gotoLanding(page);
 
-			// Click the first Get Started button (hero CTA)
-			await page
-				.getByRole("button", { name: /Get Started/i })
-				.first()
-				.click();
+			// Click the hero CTA, not the pricing/free-tier button.
+			await page.getByRole("button", { name: "Get Started Free" }).click();
 
 			// Dialog becomes visible (sr-only title: "Sign in to Phoenix Portal")
 			const dialog = page.getByRole("dialog");

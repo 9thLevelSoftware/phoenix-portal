@@ -97,8 +97,7 @@ export async function initiateGarminConnect(
 ): Promise<void> {
 	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 	if (!supabaseUrl) {
-		console.error("VITE_SUPABASE_URL is not configured");
-		return;
+		throw new Error("Supabase is not configured for OAuth redirects.");
 	}
 
 	const response = await fetch(`${supabaseUrl}/functions/v1/initiate-oauth`, {
@@ -111,8 +110,9 @@ export async function initiateGarminConnect(
 	});
 
 	if (!response.ok) {
-		console.error("Failed to initiate Garmin OAuth:", await response.text());
-		return;
+		throw new Error(
+			`Failed to initiate Garmin OAuth: ${await response.text()}`,
+		);
 	}
 
 	const { url } = await response.json();

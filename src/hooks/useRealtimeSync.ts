@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useAuth } from "@/app/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { queryKeys } from "@/queries/keys";
 
 /**
  * Realtime sync bridge -- listens for Supabase Broadcast events from the mobile app.
@@ -21,12 +20,8 @@ export function useRealtimeSync() {
 		const channel = supabase
 			.channel(`sync:${user.id}`)
 			.on("broadcast", { event: "sync_complete" }, (_payload) => {
-				// Invalidate all data caches when mobile app syncs
-				queryClient.invalidateQueries({ queryKey: queryKeys.workouts.all });
-				queryClient.invalidateQueries({ queryKey: queryKeys.records.all });
-				queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all });
-				queryClient.invalidateQueries({ queryKey: queryKeys.routines.all });
-				queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+				// Sync can affect any derived surface, so invalidate the full cache.
+				queryClient.invalidateQueries();
 			})
 			.subscribe((status) => {
 				if (status === "SUBSCRIBED") {

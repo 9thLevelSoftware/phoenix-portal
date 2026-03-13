@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	AlertCircle,
 	CheckCircle,
@@ -27,6 +28,7 @@ import {
 import { importHevyActivities, parseHevyCSV } from "@/lib/integrations/hevy";
 import type { NormalizedActivity } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
+import { queryKeys } from "@/queries/keys";
 
 interface HevyConnectProps {
 	userId: string;
@@ -44,6 +46,8 @@ export function HevyConnect({
 	isConnected,
 	onDisconnect,
 }: HevyConnectProps) {
+	const queryClient = useQueryClient();
+
 	// API key state
 	const [apiKey, setApiKey] = useState("");
 	const [isSavingKey, setIsSavingKey] = useState(false);
@@ -76,6 +80,14 @@ export function HevyConnect({
 			if (error) throw error;
 
 			toast.success("Hevy API key saved and initial sync started");
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.integrations.byUser(userId),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.integrations.external(userId),
+				}),
+			]);
 			setApiKey("");
 		} catch (err) {
 			toast.error(
@@ -84,7 +96,7 @@ export function HevyConnect({
 		} finally {
 			setIsSavingKey(false);
 		}
-	}, [userId, apiKey]);
+	}, [apiKey, queryClient, userId]);
 
 	const handleTestConnection = useCallback(async () => {
 		setIsTesting(true);
@@ -99,6 +111,9 @@ export function HevyConnect({
 				toast.error("Hevy PRO subscription required for API access");
 			} else if (data?.success) {
 				toast.success(`Connection verified. ${data.imported} workouts synced.`);
+				await queryClient.invalidateQueries({
+					queryKey: queryKeys.integrations.external(userId),
+				});
 			} else {
 				toast.info("Connection test completed");
 			}
@@ -109,7 +124,7 @@ export function HevyConnect({
 		} finally {
 			setIsTesting(false);
 		}
-	}, [userId]);
+	}, [queryClient, userId]);
 
 	// =========================================================================
 	// CSV Import Handlers
@@ -165,6 +180,9 @@ export function HevyConnect({
 			const count = await importHevyActivities(userId, parsedActivities);
 
 			toast.success(`Imported ${count} workouts from Hevy`);
+			await queryClient.invalidateQueries({
+				queryKey: queryKeys.integrations.external(userId),
+			});
 			setParsedActivities(null);
 			setCsvFileName(null);
 			if (fileInputRef.current) {
@@ -177,7 +195,7 @@ export function HevyConnect({
 		} finally {
 			setIsImporting(false);
 		}
-	}, [userId, parsedActivities]);
+	}, [parsedActivities, queryClient, userId]);
 
 	const handleClearPreview = useCallback(() => {
 		setParsedActivities(null);

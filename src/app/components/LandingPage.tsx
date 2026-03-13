@@ -255,6 +255,9 @@ export function LandingPage() {
 			onOpenChange={(open) => {
 				setShowAuthDialog(open);
 				if (!open) {
+					signInForm.reset();
+					signUpForm.reset();
+					setAuthLoading(false);
 					setShowForgotPassword(false);
 					setResetEmail("");
 				}
@@ -996,7 +999,10 @@ export function LandingPage() {
 							</p>
 							<p>
 								By downloading or using Project Phoenix, you agree to our{" "}
-								<Link to="/terms" className="text-primary hover:underline">
+								<Link
+									to="/terms"
+									className="text-primary underline underline-offset-4 decoration-current hover:no-underline"
+								>
 									Terms of Service
 								</Link>
 								, which includes important safety warnings and liability

@@ -40,6 +40,10 @@ interface SaveCycleInput {
 	deload_settings?: DeloadSettings | null;
 }
 
+interface UpdateCycleInput extends SaveCycleInput {
+	cycleId: string;
+}
+
 export function useSaveCycle() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -59,6 +63,7 @@ export function useSaveCycle() {
 				.insert({
 					user_id: user.id,
 					name: input.name,
+					description: input.description ?? "",
 					duration_weeks: input.duration_weeks,
 					current_week: 1,
 					status: "draft" as const,
@@ -97,6 +102,77 @@ export function useSaveCycle() {
 		onSuccess: () => {
 			toast.success("Training cycle saved");
 			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+		},
+
+		onError: (error: Error) => {
+			toast.error(error.message);
+		},
+	});
+}
+
+export function useUpdateCycle() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async (input: UpdateCycleInput) => {
+			if (!user) throw new Error("Must be logged in to update cycles");
+
+			const workoutDays = input.days.filter(
+				(d) => d.day_type === "workout",
+			).length;
+			const restDays = input.days.filter((d) => d.day_type === "rest").length;
+
+			const { error: cycleError } = await supabase
+				.from("training_cycles")
+				.update({
+					name: input.name,
+					description: input.description ?? "",
+					duration_weeks: input.duration_weeks,
+					workout_days: workoutDays,
+					rest_days: restDays,
+					started_at: input.started_at || null,
+					progression_settings: input.progression_settings ?? null,
+					deload_settings: input.deload_settings ?? null,
+				})
+				.eq("id", input.cycleId)
+				.eq("user_id", user.id);
+
+			if (cycleError) throw cycleError;
+
+			const { error: deleteError } = await supabase
+				.from("cycle_days")
+				.delete()
+				.eq("cycle_id", input.cycleId);
+
+			if (deleteError) throw deleteError;
+
+			if (input.days.length > 0) {
+				const { error: daysError } = await supabase.from("cycle_days").insert(
+					input.days.map((day) => ({
+						cycle_id: input.cycleId,
+						day_number: day.day_number,
+						day_type: day.day_type,
+						routine_id: day.routine_id || null,
+						weight_adjustment: day.weight_adjustment,
+						rep_modifier: day.rep_modifier,
+						rest_override: day.rest_override ?? null,
+						notes: day.notes ?? null,
+						rest_type: day.rest_type ?? null,
+					})),
+				);
+				if (daysError) throw daysError;
+			}
+
+			return { id: input.cycleId };
+		},
+
+		onSuccess: (_data, variables) => {
+			toast.success("Training cycle updated");
+			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.cycles.detail(variables.cycleId),
+			});
 		},
 
 		onError: (error: Error) => {

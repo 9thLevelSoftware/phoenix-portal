@@ -294,12 +294,18 @@ export function ComparisonView() {
 		data: summaryA,
 		isPending: pendingA,
 		error: errorA,
-	} = useQuery(comparisonDetailOptions(sessionAId));
+	} = useQuery({
+		...comparisonDetailOptions(sessionAId),
+		enabled: isPremium && !!sessionAId,
+	});
 	const {
 		data: summaryB,
 		isPending: pendingB,
 		error: errorB,
-	} = useQuery(comparisonDetailOptions(sessionBId));
+	} = useQuery({
+		...comparisonDetailOptions(sessionBId),
+		enabled: isPremium && !!sessionBId,
+	});
 
 	// Tier gate: FREE users see upgrade prompt
 	if (!subLoading && !isPremium) {
