@@ -105,6 +105,14 @@ Deno.serve(async (req) => {
  * Call the provider-specific sync Edge Function.
  */
 async function callSyncFunction(provider: string, userId: string) {
+  if (provider === 'garmin') {
+    const error = new Error(
+      'Garmin sync is webhook-driven and cannot be queued manually.'
+    ) as Error & { status: number };
+    error.status = 400;
+    throw error;
+  }
+
   const functionName = `${provider}-sync`;
   const response = await fetch(
     `${Deno.env.get('SUPABASE_URL')}/functions/v1/${functionName}`,

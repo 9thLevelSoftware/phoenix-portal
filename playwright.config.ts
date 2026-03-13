@@ -1,4 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import {
+	E2E_SUPABASE_ANON_KEY,
+	E2E_SUPABASE_URL,
+} from "./e2e/support/supabase";
+
+const E2E_PORT = 45173;
+const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -8,7 +15,7 @@ export default defineConfig({
 	workers: process.env.CI ? 1 : undefined,
 	reporter: "html",
 	use: {
-		baseURL: "http://localhost:5173",
+		baseURL: E2E_BASE_URL,
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 	},
@@ -19,9 +26,15 @@ export default defineConfig({
 		},
 	],
 	webServer: {
-		command: "npm run dev",
-		url: "http://localhost:5173",
-		reuseExistingServer: !process.env.CI,
+		command: `npm run dev -- --host 127.0.0.1 --port ${E2E_PORT}`,
+		url: E2E_BASE_URL,
+		// Always boot an isolated server so E2E uses the injected test Supabase env.
+		reuseExistingServer: false,
 		timeout: 30000,
+		env: {
+			...process.env,
+			VITE_SUPABASE_URL: E2E_SUPABASE_URL,
+			VITE_SUPABASE_ANON_KEY: E2E_SUPABASE_ANON_KEY,
+		},
 	},
 });

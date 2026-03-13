@@ -14,7 +14,7 @@ import {
 	TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
@@ -25,7 +25,6 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useSaveSessionNotes } from "@/mutations/workouts";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
@@ -43,14 +42,7 @@ export function SessionDetail() {
 	const [expandedExercises, setExpandedExercises] = useState<string[] | null>(
 		null,
 	);
-	const [notes, setNotes] = useState("");
 	const [pickerOpen, setPickerOpen] = useState(false);
-	const saveNotes = useSaveSessionNotes();
-
-	// Load existing notes from session
-	useEffect(() => {
-		if (session?.notes) setNotes(session.notes);
-	}, [session?.notes]);
 
 	if (!sessionId) {
 		return <Navigate to="/history" replace />;
@@ -512,21 +504,16 @@ export function SessionDetail() {
 						<h3 className="text-lg font-semibold text-white mb-3">
 							Workout Notes
 						</h3>
-						<textarea
-							value={notes}
-							onChange={(e) => setNotes(e.target.value)}
-							placeholder="Add notes about this workout..."
-							className="w-full bg-background border border-secondary rounded-lg p-3 text-white placeholder:text-muted focus:border-primary focus:outline-none resize-none"
-							rows={4}
-						/>
-						<Button
-							size="sm"
-							className="mt-3 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-							disabled={saveNotes.isPending}
-							onClick={() => saveNotes.mutate({ sessionId: sessionId!, notes })}
-						>
-							{saveNotes.isPending ? "Saving..." : "Save Notes"}
-						</Button>
+						{session.notes ? (
+							<div className="rounded-lg border border-secondary bg-background p-3 text-white whitespace-pre-wrap">
+								{session.notes}
+							</div>
+						) : (
+							<div className="rounded-lg border border-dashed border-secondary bg-background p-3 text-sm text-muted-foreground">
+								Completed workout sessions are treated as immutable once they sync
+								from the mobile app, so notes are read-only in the portal.
+							</div>
+						)}
 					</Card>
 				</motion.div>
 

@@ -45,6 +45,18 @@ interface Exercise {
 	weight: number;
 	rest: number;
 	mode: string;
+	supersetId: string | null;
+	supersetColor: string | null;
+	supersetOrder: number | null;
+	perSetWeights: unknown;
+	perSetRest: unknown;
+	isAmrap: boolean;
+	prPercentage: number | null;
+	repCountTiming: string | null;
+	stopAtPosition: string | null;
+	stallDetection: boolean;
+	eccentricLoad: string | null;
+	echoLevel: string | null;
 }
 
 export function RoutineBuilder() {
@@ -85,6 +97,18 @@ export function RoutineBuilder() {
 					weight: ex.weight,
 					rest: ex.rest_seconds,
 					mode: ex.mode,
+					supersetId: ex.superset_id ?? null,
+					supersetColor: ex.superset_color ?? null,
+					supersetOrder: ex.superset_order ?? null,
+					perSetWeights: ex.per_set_weights ?? null,
+					perSetRest: ex.per_set_rest ?? null,
+					isAmrap: ex.is_amrap ?? false,
+					prPercentage: ex.pr_percentage ?? null,
+					repCountTiming: ex.rep_count_timing ?? null,
+					stopAtPosition: ex.stop_at_position ?? null,
+					stallDetection: ex.stall_detection ?? false,
+					eccentricLoad: ex.eccentric_load ?? null,
+					echoLevel: ex.echo_level ?? null,
 				})),
 			);
 		}
@@ -115,6 +139,18 @@ export function RoutineBuilder() {
 			rest_seconds: ex.rest,
 			mode: ex.mode,
 			order_index: i,
+			superset_id: ex.supersetId,
+			superset_color: ex.supersetColor,
+			superset_order: ex.supersetOrder,
+			per_set_weights: ex.perSetWeights,
+			per_set_rest: ex.perSetRest,
+			is_amrap: ex.isAmrap,
+			pr_percentage: ex.prPercentage,
+			rep_count_timing: ex.repCountTiming,
+			stop_at_position: ex.stopAtPosition,
+			stall_detection: ex.stallDetection,
+			eccentric_load: ex.eccentricLoad,
+			echo_level: ex.echoLevel,
 		}));
 
 	const handleSave = () => {
@@ -311,6 +347,18 @@ export function RoutineBuilder() {
 								weight: 0,
 								rest: 90,
 								mode: "Old School",
+								supersetId: null,
+								supersetColor: null,
+								supersetOrder: null,
+								perSetWeights: null,
+								perSetRest: null,
+								isAmrap: false,
+								prPercentage: null,
+								repCountTiming: null,
+								stopAtPosition: null,
+								stallDetection: false,
+								eccentricLoad: null,
+								echoLevel: null,
 							};
 							setExercises([...exercises, newExercise]);
 							setShowExercisePicker(false);

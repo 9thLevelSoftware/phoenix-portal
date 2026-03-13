@@ -18,6 +18,8 @@ vi.mock("@/providers/AuthProvider", () => mockAuth);
 describe("Dashboard", () => {
 	it("renders without crashing", () => {
 		renderWithProviders(<Dashboard />);
-		expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+		expect(
+			screen.getAllByRole("heading", { name: /welcome back/i }).length,
+		).toBeGreaterThan(0);
 	});
 });

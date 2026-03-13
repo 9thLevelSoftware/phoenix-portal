@@ -9,6 +9,7 @@ import { ProviderCard } from "@/app/components/integrations/ProviderCard";
 import { SyncStatus } from "@/app/components/integrations/SyncStatus";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
 import { initiateFitbitConnect } from "@/lib/integrations/fitbit";
 import { initiateGarminConnect } from "@/lib/integrations/garmin";
 import { initiateStravaConnect } from "@/lib/integrations/strava";
@@ -27,6 +28,7 @@ import {
 
 export function Integrations() {
 	const { user, session } = useAuth();
+	const { isElite } = useSubscription();
 	const userId = user?.id ?? "";
 	const accessToken = session?.access_token ?? "";
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -49,11 +51,11 @@ export function Integrations() {
 
 	const { data: integrations, isLoading } = useQuery({
 		...integrationsOptions(userId),
-		enabled: !!userId,
+		enabled: isElite && !!userId,
 	});
 	const { data: activities } = useQuery({
 		...externalActivitiesOptions(userId),
-		enabled: !!userId,
+		enabled: isElite && !!userId,
 	});
 
 	const disconnectMutation = useDisconnectIntegration();
@@ -62,6 +64,14 @@ export function Integrations() {
 	// Helper to find a user's integration by provider
 	const getIntegration = (provider: IntegrationProvider) =>
 		integrations?.find((i) => i.provider === provider) ?? null;
+
+	const handleConnectError = (providerName: string, err: unknown) => {
+		toast.error(
+			err instanceof Error
+				? err.message
+				: `Failed to connect ${providerName}. Please try again.`,
+		);
+	};
 
 	return (
 		<SubscriptionGate requiredTier="ELITE">
@@ -86,7 +96,11 @@ export function Integrations() {
 							provider="strava"
 							integration={getIntegration("strava")}
 							onConnect={async () => {
-								await initiateStravaConnect(accessToken);
+								try {
+									await initiateStravaConnect(accessToken);
+								} catch (err) {
+									handleConnectError("Strava", err);
+								}
 							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "strava" })
@@ -98,7 +112,11 @@ export function Integrations() {
 							provider="fitbit"
 							integration={getIntegration("fitbit")}
 							onConnect={async () => {
-								await initiateFitbitConnect(accessToken);
+								try {
+									await initiateFitbitConnect(accessToken);
+								} catch (err) {
+									handleConnectError("Fitbit", err);
+								}
 							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "fitbit" })
@@ -110,13 +128,19 @@ export function Integrations() {
 							provider="garmin"
 							integration={getIntegration("garmin")}
 							onConnect={async () => {
-								await initiateGarminConnect(accessToken);
+								try {
+									await initiateGarminConnect(accessToken);
+								} catch (err) {
+									handleConnectError("Garmin", err);
+								}
 							}}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "garmin" })
 							}
 							onSync={() => syncMutation.mutate({ userId, provider: "garmin" })}
 							isLoading={disconnectMutation.isPending || syncMutation.isPending}
+							supportsManualSync={false}
+							syncHint="Garmin sync is webhook-driven. New activities appear automatically after Garmin pushes them."
 						/>
 						{/* HevyConnect from 07-03 - handles both API and CSV import */}
 						<HevyConnect

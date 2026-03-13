@@ -1,5 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import {
+	earnedBadgeListSchema,
+	gamificationStatsSchema,
+	rpgAttributesSchema,
+} from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 /**
@@ -105,6 +110,57 @@ export function topExercisesOptions(userId: string) {
 				.sort((a, b) => b[1] - a[1])
 				.slice(0, 5)
 				.map(([name, count]) => ({ name, count }));
+		},
+	});
+}
+
+export function earnedBadgesOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.profile.badges(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("earned_badges")
+				.select(
+					"user_id, badge_id, badge_name, badge_description, badge_tier, earned_at",
+				)
+				.eq("user_id", userId)
+				.order("earned_at", { ascending: false });
+			if (error) throw error;
+			return earnedBadgeListSchema.parse(data ?? []);
+		},
+	});
+}
+
+export function rpgAttributesOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.profile.rpg(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("rpg_attributes")
+				.select(
+					"user_id, strength, power, stamina, consistency, mastery, character_class, level, experience_points, updated_at",
+				)
+				.eq("user_id", userId)
+				.maybeSingle();
+			if (error) throw error;
+			return data ? rpgAttributesSchema.parse(data) : null;
+		},
+	});
+}
+
+export function gamificationStatsOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.profile.gamification(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from("gamification_stats")
+				.select(
+					"user_id, total_workouts, total_reps, total_volume_kg, longest_streak, current_streak, total_time_seconds, updated_at",
+				)
+				.eq("user_id", userId)
+				.maybeSingle();
+			if (error) throw error;
+			return data ? gamificationStatsSchema.parse(data) : null;
 		},
 	});
 }

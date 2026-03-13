@@ -75,6 +75,8 @@ export const queryKeys = {
 			[...queryKeys.integrations.all, userId] as const,
 		external: (userId: string) =>
 			[...queryKeys.integrations.all, "external", userId] as const,
+		syncQueue: (userId: string) =>
+			[...queryKeys.integrations.all, "sync-queue", userId] as const,
 	},
 	comments: {
 		all: ["comments"] as const,
@@ -136,5 +138,10 @@ export const queryKeys = {
 			[...queryKeys.profile.all, "stats", userId] as const,
 		topExercises: (userId: string) =>
 			[...queryKeys.profile.all, "top-exercises", userId] as const,
+		badges: (userId: string) =>
+			[...queryKeys.profile.all, "badges", userId] as const,
+		rpg: (userId: string) => [...queryKeys.profile.all, "rpg", userId] as const,
+		gamification: (userId: string) =>
+			[...queryKeys.profile.all, "gamification", userId] as const,
 	},
 } as const;

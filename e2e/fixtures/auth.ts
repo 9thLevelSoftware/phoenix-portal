@@ -2,13 +2,15 @@ import { test as base, type Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import {
+	E2E_SUPABASE_ANON_KEY,
+	E2E_SUPABASE_STORAGE_KEY,
+	E2E_SUPABASE_URL,
+} from "../support/supabase";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SUPABASE_URL = "https://ilzlswmatadlnsuxatcv.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_UDrjasV6UJLm_IdIzGljoQ_YaRes4dQ";
-const STORAGE_KEY = "sb-ilzlswmatadlnsuxatcv-auth-token";
 const SESSION_CACHE = path.join(__dirname, ".session-cache.json");
 
 /** Load e2e/.env file as fallback for env vars (avoids shell quoting issues) */
@@ -56,12 +58,12 @@ async function getSession(): Promise<Record<string, unknown> | null> {
 		}
 
 		const response = await fetch(
-			`${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+			`${E2E_SUPABASE_URL}/auth/v1/token?grant_type=password`,
 			{
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					apikey: SUPABASE_ANON_KEY,
+					apikey: E2E_SUPABASE_ANON_KEY,
 				},
 				body: JSON.stringify({ email, password }),
 			},
@@ -105,18 +107,12 @@ export const test = base.extend<{ authedPage: Page }>({
 		const session = await getSession();
 
 		if (session) {
-			// Load the app to access localStorage
-			await page.goto("/");
-
-			// Inject session into localStorage
-			await page.evaluate(
+			await page.addInitScript(
 				({ key, data }) => {
-					localStorage.setItem(key, JSON.stringify(data));
+					window.localStorage.setItem(key, JSON.stringify(data));
 				},
-				{ key: STORAGE_KEY, data: session },
+				{ key: E2E_SUPABASE_STORAGE_KEY, data: session },
 			);
-
-			// Reload to pick up the injected session
 			await page.goto("/dashboard");
 			await page.waitForLoadState("networkidle");
 		}

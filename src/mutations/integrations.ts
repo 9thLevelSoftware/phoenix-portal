@@ -3,36 +3,40 @@ import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
+const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = ["strava", "fitbit", "hevy"];
+
 /**
- * Disconnect an integration - updates status in database and clears tokens.
- * Works for all provider types (OAuth and API key).
+ * Disconnect an integration server-side so oauth_tokens are cleared alongside
+ * the browser-readable integration state.
  */
 export function useDisconnectIntegration() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
 		mutationFn: async ({
-			userId,
 			provider,
 		}: {
 			userId: string;
 			provider: IntegrationProvider;
 		}) => {
-			const { error } = await supabase
-				.from("user_integrations")
-				.update({
-					status: "disconnected",
-					access_token: null,
-					refresh_token: null,
-				})
-				.eq("user_id", userId)
-				.eq("provider", provider);
+			const { error } = await supabase.functions.invoke(
+				"disconnect-integration",
+				{
+					body: { provider },
+				},
+			);
 
 			if (error) throw error;
 		},
 		onSuccess: (_, { userId }) => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.integrations.byUser(userId),
+			});
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.integrations.external(userId),
+			});
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.integrations.syncQueue(userId),
 			});
 		},
 	});
@@ -53,13 +57,23 @@ export function useManualSync() {
 			userId: string;
 			provider: IntegrationProvider;
 		}) => {
+			if (!MANUAL_SYNC_PROVIDERS.includes(provider)) {
+				throw new Error(
+					`${provider} sync is not available from the portal. This integration updates automatically.`,
+				);
+			}
+
 			// Insert into sync_queue with manual sync_type
-			const { error: queueError } = await supabase.from("sync_queue").insert({
-				user_id: userId,
-				provider,
-				sync_type: "manual",
-				status: "pending",
-			});
+			const { data: queuedSync, error: queueError } = await supabase
+				.from("sync_queue")
+				.insert({
+					user_id: userId,
+					provider,
+					sync_type: "manual",
+					status: "pending",
+				})
+				.select("id")
+				.single();
 
 			if (queueError) throw queueError;
 
@@ -71,7 +85,22 @@ export function useManualSync() {
 				},
 			);
 
-			if (invokeError) throw invokeError;
+			if (invokeError) {
+				await supabase
+					.from("sync_queue")
+					.update({
+						status: "failed",
+						error_message: invokeError.message,
+						completed_at: new Date().toISOString(),
+					})
+					.eq("id", queuedSync.id);
+				throw invokeError;
+			}
+		},
+		onSettled: async (_, __, { userId }) => {
+			await queryClient.invalidateQueries({
+				queryKey: queryKeys.integrations.syncQueue(userId),
+			});
 		},
 		onSuccess: (_, { userId }) => {
 			queryClient.invalidateQueries({

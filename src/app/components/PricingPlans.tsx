@@ -154,7 +154,11 @@ export function PricingPlans() {
 					>
 						Monthly
 					</span>
-					<Switch checked={isAnnual} onCheckedChange={setIsAnnual} />
+					<Switch
+						checked={isAnnual}
+						onCheckedChange={setIsAnnual}
+						aria-label="Annual billing"
+					/>
 					<span
 						className={`text-sm font-medium ${isAnnual ? "text-white" : "text-muted-foreground"}`}
 					>

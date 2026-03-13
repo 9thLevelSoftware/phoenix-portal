@@ -23,7 +23,7 @@ test.describe("Auth-gated route redirects", () => {
 			// Confirm landing page content is visible
 			await page.waitForTimeout(2000);
 			await expect(
-				page.getByText("Project Phoenix").first(),
+				page.getByRole("heading", { name: "Your workouts, unlocked." }),
 			).toBeVisible();
 		});
 	}
@@ -35,6 +35,8 @@ test.describe("Auth-gated route redirects", () => {
 		await page.waitForURL("/", { timeout: 10000 });
 
 		await page.waitForTimeout(2000);
-		await expect(page.getByText("Project Phoenix").first()).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Your workouts, unlocked." }),
+		).toBeVisible();
 	});
 });

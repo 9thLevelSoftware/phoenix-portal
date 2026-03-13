@@ -324,6 +324,17 @@ Deno.serve(async (req) => {
       { onConflict: 'provider' },
     );
 
+    await supabase
+      .from('sync_queue')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq('user_id', userId)
+      .eq('provider', 'fitbit')
+      .in('status', ['pending', 'processing']);
+
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
       { headers: { ...cors, 'Content-Type': 'application/json' } },

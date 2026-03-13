@@ -38,6 +38,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { PHOENIX } from "@/lib/colors";
 import { cycleListOptions } from "@/queries/cycles";
+import { earnedBadgesOptions } from "@/queries/profile";
 import {
 	dashboardStatsOptions,
 	recentPRsOptions,
@@ -161,12 +162,17 @@ export function Dashboard() {
 	const { data: recentPRs, isPending: prsLoading } = useQuery(
 		recentPRsOptions(user?.id),
 	);
+	const { data: earnedBadges, isPending: badgesLoading } = useQuery({
+		...earnedBadgesOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 	const { data: cycles } = useQuery(cycleListOptions(user?.id ?? ""));
 
 	const streak = useStreak(workouts);
 	const activeCycle = cycles?.find((c) => c.status === "active");
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
+	const recentBadges = earnedBadges?.slice(0, 3) ?? [];
 	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
@@ -984,7 +990,9 @@ export function Dashboard() {
 													<Award className="w-4 h-4" />
 													<span>Badges Earned</span>
 												</div>
-												<span className="text-white text-lg">--</span>
+												<span className="text-white text-lg">
+													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
+												</span>
 											</div>
 											<div className="flex items-center justify-between">
 												<div className="flex items-center gap-2 text-muted-foreground">
@@ -1114,15 +1122,50 @@ export function Dashboard() {
 							>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
-									<div className="flex flex-col items-center justify-center py-6 text-center">
-										<Award className="w-8 h-8 text-secondary mb-2" />
-										<p className="text-sm text-muted-foreground">
-											No badges earned yet
-										</p>
-										<p className="text-xs text-muted mt-1">
-											Complete challenges and hit milestones to earn badges
-										</p>
-									</div>
+									{badgesLoading ? (
+										<div className="space-y-3">
+											{Array.from({ length: 3 }).map((_, i) => (
+												<div
+													key={i}
+													className="p-3 rounded-lg border border-secondary"
+												>
+													<Skeleton className="h-4 w-24 mb-2" />
+													<Skeleton className="h-3 w-32" />
+												</div>
+											))}
+										</div>
+									) : recentBadges.length === 0 ? (
+										<div className="flex flex-col items-center justify-center py-6 text-center">
+											<Award className="w-8 h-8 text-secondary mb-2" />
+											<p className="text-sm text-muted-foreground">
+												No badges earned yet
+											</p>
+											<p className="text-xs text-muted mt-1">
+												Complete workouts in the mobile app to start earning badges
+											</p>
+										</div>
+									) : (
+										<div className="space-y-3">
+											{recentBadges.map((badge) => (
+												<div
+													key={`${badge.badge_id}-${badge.earned_at.toISOString()}`}
+													className="p-3 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg"
+												>
+													<div className="flex items-center justify-between gap-3">
+														<div>
+															<div className="text-white">{badge.badge_name}</div>
+															<div className="text-xs text-muted-foreground">
+																{badge.badge_description ?? badge.badge_id}
+															</div>
+														</div>
+														<Badge className="bg-accent text-background border-0 uppercase">
+															{badge.badge_tier}
+														</Badge>
+													</div>
+												</div>
+											))}
+										</div>
+									)}
 								</Card>
 							</motion.div>
 						</div>

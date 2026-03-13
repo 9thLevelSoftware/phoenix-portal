@@ -7,6 +7,7 @@ import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { useSubscription } from "@/hooks/useSubscription";
 import { usePlayback } from "@/hooks/usePlayback";
 import { detectFatigue } from "@/lib/fatigue-detection";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
@@ -30,6 +31,7 @@ export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
+	const { isElite } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -46,7 +48,10 @@ export function SessionReplay() {
 	}, [reset]);
 
 	// Fetch session structure
-	const sessionQuery = useQuery(replaySessionOptions(sessionId ?? ""));
+	const sessionQuery = useQuery({
+		...replaySessionOptions(sessionId ?? ""),
+		enabled: isElite && !!sessionId,
+	});
 
 	// Derive all sets from session exercises
 	const allSets = useMemo(() => {
@@ -66,7 +71,7 @@ export function SessionReplay() {
 	// Fetch telemetry for current set
 	const telemetryQuery = useQuery({
 		...replayTelemetryOptions(currentSet?.setId ?? ""),
-		enabled: !!currentSet?.setId,
+		enabled: isElite && !!currentSet?.setId,
 	});
 
 	// Process telemetry data

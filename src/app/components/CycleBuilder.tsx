@@ -37,7 +37,7 @@ import { Switch } from "@/app/components/ui/switch";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useAuth } from "@/app/hooks/useAuth";
-import { useSaveCycle } from "@/mutations/cycles";
+import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
 
@@ -59,6 +59,7 @@ export function CycleBuilder() {
 	const { cycleId } = useParams<{ cycleId: string }>();
 	const navigate = useNavigate();
 	const saveMutation = useSaveCycle();
+	const updateMutation = useUpdateCycle();
 	const isEditing = !!cycleId;
 
 	// Fetch existing cycle for editing
@@ -123,6 +124,11 @@ export function CycleBuilder() {
 			setCycleName(existingCycle.name);
 			setDescription(existingCycle.description ?? "");
 			setDuration(existingCycle.duration_weeks);
+			setStartDate(
+				existingCycle.started_at
+					? existingCycle.started_at.toISOString().split("T")[0]
+					: "",
+			);
 			if (existingCycle.cycle_days.length > 0) {
 				setDays(
 					existingCycle.cycle_days.map((d) => ({
@@ -156,6 +162,30 @@ export function CycleBuilder() {
 		}
 	}, [existingCycle]);
 
+	useEffect(() => {
+		if (!routines || routines.length === 0) return;
+
+		setDays((currentDays) =>
+			currentDays.map((day) => {
+				if (!day.routineId || day.routineName) {
+					return day;
+				}
+
+				const routine = routines.find((item) => item.id === day.routineId);
+				if (!routine) {
+					return day;
+				}
+
+				return {
+					...day,
+					routineName: routine.name,
+					exerciseCount: routine.exercises,
+					duration: routine.duration,
+				};
+			}),
+		);
+	}, [routines]);
+
 	const handleCancel = () => {
 		if (hasUnsavedChanges) {
 			setShowUnsavedDialog(true);
@@ -182,31 +212,43 @@ export function CycleBuilder() {
 				}
 			: null;
 
-		saveMutation.mutate(
-			{
-				name: cycleName,
-				description,
-				duration_weeks: duration,
-				started_at: startDate || null,
-				days: days.map((d) => ({
-					day_number: d.dayNumber,
-					day_type: d.type,
-					routine_id: d.routineId ?? null,
-					weight_adjustment: d.weightAdjustment ?? 0,
-					rep_modifier: d.repModifier ?? 0,
-					rest_override: d.restOverride ?? null,
-					notes: d.notes ?? null,
-					rest_type: d.restType ?? null,
-				})),
-				progression_settings: progressionSettings,
-				deload_settings: deloadSettings,
-			},
-			{
-				onSuccess: () => {
-					setHasUnsavedChanges(false);
+		const payload = {
+			name: cycleName,
+			description,
+			duration_weeks: duration,
+			started_at: startDate || null,
+			days: days.map((d) => ({
+				day_number: d.dayNumber,
+				day_type: d.type,
+				routine_id: d.routineId ?? null,
+				weight_adjustment: d.weightAdjustment ?? 0,
+				rep_modifier: d.repModifier ?? 0,
+				rest_override: d.restOverride ?? null,
+				notes: d.notes ?? null,
+				rest_type: d.restType ?? null,
+			})),
+			progression_settings: progressionSettings,
+			deload_settings: deloadSettings,
+		};
+
+		if (isEditing && cycleId) {
+			updateMutation.mutate(
+				{ ...payload, cycleId },
+				{
+					onSuccess: () => {
+						setHasUnsavedChanges(false);
+					},
 				},
+			);
+			return;
+		}
+
+		saveMutation.mutate(payload, {
+			onSuccess: (savedCycle) => {
+				setHasUnsavedChanges(false);
+				navigate(`/cycles/${savedCycle.id}`, { replace: true });
 			},
-		);
+		});
 	};
 
 	const handleDayClick = (dayNumber: number) => {
@@ -336,15 +378,17 @@ export function CycleBuilder() {
 						</Button>
 						<Button
 							onClick={handleSave}
-							disabled={saveMutation.isPending}
+							disabled={saveMutation.isPending || updateMutation.isPending}
 							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
 						>
-							{saveMutation.isPending ? (
+							{saveMutation.isPending || updateMutation.isPending ? (
 								<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 							) : (
 								<Save className="w-4 h-4 mr-2" />
 							)}
-							{saveMutation.isPending ? "Saving..." : "Save Cycle"}
+							{saveMutation.isPending || updateMutation.isPending
+								? "Saving..."
+								: "Save Cycle"}
 						</Button>
 					</div>
 				</div>

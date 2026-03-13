@@ -378,11 +378,32 @@ Deno.serve(async (req) => {
       }
 
       if (progressRows.length > 0) {
-        const { error: progErr } = await supabase
+        const sessionIds = [...new Set(payload.sessions.map((session) => session.id))];
+        const { data: existingProgress, error: existingProgressErr } = await supabase
           .from('exercise_progress')
-          .insert(progressRows);
-        if (progErr) throw new Error(`exercise_progress insert failed: ${progErr.message}`);
-        exerciseProgressInserted = progressRows.length;
+          .select('session_id, exercise_name')
+          .in('session_id', sessionIds);
+        if (existingProgressErr) {
+          throw new Error(`exercise_progress lookup failed: ${existingProgressErr.message}`);
+        }
+
+        const existingProgressKeys = new Set(
+          (existingProgress ?? []).map((row) => `${row.session_id}:${row.exercise_name}`)
+        );
+        const dedupedProgressRows = progressRows.filter((row) => {
+          const key = `${row.session_id}:${row.exercise_name}`;
+          if (existingProgressKeys.has(key)) return false;
+          existingProgressKeys.add(key);
+          return true;
+        });
+
+        if (dedupedProgressRows.length > 0) {
+          const { error: progErr } = await supabase
+            .from('exercise_progress')
+            .insert(dedupedProgressRows);
+          if (progErr) throw new Error(`exercise_progress insert failed: ${progErr.message}`);
+          exerciseProgressInserted = dedupedProgressRows.length;
+        }
       }
 
       // =====================================================================
@@ -409,11 +430,33 @@ Deno.serve(async (req) => {
       }
 
       if (prRows.length > 0) {
-        const { error: prErr } = await supabase
+        const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
+        const { data: existingPrs, error: existingPrErr } = await supabase
           .from('personal_records')
-          .insert(prRows);
-        if (prErr) throw new Error(`personal_records insert failed: ${prErr.message}`);
-        personalRecordsInserted = prRows.length;
+          .select('exercise_name, achieved_at, value, record_type')
+          .eq('user_id', userId)
+          .in('achieved_at', achievedAtValues);
+        if (existingPrErr) {
+          throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
+        }
+
+        const existingPrKeys = new Set(
+          (existingPrs ?? []).map((row) => `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}`)
+        );
+        const dedupedPrRows = prRows.filter((row) => {
+          const key = `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}`;
+          if (existingPrKeys.has(key)) return false;
+          existingPrKeys.add(key);
+          return true;
+        });
+
+        if (dedupedPrRows.length > 0) {
+          const { error: prErr } = await supabase
+            .from('personal_records')
+            .insert(dedupedPrRows);
+          if (prErr) throw new Error(`personal_records insert failed: ${prErr.message}`);
+          personalRecordsInserted = dedupedPrRows.length;
+        }
       }
     }
 
@@ -553,6 +596,24 @@ Deno.serve(async (req) => {
     // 11. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
+    try {
+      const broadcastResult = await supabase
+        .channel(`sync:${userId}`)
+        .httpSend('sync_complete', {
+          syncTime,
+          deviceId: payload.deviceId,
+          platform: payload.platform,
+          sessionsInserted,
+          routinesUpserted,
+          badgesUpserted,
+        });
+
+      if (!broadcastResult.success) {
+        console.warn('mobile-sync-push broadcast warning:', broadcastResult);
+      }
+    } catch (broadcastErr) {
+      console.warn('mobile-sync-push broadcast failed:', broadcastErr);
+    }
 
     return new Response(
       JSON.stringify({

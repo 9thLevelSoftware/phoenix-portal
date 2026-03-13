@@ -29,6 +29,8 @@ interface ProviderCardProps {
 	onDisconnect: () => void;
 	onSync: () => void;
 	isLoading?: boolean;
+	supportsManualSync?: boolean;
+	syncHint?: string;
 }
 
 function formatRelative(dateStr: string | null): string {
@@ -54,6 +56,8 @@ export function ProviderCard({
 	onDisconnect,
 	onSync,
 	isLoading,
+	supportsManualSync = true,
+	syncHint,
 }: ProviderCardProps) {
 	const meta = PROVIDER_METADATA[provider];
 	const Icon = ICON_MAP[meta.icon] ?? Activity;
@@ -85,13 +89,18 @@ export function ProviderCard({
 								<AlertDescription>{integration.error_message}</AlertDescription>
 							</Alert>
 						)}
+						{!supportsManualSync && syncHint && (
+							<p className="text-sm text-muted-foreground">{syncHint}</p>
+						)}
 						<div className="flex gap-2">
-							<Button onClick={onSync} size="sm" disabled={isLoading}>
-								<RefreshCw
-									className={`size-4 ${isLoading ? "animate-spin" : ""}`}
-								/>
-								Sync Now
-							</Button>
+							{supportsManualSync && (
+								<Button onClick={onSync} size="sm" disabled={isLoading}>
+									<RefreshCw
+										className={`size-4 ${isLoading ? "animate-spin" : ""}`}
+									/>
+									Sync Now
+								</Button>
+							)}
 							<Button onClick={onDisconnect} variant="outline" size="sm">
 								Disconnect
 							</Button>

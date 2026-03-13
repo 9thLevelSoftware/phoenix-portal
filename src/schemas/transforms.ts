@@ -30,7 +30,10 @@ const workoutModeSchema = z
 export const workoutSessionSchema = z.object({
 	id: z.string().uuid(),
 	user_id: z.string().uuid(),
-	name: z.string(),
+	name: z
+		.string()
+		.nullable()
+		.transform((name) => name?.trim() || "Untitled Workout"),
 	started_at: z.string().transform((s) => new Date(s)),
 	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
 	total_volume: weightTransform,
@@ -64,7 +67,7 @@ export const setSchema = z.object({
 	id: z.string().uuid(),
 	exercise_id: z.string().uuid(),
 	set_number: z.number(),
-	target_reps: z.number(),
+	target_reps: z.number().nullable(),
 	actual_reps: z.number(),
 	weight_kg: weightTransform,
 	rpe: z.number().nullable(),
@@ -173,6 +176,18 @@ export const routineExerciseSchema = z.object({
 	rest_seconds: z.number(),
 	mode: z.string(),
 	order_index: z.number(),
+	superset_id: z.string().nullable().optional(),
+	superset_color: z.string().nullable().optional(),
+	superset_order: z.number().nullable().optional(),
+	per_set_weights: z.any().nullable().optional(),
+	per_set_rest: z.any().nullable().optional(),
+	is_amrap: z.boolean().optional().default(false),
+	pr_percentage: z.number().nullable().optional(),
+	rep_count_timing: z.string().nullable().optional(),
+	stop_at_position: z.string().nullable().optional(),
+	stall_detection: z.boolean().optional().default(false),
+	eccentric_load: z.string().nullable().optional(),
+	echo_level: z.string().nullable().optional(),
 	created_at: z.string().transform((s) => new Date(s)),
 });
 
@@ -187,6 +202,58 @@ export const routineDetailSchema = routineSchema.extend({
 });
 
 export type RoutineDetail = z.infer<typeof routineDetailSchema>;
+
+export const earnedBadgeSchema = z.object({
+	id: z.string().uuid().optional(),
+	user_id: z.string().uuid(),
+	badge_id: z.string(),
+	badge_name: z.string(),
+	badge_description: z.string().nullable().optional(),
+	badge_tier: z.string(),
+	earned_at: z.string().transform((s) => new Date(s)),
+});
+
+export const earnedBadgeListSchema = z.array(earnedBadgeSchema);
+
+export type EarnedBadge = z.infer<typeof earnedBadgeSchema>;
+
+export const rpgAttributesSchema = z.object({
+	id: z.string().uuid().optional(),
+	user_id: z.string().uuid(),
+	strength: z.number(),
+	power: z.number(),
+	stamina: z.number(),
+	consistency: z.number(),
+	mastery: z.number(),
+	character_class: z.string().nullable().optional(),
+	level: z.number(),
+	experience_points: z.number(),
+	updated_at: z
+		.string()
+		.nullable()
+		.optional()
+		.transform((s) => (s ? new Date(s) : null)),
+});
+
+export type RpgAttributes = z.infer<typeof rpgAttributesSchema>;
+
+export const gamificationStatsSchema = z.object({
+	id: z.string().uuid().optional(),
+	user_id: z.string().uuid(),
+	total_workouts: z.number(),
+	total_reps: z.number(),
+	total_volume_kg: z.number(),
+	longest_streak: z.number(),
+	current_streak: z.number(),
+	total_time_seconds: z.number(),
+	updated_at: z
+		.string()
+		.nullable()
+		.optional()
+		.transform((s) => (s ? new Date(s) : null)),
+});
+
+export type GamificationStats = z.infer<typeof gamificationStatsSchema>;
 
 // --- Cycle Day ---
 

@@ -74,7 +74,9 @@ test.describe("Navigation and cross-page links", () => {
 		await page.waitForTimeout(2000);
 
 		// Landing content visible
-		await expect(page.getByText("Project Phoenix").first()).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Your workouts, unlocked." }),
+		).toBeVisible();
 	});
 
 	test("cross-navigation between legal pages renders without errors", async ({
