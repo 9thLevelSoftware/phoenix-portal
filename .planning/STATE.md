@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 20: Gap Closure & Tech Debt
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 17: Motion Design System (next to plan)
 
 ## Current Position
 
-Phase: 20 of 20 (Gap Closure & Tech Debt)
-Plan: 1 of 2 in current phase — plan 01 complete
-Status: In progress
-Last activity: 2026-02-21 — 20-01 complete (stripped bg-background from AppLayout shell, SidebarInset overridden with bg-transparent, all 16 authenticated page root wrappers cleaned — 38 instances removed; body::before ambient ember/flame glow now unoccluded through full render stack)
+Phase: 20 of 20 (Gap Closure & Tech Debt) — COMPLETE
+Plan: 2 of 2 in current phase — all plans complete
+Status: Phase 20 complete; Phases 17, 18, 19 remain (not yet planned)
+Last activity: 2026-03-13 — Confirmed 20-02 already executed (2026-02-21); updated stale tracking files. All Phase 20 success criteria verified: no inline system-ui in LandingPage, Navigation.tsx deleted, MobileBottomNav uses .eyebrow utility.
 
-Progress: [███░░░░░░░] 15% (v1.2)
+Progress: [████████░░] 57% (v1.2) — 4/7 phases complete (14, 15, 16, 20)
 
 ## Performance Metrics
 
@@ -29,9 +29,9 @@ Progress: [███░░░░░░░] 15% (v1.2)
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 6
-- Average duration: ~4.3 min
-- Total execution time: ~26 min
+- Total plans completed: 9
+- Average duration: ~3.1 min
+- Total execution time: ~28 min
 
 ## Accumulated Context
 
@@ -90,6 +90,11 @@ All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
 - localStorage key "phoenix-sidebar-preferred-open" is source of truth for user preference; SidebarProvider cookie reflects current visual state
 - NavLink with useLocation() for isActive detection (not NavLink render prop) — avoids asChild anti-pattern
 
+**v1.2 Phase 20 decisions (from 20-02):**
+- Navigation.tsx confirmed safe to delete — grep found zero direct imports (only SetNavigation in session-replay/ references "Navigation")
+- .eyebrow utility is the canonical pattern for section labels — manual text-xs/font-semibold/uppercase/tracking-widest is an incorrect approximation (wrong weight 600 vs 450, wrong size 12px vs 11px)
+- LandingPage hero h1 now correctly inherits Inter from fonts.css @theme block — inline style was blocking CSS cascade
+
 **v1.2 Phase 20 decisions (from 20-01):**
 - SidebarInset overridden with bg-transparent at call site in AppLayout — shadcn primitive sidebar.tsx not edited (per Phase 15 pattern)
 - LandingPage, PrivacyPolicy, ResetPassword retain bg-background — they are outside AppLayout boundary and require their own opaque background
@@ -124,6 +129,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-21
-Stopped at: Completed 20-01-PLAN.md — ambient glow unblocked: bg-background stripped from AppLayout shell + 16 authenticated page root wrappers (38 instances)
+Last session: 2026-03-13
+Stopped at: Phase 20 fully complete (both plans verified). Next: plan Phase 17 (Motion Design System) — depends on Phase 16 (complete).
 Resume file: N/A

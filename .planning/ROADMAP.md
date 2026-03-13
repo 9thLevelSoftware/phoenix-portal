@@ -144,7 +144,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 20-01-PLAN.md — Strip bg-background from AppLayout + SidebarInset + 16 page root wrappers to reveal ambient glows (completed 2026-02-21)
-- [ ] 20-02-PLAN.md — Remove inline system-ui fontFamily, delete Navigation.tsx, apply .eyebrow utility
+- [x] 20-02-PLAN.md — Remove inline system-ui fontFamily, delete Navigation.tsx, apply .eyebrow utility (completed 2026-02-21)
 
 ## Progress
 

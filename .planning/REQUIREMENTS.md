@@ -101,7 +101,7 @@
 |-------------|-------|--------|
 | TYPE-01 | Phase 14 | Complete |
 | TYPE-02 | Phase 14 | Complete |
-| TYPE-03 | Phase 20 | Complete |
+| TYPE-03 | Phase 20 | Complete (20-02) |
 | TYPE-04 | Phase 14 | Complete |
 | TYPE-05 | Phase 14 | Complete |
 | TYPE-06 | Phase 14 | Complete |
