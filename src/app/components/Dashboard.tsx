@@ -12,8 +12,10 @@ import {
 	TrendingUp,
 	Trophy,
 } from "lucide-react";
+import NumberFlow from "@number-flow/react";
 import { motion } from "motion/react";
 import { useState } from "react";
+import { fadeUp, hover, staggerContainer } from "@/lib/animations";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import {
@@ -91,24 +93,34 @@ function formatRelativeTime(date: Date): string {
 function QuickStatCard({
 	icon,
 	value,
+	numericValue,
 	label,
 	gradient,
 }: {
 	icon: React.ReactNode;
 	value: string;
+	numericValue?: number;
 	label: string;
 	gradient: string;
 }) {
 	return (
-		<Card className="p-4 card-secondary min-w-[120px] flex-shrink-0">
-			<div
-				className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
-			>
-				{icon}
-			</div>
-			<div className="text-2xl font-bold text-white mb-1">{value}</div>
-			<div className="text-xs text-muted-foreground">{label}</div>
-		</Card>
+		<motion.div whileHover={hover.lift}>
+			<Card className="p-4 card-secondary min-w-[120px] flex-shrink-0">
+				<div
+					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
+				>
+					{icon}
+				</div>
+				<div className="text-2xl font-bold text-white mb-1">
+					{numericValue != null ? (
+						<NumberFlow value={numericValue} className="tabular-nums" />
+					) : (
+						value
+					)}
+				</div>
+				<div className="text-xs text-muted-foreground">{label}</div>
+			</Card>
+		</motion.div>
 	);
 }
 
@@ -307,11 +319,14 @@ export function Dashboard() {
 						</p>
 					</motion.div>
 
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+					<motion.div
+						variants={staggerContainer}
+						initial="hidden"
+						animate="visible"
+						className="grid grid-cols-1 md:grid-cols-3 gap-6"
+					>
 						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: 0.1 }}
+							variants={fadeUp}
 						>
 							<Card className="p-6 card-secondary h-full">
 								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
@@ -328,9 +343,7 @@ export function Dashboard() {
 						</motion.div>
 
 						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: 0.2 }}
+							variants={fadeUp}
 						>
 							<Link to="/routines/new" className="block h-full">
 								<Card className="p-6 card-secondary h-full">
@@ -349,9 +362,7 @@ export function Dashboard() {
 						</motion.div>
 
 						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: 0.3 }}
+							variants={fadeUp}
 						>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 card-secondary h-full">
@@ -368,7 +379,7 @@ export function Dashboard() {
 								</Card>
 							</Link>
 						</motion.div>
-					</div>
+					</motion.div>
 				</div>
 			</div>
 		);
@@ -438,7 +449,7 @@ export function Dashboard() {
 								</motion.div>
 								<div className="flex-1">
 									<div className="text-4xl font-bold text-white mb-1">
-										{streak} {streak === 1 ? "Day" : "Days"}
+										<NumberFlow value={streak ?? 0} className="tabular-nums" /> {streak === 1 ? "Day" : "Days"}
 									</div>
 									<div className="text-sm text-secondary-foreground">
 										{streak > 0
@@ -522,6 +533,7 @@ export function Dashboard() {
 								<QuickStatCard
 									icon={<Dumbbell className="w-5 h-5" />}
 									value={String(workouts?.length ?? 0)}
+									numericValue={workouts?.length ?? 0}
 									label="Workouts"
 									gradient="from-primary to-chart-2"
 								/>
@@ -530,6 +542,7 @@ export function Dashboard() {
 									value={String(
 										workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0,
 									)}
+									numericValue={workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0}
 									label="PRs"
 									gradient="from-accent to-[#D97706]"
 								/>
@@ -721,6 +734,7 @@ export function Dashboard() {
 								initial={{ opacity: 0, y: 20 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.1 }}
+								whileHover={hover.lift}
 							>
 								<Card className="p-6 card-hero">
 									<div className="flex items-center justify-between">
@@ -732,7 +746,7 @@ export function Dashboard() {
 												/>
 												<div>
 													<h3 className="text-2xl text-white">
-														{streak} Day Streak
+														<NumberFlow value={streak ?? 0} className="tabular-nums" /> Day Streak
 													</h3>
 													<p className="text-secondary-foreground text-sm">
 														Keep the fire burning!
@@ -944,12 +958,16 @@ export function Dashboard() {
 						</div>
 
 						{/* Right Column - Quick Stats & Challenges */}
-						<div className="space-y-6">
+						<motion.div
+							variants={staggerContainer}
+							initial="hidden"
+							animate="visible"
+							className="space-y-6"
+						>
 							{/* Quick Stats */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.2 }}
+								variants={fadeUp}
+								whileHover={hover.lift}
 							>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Quick Stats</h3>
@@ -973,7 +991,7 @@ export function Dashboard() {
 													<span>Total Workouts</span>
 												</div>
 												<span className="text-white text-lg">
-													{workouts?.length ?? 0}
+													<NumberFlow value={workouts?.length ?? 0} className="tabular-nums" />
 												</span>
 											</div>
 											<div className="flex items-center justify-between">
@@ -982,7 +1000,7 @@ export function Dashboard() {
 													<span>Personal Records</span>
 												</div>
 												<span className="text-white text-lg">
-													{recentPRs?.length ?? 0}
+													<NumberFlow value={recentPRs?.length ?? 0} className="tabular-nums" />
 												</span>
 											</div>
 											<div className="flex items-center justify-between">
@@ -1012,27 +1030,21 @@ export function Dashboard() {
 
 							{/* Goal Progress Widget */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.25 }}
+								variants={fadeUp}
 							>
 								<GoalDashboardWidget />
 							</motion.div>
 
 							{/* Recovery Readiness Widget */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.27 }}
+								variants={fadeUp}
 							>
 								<RecoveryDashboardWidget />
 							</motion.div>
 
 							{/* Recent PRs */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.3 }}
+								variants={fadeUp}
 							>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
@@ -1088,9 +1100,7 @@ export function Dashboard() {
 
 							{/* Active Challenges */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.4 }}
+								variants={fadeUp}
 							>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
@@ -1116,9 +1126,7 @@ export function Dashboard() {
 
 							{/* Badge Showcase */}
 							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.5 }}
+								variants={fadeUp}
 							>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
@@ -1168,7 +1176,7 @@ export function Dashboard() {
 									)}
 								</Card>
 							</motion.div>
-						</div>
+						</motion.div>
 					</div>
 
 					{/* PWA Install Prompt */}
