@@ -437,6 +437,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 												stroke={PHOENIX.ember}
 												strokeWidth={2}
 												dot={false}
+t											animationDuration={800}
+												animationEasing="ease-out"
 											/>
 										</LineChart>
 									</ResponsiveContainer>
@@ -487,6 +489,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 												dataKey="sessions"
 												fill={PHOENIX.gold}
 												radius={[2, 2, 0, 0]}
+												animationDuration={800}
+												animationEasing="ease-out"
 											/>
 										</BarChart>
 									</ResponsiveContainer>

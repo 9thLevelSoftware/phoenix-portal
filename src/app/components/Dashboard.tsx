@@ -878,6 +878,8 @@ export function Dashboard() {
 															stroke={PHOENIX.ember}
 															strokeWidth={2}
 															fill="url(#volumeGradient)"
+															animationDuration={800}
+															animationEasing="ease-out"
 														/>
 													</AreaChart>
 												</ResponsiveContainer>
