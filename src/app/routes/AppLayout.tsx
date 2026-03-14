@@ -1,7 +1,8 @@
-import { MotionConfig } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { Outlet } from "react-router";
+import { useLocation, useOutlet } from "react-router";
+import { pageTransition } from "@/lib/animations";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
@@ -39,6 +40,8 @@ export function AppLayout() {
 	useNotificationSync();
 	useStreakSync();
 	useCelebrationTriggers();
+	const outlet = useOutlet();
+	const location = useLocation();
 	const {
 		needsOnboarding,
 		needsWhatsNew,
@@ -68,7 +71,15 @@ export function AppLayout() {
 
 						<ErrorBoundary FallbackComponent={PageErrorFallback}>
 							<Suspense fallback={<PageLoading />}>
-								<Outlet />
+								<AnimatePresence mode="wait">
+									<motion.main
+										key={location.pathname}
+										id="main-content"
+										{...pageTransition}
+									>
+										{outlet}
+									</motion.main>
+								</AnimatePresence>
 							</Suspense>
 						</ErrorBoundary>
 
