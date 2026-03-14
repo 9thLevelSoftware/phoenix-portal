@@ -638,6 +638,8 @@ export function Analytics() {
 														stroke={PHOENIX.ember}
 														strokeWidth={2}
 														fill="url(#mobileVolumeGradient)"
+														animationDuration={800}
+														animationEasing="ease-out"
 													/>
 												</AreaChart>
 											</ResponsiveContainer>
@@ -661,6 +663,8 @@ export function Analytics() {
 															outerRadius={80}
 															paddingAngle={2}
 															dataKey="value"
+															animationDuration={800}
+															animationEasing="ease-out"
 														>
 															{mobileMusclData.map((entry, index) => (
 																<Cell
@@ -730,6 +734,8 @@ export function Analytics() {
 													dataKey="weight"
 													fill={PHOENIX.ember}
 													radius={[0, 4, 4, 0]}
+													animationDuration={800}
+													animationEasing="ease-out"
 												/>
 											</BarChart>
 										</ResponsiveContainer>
@@ -795,6 +801,8 @@ export function Analytics() {
 													stroke={PHOENIX.ember}
 													strokeWidth={2}
 													fill="url(#mobileTrendGradient)"
+													animationDuration={800}
+													animationEasing="ease-out"
 												/>
 											</AreaChart>
 										</ResponsiveContainer>
@@ -1127,6 +1135,8 @@ export function Analytics() {
 																	stroke={PHOENIX.ember}
 																	strokeWidth={2}
 																	fill="url(#volumeGradientAnalytics)"
+																	animationDuration={800}
+																	animationEasing="ease-out"
 																/>
 															</AreaChart>
 														</ResponsiveContainer>
@@ -1155,9 +1165,12 @@ export function Analytics() {
 																	cx="50%"
 																	cy="50%"
 																	labelLine={false}
+																	innerRadius={60}
 																	outerRadius={100}
-																	fill="#8884d8"
+																	paddingAngle={2}
 																	dataKey="value"
+																	animationDuration={800}
+																	animationEasing="ease-out"
 																>
 																	{muscleGroupData.map((entry, index) => (
 																		<Cell
@@ -1166,6 +1179,34 @@ export function Analytics() {
 																		/>
 																	))}
 																</Pie>
+																<text
+																	x="50%"
+																	y="45%"
+																	textAnchor="middle"
+																	dominantBaseline="central"
+																	fill="var(--foreground)"
+																	style={{ fontSize: 16, fontWeight: 600, fontFamily: "Inter, sans-serif" }}
+																>
+																	{muscleGroupData.length > 0
+																		? [...muscleGroupData].sort((a, b) => b.value - a.value)[0].name
+																		: "\u2014"}
+																</text>
+																<text
+																	x="50%"
+																	y="58%"
+																	textAnchor="middle"
+																	dominantBaseline="central"
+																	fill="var(--muted-foreground)"
+																	style={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
+																>
+																	{muscleGroupData.length > 0
+																		? `${Math.round(
+																				([...muscleGroupData].sort((a, b) => b.value - a.value)[0].value /
+																					muscleGroupData.reduce((s, d) => s + d.value, 0)) *
+																					100,
+																			)}%`
+																		: ""}
+																</text>
 																<Tooltip content={<RechartsTooltip />} />
 																<Legend
 																	formatter={(value: string) => (
@@ -1245,6 +1286,8 @@ export function Analytics() {
 																		],
 																		r: 4,
 																	}}
+																	animationDuration={800}
+																	animationEasing="ease-out"
 																/>
 															))}
 														</LineChart>
@@ -1411,8 +1454,10 @@ export function Analytics() {
 																<Tooltip content={<RechartsTooltip />} />
 																<Bar
 																	dataKey="duration"
-																	fill="#60A5FA"
+																	fill={PHOENIX.ember}
 																	radius={[4, 4, 0, 0]}
+																	animationDuration={800}
+																	animationEasing="ease-out"
 																/>
 															</BarChart>
 														</ResponsiveContainer>

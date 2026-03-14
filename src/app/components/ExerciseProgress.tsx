@@ -102,24 +102,37 @@ function StatCard({
 	return (
 		<Card className="p-4 bg-surface-2 border-secondary">
 			<div className="text-sm text-muted-foreground mb-1">{label}</div>
-			<div className="text-2xl font-semibold" style={{ color }}>
+			<div className="text-4xl font-bold tabular-nums" style={{ color }}>
 				{stat.current} {unit}
 			</div>
-			<div className="flex items-center gap-1 mt-1 text-xs">
-				<DirectionIcon direction={stat.direction} />
-				<span
-					className={
-						stat.direction === "up"
-							? "text-success"
-							: stat.direction === "down"
-								? "text-chart-2"
-								: "text-muted-foreground"
-					}
-				>
-					{stat.change > 0 ? "+" : ""}
-					{stat.change} {unit} ({stat.changePercent > 0 ? "+" : ""}
-					{stat.changePercent}%)
-				</span>
+			<div className="flex items-center gap-2 mt-2">
+				{stat.changePercent !== 0 && (
+					<span
+						className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+							stat.changePercent > 0
+								? "bg-emerald-500/15 text-emerald-400"
+								: "bg-red-500/15 text-red-400"
+						}`}
+					>
+						{stat.changePercent > 0 ? "\u2191" : "\u2193"}{" "}
+						{Math.abs(stat.changePercent)}%
+					</span>
+				)}
+				<div className="flex items-center gap-1 text-xs">
+					<DirectionIcon direction={stat.direction} />
+					<span
+						className={
+							stat.direction === "up"
+								? "text-success"
+								: stat.direction === "down"
+									? "text-chart-2"
+									: "text-muted-foreground"
+						}
+					>
+						{stat.change > 0 ? "+" : ""}
+						{stat.change} {unit}
+					</span>
+				</div>
 			</div>
 		</Card>
 	);
@@ -351,6 +364,8 @@ export function ExerciseProgress({
 												fill="url(#weightGradient)"
 												dot={{ fill: PHOENIX.ember, r: 3 }}
 												activeDot={{ r: 5 }}
+												animationDuration={800}
+												animationEasing="ease-out"
 											/>
 										</AreaChart>
 									</ResponsiveContainer>
@@ -418,6 +433,8 @@ export function ExerciseProgress({
 												fill="url(#volumeGradientProgress)"
 												dot={{ fill: PHOENIX.gold, r: 3 }}
 												activeDot={{ r: 5 }}
+												animationDuration={800}
+												animationEasing="ease-out"
 											/>
 										</AreaChart>
 									</ResponsiveContainer>
@@ -482,6 +499,8 @@ export function ExerciseProgress({
 												fill="url(#oneRmGradient)"
 												dot={{ fill: PHOENIX.forgeGreen, r: 3 }}
 												activeDot={{ r: 5 }}
+												animationDuration={800}
+												animationEasing="ease-out"
 											/>
 										</AreaChart>
 									</ResponsiveContainer>
