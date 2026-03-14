@@ -43,7 +43,7 @@
 - [x] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments (completed 2026-02-21)
 - [x] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance (completed 2026-03-13)
 - [x] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix (completed 2026-03-13)
-- [ ] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation (planned 2026-03-13)
+- [x] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation (completed 2026-03-13)
 - [x] **Phase 20: Gap Closure & Tech Debt** - Fix ambient glow occlusion, remove inline system-ui fallback, delete dead Navigation.tsx, apply eyebrow utility, add SUMMARY frontmatter (completed 2026-02-21)
 
 ## Phase Details
@@ -139,7 +139,7 @@ Plans:
   5. The `animate-flame-flicker` and `animate-phoenix-glow` CSS animations are applied to at least one visible UI element each — they are no longer dead declarations
 **Plans**: 1 plan
 Plans:
-- [ ] 19-01-PLAN.md — Footer nav link wrapping (BUG-09), wire animate-flame-flicker and animate-phoenix-glow (BUG-10); 6 other bugs pre-resolved
+- [x] 19-01-PLAN.md — Footer nav link wrapping (BUG-09), wire animate-flame-flicker and animate-phoenix-glow (BUG-10); 6 other bugs pre-resolved (completed 2026-03-13)
 
 ### Phase 20: Gap Closure & Tech Debt
 **Goal**: Body-level ambient ember/flame glows are visible through the authenticated AppLayout shell; the last inline system-ui fallback is removed; dead code and documentation inconsistencies from Phases 14-16 are cleaned up.
@@ -180,7 +180,7 @@ Plans:
 | 16. Visual Depth & Surfaces | 2/2 | Complete    | 2026-02-21 | - |
 | 17. Motion Design System | v1.2 | 4/4 | Complete | 2026-03-13 |
 | 18. Data Visualization Styling | v1.2 | 3/3 | Complete | 2026-03-13 |
-| 19. Polish & Bug Fixes | v1.2 | 0/1 | Planned | - |
+| 19. Polish & Bug Fixes | v1.2 | 1/1 | Complete | 2026-03-13 |
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
 
 ---

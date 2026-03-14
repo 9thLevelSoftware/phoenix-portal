@@ -73,8 +73,8 @@
 - [x] **BUG-06**: Hardcoded `#60A5FA` on Analytics external activity bar replaced with palette constant — resolved in Phase 18
 - [x] **BUG-07**: Gradient text reserved for hero headlines only — section headers use solid `text-white` or `text-primary`
 - [x] **BUG-08**: AppLayout `bg-[#0D0D0D]` changed to `bg-background` for design system consistency
-- [ ] **BUG-09**: Footer nav `<li>` elements wrapped in proper `<Link>` or `<a>` tags
-- [ ] **BUG-10**: Custom CSS animations (`animate-flame-flicker`, `animate-phoenix-glow`) applied to relevant UI elements instead of sitting unused
+- [x] **BUG-09**: Footer nav `<li>` elements wrapped in proper `<Link>` or `<a>` tags
+- [x] **BUG-10**: Custom CSS animations (`animate-flame-flicker`, `animate-phoenix-glow`) applied to relevant UI elements instead of sitting unused
 
 ## Future Requirements
 
