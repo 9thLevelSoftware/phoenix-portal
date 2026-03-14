@@ -65,12 +65,12 @@
 
 ### Bug Fixes
 
-- [ ] **BUG-01**: LandingPage pricing ($9.99/$19.99) synced with PricingPlans ($14.99/$24.99) — single source of truth
-- [ ] **BUG-02**: MobileBottomNav dead notification logic removed from primaryItems loop
-- [ ] **BUG-03**: Dashboard "Badges Earned" stat removed or replaced with real data metric
-- [ ] **BUG-04**: Streak card raw emoji replaced with styled Lucide Flame icon + phoenix-glow animation
-- [ ] **BUG-05**: Hardcoded `#374151` hex in Recharts tooltip styles replaced with CSS variable references
-- [ ] **BUG-06**: Hardcoded `#60A5FA` on Analytics external activity bar replaced with palette constant
+- [x] **BUG-01**: LandingPage pricing ($9.99/$19.99) synced with PricingPlans ($14.99/$24.99) — already uses TIER_PRICING source of truth
+- [x] **BUG-02**: MobileBottomNav dead notification logic removed from primaryItems loop — no dead logic found (pre-resolved)
+- [x] **BUG-03**: Dashboard "Badges Earned" stat removed or replaced with real data metric — wired to real earnedBadges query
+- [x] **BUG-04**: Streak card raw emoji replaced with styled Lucide Flame icon + phoenix-glow animation — already uses Lucide Flame
+- [x] **BUG-05**: Hardcoded `#374151` hex in Recharts tooltip styles replaced with CSS variable references — resolved in Phase 18
+- [x] **BUG-06**: Hardcoded `#60A5FA` on Analytics external activity bar replaced with palette constant — resolved in Phase 18
 - [x] **BUG-07**: Gradient text reserved for hero headlines only — section headers use solid `text-white` or `text-primary`
 - [x] **BUG-08**: AppLayout `bg-[#0D0D0D]` changed to `bg-background` for design system consistency
 - [ ] **BUG-09**: Footer nav `<li>` elements wrapped in proper `<Link>` or `<a>` tags

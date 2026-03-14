@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 18 complete, Phase 19 next
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 19: Polish & Bug Fixes (final phase)
 
 ## Current Position
 
-Phase: 18 of 20 (Data Visualization Styling) — COMPLETE
-Plan: 3 of 3 in current phase — all plans complete
-Status: Phase 18 complete — all plans executed successfully
-Last activity: 2026-03-13 — Phase 18 executed: RechartsTooltip deployed across all chart files, axes/gridlines standardized, 14 data series animated (800ms), desktop pie→donut with center label, heatmap front/back toggle, ExerciseProgress stat sizing + delta pills
+Phase: 19 of 20 (Polish & Bug Fixes)
+Plan: 0 of 1 in current phase — planned, ready to execute
+Status: Phase 19 planned — 1 plan, 1 wave (6 of 8 bugs pre-resolved; 2 need code changes)
+Last activity: 2026-03-13 — Phase 19 planned: footer link wrapping (BUG-09), CSS animation wiring (BUG-10). BUG-01 through BUG-06 marked pre-resolved.
 
-Progress: [██████████] 86% (v1.2) — 6/7 phases complete (14, 15, 16, 17, 18, 20)
+Progress: [██████████] 86% (v1.2) — 6/7 phases complete; Phase 19 planned (final)
 
 ## Performance Metrics
 
@@ -130,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-13
-Stopped at: Phase 18 complete. Next: plan Phase 19 (Polish & Bug Fixes) — depends on Phase 18 (complete).
+Stopped at: Phase 19 planned — 1 plan, 1 wave. Ready for /legion:build (final phase of v1.2).
 Resume file: N/A
