@@ -921,31 +921,15 @@ export function LandingPage() {
 										Pricing
 									</button>
 								</li>
-								<li className="hover:text-primary cursor-pointer">
-									Integrations
-								</li>
-								<li className="hover:text-primary cursor-pointer">Roadmap</li>
+								<li><span className="text-muted-foreground/50 cursor-default">Integrations</span></li>
+								<li><span className="text-muted-foreground/50 cursor-default">Roadmap</span></li>
 							</ul>
 						</div>
 						<div>
 							<h4 className="text-white mb-4">Project</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
-								<li>
-									<a
-										href="#"
-										className="hover:text-primary"
-									>
-										Mobile App
-									</a>
-								</li>
-								<li>
-									<a
-										href="#"
-										className="hover:text-primary"
-									>
-										Portal Source
-									</a>
-								</li>
+								<li><span className="text-muted-foreground/50 cursor-default">Mobile App</span></li>
+								<li><span className="text-muted-foreground/50 cursor-default">Portal Source</span></li>
 								<li>
 									<a
 										href="https://ko-fi.com/vitruvianredux"
@@ -969,7 +953,7 @@ export function LandingPage() {
 								<li>
 									<Link
 										to="/privacy"
-										className="hover:text-primary cursor-pointer"
+										className="hover:text-primary transition-colors"
 									>
 										Privacy
 									</Link>
@@ -977,12 +961,12 @@ export function LandingPage() {
 								<li>
 									<Link
 										to="/terms"
-										className="hover:text-primary cursor-pointer"
+										className="hover:text-primary transition-colors"
 									>
 										Terms of Service
 									</Link>
 								</li>
-								<li className="hover:text-primary cursor-pointer">Security</li>
+								<li><span className="text-muted-foreground/50 cursor-default">Security</span></li>
 							</ul>
 						</div>
 					</div>

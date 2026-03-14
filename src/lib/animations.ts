@@ -69,8 +69,8 @@ export const tap = {
 
 export const breathing = {
 	animate: {
-		y: [0, 6, 0],
-		opacity: [0.6, 1, 0.6],
+		y: [0, 6, 0] as number[],
+		opacity: [0.6, 1, 0.6] as number[],
 		transition: {
 			duration: 2,
 			repeat: Number.POSITIVE_INFINITY,
