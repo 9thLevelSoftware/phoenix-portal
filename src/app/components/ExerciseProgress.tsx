@@ -11,6 +11,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Card } from "@/app/components/ui/card";
 import {
 	Select,
@@ -22,7 +23,7 @@ import {
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { estimateOneRepMax } from "@/lib/biomechanics";
-import { PHOENIX, SURFACE } from "@/lib/colors";
+import { PHOENIX } from "@/lib/colors";
 import {
 	exerciseListOptions,
 	exerciseProgressOptions,
@@ -41,13 +42,6 @@ const TIME_RANGES = [
 	{ label: "1Y", days: 365 },
 	{ label: "All", days: Infinity },
 ] as const;
-
-const TOOLTIP_STYLE = {
-	backgroundColor: "var(--surface-2)",
-	border: "1px solid var(--secondary)",
-	borderRadius: "8px",
-	color: "var(--secondary-foreground)",
-};
 
 function formatDate(date: Date): string {
 	return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -333,20 +327,21 @@ export function ExerciseProgress({
 													/>
 												</linearGradient>
 											</defs>
-											<CartesianGrid
-												strokeDasharray="3 3"
-												stroke={SURFACE.elevated}
-											/>
+											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
-											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Tooltip content={<RechartsTooltip />} />
 											<Area
 												type="monotone"
 												dataKey="maxWeight"
@@ -399,20 +394,21 @@ export function ExerciseProgress({
 													/>
 												</linearGradient>
 											</defs>
-											<CartesianGrid
-												strokeDasharray="3 3"
-												stroke={SURFACE.elevated}
-											/>
+											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
-											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Tooltip content={<RechartsTooltip />} />
 											<Area
 												type="monotone"
 												dataKey="totalVolume"
@@ -462,20 +458,21 @@ export function ExerciseProgress({
 													/>
 												</linearGradient>
 											</defs>
-											<CartesianGrid
-												strokeDasharray="3 3"
-												stroke={SURFACE.elevated}
-											/>
+											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
 												stroke={PHOENIX.mutedForeground}
-												tick={{ fontSize: 11 }}
+												tickLine={false}
+												axisLine={false}
+												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
-											<Tooltip contentStyle={TOOLTIP_STYLE} />
+											<Tooltip content={<RechartsTooltip />} />
 											<Area
 												type="monotone"
 												dataKey="estimated1RM"
