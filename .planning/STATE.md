@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 17: Motion Design System
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 17 complete, Phase 18 next
 
 ## Current Position
 
-Phase: 17 of 20 (Motion Design System)
-Plan: 0 of 4 in current phase — planned, ready to execute
-Status: Phase 17 planned — 4 plans across 3 waves
-Last activity: 2026-03-13 — Phase 17 planned: animation foundation (animations.ts + @number-flow/react), page transitions (AnimatePresence + useOutlet), landing parallax/CTAs, dashboard stat counting + stagger
+Phase: 17 of 20 (Motion Design System) — COMPLETE
+Plan: 4 of 4 in current phase — all plans complete
+Status: Phase 17 complete — all plans executed successfully
+Last activity: 2026-03-13 — Phase 17 executed: animations.ts presets, page transitions (AnimatePresence+useOutlet), landing parallax/breathing/CTAs, dashboard stat counting (NumberFlow) + spring hover + stagger entrance
 
-Progress: [████████░░] 57% (v1.2) — 4/7 phases complete (14, 15, 16, 20); Phase 17 planned
+Progress: [█████████░] 71% (v1.2) — 5/7 phases complete (14, 15, 16, 17, 20)
 
 ## Performance Metrics
 
@@ -29,9 +29,9 @@ Progress: [████████░░] 57% (v1.2) — 4/7 phases complete (1
 - Total execution time: ~131 min
 
 **Velocity (v1.2):**
-- Total plans completed: 9
-- Average duration: ~3.1 min
-- Total execution time: ~28 min
+- Total plans completed: 13
+- Average duration: ~2.8 min
+- Total execution time: ~36 min
 
 ## Accumulated Context
 
@@ -130,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-13
-Stopped at: Phase 17 planned — 4 plans across 3 waves. Ready for /legion:build.
+Stopped at: Phase 17 complete. Next: plan Phase 18 (Data Visualization Styling) — depends on Phase 15 (complete).
 Resume file: N/A

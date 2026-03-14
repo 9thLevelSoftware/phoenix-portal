@@ -41,7 +41,7 @@
 - [x] **Phase 14: CSS Foundation & Typography** - Establish Inter Variable, design tokens, ambient gradients, and surface-level visual primitives that all later phases depend on (completed 2026-02-21)
 - [x] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components (completed 2026-02-21)
 - [x] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments (completed 2026-02-21)
-- [ ] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance (planned 2026-03-13)
+- [x] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance (completed 2026-03-13)
 - [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix
 - [ ] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation
 - [x] **Phase 20: Gap Closure & Tech Debt** - Fix ambient glow occlusion, remove inline system-ui fallback, delete dead Navigation.tsx, apply eyebrow utility, add SUMMARY frontmatter (completed 2026-02-21)
@@ -106,10 +106,10 @@ Plans:
   5. Enabling "Reduce Motion" in OS accessibility settings eliminates all entrance animations and stat counting — content is still fully accessible
 **Plans**: 4 plans
 Plans:
-- [ ] 17-01-PLAN.md — Animation foundation: create src/lib/animations.ts presets, install @number-flow/react, add reduced-motion to EmberParticles
-- [ ] 17-02-PLAN.md — Page transitions: AnimatePresence + useOutlet() in AppLayout, branded PageLoading flame pulse
-- [ ] 17-03-PLAN.md — Landing page motion: hero scroll parallax, breathing scroll indicator, CTA whileTap press feedback
-- [ ] 17-04-PLAN.md — Dashboard animations: stat number counting, spring hover cards, staggered card grid entrance
+- [x] 17-01-PLAN.md — Animation foundation: create src/lib/animations.ts presets, install @number-flow/react, add reduced-motion to EmberParticles (completed 2026-03-13)
+- [x] 17-02-PLAN.md — Page transitions: AnimatePresence + useOutlet() in AppLayout, branded PageLoading flame pulse (completed 2026-03-13)
+- [x] 17-03-PLAN.md — Landing page motion: hero scroll parallax, breathing scroll indicator, CTA whileTap press feedback (completed 2026-03-13)
+- [x] 17-04-PLAN.md — Dashboard animations: stat number counting, spring hover cards, staggered card grid entrance (completed 2026-03-13)
 
 ### Phase 18: Data Visualization Styling
 **Goal**: Every Recharts chart uses a shared branded tooltip component; axes and gridlines are styled consistently across all chart files; charts animate in on mount; the analytics pie chart is a donut with a center label; the muscle heatmap back regions display correctly.
@@ -172,7 +172,7 @@ Plans:
 | 14. CSS Foundation & Typography | 2/2 | Complete    | 2026-02-21 | - |
 | 15. Navigation & Layout Shell | 3/3 | Complete    | 2026-02-21 | - |
 | 16. Visual Depth & Surfaces | 2/2 | Complete    | 2026-02-21 | - |
-| 17. Motion Design System | v1.2 | 0/4 | Planned | - |
+| 17. Motion Design System | v1.2 | 4/4 | Complete | 2026-03-13 |
 | 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
