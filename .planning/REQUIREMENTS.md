@@ -40,28 +40,28 @@
 
 ### Motion & Animation
 
-- [ ] **MOT-01**: Page transitions via AnimatePresence wrapping router outlet (using `useOutlet()` pattern for React Router v7 compatibility)
-- [ ] **MOT-02**: Card hover states use Framer Motion spring physics (`whileHover={{ scale: 1.015, y: -2 }}` with elevated shadow)
-- [ ] **MOT-03**: Entrance animations use `staggerChildren` variants instead of manual delay offsets
-- [ ] **MOT-04**: Shared animation presets centralized in `src/lib/animations.ts` (fadeUp, staggerContainer, pageTransition)
-- [ ] **MOT-05**: Stat numbers animate from 0 to value on mount using `@number-flow/react`
-- [ ] **MOT-06**: Landing hero has scroll parallax (`useScroll` + `useTransform` on content container)
-- [ ] **MOT-07**: Scroll indicator replaced with Framer Motion breathing animation (not Tailwind `animate-bounce`)
-- [ ] **MOT-08**: Loading state uses branded Phoenix flame pulse instead of generic spinner
-- [ ] **MOT-09**: `prefers-reduced-motion` check on EmberParticles and all entrance animations
-- [ ] **MOT-10**: Key CTAs have `whileTap={{ scale: 0.97 }}` press feedback
+- [x] **MOT-01**: Page transitions via AnimatePresence wrapping router outlet (using `useOutlet()` pattern for React Router v7 compatibility)
+- [x] **MOT-02**: Card hover states use Framer Motion spring physics (`whileHover={{ scale: 1.015, y: -2 }}` with elevated shadow)
+- [x] **MOT-03**: Entrance animations use `staggerChildren` variants instead of manual delay offsets
+- [x] **MOT-04**: Shared animation presets centralized in `src/lib/animations.ts` (fadeUp, staggerContainer, pageTransition)
+- [x] **MOT-05**: Stat numbers animate from 0 to value on mount using `@number-flow/react`
+- [x] **MOT-06**: Landing hero has scroll parallax (`useScroll` + `useTransform` on content container)
+- [x] **MOT-07**: Scroll indicator replaced with Framer Motion breathing animation (not Tailwind `animate-bounce`)
+- [x] **MOT-08**: Loading state uses branded Phoenix flame pulse instead of generic spinner
+- [x] **MOT-09**: `prefers-reduced-motion` check on EmberParticles and all entrance animations
+- [x] **MOT-10**: Key CTAs have `whileTap={{ scale: 0.97 }}` press feedback
 
 ### Data Visualization
 
-- [ ] **VIZ-01**: Custom branded `<ChartTooltip>` component replaces all inline `contentStyle` tooltip configs
-- [ ] **VIZ-02**: Chart axes styled: `tickLine={false}`, `axisLine={false}`, consistent font size/color across all charts
-- [ ] **VIZ-03**: CartesianGrid standardized to `strokeOpacity={0.3}` across all chart files
-- [ ] **VIZ-04**: All Recharts charts have explicit `animationDuration={800}` and `animationEasing="ease-out"`
-- [ ] **VIZ-05**: Pie chart converted to donut (`innerRadius={60}`) with center label showing dominant category
-- [ ] **VIZ-06**: Default `fill="#8884d8"` removed from Analytics pie chart
-- [ ] **VIZ-07**: Muscle heatmap back regions fixed — proper SVG paths or front/back toggle added
-- [ ] **VIZ-08**: ExerciseProgress stat values increased to `text-4xl font-bold` with color-coded delta pill
-- [ ] **VIZ-09**: Chart axis labels specify `fontFamily` and `fontSize` explicitly (not browser default)
+- [x] **VIZ-01**: Custom branded `<ChartTooltip>` component replaces all inline `contentStyle` tooltip configs
+- [x] **VIZ-02**: Chart axes styled: `tickLine={false}`, `axisLine={false}`, consistent font size/color across all charts
+- [x] **VIZ-03**: CartesianGrid standardized to `strokeOpacity={0.3}` across all chart files
+- [x] **VIZ-04**: All Recharts charts have explicit `animationDuration={800}` and `animationEasing="ease-out"`
+- [x] **VIZ-05**: Pie chart converted to donut (`innerRadius={60}`) with center label showing dominant category
+- [x] **VIZ-06**: Default `fill="#8884d8"` removed from Analytics pie chart
+- [x] **VIZ-07**: Muscle heatmap back regions fixed — proper SVG paths or front/back toggle added
+- [x] **VIZ-08**: ExerciseProgress stat values increased to `text-4xl font-bold` with color-coded delta pill
+- [x] **VIZ-09**: Chart axis labels specify `fontFamily` and `fontSize` explicitly (not browser default)
 
 ### Bug Fixes
 
@@ -123,41 +123,41 @@
 | VIS-07 | Phase 16 | Complete |
 | VIS-08 | Phase 16 | Complete |
 | VIS-09 | Phase 16 | Complete |
-| MOT-01 | Phase 17 | Pending |
-| MOT-02 | Phase 17 | Pending |
-| MOT-03 | Phase 17 | Pending |
-| MOT-04 | Phase 17 | Pending |
-| MOT-05 | Phase 17 | Pending |
-| MOT-06 | Phase 17 | Pending |
-| MOT-07 | Phase 17 | Pending |
-| MOT-08 | Phase 17 | Pending |
-| MOT-09 | Phase 17 | Pending |
-| MOT-10 | Phase 17 | Pending |
-| VIZ-01 | Phase 18 | Pending |
-| VIZ-02 | Phase 18 | Pending |
-| VIZ-03 | Phase 18 | Pending |
-| VIZ-04 | Phase 18 | Pending |
-| VIZ-05 | Phase 18 | Pending |
-| VIZ-06 | Phase 18 | Pending |
-| VIZ-07 | Phase 18 | Pending |
-| VIZ-08 | Phase 18 | Pending |
-| VIZ-09 | Phase 18 | Pending |
-| BUG-01 | Phase 19 | Pending |
-| BUG-02 | Phase 19 | Pending |
-| BUG-03 | Phase 19 | Pending |
-| BUG-04 | Phase 19 | Pending |
-| BUG-05 | Phase 19 | Pending |
-| BUG-06 | Phase 19 | Pending |
+| MOT-01 | Phase 17 | Complete |
+| MOT-02 | Phase 17 | Complete |
+| MOT-03 | Phase 17 | Complete |
+| MOT-04 | Phase 17 | Complete |
+| MOT-05 | Phase 17 | Complete |
+| MOT-06 | Phase 17 | Complete |
+| MOT-07 | Phase 17 | Complete |
+| MOT-08 | Phase 17 | Complete |
+| MOT-09 | Phase 17 | Complete |
+| MOT-10 | Phase 17 | Complete |
+| VIZ-01 | Phase 18 | Complete |
+| VIZ-02 | Phase 18 | Complete |
+| VIZ-03 | Phase 18 | Complete |
+| VIZ-04 | Phase 18 | Complete |
+| VIZ-05 | Phase 18 | Complete |
+| VIZ-06 | Phase 18 | Complete |
+| VIZ-07 | Phase 18 | Complete |
+| VIZ-08 | Phase 18 | Complete |
+| VIZ-09 | Phase 18 | Complete |
+| BUG-01 | Phase 19 | Complete (pre-resolved) |
+| BUG-02 | Phase 19 | Complete (pre-resolved) |
+| BUG-03 | Phase 19 | Complete (pre-resolved) |
+| BUG-04 | Phase 19 | Complete (pre-resolved) |
+| BUG-05 | Phase 18 | Complete |
+| BUG-06 | Phase 18 | Complete |
 | BUG-07 | Phase 16 | Complete |
 | BUG-08 | Phase 14 | Complete |
-| BUG-09 | Phase 19 | Pending |
-| BUG-10 | Phase 19 | Pending |
+| BUG-09 | Phase 19 | Complete |
+| BUG-10 | Phase 19 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 53 total
-- Mapped to phases: 53
+- Completed: 53 (100%)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-20*
-*Last updated: 2026-02-20 after roadmap creation — all 53 requirements mapped to Phases 14-19*
+*Last updated: 2026-03-13 — all 53 requirements complete (v1.2 milestone done)*

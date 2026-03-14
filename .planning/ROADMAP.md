@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
 - ✅ **v1.1 Full UX Overhaul** — Phases 9-13 (shipped 2026-02-17)
-- 🚧 **v1.2 Premium Visual Overhaul** — Phases 14-20 (in progress)
+- ✅ **v1.2 Premium Visual Overhaul** — Phases 14-20 (shipped 2026-03-13)
 
 ## Phases
 
@@ -34,7 +34,7 @@
 
 </details>
 
-### 🚧 v1.2 Premium Visual Overhaul (In Progress)
+### ✅ v1.2 Premium Visual Overhaul (SHIPPED 2026-03-13)
 
 **Milestone Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
 
@@ -186,4 +186,5 @@ Plans:
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
 *Full v1.1 details: `.planning/milestones/v1.1-ROADMAP.md`*
-*Last updated: 2026-02-20 after Phase 16 planning*
+*Full v1.2 details: `.planning/milestones/v1.2-MILESTONE.md`*
+*Last updated: 2026-03-13 — v1.2 milestone complete*
