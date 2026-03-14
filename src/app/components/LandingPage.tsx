@@ -14,7 +14,7 @@ import {
 	Target,
 	Trophy,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useScroll, useTransform } from "motion/react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
@@ -37,6 +37,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import { breathing, tap } from "@/lib/animations";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { EmberParticles } from "./EmberParticles";
@@ -79,6 +80,11 @@ export function LandingPage() {
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
 	const [scrolled, setScrolled] = useState(false);
+
+	// Scroll parallax for hero content
+	const { scrollY } = useScroll();
+	const heroY = useTransform(scrollY, [0, 500], [0, -80]);
+	const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -599,6 +605,7 @@ export function LandingPage() {
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.8 }}
+					style={{ y: heroY, opacity: heroOpacity }}
 					className="text-center z-10 flex flex-col items-center"
 				>
 					<PhoenixLogo size="xl" animated />
@@ -640,16 +647,18 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.8 }}
 					>
-						<Button
-							size="lg"
-							onClick={openAuth}
-							className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
-						>
-							<span className="relative z-10 flex items-center gap-2">
-								Get Started Free
-								<ArrowRight className="w-5 h-5" />
-							</span>
-						</Button>
+						<motion.div whileTap={tap.press} className="inline-flex">
+							<Button
+								size="lg"
+								onClick={openAuth}
+								className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
+							>
+								<span className="relative z-10 flex items-center gap-2">
+									Get Started Free
+									<ArrowRight className="w-5 h-5" />
+								</span>
+							</Button>
+						</motion.div>
 						<Button
 							size="lg"
 							variant="outline"
@@ -671,10 +680,9 @@ export function LandingPage() {
 				</motion.div>
 
 				<motion.div
-					className="absolute bottom-10 animate-bounce"
+					className="absolute bottom-10"
 					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					transition={{ delay: 1.2 }}
+					animate={breathing.animate}
 				>
 					<div className="w-6 h-10 border-2 border-primary rounded-full flex items-start justify-center p-2">
 						<div className="w-1.5 h-1.5 bg-primary rounded-full" />
@@ -844,16 +852,18 @@ export function LandingPage() {
 							recovery, and a community that trains like you do.
 						</p>
 						<div className="flex flex-col sm:flex-row gap-4 justify-center">
-							<Button
-								size="lg"
-								onClick={openAuth}
-								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
-							>
-								<span className="flex items-center gap-2">
-									Start Free
-									<ArrowRight className="w-5 h-5" />
-								</span>
-							</Button>
+							<motion.div whileTap={tap.press} className="inline-flex">
+								<Button
+									size="lg"
+									onClick={openAuth}
+									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
+								>
+									<span className="flex items-center gap-2">
+										Start Free
+										<ArrowRight className="w-5 h-5" />
+									</span>
+								</Button>
+							</motion.div>
 							<a
 								href="https://ko-fi.com/vitruvianredux"
 								target="_blank"
