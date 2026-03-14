@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — Phase 17 complete, Phase 18 next
+**Current focus:** v1.2 Premium Visual Overhaul — Phase 18: Data Visualization Styling
 
 ## Current Position
 
-Phase: 17 of 20 (Motion Design System) — COMPLETE
-Plan: 4 of 4 in current phase — all plans complete
-Status: Phase 17 complete — all plans executed successfully
-Last activity: 2026-03-13 — Phase 17 executed: animations.ts presets, page transitions (AnimatePresence+useOutlet), landing parallax/breathing/CTAs, dashboard stat counting (NumberFlow) + spring hover + stagger entrance
+Phase: 18 of 20 (Data Visualization Styling)
+Plan: 0 of 3 in current phase — planned, ready to execute
+Status: Phase 18 planned — 3 plans across 2 waves
+Last activity: 2026-03-13 — Phase 18 planned: branded RechartsTooltip + axis standardization, chart animations + donut conversion, muscle heatmap back view + ExerciseProgress stat sizing
 
-Progress: [█████████░] 71% (v1.2) — 5/7 phases complete (14, 15, 16, 17, 20)
+Progress: [█████████░] 71% (v1.2) — 5/7 phases complete (14, 15, 16, 17, 20); Phase 18 planned
 
 ## Performance Metrics
 
@@ -130,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-13
-Stopped at: Phase 17 complete. Next: plan Phase 18 (Data Visualization Styling) — depends on Phase 15 (complete).
+Stopped at: Phase 18 planned — 3 plans across 2 waves. Ready for /legion:build.
 Resume file: N/A

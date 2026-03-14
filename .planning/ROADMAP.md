@@ -42,7 +42,7 @@
 - [x] **Phase 15: Navigation & Layout Shell** - Replace horizontal nav with collapsible sidebar, introduce shared PageShell, consolidate mobile variants into CSS-responsive components (completed 2026-02-21)
 - [x] **Phase 16: Visual Depth & Surfaces** - Apply card surface hierarchy, glassmorphism on priority cards, landing page gradient borders, and icon container treatments (completed 2026-02-21)
 - [x] **Phase 17: Motion Design System** - Centralized animation presets, page transitions, spring hover, stagger entrance, animated counters, and reduced-motion compliance (completed 2026-03-13)
-- [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix
+- [ ] **Phase 18: Data Visualization Styling** - Custom branded chart tooltips, styled axes/gridlines, chart entrance animations, donut conversion, and muscle heatmap fix (planned 2026-03-13)
 - [ ] **Phase 19: Polish & Bug Fixes** - Pricing sync, dead logic removal, raw emoji replacements, hardcoded color purge, and unused animation activation
 - [x] **Phase 20: Gap Closure & Tech Debt** - Fix ambient glow occlusion, remove inline system-ui fallback, delete dead Navigation.tsx, apply eyebrow utility, add SUMMARY frontmatter (completed 2026-02-21)
 
@@ -121,7 +121,11 @@ Plans:
   3. The analytics muscle-group chart is a donut shape with a center label naming the dominant category — not a solid pie
   4. All charts animate their data in over ~800ms on page load — static instantaneous renders are gone
   5. The muscle heatmap shows both front and back body regions with correct SVG paths — no broken or missing back-region paths
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 18-01-PLAN.md — Branded RechartsTooltip component, axis standardization (tickLine/axisLine/font), CartesianGrid opacity
+- [ ] 18-02-PLAN.md — Chart animation timing (800ms ease-out), desktop pie→donut with center label, hardcoded fill removal
+- [ ] 18-03-PLAN.md — Muscle heatmap front/back toggle with back body SVG paths, ExerciseProgress stat sizing + delta pill
 
 ### Phase 19: Polish & Bug Fixes
 **Goal**: Pricing figures match between landing page and pricing modal; dead notification logic is removed from mobile nav; all raw emoji in UI are replaced with styled icon components; every hardcoded hex color in Recharts configs is replaced with a palette constant or CSS variable; unused Phoenix animations are wired to relevant elements.
@@ -173,7 +177,7 @@ Plans:
 | 15. Navigation & Layout Shell | 3/3 | Complete    | 2026-02-21 | - |
 | 16. Visual Depth & Surfaces | 2/2 | Complete    | 2026-02-21 | - |
 | 17. Motion Design System | v1.2 | 4/4 | Complete | 2026-03-13 |
-| 18. Data Visualization Styling | v1.2 | 0/TBD | Not started | - |
+| 18. Data Visualization Styling | v1.2 | 0/3 | Planned | - |
 | 19. Polish & Bug Fixes | v1.2 | 0/TBD | Not started | - |
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
 
