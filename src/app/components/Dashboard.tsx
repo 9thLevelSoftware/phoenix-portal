@@ -738,12 +738,12 @@ export function Dashboard() {
 								transition={{ delay: 0.1 }}
 								whileHover={hover.lift}
 							>
-								<Card className="p-6 card-hero">
+								<Card className="p-6 card-hero animate-phoenix-glow">
 									<div className="flex items-center justify-between">
 										<div>
 											<div className="flex items-center gap-3 mb-2">
 												<Flame
-													className="w-8 h-8 text-accent"
+													className="w-8 h-8 text-accent animate-flame-flicker"
 													fill={PHOENIX.ember}
 												/>
 												<div>
