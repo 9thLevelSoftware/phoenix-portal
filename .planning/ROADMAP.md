@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
 - ✅ **v1.1 Full UX Overhaul** — Phases 9-13 (shipped 2026-02-17)
-- ✅ **v1.2 Premium Visual Overhaul** — Phases 14-20 (shipped 2026-03-13)
+- ✅ **v1.2 Premium Visual Overhaul** — Phases 14-20 (shipped 2026-03-13, archived)
 
 ## Phases
 
