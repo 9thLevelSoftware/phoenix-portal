@@ -1,4 +1,4 @@
-import { PageShell } from "@/app/components/PageShell";
+import NumberFlow from "@number-flow/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowRight,
@@ -12,12 +12,9 @@ import {
 	TrendingUp,
 	Trophy,
 } from "lucide-react";
-import NumberFlow from "@number-flow/react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { fadeUp, hover, staggerContainer } from "@/lib/animations";
 import { Link } from "react-router";
-import { toast } from "sonner";
 import {
 	Area,
 	AreaChart,
@@ -27,6 +24,9 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { toast } from "sonner";
+import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
+import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -38,6 +38,7 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
+import { fadeUp, hover, staggerContainer } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
 import { cycleListOptions } from "@/queries/cycles";
 import { earnedBadgesOptions } from "@/queries/profile";
@@ -325,9 +326,7 @@ export function Dashboard() {
 						animate="visible"
 						className="grid grid-cols-1 md:grid-cols-3 gap-6"
 					>
-						<motion.div
-							variants={fadeUp}
-						>
+						<motion.div variants={fadeUp}>
 							<Card className="p-6 card-secondary h-full">
 								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-white" />
@@ -342,9 +341,7 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div
-							variants={fadeUp}
-						>
+						<motion.div variants={fadeUp}>
 							<Link to="/routines/new" className="block h-full">
 								<Card className="p-6 card-secondary h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
@@ -361,9 +358,7 @@ export function Dashboard() {
 							</Link>
 						</motion.div>
 
-						<motion.div
-							variants={fadeUp}
-						>
+						<motion.div variants={fadeUp}>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 card-secondary h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center mb-4">
@@ -449,7 +444,8 @@ export function Dashboard() {
 								</motion.div>
 								<div className="flex-1">
 									<div className="text-4xl font-bold text-white mb-1">
-										<NumberFlow value={streak ?? 0} className="tabular-nums" /> {streak === 1 ? "Day" : "Days"}
+										<NumberFlow value={streak ?? 0} className="tabular-nums" />{" "}
+										{streak === 1 ? "Day" : "Days"}
 									</div>
 									<div className="text-sm text-secondary-foreground">
 										{streak > 0
@@ -514,7 +510,9 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.3 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">Quick Stats</h2>
+						<h2 className="text-lg font-semibold text-white mb-3">
+							Quick Stats
+						</h2>
 						{workoutsLoading ? (
 							<div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
 								{Array.from({ length: 4 }).map((_, i) => (
@@ -542,14 +540,18 @@ export function Dashboard() {
 									value={String(
 										workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0,
 									)}
-									numericValue={workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0}
+									numericValue={
+										workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0
+									}
 									label="PRs"
 									gradient="from-accent to-[#D97706]"
 								/>
 								<QuickStatCard
 									icon={<TrendingUp className="w-5 h-5" />}
 									value={
-										weeklyTotal > 0 ? `${(weeklyTotal / 1000).toFixed(0)}k` : "--"
+										weeklyTotal > 0
+											? `${(weeklyTotal / 1000).toFixed(0)}k`
+											: "--"
 									}
 									label="Volume"
 									gradient="from-success to-[#059669]"
@@ -746,7 +748,11 @@ export function Dashboard() {
 												/>
 												<div>
 													<h3 className="text-2xl text-white">
-														<NumberFlow value={streak ?? 0} className="tabular-nums" /> Day Streak
+														<NumberFlow
+															value={streak ?? 0}
+															className="tabular-nums"
+														/>{" "}
+														Day Streak
 													</h3>
 													<p className="text-secondary-foreground text-sm">
 														Keep the fire burning!
@@ -755,9 +761,7 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="text-right">
-											<div className="text-4xl text-primary">
-												{"\u{1F525}"}
-											</div>
+											<div className="text-4xl text-primary">{"\u{1F525}"}</div>
 										</div>
 									</div>
 								</Card>
@@ -816,8 +820,8 @@ export function Dashboard() {
 													No workouts this week yet
 												</p>
 												<p className="text-sm text-muted">
-													Complete a workout in the mobile app to see your volume
-													here
+													Complete a workout in the mobile app to see your
+													volume here
 												</p>
 											</div>
 										) : (
@@ -845,22 +849,29 @@ export function Dashboard() {
 															</linearGradient>
 														</defs>
 														<CartesianGrid
-															strokeDasharray="3 3"
-															stroke={PHOENIX.moltenSteel}
+															strokeOpacity={0.3}
+															vertical={false}
 														/>
 														<XAxis
 															dataKey="day"
 															stroke={PHOENIX.mutedForeground}
-														/>
-														<YAxis stroke={PHOENIX.mutedForeground} />
-														<Tooltip
-															contentStyle={{
-																backgroundColor: "var(--surface-2)",
-																border: "1px solid #374151",
-																borderRadius: "8px",
-																color: "var(--secondary-foreground)",
+															tickLine={false}
+															axisLine={false}
+															tick={{
+																fontSize: 11,
+																fontFamily: "Inter, sans-serif",
 															}}
 														/>
+														<YAxis
+															stroke={PHOENIX.mutedForeground}
+															tickLine={false}
+															axisLine={false}
+															tick={{
+																fontSize: 11,
+																fontFamily: "Inter, sans-serif",
+															}}
+														/>
+														<Tooltip content={<RechartsTooltip />} />
 														<Area
 															type="monotone"
 															dataKey="volume"
@@ -965,10 +976,7 @@ export function Dashboard() {
 							className="space-y-6"
 						>
 							{/* Quick Stats */}
-							<motion.div
-								variants={fadeUp}
-								whileHover={hover.lift}
-							>
+							<motion.div variants={fadeUp} whileHover={hover.lift}>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Quick Stats</h3>
 									{workoutsLoading ? (
@@ -991,7 +999,10 @@ export function Dashboard() {
 													<span>Total Workouts</span>
 												</div>
 												<span className="text-white text-lg">
-													<NumberFlow value={workouts?.length ?? 0} className="tabular-nums" />
+													<NumberFlow
+														value={workouts?.length ?? 0}
+														className="tabular-nums"
+													/>
 												</span>
 											</div>
 											<div className="flex items-center justify-between">
@@ -1000,7 +1011,10 @@ export function Dashboard() {
 													<span>Personal Records</span>
 												</div>
 												<span className="text-white text-lg">
-													<NumberFlow value={recentPRs?.length ?? 0} className="tabular-nums" />
+													<NumberFlow
+														value={recentPRs?.length ?? 0}
+														className="tabular-nums"
+													/>
 												</span>
 											</div>
 											<div className="flex items-center justify-between">
@@ -1029,23 +1043,17 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Goal Progress Widget */}
-							<motion.div
-								variants={fadeUp}
-							>
+							<motion.div variants={fadeUp}>
 								<GoalDashboardWidget />
 							</motion.div>
 
 							{/* Recovery Readiness Widget */}
-							<motion.div
-								variants={fadeUp}
-							>
+							<motion.div variants={fadeUp}>
 								<RecoveryDashboardWidget />
 							</motion.div>
 
 							{/* Recent PRs */}
-							<motion.div
-								variants={fadeUp}
-							>
+							<motion.div variants={fadeUp}>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
@@ -1099,9 +1107,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div
-								variants={fadeUp}
-							>
+							<motion.div variants={fadeUp}>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<div className="flex flex-col items-center justify-center py-6 text-center">
@@ -1125,9 +1131,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div
-								variants={fadeUp}
-							>
+							<motion.div variants={fadeUp}>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
@@ -1149,7 +1153,8 @@ export function Dashboard() {
 												No badges earned yet
 											</p>
 											<p className="text-xs text-muted mt-1">
-												Complete workouts in the mobile app to start earning badges
+												Complete workouts in the mobile app to start earning
+												badges
 											</p>
 										</div>
 									) : (
@@ -1161,7 +1166,9 @@ export function Dashboard() {
 												>
 													<div className="flex items-center justify-between gap-3">
 														<div>
-															<div className="text-white">{badge.badge_name}</div>
+															<div className="text-white">
+																{badge.badge_name}
+															</div>
 															<div className="text-xs text-muted-foreground">
 																{badge.badge_description ?? badge.badge_id}
 															</div>
