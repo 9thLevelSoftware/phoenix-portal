@@ -921,15 +921,11 @@ export function LandingPage() {
 										Pricing
 									</button>
 								</li>
-								<li><span className="text-muted-foreground/50 cursor-default">Integrations</span></li>
-								<li><span className="text-muted-foreground/50 cursor-default">Roadmap</span></li>
 							</ul>
 						</div>
 						<div>
 							<h4 className="text-white mb-4">Project</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
-								<li><span className="text-muted-foreground/50 cursor-default">Mobile App</span></li>
-								<li><span className="text-muted-foreground/50 cursor-default">Portal Source</span></li>
 								<li>
 									<a
 										href="https://ko-fi.com/vitruvianredux"
@@ -966,7 +962,6 @@ export function LandingPage() {
 										Terms of Service
 									</Link>
 								</li>
-								<li><span className="text-muted-foreground/50 cursor-default">Security</span></li>
 							</ul>
 						</div>
 					</div>

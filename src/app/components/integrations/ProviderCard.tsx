@@ -31,6 +31,7 @@ interface ProviderCardProps {
 	isLoading?: boolean;
 	supportsManualSync?: boolean;
 	syncHint?: string;
+	comingSoon?: boolean;
 }
 
 function formatRelative(dateStr: string | null): string {
@@ -58,6 +59,7 @@ export function ProviderCard({
 	isLoading,
 	supportsManualSync = true,
 	syncHint,
+	comingSoon,
 }: ProviderCardProps) {
 	const meta = PROVIDER_METADATA[provider];
 	const Icon = ICON_MAP[meta.icon] ?? Activity;
@@ -69,8 +71,15 @@ export function ProviderCard({
 					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--color-phoenix-primary)]/10">
 						<Icon className="size-5 text-[var(--color-phoenix-primary)]" />
 					</div>
-					<div>
-						<CardTitle className="text-base">{meta.name}</CardTitle>
+					<div className="flex-1">
+						<div className="flex items-center gap-2">
+							<CardTitle className="text-base">{meta.name}</CardTitle>
+							{comingSoon && (
+								<Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+									Coming Soon
+								</Badge>
+							)}
+						</div>
 						<CardDescription>{meta.description}</CardDescription>
 					</div>
 				</div>
@@ -105,6 +114,13 @@ export function ProviderCard({
 								Disconnect
 							</Button>
 						</div>
+					</div>
+				) : comingSoon ? (
+					<div className="space-y-2">
+						<p className="text-sm text-muted-foreground">
+							Awaiting developer program approval
+						</p>
+						<Button disabled>Connect {meta.name}</Button>
 					</div>
 				) : (
 					<Button onClick={onConnect} disabled={isLoading}>

@@ -1,0 +1,12 @@
+# Cloudflare Pages configuration
+# Auto-deployed on push to main via Cloudflare GitHub integration
+
+name = "phoenix-portal"
+compatibility_date = "2025-12-01"
+pages_build_output_dir = "dist"
+
+[build]
+command = "npm run build"
+
+# Client-side env vars (VITE_*) are set in Cloudflare Dashboard,
+# not here — they are embedded in the bundle at build time.
