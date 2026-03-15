@@ -31,7 +31,7 @@ export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
-	const { isElite } = useSubscription();
+	const { isInferno } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -50,7 +50,7 @@ export function SessionReplay() {
 	// Fetch session structure
 	const sessionQuery = useQuery({
 		...replaySessionOptions(sessionId ?? ""),
-		enabled: isElite && !!sessionId,
+		enabled: isInferno && !!sessionId,
 	});
 
 	// Derive all sets from session exercises
@@ -71,7 +71,7 @@ export function SessionReplay() {
 	// Fetch telemetry for current set
 	const telemetryQuery = useQuery({
 		...replayTelemetryOptions(currentSet?.setId ?? ""),
-		enabled: isElite && !!currentSet?.setId,
+		enabled: isInferno && !!currentSet?.setId,
 	});
 
 	// Process telemetry data
@@ -157,7 +157,7 @@ export function SessionReplay() {
 	}
 
 	return (
-		<SubscriptionGate requiredTier="ELITE">
+		<SubscriptionGate requiredTier="INFERNO">
 			<div className="min-h-screen p-4 space-y-4">
 				{/* Header */}
 				<div className="flex items-center gap-3">

@@ -57,9 +57,9 @@ import {
 import { workoutListOptions } from "@/queries/workouts";
 
 const PLAN_LABELS = {
-	FREE: "Free Plan",
-	PHOENIX: "PHOENIX Plan",
-	ELITE: "ELITE Plan",
+	FREE: "No Active Subscription",
+	PHOENIX: "Phoenix Plan",
+	ELITE: "Elite Plan",
 } as const;
 
 /** Provider display config for integrations tab */
@@ -106,7 +106,7 @@ export function Profile() {
 		...profileStatsOptions(userId),
 		enabled: !!userId,
 	});
-	const { data: workouts } = useQuery(workoutListOptions(user?.id));
+	const { data: workouts } = useQuery(workoutListOptions(userId));
 	const { data: topExercises, isPending: exercisesLoading } = useQuery({
 		...topExercisesOptions(userId),
 		enabled: !!userId,
@@ -359,22 +359,12 @@ export function Profile() {
 										asChild
 										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white"
 									>
-										<Link to="/pricing">Upgrade</Link>
+										<Link to="/pricing">Subscribe</Link>
 									</Button>
 								) : (
-									<>
-										<p className="text-sm text-muted-foreground">
-											Manage your subscription in the Phoenix mobile app
-										</p>
-										{tier === "PHOENIX" && (
-											<Button
-												asChild
-												className="bg-gradient-to-r from-accent to-warning hover:from-warning hover:to-accent border-0 text-background"
-											>
-												<Link to="/pricing">Upgrade to ELITE</Link>
-											</Button>
-										)}
-									</>
+									<p className="text-sm text-muted-foreground">
+										Manage your subscription in the Phoenix mobile app
+									</p>
 								)}
 							</div>
 						</div>

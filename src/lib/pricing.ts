@@ -10,47 +10,35 @@ export interface TierPricing {
 	annualPrice: string;
 	annualMonthly: string;
 	features: string[];
+	comingSoon?: boolean;
 }
 
 export const TIER_PRICING: TierPricing[] = [
 	{
-		name: "Free",
-		tier: "FREE",
-		monthlyPrice: "$0",
-		annualPrice: "$0",
-		annualMonthly: "$0",
+		name: "Ember",
+		tier: "EMBER",
+		monthlyPrice: "$10",
+		annualPrice: "$99",
+		annualMonthly: "$8.25",
 		features: [
-			"Basic workout tracking",
-			"Limited session history",
-			"Community browsing",
+			"Cloud sync & backup on multiple devices",
+			"Unlimited workout history",
+			"Community sharing & routines",
+			"Third-party connections (Strava, Fitbit, Garmin, Hevy)",
 		],
 	},
 	{
-		name: "Phoenix",
-		tier: "PHOENIX",
-		monthlyPrice: "$14.99",
-		annualPrice: "$149.99",
-		annualMonthly: "$12.50",
+		name: "Inferno",
+		tier: "INFERNO",
+		monthlyPrice: "$20",
+		annualPrice: "$199",
+		annualMonthly: "$16.58",
 		features: [
-			"Everything in Free",
-			"Advanced analytics",
+			"Everything in Ember",
+			"Advanced analytics & biomechanics",
 			"Force curves & VBT zones",
-			"Community sharing",
-			"Unlimited history",
+			"Session replay with 50Hz telemetry",
 		],
-	},
-	{
-		name: "Elite",
-		tier: "ELITE",
-		monthlyPrice: "$24.99",
-		annualPrice: "$249.99",
-		annualMonthly: "$20.83",
-		features: [
-			"Everything in Phoenix",
-			"Session replay",
-			"50Hz telemetry data",
-			"Advanced VBT analytics",
-			"Priority support",
-		],
+		comingSoon: true,
 	},
 ];

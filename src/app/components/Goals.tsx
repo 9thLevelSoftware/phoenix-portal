@@ -262,7 +262,7 @@ function ExerciseNameCombobox({
 
 export function Goals() {
 	const { user } = useAuth();
-	const { isPremium, isElite } = useSubscription();
+	const { isPremium, isInferno } = useSubscription();
 	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
 	const { data: records } = useQuery({
 		...personalRecordsOptions(user?.id ?? ""),
@@ -293,8 +293,8 @@ export function Goals() {
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
 	const archivedGoals = goals?.filter((g) => g.status === "archived") ?? [];
 
-	// M24: ELITE = unlimited goals, PHOENIX = 3, FREE = 1
-	const maxGoals = isElite ? Infinity : isPremium ? 3 : 1;
+	// M24: INFERNO = unlimited goals, EMBER = 3, FREE = 1
+	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 1;
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
@@ -624,7 +624,7 @@ export function Goals() {
 					className="mt-6 text-center"
 				>
 					<p className="text-xs text-muted">
-						{isElite
+						{isInferno
 							? `${activeGoals.length} active goal${activeGoals.length !== 1 ? "s" : ""} (unlimited)`
 							: `${activeGoals.length}/${maxGoals} active goal${maxGoals > 1 ? "s" : ""}`}
 						{!isPremium && " (upgrade for more)"}

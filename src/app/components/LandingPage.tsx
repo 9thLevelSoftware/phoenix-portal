@@ -67,7 +67,6 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-	FREE: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
 	PHOENIX: "bg-primary/20 text-primary border-primary/30",
 	ELITE: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
@@ -197,61 +196,57 @@ export function LandingPage() {
 
 	const features = [
 		{
-			icon: Activity,
-			title: "Force Curve Analysis",
-			badge: "PHOENIX",
-			description:
-				"Visualize concentric and eccentric force output with LTTB-downsampled curves. See exactly where you're strongest — and where you stall.",
-		},
-		{
-			icon: BarChart3,
-			title: "VBT & Power Analytics",
-			badge: "PHOENIX",
-			description:
-				"Velocity-based training zones classify every rep into strength, power, or speed. Track power output and ROM trends over time.",
-		},
-		{
-			icon: Target,
-			title: "Asymmetry Detection",
-			badge: "PHOENIX",
-			description:
-				"L/R force threshold flagging catches muscle imbalances before they become injuries. Full biomechanics dashboard with muscle heatmap.",
-		},
-		{
-			icon: Play,
-			title: "Session Replay",
-			badge: "ELITE",
-			description:
-				"Relive every workout with Canvas 2D telemetry playback at 50Hz. Scrub through sets, analyze rep quality, and detect fatigue.",
-		},
-		{
 			icon: Share2,
 			title: "Community Hub",
-			badge: "FREE",
+			badge: "EMBER",
 			description:
 				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
 		},
 		{
 			icon: Trophy,
 			title: "Challenges & Leaderboards",
-			badge: "FREE",
+			badge: "EMBER",
 			description:
 				"Compete in community challenges, climb leaderboards, and earn badges. See how you stack up against other Vitruvian athletes.",
+		},
+		{
+			icon: Activity,
+			title: "Force Curve Analysis",
+			badge: "INFERNO",
+			description:
+				"Visualize concentric and eccentric force output with LTTB-downsampled curves. See exactly where you're strongest — and where you stall.",
+		},
+		{
+			icon: BarChart3,
+			title: "VBT & Power Analytics",
+			badge: "INFERNO",
+			description:
+				"Velocity-based training zones classify every rep into strength, power, or speed. Track power output and ROM trends over time.",
+		},
+		{
+			icon: Target,
+			title: "Asymmetry Detection",
+			badge: "INFERNO",
+			description:
+				"L/R force threshold flagging catches muscle imbalances before they become injuries. Full biomechanics dashboard with muscle heatmap.",
+		},
+		{
+			icon: Play,
+			title: "Session Replay",
+			badge: "INFERNO",
+			description:
+				"Relive every workout with Canvas 2D telemetry playback at 50Hz. Scrub through sets, analyze rep quality, and detect fatigue.",
 		},
 	];
 
 	const pricingTiers = TIER_PRICING.map((t) => ({
 		name: t.name,
 		price: t.monthlyPrice,
-		period: t.tier === "FREE" ? "forever" : "per month",
+		period: "per month",
 		features: t.features,
-		cta:
-			t.tier === "FREE"
-				? "Get Started"
-				: t.tier === "PHOENIX"
-					? "Rise Now"
-					: "Forge Ahead",
-		highlight: t.tier === "PHOENIX",
+		cta: t.comingSoon ? "Coming Soon" : "Rise Now",
+		highlight: t.tier === "EMBER",
+		comingSoon: t.comingSoon,
 	}));
 
 	// Auth dialog using Radix Dialog for accessibility (focus trap, ARIA, keyboard nav)
@@ -654,7 +649,7 @@ export function LandingPage() {
 								className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
 							>
 								<span className="relative z-10 flex items-center gap-2">
-									Get Started Free
+									Get Started
 									<ArrowRight className="w-5 h-5" />
 								</span>
 							</Button>
@@ -760,7 +755,7 @@ export function LandingPage() {
 						</p>
 					</motion.div>
 
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
 						{pricingTiers.map((tier, index) => (
 							<motion.div
 								key={tier.name}
@@ -780,6 +775,11 @@ export function LandingPage() {
 									{tier.highlight && (
 										<div className="mb-4 px-4 py-1 bg-gradient-to-r from-primary to-chart-2 rounded-full text-sm text-center w-fit mx-auto">
 											RECOMMENDED
+										</div>
+									)}
+									{tier.comingSoon && (
+										<div className="mb-4 px-4 py-1 bg-accent/20 text-accent border border-accent/30 rounded-full text-sm text-center w-fit mx-auto">
+											Coming Soon
 										</div>
 									)}
 									<h3 className="text-2xl mb-2 text-white text-center">
@@ -818,11 +818,14 @@ export function LandingPage() {
 									</ul>
 									<Button
 										size="lg"
-										onClick={openAuth}
+										onClick={tier.comingSoon ? undefined : openAuth}
+										disabled={tier.comingSoon}
 										className={
-											tier.highlight
-												? "w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
-												: "w-full border-2 border-primary bg-transparent text-primary hover:bg-primary/10"
+											tier.comingSoon
+												? "w-full border-2 border-accent/30 bg-transparent text-accent/60 cursor-not-allowed"
+												: tier.highlight
+													? "w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
+													: "w-full border-2 border-primary bg-transparent text-primary hover:bg-primary/10"
 										}
 									>
 										{tier.cta}
@@ -859,7 +862,7 @@ export function LandingPage() {
 									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
 								>
 									<span className="flex items-center gap-2">
-										Start Free
+										Get Started
 										<ArrowRight className="w-5 h-5" />
 									</span>
 								</Button>

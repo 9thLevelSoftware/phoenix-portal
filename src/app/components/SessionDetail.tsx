@@ -205,7 +205,7 @@ export function SessionDetail() {
 								<ArrowLeft className="w-4 h-4 mr-2" />
 								Back to History
 							</Button>
-							<SubscriptionGate requiredTier="PHOENIX" fallback={null}>
+							<SubscriptionGate requiredTier="EMBER" fallback={null}>
 								<Button
 									variant="outline"
 									size="sm"

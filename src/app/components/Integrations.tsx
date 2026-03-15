@@ -29,7 +29,7 @@ import {
 
 export function Integrations() {
 	const { user, session } = useAuth();
-	const { isElite } = useSubscription();
+	const { isPremium } = useSubscription();
 	const userId = user?.id ?? "";
 	const accessToken = session?.access_token ?? "";
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -52,11 +52,11 @@ export function Integrations() {
 
 	const { data: integrations, isLoading } = useQuery({
 		...integrationsOptions(userId),
-		enabled: isElite && !!userId,
+		enabled: isPremium && !!userId,
 	});
 	const { data: activities } = useQuery({
 		...externalActivitiesOptions(userId),
-		enabled: isElite && !!userId,
+		enabled: isPremium && !!userId,
 	});
 
 	const disconnectMutation = useDisconnectIntegration();
@@ -77,7 +77,7 @@ export function Integrations() {
 	};
 
 	return (
-		<SubscriptionGate requiredTier="ELITE">
+		<SubscriptionGate requiredTier="EMBER">
 			<div className="container mx-auto p-6 space-y-8">
 				<div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
 					<div>

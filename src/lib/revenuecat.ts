@@ -30,17 +30,17 @@ export interface RevenueCatEvent {
 
 /**
  * Maps RevenueCat entitlement IDs to Phoenix Portal subscription tiers.
- * Priority: ELITE > PHOENIX > FREE (highest tier wins).
+ * Priority: INFERNO > EMBER > FREE (highest tier wins).
  *
  * Entitlement IDs are configured in the RevenueCat dashboard.
- * Current mapping: "elite" -> ELITE, "phoenix" -> PHOENIX.
+ * Current mapping: "elite" -> INFERNO, "phoenix" -> EMBER.
  */
 export function mapEntitlementsToTier(
 	entitlementIds: string[] | null | undefined,
 ): string {
 	if (!entitlementIds?.length) return "FREE";
-	if (entitlementIds.includes("elite")) return "ELITE";
-	if (entitlementIds.includes("phoenix")) return "PHOENIX";
+	if (entitlementIds.includes("elite")) return "INFERNO";
+	if (entitlementIds.includes("phoenix")) return "EMBER";
 	return "FREE";
 }
 
