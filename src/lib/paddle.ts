@@ -1,7 +1,7 @@
 /**
  * Paddle Billing webhook types and mapping utilities.
  *
- * This module mirrors the role of the former revenuecat.ts — it provides
+ * This module provides
  * pure functions that translate Paddle webhook payloads into the shape
  * expected by the portal's `subscriptions` table.
  *
