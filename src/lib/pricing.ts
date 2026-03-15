@@ -17,9 +17,9 @@ export const TIER_PRICING: TierPricing[] = [
 	{
 		name: "Ember",
 		tier: "EMBER",
-		monthlyPrice: "$10",
-		annualPrice: "$99",
-		annualMonthly: "$8.25",
+		monthlyPrice: "$15",
+		annualPrice: "$149",
+		annualMonthly: "$12.42",
 		features: [
 			"Cloud sync & backup on multiple devices",
 			"Unlimited workout history",
@@ -30,9 +30,9 @@ export const TIER_PRICING: TierPricing[] = [
 	{
 		name: "Inferno",
 		tier: "INFERNO",
-		monthlyPrice: "$20",
-		annualPrice: "$199",
-		annualMonthly: "$16.58",
+		monthlyPrice: "$25",
+		annualPrice: "$249",
+		annualMonthly: "$20.75",
 		features: [
 			"Everything in Ember",
 			"Advanced analytics & biomechanics",
