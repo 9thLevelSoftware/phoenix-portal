@@ -16,6 +16,7 @@ import { initiateStravaConnect } from "@/lib/integrations/strava";
 import type {
 	ExternalActivity,
 	IntegrationProvider,
+	UserIntegration,
 } from "@/lib/integrations/types";
 import {
 	useDisconnectIntegration,
@@ -62,8 +63,10 @@ export function Integrations() {
 	const syncMutation = useManualSync();
 
 	// Helper to find a user's integration by provider
-	const getIntegration = (provider: IntegrationProvider) =>
-		integrations?.find((i) => i.provider === provider) ?? null;
+	const getIntegration = (provider: IntegrationProvider): UserIntegration | null => {
+		const match = integrations?.find((i) => i.provider === provider);
+		return match ? (match as UserIntegration) : null;
+	};
 
 	const handleConnectError = (providerName: string, err: unknown) => {
 		toast.error(
@@ -123,6 +126,7 @@ export function Integrations() {
 							}
 							onSync={() => syncMutation.mutate({ userId, provider: "fitbit" })}
 							isLoading={disconnectMutation.isPending || syncMutation.isPending}
+							comingSoon
 						/>
 						<ProviderCard
 							provider="garmin"
@@ -141,6 +145,7 @@ export function Integrations() {
 							isLoading={disconnectMutation.isPending || syncMutation.isPending}
 							supportsManualSync={false}
 							syncHint="Garmin sync is webhook-driven. New activities appear automatically after Garmin pushes them."
+							comingSoon
 						/>
 						{/* HevyConnect from 07-03 - handles both API and CSV import */}
 						<HevyConnect
