@@ -207,7 +207,7 @@ function BiomechanicsContent() {
 		for (const ex of exercises) {
 			const group = (ex as { muscle_group?: string }).muscle_group ?? "Other";
 			const totalVol = ex.sets.reduce(
-				(sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0),
+				(sum, s) => sum + (s.weight_kg ?? 0) * (s.actual_reps ?? 0),
 				0,
 			);
 			volumes[group] = (volumes[group] ?? 0) + totalVol;
@@ -516,7 +516,7 @@ export function Biomechanics() {
 				</p>
 			</div>
 
-			<SubscriptionGate requiredTier="PHOENIX">
+			<SubscriptionGate requiredTier="INFERNO">
 				<BiomechanicsContent />
 			</SubscriptionGate>
 		</PageShell>

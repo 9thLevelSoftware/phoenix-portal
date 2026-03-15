@@ -356,17 +356,18 @@ export function Analytics() {
 	const [mobileActiveTab, setMobileActiveTab] = useState("overview");
 
 	const queryPeriod = periodToDays(timePeriod);
+	const userId = user?.id ?? "";
 	const { data: volumeRaw, isPending: volumePending } = useQuery(
-		volumeTrendOptions(user?.id, queryPeriod),
+		volumeTrendOptions(userId, queryPeriod),
 	);
 	const { data: muscleGroupRaw, isPending: musclePending } = useQuery(
-		muscleGroupOptions(user?.id),
+		muscleGroupOptions(userId),
 	);
 	const { data: strengthRaw, isPending: strengthPending } = useQuery(
-		strengthProgressOptions(user?.id),
+		strengthProgressOptions(userId),
 	);
 	const { data: externalActivities } = useQuery({
-		...externalActivitiesOptions(user?.id),
+		...externalActivitiesOptions(userId),
 		enabled: !!user,
 	});
 
@@ -395,9 +396,6 @@ export function Analytics() {
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
-	const _avgDuration =
-		totalWorkouts > 0 ? Math.round(totalVolume / totalWorkouts / 100) : 0; // rough estimate
-
 	const insights = generateInsights(
 		volumeData,
 		muscleGroupData,
@@ -894,7 +892,7 @@ export function Analytics() {
 					</div>
 
 					<SubscriptionGate
-						requiredTier="PHOENIX"
+						requiredTier="INFERNO"
 						featureName="Advanced Analytics"
 					>
 						{!hasData ? (

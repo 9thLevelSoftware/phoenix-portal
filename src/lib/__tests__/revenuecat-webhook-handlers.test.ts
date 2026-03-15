@@ -25,12 +25,12 @@ function createEvent(overrides: Partial<RevenueCatEvent>): RevenueCatEvent {
 // ─── mapEntitlementsToTier ───────────────────────────────────────────────────
 
 describe("mapEntitlementsToTier", () => {
-	it('returns "ELITE" when entitlement_ids includes "elite"', () => {
-		expect(mapEntitlementsToTier(["elite"])).toBe("ELITE");
+	it('returns "INFERNO" when entitlement_ids includes "elite"', () => {
+		expect(mapEntitlementsToTier(["elite"])).toBe("INFERNO");
 	});
 
-	it('returns "PHOENIX" when entitlement_ids includes "phoenix"', () => {
-		expect(mapEntitlementsToTier(["phoenix"])).toBe("PHOENIX");
+	it('returns "EMBER" when entitlement_ids includes "phoenix"', () => {
+		expect(mapEntitlementsToTier(["phoenix"])).toBe("EMBER");
 	});
 
 	it('returns "FREE" when entitlement_ids is empty array', () => {
@@ -45,16 +45,16 @@ describe("mapEntitlementsToTier", () => {
 		expect(mapEntitlementsToTier(undefined)).toBe("FREE");
 	});
 
-	it('returns "ELITE" when both "elite" and "phoenix" are present (highest tier wins)', () => {
-		expect(mapEntitlementsToTier(["phoenix", "elite"])).toBe("ELITE");
+	it('returns "INFERNO" when both "elite" and "phoenix" are present (highest tier wins)', () => {
+		expect(mapEntitlementsToTier(["phoenix", "elite"])).toBe("INFERNO");
 	});
 
 	it('returns "FREE" for unknown entitlement IDs', () => {
 		expect(mapEntitlementsToTier(["beta_tester"])).toBe("FREE");
 	});
 
-	it('returns "PHOENIX" when entitlement_ids includes "phoenix" and other non-tier entitlements', () => {
-		expect(mapEntitlementsToTier(["beta_tester", "phoenix"])).toBe("PHOENIX");
+	it('returns "EMBER" when entitlement_ids includes "phoenix" and other non-tier entitlements', () => {
+		expect(mapEntitlementsToTier(["beta_tester", "phoenix"])).toBe("EMBER");
 	});
 });
 
@@ -118,14 +118,14 @@ describe("buildSubscriptionUpsert", () => {
 			createEvent({ entitlement_ids: ["elite"] }),
 		);
 		expect(result).not.toBeNull();
-		expect(result!.tier).toBe("ELITE");
+		expect(result!.tier).toBe("INFERNO");
 		expect(result!.status).toBe("active");
 	});
 
 	it("INITIAL_PURCHASE with phoenix entitlement builds upsert with tier=PHOENIX, status=active", () => {
 		const result = buildSubscriptionUpsert(createEvent());
 		expect(result).not.toBeNull();
-		expect(result!.tier).toBe("PHOENIX");
+		expect(result!.tier).toBe("EMBER");
 		expect(result!.status).toBe("active");
 	});
 
@@ -237,7 +237,7 @@ describe("buildSubscriptionUpsert", () => {
 		);
 		expect(result).not.toBeNull();
 		expect(result!.status).toBe("active");
-		expect(result!.tier).toBe("ELITE");
+		expect(result!.tier).toBe("INFERNO");
 	});
 
 	it("RENEWAL builds upsert with status=active", () => {

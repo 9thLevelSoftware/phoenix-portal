@@ -72,11 +72,11 @@ const faqCategories: FAQCategory[] = [
 				question: "What subscription tiers are available?",
 				answer: (
 					<p>
-						We offer three tiers: <strong>Free</strong> (basic workout
-						tracking), <strong>Phoenix</strong> ($14.99/mo — advanced analytics,
-						force curves, and routine sharing), and <strong>Elite</strong>{" "}
-						($24.99/mo — everything in Phoenix plus biomechanics analysis,
-						session replay, and priority features). See the{" "}
+						We offer two tiers: <strong>Ember</strong> ($10/mo — cloud
+						sync, unlimited history, community sharing, and third-party
+						connections), and <strong>Inferno</strong> ($20/mo — everything
+						in Ember plus advanced analytics, biomechanics, force curves,
+						VBT zones, and session replay). Inferno is coming soon. See the{" "}
 						<Link to="/pricing" className="text-primary hover:underline">
 							Pricing page
 						</Link>{" "}

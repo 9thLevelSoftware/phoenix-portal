@@ -372,7 +372,7 @@ export function WorkoutHistory() {
 											variant="outline"
 											className="ml-2 border-primary/30 text-primary text-[10px] px-1.5 py-0"
 										>
-											{tier === "FREE" ? "PHOENIX" : "UPGRADE"}
+											{tier === "FREE" ? "EMBER" : "UPGRADE"}
 										</Badge>
 									</Link>
 								</Button>

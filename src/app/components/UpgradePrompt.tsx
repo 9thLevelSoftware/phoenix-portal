@@ -5,18 +5,18 @@ import { Card } from "@/app/components/ui/card";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { TIER_PRICING } from "@/lib/pricing";
 
-type PaidTier = "PHOENIX" | "ELITE";
+type PaidTier = "EMBER" | "INFERNO";
 
 // Icon sets per tier for display alongside benefit labels
 const TIER_ICONS: Record<PaidTier, (typeof Flame)[]> = {
-	PHOENIX: [Flame, Zap, Crown],
-	ELITE: [Crown, Zap, Flame],
+	EMBER: [Flame, Zap, Crown],
+	INFERNO: [Crown, Zap, Flame],
 };
 
 // Derive benefits from shared pricing constants (single source of truth)
 const TIER_BENEFITS: Record<PaidTier, { icon: typeof Flame; label: string }[]> =
 	Object.fromEntries(
-		(["PHOENIX", "ELITE"] as const).map((tier) => {
+		(["EMBER", "INFERNO"] as const).map((tier) => {
 			const pricing = TIER_PRICING.find((t) => t.tier === tier)!;
 			const icons = TIER_ICONS[tier];
 			// Skip "Everything in X" entries, take up to 3 features
@@ -34,12 +34,12 @@ const TIER_COLORS: Record<
 	PaidTier,
 	{ border: string; glow: string; accent: string }
 > = {
-	PHOENIX: {
+	EMBER: {
 		border: "border-primary/40",
 		glow: "from-primary/10 to-chart-2/10",
 		accent: "text-primary",
 	},
-	ELITE: {
+	INFERNO: {
 		border: "border-accent/40",
 		glow: "from-accent/10 to-warning/10",
 		accent: "text-accent",

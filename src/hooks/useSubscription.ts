@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 
-export type SubscriptionTier = "FREE" | "PHOENIX" | "ELITE";
+export type SubscriptionTier = "FREE" | "EMBER" | "INFERNO";
 export type SubscriptionStatus =
 	| "active"
 	| "past_due"
@@ -20,7 +20,7 @@ interface SubscriptionData {
 	cancelAtPeriodEnd: boolean;
 	isLoading: boolean;
 	isPremium: boolean;
-	isElite: boolean;
+	isInferno: boolean;
 }
 
 async function fetchSubscription(userId: string) {
@@ -99,6 +99,6 @@ export function useSubscription(): SubscriptionData {
 		cancelAtPeriodEnd: data?.cancelAtPeriodEnd ?? false,
 		isLoading,
 		isPremium: tier !== "FREE",
-		isElite: tier === "ELITE",
+		isInferno: tier === "INFERNO",
 	};
 }

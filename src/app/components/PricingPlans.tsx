@@ -1,4 +1,4 @@
-import { Check, Crown, Flame, Loader2 } from "lucide-react";
+import { Check, Clock, Crown, Flame, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
@@ -37,6 +37,7 @@ interface TierConfig extends TierDisplayConfig {
 	annualPrice: string;
 	annualMonthly: string;
 	features: TierFeature[];
+	comingSoon?: boolean;
 }
 
 // Display-only configuration per tier (no prices here — prices come from TIER_PRICING)
@@ -48,7 +49,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentText: "text-zinc-400",
 		buttonClass: "",
 	},
-	PHOENIX: {
+	EMBER: {
 		icon: Flame,
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
@@ -57,7 +58,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 			"bg-gradient-to-r from-primary to-chart-2 hover:from-primary/90 hover:to-chart-2/90 text-white border-0",
 		popular: true,
 	},
-	ELITE: {
+	INFERNO: {
 		icon: Crown,
 		accentBorder: "border-accent",
 		accentBg: "from-accent/10 to-[#B45309]/10",
@@ -76,12 +77,13 @@ const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
 	annualPrice: pricing.annualPrice,
 	annualMonthly: pricing.annualMonthly,
 	features: pricing.features.map((f) => ({ label: f })),
+	comingSoon: pricing.comingSoon,
 }));
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,
-	PHOENIX: 1,
-	ELITE: 2,
+	EMBER: 1,
+	INFERNO: 2,
 };
 
 export function PricingPlans() {
@@ -89,23 +91,20 @@ export function PricingPlans() {
 		useSubscription();
 	const [isAnnual, setIsAnnual] = useState(false);
 
-	const handleSubscribe = (tier: SubscriptionTier) => {
-		if (tier === "FREE") return;
+	const handleSubscribe = (_tier: SubscriptionTier) => {
 		toast.info(
 			"Subscriptions are managed in the Phoenix mobile app. Download the app to subscribe!",
 		);
 	};
 
 	const renderCTA = (tierConfig: TierConfig) => {
-		if (tierConfig.tier === "FREE") {
-			if (currentTier === "FREE") {
-				return (
-					<Button variant="outline" className="w-full" disabled>
-						Current Plan
-					</Button>
-				);
-			}
-			return null;
+		if (tierConfig.comingSoon) {
+			return (
+				<Button variant="outline" className="w-full opacity-60" disabled>
+					<Clock className="w-4 h-4 mr-2" />
+					Coming Soon
+				</Button>
+			);
 		}
 
 		if (currentTier === tierConfig.tier) {
@@ -119,7 +118,7 @@ export function PricingPlans() {
 		if (TIER_LEVEL[currentTier] > TIER_LEVEL[tierConfig.tier]) {
 			return (
 				<Button variant="outline" className="w-full opacity-50" disabled>
-					Included in {currentTier === "ELITE" ? "Elite" : "Phoenix"}
+					Included in {currentTier === "INFERNO" ? "Inferno" : "Ember"}
 				</Button>
 			);
 		}
@@ -172,7 +171,7 @@ export function PricingPlans() {
 				</div>
 
 				{/* Tier Cards */}
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
 					{TIERS.map((tierConfig) => {
 						const Icon = tierConfig.icon;
 						const isCurrent = currentTier === tierConfig.tier;
@@ -189,6 +188,16 @@ export function PricingPlans() {
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
 										<Badge className="bg-primary text-white border-0 px-3">
 											Most Popular
+										</Badge>
+									</div>
+								)}
+
+								{/* Coming Soon Badge */}
+								{tierConfig.comingSoon && (
+									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
+										<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
+											<Sparkles className="w-3 h-3 mr-1" />
+											Coming Soon
 										</Badge>
 									</div>
 								)}
@@ -231,7 +240,7 @@ export function PricingPlans() {
 											</span>
 											<span className="text-muted-foreground text-sm">/mo</span>
 										</div>
-										{isAnnual && tierConfig.tier !== "FREE" && (
+										{isAnnual && (
 											<p className="text-muted-foreground text-xs mt-1">
 												{tierConfig.annualPrice}/year billed annually
 											</p>
