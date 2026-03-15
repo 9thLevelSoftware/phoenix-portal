@@ -282,7 +282,7 @@ Plans:
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
 | 21. Code Fixes & Cloudflare Config | v1.3 | 2/2 | Complete | 2026-03-15 |
 | 22. Paddle Billing Integration | v1.3 | 3/3 | Complete | 2026-03-15 |
-| 23. Feature Fixes | v1.3 | 0/2 | Pending | - |
+| 23. Feature Fixes | v1.3 | 2/2 | Complete | 2026-03-15 |
 | 24. Infrastructure & Ops | v1.3 | 0/1 | Pending | - |
 | 25. Verification & Launch | v1.3 | 0/1 | Pending | - |
 | 26. Integration Rollout | v1.3 | 0/2 | Pending | - |
