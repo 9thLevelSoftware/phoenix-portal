@@ -1,163 +1,87 @@
-# Requirements: Phoenix Portal v1.2 Premium Visual Overhaul
+# Requirements: Phoenix Portal v1.3 MVP Launch
 
-**Defined:** 2026-02-20
-**Core Value:** Premium subscribers see data and insights about their training that they cannot get anywhere else — making the subscription feel indispensable.
+**Defined:** 2026-03-15
+**Core Value:** Take the code-complete portal to production — real users can sign up, sync workouts, and access premium analytics at https://phoenix-portal.com.
 
-## v1.2 Requirements
+## v1.3 Requirements
 
-### Typography
+### Deployment & Config
 
-- [x] **TYPE-01**: Inter font-family declared on body/html — entire app renders in Inter, not browser default
-- [x] **TYPE-02**: Dead CSS variables (`--font-size-xs` through `--font-size-3xl`) removed or wired to actual heading styles
-- [x] **TYPE-03**: Hardcoded `fontFamily: "system-ui"` removed from LandingPage hero h1
-- [x] **TYPE-04**: Headings use differentiated font-weights (page titles heavier than section headers than card titles)
-- [x] **TYPE-05**: Uppercase labels use `letter-spacing: 0.05-0.1em` and small font size for eyebrow treatment
-- [x] **TYPE-06**: Inter Variable loaded with non-standard weights (450/625) for premium type contrast
+- [ ] **DEPLOY-01**: `supabase/config.toml` declares `[functions.revenuecat-webhooks]` with `verify_jwt = false` — no reference to deleted `stripe-webhooks`
+- [ ] **DEPLOY-02**: Fitbit and Garmin cards on Integrations page show "Coming Soon" badge with Connect button disabled — Strava and Hevy remain active
+- [ ] **DEPLOY-03**: LandingPage footer contains only items with working link destinations — all placeholder spans removed
+- [ ] **DEPLOY-04**: `vercel.json` deleted; `wrangler.toml` exists with Cloudflare Pages project config
+- [ ] **DEPLOY-05**: `public/_redirects` contains SPA fallback rule (`/* /index.html 200`)
+- [ ] **DEPLOY-06**: `public/_headers` contains security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP whitelisting Supabase + Sentry + OAuth providers)
 
-### Navigation & Layout
+### Infrastructure & Ops
 
-- [x] **NAV-01**: 13-item horizontal top nav replaced with collapsible left sidebar using shadcn/ui Sidebar component
-- [x] **NAV-02**: Sidebar collapses to icon-only rail at narrower desktop widths
-- [x] **NAV-03**: Sidebar items grouped into sections (Training, Social, Account)
-- [x] **NAV-04**: Active sidebar item uses `bg-primary/10 text-primary` full-row highlight
-- [x] **NAV-05**: Right-side nav cluster consolidated — avatar opens dropdown with profile/tier/streak/logout
-- [x] **NAV-06**: Shared PageShell component replaces 30+ duplicated `max-w-7xl mx-auto px-4` patterns
-- [x] **NAV-07**: `useIsMobile` initializes synchronously from `window.innerWidth` — no layout flash on mobile
-- [x] **NAV-08**: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile merged into CSS-responsive parent components
-- [x] **NAV-09**: MobileBottomNav "More" drawer items grouped into labeled sections
+- [ ] **OPS-01**: Supabase secrets configured: APP_URL (`https://phoenix-portal.com`), ENVIRONMENT (`production`), REVENUECAT_WEBHOOK_SECRET
+- [ ] **OPS-02**: All 14 Edge Functions deployed and listed via `supabase functions list`
+- [ ] **OPS-03**: Cloudflare Pages connected to repo with auto-deploy on push to main
+- [ ] **OPS-04**: Custom domain `phoenix-portal.com` resolves to Cloudflare Pages with valid SSL
+- [ ] **OPS-05**: RevenueCat webhook configured pointing to `revenuecat-webhooks` Edge Function, TEST event returns 200
+- [ ] **OPS-06**: Strava API application created, `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` set in Supabase secrets
+- [ ] **OPS-07**: Fitbit developer application submitted (confirmation email received)
+- [ ] **OPS-08**: Garmin developer program application submitted (confirmation email received)
 
-### Visual Depth & Surfaces
+### Verification
 
-- [x] **VIS-01**: Body background has ambient radial gradient glows (ember at top-left, flame-red at bottom-right, 6-10% opacity)
-- [x] **VIS-02**: Subtle PNG noise/grain texture overlay on body via `::after` pseudo-element
-- [x] **VIS-03**: Card surface hierarchy: hero cards (brand shadow + border glow), primary cards (elevated + blur), secondary cards (subtle surface)
-- [x] **VIS-04**: `--shadow-sm/md/lg` tokens actually applied to cards (currently defined but unused)
-- [x] **VIS-05**: Default card borders changed from `border-secondary` (#374151) to `rgba(255,255,255,0.06)` subtle separator
-- [x] **VIS-06**: Glassmorphism (`backdrop-blur + semi-transparent bg`) applied to 2-3 key cards per page only (max 3 blur layers per viewport)
-- [x] **VIS-07**: Auth dialog uses dark glass treatment (blur + branded border + inner shadow)
-- [x] **VIS-08**: Landing page feature cards have gradient borders and hover lift with glow bloom
-- [x] **VIS-09**: Icon containers upgraded from uniform `w-12 h-12 rounded-lg` to differentiated treatments (primary: rounded-full + glow, secondary: no container)
+- [ ] **VERIFY-01**: Full test suite passes locally (typecheck, unit tests, e2e, production build)
+- [ ] **VERIFY-02**: Auth flow works on production domain: signup, signin, password reset, sign out, protected route redirect
+- [ ] **VERIFY-03**: End-to-end sync verified: mobile workout push appears on portal Dashboard via Supabase Broadcast
+- [ ] **VERIFY-04**: Subscription gating works: free tier paywall blocks Analytics, Biomechanics, Session Replay, Integrations
+- [ ] **VERIFY-05**: Strava OAuth flow completes: connect → activity sync → disconnect
+- [ ] **VERIFY-06**: Edge Function calls from https://phoenix-portal.com not blocked by CORS
+- [ ] **VERIFY-07**: Fitbit and Garmin cards display Coming Soon badges with disabled Connect buttons
 
-### Motion & Animation
+### Integration Rollout
 
-- [x] **MOT-01**: Page transitions via AnimatePresence wrapping router outlet (using `useOutlet()` pattern for React Router v7 compatibility)
-- [x] **MOT-02**: Card hover states use Framer Motion spring physics (`whileHover={{ scale: 1.015, y: -2 }}` with elevated shadow)
-- [x] **MOT-03**: Entrance animations use `staggerChildren` variants instead of manual delay offsets
-- [x] **MOT-04**: Shared animation presets centralized in `src/lib/animations.ts` (fadeUp, staggerContainer, pageTransition)
-- [x] **MOT-05**: Stat numbers animate from 0 to value on mount using `@number-flow/react`
-- [x] **MOT-06**: Landing hero has scroll parallax (`useScroll` + `useTransform` on content container)
-- [x] **MOT-07**: Scroll indicator replaced with Framer Motion breathing animation (not Tailwind `animate-bounce`)
-- [x] **MOT-08**: Loading state uses branded Phoenix flame pulse instead of generic spinner
-- [x] **MOT-09**: `prefers-reduced-motion` check on EmberParticles and all entrance animations
-- [x] **MOT-10**: Key CTAs have `whileTap={{ scale: 0.97 }}` press feedback
-
-### Data Visualization
-
-- [x] **VIZ-01**: Custom branded `<ChartTooltip>` component replaces all inline `contentStyle` tooltip configs
-- [x] **VIZ-02**: Chart axes styled: `tickLine={false}`, `axisLine={false}`, consistent font size/color across all charts
-- [x] **VIZ-03**: CartesianGrid standardized to `strokeOpacity={0.3}` across all chart files
-- [x] **VIZ-04**: All Recharts charts have explicit `animationDuration={800}` and `animationEasing="ease-out"`
-- [x] **VIZ-05**: Pie chart converted to donut (`innerRadius={60}`) with center label showing dominant category
-- [x] **VIZ-06**: Default `fill="#8884d8"` removed from Analytics pie chart
-- [x] **VIZ-07**: Muscle heatmap back regions fixed — proper SVG paths or front/back toggle added
-- [x] **VIZ-08**: ExerciseProgress stat values increased to `text-4xl font-bold` with color-coded delta pill
-- [x] **VIZ-09**: Chart axis labels specify `fontFamily` and `fontSize` explicitly (not browser default)
-
-### Bug Fixes
-
-- [x] **BUG-01**: LandingPage pricing ($9.99/$19.99) synced with PricingPlans ($14.99/$24.99) — already uses TIER_PRICING source of truth
-- [x] **BUG-02**: MobileBottomNav dead notification logic removed from primaryItems loop — no dead logic found (pre-resolved)
-- [x] **BUG-03**: Dashboard "Badges Earned" stat removed or replaced with real data metric — wired to real earnedBadges query
-- [x] **BUG-04**: Streak card raw emoji replaced with styled Lucide Flame icon + phoenix-glow animation — already uses Lucide Flame
-- [x] **BUG-05**: Hardcoded `#374151` hex in Recharts tooltip styles replaced with CSS variable references — resolved in Phase 18
-- [x] **BUG-06**: Hardcoded `#60A5FA` on Analytics external activity bar replaced with palette constant — resolved in Phase 18
-- [x] **BUG-07**: Gradient text reserved for hero headlines only — section headers use solid `text-white` or `text-primary`
-- [x] **BUG-08**: AppLayout `bg-[#0D0D0D]` changed to `bg-background` for design system consistency
-- [x] **BUG-09**: Footer nav `<li>` elements wrapped in proper `<Link>` or `<a>` tags
-- [x] **BUG-10**: Custom CSS animations (`animate-flame-flicker`, `animate-phoenix-glow`) applied to relevant UI elements instead of sitting unused
-
-## Future Requirements
-
-### Deferred Visual Polish
-
-- **VIS-F01**: Animated gradient orbs (conic-gradient rotation) on landing hero background
-- **VIS-F02**: GoalCelebration particle burst with randomized ease/rotation per particle
-- **VIS-F03**: Onboarding overlay step transitions upgraded to spring physics with feature list stagger
-- **VIS-F04**: Comparison view bar chart visualization (A vs B per exercise)
+- [ ] **INTEG-01**: Fitbit integration activated: secrets set, OAuth verified, Coming Soon badge removed, deployed
+- [ ] **INTEG-02**: Garmin integration activated: secrets set, webhook configured, OAuth 1.0a verified, Coming Soon badge removed, deployed
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Light mode / theme toggle | App is dark-only by design (v1.1 decision) |
-| React Compiler | Stable but opt-in; defer evaluation after visual overhaul |
-| New features (nested comments, admin) | v1.2 is visual-only — no new functionality |
-| Chart library replacement | Recharts + visx stay; style them, don't replace them |
-| Custom illustration system | Empty state illustrations deferred — use icon+text pattern |
+| CI-gated deployment | Cloudflare auto-deploy on push to main; CI is solid (5 jobs) |
+| New portal features | v1.3 is deployment-only — no new functionality |
+| Light mode / theme toggle | App is dark-only by design |
+| Sentry setup | Optional — app works without it |
+| Footer link additions | Removed for clean launch; add back in future milestone when destinations exist |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TYPE-01 | Phase 14 | Complete |
-| TYPE-02 | Phase 14 | Complete |
-| TYPE-03 | Phase 20 | Complete (20-02) |
-| TYPE-04 | Phase 14 | Complete |
-| TYPE-05 | Phase 14 | Complete |
-| TYPE-06 | Phase 14 | Complete |
-| NAV-01 | Phase 15 | Complete |
-| NAV-02 | Phase 15 | Complete |
-| NAV-03 | Phase 15 | Complete |
-| NAV-04 | Phase 15 | Complete |
-| NAV-05 | Phase 15 | Complete |
-| NAV-06 | Phase 15 | Complete |
-| NAV-07 | Phase 15 | Complete |
-| NAV-08 | Phase 15 | Complete |
-| NAV-09 | Phase 15 | Complete |
-| VIS-01 | Phase 20 | Complete |
-| VIS-02 | Phase 14 | Complete |
-| VIS-03 | Phase 16 | Complete |
-| VIS-04 | Phase 14 | Complete |
-| VIS-05 | Phase 14 | Complete |
-| VIS-06 | Phase 16 | Complete |
-| VIS-07 | Phase 16 | Complete |
-| VIS-08 | Phase 16 | Complete |
-| VIS-09 | Phase 16 | Complete |
-| MOT-01 | Phase 17 | Complete |
-| MOT-02 | Phase 17 | Complete |
-| MOT-03 | Phase 17 | Complete |
-| MOT-04 | Phase 17 | Complete |
-| MOT-05 | Phase 17 | Complete |
-| MOT-06 | Phase 17 | Complete |
-| MOT-07 | Phase 17 | Complete |
-| MOT-08 | Phase 17 | Complete |
-| MOT-09 | Phase 17 | Complete |
-| MOT-10 | Phase 17 | Complete |
-| VIZ-01 | Phase 18 | Complete |
-| VIZ-02 | Phase 18 | Complete |
-| VIZ-03 | Phase 18 | Complete |
-| VIZ-04 | Phase 18 | Complete |
-| VIZ-05 | Phase 18 | Complete |
-| VIZ-06 | Phase 18 | Complete |
-| VIZ-07 | Phase 18 | Complete |
-| VIZ-08 | Phase 18 | Complete |
-| VIZ-09 | Phase 18 | Complete |
-| BUG-01 | Phase 19 | Complete (pre-resolved) |
-| BUG-02 | Phase 19 | Complete (pre-resolved) |
-| BUG-03 | Phase 19 | Complete (pre-resolved) |
-| BUG-04 | Phase 19 | Complete (pre-resolved) |
-| BUG-05 | Phase 18 | Complete |
-| BUG-06 | Phase 18 | Complete |
-| BUG-07 | Phase 16 | Complete |
-| BUG-08 | Phase 14 | Complete |
-| BUG-09 | Phase 19 | Complete |
-| BUG-10 | Phase 19 | Complete |
+| DEPLOY-01 | Phase 21 | Pending |
+| DEPLOY-02 | Phase 21 | Pending |
+| DEPLOY-03 | Phase 21 | Pending |
+| DEPLOY-04 | Phase 21 | Pending |
+| DEPLOY-05 | Phase 21 | Pending |
+| DEPLOY-06 | Phase 21 | Pending |
+| OPS-01 | Phase 22 | Pending |
+| OPS-02 | Phase 22 | Pending |
+| OPS-03 | Phase 22 | Pending |
+| OPS-04 | Phase 22 | Pending |
+| OPS-05 | Phase 22 | Pending |
+| OPS-06 | Phase 22 | Pending |
+| OPS-07 | Phase 22 | Pending |
+| OPS-08 | Phase 22 | Pending |
+| VERIFY-01 | Phase 23 | Pending |
+| VERIFY-02 | Phase 23 | Pending |
+| VERIFY-03 | Phase 23 | Pending |
+| VERIFY-04 | Phase 23 | Pending |
+| VERIFY-05 | Phase 23 | Pending |
+| VERIFY-06 | Phase 23 | Pending |
+| VERIFY-07 | Phase 23 | Pending |
+| INTEG-01 | Phase 24 | Pending |
+| INTEG-02 | Phase 24 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 53 total
-- Completed: 53 (100%)
+- v1.3 requirements: 23 total
+- Completed: 0 (0%)
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-02-20*
-*Last updated: 2026-03-13 — all 53 requirements complete (v1.2 milestone done)*
+*Requirements defined: 2026-03-15*

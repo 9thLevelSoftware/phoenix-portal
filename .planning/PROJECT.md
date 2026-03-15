@@ -82,20 +82,22 @@ Premium subscribers see data and insights about their training that they cannot 
 
 ### Active
 
-<!-- Current milestone: v1.2 Premium Visual Overhaul -->
+<!-- Current milestone: v1.3 MVP Launch -->
 
-## Current Milestone: v1.2 Premium Visual Overhaul
+## Current Milestone: v1.3 MVP Launch
 
-**Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
+**Goal:** Take Phoenix Portal from code-complete to publicly deployed on Cloudflare Pages at https://phoenix-portal.com — fix blockers, configure infrastructure, deploy Edge Functions, verify end-to-end flows, and roll out integrations as provider approvals arrive.
 
 **Target areas:**
-- Typography: declare Inter on body, fix dead CSS vars, remove hardcoded system-ui, add letter-spacing/tracking
-- Navigation: replace 13-item horizontal nav with collapsible sidebar
-- Visual depth: ambient background gradients, glassmorphism, brand-tinted shadows, card surface hierarchy
-- Motion design: page transitions, spring-physics hover states, stagger animations, stat counting, scroll parallax
-- Data visualization: custom tooltips, styled axes, chart animations, donut charts, muscle heatmap fix
-- Bug fixes: pricing data mismatch, dead notification logic, useIsMobile flash, hardcoded colors
-- Consistent page shell with shared max-width/padding
+- Hard blocker: fix config.toml (stripe-webhooks → revenuecat-webhooks)
+- Cloudflare Pages: wrangler.toml, _redirects, _headers (security headers + CSP)
+- Coming Soon badges for Fitbit/Garmin on Integrations page
+- Footer cleanup: remove placeholder items without working destinations
+- Infrastructure: Supabase secrets, 14 Edge Function deployments, DNS
+- RevenueCat webhook configuration for mobile billing
+- Strava OAuth setup (instant approval)
+- Fitbit/Garmin developer program submissions (1-6 week approval)
+- End-to-end verification: auth, sync, subscriptions, OAuth, CORS
 
 ### Out of Scope
 
@@ -123,10 +125,11 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 26 routes, 3 Zustand stores, 4 realtime hooks (sync, subscription, community votes, comments), 12+ query files with Zod validation, 5 new feature pages (Goals, Recovery, Comparison, Onboarding, Session Reports).
 
 **Known items requiring human verification:**
-- Stripe checkout/portal/webhooks (needs Stripe test environment)
-- OAuth flows with real credentials (Strava, Fitbit, Garmin)
+- RevenueCat entitlement IDs must match `elite`/`phoenix` (case-insensitive) in webhook handler
+- OAuth flows with real credentials (Strava at launch; Fitbit/Garmin when approved)
 - Session replay animations and mobile layout (needs live testing)
-- 11 Supabase Edge Functions (needs deployment)
+- 14 Supabase Edge Functions (needs deployment — Phase 22)
+- Mobile app must target production Supabase for sync pipeline verification
 - 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
 - Recovery ACWR thresholds may need sport-science validation for cable resistance training
 
@@ -134,7 +137,7 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 
 - **Tech stack**: React 19 + Vite 7 + TypeScript (strict) + Tailwind v4 + shadcn/ui + Biome 2.4 — established, not changing
 - **Backend**: Supabase — auth, DB, Edge Functions, Realtime
-- **Payments**: Stripe for web subscriptions
+- **Payments**: RevenueCat for mobile subscriptions (webhook → Supabase Edge Function)
 - **View-only**: Portal never controls the workout machine — display and analyze only
 - **Community**: Comments allowed (flat-list, RLS-gated, rate-limited) — no DMs, no nested threads
 - **Data source**: All workout data originates from mobile app, synced to Supabase, read by portal
@@ -147,7 +150,12 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 |----------|-----------|---------|
 | Fix tech debt before features | 6 critical + 18 high bugs, 100MB unused deps — unstable foundation | ✓ Good — clean foundation enabled fast feature dev |
 | Supabase for backend | Already chosen for mobile migration (Spec 05), portal shares same project | ✓ Good — consistent data layer |
-| Stripe for web billing | RevenueCat is mobile-only, Stripe handles web subscriptions | ✓ Good — clean checkout flow |
+| Stripe → RevenueCat migration | Mobile-first billing via App Store/Play Store; RevenueCat webhooks update portal tier | ✓ Good — unified billing |
+| Cloudflare Pages over Vercel | Cloudflare DNS already in use; Pages auto-deploys, simpler stack | Pending — v1.3 |
+| Cloudflare auto-deploy (no CI gate) | CI is solid (5 jobs); auto-deploy on push to main acceptable risk | Pending — v1.3 |
+| Full Cloudflare config in repo | wrangler.toml + _redirects + _headers committed for infrastructure-as-code | Pending — v1.3 |
+| Remove placeholder footer items | Strip non-functional spans for cleaner launch; add links back when destinations exist | Pending — v1.3 |
+| Coming Soon badges for Fitbit/Garmin | Ship with Strava active; gate Fitbit/Garmin behind badges while awaiting approval | Pending — v1.3 |
 | No chat/moderation | High ongoing cost, community value comes from routine sharing not messaging | ✓ Good — avoided scope creep |
 | Independent portal roadmap | Portal built UI + integrations without waiting for mobile backend | ✓ Good — shipped in 29 days |
 | Statistical analytics only | No ML infrastructure — uses linear regression, moving averages, trends | ✓ Good — simple, no infra overhead |
@@ -172,4 +180,4 @@ Production build: 95.69KB main entry chunk (34.46KB gzip), 15+ lazy-loaded pages
 | Biome warn-level rules (P9) | 12 pre-existing rules at warn instead of 148 biome-ignore comments | ⚠️ Revisit — promote to error as code matures |
 
 ---
-*Last updated: 2026-02-20 after v1.2 milestone start*
+*Last updated: 2026-03-15 after v1.3 milestone start*

@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-20)
+See: .planning/PROJECT.md (updated 2026-03-15)
 
 **Core value:** Premium subscribers see data and insights about their training that they cannot get anywhere else -- force curves, velocity trends, muscle balance analysis, and community-driven workout programming -- making the subscription feel indispensable.
-**Current focus:** v1.2 Premium Visual Overhaul — COMPLETE 🎉
+**Current focus:** v1.3 MVP Launch — deploy to production on Cloudflare Pages
 
 ## Current Position
 
-Phase: 19 of 20 (Polish & Bug Fixes) — COMPLETE
-Plan: 1 of 1 in current phase — all plans complete
-Status: v1.2 milestone complete — all 7 phases executed successfully (14-20)
-Last activity: 2026-03-13 — Phase 19 executed: footer nav links wrapped, animate-flame-flicker and animate-phoenix-glow wired to Dashboard elements. All 8 BUG requirements resolved.
+Phase: 21 of 24 (Code Fixes & Cloudflare Config) — Complete
+Plan: 2 of 2 in current phase — all plans executed
+Status: Phase 21 complete — all plans executed successfully
+Last activity: 2026-03-15 — Phase 21 execution: config.toml fixed, Coming Soon badges added, footer cleaned, Cloudflare config created
 
-Progress: [██████████] 100% (v1.2) — 7/7 phases complete (14, 15, 16, 17, 18, 19, 20)
+Progress: [████████████████████] 100% (v1.2) | [███.......] 33% (v1.3) — 2/6 plans complete
 
 ## Performance Metrics
 
@@ -37,77 +37,25 @@ Progress: [██████████] 100% (v1.2) — 7/7 phases complete (
 
 ### Decisions
 
-All v1.0 and v1.1 decisions archived in PROJECT.md Key Decisions table.
+All v1.0, v1.1, and v1.2 decisions archived in PROJECT.md Key Decisions table.
 
-**v1.2 Phase 14 decisions (from 14-01):**
-- Inter Variable loaded with full wght axis (0,100..900;1,100..900) to unlock non-standard weights 450 and 625
-- Bebas Neue removed entirely — not used anywhere in the app
-- fonts.css uses @theme block (not @layer base) so Tailwind v4 generates html/:host font-family rule automatically
-- SVG fontFamily must use literal string "Inter, system-ui, sans-serif" — CSS vars don't resolve in SVG presentation attributes
-- h2 weight 625 (non-standard variable font weight) provides perceptible distinction from h1(700) and h3(500)
-- AppLayout gets relative z-[10] for Plan 02 compatibility with ambient glow body layers
+**v1.3 decisions (from exploration-mvp-launch.md):**
+- Full deployment milestone scope — all 11 plan sections in one milestone with 4 phases
+- Code-first, then ops phase structure — Legion agents handle code changes, user handles manual ops
+- Remove placeholder footer items — cleaner launch, add back when destinations exist
+- Cloudflare Pages over Vercel — full infra-as-code config in repo (wrangler.toml + _redirects + _headers)
+- Cloudflare auto-deploy on push to main — no CI gating; CI is solid enough
+- Production domain: https://phoenix-portal.com
+- APP_URL = https://phoenix-portal.com (no trailing slash) — critical for CORS + OAuth redirects
+- Coming Soon badges for Fitbit/Garmin — ship with Strava + Hevy active at launch
+- RevenueCat replaces Stripe for billing — mobile-first via App Store/Play Store
 
-**v1.2 Phase 14 decisions (from 14-02):**
-- Tailwind shadow utilities require standalone @theme block (not @theme inline) — @theme inline only bridges existing vars, does not generate utility values
-- Circular var() self-references in @theme inline removed — they were no-ops; standalone @theme defines actual shadow values
-- SVG feTurbulence grain texture embedded as inline data URI — zero external file dependency, survives production build
-- body::before/::after use position: fixed to cover full viewport on scroll; AppLayout z-10 keeps content above z-0/z-1 glow layers
-- .border-secondary override uses !important in @layer base to override Tailwind utilities layer specificity
-
-**v1.2 Phase 16 decisions (from 16-02):**
-- Gradient text (bg-clip-text text-transparent) reserved for hero h1 only — 2 instances globally: LandingPage hero h1 and Dashboard welcome h1 username span
-- Section h1/h2 headers across all pages use solid text-white — not gradient
-- Brand/logo spans (AppSidebar, Navigation, auth dialogs, footer) use solid text-primary
-- Stat number displays (PR values, volume totals, PR counts) use text-primary — not gradient
-- Celebration modal h2 headlines use text-white — gradient in modal context does not signal hero status
-- ChallengeWon dynamic config.gradient template literal removed — replaced with static text-white
-
-**v1.2 Phase 16 decisions (from 16-01):**
-- card-primary backdrop-filter applies desktop-only (min-width: 768px) — mobile blur budget consumed by MobileBottomNav + sticky header
-- GoalDashboardWidget and RecoveryDashboardWidget render Cards internally — card-primary applied inside widget files, not at Dashboard call site
-- card-landing-feature uses padding-box/border-box background shorthand for gradient borders (border-image breaks border-radius)
-- Feature icons use rounded-full bg-primary/15 ring-1 ring-primary/30 (Role A) vs. gradient square (Role C for action CTAs)
-- backdrop-blur-sm added to DialogOverlay baseline; auth dialog backdrop-blur-xl acceptable as overlay displaces other layers
-
-**v1.2 Phase 15 decisions (from 15-03):**
-- MobileBottomNav primary bar: Dashboard, Workouts, Analytics, Community, More (5 items) — Profile moved to More drawer
-- More drawer grouped into Training/Social/Account with eyebrow labels, not flat list
-- Mobile variants merged via block md:hidden / hidden md:block (not responsive grid) — markup was fundamentally different between mobile and desktop
-- useCommunityRealtime() called once at top-level Community component — CommunityDesktop inner function dissolved
-- Mobile component files deleted after merge: DashboardMobile, AnalyticsMobile, CommunityMobile, ChallengesMobile
-
-**v1.2 Phase 15 decisions (from 15-02):**
-- PageShell import uses @/app/components/ui/utils (not @/lib/utils — no utils.ts exists in src/lib/)
-- Sticky-header pages apply PageShell only to content section — sticky gradient headers must remain full-bleed
-- SessionDetail and ComparisonView skipped — use max-w-5xl and sticky headers, different width constraint
-- Four plan file names (GoalsDashboard, RecoveryDashboard, IntegrationsDashboard, SubscriptionPage) not found in codebase — actual files use max-w-4xl intentionally
-
-**v1.2 Phase 15 decisions (from 15-01):**
-- Auto-collapse uses isAutoCollapsing ref flag to distinguish viewport-driven collapse from user toggle — prevents localStorage overwrite during auto-collapse
-- SidebarProvider placed inside AppLayout (ProtectedRoute boundary), not at router root — sidebar not visible on LandingPage
-- Navigation.tsx kept with deprecation comment rather than deleted — safe to remove after Phase 15 verification
-- useAutoCollapse defined inside AppSidebar.tsx (co-located) — keeps collapse logic adjacent to sidebar component
-- localStorage key "phoenix-sidebar-preferred-open" is source of truth for user preference; SidebarProvider cookie reflects current visual state
-- NavLink with useLocation() for isActive detection (not NavLink render prop) — avoids asChild anti-pattern
-
-**v1.2 Phase 20 decisions (from 20-02):**
-- Navigation.tsx confirmed safe to delete — grep found zero direct imports (only SetNavigation in session-replay/ references "Navigation")
-- .eyebrow utility is the canonical pattern for section labels — manual text-xs/font-semibold/uppercase/tracking-widest is an incorrect approximation (wrong weight 600 vs 450, wrong size 12px vs 11px)
-- LandingPage hero h1 now correctly inherits Inter from fonts.css @theme block — inline style was blocking CSS cascade
-
-**v1.2 Phase 20 decisions (from 20-01):**
-- SidebarInset overridden with bg-transparent at call site in AppLayout — shadcn primitive sidebar.tsx not edited (per Phase 15 pattern)
-- LandingPage, PrivacyPolicy, ResetPassword retain bg-background — they are outside AppLayout boundary and require their own opaque background
-- Sticky headers with bg-background/95 are intentionally untouched — /95 opacity modifier provides frosted glass effect, not the same as root wrapper opaque blocks
-- Authenticated page root wrappers use min-h-screen without bg-background — background provided by body via @apply in theme.css
-
-Key v1.2 constraints from research:
-- Max 3 backdrop-blur layers per viewport simultaneously — GPU overload on mobile otherwise
-- AnimatePresence requires useOutlet() not <Outlet> for React Router v7 — exit animations never fire with <Outlet>
-- visx ChartTheme.ts hex constants are permanent — SVG cannot resolve CSS vars in presentation attributes; do NOT replace with var(--primary)
-- Bundle gate: main chunk must stay under 100KB after every phase; run npm run build + rollup-plugin-visualizer as pre-merge check
-- Phase 18 depends on Phase 15 (sidebar must be stable before chart widths are touched) — do not run chart and sidebar PRs in parallel
-- SidebarProvider must live inside AppLayout (inside ProtectedRoute), not at router root
+Key v1.3 constraints:
+- APP_URL must exactly match production domain — mismatch breaks all Edge Function CORS + OAuth redirects
+- CSP headers must whitelist Supabase, Sentry, and OAuth provider domains
+- Mobile app must target production Supabase for sync pipeline verification
+- RevenueCat entitlement IDs must be named `elite` and `phoenix` (case-insensitive)
+- OAuth callbacks use Supabase domain (ilzlswmatadlnsuxatcv.supabase.co), not portal domain
 
 ### Pending Todos
 
@@ -115,20 +63,17 @@ None.
 
 ### Blockers/Concerns
 
-**Non-blocking items for human verification (carried forward from v1.1):**
-- Stripe checkout/portal/webhooks (needs Stripe test environment)
-- OAuth flows with real credentials (Strava, Fitbit, Garmin)
-- Session replay animations and mobile layout (needs live testing)
-- 11 Supabase Edge Functions (needs deployment)
-- TOOL-09: database.types.ts — Supabase schema only has user_subscriptions deployed; run migrations then `npm run gen:types`
+**Non-blocking items for human verification (carried forward):**
+- RevenueCat entitlement IDs must match `elite`/`phoenix` in webhook handler mapping
+- Mobile app production readiness (must point at production Supabase for sync verification)
+- CSP header values need iterative testing to avoid blocking legitimate requests
+- Fitbit developer approval timeline: 1-3 weeks (estimate)
+- Garmin developer approval timeline: 2-6 weeks (estimate)
 - 17 authenticated E2E tests skip without SUPABASE_TEST_EMAIL/PASSWORD env vars
-- Recovery ACWR thresholds may need sport-science validation for cable resistance training
-
-**v1.2 Phase 15 items resolved:**
-- Sidebar state deduplication: RESOLVED — SidebarProvider cookie handles visual state, localStorage handles user preference, Zustand NOT used for sidebar state
+- Recovery ACWR thresholds may need sport-science validation
 
 ## Session Continuity
 
-Last session: 2026-03-13
-Stopped at: v1.2 Premium Visual Overhaul COMPLETE. All 7 phases (14-20) executed, 53 requirements resolved. Run /legion:milestone to archive.
-Resume file: N/A
+Last session: 2026-03-15
+Stopped at: Phase 21 complete. Run `/legion:plan 22` to plan Phase 22: Infrastructure & Ops.
+Resume file: .planning/phases/21-code-fixes-cloudflare-config/21-CONTEXT.md

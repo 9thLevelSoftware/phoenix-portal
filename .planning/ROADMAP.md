@@ -5,6 +5,7 @@
 - ✅ **v1.0 MVP** — Phases 0-8 (shipped 2026-02-16)
 - ✅ **v1.1 Full UX Overhaul** — Phases 9-13 (shipped 2026-02-17)
 - ✅ **v1.2 Premium Visual Overhaul** — Phases 14-20 (shipped 2026-03-13, archived)
+- 🚀 **v1.3 MVP Launch** — Phases 21-24 (started 2026-03-15)
 
 ## Phases
 
@@ -34,7 +35,9 @@
 
 </details>
 
-### ✅ v1.2 Premium Visual Overhaul (SHIPPED 2026-03-13)
+<details>
+<summary>✅ v1.2 Premium Visual Overhaul (Phases 14-20) — SHIPPED 2026-03-13</summary>
+
 
 **Milestone Goal:** Transform the UI from developer-quality to premium fitness brand quality — matching the visual polish of Whoop, Strava, and Peloton dashboards.
 
@@ -157,6 +160,82 @@ Plans:
 - [x] 20-01-PLAN.md — Strip bg-background from AppLayout + SidebarInset + 16 page root wrappers to reveal ambient glows (completed 2026-02-21)
 - [x] 20-02-PLAN.md — Remove inline system-ui fontFamily, delete Navigation.tsx, apply .eyebrow utility (completed 2026-02-21)
 
+</details>
+
+### 🚀 v1.3 MVP Launch (STARTED 2026-03-15)
+
+**Milestone Goal:** Take Phoenix Portal from code-complete to publicly deployed on Cloudflare Pages at https://phoenix-portal.com — fix blockers, deploy infrastructure, verify end-to-end flows, and roll out integrations as provider approvals arrive.
+
+- [x] **Phase 21: Code Fixes & Cloudflare Config** — Fix config.toml blocker, add Coming Soon badges, clean up footer, replace Vercel config with Cloudflare Pages infrastructure-as-code (completed 2026-03-15)
+- [ ] **Phase 22: Infrastructure & Ops** — Set Supabase secrets, deploy 14 Edge Functions, connect Cloudflare Pages, configure DNS, set up RevenueCat webhook, create Strava app, submit Fitbit/Garmin applications
+- [ ] **Phase 23: Verification & Launch** — Build verification, auth flow, E2E sync, subscription gating, Strava OAuth, CORS validation, go-live
+- [ ] **Phase 24: Integration Rollout** — Activate Fitbit and Garmin integrations as developer program approvals arrive
+
+## Phase Details
+
+### Phase 21: Code Fixes & Cloudflare Config
+**Goal**: Fix the config.toml hard blocker, add Coming Soon badges for unapproved integrations, clean up placeholder footer items, and replace Vercel deployment config with Cloudflare Pages infrastructure-as-code (wrangler.toml, _redirects, _headers with security headers and CSP).
+**Depends on**: Phase 20
+**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04, DEPLOY-05, DEPLOY-06
+**Success Criteria** (what must be TRUE):
+  1. `supabase/config.toml` declares `[functions.revenuecat-webhooks]` with `verify_jwt = false` — no reference to `stripe-webhooks`
+  2. Fitbit and Garmin cards on Integrations page show a "Coming Soon" badge with Connect button disabled — Strava and Hevy remain active
+  3. LandingPage footer contains only items with working link destinations — no placeholder spans
+  4. `vercel.json` is deleted from the repository
+  5. `wrangler.toml` exists with Cloudflare Pages project config; `public/_redirects` has SPA fallback; `public/_headers` has security headers including CSP whitelisting Supabase, Sentry, and OAuth provider domains
+  6. `npm run build` succeeds with no errors
+**Plans**: 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — config.toml fix, Coming Soon badge system for Integrations.tsx, footer placeholder removal
+- [ ] 21-02-PLAN.md — Delete vercel.json, create wrangler.toml + public/_redirects + public/_headers with CSP
+
+### Phase 22: Infrastructure & Ops
+**Goal**: All Supabase secrets are configured, 14 Edge Functions are deployed and responding, Cloudflare Pages is connected with auto-deploy, custom domain phoenix-portal.com resolves with SSL, RevenueCat webhook is configured and verified, Strava API credentials are set, and Fitbit/Garmin developer applications are submitted.
+**Depends on**: Phase 21
+**Requirements**: OPS-01, OPS-02, OPS-03, OPS-04, OPS-05, OPS-06, OPS-07, OPS-08
+**Type**: Manual — requires user's hands (console configuration, secret entry, DNS)
+**Success Criteria** (what must be TRUE):
+  1. `supabase secrets list` shows APP_URL, ENVIRONMENT, REVENUECAT_WEBHOOK_SECRET, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET
+  2. `supabase functions list` shows all 14 Edge Functions as deployed
+  3. https://phoenix-portal.com loads the landing page with valid SSL
+  4. Cloudflare Pages auto-deploys on push to main branch
+  5. RevenueCat TEST webhook returns 200 in Edge Function logs
+  6. Fitbit and Garmin developer applications are submitted (confirmation emails received)
+**Plans**: 1 plan (ops checklist)
+Plans:
+- [ ] 22-01-PLAN.md — Infrastructure setup checklist: Supabase secrets, Edge Function deploy, Cloudflare Pages, DNS, RevenueCat webhook, Strava app, Fitbit/Garmin submissions
+
+### Phase 23: Verification & Launch
+**Goal**: All critical user flows verified on the production domain — auth, mobile-to-portal sync, subscription gating, Strava OAuth, and CORS. Portal is confirmed live and functional.
+**Depends on**: Phase 22
+**Requirements**: VERIFY-01, VERIFY-02, VERIFY-03, VERIFY-04, VERIFY-05, VERIFY-06, VERIFY-07
+**Type**: Manual — requires user's hands (end-to-end testing on production)
+**Success Criteria** (what must be TRUE):
+  1. Full test suite passes locally (typecheck, unit tests, e2e, production build)
+  2. Email signup, signin, password reset, and sign out work on https://phoenix-portal.com
+  3. Mobile app workout push appears on portal Dashboard via Supabase Broadcast
+  4. Free tier paywall blocks Analytics, Biomechanics, Session Replay, Integrations pages
+  5. Strava OAuth connect → activity sync → disconnect flow completes successfully
+  6. Edge Function calls from https://phoenix-portal.com are not blocked by CORS
+  7. Fitbit and Garmin cards show Coming Soon badges with disabled Connect buttons
+**Plans**: 1 plan (verification checklist)
+Plans:
+- [ ] 23-01-PLAN.md — Pre-launch verification checklist: build, auth, sync, subscriptions, Strava OAuth, CORS, Coming Soon
+
+### Phase 24: Integration Rollout
+**Goal**: Fitbit and Garmin integrations activated as developer program approvals arrive. Coming Soon badges removed, OAuth flows verified, and changes deployed.
+**Depends on**: Phase 23 (launch must be complete)
+**Requirements**: INTEG-01, INTEG-02
+**Type**: Ongoing — triggered by external approvals (1-6 weeks)
+**Success Criteria** (what must be TRUE):
+  1. Each approved provider: secrets set, OAuth flow verified end-to-end, Coming Soon badge removed, deployed
+  2. Fitbit: activity sync returns data, disconnect clears tokens
+  3. Garmin: OAuth 1.0a connection succeeds, webhook receives activity pushes, disconnect works
+**Plans**: 2 plans
+Plans:
+- [ ] 24-01-PLAN.md — Fitbit activation: set secrets, test OAuth, remove Coming Soon badge, deploy
+- [ ] 24-02-PLAN.md — Garmin activation: set secrets, configure webhook, test OAuth 1.0a, remove Coming Soon badge, deploy
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -182,9 +261,13 @@ Plans:
 | 18. Data Visualization Styling | v1.2 | 3/3 | Complete | 2026-03-13 |
 | 19. Polish & Bug Fixes | v1.2 | 1/1 | Complete | 2026-03-13 |
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
+| 21. Code Fixes & Cloudflare Config | v1.3 | 2/2 | Complete | 2026-03-15 |
+| 22. Infrastructure & Ops | v1.3 | 0/1 | Pending | - |
+| 23. Verification & Launch | v1.3 | 0/1 | Pending | - |
+| 24. Integration Rollout | v1.3 | 0/2 | Pending | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
 *Full v1.1 details: `.planning/milestones/v1.1-ROADMAP.md`*
 *Full v1.2 details: `.planning/milestones/v1.2-MILESTONE.md`*
-*Last updated: 2026-03-13 — v1.2 milestone complete*
+*Last updated: 2026-03-15 — v1.3 MVP Launch initialized*
