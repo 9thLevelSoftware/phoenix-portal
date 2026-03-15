@@ -84,7 +84,7 @@ export function UpgradePrompt({
 					</h3>
 					<p className="text-sm text-zinc-400">
 						Unlock {featureName ?? "this feature"} and more with a{" "}
-						{requiredTier} subscription in the Phoenix mobile app.
+						{requiredTier} subscription.
 					</p>
 				</div>
 

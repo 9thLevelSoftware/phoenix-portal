@@ -15,7 +15,9 @@ import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
-import { TIER_PRICING } from "@/lib/pricing";
+import { useAuth } from "@/app/hooks/useAuth";
+import { openCheckout } from "@/lib/paddle-client";
+import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
 
 interface TierFeature {
 	label: string;
@@ -89,12 +91,34 @@ const TIER_LEVEL: Record<SubscriptionTier, number> = {
 export function PricingPlans() {
 	const { tier: currentTier, isLoading: subscriptionLoading } =
 		useSubscription();
+	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
 
-	const handleSubscribe = (_tier: SubscriptionTier) => {
-		toast.info(
-			"Subscriptions are managed in the Phoenix mobile app. Download the app to subscribe!",
+	const handleSubscribe = (tier: SubscriptionTier) => {
+		const tierPricing = TIER_PRICING.find(
+			(t: TierPricing) => t.tier === tier,
 		);
+		if (!tierPricing) return;
+
+		const priceId = isAnnual
+			? tierPricing.paddleAnnualPriceId
+			: tierPricing.paddleMonthlyPriceId;
+
+		if (!priceId) {
+			toast.error("Paddle checkout is not configured yet.");
+			return;
+		}
+
+		if (!user) {
+			toast.error("You must be logged in to subscribe.");
+			return;
+		}
+
+		openCheckout({
+			priceId,
+			userId: user.id,
+			userEmail: user.email ?? "",
+		});
 	};
 
 	const renderCTA = (tierConfig: TierConfig) => {
@@ -128,7 +152,7 @@ export function PricingPlans() {
 				className={`w-full ${tierConfig.buttonClass}`}
 				onClick={() => handleSubscribe(tierConfig.tier)}
 			>
-				Subscribe in the App
+				Subscribe
 			</Button>
 		);
 	};

@@ -56,11 +56,11 @@ import {
 } from "@/queries/profile";
 import { workoutListOptions } from "@/queries/workouts";
 
-const PLAN_LABELS = {
+const PLAN_LABELS: Record<string, string> = {
 	FREE: "No Active Subscription",
-	PHOENIX: "Phoenix Plan",
-	ELITE: "Elite Plan",
-} as const;
+	EMBER: "Ember Plan",
+	INFERNO: "Inferno Plan",
+};
 
 /** Provider display config for integrations tab */
 const PROVIDER_META: Record<string, { label: string; logo: string }> = {
@@ -363,7 +363,7 @@ export function Profile() {
 									</Button>
 								) : (
 									<p className="text-sm text-muted-foreground">
-										Manage your subscription in the Phoenix mobile app
+										Manage your subscription on the pricing page
 									</p>
 								)}
 							</div>

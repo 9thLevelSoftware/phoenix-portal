@@ -145,33 +145,38 @@ export function TermsOfService() {
 								4. Subscription Terms
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
-								Phoenix Portal offers three subscription tiers: Free, Phoenix,
-								and Elite.
+								Phoenix Portal offers two paid subscription tiers: Ember and
+								Inferno.
 							</p>
 							<ul className="space-y-2 text-secondary-foreground ml-6">
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">Billing:</span> Paid
-										subscriptions are billed monthly or annually through the
-										Phoenix mobile app via the Apple App Store or Google Play
-										Store
+										subscriptions are billed monthly or annually through Paddle,
+										our payment processor and merchant of record. Paddle handles
+										all payment processing, tax collection, and invoicing on our
+										behalf
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">Cancellation:</span> You can
-										cancel anytime. Your access continues until the end of the
-										current billing period
+										cancel anytime through the portal's subscription management
+										page. Your access continues until the end of the current
+										billing period
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Refunds:</span> Refunds are
-										handled per your app store's policies (Apple App Store or
-										Google Play Store)
+										<span className="font-semibold">Refunds:</span> Refund
+										requests are handled by Paddle in accordance with their
+										refund policy. To request a refund, contact Paddle support
+										or use the subscription management link in your confirmation
+										email. Refunds are generally available within 14 days of
+										purchase
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -184,10 +189,21 @@ export function TermsOfService() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Portal Access:</span> The
-										Phoenix Portal is a companion dashboard. All subscription
-										management (signup, upgrades, downgrades, cancellations) is
-										handled in the Phoenix mobile app
+										<span className="font-semibold">Portal Access:</span> All
+										subscription management — signup, upgrades, downgrades, and
+										cancellations — is handled directly on the Phoenix Portal
+										website
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Merchant of Record:
+										</span>{" "}
+										Paddle.com is the Merchant of Record for all subscription
+										transactions. For tax, billing, and payment inquiries,
+										Paddle's terms of service apply alongside these terms
 									</span>
 								</li>
 							</ul>

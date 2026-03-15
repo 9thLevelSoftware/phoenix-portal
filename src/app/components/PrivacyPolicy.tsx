@@ -98,8 +98,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Subscription tier and billing status (managed via the
-									Phoenix mobile app through your app store)
+										Subscription tier and billing status (managed via
+									Paddle, our payment processor)
 									</span>
 								</li>
 							</ul>
@@ -263,12 +263,12 @@ export function PrivacyPolicy() {
 									<span className="text-primary mt-1">•</span>
 									<span>
 										<span className="font-semibold">
-											App Store Billing:
+											Paddle Billing:
 										</span>{" "}
-										Subscription payments are processed by Apple (App Store) or
-										Google (Play Store) through the Phoenix mobile app. We do
-										not store payment card details. Subscription status is
-										synced to the Portal via Paddle webhooks.
+										Subscription payments are processed by Paddle, our merchant
+										of record. We do not store payment card details.
+										Subscription status is synced to the Portal via Paddle
+										webhooks.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -355,8 +355,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Subscription payments are processed through the Apple App
-										Store or Google Play Store via the Phoenix mobile app
+										Subscription payments are processed through Paddle, our
+										merchant of record
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
