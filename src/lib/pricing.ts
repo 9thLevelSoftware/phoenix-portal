@@ -9,6 +9,8 @@ export interface TierPricing {
 	monthlyPrice: string;
 	annualPrice: string;
 	annualMonthly: string;
+	paddleMonthlyPriceId: string;
+	paddleAnnualPriceId: string;
 	features: string[];
 	comingSoon?: boolean;
 }
@@ -20,6 +22,10 @@ export const TIER_PRICING: TierPricing[] = [
 		monthlyPrice: "$15",
 		annualPrice: "$149",
 		annualMonthly: "$12.42",
+		paddleMonthlyPriceId:
+			import.meta.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "",
+		paddleAnnualPriceId:
+			import.meta.env.VITE_PADDLE_EMBER_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Cloud sync & backup on multiple devices",
 			"Unlimited workout history",
@@ -33,6 +39,10 @@ export const TIER_PRICING: TierPricing[] = [
 		monthlyPrice: "$25",
 		annualPrice: "$249",
 		annualMonthly: "$20.75",
+		paddleMonthlyPriceId:
+			import.meta.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ?? "",
+		paddleAnnualPriceId:
+			import.meta.env.VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Everything in Ember",
 			"Advanced analytics & biomechanics",

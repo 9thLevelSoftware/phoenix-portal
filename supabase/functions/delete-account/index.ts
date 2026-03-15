@@ -61,9 +61,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Note: Subscription cancellation is handled automatically by RevenueCat
-    // when the user's app store subscription lapses after account deletion.
-    // No server-side cancellation needed — RevenueCat manages this via the app stores.
+    // Note: Subscription cancellation is handled by Paddle.
+    // The subscription record is deleted with the user's data below.
+    // Paddle will stop billing when the subscription period ends.
 
     // =========================================================================
     // Step 1: Delete storage objects (avatars)

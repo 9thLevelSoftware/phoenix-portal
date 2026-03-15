@@ -12,9 +12,11 @@
         4. When hosting platform is confirmed, migrate from meta tag to HTTP header (more secure, supports report-uri).
         5. 'unsafe-inline' in style-src is required by shadcn/ui (Radix) inline styles and cannot be removed.
       -->
-      <meta http-equiv="Content-Security-Policy-Report-Only" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io; frame-src 'self'; worker-src 'self' blob:;">
+      <meta http-equiv="Content-Security-Policy-Report-Only" content="default-src 'self'; script-src 'self' https://cdn.paddle.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://*.paddle.com; frame-src 'self'; worker-src 'self' blob:;">
       <title>Phoenix Project Fitness Portal</title>
-      <!-- Preconnect to Google Fonts domains for faster font loading -->
+      <!-- Paddle.js v2 for subscription billing -->
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <!-- Preconnect to Google Fonts domains for faster font loading -->
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <!-- Load Inter Variable font (full wght axis 100..900 unlocks non-standard weights 450, 625) -->

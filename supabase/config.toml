@@ -1,2 +1,2 @@
-[functions.revenuecat-webhooks]
+[functions.paddle-webhooks]
 verify_jwt = false
