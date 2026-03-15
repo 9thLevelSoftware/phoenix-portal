@@ -167,9 +167,11 @@ Plans:
 **Milestone Goal:** Take Phoenix Portal from code-complete to publicly deployed on Cloudflare Pages at https://phoenix-portal.com — fix blockers, deploy infrastructure, verify end-to-end flows, and roll out integrations as provider approvals arrive.
 
 - [x] **Phase 21: Code Fixes & Cloudflare Config** — Fix config.toml blocker, add Coming Soon badges, clean up footer, replace Vercel config with Cloudflare Pages infrastructure-as-code (completed 2026-03-15)
-- [ ] **Phase 22: Infrastructure & Ops** — Set Supabase secrets, deploy 14 Edge Functions, connect Cloudflare Pages, configure DNS, set up RevenueCat webhook, create Strava app, submit Fitbit/Garmin applications
-- [ ] **Phase 23: Verification & Launch** — Build verification, auth flow, E2E sync, subscription gating, Strava OAuth, CORS validation, go-live
-- [ ] **Phase 24: Integration Rollout** — Activate Fitbit and Garmin integrations as developer program approvals arrive
+- [ ] **Phase 22: Paddle Billing Integration** — Replace RevenueCat with Paddle webhook handler, add Paddle.js checkout overlay, update config.toml and subscription flow for web-based billing
+- [ ] **Phase 23: Feature Fixes** — Add vote_count database trigger for community voting, wire favorites toggle to Supabase persistence
+- [ ] **Phase 24: Infrastructure & Ops** — Paddle dashboard setup, Supabase secrets, deploy Edge Functions, Cloudflare Pages, DNS, Strava app, submit Fitbit/Garmin applications
+- [ ] **Phase 25: Verification & Launch** — Build verification, auth flow, E2E sync, Paddle checkout, Strava OAuth, CORS validation, go-live
+- [ ] **Phase 26: Integration Rollout** — Activate Fitbit and Garmin integrations as developer program approvals arrive
 
 ## Phase Details
 
@@ -189,42 +191,62 @@ Plans:
 - [ ] 21-01-PLAN.md — config.toml fix, Coming Soon badge system for Integrations.tsx, footer placeholder removal
 - [ ] 21-02-PLAN.md — Delete vercel.json, create wrangler.toml + public/_redirects + public/_headers with CSP
 
-### Phase 22: Infrastructure & Ops
-**Goal**: All Supabase secrets are configured, 14 Edge Functions are deployed and responding, Cloudflare Pages is connected with auto-deploy, custom domain phoenix-portal.com resolves with SSL, RevenueCat webhook is configured and verified, Strava API credentials are set, and Fitbit/Garmin developer applications are submitted.
+### Phase 22: Paddle Billing Integration
+**Goal**: RevenueCat webhook handler replaced with Paddle webhook handler. Paddle.js checkout overlay integrated into PricingPlans page for web-based subscription purchases. config.toml updated. Frontend subscription flow supports direct web checkout instead of "subscribe via mobile app" redirection.
 **Depends on**: Phase 21
+**Requirements**: PADDLE-01, PADDLE-02, PADDLE-03, PADDLE-04, PADDLE-05
+**Success Criteria** (what must be TRUE):
+  1. `supabase/functions/paddle-webhooks/index.ts` exists with Paddle signature verification and subscription event handling
+  2. `supabase/config.toml` declares `[functions.paddle-webhooks]` with `verify_jwt = false`
+  3. `src/lib/paddle.ts` exports Paddle product/price mapping and checkout initialization
+  4. PricingPlans page has a working "Subscribe" button that opens Paddle.js checkout overlay
+  5. `revenuecat-webhooks` Edge Function directory and `src/lib/revenuecat.ts` are deleted
+  6. `npm run typecheck` and `npm test` pass
+**Plans**: 3 plans (estimated)
+
+### Phase 23: Feature Fixes
+**Goal**: Community voting correctly updates vote_count via database trigger. Favorites toggle persists to Supabase instead of local React state.
+**Depends on**: Phase 21
+**Requirements**: FIX-01, FIX-02
+**Success Criteria** (what must be TRUE):
+  1. Voting on a shared routine/cycle increments `vote_count` on the item — removing a vote decrements it. Verified via Supabase Dashboard query after voting.
+  2. Favoriting a routine persists across navigation — leaving and returning to the Routines page shows the same favorites state
+  3. `npm run typecheck` and `npm test` pass
+**Plans**: 2 plans (estimated)
+
+### Phase 24: Infrastructure & Ops
+**Goal**: All Supabase secrets configured (including Paddle), Edge Functions deployed, Cloudflare Pages connected, custom domain live, Paddle products created and webhook verified, Strava credentials set, Fitbit/Garmin applications submitted.
+**Depends on**: Phase 22, Phase 23
 **Requirements**: OPS-01, OPS-02, OPS-03, OPS-04, OPS-05, OPS-06, OPS-07, OPS-08
 **Type**: Manual — requires user's hands (console configuration, secret entry, DNS)
 **Success Criteria** (what must be TRUE):
-  1. `supabase secrets list` shows APP_URL, ENVIRONMENT, REVENUECAT_WEBHOOK_SECRET, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET
-  2. `supabase functions list` shows all 14 Edge Functions as deployed
+  1. `supabase secrets list` shows APP_URL, ENVIRONMENT, PADDLE_WEBHOOK_SECRET, PADDLE_API_KEY, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET
+  2. `supabase functions list` shows all Edge Functions as deployed (paddle-webhooks replacing revenuecat-webhooks)
   3. https://phoenix-portal.com loads the landing page with valid SSL
-  4. Cloudflare Pages auto-deploys on push to main branch
-  5. RevenueCat TEST webhook returns 200 in Edge Function logs
-  6. Fitbit and Garmin developer applications are submitted (confirmation emails received)
+  4. Paddle products (Ember $15/mo, Inferno $25/mo) created in Paddle Dashboard
+  5. Paddle TEST webhook returns 200 in Edge Function logs
+  6. Fitbit and Garmin developer applications are submitted
 **Plans**: 1 plan (ops checklist)
-Plans:
-- [ ] 22-01-PLAN.md — Infrastructure setup checklist: Supabase secrets, Edge Function deploy, Cloudflare Pages, DNS, RevenueCat webhook, Strava app, Fitbit/Garmin submissions
 
-### Phase 23: Verification & Launch
-**Goal**: All critical user flows verified on the production domain — auth, mobile-to-portal sync, subscription gating, Strava OAuth, and CORS. Portal is confirmed live and functional.
-**Depends on**: Phase 22
-**Requirements**: VERIFY-01, VERIFY-02, VERIFY-03, VERIFY-04, VERIFY-05, VERIFY-06, VERIFY-07
+### Phase 25: Verification & Launch
+**Goal**: All critical user flows verified on the production domain — auth, mobile-to-portal sync, Paddle checkout, subscription gating, Strava OAuth, voting, favorites, and CORS. Portal is confirmed live and functional.
+**Depends on**: Phase 24
+**Requirements**: VERIFY-01, VERIFY-02, VERIFY-03, VERIFY-04, VERIFY-05, VERIFY-06, VERIFY-07, VERIFY-08
 **Type**: Manual — requires user's hands (end-to-end testing on production)
 **Success Criteria** (what must be TRUE):
   1. Full test suite passes locally (typecheck, unit tests, e2e, production build)
   2. Email signup, signin, password reset, and sign out work on https://phoenix-portal.com
   3. Mobile app workout push appears on portal Dashboard via Supabase Broadcast
-  4. Free tier paywall blocks Analytics, Biomechanics, Session Replay, Integrations pages
-  5. Strava OAuth connect → activity sync → disconnect flow completes successfully
-  6. Edge Function calls from https://phoenix-portal.com are not blocked by CORS
-  7. Fitbit and Garmin cards show Coming Soon badges with disabled Connect buttons
+  4. Paddle checkout completes for Ember tier — subscription activates in portal
+  5. Subscription gating blocks Inferno-only features for Ember users
+  6. Strava OAuth connect → activity sync → disconnect flow completes
+  7. Edge Function calls from https://phoenix-portal.com are not blocked by CORS
+  8. Voting updates vote_count; favorites persist across navigation
 **Plans**: 1 plan (verification checklist)
-Plans:
-- [ ] 23-01-PLAN.md — Pre-launch verification checklist: build, auth, sync, subscriptions, Strava OAuth, CORS, Coming Soon
 
-### Phase 24: Integration Rollout
+### Phase 26: Integration Rollout
 **Goal**: Fitbit and Garmin integrations activated as developer program approvals arrive. Coming Soon badges removed, OAuth flows verified, and changes deployed.
-**Depends on**: Phase 23 (launch must be complete)
+**Depends on**: Phase 25 (launch must be complete)
 **Requirements**: INTEG-01, INTEG-02
 **Type**: Ongoing — triggered by external approvals (1-6 weeks)
 **Success Criteria** (what must be TRUE):
@@ -232,9 +254,6 @@ Plans:
   2. Fitbit: activity sync returns data, disconnect clears tokens
   3. Garmin: OAuth 1.0a connection succeeds, webhook receives activity pushes, disconnect works
 **Plans**: 2 plans
-Plans:
-- [ ] 24-01-PLAN.md — Fitbit activation: set secrets, test OAuth, remove Coming Soon badge, deploy
-- [ ] 24-02-PLAN.md — Garmin activation: set secrets, configure webhook, test OAuth 1.0a, remove Coming Soon badge, deploy
 
 ## Progress
 
@@ -262,12 +281,14 @@ Plans:
 | 19. Polish & Bug Fixes | v1.2 | 1/1 | Complete | 2026-03-13 |
 | 20. Gap Closure & Tech Debt | 2/2 | Complete   | 2026-02-21 | - |
 | 21. Code Fixes & Cloudflare Config | v1.3 | 2/2 | Complete | 2026-03-15 |
-| 22. Infrastructure & Ops | v1.3 | 0/1 | Pending | - |
-| 23. Verification & Launch | v1.3 | 0/1 | Pending | - |
-| 24. Integration Rollout | v1.3 | 0/2 | Pending | - |
+| 22. Paddle Billing Integration | v1.3 | 3/3 | Complete | 2026-03-15 |
+| 23. Feature Fixes | v1.3 | 0/2 | Pending | - |
+| 24. Infrastructure & Ops | v1.3 | 0/1 | Pending | - |
+| 25. Verification & Launch | v1.3 | 0/1 | Pending | - |
+| 26. Integration Rollout | v1.3 | 0/2 | Pending | - |
 
 ---
 *Full v1.0 details: `.planning/milestones/v1.0-ROADMAP.md`*
 *Full v1.1 details: `.planning/milestones/v1.1-ROADMAP.md`*
 *Full v1.2 details: `.planning/milestones/v1.2-MILESTONE.md`*
-*Last updated: 2026-03-15 — v1.3 MVP Launch initialized*
+*Last updated: 2026-03-15 — v1.3 re-planned: Paddle billing, feature fixes, phases 22-26*

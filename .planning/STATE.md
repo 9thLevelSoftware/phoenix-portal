@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 21 of 24 (Code Fixes & Cloudflare Config) — Complete
-Plan: 2 of 2 in current phase — all plans executed
-Status: Phase 21 complete — all plans executed successfully
-Last activity: 2026-03-15 — Phase 21 execution: config.toml fixed, Coming Soon badges added, footer cleaned, Cloudflare config created
+Phase: 22 of 26 (Paddle Billing Integration) — Complete
+Plan: 3 of 3 in current phase — all executed successfully
+Status: Phase 22 complete — all plans executed successfully
+Last activity: 2026-03-15 — Phase 22 execution complete
 
-Progress: [████████████████████] 100% (v1.2) | [███.......] 33% (v1.3) — 2/6 plans complete
+Progress: [████████████████████] 100% (v1.2) | [█████.....] 45% (v1.3) — 5/11 plans complete
 
 ## Performance Metrics
 
@@ -45,16 +45,19 @@ All v1.0, v1.1, and v1.2 decisions archived in PROJECT.md Key Decisions table.
 - Remove placeholder footer items — cleaner launch, add back when destinations exist
 - Cloudflare Pages over Vercel — full infra-as-code config in repo (wrangler.toml + _redirects + _headers)
 - Cloudflare auto-deploy on push to main — no CI gating; CI is solid enough
+- Paddle as Merchant of Record — replaces RevenueCat; handles EU VAT + AU GST automatically
+- Pricing: Ember $15/mo ($149/yr), Inferno $25/mo ($249/yr, Coming Soon)
 - Production domain: https://phoenix-portal.com
 - APP_URL = https://phoenix-portal.com (no trailing slash) — critical for CORS + OAuth redirects
 - Coming Soon badges for Fitbit/Garmin — ship with Strava + Hevy active at launch
-- RevenueCat replaces Stripe for billing — mobile-first via App Store/Play Store
+- Paddle price IDs via env vars (VITE_PADDLE_*) for sandbox/production separation
+- Legacy column names (stripe_customer_id/stripe_subscription_id) reused for Paddle — rename deferred
 
 Key v1.3 constraints:
 - APP_URL must exactly match production domain — mismatch breaks all Edge Function CORS + OAuth redirects
-- CSP headers must whitelist Supabase, Sentry, and OAuth provider domains
+- CSP headers must whitelist Supabase, Sentry, Paddle, and OAuth provider domains
 - Mobile app must target production Supabase for sync pipeline verification
-- RevenueCat entitlement IDs must be named `elite` and `phoenix` (case-insensitive)
+- Paddle webhook secret must be set in Supabase Edge Function secrets
 - OAuth callbacks use Supabase domain (ilzlswmatadlnsuxatcv.supabase.co), not portal domain
 
 ### Pending Todos
@@ -64,7 +67,7 @@ None.
 ### Blockers/Concerns
 
 **Non-blocking items for human verification (carried forward):**
-- RevenueCat entitlement IDs must match `elite`/`phoenix` in webhook handler mapping
+- Paddle webhook secret and price IDs must be configured in Supabase secrets and Paddle Dashboard
 - Mobile app production readiness (must point at production Supabase for sync verification)
 - CSP header values need iterative testing to avoid blocking legitimate requests
 - Fitbit developer approval timeline: 1-3 weeks (estimate)
@@ -75,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-15
-Stopped at: Phase 21 complete. Run `/legion:plan 22` to plan Phase 22: Infrastructure & Ops.
-Resume file: .planning/phases/21-code-fixes-cloudflare-config/21-CONTEXT.md
+Stopped at: Phase 22 complete. Run `/legion:plan 23` to plan Phase 23: Feature Fixes.
+Resume file: .planning/phases/22-paddle-billing/22-CONTEXT.md
