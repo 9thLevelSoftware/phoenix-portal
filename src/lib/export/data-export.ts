@@ -7,7 +7,7 @@ type ProgressCallback = (step: string, current: number, total: number) => void;
  * Export all user-owned data as a downloadable ZIP file containing JSON files.
  * Implements GDPR Article 20 data portability requirements.
  *
- * Sensitive fields (RevenueCat IDs, OAuth tokens, API keys) are excluded.
+ * Sensitive fields (billing provider IDs, OAuth tokens, API keys) are excluded.
  * Large tables (rep_telemetry) are paginated at 1000 rows per page.
  */
 export async function exportAllUserData(

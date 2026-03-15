@@ -268,7 +268,7 @@ export function PrivacyPolicy() {
 										Subscription payments are processed by Apple (App Store) or
 										Google (Play Store) through the Phoenix mobile app. We do
 										not store payment card details. Subscription status is
-										synced to the Portal via RevenueCat webhooks.
+										synced to the Portal via Paddle webhooks.
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
