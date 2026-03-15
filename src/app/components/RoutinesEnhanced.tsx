@@ -38,6 +38,7 @@ import {
 	TooltipTrigger,
 } from "@/app/components/ui/tooltip";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useToggleFavorite } from "@/mutations/routines";
 import { routineListOptions } from "@/queries/routines";
 import type { Routine } from "@/schemas/transforms";
 
@@ -47,27 +48,22 @@ export function RoutinesEnhanced() {
 	const { data: routines, isPending } = useQuery(routineListOptions(user?.id));
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
-
-	// Local state for UI-only operations (these would need mutations for persistence)
-	const [localFavorites, setLocalFavorites] = useState<Set<string>>(new Set());
-
-	const toggleFavorite = (id: string) => {
-		setLocalFavorites((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-	};
-
-	const isFavorite = (routine: Routine) =>
-		localFavorites.has(routine.id) ? !routine.is_favorite : routine.is_favorite;
+	const toggleFavoriteMutation = useToggleFavorite();
 
 	const allRoutines = routines ?? [];
-	const favoriteRoutines = allRoutines.filter((r) => isFavorite(r));
+	const favoriteRoutines = allRoutines.filter((r) => r.is_favorite);
+
+	const handleToggleFavorite = (id: string) => {
+		const routine = allRoutines.find((r) => r.id === id);
+		if (routine) {
+			toggleFavoriteMutation.mutate({
+				routineId: id,
+				isFavorite: !routine.is_favorite,
+			});
+		}
+	};
+
+	const isFavorite = (routine: Routine) => routine.is_favorite;
 
 	if (isPending) {
 		return (
@@ -158,7 +154,7 @@ export function RoutinesEnhanced() {
 							<RoutineGrid
 								routines={allRoutines}
 								onEdit={(id: string) => navigate(`/routines/${id}`)}
-								onToggleFavorite={toggleFavorite}
+								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
 							/>
@@ -175,7 +171,7 @@ export function RoutinesEnhanced() {
 							<RoutineGrid
 								routines={favoriteRoutines}
 								onEdit={(id: string) => navigate(`/routines/${id}`)}
-								onToggleFavorite={toggleFavorite}
+								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
 							/>

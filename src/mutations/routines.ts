@@ -115,6 +115,34 @@ export function useSaveRoutine() {
 	});
 }
 
+export function useToggleFavorite() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async ({
+			routineId,
+			isFavorite,
+		}: { routineId: string; isFavorite: boolean }) => {
+			if (!user) throw new Error("Must be logged in");
+			const { error } = await supabase
+				.from("routines")
+				.update({ is_favorite: isFavorite })
+				.eq("id", routineId)
+				.eq("user_id", user.id);
+			if (error) throw error;
+			return { routineId, isFavorite };
+		},
+		onSuccess: () => {
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.routines.byUser(user.id),
+				});
+			}
+		},
+	});
+}
+
 export function useUpdateRoutine() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
