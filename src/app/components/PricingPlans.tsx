@@ -51,7 +51,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentText: "text-zinc-400",
 		buttonClass: "",
 	},
-	SYNC: {
+	EMBER: {
 		icon: Sparkles,
 		accentBorder: "border-[var(--color-forge-green)]",
 		accentBg: "from-[var(--color-forge-green)]/10 to-emerald-900/10",
@@ -59,7 +59,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		buttonClass:
 			"bg-[var(--color-forge-green)] hover:bg-[var(--color-forge-green)]/90 text-white border-0",
 	},
-	EMBER: {
+	FLAME: {
 		icon: Flame,
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
@@ -92,8 +92,8 @@ const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,
-	SYNC: 1,
-	EMBER: 2,
+	EMBER: 1,
+	FLAME: 2,
 	INFERNO: 3,
 };
 
