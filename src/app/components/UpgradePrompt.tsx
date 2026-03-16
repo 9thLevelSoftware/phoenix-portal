@@ -5,19 +5,19 @@ import { Card } from "@/app/components/ui/card";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { TIER_PRICING } from "@/lib/pricing";
 
-type PaidTier = "SYNC" | "EMBER" | "INFERNO";
+type PaidTier = "EMBER" | "FLAME" | "INFERNO";
 
 // Icon sets per tier for display alongside benefit labels
 const TIER_ICONS: Record<PaidTier, (typeof Flame)[]> = {
-	SYNC: [Zap, Flame, Crown],
-	EMBER: [Flame, Zap, Crown],
+	EMBER: [Zap, Flame, Crown],
+	FLAME: [Flame, Zap, Crown],
 	INFERNO: [Crown, Zap, Flame],
 };
 
 // Derive benefits from shared pricing constants (single source of truth)
 const TIER_BENEFITS: Record<PaidTier, { icon: typeof Flame; label: string }[]> =
 	Object.fromEntries(
-		(["SYNC", "EMBER", "INFERNO"] as const).map((tier) => {
+		(["EMBER", "FLAME", "INFERNO"] as const).map((tier) => {
 			const pricing = TIER_PRICING.find((t) => t.tier === tier)!;
 			const icons = TIER_ICONS[tier];
 			// Skip "Everything in X" entries, take up to 3 features
@@ -35,12 +35,12 @@ const TIER_COLORS: Record<
 	PaidTier,
 	{ border: string; glow: string; accent: string }
 > = {
-	SYNC: {
+	EMBER: {
 		border: "border-[var(--color-forge-green)]/40",
 		glow: "from-[var(--color-forge-green)]/10 to-primary/10",
 		accent: "text-[var(--color-forge-green)]",
 	},
-	EMBER: {
+	FLAME: {
 		border: "border-primary/40",
 		glow: "from-primary/10 to-chart-2/10",
 		accent: "text-primary",

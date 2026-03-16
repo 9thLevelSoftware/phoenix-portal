@@ -2,7 +2,7 @@ import { Outlet } from "react-router";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 
 interface SubscribedRouteProps {
-	requiredTier?: "SYNC" | "EMBER" | "INFERNO";
+	requiredTier?: "EMBER" | "FLAME" | "INFERNO";
 }
 
 /**
@@ -15,7 +15,7 @@ interface SubscribedRouteProps {
  *   </Route>
  */
 export function SubscribedRoute({
-	requiredTier = "SYNC",
+	requiredTier = "EMBER",
 }: SubscribedRouteProps) {
 	return (
 		<SubscriptionGate requiredTier={requiredTier}>

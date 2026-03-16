@@ -140,8 +140,8 @@ export function AppRoutes() {
 						<Route path="/pricing" element={<PricingPlans />} />
 						<Route path="/celebrations" element={<CelebrationDemo />} />
 
-						{/* SYNC tier — cloud backup, history, dashboard */}
-						<Route element={<SubscribedRoute requiredTier="SYNC" />}>
+						{/* EMBER tier — cloud backup, history, dashboard */}
+						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
 							<Route path="/dashboard" element={<Dashboard />} />
 							<Route path="/history" element={<WorkoutHistory />} />
 							<Route
@@ -154,8 +154,8 @@ export function AppRoutes() {
 							<Route path="/challenges" element={<Challenges />} />
 						</Route>
 
-						{/* EMBER tier — analytics, community, integrations */}
-						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
+						{/* FLAME tier — analytics, community, integrations */}
+						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
 							<Route path="/analytics" element={<Analytics />} />
 							<Route path="/community" element={<Community />} />
 							<Route path="/routines" element={<RoutinesEnhanced />} />

@@ -78,7 +78,7 @@ export function Integrations() {
 	};
 
 	return (
-		<SubscriptionGate requiredTier="EMBER">
+		<SubscriptionGate requiredTier="FLAME">
 			<div className="container mx-auto p-6 space-y-8">
 				<div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
 					<div>

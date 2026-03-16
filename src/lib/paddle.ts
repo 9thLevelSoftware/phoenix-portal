@@ -73,17 +73,16 @@ export function mapPriceIdToTier(priceId: string): string {
 	)
 		.split(",")
 		.filter(Boolean);
+	const flamePriceIds = (import.meta.env.VITE_PADDLE_FLAME_PRICE_IDS ?? "")
+		.split(",")
+		.filter(Boolean);
 	const emberPriceIds = (import.meta.env.VITE_PADDLE_EMBER_PRICE_IDS ?? "")
 		.split(",")
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
+	if (flamePriceIds.includes(priceId)) return "FLAME";
 	if (emberPriceIds.includes(priceId)) return "EMBER";
-
-	const syncPriceIds = (import.meta.env.VITE_PADDLE_SYNC_PRICE_IDS ?? "")
-		.split(",")
-		.filter(Boolean);
-	if (syncPriceIds.includes(priceId)) return "SYNC";
 
 	return "FREE";
 }
@@ -99,16 +98,16 @@ export function mapPriceIdToTierServer(
 	const infernoPriceIds = (env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
 		.split(",")
 		.filter(Boolean);
-	const emberPriceIds = (env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
+	const flamePriceIds = (env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
 		.split(",")
 		.filter(Boolean);
-	const syncPriceIds = (env.get("PADDLE_SYNC_PRICE_IDS") ?? "")
+	const emberPriceIds = (env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
 		.split(",")
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
+	if (flamePriceIds.includes(priceId)) return "FLAME";
 	if (emberPriceIds.includes(priceId)) return "EMBER";
-	if (syncPriceIds.includes(priceId)) return "SYNC";
 
 	return "FREE";
 }

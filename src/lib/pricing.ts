@@ -17,15 +17,15 @@ export interface TierPricing {
 
 export const TIER_PRICING: TierPricing[] = [
 	{
-		name: "Sync",
-		tier: "SYNC",
+		name: "Ember",
+		tier: "EMBER",
 		monthlyPrice: "$5",
 		annualPrice: "$49",
 		annualMonthly: "$4.08",
 		paddleMonthlyPriceId:
-			import.meta.env.VITE_PADDLE_SYNC_MONTHLY_PRICE_ID ?? "",
+			import.meta.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "",
 		paddleAnnualPriceId:
-			import.meta.env.VITE_PADDLE_SYNC_ANNUAL_PRICE_ID ?? "",
+			import.meta.env.VITE_PADDLE_EMBER_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Cloud sync & backup",
 			"Restore workouts across devices",
@@ -34,17 +34,17 @@ export const TIER_PRICING: TierPricing[] = [
 		],
 	},
 	{
-		name: "Ember",
-		tier: "EMBER",
+		name: "Flame",
+		tier: "FLAME",
 		monthlyPrice: "$15",
 		annualPrice: "$149",
 		annualMonthly: "$12.42",
 		paddleMonthlyPriceId:
-			import.meta.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "",
+			import.meta.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "",
 		paddleAnnualPriceId:
-			import.meta.env.VITE_PADDLE_EMBER_ANNUAL_PRICE_ID ?? "",
+			import.meta.env.VITE_PADDLE_FLAME_ANNUAL_PRICE_ID ?? "",
 		features: [
-			"Everything in Sync",
+			"Everything in Ember",
 			"Advanced analytics & charts",
 			"Community sharing & routines",
 			"Third-party connections (Strava, Hevy, Liftosaur)",
@@ -61,7 +61,7 @@ export const TIER_PRICING: TierPricing[] = [
 		paddleAnnualPriceId:
 			import.meta.env.VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID ?? "",
 		features: [
-			"Everything in Ember",
+			"Everything in Flame",
 			"Advanced analytics & biomechanics",
 			"Force curves & VBT zones",
 			"Session replay with 50Hz telemetry",
