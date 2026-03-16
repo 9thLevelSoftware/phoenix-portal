@@ -17,6 +17,23 @@ export interface TierPricing {
 
 export const TIER_PRICING: TierPricing[] = [
 	{
+		name: "Sync",
+		tier: "SYNC",
+		monthlyPrice: "$5",
+		annualPrice: "$49",
+		annualMonthly: "$4.08",
+		paddleMonthlyPriceId:
+			import.meta.env.VITE_PADDLE_SYNC_MONTHLY_PRICE_ID ?? "",
+		paddleAnnualPriceId:
+			import.meta.env.VITE_PADDLE_SYNC_ANNUAL_PRICE_ID ?? "",
+		features: [
+			"Cloud sync & backup",
+			"Restore workouts across devices",
+			"Workout history & personal records",
+			"Dashboard with streak tracking",
+		],
+	},
+	{
 		name: "Ember",
 		tier: "EMBER",
 		monthlyPrice: "$15",
@@ -27,10 +44,10 @@ export const TIER_PRICING: TierPricing[] = [
 		paddleAnnualPriceId:
 			import.meta.env.VITE_PADDLE_EMBER_ANNUAL_PRICE_ID ?? "",
 		features: [
-			"Cloud sync & backup on multiple devices",
-			"Unlimited workout history",
+			"Everything in Sync",
+			"Advanced analytics & charts",
 			"Community sharing & routines",
-			"Third-party connections (Strava, Fitbit, Garmin, Hevy)",
+			"Third-party connections (Strava, Hevy, Liftosaur)",
 		],
 	},
 	{

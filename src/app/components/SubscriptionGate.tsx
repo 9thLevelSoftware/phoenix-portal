@@ -8,12 +8,13 @@ import {
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,
-	EMBER: 1,
-	INFERNO: 2,
+	SYNC: 1,
+	EMBER: 2,
+	INFERNO: 3,
 };
 
 interface SubscriptionGateProps {
-	requiredTier: "EMBER" | "INFERNO";
+	requiredTier: "SYNC" | "EMBER" | "INFERNO";
 	children: ReactNode;
 	fallback?: ReactNode;
 	featureName?: string;

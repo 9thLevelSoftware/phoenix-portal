@@ -4,6 +4,7 @@ import { NotFound } from "@/app/components/NotFound";
 import { PageLoading } from "@/app/components/PageLoading";
 import { AppLayout } from "./AppLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
+import { SubscribedRoute } from "./SubscribedRoute";
 
 // Lazy-load all page components for code splitting
 const LandingPage = lazy(() =>
@@ -134,28 +135,63 @@ export function AppRoutes() {
 				{/* Protected routes */}
 				<Route element={<ProtectedRoute />}>
 					<Route element={<AppLayout />}>
-						<Route path="/dashboard" element={<Dashboard />} />
-						<Route path="/history" element={<WorkoutHistory />} />
-						<Route path="/history/:sessionId" element={<SessionDetail />} />
-						<Route path="/replay/:sessionId" element={<SessionReplay />} />
-						<Route path="/records" element={<PersonalRecords />} />
-						<Route path="/analytics" element={<Analytics />} />
-						<Route path="/biomechanics" element={<Biomechanics />} />
-						<Route path="/goals" element={<Goals />} />
-						<Route path="/recovery" element={<Recovery />} />
-						<Route path="/challenges" element={<Challenges />} />
-						<Route path="/community" element={<Community />} />
-						<Route path="/routines" element={<RoutinesEnhanced />} />
-						<Route path="/routines/new" element={<RoutineBuilder />} />
-						<Route path="/routines/:routineId" element={<RoutineBuilder />} />
-						<Route path="/cycles" element={<TrainingCycles />} />
-						<Route path="/cycles/new" element={<CycleBuilder />} />
-						<Route path="/cycles/:cycleId" element={<CycleBuilder />} />
-						<Route path="/compare" element={<ComparisonView />} />
-						<Route path="/integrations" element={<Integrations />} />
+						{/* Ungated — accessible to all authenticated users */}
 						<Route path="/profile" element={<Profile />} />
 						<Route path="/pricing" element={<PricingPlans />} />
 						<Route path="/celebrations" element={<CelebrationDemo />} />
+
+						{/* SYNC tier — cloud backup, history, dashboard */}
+						<Route element={<SubscribedRoute requiredTier="SYNC" />}>
+							<Route path="/dashboard" element={<Dashboard />} />
+							<Route path="/history" element={<WorkoutHistory />} />
+							<Route
+								path="/history/:sessionId"
+								element={<SessionDetail />}
+							/>
+							<Route path="/records" element={<PersonalRecords />} />
+							<Route path="/goals" element={<Goals />} />
+							<Route path="/recovery" element={<Recovery />} />
+							<Route path="/challenges" element={<Challenges />} />
+						</Route>
+
+						{/* EMBER tier — analytics, community, integrations */}
+						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
+							<Route path="/analytics" element={<Analytics />} />
+							<Route path="/community" element={<Community />} />
+							<Route path="/routines" element={<RoutinesEnhanced />} />
+							<Route
+								path="/routines/new"
+								element={<RoutineBuilder />}
+							/>
+							<Route
+								path="/routines/:routineId"
+								element={<RoutineBuilder />}
+							/>
+							<Route path="/cycles" element={<TrainingCycles />} />
+							<Route path="/cycles/new" element={<CycleBuilder />} />
+							<Route
+								path="/cycles/:cycleId"
+								element={<CycleBuilder />}
+							/>
+							<Route path="/compare" element={<ComparisonView />} />
+							<Route
+								path="/integrations"
+								element={<Integrations />}
+							/>
+						</Route>
+
+						{/* INFERNO tier — session replay, biomechanics */}
+						<Route element={<SubscribedRoute requiredTier="INFERNO" />}>
+							<Route
+								path="/replay/:sessionId"
+								element={<SessionReplay />}
+							/>
+							<Route
+								path="/biomechanics"
+								element={<Biomechanics />}
+							/>
+						</Route>
+
 						{/* Catch-all for authenticated users */}
 						<Route path="*" element={<NotFound />} />
 					</Route>

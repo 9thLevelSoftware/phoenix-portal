@@ -82,8 +82,13 @@ function mapPriceIdToTier(priceId: string): string {
     .split(",")
     .filter(Boolean);
 
+  const syncPriceIds = (Deno.env.get("PADDLE_SYNC_PRICE_IDS") ?? "")
+    .split(",")
+    .filter(Boolean);
+
   if (infernoPriceIds.includes(priceId)) return "INFERNO";
   if (emberPriceIds.includes(priceId)) return "EMBER";
+  if (syncPriceIds.includes(priceId)) return "SYNC";
 
   return "FREE";
 }

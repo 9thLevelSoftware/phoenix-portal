@@ -80,6 +80,11 @@ export function mapPriceIdToTier(priceId: string): string {
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
 	if (emberPriceIds.includes(priceId)) return "EMBER";
 
+	const syncPriceIds = (import.meta.env.VITE_PADDLE_SYNC_PRICE_IDS ?? "")
+		.split(",")
+		.filter(Boolean);
+	if (syncPriceIds.includes(priceId)) return "SYNC";
+
 	return "FREE";
 }
 
@@ -97,9 +102,13 @@ export function mapPriceIdToTierServer(
 	const emberPriceIds = (env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
 		.split(",")
 		.filter(Boolean);
+	const syncPriceIds = (env.get("PADDLE_SYNC_PRICE_IDS") ?? "")
+		.split(",")
+		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
 	if (emberPriceIds.includes(priceId)) return "EMBER";
+	if (syncPriceIds.includes(priceId)) return "SYNC";
 
 	return "FREE";
 }

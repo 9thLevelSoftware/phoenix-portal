@@ -51,6 +51,14 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentText: "text-zinc-400",
 		buttonClass: "",
 	},
+	SYNC: {
+		icon: Sparkles,
+		accentBorder: "border-[var(--color-forge-green)]",
+		accentBg: "from-[var(--color-forge-green)]/10 to-emerald-900/10",
+		accentText: "text-[var(--color-forge-green)]",
+		buttonClass:
+			"bg-[var(--color-forge-green)] hover:bg-[var(--color-forge-green)]/90 text-white border-0",
+	},
 	EMBER: {
 		icon: Flame,
 		accentBorder: "border-primary",
@@ -84,8 +92,9 @@ const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,
-	EMBER: 1,
-	INFERNO: 2,
+	SYNC: 1,
+	EMBER: 2,
+	INFERNO: 3,
 };
 
 export function PricingPlans() {
@@ -142,7 +151,7 @@ export function PricingPlans() {
 		if (TIER_LEVEL[currentTier] > TIER_LEVEL[tierConfig.tier]) {
 			return (
 				<Button variant="outline" className="w-full opacity-50" disabled>
-					Included in {currentTier === "INFERNO" ? "Inferno" : "Ember"}
+					Included in your plan
 				</Button>
 			);
 		}
@@ -195,7 +204,7 @@ export function PricingPlans() {
 				</div>
 
 				{/* Tier Cards */}
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
 					{TIERS.map((tierConfig) => {
 						const Icon = tierConfig.icon;
 						const isCurrent = currentTier === tierConfig.tier;
