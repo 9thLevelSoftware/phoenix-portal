@@ -271,7 +271,6 @@ export function LandingPage() {
 				</DialogDescription>
 
 				<div className="flex items-center justify-center gap-2 mb-6">
-					<PhoenixLogo size="sm" animated={false} />
 					<span className="text-xl text-primary font-semibold">
 						Phoenix Portal
 					</span>
@@ -603,7 +602,7 @@ export function LandingPage() {
 					style={{ y: heroY, opacity: heroOpacity }}
 					className="text-center z-10 flex flex-col items-center"
 				>
-					<PhoenixLogo size="xl" animated />
+					
 
 					<motion.h1
 						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
