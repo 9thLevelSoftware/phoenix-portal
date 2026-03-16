@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ExternalActivityList } from "@/app/components/integrations/ExternalActivityList";
 import { HevyConnect } from "@/app/components/integrations/HevyConnect";
+import { LiftosaurConnect } from "@/app/components/integrations/LiftosaurConnect";
 import { MobileOnlyProvider } from "@/app/components/integrations/MobileOnlyProvider";
 import { ProviderCard } from "@/app/components/integrations/ProviderCard";
 import { SyncStatus } from "@/app/components/integrations/SyncStatus";
@@ -153,6 +154,18 @@ export function Integrations() {
 							isConnected={getIntegration("hevy")?.status === "connected"}
 							onDisconnect={() =>
 								disconnectMutation.mutate({ userId, provider: "hevy" })
+							}
+						/>
+						<LiftosaurConnect
+							userId={userId}
+							isConnected={
+								getIntegration("liftosaur")?.status === "connected"
+							}
+							onDisconnect={() =>
+								disconnectMutation.mutate({
+									userId,
+									provider: "liftosaur",
+								})
 							}
 						/>
 					</div>

@@ -3,6 +3,7 @@ export type IntegrationProvider =
 	| "fitbit"
 	| "garmin"
 	| "hevy"
+	| "liftosaur"
 	| "apple_health"
 	| "google_health";
 
@@ -80,6 +81,13 @@ export const PROVIDER_METADATA: Record<
 		name: "Hevy",
 		icon: "Dumbbell",
 		description: "Strength training workouts",
+		oauthRequired: false,
+		mobileOnly: false,
+	},
+	liftosaur: {
+		name: "Liftosaur",
+		icon: "Dumbbell",
+		description: "Scriptable workout tracking",
 		oauthRequired: false,
 		mobileOnly: false,
 	},
