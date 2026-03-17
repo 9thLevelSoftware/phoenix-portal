@@ -211,6 +211,7 @@ export function AppSidebar() {
 												isActive={isActive}
 												tooltip={item.label}
 												size="lg"
+												className={isActive ? "group-data-[collapsible=icon]:ring-1 group-data-[collapsible=icon]:ring-primary/20" : undefined}
 											>
 												<NavLink
 													to={item.path}
@@ -219,7 +220,7 @@ export function AppSidebar() {
 													<item.icon className="shrink-0" size={20} />
 													<span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
 													{isActive && (
-														<span className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
+														<span className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
 													)}
 												</NavLink>
 											</SidebarMenuButton>
