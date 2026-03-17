@@ -3,8 +3,8 @@ import {
 	Activity,
 	Apple,
 	ArrowRight,
-	BarChart3,
 	Chrome,
+	Cloud,
 	ExternalLink,
 	Flame,
 	Loader2,
@@ -197,11 +197,11 @@ export function LandingPage() {
 
 	const features = [
 		{
-			icon: Share2,
-			title: "Community Hub",
+			icon: Cloud,
+			title: "Cloud Sync & Backup",
 			badge: "EMBER",
 			description:
-				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
+				"Your workouts, synced and backed up automatically. Restore data across devices and never lose a session again.",
 		},
 		{
 			icon: Trophy,
@@ -211,18 +211,18 @@ export function LandingPage() {
 				"Compete in community challenges, climb leaderboards, and earn badges. See how you stack up against other Vitruvian athletes.",
 		},
 		{
-			icon: Activity,
-			title: "Force Curve Analysis",
-			badge: "INFERNO",
+			icon: Share2,
+			title: "Community Hub",
+			badge: "FLAME",
 			description:
-				"Visualize concentric and eccentric force output with LTTB-downsampled curves. See exactly where you're strongest — and where you stall.",
+				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
 		},
 		{
-			icon: BarChart3,
-			title: "VBT & Power Analytics",
-			badge: "INFERNO",
+			icon: Activity,
+			title: "Advanced Analytics",
+			badge: "FLAME",
 			description:
-				"Velocity-based training zones classify every rep into strength, power, or speed. Track power output and ROM trends over time.",
+				"Deep dive into your training data with force curve analysis, volume trends, and progressive overload tracking across every exercise.",
 		},
 		{
 			icon: Target,
@@ -245,7 +245,7 @@ export function LandingPage() {
 		price: t.monthlyPrice,
 		period: "per month",
 		features: t.features,
-		cta: t.comingSoon ? "Coming Soon" : "Rise Now",
+		cta: t.comingSoon ? "Coming Soon" : "Subscribe",
 		highlight: t.tier === "EMBER",
 		comingSoon: t.comingSoon,
 	}));
@@ -847,7 +847,7 @@ export function LandingPage() {
 					>
 						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
 						<h2 className="text-4xl sm:text-5xl mb-6 text-white">
-							Rise from the ashes.
+							Fan the flames.
 						</h2>
 						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
 							Your Vitruvian machine captures incredible data every rep. Phoenix

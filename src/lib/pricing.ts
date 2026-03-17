@@ -30,7 +30,7 @@ export const TIER_PRICING: TierPricing[] = [
 			"Cloud sync & backup",
 			"Restore workouts across devices",
 			"Workout history & personal records",
-			"Dashboard with streak tracking",
+			"Leaderboards & challenges",
 		],
 	},
 	{
@@ -45,8 +45,8 @@ export const TIER_PRICING: TierPricing[] = [
 			import.meta.env.VITE_PADDLE_FLAME_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Everything in Ember",
+			"Community hub & routine sharing",
 			"Advanced analytics & charts",
-			"Community sharing & routines",
 			"Third-party connections (Strava, Hevy, Liftosaur)",
 		],
 	},
