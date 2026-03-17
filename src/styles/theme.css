@@ -207,15 +207,18 @@
   }
 
   /* Phoenix sidebar icons — 20px in expanded, revert to default 16px in collapsed */
-  [data-sidebar="menu-button"][data-size="lg"] > a > svg,
   [data-sidebar="menu-button"][data-size="lg"] > svg {
     width: 20px !important;
     height: 20px !important;
   }
-  [data-collapsible="icon"] [data-sidebar="menu-button"][data-size="lg"] > a > svg,
   [data-collapsible="icon"] [data-sidebar="menu-button"][data-size="lg"] > svg {
     width: 1rem !important;
     height: 1rem !important;
+  }
+
+  /* Collapsed sidebar — center icons horizontally in their 32px button */
+  [data-collapsible="icon"] [data-sidebar="menu-button"] {
+    justify-content: center !important;
   }
 
   /* Phoenix sidebar background — warm gradient + ember border glow */
