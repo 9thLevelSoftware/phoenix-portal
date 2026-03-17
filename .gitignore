@@ -34,3 +34,6 @@ npm-debug.log*
 e2e/.env
 e2e/fixtures/.session-cache.json
 /AGENTS.md
+
+# Git worktrees
+.worktrees/
