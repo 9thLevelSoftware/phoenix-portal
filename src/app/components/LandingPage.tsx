@@ -542,14 +542,14 @@ export function LandingPage() {
 						: "bg-transparent"
 				}`}
 			>
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 relative">
 					<div className="flex items-center gap-2">
 						<PhoenixLogo size="sm" animated={false} />
 						<span className="text-lg font-semibold text-primary">
 							Phoenix Portal
 						</span>
 					</div>
-					<div className="hidden sm:flex items-center gap-6">
+					<div className="hidden sm:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
 						<button
 							type="button"
 							onClick={() => scrollToSection("features")}
@@ -637,16 +637,16 @@ export function LandingPage() {
 					</motion.p>
 
 					<motion.div
-						className="mt-10 flex flex-col sm:flex-row gap-4 justify-center"
+						className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.8 }}
 					>
-						<motion.div whileTap={tap.press} className="inline-flex">
+						<motion.div whileTap={tap.press} className="inline-flex w-full sm:w-auto">
 							<Button
 								size="lg"
 								onClick={openAuth}
-								className="relative group bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
+								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
 							>
 								<span className="relative z-10 flex items-center gap-2">
 									Get Started
@@ -658,7 +658,7 @@ export function LandingPage() {
 							size="lg"
 							variant="outline"
 							onClick={() => scrollToSection("pricing")}
-							className="border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
+							className="w-full sm:w-auto border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
 						>
 							View Plans
 						</Button>
@@ -854,12 +854,12 @@ export function LandingPage() {
 							Portal finally lets you see it all — force curves, biomechanics,
 							recovery, and a community that trains like you do.
 						</p>
-						<div className="flex flex-col sm:flex-row gap-4 justify-center">
-							<motion.div whileTap={tap.press} className="inline-flex">
+						<div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
+							<motion.div whileTap={tap.press} className="inline-flex w-full sm:w-auto">
 								<Button
 									size="lg"
 									onClick={openAuth}
-									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
+									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
 								>
 									<span className="flex items-center gap-2">
 										Get Started
@@ -871,11 +871,12 @@ export function LandingPage() {
 								href="https://ko-fi.com/vitruvianredux"
 								target="_blank"
 								rel="noopener noreferrer"
+								className="w-full sm:w-auto"
 							>
 								<Button
 									size="lg"
 									variant="outline"
-									className="border-2 border-primary text-primary hover:bg-primary/10 text-lg px-8 py-6"
+									className="w-full border-2 border-primary text-primary hover:bg-primary/10 text-lg px-8 py-6"
 								>
 									<span className="flex items-center gap-2">
 										Support on Ko-fi
