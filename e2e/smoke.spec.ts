@@ -6,7 +6,7 @@ const SEEDED_EXERCISE_ID = "00000000-0000-4000-8000-000000000201";
 
 async function mockAuthedPortal(page: Parameters<typeof mockAuthenticatedApp>[0]) {
 	await mockAuthenticatedApp(page, {
-		tier: "ELITE",
+		tier: "FLAME",
 		workoutSessions: [
 			{
 				id: SEEDED_SESSION_ID,

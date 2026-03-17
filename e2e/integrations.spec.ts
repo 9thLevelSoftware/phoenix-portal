@@ -5,7 +5,7 @@ test.describe("Integrations", () => {
 	test("oauth callback feedback is surfaced and the URL is cleaned up", async ({
 		page,
 	}) => {
-		await mockAuthenticatedApp(page, { tier: "ELITE" });
+		await mockAuthenticatedApp(page, { tier: "FLAME" });
 
 		await page.goto("/integrations?connected=strava");
 		await expect(page.getByText("Successfully connected strava")).toBeVisible();
@@ -20,7 +20,7 @@ test.describe("Integrations", () => {
 		page,
 	}) => {
 		await mockAuthenticatedApp(page, {
-			tier: "ELITE",
+			tier: "FLAME",
 			integrations: [
 				{
 					id: "integration-strava",
@@ -54,7 +54,7 @@ test.describe("Integrations", () => {
 		page,
 	}) => {
 		await mockAuthenticatedApp(page, {
-			tier: "ELITE",
+			tier: "FLAME",
 			integrations: [
 				{
 					id: "integration-garmin",

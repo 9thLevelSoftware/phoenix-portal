@@ -5,7 +5,7 @@ import {
 	seedStoredSession,
 } from "./supabase";
 
-export type MockSubscriptionTier = "FREE" | "PHOENIX" | "ELITE";
+export type MockSubscriptionTier = "FREE" | "EMBER" | "FLAME" | "INFERNO";
 
 type IntegrationProvider = "strava" | "fitbit" | "garmin" | "hevy";
 
