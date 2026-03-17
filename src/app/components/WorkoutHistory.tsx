@@ -26,6 +26,8 @@ import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
+import { formatVolume } from "@/lib/units";
+import { profileOptions } from "@/queries/profile";
 import {
 	WORKOUTS_PAGE_SIZE,
 	workoutListOptions,
@@ -39,6 +41,10 @@ export function WorkoutHistory() {
 	const { data: workouts, isPending } = useQuery(
 		workoutListOptions(user?.id ?? ""),
 	);
+	const { data: profile } = useQuery({
+		...profileOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
 	const { isPremium, tier } = useSubscription();
 	const queryClient = useQueryClient();
@@ -84,6 +90,7 @@ export function WorkoutHistory() {
 	const [extraWorkouts, setExtraWorkouts] = useState<WorkoutSession[]>([]);
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [hasMore, setHasMore] = useState(true);
+	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const allWorkouts = useMemo(() => {
 		if (!workouts) return [];
@@ -784,7 +791,7 @@ export function WorkoutHistory() {
 																		Volume
 																	</div>
 																	<div className="text-lg font-semibold text-white">
-																		{workout.total_volume.toLocaleString()} kg
+																		{formatVolume(workout.total_volume, unit)}
 																	</div>
 																</div>
 																<div className="text-center">
@@ -981,7 +988,7 @@ export function WorkoutHistory() {
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Volume</span>
-												<span>{workout.total_volume.toLocaleString()} kg</span>
+												<span>{formatVolume(workout.total_volume, unit)}</span>
 											</div>
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">

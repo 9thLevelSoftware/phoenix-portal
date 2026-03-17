@@ -80,7 +80,7 @@ const navGroups: NavGroup[] = [
 		label: "Account",
 		items: [
 			{ path: "/profile", label: "Profile", icon: User },
-			{ path: "/integrations", label: "Settings", icon: Link2 },
+			{ path: "/integrations", label: "Integrations", icon: Link2 },
 			{ path: "/pricing", label: "Subscription", icon: CreditCard },
 		],
 	},
@@ -294,7 +294,7 @@ export function AppSidebar() {
 						<DropdownMenuItem asChild>
 							<NavLink to="/integrations" className="cursor-pointer">
 								<Link2 className="mr-2 h-4 w-4" />
-								Settings
+								Integrations
 							</NavLink>
 						</DropdownMenuItem>
 						<DropdownMenuItem asChild>
