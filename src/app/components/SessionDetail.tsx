@@ -25,11 +25,15 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
+import { formatVolume, formatWeight } from "@/lib/units";
+import { useAuth } from "@/providers/AuthProvider";
+import { profileOptions } from "@/queries/profile";
 import { sessionDetailOptions } from "@/queries/workouts";
 
 export function SessionDetail() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
+	const { user } = useAuth();
 	const {
 		data: session,
 		isPending,
@@ -38,11 +42,16 @@ export function SessionDetail() {
 		...sessionDetailOptions(sessionId ?? ""),
 		enabled: !!sessionId,
 	});
+	const { data: profile } = useQuery({
+		...profileOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 	const { isPremium } = useSubscription();
 	const [expandedExercises, setExpandedExercises] = useState<string[] | null>(
 		null,
 	);
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	if (!sessionId) {
 		return <Navigate to="/history" replace />;
@@ -181,7 +190,7 @@ export function SessionDetail() {
 					<span>Date: {session.started_at.toLocaleDateString()}</span>
 					{session.routine_name && <span>Routine: {session.routine_name}</span>}
 					<span>Duration: {session.duration_seconds} min</span>
-					<span>Volume: {session.total_volume.toLocaleString()} kg</span>
+					<span>Volume: {formatVolume(session.total_volume, unit)}</span>
 				</div>
 			</div>
 
@@ -286,7 +295,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground">Volume</div>
 								</div>
 								<div className="text-2xl font-semibold text-white">
-									{session.total_volume.toLocaleString()} kg
+									{formatVolume(session.total_volume, unit)}
 								</div>
 							</div>
 							<div className="text-center">
@@ -415,7 +424,7 @@ export function SessionDetail() {
 																	{set.actual_reps}
 																</td>
 																<td className="py-3 text-secondary-foreground">
-																	{set.weight_kg} kg
+																	{formatWeight(set.weight_kg, unit)}
 																</td>
 																<td className="py-3 text-secondary-foreground">
 																	{set.rpe ?? "-"}

@@ -104,10 +104,19 @@ function SectionSkeleton() {
 	);
 }
 
+interface BiomechanicsContentProps {
+	view?: "all" | "biomechanics" | "performance";
+}
+
 // -- Main page content --
-function BiomechanicsContent() {
+export function BiomechanicsContent({
+	view = "all",
+}: BiomechanicsContentProps) {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const showBiomechanics = view === "all" || view === "biomechanics";
+	const showPerformance = view === "all" || view === "performance";
+	const showExpandedSections = view === "all";
 
 	// ---- Session/exercise selectors ----
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("");
@@ -353,152 +362,202 @@ function BiomechanicsContent() {
 			) : (
 				<>
 					{/* Section 1: Force Curves (full width) */}
-					<Section
-						title="Force Curves"
-						icon={Activity}
-						className="col-span-full"
-					>
-						<div className="flex items-center gap-6 mb-4 flex-wrap">
-							<div className="flex items-center gap-2">
-								<Switch
-									id="overlay"
-									checked={overlayAll}
-									onCheckedChange={setOverlayAll}
-								/>
-								<Label
-									htmlFor="overlay"
-									className="text-sm text-muted-foreground"
-								>
-									Overlay All Reps
-								</Label>
-							</div>
-							<div className="flex items-center gap-2">
-								<Switch
-									id="normalized"
-									checked={normalized}
-									onCheckedChange={setNormalized}
-								/>
-								<Label
-									htmlFor="normalized"
-									className="text-sm text-muted-foreground"
-								>
-									Normalized Time
-								</Label>
-							</div>
-						</div>
-						{telemetryLoading ? (
-							<Skeleton className="h-[300px] w-full" />
-						) : repData.length > 0 ? (
-							<ForceCurve
-								repData={repData}
-								height={300}
-								normalized={normalized}
-								selectedRep={selectedRep}
-							/>
-						) : (
-							<div className="text-center py-8 text-muted text-sm">
-								No telemetry data for this set
-							</div>
-						)}
-					</Section>
-
-					{/* Section 2: Velocity & Power (2 col) */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<Section title="Velocity Profile" icon={Zap}>
-							{summariesLoading ? (
-								<Skeleton className="h-[280px] w-full" />
-							) : (
-								<VelocityProfile repSummaries={repSummaries ?? []} />
-							)}
-						</Section>
-
-						<Section title="Power Output" icon={Gauge}>
-							{summariesLoading ? (
-								<Skeleton className="h-[250px] w-full" />
-							) : (
-								<PowerOutput repSummaries={repSummaries ?? []} />
-							)}
-						</Section>
-					</div>
-
-					{/* Section 3: Asymmetry (full width) */}
-					<Section title="Left/Right Asymmetry" icon={Activity}>
-						{summariesLoading ? (
-							<Skeleton className="h-[300px] w-full" />
-						) : (
-							<>
-								<AsymmetryGauge
-									repSummaries={repSummaries ?? []}
-									mode="per-rep"
-								/>
-								{avgAsymmetry !== null && (
-									<div className="mt-4 flex justify-center">
-										<span
-											className="rounded-full px-4 py-1.5 text-sm font-medium"
-											style={{
-												backgroundColor:
-													parseFloat(avgAsymmetry) <= 10
-														? "#10B98120"
-														: "#DC262620",
-												color:
-													parseFloat(avgAsymmetry) <= 10
-														? PHOENIX.forgeGreen
-														: PHOENIX.flameRed,
-												border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
-											}}
+					{showBiomechanics && (
+						<>
+							<Section
+								title="Force Curves"
+								icon={Activity}
+								className="col-span-full"
+							>
+								<div className="mb-4 flex flex-wrap items-center gap-6">
+									<div className="flex items-center gap-2">
+										<Switch
+											id="overlay"
+											checked={overlayAll}
+											onCheckedChange={setOverlayAll}
+										/>
+										<Label
+											htmlFor="overlay"
+											className="text-sm text-muted-foreground"
 										>
-											Session Average: {avgAsymmetry}% asymmetry
-										</span>
+											Overlay All Reps
+										</Label>
+									</div>
+									<div className="flex items-center gap-2">
+										<Switch
+											id="normalized"
+											checked={normalized}
+											onCheckedChange={setNormalized}
+										/>
+										<Label
+											htmlFor="normalized"
+											className="text-sm text-muted-foreground"
+										>
+											Normalized Time
+										</Label>
+									</div>
+								</div>
+								{telemetryLoading ? (
+									<Skeleton className="h-[300px] w-full" />
+								) : repData.length > 0 ? (
+									<ForceCurve
+										repData={repData}
+										height={300}
+										normalized={normalized}
+										selectedRep={selectedRep}
+									/>
+								) : (
+									<div className="py-8 text-center text-sm text-muted">
+										No telemetry data for this set
 									</div>
 								)}
-							</>
-						)}
-					</Section>
+							</Section>
 
-					{/* Section 4 & 5: ROM + Muscle Heatmap (2 col) */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<Section title="Range of Motion" icon={Ruler}>
-							{summariesLoading ? (
-								<Skeleton className="h-[250px] w-full" />
-							) : (
-								<RomTrend repSummaries={repSummaries ?? []} />
-							)}
-						</Section>
+							<Section title="Left/Right Asymmetry" icon={Activity}>
+								{summariesLoading ? (
+									<Skeleton className="h-[300px] w-full" />
+								) : (
+									<>
+										<AsymmetryGauge
+											repSummaries={repSummaries ?? []}
+											mode="per-rep"
+										/>
+										{avgAsymmetry !== null && (
+											<div className="mt-4 flex justify-center">
+												<span
+													className="rounded-full px-4 py-1.5 text-sm font-medium"
+													style={{
+														backgroundColor:
+															parseFloat(avgAsymmetry) <= 10
+																? "#10B98120"
+																: "#DC262620",
+														color:
+															parseFloat(avgAsymmetry) <= 10
+																? PHOENIX.forgeGreen
+																: PHOENIX.flameRed,
+														border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
+													}}
+												>
+													Session Average: {avgAsymmetry}% asymmetry
+												</span>
+											</div>
+										)}
+									</>
+								)}
+							</Section>
 
-						<Section title="Body Overview" icon={Activity}>
-							<MuscleHeatmap muscleVolumes={muscleVolumes} />
-						</Section>
-					</div>
+							<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+								<Section title="Range of Motion" icon={Ruler}>
+									{summariesLoading ? (
+										<Skeleton className="h-[250px] w-full" />
+									) : (
+										<RomTrend repSummaries={repSummaries ?? []} />
+									)}
+								</Section>
 
-					{/* Section 6: Exercise Progress (full width) */}
-					<Section
-						title="Exercise Progress"
-						icon={Activity}
-						className="col-span-full"
-					>
-						<ExerciseProgress
-							userId={userId}
-							initialExercise={selectedExercise?.name}
-						/>
-					</Section>
+								<Section title="Body Overview" icon={Activity}>
+									<MuscleHeatmap muscleVolumes={muscleVolumes} />
+								</Section>
+							</div>
+						</>
+					)}
 
-					{/* Section 7: Summary Report (full width) */}
-					<Section
-						title="Summary Report"
-						icon={Activity}
-						className="col-span-full"
-					>
-						<SummaryReport userId={userId} />
-					</Section>
+					{showPerformance && (
+						<>
+							<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+								<Section title="Velocity Profile" icon={Zap}>
+									{summariesLoading ? (
+										<Skeleton className="h-[280px] w-full" />
+									) : (
+										<VelocityProfile repSummaries={repSummaries ?? []} />
+									)}
+								</Section>
 
-					{/* Section 8: Consistency (full width) */}
-					<Section
-						title="Workout Consistency"
-						icon={Activity}
-						className="col-span-full"
-					>
-						<ConsistencyCalendar workoutDates={workoutDates} />
-					</Section>
+								<Section title="Power Output" icon={Gauge}>
+									{summariesLoading ? (
+										<Skeleton className="h-[250px] w-full" />
+									) : (
+										<PowerOutput repSummaries={repSummaries ?? []} />
+									)}
+								</Section>
+							</div>
+
+							<Section title="Time Under Tension" icon={Activity}>
+								{summariesLoading ? (
+									<Skeleton className="h-[220px] w-full" />
+								) : repSummaries && repSummaries.length > 0 ? (
+									<div className="space-y-3">
+										{repSummaries.map((rep) => (
+											<div
+												key={rep.id}
+												className="rounded-lg border border-secondary bg-background p-3"
+											>
+												<div className="mb-2 flex items-center justify-between">
+													<span className="text-sm font-medium text-white">
+														Rep {rep.rep_number}
+													</span>
+													<span className="text-sm text-primary">
+														{(rep.tut_ms / 1000).toFixed(1)}s
+													</span>
+												</div>
+												<div className="h-2 overflow-hidden rounded-full bg-surface-2">
+													<div
+														className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
+														style={{
+															width: `${Math.min(
+																100,
+																(rep.tut_ms /
+																	Math.max(
+																		...repSummaries.map((entry) => entry.tut_ms),
+																		1,
+																	)) *
+																	100,
+															)}%`,
+														}}
+													/>
+												</div>
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="py-8 text-center text-sm text-muted">
+										No TUT data available for this set
+									</div>
+								)}
+							</Section>
+						</>
+					)}
+
+					{showExpandedSections && (
+						<>
+							<Section
+								title="Exercise Progress"
+								icon={Activity}
+								className="col-span-full"
+							>
+								<ExerciseProgress
+									userId={userId}
+									initialExercise={selectedExercise?.name}
+								/>
+							</Section>
+
+							<Section
+								title="Summary Report"
+								icon={Activity}
+								className="col-span-full"
+							>
+								<SummaryReport userId={userId} />
+							</Section>
+
+							<Section
+								title="Workout Consistency"
+								icon={Activity}
+								className="col-span-full"
+							>
+								<ConsistencyCalendar workoutDates={workoutDates} />
+							</Section>
+						</>
+					)}
 				</>
 			)}
 		</div>
