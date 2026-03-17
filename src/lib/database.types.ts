@@ -663,10 +663,12 @@ export type Database = {
 			routine_exercises: {
 				Row: {
 					created_at: string;
+					duration_seconds: number | null;
 					echo_level: string | null;
 					eccentric_load: string | null;
 					id: string;
 					is_amrap: boolean;
+					is_bodyweight: boolean;
 					mode: string;
 					muscle_group: string;
 					name: string;
@@ -688,10 +690,12 @@ export type Database = {
 				};
 				Insert: {
 					created_at?: string;
+					duration_seconds?: number | null;
 					echo_level?: string | null;
 					eccentric_load?: string | null;
 					id?: string;
 					is_amrap?: boolean;
+					is_bodyweight?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name: string;
@@ -713,10 +717,12 @@ export type Database = {
 				};
 				Update: {
 					created_at?: string;
+					duration_seconds?: number | null;
 					echo_level?: string | null;
 					eccentric_load?: string | null;
 					id?: string;
 					is_amrap?: boolean;
+					is_bodyweight?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name?: string;
