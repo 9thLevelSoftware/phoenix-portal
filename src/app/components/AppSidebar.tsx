@@ -193,7 +193,7 @@ export function AppSidebar() {
 			<SidebarContent>
 				{navGroups.map((group, groupIndex) => (
 					<React.Fragment key={group.label}>
-						{groupIndex > 0 && <SidebarSeparator />}
+						{groupIndex > 0 && <SidebarSeparator className="sidebar-separator-phoenix" />}
 						<SidebarGroup>
 							<SidebarGroupLabel className="eyebrow text-muted-foreground">
 								{group.label}
