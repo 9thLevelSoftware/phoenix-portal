@@ -151,11 +151,11 @@ export function AppRoutes() {
 							<Route path="/records" element={<PersonalRecords />} />
 							<Route path="/goals" element={<Goals />} />
 							<Route path="/recovery" element={<Recovery />} />
-							<Route path="/challenges" element={<Challenges />} />
 						</Route>
 
-						{/* FLAME tier — analytics, community, integrations */}
+						{/* FLAME tier — analytics, community, social, integrations */}
 						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
+							<Route path="/challenges" element={<Challenges />} />
 							<Route path="/analytics" element={<Analytics />} />
 							<Route path="/community" element={<Community />} />
 							<Route path="/routines" element={<RoutinesEnhanced />} />
