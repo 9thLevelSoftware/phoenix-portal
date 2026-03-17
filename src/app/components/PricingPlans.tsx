@@ -1,7 +1,17 @@
-import { Check, Clock, Crown, Flame, Loader2, Sparkles } from "lucide-react";
+import { ArrowUp, Check, Clock, Crown, Flame, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -107,6 +117,7 @@ export function PricingPlans() {
 	const [isAnnual, setIsAnnual] = useState(false);
 	const queryClient = useQueryClient();
 	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(null);
+	const [confirmUpgradeTier, setConfirmUpgradeTier] = useState<SubscriptionTier | null>(null);
 
 	const handleSubscribe = (tier: SubscriptionTier) => {
 		const tierPricing = TIER_PRICING.find(
@@ -221,7 +232,7 @@ export function PricingPlans() {
 			return (
 				<Button
 					className={`w-full ${tierConfig.buttonClass}`}
-					onClick={() => handleUpgrade(tierConfig.tier)}
+					onClick={() => setConfirmUpgradeTier(tierConfig.tier)}
 					disabled={isUpgrading}
 				>
 					{isUpgrading ? (
@@ -230,7 +241,10 @@ export function PricingPlans() {
 							Upgrading...
 						</>
 					) : (
-						"Upgrade"
+						<>
+							<ArrowUp className="w-4 h-4 mr-2" />
+							Upgrade
+						</>
 					)}
 				</Button>
 			);
@@ -393,6 +407,39 @@ export function PricingPlans() {
 					})}
 				</div>
 			</div>
+
+			{/* Upgrade Confirmation Dialog */}
+			<AlertDialog
+				open={confirmUpgradeTier !== null}
+				onOpenChange={(open) => {
+					if (!open) setConfirmUpgradeTier(null);
+				}}
+			>
+				<AlertDialogContent className="bg-surface-2 border-primary/30">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Upgrade to {confirmUpgradeTier ?? ""}</AlertDialogTitle>
+						<AlertDialogDescription>
+							Your payment method on file will be charged a prorated amount
+							for the remainder of your current billing period. The new plan
+							takes effect immediately.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							className="bg-gradient-to-r from-primary to-chart-2 text-white border-0"
+							onClick={() => {
+								if (confirmUpgradeTier) {
+									handleUpgrade(confirmUpgradeTier);
+								}
+								setConfirmUpgradeTier(null);
+							}}
+						>
+							Confirm Upgrade
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }
