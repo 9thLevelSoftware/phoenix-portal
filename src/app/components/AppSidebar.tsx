@@ -216,7 +216,7 @@ export function AppSidebar() {
 													to={item.path}
 													className="relative"
 												>
-													<item.icon className="shrink-0" />
+													<item.icon className="shrink-0" size={20} />
 													<span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
 													{isActive && (
 														<span className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
