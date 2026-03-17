@@ -176,15 +176,21 @@ export function AppSidebar() {
 			{/* Header: Logo + wordmark                                            */}
 			{/* ----------------------------------------------------------------- */}
 			<SidebarHeader className="px-3 py-4">
-				<NavLink
-					to="/dashboard"
-					className="flex items-center gap-3 cursor-pointer"
-				>
-					<PhoenixLogo size="sm" animated={false} />
-					<span className="text-base font-semibold text-primary group-data-[collapsible=icon]:hidden whitespace-nowrap">
-						Phoenix Portal
-					</span>
-				</NavLink>
+				<div className="flex items-center gap-3">
+					<NavLink
+						to="/dashboard"
+						className="flex items-center gap-3 cursor-pointer"
+					>
+						<PhoenixLogo size="sm" animated={false} />
+						<span className="text-base font-semibold text-primary group-data-[collapsible=icon]:hidden whitespace-nowrap">
+							Phoenix Portal
+						</span>
+					</NavLink>
+					<SidebarTrigger className="ml-auto text-muted-foreground hover:text-primary transition-colors group-data-[collapsible=icon]:hidden" />
+				</div>
+				<div className="hidden group-data-[collapsible=icon]:flex justify-center mt-1">
+					<SidebarTrigger className="text-muted-foreground hover:text-primary transition-colors" />
+				</div>
 			</SidebarHeader>
 
 			{/* ----------------------------------------------------------------- */}
@@ -306,10 +312,7 @@ export function AppSidebar() {
 					</DropdownMenuContent>
 				</DropdownMenu>
 
-				{/* Collapse toggle */}
-				<div className="flex justify-center">
-					<SidebarTrigger className="text-muted-foreground hover:text-foreground" />
-				</div>
+
 			</SidebarFooter>
 		</Sidebar>
 	);
