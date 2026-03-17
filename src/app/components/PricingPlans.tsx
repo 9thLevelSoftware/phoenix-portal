@@ -1,6 +1,7 @@
 import { Check, Clock, Crown, Flame, Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -18,6 +19,8 @@ import {
 import { useAuth } from "@/app/hooks/useAuth";
 import { openCheckout } from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
+import { queryKeys } from "@/queries/keys";
+import { supabase } from "@/lib/supabase";
 
 interface TierFeature {
 	label: string;
@@ -98,10 +101,12 @@ const TIER_LEVEL: Record<SubscriptionTier, number> = {
 };
 
 export function PricingPlans() {
-	const { tier: currentTier, isLoading: subscriptionLoading } =
+	const { tier: currentTier, status: currentStatus, isLoading: subscriptionLoading } =
 		useSubscription();
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
+	const queryClient = useQueryClient();
+	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(null);
 
 	const handleSubscribe = (tier: SubscriptionTier) => {
 		const tierPricing = TIER_PRICING.find(
@@ -130,6 +135,59 @@ export function PricingPlans() {
 		});
 	};
 
+	const isUpgradeEligible =
+		currentTier !== "FREE" &&
+		(currentStatus === "active" || currentStatus === "trialing");
+
+	const handleUpgrade = async (tier: SubscriptionTier) => {
+		const tierPricing = TIER_PRICING.find(
+			(t: TierPricing) => t.tier === tier,
+		);
+		if (!tierPricing) return;
+
+		const priceId = isAnnual
+			? tierPricing.paddleAnnualPriceId
+			: tierPricing.paddleMonthlyPriceId;
+
+		if (!priceId) {
+			toast.error("Paddle checkout is not configured yet.");
+			return;
+		}
+
+		if (!user) {
+			toast.error("You must be logged in to upgrade.");
+			return;
+		}
+
+		setUpgradingTier(tier);
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-update-subscription",
+				{ body: { price_id: priceId } },
+			);
+
+			if (error) {
+				toast.error(error.message || "Failed to update subscription");
+				return;
+			}
+
+			toast.success(
+				"Subscription updated! Changes may take a moment to reflect.",
+			);
+
+			// Invalidate subscription cache to trigger refetch
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setUpgradingTier(null);
+		}
+	};
+
 	const renderCTA = (tierConfig: TierConfig) => {
 		if (tierConfig.comingSoon) {
 			return (
@@ -152,6 +210,28 @@ export function PricingPlans() {
 			return (
 				<Button variant="outline" className="w-full opacity-50" disabled>
 					Included in your plan
+				</Button>
+			);
+		}
+
+		// Higher tier — upgrade or subscribe
+		const isUpgrading = upgradingTier === tierConfig.tier;
+
+		if (isUpgradeEligible) {
+			return (
+				<Button
+					className={`w-full ${tierConfig.buttonClass}`}
+					onClick={() => handleUpgrade(tierConfig.tier)}
+					disabled={isUpgrading}
+				>
+					{isUpgrading ? (
+						<>
+							<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+							Upgrading...
+						</>
+					) : (
+						"Upgrade"
+					)}
 				</Button>
 			);
 		}
