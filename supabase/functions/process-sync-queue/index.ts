@@ -1,6 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Scheduled sync queue processor.
@@ -56,6 +57,21 @@ Deno.serve(async (req) => {
       .from('sync_queue')
       .update({ status: 'processing', started_at: new Date().toISOString() })
       .eq('id', task.id);
+
+    // Check subscription before calling sync function
+    const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
+    if (!gate.allowed) {
+      await supabase
+        .from('sync_queue')
+        .update({
+          status: 'failed',
+          error_message: `Subscription required: ${gate.tier} does not meet FLAME minimum`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', task.id);
+      results.failed++;
+      continue;
+    }
 
     try {
       // Call provider-specific sync function with exponential backoff on 429s

@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Garmin Connect webhook handler for activity push notifications.
@@ -169,6 +170,14 @@ Deno.serve(async (req) => {
           console.warn(
             `Garmin webhook: no connected user found for Garmin userId ${activity.userId}`,
           );
+          errors++;
+          continue;
+        }
+
+        // Subscription gate — FLAME or higher for integrations
+        const gate = await requireSubscription(supabase, integration.user_id, 'FLAME', cors);
+        if (!gate.allowed) {
+          console.warn(`Garmin webhook: user ${integration.user_id} does not have FLAME subscription`);
           errors++;
           continue;
         }

@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 // =============================================================================
 // TypeScript interfaces matching mobile DTO wire format (camelCase)
@@ -218,25 +219,8 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2b. Subscription gate — EMBER or higher required
     // =========================================================================
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('tier, status')
-      .eq('user_id', userId)
-      .in('status', ['active', 'trialing'])
-      .maybeSingle();
-
-    const tier = subscription?.tier ?? 'FREE';
-
-    if (tier === 'FREE') {
-      return new Response(
-        JSON.stringify({
-          error: 'subscription_required',
-          message: 'An Ember subscription or higher is required to sync workout data.',
-          requiredTier: 'EMBER',
-        }),
-        { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
+    const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    if (!gate.allowed) return gate.response;
 
     // =========================================================================
     // 3. Parse request body
