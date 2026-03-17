@@ -222,8 +222,8 @@ Deno.serve(async (req) => {
     // Build upsert payload (uses legacy Stripe column names)
     const upsertData: Record<string, unknown> = {
       user_id: userId,
-      stripe_customer_id: event.data.customer_id, // Legacy column → Paddle customer_id
-      stripe_subscription_id: event.data.id, // Legacy column → Paddle subscription_id
+      paddle_customer_id: event.data.customer_id,
+      paddle_subscription_id: event.data.id,
       tier,
       status,
       price_id: priceId || null,
