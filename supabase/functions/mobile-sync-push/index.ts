@@ -216,6 +216,29 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
+    // 2b. Subscription gate — EMBER or higher required
+    // =========================================================================
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('tier, status')
+      .eq('user_id', userId)
+      .in('status', ['active', 'trialing'])
+      .maybeSingle();
+
+    const tier = subscription?.tier ?? 'FREE';
+
+    if (tier === 'FREE') {
+      return new Response(
+        JSON.stringify({
+          error: 'subscription_required',
+          message: 'An Ember subscription or higher is required to sync workout data.',
+          requiredTier: 'EMBER',
+        }),
+        { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =========================================================================
     // 3. Parse request body
     // =========================================================================
     const payload: PushPayload = await req.json();
