@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Strava Activity Sync Edge Function
@@ -167,6 +168,10 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Subscription gate — FLAME or higher required for integrations
+    const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
 
     // ---------------------------------------------------------------
     // Fetch user's Strava tokens from oauth_tokens (server-only table)
