@@ -67,8 +67,9 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-	PHOENIX: "bg-primary/20 text-primary border-primary/30",
-	ELITE: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+	EMBER: "bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-[var(--color-forge-green)]/30",
+	FLAME: "bg-primary/20 text-primary border-primary/30",
+	INFERNO: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
 export function LandingPage() {
