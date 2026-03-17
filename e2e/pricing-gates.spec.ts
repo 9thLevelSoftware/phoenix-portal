@@ -11,8 +11,9 @@ test.describe("Pricing and gates", () => {
 		await expect(
 			page.getByRole("heading", { name: "Choose Your Plan" }),
 		).toBeVisible();
+		// FREE tier has no card in TIER_PRICING, so free users see Subscribe buttons
 		await expect(
-			page.getByRole("button", { name: "Current Plan" }),
+			page.getByRole("button", { name: "Subscribe" }).first(),
 		).toBeVisible();
 
 		await page.goto("/integrations");
