@@ -584,7 +584,7 @@ export function LandingPage() {
 			</nav>
 
 			{/* Hero Section */}
-			<section className="relative min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
+			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
 				{/* Phoenix hero background */}
 				<div className="absolute inset-0 overflow-hidden">
 					<img
