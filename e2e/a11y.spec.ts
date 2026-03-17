@@ -64,7 +64,7 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 
 test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 	test.beforeEach(async ({ page }) => {
-		await mockAuthenticatedApp(page, { tier: "ELITE" });
+		await mockAuthenticatedApp(page, { tier: "FLAME" });
 	});
 
 	for (const { name, path } of authedPages) {
