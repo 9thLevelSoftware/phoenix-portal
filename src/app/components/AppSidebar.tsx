@@ -243,13 +243,14 @@ export function AppSidebar() {
 			{/* Footer: Avatar dropdown + collapse toggle                          */}
 			{/* ----------------------------------------------------------------- */}
 			<SidebarFooter className="gap-1 pb-3">
+				<SidebarSeparator className="sidebar-separator-phoenix" />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button
 							type="button"
-							className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-none"
+							className="sidebar-avatar-hover flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-none"
 						>
-							<Avatar className="h-8 w-8 shrink-0 ring-1 ring-primary/30">
+							<Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/40">
 								<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-xs font-semibold">
 									{initials}
 								</AvatarFallback>
