@@ -98,8 +98,9 @@ export function initializePaddle(
 		return;
 	}
 
-	// Use sandbox environment for local development
-	if (import.meta.env.DEV) {
+	// Use sandbox environment when explicitly configured
+	const paddleEnv = import.meta.env.VITE_PADDLE_ENVIRONMENT as string | undefined;
+	if (paddleEnv === "sandbox") {
 		window.Paddle.Environment.set("sandbox");
 	}
 
