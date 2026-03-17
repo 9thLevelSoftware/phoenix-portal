@@ -35,9 +35,9 @@ test.describe("Public pages - render and content", () => {
 				page.getByText("Rise From the Ashes. Forge Your Strength.").first(),
 			).toBeVisible();
 
-			// Primary hero CTAs
+			// Primary hero CTAs (hero + bottom CTA both have "Get Started", use first())
 			await expect(
-				page.getByRole("button", { name: "Get Started Free" }),
+				page.getByRole("button", { name: "Get Started" }).first(),
 			).toBeVisible();
 			await expect(page.getByRole("button", { name: "View Plans" })).toBeVisible();
 
@@ -53,21 +53,21 @@ test.describe("Public pages - render and content", () => {
 			await pricingHeading.scrollIntoViewIfNeeded();
 			await expect(pricingHeading).toBeVisible();
 
-			// Three tier names (use exact:true to avoid "Phoenix" matching "Project Phoenix" h1)
+			// Three tier names from TIER_PRICING (Ember, Flame, Inferno — no Free card)
 			await expect(
-				page.getByRole("heading", { name: "Free", exact: true }),
+				page.getByRole("heading", { name: "Ember", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("heading", { name: "Phoenix", exact: true }),
+				page.getByRole("heading", { name: "Flame", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("heading", { name: "Elite", exact: true }),
+				page.getByRole("heading", { name: "Inferno", exact: true }),
 			).toBeVisible();
 
 			// Price amounts
-			await expect(page.getByText("$0").first()).toBeVisible();
-			await expect(page.getByText("$14.99").first()).toBeVisible();
-			await expect(page.getByText("$24.99").first()).toBeVisible();
+			await expect(page.getByText("$5").first()).toBeVisible();
+			await expect(page.getByText("$15").first()).toBeVisible();
+			await expect(page.getByText("$25").first()).toBeVisible();
 		});
 
 		test("auth dialog opens when Get Started is clicked", async ({
@@ -75,8 +75,8 @@ test.describe("Public pages - render and content", () => {
 		}) => {
 			await gotoLanding(page);
 
-			// Click the hero CTA, not the pricing/free-tier button.
-			await page.getByRole("button", { name: "Get Started Free" }).click();
+			// Click the hero CTA (first of two "Get Started" buttons on page).
+			await page.getByRole("button", { name: "Get Started" }).first().click();
 
 			// Dialog becomes visible (sr-only title: "Sign in to Phoenix Portal")
 			const dialog = page.getByRole("dialog");
