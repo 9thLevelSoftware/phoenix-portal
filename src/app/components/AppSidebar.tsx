@@ -217,9 +217,9 @@ export function AppSidebar() {
 													className="relative"
 												>
 													<item.icon className="shrink-0" />
-													<span>{item.label}</span>
+													<span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
 													{isActive && (
-														<span className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-full" />
+														<span className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
 													)}
 												</NavLink>
 											</SidebarMenuButton>
