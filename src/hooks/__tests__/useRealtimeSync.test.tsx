@@ -48,6 +48,10 @@ vi.mock("@/app/hooks/useAuth", () => ({
 	useAuth: () => mocks.authState,
 }));
 
+vi.mock("@/hooks/useSubscription", () => ({
+	useSubscription: () => ({ tier: "EMBER", isLoading: false }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
 	supabase: mocks.mockSupabase,
 }));
