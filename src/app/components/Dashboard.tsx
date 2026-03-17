@@ -1,5 +1,5 @@
 import NumberFlow from "@number-flow/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
 	ArrowRight,
 	Award,
@@ -13,7 +13,6 @@ import {
 	Trophy,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
 import { Link } from "react-router";
 import {
 	Area,
@@ -40,8 +39,18 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { fadeUp, hover, staggerContainer } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
+import {
+	convertWeight,
+	formatVolume,
+	formatWeight,
+	type WeightUnit,
+} from "@/lib/units";
+import {
+	challengeProgressOptions,
+	userChallengesOptions,
+} from "@/queries/challenges";
 import { cycleListOptions } from "@/queries/cycles";
-import { earnedBadgesOptions } from "@/queries/profile";
+import { earnedBadgesOptions, profileOptions } from "@/queries/profile";
 import {
 	dashboardStatsOptions,
 	recentPRsOptions,
@@ -89,6 +98,21 @@ function formatRelativeTime(date: Date): string {
 	if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
 	if (diffDays === 1) return "Yesterday";
 	return `${diffDays} days ago`;
+}
+
+function getDaysRemaining(endDate: string): number {
+	const diffMs = new Date(endDate).getTime() - Date.now();
+	return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+function formatPersonalRecordValue(
+	record: PersonalRecord,
+	unit: WeightUnit,
+): string {
+	if (record.unit === "kg") {
+		return formatWeight(record.value, unit);
+	}
+	return `${record.value} ${record.unit}`;
 }
 
 function QuickStatCard({
@@ -161,44 +185,189 @@ function MobileRecentActivityCard({
 	);
 }
 
-export function Dashboard() {
-	const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-	const { user } = useAuth();
-	const queryClient = useQueryClient();
-
-	const { data: workouts, isPending: workoutsLoading } = useQuery(
-		workoutListOptions(user?.id),
-	);
-	const { data: weeklyStats, isPending: statsLoading } = useQuery(
-		dashboardStatsOptions(user?.id),
-	);
-	const { data: recentPRs, isPending: prsLoading } = useQuery(
-		recentPRsOptions(user?.id),
-	);
-	const { data: earnedBadges, isPending: badgesLoading } = useQuery({
-		...earnedBadgesOptions(user?.id ?? ""),
-		enabled: !!user?.id,
+function ActiveChallengesSection({ userId }: { userId: string }) {
+	const {
+		data: userChallenges,
+		isPending,
+		isError,
+	} = useQuery({
+		...userChallengesOptions(userId),
+		enabled: !!userId,
 	});
-	const { data: cycles } = useQuery(cycleListOptions(user?.id ?? ""));
+	const activeChallenges = (userChallenges ?? []).filter(
+		(entry) => entry.completed_at == null && entry.challenges.is_active,
+	);
+	const progressQueries = useQueries({
+		queries: activeChallenges.map((entry) =>
+			challengeProgressOptions(
+				userId,
+				entry.challenge_id,
+				entry.challenges.challenge_type,
+				entry.challenges.target_value,
+				entry.challenges.start_date,
+				entry.challenges.end_date,
+			),
+		),
+	});
+
+	if (isPending) {
+		return (
+			<div className="space-y-3">
+				{Array.from({ length: 2 }).map((_, index) => (
+					<div
+						key={index}
+						className="rounded-lg border border-secondary bg-background p-4"
+					>
+						<Skeleton className="mb-3 h-5 w-32" />
+						<Skeleton className="mb-2 h-3 w-full" />
+						<Skeleton className="h-3 w-24" />
+					</div>
+				))}
+			</div>
+		);
+	}
+
+	if (isError) {
+		return (
+			<div className="py-4 text-center">
+				<p className="text-sm text-muted-foreground">
+					Your joined challenges could not be loaded.
+				</p>
+				<Button
+					variant="outline"
+					className="mt-4 w-full border-primary text-primary hover:bg-primary/10"
+					asChild
+				>
+					<Link to="/challenges">Open Challenges</Link>
+				</Button>
+			</div>
+		);
+	}
+
+	if (activeChallenges.length === 0) {
+		return (
+			<>
+				<div className="flex flex-col items-center justify-center py-6 text-center">
+					<Trophy className="mb-2 h-8 w-8 text-secondary" />
+					<p className="text-sm text-muted-foreground">
+						No active challenges yet
+					</p>
+					<p className="mt-1 text-xs text-muted">
+						Join challenges from the Challenges page to track your progress here
+					</p>
+				</div>
+				<Button
+					variant="outline"
+					className="mt-4 w-full border-primary text-primary hover:bg-primary/10"
+					asChild
+				>
+					<Link to="/challenges">Browse Challenges</Link>
+				</Button>
+			</>
+		);
+	}
+
+	return (
+		<div className="space-y-3">
+			{activeChallenges.slice(0, 3).map((entry, index) => {
+				const challenge = entry.challenges;
+				const progress = progressQueries[index]?.data;
+				return (
+					<div
+						key={entry.id}
+						className="rounded-lg border border-secondary bg-background p-4"
+					>
+						<div className="mb-3 flex items-start justify-between gap-3">
+							<div>
+								<h4 className="text-sm font-semibold text-white">
+									{challenge.name}
+								</h4>
+								<p className="text-xs text-muted-foreground">
+									{challenge.target_value.toLocaleString()}
+									{challenge.target_unit ? ` ${challenge.target_unit}` : ""}{" "}
+									target
+								</p>
+							</div>
+							<Badge
+								variant="outline"
+								className="border-primary/30 text-primary"
+							>
+								{getDaysRemaining(challenge.end_date)}d left
+							</Badge>
+						</div>
+						<div className="mb-2 flex items-center justify-between text-xs">
+							<span className="text-muted-foreground">Progress</span>
+							<span className="font-semibold text-primary">
+								{progress?.percentage ?? 0}%
+							</span>
+						</div>
+						<Progress value={progress?.percentage ?? 0} className="h-2" />
+						<p className="mt-2 text-xs text-muted-foreground">
+							{progress
+								? `${progress.current.toLocaleString()} / ${progress.target.toLocaleString()}`
+								: "Calculating progress..."}
+						</p>
+					</div>
+				);
+			})}
+			<Button
+				variant="outline"
+				className="w-full border-primary text-primary hover:bg-primary/10"
+				asChild
+			>
+				<Link to="/challenges">Manage Challenges</Link>
+			</Button>
+		</div>
+	);
+}
+
+export function Dashboard() {
+	const { user } = useAuth();
+	const userId = user?.id ?? "";
+
+	const { data: workouts, isPending: workoutsLoading } = useQuery({
+		...workoutListOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: weeklyStats, isPending: statsLoading } = useQuery({
+		...dashboardStatsOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: recentPRs, isPending: prsLoading } = useQuery({
+		...recentPRsOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: profile } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: earnedBadges, isPending: badgesLoading } = useQuery({
+		...earnedBadgesOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: cycles } = useQuery({
+		...cycleListOptions(userId),
+		enabled: !!userId,
+	});
 
 	const streak = useStreak(workouts);
 	const activeCycle = cycles?.find((c) => c.status === "active");
+	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
 	const recentBadges = earnedBadges?.slice(0, 3) ?? [];
-	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
+	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined).map(
+		(row) => ({
+			...row,
+			volume: Math.round(convertWeight(row.volume, unit) * 10) / 10,
+		}),
+	);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
 	// Mobile simple bar chart heights
 	const dailyVolumes = weeklyVolumeData.map((d) => d.volume);
 	const maxVolume = Math.max(...dailyVolumes, 1);
 	const barHeights = dailyVolumes.map((v) => Math.round((v / maxVolume) * 100));
-
-	const _handleRefresh = async () => {
-		setIsPullRefreshing(true);
-		await queryClient.invalidateQueries({ queryKey: ["workouts"] });
-		setIsPullRefreshing(false);
-	};
 
 	// Zero-session welcome view
 	const hasNoWorkouts =
@@ -401,18 +570,6 @@ export function Dashboard() {
 					</div>
 				</div>
 
-				{/* Pull to Refresh Indicator */}
-				{isPullRefreshing && (
-					<div className="flex justify-center py-4">
-						<motion.div
-							animate={{ rotate: 360 }}
-							transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-						>
-							<Flame className="w-6 h-6 text-primary" fill={PHOENIX.ember} />
-						</motion.div>
-					</div>
-				)}
-
 				<div className="px-4 py-6 space-y-6">
 					{/* Streak Card - animated with progress bar */}
 					<motion.div
@@ -549,9 +706,7 @@ export function Dashboard() {
 								<QuickStatCard
 									icon={<TrendingUp className="w-5 h-5" />}
 									value={
-										weeklyTotal > 0
-											? `${(weeklyTotal / 1000).toFixed(0)}k`
-											: "--"
+										weeklyTotal > 0 ? formatVolume(weeklyTotal, unit) : "--"
 									}
 									label="Volume"
 									gradient="from-success to-[#059669]"
@@ -595,7 +750,7 @@ export function Dashboard() {
 							<Card className="p-6 card-secondary">
 								<div className="mb-4">
 									<div className="text-3xl font-bold text-white mb-1">
-										{Math.round(weeklyTotal).toLocaleString()} kg
+										{formatVolume(weeklyTotal, unit)}
 									</div>
 									<div className="text-sm text-success flex items-center gap-1">
 										<TrendingUp className="w-4 h-4" />
@@ -683,7 +838,7 @@ export function Dashboard() {
 										key={workout.id}
 										title={workout.name}
 										time={formatRelativeTime(workout.started_at)}
-										volume={`${workout.total_volume.toLocaleString()} kg`}
+										volume={formatVolume(workout.total_volume, unit)}
 										duration={`${workout.duration_seconds} min`}
 										prs={workout.pr_count}
 									/>
@@ -888,7 +1043,7 @@ export function Dashboard() {
 														Total this week
 													</span>
 													<span className="text-primary font-semibold">
-														{weeklyTotal.toLocaleString()} kg
+														{formatVolume(weeklyTotal, unit)}
 													</span>
 												</div>
 											</>
@@ -956,7 +1111,7 @@ export function Dashboard() {
 													</div>
 													<div className="text-right">
 														<div className="text-primary font-semibold">
-															{workout.total_volume.toLocaleString()} kg
+															{formatVolume(workout.total_volume, unit)}
 														</div>
 														<div className="text-sm text-muted-foreground">
 															{workout.duration_seconds} min
@@ -1035,7 +1190,7 @@ export function Dashboard() {
 												</div>
 												<span className="text-primary text-lg">
 													{weeklyTotal > 0
-														? `${(weeklyTotal / 1000).toFixed(1)}k kg`
+														? formatVolume(weeklyTotal, unit)
 														: "--"}
 												</span>
 											</div>
@@ -1095,7 +1250,7 @@ export function Dashboard() {
 													</div>
 													<div className="flex items-center justify-between">
 														<span className="text-primary">
-															{pr.value} {pr.unit}
+															{formatPersonalRecordValue(pr, unit)}
 														</span>
 														<span className="text-sm text-muted-foreground">
 															{formatRelativeTime(pr.achieved_at)}
@@ -1112,23 +1267,7 @@ export function Dashboard() {
 							<motion.div variants={fadeUp}>
 								<Card className="p-6 card-secondary">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
-									<div className="flex flex-col items-center justify-center py-6 text-center">
-										<Trophy className="w-8 h-8 text-secondary mb-2" />
-										<p className="text-sm text-muted-foreground">
-											No active challenges yet
-										</p>
-										<p className="text-xs text-muted mt-1">
-											Join challenges from the Challenges page to track your
-											progress here
-										</p>
-									</div>
-									<Button
-										variant="outline"
-										className="w-full mt-4 border-primary text-primary hover:bg-primary/10"
-										asChild
-									>
-										<Link to="/challenges">Browse Challenges</Link>
-									</Button>
+									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
 							</motion.div>
 

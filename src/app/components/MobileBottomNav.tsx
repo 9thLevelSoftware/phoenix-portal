@@ -52,7 +52,7 @@ const moreGroups = [
 		label: "Account",
 		items: [
 			{ path: "/profile", label: "Profile", icon: User },
-			{ path: "/integrations", label: "Settings", icon: Link2 },
+			{ path: "/integrations", label: "Integrations", icon: Link2 },
 			{ path: "/pricing", label: "Subscription", icon: CreditCard },
 		],
 	},

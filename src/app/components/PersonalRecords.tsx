@@ -25,6 +25,8 @@ import {
 	StatCardSkeleton,
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { convertWeight, type WeightUnit } from "@/lib/units";
+import { profileOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 
@@ -39,11 +41,33 @@ const milestones = [
 
 const TIMELINE_INITIAL_LIMIT = 3;
 
+function formatRecordMeasurement(
+	value: number,
+	originalUnit: string,
+	unit: WeightUnit,
+): string {
+	if (originalUnit !== "kg") {
+		return `${value} ${originalUnit}`;
+	}
+
+	const converted = convertWeight(value, unit);
+	return unit === "lbs"
+		? `${converted.toFixed(1)} lbs`
+		: `${Math.round(converted)} kg`;
+}
+
 export function PersonalRecords() {
 	const { user } = useAuth();
-	const { data: records, isPending } = useQuery(
-		personalRecordsOptions(user?.id),
-	);
+	const userId = user?.id ?? "";
+	const { data: records, isPending } = useQuery({
+		...personalRecordsOptions(userId),
+		enabled: !!userId,
+	});
+	const { data: profile } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
+	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const [activeFilter, setActiveFilter] = useState("All");
 	const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
@@ -335,11 +359,16 @@ export function PersonalRecords() {
 													{pr.muscle_group}
 												</Badge>
 												<div className="text-3xl font-bold text-primary mb-2">
-													{pr.value} {pr.unit}
+													{formatRecordMeasurement(pr.value, pr.unit, unit)}
 												</div>
 												{pr.previous_value && (
 													<div className="text-sm text-muted-foreground mb-3">
-														Previous: {pr.previous_value} {pr.unit}
+														Previous:{" "}
+														{formatRecordMeasurement(
+															pr.previous_value,
+															pr.unit,
+															unit,
+														)}
 													</div>
 												)}
 												<div className="flex items-center justify-between">
@@ -513,7 +542,11 @@ export function PersonalRecords() {
 												<div className="flex items-center gap-4">
 													<div className="text-right hidden sm:block">
 														<div className="text-lg font-semibold text-white">
-															{exercise.currentValue} {exercise.unit}
+															{formatRecordMeasurement(
+																exercise.currentValue,
+																exercise.unit,
+																unit,
+															)}
 														</div>
 														<div className="text-sm text-muted-foreground">
 															{exercise.recordType}
@@ -577,7 +610,11 @@ export function PersonalRecords() {
 																				<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
 																					<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
 																						<div className="text-sm font-semibold text-white">
-																							{entry.value} {entry.unit}
+																							{formatRecordMeasurement(
+																								entry.value,
+																								entry.unit,
+																								unit,
+																							)}
 																						</div>
 																						<div className="text-xs text-muted-foreground">
 																							{entry.record_type}
@@ -652,7 +689,11 @@ export function PersonalRecords() {
 																			)}
 																		</td>
 																		<td className="py-3 text-white font-semibold">
-																			{entry.value} {entry.unit}
+																			{formatRecordMeasurement(
+																				entry.value,
+																				entry.unit,
+																				unit,
+																			)}
 																		</td>
 																		<td className="py-3">
 																			<Badge
@@ -744,7 +785,7 @@ export function PersonalRecords() {
 															</Badge>
 														</div>
 														<p className="text-xl font-bold text-primary">
-															{pr.value} {pr.unit}
+															{formatRecordMeasurement(pr.value, pr.unit, unit)}
 														</p>
 													</div>
 													<div className="text-right">

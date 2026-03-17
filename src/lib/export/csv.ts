@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import Papa from "papaparse";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
+import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 
 /**
  * Generate CSV content for workout history.
@@ -9,13 +10,19 @@ import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
  *   - duration_seconds is already converted to minutes by the transform
  *   - total_volume is already multiplied by WEIGHT_MULTIPLIER
  */
-export function generateWorkoutCSV(workouts: WorkoutSession[]): string {
+export function generateWorkoutCSV(
+	workouts: WorkoutSession[],
+	unit: WeightUnit = "kg",
+): string {
 	const data = workouts.map((w) => ({
 		Date: format(w.started_at, "yyyy-MM-dd"),
 		Time: format(w.started_at, "HH:mm"),
 		"Workout Name": w.name,
 		"Duration (min)": w.duration_seconds ?? "",
-		"Total Volume (kg)": w.total_volume ?? "",
+		[`Total Volume (${getUnitLabel(unit)})`]: convertWeight(
+			w.total_volume ?? 0,
+			unit,
+		),
 		Sets: w.set_count ?? "",
 		Exercises: w.exercise_count ?? "",
 		PRs: w.pr_count ?? "",
@@ -32,15 +39,22 @@ export function generateWorkoutCSV(workouts: WorkoutSession[]): string {
  *   - achieved_at is a Date object
  *   - value is already multiplied by WEIGHT_MULTIPLIER
  */
-export function generateRecordsCSV(records: PersonalRecord[]): string {
+export function generateRecordsCSV(
+	records: PersonalRecord[],
+	unit: WeightUnit = "kg",
+): string {
 	const data = records.map((r) => ({
 		Exercise: r.exercise_name,
 		"Muscle Group": r.muscle_group,
 		"Record Type": formatRecordType(r.record_type),
-		Value: r.value,
-		Unit: r.unit,
+		Value:
+			r.unit === "kg" ? convertWeight(r.value, unit) : r.value,
+		Unit: r.unit === "kg" ? getUnitLabel(unit) : r.unit,
 		"Date Achieved": format(r.achieved_at, "yyyy-MM-dd"),
-		"Previous Value": r.previous_value ?? "",
+		"Previous Value":
+			r.previous_value != null && r.unit === "kg"
+				? convertWeight(r.previous_value, unit)
+				: (r.previous_value ?? ""),
 	}));
 
 	return Papa.unparse(data);
