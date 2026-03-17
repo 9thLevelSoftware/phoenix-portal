@@ -246,7 +246,7 @@ export function LandingPage() {
 		period: "per month",
 		features: t.features,
 		cta: t.comingSoon ? "Coming Soon" : "Subscribe",
-		highlight: t.tier === "EMBER",
+		highlight: t.tier === "FLAME",
 		comingSoon: t.comingSoon,
 	}));
 
