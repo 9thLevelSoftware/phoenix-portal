@@ -32,6 +32,11 @@ echarts.use([
 // Register theme once
 echarts.registerTheme("phoenix", PHOENIX_ECHARTS_THEME);
 
+/**
+ * Shared ECharts wrapper with Phoenix theme, responsive sizing, and loading state.
+ * Uses tree-shakeable imports to minimize bundle size (~200-300KB vs ~800KB full).
+ * Option updates fully replace the previous config (notMerge=true).
+ */
 interface EChartsWrapperProps {
 	option: echarts.EChartsCoreOption;
 	height?: string | number;
