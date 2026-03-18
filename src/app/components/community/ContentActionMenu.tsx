@@ -1,4 +1,4 @@
-import { Ban, Flag, MoreVertical } from "lucide-react";
+import { Ban, Flag, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
 	AlertDialog,
@@ -16,7 +16,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
-import { useBlockUser } from "@/mutations/community";
+import { useBlockUser, useDeleteSharedContent } from "@/mutations/community";
 import { ReportDialog } from "./ReportDialog";
 
 interface ContentActionMenuProps {
@@ -24,6 +24,7 @@ interface ContentActionMenuProps {
 	contentType: "routine" | "cycle" | "comment";
 	authorId: string | null;
 	currentUserId: string;
+	onEdit?: (id: string) => void;
 }
 
 export function ContentActionMenu({
@@ -31,13 +32,18 @@ export function ContentActionMenu({
 	contentType,
 	authorId,
 	currentUserId,
+	onEdit,
 }: ContentActionMenuProps) {
 	const [showReportDialog, setShowReportDialog] = useState(false);
 	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const blockMutation = useBlockUser();
+	const deleteMutation = useDeleteSharedContent();
 
-	// Don't show menu on own content or deleted user content
-	if (authorId === null || authorId === currentUserId) return null;
+	const isOwnContent = authorId === currentUserId;
+
+	// Don't show menu for deleted user content
+	if (authorId === null) return null;
 
 	return (
 		<>
@@ -56,21 +62,45 @@ export function ContentActionMenu({
 					className="bg-[#1a1a2e] border-[#374151]"
 					onClick={(e) => e.stopPropagation()}
 				>
-					<DropdownMenuItem
-						onClick={() => setShowReportDialog(true)}
-						className="cursor-pointer"
-					>
-						<Flag className="w-4 h-4" />
-						Report
-					</DropdownMenuItem>
-					<DropdownMenuItem
-						onClick={() => setShowBlockConfirm(true)}
-						variant="destructive"
-						className="cursor-pointer"
-					>
-						<Ban className="w-4 h-4" />
-						Block User
-					</DropdownMenuItem>
+					{isOwnContent ? (
+						<>
+							{onEdit && contentType !== "comment" && (
+								<DropdownMenuItem
+									onClick={() => onEdit(contentId)}
+									className="cursor-pointer"
+								>
+									<Pencil className="w-4 h-4" />
+									Edit
+								</DropdownMenuItem>
+							)}
+							<DropdownMenuItem
+								onClick={() => setShowDeleteConfirm(true)}
+								variant="destructive"
+								className="cursor-pointer"
+							>
+								<Trash2 className="w-4 h-4" />
+								Delete
+							</DropdownMenuItem>
+						</>
+					) : (
+						<>
+							<DropdownMenuItem
+								onClick={() => setShowReportDialog(true)}
+								className="cursor-pointer"
+							>
+								<Flag className="w-4 h-4" />
+								Report
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onClick={() => setShowBlockConfirm(true)}
+								variant="destructive"
+								className="cursor-pointer"
+							>
+								<Ban className="w-4 h-4" />
+								Block User
+							</DropdownMenuItem>
+						</>
+					)}
 				</DropdownMenuContent>
 			</DropdownMenu>
 
@@ -101,6 +131,39 @@ export function ContentActionMenu({
 							className="bg-destructive hover:bg-destructive/90"
 						>
 							Block
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			<AlertDialog
+				open={showDeleteConfirm}
+				onOpenChange={setShowDeleteConfirm}
+			>
+				<AlertDialogContent className="bg-background border-secondary">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-white">
+							Delete this {contentType}?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							This will permanently remove your shared {contentType} from the
+							community feed. This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel className="border-secondary text-muted-foreground">
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() =>
+								deleteMutation.mutate({
+									contentId,
+									contentType: contentType as "routine" | "cycle",
+								})
+							}
+							className="bg-destructive hover:bg-destructive/90"
+						>
+							{deleteMutation.isPending ? "Deleting..." : "Delete"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

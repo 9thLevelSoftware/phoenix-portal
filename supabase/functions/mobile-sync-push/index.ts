@@ -12,6 +12,7 @@ interface PushPayload {
   lastSync: string | null;
   sessions: SessionDto[];
   routines: RoutineDto[];
+  cycles: CycleDto[];
   rpgAttributes: RpgAttributesDto | null;
   badges: BadgeDto[];
   gamificationStats: GamificationStatsDto | null;
@@ -133,6 +134,36 @@ interface BadgeDto {
   earnedAt: string;
 }
 
+interface CycleDto {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  durationWeeks: number;
+  workoutDays: number;
+  restDays: number;
+  currentWeek: number;
+  status: string;
+  startedAt: string | null;
+  lastUsedAt: string | null;
+  progressionSettings: string | null;
+  deloadSettings: string | null;
+  days: CycleDayDto[];
+}
+
+interface CycleDayDto {
+  id: string;
+  cycleId: string;
+  dayNumber: number;
+  dayType: string;
+  routineId: string | null;
+  weightAdjustment: number;
+  repModifier: number;
+  restOverride: number | null;
+  restType: string | null;
+  notes: string | null;
+}
+
 interface GamificationStatsDto {
   userId: string;
   totalWorkouts: number;
@@ -236,6 +267,7 @@ Deno.serve(async (req) => {
     let badgesUpserted = 0;
     let exerciseProgressInserted = 0;
     let personalRecordsInserted = 0;
+    let cyclesUpserted = 0;
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -477,7 +509,7 @@ Deno.serve(async (req) => {
         name: r.name,
         description: r.description,
         exercise_count: r.exerciseCount,
-        estimated_duration: r.estimatedDuration,
+        estimated_duration: Math.round(r.estimatedDuration / 60),
         times_completed: r.timesCompleted,
         is_favorite: r.isFavorite,
       }));
@@ -528,6 +560,63 @@ Deno.serve(async (req) => {
           .from('routine_exercises')
           .insert(reRows);
         if (reErr) throw new Error(`routine_exercises insert failed: ${reErr.message}`);
+      }
+    }
+
+    // =========================================================================
+    // 7b. Upsert training_cycles + delete/reinsert cycle_days
+    // =========================================================================
+    if (payload.cycles && payload.cycles.length > 0) {
+      const cycleRows = payload.cycles.map((c) => ({
+        id: c.id,
+        user_id: userId,
+        name: c.name,
+        description: c.description ?? '',
+        duration_weeks: c.durationWeeks,
+        workout_days: c.workoutDays,
+        rest_days: c.restDays,
+        current_week: c.currentWeek,
+        status: c.status,
+        started_at: c.startedAt,
+        last_used_at: c.lastUsedAt,
+        progression_settings: safeJsonParse(c.progressionSettings),
+        deload_settings: safeJsonParse(c.deloadSettings),
+      }));
+
+      const { error: cycErr } = await supabase
+        .from('training_cycles')
+        .upsert(cycleRows, { onConflict: 'id' });
+      if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
+      cyclesUpserted = cycleRows.length;
+
+      // Delete existing cycle_days for these cycles, then reinsert
+      const cycleIds = payload.cycles.map((c) => c.id);
+      const { error: delCdErr } = await supabase
+        .from('cycle_days')
+        .delete()
+        .in('cycle_id', cycleIds);
+      if (delCdErr) throw new Error(`cycle_days delete failed: ${delCdErr.message}`);
+
+      const dayRows = payload.cycles.flatMap((c) =>
+        c.days.map((d) => ({
+          id: d.id,
+          cycle_id: d.cycleId,
+          day_number: d.dayNumber,
+          day_type: d.dayType,
+          routine_id: d.routineId,
+          weight_adjustment: d.weightAdjustment,
+          rep_modifier: d.repModifier,
+          rest_override: d.restOverride,
+          rest_type: d.restType,
+          notes: d.notes,
+        }))
+      );
+
+      if (dayRows.length > 0) {
+        const { error: dayErr } = await supabase
+          .from('cycle_days')
+          .insert(dayRows);
+        if (dayErr) throw new Error(`cycle_days insert failed: ${dayErr.message}`);
       }
     }
 
@@ -612,6 +701,7 @@ Deno.serve(async (req) => {
           platform: payload.platform,
           sessionsInserted,
           routinesUpserted,
+          cyclesUpserted,
           badgesUpserted,
         });
 
@@ -630,6 +720,7 @@ Deno.serve(async (req) => {
         setsInserted,
         repSummariesInserted,
         routinesUpserted,
+        cyclesUpserted,
         badgesUpserted,
         exerciseProgressInserted,
         personalRecordsInserted,
