@@ -6,7 +6,8 @@ export function insightsOptions(userId: string, period: string = "30d") {
 	return queryOptions({
 		queryKey: queryKeys.insights.byUser(userId, period),
 		queryFn: async () => {
-			const { data, error } = await supabase
+			// Table created in 20260318_insights_benchmarks migration; cast needed until types are regenerated
+		const { data, error } = await (supabase as any)
 				.from("user_insights")
 				.select("*")
 				.eq("user_id", userId)

@@ -6,7 +6,8 @@ export function benchmarkOptions(metricType: string, metricKey?: string) {
 	return queryOptions({
 		queryKey: queryKeys.benchmarks.distribution(metricType, metricKey),
 		queryFn: async () => {
-			let query = supabase
+			// Table created in 20260318_insights_benchmarks migration; cast needed until types are regenerated
+		let query = (supabase as any)
 				.from("community_benchmarks")
 				.select("*")
 				.eq("metric_type", metricType);
