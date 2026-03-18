@@ -30,6 +30,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
@@ -171,6 +172,7 @@ export function Profile() {
 	);
 
 	// Local settings state, initialized from profile query
+	const [editDisplayName, setEditDisplayName] = useState("");
 	const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
 	const [emailDigests, setEmailDigests] = useState(true);
 	const [pushNotifications, setPushNotifications] = useState(true);
@@ -183,6 +185,7 @@ export function Profile() {
 	// Sync local state when profile data loads
 	useEffect(() => {
 		if (profile) {
+			setEditDisplayName(profile.display_name ?? "");
 			setWeightUnit(profile.weight_unit === "lbs" ? "lbs" : "kg");
 			setEmailDigests(profile.email_digests ?? true);
 			setPushNotifications(profile.push_notifications ?? true);
@@ -840,6 +843,47 @@ export function Profile() {
 								General Settings
 							</h3>
 							<div className="space-y-4">
+								<div>
+									<Label className="text-white mb-2 block">
+										Display Name
+									</Label>
+									<div className="flex gap-2">
+										<Input
+											type="text"
+											value={editDisplayName}
+											onChange={(e) => setEditDisplayName(e.target.value)}
+											placeholder="Enter your display name..."
+											className="flex-1 bg-background border-secondary text-white"
+											onKeyDown={(e) => {
+												if (
+													e.key === "Enter" &&
+													editDisplayName.trim() &&
+													editDisplayName !== profile?.display_name
+												) {
+													updateProfile.mutate({
+														display_name: editDisplayName.trim(),
+													});
+												}
+											}}
+										/>
+										<Button
+											variant="outline"
+											className="border-secondary text-white hover:bg-primary hover:border-primary"
+											disabled={
+												updateProfile.isPending ||
+												!editDisplayName.trim() ||
+												editDisplayName === profile?.display_name
+											}
+											onClick={() =>
+												updateProfile.mutate({
+													display_name: editDisplayName.trim(),
+												})
+											}
+										>
+											{updateProfile.isPending ? "Saving..." : "Save"}
+										</Button>
+									</div>
+								</div>
 								<div>
 									<Label className="text-white mb-2 block">Weight Unit</Label>
 									<div className="flex gap-2">

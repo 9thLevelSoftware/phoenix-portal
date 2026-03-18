@@ -46,12 +46,12 @@ INSERT INTO profiles (id)
 SELECT id FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 
--- 7. Auto-create profile row on user signup
+-- 7. Auto-create profile row on user signup (with display_name from email)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id)
-  VALUES (NEW.id)
+  INSERT INTO public.profiles (id, display_name)
+  VALUES (NEW.id, split_part(NEW.email, '@', 1))
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
@@ -61,3 +61,10 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 8. Backfill display_name from email for existing profiles with null name
+UPDATE profiles p
+SET display_name = split_part(au.email, '@', 1)
+FROM auth.users au
+WHERE p.id = au.id
+AND p.display_name IS NULL;
