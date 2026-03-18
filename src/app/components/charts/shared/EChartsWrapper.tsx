@@ -33,7 +33,7 @@ echarts.use([
 echarts.registerTheme("phoenix", PHOENIX_ECHARTS_THEME);
 
 interface EChartsWrapperProps {
-	option: echarts.EChartsOption;
+	option: echarts.EChartsCoreOption;
 	height?: string | number;
 	className?: string;
 	loading?: boolean;
