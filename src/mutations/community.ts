@@ -313,6 +313,49 @@ export function useUnblockUser() {
 	});
 }
 
+// ---------- useDeleteSharedContent ----------
+
+interface DeleteSharedContentArgs {
+	contentId: string;
+	contentType: "routine" | "cycle";
+}
+
+export function useDeleteSharedContent() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async ({ contentId, contentType }: DeleteSharedContentArgs) => {
+			if (!user) throw new Error("Must be logged in to delete");
+
+			if (contentType === "routine") {
+				const { error } = await supabase
+					.from("shared_routines")
+					.delete()
+					.eq("id", contentId)
+					.eq("user_id", user.id);
+				if (error) throw error;
+			} else {
+				const { error } = await supabase
+					.from("shared_cycles")
+					.delete()
+					.eq("id", contentId)
+					.eq("user_id", user.id);
+				if (error) throw error;
+			}
+		},
+
+		onSuccess: () => {
+			toast.success("Content removed from community");
+			queryClient.invalidateQueries({ queryKey: queryKeys.community.all });
+		},
+
+		onError: (error: Error) => {
+			toast.error(`Failed to delete: ${error.message}`);
+		},
+	});
+}
+
 // ---------- useSaveItem ----------
 
 interface SaveItemArgs {

@@ -24,7 +24,7 @@ export const sharedRoutineSchema = z.object({
 	updated_at: z.string().transform((s) => new Date(s)),
 	profiles: z
 		.object({
-			display_name: z.string(),
+			display_name: z.string().nullable(),
 			avatar_url: z.string().nullable(),
 		})
 		.optional()
@@ -52,7 +52,7 @@ export const sharedCycleSchema = z.object({
 	updated_at: z.string().transform((s) => new Date(s)),
 	profiles: z
 		.object({
-			display_name: z.string(),
+			display_name: z.string().nullable(),
 			avatar_url: z.string().nullable(),
 		})
 		.optional()

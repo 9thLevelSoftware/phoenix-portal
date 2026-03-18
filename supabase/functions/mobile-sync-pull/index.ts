@@ -302,6 +302,66 @@ Deno.serve(async (req) => {
     });
 
     // =========================================================================
+    // 7b. Fetch training cycles — always ALL (table lacks updated_at)
+    // =========================================================================
+    const { data: cyclesRaw } = await supabase
+      .from('training_cycles')
+      .select('*')
+      .eq('user_id', userId);
+
+    const cycleIds = (cyclesRaw ?? []).map((c: Record<string, unknown>) => c.id as string);
+
+    let cycleDaysRaw: Record<string, unknown>[] = [];
+    if (cycleIds.length > 0) {
+      const { data: cd } = await supabase
+        .from('cycle_days')
+        .select('*')
+        .in('cycle_id', cycleIds);
+      cycleDaysRaw = cd ?? [];
+    }
+
+    // Group cycle days by cycle_id
+    const daysByCycleId = new Map<string, Record<string, unknown>[]>();
+    for (const d of cycleDaysRaw) {
+      const cycleId = d.cycle_id as string;
+      if (!daysByCycleId.has(cycleId)) {
+        daysByCycleId.set(cycleId, []);
+      }
+      daysByCycleId.get(cycleId)!.push(d);
+    }
+
+    const cycleDtos = (cyclesRaw ?? []).map((c: Record<string, unknown>) => {
+      const cDays = daysByCycleId.get(c.id as string) ?? [];
+      return {
+        id: c.id,
+        userId: c.user_id,
+        name: c.name,
+        description: c.description,
+        durationWeeks: c.duration_weeks,
+        workoutDays: c.workout_days,
+        restDays: c.rest_days,
+        currentWeek: c.current_week,
+        status: c.status,
+        startedAt: c.started_at,
+        lastUsedAt: c.last_used_at,
+        progressionSettings: c.progression_settings != null ? JSON.stringify(c.progression_settings) : null,
+        deloadSettings: c.deload_settings != null ? JSON.stringify(c.deload_settings) : null,
+        days: cDays.map((d) => ({
+          id: d.id,
+          cycleId: d.cycle_id,
+          dayNumber: d.day_number,
+          dayType: d.day_type,
+          routineId: d.routine_id,
+          weightAdjustment: d.weight_adjustment,
+          repModifier: d.rep_modifier,
+          restOverride: d.rest_override,
+          restType: d.rest_type,
+          notes: d.notes,
+        })),
+      };
+    });
+
+    // =========================================================================
     // 8. RPG attributes (delta sync)
     // =========================================================================
     const { data: rpgAttributes } = await supabase
@@ -377,6 +437,7 @@ Deno.serve(async (req) => {
       syncTime,
       sessions: sessionDtos,
       routines: routineDtos,
+      cycles: cycleDtos,
       rpgAttributes: rpgDto,
       badges: badgeDtos,
       gamificationStats: gamificationDto,
