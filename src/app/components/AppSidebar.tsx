@@ -36,8 +36,10 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "@/app/components/ui/sidebar";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
+import { profileOptions } from "@/queries/profile";
 import { useUIStore } from "@/stores/useUIStore";
 import { PhoenixLogo } from "./PhoenixLogo";
 import { TierBadge } from "./TierBadge";
@@ -158,9 +160,15 @@ export function AppSidebar() {
 
 	useAutoCollapse();
 
-	// Derive user initials from email or display name
+	const userId = user?.id ?? "";
+	const { data: profile } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
+
+	// Derive user initials from profile display name or email
 	const displayName =
-		user?.user_metadata?.full_name ??
+		profile?.display_name ??
 		user?.email?.split("@")[0] ??
 		"User";
 	const initials = displayName
