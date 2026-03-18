@@ -338,47 +338,42 @@ Cross-reference the upsert payload in `supabase/functions/paddle-webhooks/index.
 **Entry requirement:** Phase 0 complete
 **Estimated time:** 2-3 sessions
 
-**CRITICAL: All billing tests MUST run in Paddle sandbox mode. See Task 1.0.**
+**Testing approach:** Use Paddle's built-in **Simulations** feature (Developer Tools → Simulations) instead of a separate sandbox account. Simulations send test webhook events directly to the endpoint, testing the webhook handler logic without credential switching or duplicate product setup. For Task 1.3 (idempotency testing), the user will trigger simulations from the Paddle dashboard.
+
+**Pre-requisite from Phase 0:** Fix DB-1 (stale Stripe columns in `src/lib/paddle.ts`) and DB-2 (`current_period_end` NOT NULL constraint) before billing testing begins. See Task 1.0A.
 
 ---
 
-### Task 1.0: Sandbox Mode Activation
+### Task 1.0A: Fix Phase 0 Database Issues (Pre-requisite)
 
-- [ ] **Step 1: Document current live credentials**
+- [ ] **Step 1: Fix DB-1 — stale Stripe column references in src/lib/paddle.ts**
 
-Create a secure backup of current live Paddle env vars. Read from Supabase dashboard or Edge Function config:
-- `PADDLE_API_KEY`
-- `PADDLE_WEBHOOK_SECRET`
-- `VITE_PADDLE_CLIENT_TOKEN`
-- `PADDLE_EMBER_PRICE_IDS`
-- `PADDLE_FLAME_PRICE_IDS`
-- `PADDLE_INFERNO_PRICE_IDS`
-- `PADDLE_ENVIRONMENT`
+Read `src/lib/paddle.ts` and find the `buildSubscriptionUpsert()` function. Replace `stripe_customer_id` with `paddle_customer_id` and `stripe_subscription_id` with `paddle_subscription_id`. Verify no other files reference these dropped column names.
 
-**Do NOT commit these to the repo.** Store as a local backup only.
+- [ ] **Step 2: Fix DB-2 — relax current_period_end NOT NULL constraint**
 
-- [ ] **Step 2: Switch Edge Functions to sandbox**
+Create a new migration `supabase/migrations/20260318_fix_period_end_nullable.sql`:
+```sql
+ALTER TABLE public.subscriptions ALTER COLUMN current_period_end DROP NOT NULL;
+```
 
-Update Supabase Edge Function secrets via dashboard or CLI:
+- [ ] **Step 3: Verify and commit**
+
 ```bash
-supabase secrets set PADDLE_ENVIRONMENT=sandbox
-supabase secrets set PADDLE_API_KEY=<sandbox-api-key>
-supabase secrets set PADDLE_WEBHOOK_SECRET=<sandbox-webhook-secret>
-# Set sandbox price IDs for all 6 tiers
+npm run build && npm test
+git add src/lib/paddle.ts supabase/migrations/20260318_fix_period_end_nullable.sql
+git commit -m "fix: correct stale Stripe columns in paddle.ts, relax period_end NOT NULL"
 ```
 
-- [ ] **Step 3: Switch frontend to sandbox**
+### Task 1.0B: Verify Simulation Endpoint
 
-Update `.env.local`:
-```
-VITE_PADDLE_CLIENT_TOKEN=<sandbox-client-token>
-VITE_PADDLE_ENVIRONMENT=sandbox
-# Update price IDs to sandbox equivalents
-```
+- [ ] **Step 1: Check webhook destination in Paddle dashboard**
 
-- [ ] **Step 4: Verify sandbox mode**
+Ask the user to verify in Paddle → Developer Tools → Notifications that their webhook destination has Usage type "Platform and simulation" (not just "Platform"). This is required for simulations to work.
 
-Send a test webhook event from Paddle sandbox dashboard. Verify `paddle-webhooks` Edge Function receives and processes it. Check Supabase logs for successful processing.
+- [ ] **Step 2: Send a test simulation**
+
+Ask the user to go to Developer Tools → Simulations → New Simulation → select "subscription.created" → send to their webhook endpoint. Check Supabase Edge Function logs for the event.
 
 ---
 
@@ -724,24 +719,23 @@ git commit -m "docs: add billing incident response runbook"
 
 ---
 
-### Task 1.12: Restore Live Mode
+### Task 1.12: Document Simulation Testing Procedures
 
-- [ ] **Step 1: Restore live credentials**
+(Replaces original "Restore Live Mode" task — not needed since we're using Simulations instead of sandbox credential switching.)
 
-Reverse the changes from Task 1.0. Restore all live Paddle env vars in Supabase Edge Function secrets and `.env.local`.
+- [ ] **Step 1: Write simulation testing guide**
 
-- [ ] **Step 2: Verify webhook connectivity**
+Create `docs/runbooks/paddle-simulation-testing.md` documenting:
+- How to access Paddle Simulations (Developer Tools → Simulations)
+- How to set up webhook destination for simulation usage
+- How to simulate each subscription event type
+- How to verify event processing in Supabase Edge Function logs
+- How to use simulations for future regression testing after code changes
 
-Check Supabase Edge Function logs for any incoming Paddle events. Or trigger a Paddle health check ping if available.
-
-- [ ] **Step 3: Write switching runbook**
-
-Create `docs/runbooks/paddle-sandbox-switching.md` documenting the exact env vars to change for sandbox vs live mode.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add docs/runbooks/paddle-sandbox-switching.md
+git add docs/runbooks/paddle-simulation-testing.md
 git commit -m "docs: add Paddle sandbox/live switching runbook"
 ```
 
