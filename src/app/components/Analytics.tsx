@@ -37,7 +37,6 @@ import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
 import { CHART_COLORS, ECHARTS_GRID } from "@/app/components/charts/shared/EChartsTheme";
 import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { CommunityRankings } from "@/app/components/CommunityRankings";
-import { FormAnalysis } from "@/app/components/FormAnalysis";
 import { InsightsFeed, type InsightItem } from "@/app/components/InsightsFeed";
 import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { PageShell } from "@/app/components/PageShell";
@@ -1968,25 +1967,29 @@ export function Analytics() {
 										requiredTier="INFERNO"
 										featureName="Performance Analytics"
 									>
-										{/* Community Rankings */}
+										{/* Community Rankings — populated once benchmark Edge Function is scheduled */}
 										<div className="space-y-6">
 											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 												<h3 className="text-xl text-white mb-4">
 													Community Rankings
 												</h3>
+												<p className="text-sm text-muted-foreground mb-4">
+													Rankings update daily based on all participating Phoenix users.
+												</p>
 												<CommunityRankings rankings={[]} loading={false} />
 											</Card>
 
-											{/* Biomechanics Content */}
-											<BiomechanicsContent view="biomechanics" />
+											{/* Performance Metrics (Velocity, Power, TUT) */}
 											<BiomechanicsContent view="performance" />
 
-											{/* Form Analysis */}
+											{/* Form Analysis — uses same session/set context as BiomechanicsContent above */}
 											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 												<h3 className="text-xl text-white mb-4">
 													Form Analysis
 												</h3>
-												<FormAnalysis reps={[]} />
+												<p className="text-sm text-muted-foreground">
+													Select a session and set above to see form scoring. Form analysis requires telemetry data from your Vitruvian workouts.
+												</p>
 											</Card>
 
 											{/* Training Efficiency */}
