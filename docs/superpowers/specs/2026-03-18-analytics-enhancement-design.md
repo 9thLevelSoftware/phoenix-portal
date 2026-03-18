@@ -59,7 +59,7 @@ Extends existing `ChartTheme.ts` constants into ECharts theme format:
 |---------|---------|---------|------|
 | `echarts` | Charting engine | Apache 2.0 | ~800KB (tree-shakeable) |
 | `echarts-for-react` | React wrapper | MIT | ~5KB |
-| `react-muscle-highlighter` | Anatomical body heatmap | MIT | ~50KB |
+| `react-muscle-highlighter` | Anatomical body heatmap (verify npm availability and theming API before implementation) | MIT | ~50KB |
 
 ---
 
@@ -224,6 +224,31 @@ Supabase Edge Function (`generate-insights`) that:
 3. Runs rule checks and generates insight objects
 4. Caches results in a `user_insights` table (refreshed on new sync)
 
+### `user_insights` Table Schema
+
+```sql
+CREATE TABLE user_insights (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  insight_type TEXT NOT NULL, -- 'success', 'warning', 'info', 'achievement'
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  recommendation TEXT,
+  metric_name TEXT,
+  metric_value NUMERIC,
+  metric_unit TEXT,
+  metric_delta NUMERIC,
+  period TEXT NOT NULL DEFAULT '30d',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  expires_at TIMESTAMPTZ -- null = until next refresh
+);
+
+ALTER TABLE user_insights ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own insights"
+  ON user_insights FOR SELECT USING (auth.uid() = user_id);
+CREATE INDEX idx_user_insights_user ON user_insights(user_id, created_at DESC);
+```
+
 ### Insight Rules
 
 | Rule | Trigger | Type | Example |
@@ -273,7 +298,7 @@ CREATE TABLE community_benchmarks (
 
 ### Calculation
 
-- Scheduled Edge Function runs daily (or on-demand)
+- Scheduled Edge Function runs daily via `pg_cron` (or triggered on-demand via API call)
 - Aggregates anonymized data across all users with `leaderboard_participation = true`
 - Computes percentile distributions for key metrics
 - User's rank is calculated client-side by comparing their value against the distribution
@@ -373,7 +398,7 @@ Keep visx for: `ForceCurve.tsx`, `AsymmetryGauge.tsx`, `RomTrend.tsx`, `PowerOut
 
 ### Modified Files
 - `src/app/components/Analytics.tsx` (major refactor — tab restructure, new sections)
-- `src/app/components/AnalyticsMobile.tsx` (if separate mobile variant exists)
+- `src/app/components/Analytics.tsx` — handle mobile responsiveness within this file using existing `useIsMobile` hook (no separate AnalyticsMobile.tsx exists)
 - `src/app/components/MuscleHeatmap.tsx` (replace with react-muscle-highlighter)
 - `src/app/components/Biomechanics.tsx` (enhance with form analysis, move to Performance tab)
 - `src/app/components/charts/shared/ChartTheme.ts` (extend for ECharts compatibility)
