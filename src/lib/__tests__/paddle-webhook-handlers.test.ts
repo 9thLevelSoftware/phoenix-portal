@@ -85,8 +85,8 @@ describe("buildSubscriptionUpsert", () => {
 
 		expect(result).not.toBeNull();
 		expect(result?.user_id).toBe("usr-supabase-uuid");
-		expect(result?.stripe_customer_id).toBe("ctm_01abc");
-		expect(result?.stripe_subscription_id).toBe("sub_01xyz");
+		expect(result?.paddle_customer_id).toBe("ctm_01abc");
+		expect(result?.paddle_subscription_id).toBe("sub_01xyz");
 		expect(result?.tier).toBe("EMBER");
 		expect(result?.status).toBe("active");
 		expect(result?.price_id).toBe("pri_ember_monthly");
@@ -144,13 +144,12 @@ describe("buildSubscriptionUpsert", () => {
 		expect(result).toBeNull();
 	});
 
-	it("uses legacy column names for Paddle IDs", () => {
+	it("uses Paddle column names for customer and subscription IDs", () => {
 		const event = makeMockEvent();
 		const result = buildSubscriptionUpsert(event, () => "EMBER");
 
-		// These columns are named after Stripe but store Paddle IDs
-		expect(result).toHaveProperty("stripe_customer_id");
-		expect(result).toHaveProperty("stripe_subscription_id");
+		expect(result).toHaveProperty("paddle_customer_id");
+		expect(result).toHaveProperty("paddle_subscription_id");
 	});
 });
 
