@@ -41,8 +41,17 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { price_id: newPriceId } = await req.json();
-    if (!newPriceId || typeof newPriceId !== "string") {
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    const newPriceId = body.price_id;
+    if (!newPriceId || typeof newPriceId !== "string" || newPriceId.length > 255) {
       return new Response(
         JSON.stringify({ error: "Missing or invalid price_id" }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },

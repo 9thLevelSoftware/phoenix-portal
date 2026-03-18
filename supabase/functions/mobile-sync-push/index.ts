@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 // =============================================================================
@@ -248,7 +249,18 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
-    // 2b. Subscription gate — EMBER or higher required
+    // 2b. Rate limit: 10 requests per minute per user
+    // =========================================================================
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-push',
+      userId,
+      maxRequests: 10,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    // =========================================================================
+    // 2c. Subscription gate — EMBER or higher required
     // =========================================================================
     const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!gate.allowed) return gate.response;
@@ -256,7 +268,28 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 3. Parse request body
     // =========================================================================
-    const payload: PushPayload = await req.json();
+    let payload: PushPayload;
+    try {
+      payload = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!payload.deviceId || typeof payload.deviceId !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid deviceId' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (!payload.platform || typeof payload.platform !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid platform' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Counters for response
     let sessionsInserted = 0;
