@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import MuscleHighlighter, { type ExtendedBodyPart, type Slug } from "react-muscle-highlighter";
 import {
 	Activity,
 	AlertCircle,
@@ -431,6 +432,7 @@ export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
 	const [searchParams, setSearchParams] = useSearchParams();
+	const [bodySide, setBodySide] = useState<"front" | "back">("front");
 
 	// Map old tab names to new ones for backward compatibility
 	const rawTab = searchParams.get("tab") || "overview";
@@ -488,6 +490,28 @@ export function Analytics() {
 		...m,
 		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
 	}));
+
+	// Map muscle group names → react-muscle-highlighter slugs for body heatmap
+	const muscleSlugToGroup: Record<string, string> = {
+		chest: "Chest", deltoids: "Shoulders", trapezius: "Shoulders",
+		biceps: "Arms", triceps: "Arms", forearm: "Arms",
+		abs: "Core", obliques: "Core",
+		quadriceps: "Legs", hamstring: "Legs", calves: "Legs", adductors: "Legs", gluteal: "Legs",
+		"upper-back": "Back", "lower-back": "Back",
+	};
+	const muscleHighlighterData: ExtendedBodyPart[] = useMemo(() => {
+		if (muscleGroupData.length === 0) return [];
+		const maxVal = Math.max(...muscleGroupData.map((m) => m.value), 1);
+		const groupToIntensity: Record<string, number> = {};
+		for (const m of muscleGroupData) {
+			groupToIntensity[m.name] = Math.max(1, Math.round((m.value / maxVal) * 5));
+		}
+		return Object.entries(muscleSlugToGroup).map(([slug, group]) => ({
+			slug: slug as Slug,
+			intensity: groupToIntensity[group] ?? 0,
+		}));
+	}, [muscleGroupData]);
+
 	const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []).map(
 		(point) => convertStrengthSeriesPoint(point, unit),
 	);
@@ -1885,15 +1909,57 @@ export function Analytics() {
 										)}
 									</Card>
 
-									{/* Biomechanics Preview — gated for Inferno */}
-									<SubscriptionGate requiredTier="INFERNO" featureName="Biomechanics Analysis">
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-4">
-												Biomechanics Analysis
+									{/* Interactive Body Heatmap */}
+									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+										<div className="flex justify-between items-center mb-6">
+											<h3 className="text-xl text-white">
+												Body Overview
 											</h3>
-											<BiomechanicsContent view="biomechanics" />
-										</Card>
-									</SubscriptionGate>
+											<div className="flex bg-muted/20 rounded-lg overflow-hidden">
+												<button
+													type="button"
+													className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+													onClick={() => setBodySide("front")}
+												>
+													Front
+												</button>
+												<button
+													type="button"
+													className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+													onClick={() => setBodySide("back")}
+												>
+													Back
+												</button>
+											</div>
+										</div>
+										<div className="flex justify-center">
+											<MuscleHighlighter
+												data={muscleHighlighterData}
+												side={bodySide}
+												gender="male"
+												scale={1.5}
+												border="none"
+												defaultFill="#2a2a2a"
+												defaultStroke="#444"
+												defaultStrokeWidth={0.5}
+												colors={["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"]}
+												onBodyPartPress={(part) => {
+													if (part.slug) {
+														toast.info(`${part.slug}: ${muscleSlugToGroup[part.slug] ?? "General"}`);
+													}
+												}}
+											/>
+										</div>
+										<div className="flex justify-center gap-1 mt-4">
+											{["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"].map((c) => (
+												<div key={c} className="w-10 h-2 rounded" style={{ backgroundColor: c }} />
+											))}
+										</div>
+										<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
+											<span>Low volume</span>
+											<span>High volume</span>
+										</div>
+									</Card>
 								</TabsContent>
 
 								{/* ====== TAB 4: PERFORMANCE ====== */}
