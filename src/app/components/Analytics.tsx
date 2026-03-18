@@ -7,7 +7,6 @@ import {
 	Dumbbell,
 	Flame,
 	Globe,
-	Lock,
 	Target,
 	TrendingDown,
 	TrendingUp,
@@ -15,7 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import {
 	Area,
 	AreaChart,
@@ -1304,28 +1303,12 @@ export function Analytics() {
 												</div>
 											</MobileChartCard>
 
-											{/* Biomechanics teaser */}
-											<Card className="relative overflow-hidden p-4 border-secondary">
-												<div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-2">
-													<Lock className="w-6 h-6 text-primary" />
-													<p className="text-xs font-semibold text-white">
-														Inferno Tier
-													</p>
-													<p className="text-[10px] text-muted-foreground text-center px-4">
-														L/R Asymmetry, ROM Analysis, Force Consistency
-													</p>
-												</div>
-												<div className="opacity-30 pointer-events-none">
-													<h3 className="text-sm font-semibold text-white mb-2">
-														BIOMECHANICS
-													</h3>
-													<div className="grid grid-cols-3 gap-2">
-														<div className="h-16 rounded bg-muted/20" />
-														<div className="h-16 rounded bg-muted/20" />
-														<div className="h-16 rounded bg-muted/20" />
-													</div>
-												</div>
-											</Card>
+											{/* Biomechanics — gated for Inferno */}
+											<SubscriptionGate requiredTier="INFERNO" featureName="Biomechanics Analysis">
+												<Card className="p-4 border-secondary">
+													<BiomechanicsContent view="biomechanics" />
+												</Card>
+											</SubscriptionGate>
 										</>
 									) : (
 										<div className="text-center py-12 text-muted">
@@ -1902,53 +1885,15 @@ export function Analytics() {
 										)}
 									</Card>
 
-									{/* Biomechanics Teaser (blurred/gated for Inferno) */}
-									<Card className="relative overflow-hidden p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-											<div className="p-3 rounded-full bg-primary/20">
-												<Lock className="w-6 h-6 text-primary" />
-											</div>
-											<p className="text-lg font-semibold text-white">
-												Biomechanics Analysis
-											</p>
-											<p className="text-sm text-muted-foreground text-center max-w-md">
-												L/R Asymmetry, Range of Motion, and Force Consistency
-												metrics are available with the Inferno tier.
-											</p>
-											<Link
-												to="/settings?tab=billing"
-												className="text-primary text-sm hover:underline mt-1"
-											>
-												Upgrade to Inferno
-											</Link>
-										</div>
-										{/* Blurred placeholder content */}
-										<div className="opacity-20 pointer-events-none select-none">
+									{/* Biomechanics Preview — gated for Inferno */}
+									<SubscriptionGate requiredTier="INFERNO" featureName="Biomechanics Analysis">
+										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 											<h3 className="text-xl text-white mb-4">
 												Biomechanics Analysis
 											</h3>
-											<div className="grid grid-cols-3 gap-4">
-												<div className="rounded-lg bg-muted/20 p-4 h-24">
-													<div className="text-sm text-muted-foreground">
-														L/R Asymmetry
-													</div>
-													<div className="text-2xl text-white mt-2">--</div>
-												</div>
-												<div className="rounded-lg bg-muted/20 p-4 h-24">
-													<div className="text-sm text-muted-foreground">
-														Range of Motion
-													</div>
-													<div className="text-2xl text-white mt-2">--</div>
-												</div>
-												<div className="rounded-lg bg-muted/20 p-4 h-24">
-													<div className="text-sm text-muted-foreground">
-														Force Consistency
-													</div>
-													<div className="text-2xl text-white mt-2">--</div>
-												</div>
-											</div>
-										</div>
-									</Card>
+											<BiomechanicsContent view="biomechanics" />
+										</Card>
+									</SubscriptionGate>
 								</TabsContent>
 
 								{/* ====== TAB 4: PERFORMANCE ====== */}
