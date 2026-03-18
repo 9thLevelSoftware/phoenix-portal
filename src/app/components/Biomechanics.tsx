@@ -17,6 +17,7 @@ import { PowerOutput } from "@/app/components/charts/PowerOutput";
 import { RomTrend } from "@/app/components/charts/RomTrend";
 import { VelocityProfile } from "@/app/components/charts/VelocityProfile";
 import { ExerciseProgress } from "@/app/components/ExerciseProgress";
+import { FormAnalysis } from "@/app/components/FormAnalysis";
 import { MuscleHeatmap } from "@/app/components/MuscleHeatmap";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { SummaryReport } from "@/app/components/SummaryReport";
@@ -522,6 +523,26 @@ export function BiomechanicsContent({
 								) : (
 									<div className="py-8 text-center text-sm text-muted">
 										No TUT data available for this set
+									</div>
+								)}
+							</Section>
+
+							<Section title="Form Analysis" icon={Activity}>
+								{summariesLoading ? (
+									<Skeleton className="h-[300px] w-full" />
+								) : repSummaries && repSummaries.length >= 2 ? (
+									<FormAnalysis
+										reps={repSummaries.map((r) => ({
+											peakForce: r.peak_force_n ?? 0,
+											meanVelocity: r.mean_velocity_mps ?? 0,
+											rom: r.rom_mm ?? 0,
+											tut: r.tut_ms ?? 0,
+											asymmetry: Math.abs(r.asymmetry_pct ?? 0),
+										}))}
+									/>
+								) : (
+									<div className="py-8 text-center text-sm text-muted">
+										Need at least 2 reps with telemetry data for form analysis
 									</div>
 								)}
 							</Section>
