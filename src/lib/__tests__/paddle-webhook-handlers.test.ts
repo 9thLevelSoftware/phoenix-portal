@@ -4,6 +4,7 @@ import {
 	buildSubscriptionUpsert,
 	mapPaddleStatusToSubscriptionStatus,
 	mapPriceIdToTier,
+	mapPriceIdToTierServer,
 	verifyPaddleSignature,
 } from "../paddle";
 
@@ -16,6 +17,55 @@ describe("mapPriceIdToTier", () => {
 
 	it("returns FREE for empty string", () => {
 		expect(mapPriceIdToTier("")).toBe("FREE");
+	});
+});
+
+// ─── mapPriceIdToTierServer (whitespace handling) ────────────────────────────
+
+describe("mapPriceIdToTierServer", () => {
+	function makeEnv(vars: Record<string, string>) {
+		return { get: (key: string) => vars[key] };
+	}
+
+	it("handles whitespace in comma-separated price ID env vars", () => {
+		const env = makeEnv({
+			PADDLE_INFERNO_PRICE_IDS: " pri_inferno_m , pri_inferno_y ",
+			PADDLE_FLAME_PRICE_IDS: "pri_flame_m,  pri_flame_y",
+			PADDLE_EMBER_PRICE_IDS: "pri_ember_m , pri_ember_y ",
+		});
+
+		expect(mapPriceIdToTierServer("pri_inferno_m", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierServer("pri_inferno_y", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierServer("pri_flame_m", env)).toBe("FLAME");
+		expect(mapPriceIdToTierServer("pri_flame_y", env)).toBe("FLAME");
+		expect(mapPriceIdToTierServer("pri_ember_m", env)).toBe("EMBER");
+		expect(mapPriceIdToTierServer("pri_ember_y", env)).toBe("EMBER");
+	});
+
+	it("returns FREE for unknown price IDs", () => {
+		const env = makeEnv({
+			PADDLE_INFERNO_PRICE_IDS: "pri_inferno_m",
+			PADDLE_FLAME_PRICE_IDS: "pri_flame_m",
+			PADDLE_EMBER_PRICE_IDS: "pri_ember_m",
+		});
+
+		expect(mapPriceIdToTierServer("pri_unknown", env)).toBe("FREE");
+	});
+
+	it("handles empty env vars gracefully", () => {
+		const env = makeEnv({});
+		expect(mapPriceIdToTierServer("pri_anything", env)).toBe("FREE");
+	});
+
+	it("filters out whitespace-only entries from env vars", () => {
+		const env = makeEnv({
+			PADDLE_INFERNO_PRICE_IDS: "pri_inferno_m, , ,pri_inferno_y",
+		});
+
+		expect(mapPriceIdToTierServer("pri_inferno_m", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierServer("pri_inferno_y", env)).toBe("INFERNO");
+		// Whitespace-only entries should not match empty string
+		expect(mapPriceIdToTierServer("", env)).toBe("FREE");
 	});
 });
 
