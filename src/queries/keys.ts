@@ -144,4 +144,14 @@ export const queryKeys = {
 		gamification: (userId: string) =>
 			[...queryKeys.profile.all, "gamification", userId] as const,
 	},
+	insights: {
+		all: ["insights"] as const,
+		byUser: (userId: string, period: string) =>
+			[...queryKeys.insights.all, userId, period] as const,
+	},
+	benchmarks: {
+		all: ["benchmarks"] as const,
+		distribution: (metricType: string, metricKey?: string) =>
+			[...queryKeys.benchmarks.all, metricType, metricKey] as const,
+	},
 } as const;

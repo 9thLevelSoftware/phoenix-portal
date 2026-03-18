@@ -86,3 +86,43 @@ export function strengthProgressOptions(userId: string) {
 		},
 	});
 }
+
+/** Volume trend with previous period comparison */
+export function volumeComparisonOptions(userId: string, period: string = "4w") {
+	return queryOptions({
+		queryKey: queryKeys.analytics.summary(userId, `volume-comparison-${period}`),
+		queryFn: async () => {
+			const daysBack = periodToDays(period);
+			const currentStart = new Date();
+			currentStart.setDate(currentStart.getDate() - daysBack);
+			const previousStart = new Date();
+			previousStart.setDate(previousStart.getDate() - daysBack * 2);
+
+			const [currentData, previousData] = await Promise.all([
+				supabase.from("workout_sessions")
+					.select("started_at, total_volume, duration_seconds, set_count, exercise_count")
+					.eq("user_id", userId)
+					.gte("started_at", currentStart.toISOString())
+					.order("started_at", { ascending: true }),
+				supabase.from("workout_sessions")
+					.select("started_at, total_volume, duration_seconds, set_count, exercise_count")
+					.eq("user_id", userId)
+					.gte("started_at", previousStart.toISOString())
+					.lt("started_at", currentStart.toISOString())
+					.order("started_at", { ascending: true }),
+			]);
+
+			if (currentData.error) throw currentData.error;
+			if (previousData.error) throw previousData.error;
+			return { current: currentData.data, previous: previousData.data };
+		},
+	});
+}
+
+function periodToDays(period: string): number {
+	if (period === "all") return 3650;
+	if (period === "52w") return 365;
+	if (period === "12w") return 84;
+	if (period === "4w") return 28;
+	return 7;
+}
