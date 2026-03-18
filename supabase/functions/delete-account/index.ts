@@ -86,10 +86,18 @@ Deno.serve(async (req) => {
     // =========================================================================
     // Step 2: Mark deletion request as executed
     // =========================================================================
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from('deletion_requests')
       .update({ status: 'executed', executed_at: new Date().toISOString() })
       .eq('id', request.id);
+
+    if (updateError) {
+      console.error('[DELETE_ACCOUNT] Failed to mark deletion request as executed:', updateError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to process deletion. Please try again.' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // =========================================================================
     // Step 3: Delete auth user (cascades to all private data)
@@ -101,7 +109,13 @@ Deno.serve(async (req) => {
     // =========================================================================
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (deleteError) {
-      console.error('Failed to delete auth user:', deleteError);
+      // Roll back the deletion request status to prevent partial-delete state
+      await supabaseAdmin
+        .from('deletion_requests')
+        .update({ status: 'pending', executed_at: null })
+        .eq('id', request.id);
+
+      console.error('[DELETE_ACCOUNT] Failed to delete auth user, rolled back request status:', deleteError);
       return new Response(
         JSON.stringify({ error: 'Failed to delete account. Please try again.' }),
         { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
