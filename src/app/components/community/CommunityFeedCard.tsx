@@ -39,7 +39,7 @@ export function CommunityFeedCard({
 	const isDeletedUser = item.user_id === null;
 	const authorName = isDeletedUser
 		? "[Deleted User]"
-		: (item.profiles?.display_name ?? "Unknown");
+		: (item.profiles?.display_name || "Anonymous");
 	const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
 
 	return (
