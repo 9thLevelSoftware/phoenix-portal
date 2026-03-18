@@ -168,8 +168,7 @@ Deno.serve(async (req) => {
       });
 
       if (!requestTokenResponse.ok) {
-        const errorBody = await requestTokenResponse.text();
-        console.error('Garmin request token failed:', requestTokenResponse.status, errorBody);
+        console.error('Garmin request token failed: status', requestTokenResponse.status);
         return Response.redirect(`${APP_URL}/integrations?error=garmin_request_token_failed`);
       }
 
@@ -259,8 +258,7 @@ Deno.serve(async (req) => {
       });
 
       if (!accessTokenResponse.ok) {
-        const errorBody = await accessTokenResponse.text();
-        console.error('Garmin access token exchange failed:', accessTokenResponse.status, errorBody);
+        console.error('Garmin access token exchange failed: status', accessTokenResponse.status);
         return Response.redirect(`${APP_URL}/integrations?error=garmin_token_exchange_failed`);
       }
 
