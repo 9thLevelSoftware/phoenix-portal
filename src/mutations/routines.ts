@@ -127,7 +127,8 @@ export function useSaveRoutine() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useSaveRoutine] failed:', error);
+			toast.error('Failed to save routine. Please try again.');
 		},
 	});
 }
@@ -218,7 +219,8 @@ export function useUpdateRoutine() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useUpdateRoutine] failed:', error);
+			toast.error('Failed to update routine. Please try again.');
 		},
 	});
 }

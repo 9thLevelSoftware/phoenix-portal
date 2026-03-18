@@ -32,7 +32,8 @@ export function useSaveSessionNotes() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(`Failed to save notes: ${error.message}`);
+			console.error('[useSaveSessionNotes] failed:', error);
+			toast.error('Failed to save notes. Please try again.');
 		},
 	});
 }

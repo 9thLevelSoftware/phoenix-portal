@@ -52,8 +52,13 @@ export function useCreateGoal() {
 			});
 		},
 
-		onError: (error) => {
-			toast.error(error.message);
+		onError: (error: Error) => {
+			console.error('[useCreateGoal] failed:', error);
+			if (error.message === "Goal limit reached for your subscription tier") {
+				toast.error('Goal limit reached for your subscription tier.');
+			} else {
+				toast.error('Failed to create goal. Please try again.');
+			}
 		},
 	});
 }
@@ -98,8 +103,9 @@ export function useUpdateGoal() {
 			});
 		},
 
-		onError: (error) => {
-			toast.error(`Failed to update goal: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useUpdateGoal] failed:', error);
+			toast.error('Failed to update goal. Please try again.');
 		},
 	});
 }
@@ -132,8 +138,9 @@ export function useArchiveGoal() {
 			});
 		},
 
-		onError: (error) => {
-			toast.error(`Failed to archive goal: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useArchiveGoal] failed:', error);
+			toast.error('Failed to archive goal. Please try again.');
 		},
 	});
 }

@@ -24,8 +24,9 @@ export function useJoinChallenge() {
 				queryKey: queryKeys.challenges.all,
 			});
 		},
-		onError: (error) => {
-			toast.error(`Failed to join challenge: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useJoinChallenge] failed:', error);
+			toast.error('Failed to join challenge. Please try again.');
 		},
 	});
 }
@@ -52,8 +53,9 @@ export function useLeaveChallenge() {
 				queryKey: queryKeys.challenges.all,
 			});
 		},
-		onError: (error) => {
-			toast.error(`Failed to leave challenge: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useLeaveChallenge] failed:', error);
+			toast.error('Failed to leave challenge. Please try again.');
 		},
 	});
 }
@@ -80,8 +82,9 @@ export function useCompleteChallenge() {
 				queryKey: queryKeys.challenges.all,
 			});
 		},
-		onError: (error) => {
-			toast.error(`Failed to complete challenge: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useCompleteChallenge] failed:', error);
+			toast.error('Failed to update challenge. Please try again.');
 		},
 	});
 }
