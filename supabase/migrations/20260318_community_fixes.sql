@@ -62,7 +62,21 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 8. Backfill display_name from email for existing profiles with null name
+-- 8. Fix community_comments INSERT policy — old tier names (PHOENIX/ELITE) → current names
+DROP POLICY IF EXISTS "Premium users can post comments" ON community_comments;
+CREATE POLICY "Premium users can post comments"
+  ON community_comments FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid()
+    AND user_subscription_tier() IN ('EMBER', 'FLAME', 'INFERNO')
+  );
+
+-- 9. Add FK from community_comments.user_id → profiles.id (enables PostgREST join)
+ALTER TABLE community_comments
+  ADD CONSTRAINT community_comments_user_id_profiles_fkey
+  FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+-- 10. Backfill display_name from email for existing profiles with null name
 UPDATE profiles p
 SET display_name = split_part(au.email, '@', 1)
 FROM auth.users au
