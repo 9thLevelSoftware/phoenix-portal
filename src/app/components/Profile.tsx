@@ -44,6 +44,7 @@ import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { supabase } from "@/lib/supabase";
+import { formatVolume } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
 import {
@@ -70,17 +71,6 @@ const PROVIDER_META: Record<string, { label: string; logo: string }> = {
 	hevy: { label: "Hevy", logo: "H" },
 	apple_health: { label: "Apple Health", logo: "A" },
 };
-
-/** Format a large number to a human-friendly string */
-function formatVolume(volume: number): string {
-	if (volume >= 1_000_000) {
-		return `${(volume / 1_000_000).toFixed(1)}M kg`;
-	}
-	if (volume >= 1_000) {
-		return `${(volume / 1_000).toFixed(0)}k kg`;
-	}
-	return `${Math.round(volume)} kg`;
-}
 
 /** Get initials from a display name or email */
 function getInitials(name: string | null | undefined): string {
@@ -232,7 +222,8 @@ export function Profile() {
 		},
 		{
 			label: "Total Volume",
-			value: statsLoading ? "..." : formatVolume(stats?.totalVolume ?? 0),
+			value:
+				statsLoading ? "..." : formatVolume(stats?.totalVolume ?? 0, weightUnit),
 			icon: Dumbbell,
 		},
 	];
@@ -463,7 +454,7 @@ export function Profile() {
 										<div className="text-3xl text-primary">
 											{statsLoading
 												? "..."
-												: formatVolume(stats?.totalVolume ?? 0)}
+												: formatVolume(stats?.totalVolume ?? 0, weightUnit)}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-success/10 to-[#059669]/10 border border-success/30 rounded-lg">
@@ -591,7 +582,12 @@ export function Profile() {
 									<div className="flex items-center justify-between py-2">
 										<span className="text-muted-foreground">Total Volume</span>
 										<span className="text-primary">
-											{formatVolume(gamificationStats?.total_volume_kg ?? stats?.totalVolume ?? 0)}
+											{formatVolume(
+												gamificationStats?.total_volume_kg ??
+													stats?.totalVolume ??
+													0,
+												weightUnit,
+											)}
 										</span>
 									</div>
 								</div>
@@ -844,14 +840,8 @@ export function Profile() {
 								General Settings
 							</h3>
 							<div className="space-y-4">
-								{/* TODO: Pass weightUnit preference through a React context so all
-							   components displaying weights can respect it app-wide. */}
 								<div>
 									<Label className="text-white mb-2 block">Weight Unit</Label>
-									<p className="text-xs text-muted-foreground mb-2">
-										Your preference is saved. App-wide unit conversion is coming
-										soon.
-									</p>
 									<div className="flex gap-2">
 										<Button
 											className={

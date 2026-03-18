@@ -66,6 +66,11 @@ const RoutineBuilder = lazy(() =>
 		default: m.RoutineBuilder,
 	})),
 );
+const RoutineDetail = lazy(() =>
+	import("@/app/components/RoutineDetail").then((m) => ({
+		default: m.RoutineDetail,
+	})),
+);
 const TrainingCycles = lazy(() =>
 	import("@/app/components/TrainingCycles").then((m) => ({
 		default: m.TrainingCycles,
@@ -87,11 +92,6 @@ const Profile = lazy(() =>
 const PricingPlans = lazy(() =>
 	import("@/app/components/PricingPlans").then((m) => ({
 		default: m.PricingPlans,
-	})),
-);
-const Biomechanics = lazy(() =>
-	import("@/app/components/Biomechanics").then((m) => ({
-		default: m.Biomechanics,
 	})),
 );
 const SessionReplay = lazy(() =>
@@ -164,6 +164,10 @@ export function AppRoutes() {
 								element={<RoutineBuilder />}
 							/>
 							<Route
+								path="/routines/:routineId/view"
+								element={<RoutineDetail />}
+							/>
+							<Route
 								path="/routines/:routineId"
 								element={<RoutineBuilder />}
 							/>
@@ -178,17 +182,17 @@ export function AppRoutes() {
 								path="/integrations"
 								element={<Integrations />}
 							/>
+							<Route
+								path="/biomechanics"
+								element={<Navigate to="/analytics?tab=biomechanics" replace />}
+							/>
 						</Route>
 
-						{/* INFERNO tier — session replay, biomechanics */}
+						{/* INFERNO tier — session replay */}
 						<Route element={<SubscribedRoute requiredTier="INFERNO" />}>
 							<Route
 								path="/replay/:sessionId"
 								element={<SessionReplay />}
-							/>
-							<Route
-								path="/biomechanics"
-								element={<Biomechanics />}
 							/>
 						</Route>
 

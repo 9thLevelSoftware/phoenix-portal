@@ -102,6 +102,9 @@ export function Community() {
 	const allItems: CommunityFeedItem[] = (data?.pages.flat() ?? []).filter(
 		(item) => item.user_id === null || !blockedUserIds.has(item.user_id),
 	);
+	const hasActiveFilters = Boolean(
+		debouncedSearch || filters.muscleGroup || filters.difficulty,
+	);
 
 	const selectedItem = selectedItemId
 		? (allItems.find((item) => item.id === selectedItemId) ?? null)
@@ -218,9 +221,24 @@ export function Community() {
 							) : allItems.length === 0 ? (
 								<div className="text-center py-12 text-muted">
 									<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
-									<p>
-										No {activeTab === "routines" ? "routines" : "cycles"} found
-									</p>
+									{hasActiveFilters ? (
+										<p>
+											No {activeTab === "routines" ? "routines" : "cycles"} found
+										</p>
+									) : (
+										<>
+											<p>
+												No shared {activeTab === "routines" ? "routines" : "cycles"} yet
+											</p>
+											<p className="mt-1 text-sm text-muted-foreground">
+												Be the first to share{" "}
+												{activeTab === "routines"
+													? "a routine"
+													: "a training cycle"}{" "}
+												with the community.
+											</p>
+										</>
+									)}
 								</div>
 							) : (
 								allItems.map((item) => (
@@ -358,11 +376,21 @@ export function Community() {
 								<div className="text-center py-16 text-muted">
 									<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
 									<p className="text-lg">
-										No {activeTab === "routines" ? "routines" : "cycles"} found
+										{hasActiveFilters
+											? `No ${activeTab === "routines" ? "routines" : "cycles"} found`
+											: `No shared ${activeTab === "routines" ? "routines" : "cycles"} yet`}
 									</p>
-									{debouncedSearch && (
+									{hasActiveFilters ? (
 										<p className="text-sm mt-1">
 											Try adjusting your search or filters
+										</p>
+									) : (
+										<p className="mt-1 text-sm">
+											Be the first to share{" "}
+											{activeTab === "routines"
+												? "a routine"
+												: "a training cycle"}{" "}
+											with the community.
 										</p>
 									)}
 								</div>

@@ -24,6 +24,8 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { estimateOneRepMax } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
+import { convertWeight, getUnitLabel } from "@/lib/units";
+import { profileOptions } from "@/queries/profile";
 import {
 	exerciseListOptions,
 	exerciseProgressOptions,
@@ -150,14 +152,17 @@ export function ExerciseProgress({
 	const { data: exercises, isPending: exercisesPending } = useQuery(
 		exerciseListOptions(userId),
 	);
+	const { data: profile } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
 
 	const { data: progressRaw, isPending: progressPending } = useQuery({
 		...exerciseProgressOptions(userId, selectedExercise),
 		enabled: !!selectedExercise,
 	});
+	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	// Auto-select first exercise if none selected (via useEffect to avoid setState during render)
-	const effectiveExercise = selectedExercise || (exercises?.[0] ?? "");
 	useEffect(() => {
 		if (!selectedExercise && exercises && exercises.length > 0) {
 			setSelectedExercise(exercises[0]);
@@ -176,14 +181,16 @@ export function ExerciseProgress({
 			filteredData.map((d) => ({
 				date: formatDate(d.recorded_at),
 				rawDate: d.recorded_at.getTime(),
-				maxWeight: d.max_weight_kg,
-				totalVolume: d.total_volume_kg,
-				estimated1RM:
+				maxWeight: convertWeight(d.max_weight_kg, unit),
+				totalVolume: convertWeight(d.total_volume_kg, unit),
+				estimated1RM: convertWeight(
 					d.estimated_1rm_kg > 0
 						? d.estimated_1rm_kg
 						: estimateOneRepMax(d.max_weight_kg, d.max_reps),
+					unit,
+				),
 			})),
-		[filteredData],
+		[filteredData, unit],
 	);
 
 	// Trend stats
@@ -289,19 +296,19 @@ export function ExerciseProgress({
 							label="Max Weight"
 							stat={weightTrend}
 							color={PHOENIX.ember}
-							unit="kg"
+							unit={getUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Total Volume"
 							stat={volumeTrend}
 							color={PHOENIX.gold}
-							unit="kg"
+							unit={getUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Est. 1RM"
 							stat={oneRmTrend}
 							color={PHOENIX.forgeGreen}
-							unit="kg"
+							unit={getUnitLabel(unit)}
 						/>
 					</motion.div>
 
@@ -358,7 +365,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="maxWeight"
-												name="Max Weight (kg)"
+												name={`Max Weight (${getUnitLabel(unit)})`}
 												stroke={PHOENIX.ember}
 												strokeWidth={2}
 												fill="url(#weightGradient)"
@@ -427,7 +434,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="totalVolume"
-												name="Volume (kg)"
+												name={`Volume (${getUnitLabel(unit)})`}
 												stroke={PHOENIX.gold}
 												strokeWidth={2}
 												fill="url(#volumeGradientProgress)"
@@ -493,7 +500,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="estimated1RM"
-												name="Est. 1RM (kg)"
+												name={`Est. 1RM (${getUnitLabel(unit)})`}
 												stroke={PHOENIX.forgeGreen}
 												strokeWidth={2}
 												fill="url(#oneRmGradient)"

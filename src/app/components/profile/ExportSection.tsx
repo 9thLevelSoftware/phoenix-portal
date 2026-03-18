@@ -16,6 +16,7 @@ import {
 	generateRecordsCSV,
 	generateWorkoutCSV,
 } from "@/lib/export/csv";
+import { profileOptions } from "@/queries/profile";
 import { exportAllUserData } from "@/lib/export/data-export";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
@@ -28,6 +29,10 @@ export function ExportSection() {
 	const { data: records, isLoading: recordsLoading } = useQuery(
 		personalRecordsOptions(user?.id ?? ""),
 	);
+	const { data: profile } = useQuery({
+		...profileOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
 	const [exporting, setExporting] = useState<"workouts" | "records" | null>(
 		null,
@@ -37,6 +42,7 @@ export function ExportSection() {
 		step: string;
 		percent: number;
 	} | null>(null);
+	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const handleExportWorkouts = () => {
 		if (!workouts?.length) {
@@ -46,7 +52,7 @@ export function ExportSection() {
 
 		setExporting("workouts");
 		try {
-			const csv = generateWorkoutCSV(workouts);
+			const csv = generateWorkoutCSV(workouts, unit);
 			const filename = `phoenix-workouts-${new Date().toISOString().split("T")[0]}`;
 			downloadCSV(csv, filename);
 			toast.success(`Exported ${workouts.length} workouts`);
@@ -87,7 +93,7 @@ export function ExportSection() {
 
 		setExporting("records");
 		try {
-			const csv = generateRecordsCSV(records);
+			const csv = generateRecordsCSV(records, unit);
 			const filename = `phoenix-records-${new Date().toISOString().split("T")[0]}`;
 			downloadCSV(csv, filename);
 			toast.success(`Exported ${records.length} personal records`);
