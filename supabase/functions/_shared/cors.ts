@@ -11,7 +11,8 @@ const ALLOWED_ORIGINS: string[] = (() => {
 /**
  * Generate CORS headers with dynamic origin validation.
  * Returns the request's origin in Access-Control-Allow-Origin if it matches
- * the whitelist, or an empty string if not allowed.
+ * the whitelist. Omits the header entirely for disallowed origins so browsers
+ * reject the response without seeing a misconfigured empty value.
  *
  * MUST be used for all browser-facing Edge Functions.
  * Pass the Request object so the origin header can be validated.
@@ -21,7 +22,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
   return {
-    'Access-Control-Allow-Origin': isAllowed ? origin : '',
+    ...(isAllowed ? { 'Access-Control-Allow-Origin': origin } : {}),
     'Access-Control-Allow-Headers':
       'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
