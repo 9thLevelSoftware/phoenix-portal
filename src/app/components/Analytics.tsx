@@ -1982,16 +1982,6 @@ export function Analytics() {
 											{/* Performance Metrics (Velocity, Power, TUT) */}
 											<BiomechanicsContent view="performance" />
 
-											{/* Form Analysis — uses same session/set context as BiomechanicsContent above */}
-											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-												<h3 className="text-xl text-white mb-4">
-													Form Analysis
-												</h3>
-												<p className="text-sm text-muted-foreground">
-													Select a session and set above to see form scoring. Form analysis requires telemetry data from your Vitruvian workouts.
-												</p>
-											</Card>
-
 											{/* Training Efficiency */}
 											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 												<h3 className="text-xl text-white mb-4">
