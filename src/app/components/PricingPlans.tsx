@@ -111,13 +111,20 @@ const TIER_LEVEL: Record<SubscriptionTier, number> = {
 };
 
 export function PricingPlans() {
-	const { tier: currentTier, status: currentStatus, isLoading: subscriptionLoading } =
-		useSubscription();
+	const {
+		tier: currentTier,
+		status: currentStatus,
+		isLoading: subscriptionLoading,
+		cancelAtPeriodEnd,
+		currentPeriodEnd,
+	} = useSubscription();
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
 	const queryClient = useQueryClient();
 	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(null);
 	const [confirmUpgradeTier, setConfirmUpgradeTier] = useState<SubscriptionTier | null>(null);
+	const [confirmCancel, setConfirmCancel] = useState(false);
+	const [isCanceling, setIsCanceling] = useState(false);
 
 	const handleSubscribe = (tier: SubscriptionTier) => {
 		const tierPricing = TIER_PRICING.find(
@@ -144,6 +151,36 @@ export function PricingPlans() {
 			userId: user.id,
 			userEmail: user.email ?? "",
 		});
+	};
+
+	const handleCancel = async () => {
+		setIsCanceling(true);
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-cancel-subscription",
+			);
+
+			if (error) {
+				toast.error(error.message || "Failed to cancel subscription");
+				return;
+			}
+
+			toast.success(
+				"Subscription canceled. You'll retain access until the end of your billing period.",
+			);
+
+			// Invalidate subscription cache to trigger refetch
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setIsCanceling(false);
+			setConfirmCancel(false);
+		}
 	};
 
 	const isUpgradeEligible =
@@ -210,10 +247,44 @@ export function PricingPlans() {
 		}
 
 		if (currentTier === tierConfig.tier) {
+			if (tierConfig.tier === "FREE") {
+				return (
+					<Button variant="outline" className="w-full" disabled>
+						Current Plan
+					</Button>
+				);
+			}
+
+			if (cancelAtPeriodEnd) {
+				return (
+					<div className="flex flex-col gap-2 w-full">
+						<Button variant="outline" className="w-full" disabled>
+							Current Plan
+						</Button>
+						<p className="text-xs text-muted-foreground text-center">
+							Cancels on{" "}
+							{currentPeriodEnd
+								? new Date(currentPeriodEnd).toLocaleDateString()
+								: "end of period"}
+						</p>
+					</div>
+				);
+			}
+
 			return (
-				<Button variant="outline" className="w-full" disabled>
-					Current Plan
-				</Button>
+				<div className="flex flex-col gap-2 w-full">
+					<Button variant="outline" className="w-full" disabled>
+						Current Plan
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						className="text-muted-foreground hover:text-destructive text-xs"
+						onClick={() => setConfirmCancel(true)}
+					>
+						Cancel subscription
+					</Button>
+				</div>
 			);
 		}
 
@@ -436,6 +507,32 @@ export function PricingPlans() {
 							}}
 						>
 							Confirm Upgrade
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Cancel Confirmation Dialog */}
+			<AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+				<AlertDialogContent className="bg-surface-2 border-destructive/30">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Your subscription will remain active until the end of your current
+							billing period (
+							{currentPeriodEnd
+								? new Date(currentPeriodEnd).toLocaleDateString()
+								: "end of period"}
+							). After that, you'll be downgraded to the Free plan.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep subscription</AlertDialogCancel>
+						<AlertDialogAction
+							className="bg-destructive text-destructive-foreground"
+							onClick={handleCancel}
+						>
+							{isCanceling ? "Canceling..." : "Yes, cancel"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
