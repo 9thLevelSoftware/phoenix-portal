@@ -40,3 +40,24 @@ UPDATE routines SET estimated_duration = ROUND(estimated_duration / 60)
   WHERE estimated_duration > 300;
 UPDATE shared_routines SET estimated_duration = ROUND(estimated_duration / 60)
   WHERE estimated_duration > 300;
+
+-- 6. Backfill profiles for ALL auth users (not just sharers)
+INSERT INTO profiles (id)
+SELECT id FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
+-- 7. Auto-create profile row on user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id)
+  VALUES (NEW.id)
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
