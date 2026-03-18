@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 // Service-role client for admin operations (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -34,6 +35,15 @@ Deno.serve(async (req) => {
     }
 
     const userId = user.id;
+
+    // Rate limit: 1 request per hour per user
+    const rateCheck = await checkRateLimit(supabaseAdmin, {
+      key: 'delete-account',
+      userId,
+      maxRequests: 1,
+      windowSeconds: 3600,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
 
     // Verify the user has a pending deletion request with expired grace period
     const { data: request, error: requestError } = await supabaseAdmin
@@ -130,7 +140,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Unexpected error in delete-account:', err);
     return new Response(
-      JSON.stringify({ error: err.message ?? 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
