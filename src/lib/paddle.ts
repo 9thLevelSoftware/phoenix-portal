@@ -72,12 +72,15 @@ export function mapPriceIdToTier(priceId: string): string {
 		import.meta.env.VITE_PADDLE_INFERNO_PRICE_IDS ?? ""
 	)
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 	const flamePriceIds = (import.meta.env.VITE_PADDLE_FLAME_PRICE_IDS ?? "")
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 	const emberPriceIds = (import.meta.env.VITE_PADDLE_EMBER_PRICE_IDS ?? "")
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
@@ -97,12 +100,15 @@ export function mapPriceIdToTierServer(
 ): string {
 	const infernoPriceIds = (env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 	const flamePriceIds = (env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 	const emberPriceIds = (env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
