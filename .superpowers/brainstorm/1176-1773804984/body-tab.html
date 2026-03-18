@@ -1,0 +1,243 @@
+<h2>Body Tab — Layout Design</h2>
+<p class="subtitle">Muscle balance analysis for all users, biomechanics drill-down for Inferno tier</p>
+
+<div class="mockup">
+  <div class="mockup-header">Analytics Hub — Body Tab</div>
+  <div class="mockup-body" style="background: #0D0D0D; padding: 24px; font-family: system-ui, sans-serif;">
+
+    <!-- Top: Muscle Balance Radar + Interactive Heatmap side-by-side -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+
+      <!-- Radar Chart (ECharts) -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: #fff;">Muscle Balance</div>
+          <div style="font-size: 11px; color: #888;">
+            <span style="color: #FF6B35;">● This period</span>
+            <span style="margin-left: 8px; color: #555;">● Last period</span>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: center;">
+          <svg viewBox="0 0 240 220" width="280">
+            <!-- Radar grid -->
+            <g transform="translate(120, 110)">
+              <!-- Concentric hexagons -->
+              <polygon points="0,-90 78,-45 78,45 0,90 -78,45 -78,-45" fill="none" stroke="#2a2a2a" stroke-width="0.5"/>
+              <polygon points="0,-60 52,-30 52,30 0,60 -52,30 -52,-30" fill="none" stroke="#2a2a2a" stroke-width="0.5"/>
+              <polygon points="0,-30 26,-15 26,15 0,30 -26,15 -26,-15" fill="none" stroke="#2a2a2a" stroke-width="0.5"/>
+              <!-- Axis lines -->
+              <line x1="0" y1="0" x2="0" y2="-90" stroke="#333" stroke-width="0.5"/>
+              <line x1="0" y1="0" x2="78" y2="-45" stroke="#333" stroke-width="0.5"/>
+              <line x1="0" y1="0" x2="78" y2="45" stroke="#333" stroke-width="0.5"/>
+              <line x1="0" y1="0" x2="0" y2="90" stroke="#333" stroke-width="0.5"/>
+              <line x1="0" y1="0" x2="-78" y2="45" stroke="#333" stroke-width="0.5"/>
+              <line x1="0" y1="0" x2="-78" y2="-45" stroke="#333" stroke-width="0.5"/>
+
+              <!-- Last period (ghost) -->
+              <polygon points="0,-50 45,-30 40,25 0,55 -35,30 -50,-25" fill="rgba(255,255,255,0.03)" stroke="#555" stroke-width="1" stroke-dasharray="4 2"/>
+
+              <!-- Current period -->
+              <polygon points="0,-75 65,-35 55,40 0,45 -25,35 -60,-30" fill="rgba(255,107,53,0.12)" stroke="#FF6B35" stroke-width="2"/>
+              <!-- Data points -->
+              <circle cx="0" cy="-75" r="3" fill="#FF6B35"/>
+              <circle cx="65" cy="-35" r="3" fill="#FF6B35"/>
+              <circle cx="55" cy="40" r="3" fill="#FF6B35"/>
+              <circle cx="0" cy="45" r="3" fill="#FF6B35"/>
+              <circle cx="-25" cy="35" r="3" fill="#FF6B35"/>
+              <circle cx="-60" cy="-30" r="3" fill="#FF6B35"/>
+
+              <!-- Labels -->
+              <text x="0" y="-98" text-anchor="middle" fill="#ccc" font-size="11" font-weight="600">Chest</text>
+              <text x="90" y="-42" text-anchor="start" fill="#ccc" font-size="11">Back</text>
+              <text x="90" y="48" text-anchor="start" fill="#ccc" font-size="11">Arms</text>
+              <text x="0" y="108" text-anchor="middle" fill="#F59E0B" font-size="11" font-weight="600">Legs ⚠️</text>
+              <text x="-90" y="48" text-anchor="end" fill="#ccc" font-size="11">Core</text>
+              <text x="-90" y="-42" text-anchor="end" fill="#ccc" font-size="11">Shoulders</text>
+            </g>
+          </svg>
+        </div>
+        <div style="text-align: center; font-size: 12px; color: #F59E0B; margin-top: 4px;">
+          ⚠️ Legs are undertrained relative to upper body
+        </div>
+      </div>
+
+      <!-- Interactive Body Heatmap -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: #fff;">Volume Heatmap</div>
+          <div style="display: flex; background: #2a2a2a; border-radius: 6px; overflow: hidden;">
+            <div style="padding: 4px 10px; font-size: 11px; background: #FF6B35; color: #fff;">Front</div>
+            <div style="padding: 4px 10px; font-size: 11px; color: #888;">Back</div>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: center;">
+          <svg viewBox="0 0 160 300" width="160">
+            <!-- Simplified body silhouette with colored muscle regions -->
+            <!-- Head -->
+            <ellipse cx="80" cy="28" rx="18" ry="22" fill="none" stroke="#444" stroke-width="1.5"/>
+            <!-- Neck -->
+            <rect x="72" y="48" width="16" height="12" fill="none" stroke="#444" stroke-width="1"/>
+            <!-- Shoulders -->
+            <ellipse cx="42" cy="68" rx="16" ry="12" fill="#FF6B35" opacity="0.7" stroke="#FF6B35" stroke-width="1"/>
+            <ellipse cx="118" cy="68" rx="16" ry="12" fill="#FF6B35" opacity="0.7" stroke="#FF6B35" stroke-width="1"/>
+            <!-- Chest -->
+            <rect x="45" y="62" width="70" height="40" rx="8" fill="#DC2626" opacity="0.6" stroke="#DC2626" stroke-width="1"/>
+            <!-- Arms -->
+            <rect x="18" y="72" width="18" height="50" rx="8" fill="#6366F1" opacity="0.5" stroke="#6366F1" stroke-width="1"/>
+            <rect x="124" y="72" width="18" height="50" rx="8" fill="#6366F1" opacity="0.5" stroke="#6366F1" stroke-width="1"/>
+            <!-- Core -->
+            <rect x="50" y="104" width="60" height="45" rx="6" fill="#10B981" opacity="0.3" stroke="#10B981" stroke-width="1"/>
+            <!-- Forearms -->
+            <rect x="14" y="124" width="14" height="45" rx="6" fill="#6366F1" opacity="0.3" stroke="#6366F1" stroke-width="1"/>
+            <rect x="132" y="124" width="14" height="45" rx="6" fill="#6366F1" opacity="0.3" stroke="#6366F1" stroke-width="1"/>
+            <!-- Quads -->
+            <rect x="48" y="152" width="28" height="60" rx="8" fill="#F59E0B" opacity="0.25" stroke="#F59E0B" stroke-width="1"/>
+            <rect x="84" y="152" width="28" height="60" rx="8" fill="#F59E0B" opacity="0.25" stroke="#F59E0B" stroke-width="1"/>
+            <!-- Calves -->
+            <rect x="50" y="218" width="22" height="50" rx="8" fill="#F59E0B" opacity="0.15" stroke="#555" stroke-width="1"/>
+            <rect x="88" y="218" width="22" height="50" rx="8" fill="#F59E0B" opacity="0.15" stroke="#555" stroke-width="1"/>
+          </svg>
+        </div>
+        <!-- Legend -->
+        <div style="display: flex; justify-content: center; gap: 4px; margin-top: 12px;">
+          <div style="width: 40px; height: 8px; background: rgba(255,107,53,0.15); border-radius: 2px;"></div>
+          <div style="width: 40px; height: 8px; background: rgba(255,107,53,0.4); border-radius: 2px;"></div>
+          <div style="width: 40px; height: 8px; background: rgba(255,107,53,0.65); border-radius: 2px;"></div>
+          <div style="width: 40px; height: 8px; background: rgba(255,107,53,0.9); border-radius: 2px;"></div>
+        </div>
+        <div style="display: flex; justify-content: center; gap: 60px; font-size: 9px; color: #666; margin-top: 2px;">
+          <span>Undertrained</span>
+          <span>High volume</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle: Muscle Group Breakdown Table -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+      <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 16px;">Muscle Group Breakdown</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+          <tr style="color: #888; text-align: left; border-bottom: 1px solid #2a2a2a;">
+            <th style="padding: 8px 12px;">Group</th>
+            <th style="padding: 8px 12px;">Volume</th>
+            <th style="padding: 8px 12px;">Sets</th>
+            <th style="padding: 8px 12px;">Sessions</th>
+            <th style="padding: 8px 12px;">% of Total</th>
+            <th style="padding: 8px 12px;">vs Last Period</th>
+            <th style="padding: 8px 12px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="color: #ddd; border-bottom: 1px solid #1f1f1f;">
+            <td style="padding: 10px 12px;"><span style="color: #DC2626;">●</span> Chest</td>
+            <td style="padding: 10px 12px;">14,200 lbs</td>
+            <td style="padding: 10px 12px;">42</td>
+            <td style="padding: 10px 12px;">6</td>
+            <td style="padding: 10px 12px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden;">
+                  <div style="width: 30%; height: 100%; background: #DC2626; border-radius: 3px;"></div>
+                </div>
+                30%
+              </div>
+            </td>
+            <td style="padding: 10px 12px; color: #10B981;">▲ 8%</td>
+            <td style="padding: 10px 12px;"><span style="background: rgba(16,185,129,0.15); color: #10B981; padding: 2px 8px; border-radius: 4px; font-size: 10px;">Balanced</span></td>
+          </tr>
+          <tr style="color: #ddd; border-bottom: 1px solid #1f1f1f;">
+            <td style="padding: 10px 12px;"><span style="color: #FF6B35;">●</span> Back</td>
+            <td style="padding: 10px 12px;">11,800 lbs</td>
+            <td style="padding: 10px 12px;">36</td>
+            <td style="padding: 10px 12px;">5</td>
+            <td style="padding: 10px 12px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden;">
+                  <div style="width: 25%; height: 100%; background: #FF6B35; border-radius: 3px;"></div>
+                </div>
+                25%
+              </div>
+            </td>
+            <td style="padding: 10px 12px; color: #10B981;">▲ 5%</td>
+            <td style="padding: 10px 12px;"><span style="background: rgba(16,185,129,0.15); color: #10B981; padding: 2px 8px; border-radius: 4px; font-size: 10px;">Balanced</span></td>
+          </tr>
+          <tr style="color: #ddd; border-bottom: 1px solid #1f1f1f;">
+            <td style="padding: 10px 12px;"><span style="color: #F59E0B;">●</span> Legs</td>
+            <td style="padding: 10px 12px;">3,800 lbs</td>
+            <td style="padding: 10px 12px;">12</td>
+            <td style="padding: 10px 12px;">2</td>
+            <td style="padding: 10px 12px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden;">
+                  <div style="width: 8%; height: 100%; background: #F59E0B; border-radius: 3px;"></div>
+                </div>
+                8%
+              </div>
+            </td>
+            <td style="padding: 10px 12px; color: #DC2626;">▼ 15%</td>
+            <td style="padding: 10px 12px;"><span style="background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 8px; border-radius: 4px; font-size: 10px;">⚠️ Low</span></td>
+          </tr>
+          <tr style="color: #ddd; border-bottom: 1px solid #1f1f1f;">
+            <td style="padding: 10px 12px;"><span style="color: #6366F1;">●</span> Arms</td>
+            <td style="padding: 10px 12px;">8,400 lbs</td>
+            <td style="padding: 10px 12px;">28</td>
+            <td style="padding: 10px 12px;">5</td>
+            <td style="padding: 10px 12px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden;">
+                  <div style="width: 18%; height: 100%; background: #6366F1; border-radius: 3px;"></div>
+                </div>
+                18%
+              </div>
+            </td>
+            <td style="padding: 10px 12px; color: #10B981;">▲ 3%</td>
+            <td style="padding: 10px 12px;"><span style="background: rgba(16,185,129,0.15); color: #10B981; padding: 2px 8px; border-radius: 4px; font-size: 10px;">Balanced</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Bottom: Biomechanics preview (Inferno gate) -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div style="font-size: 14px; font-weight: 600; color: #fff;">Biomechanics Analysis</div>
+        <span style="background: linear-gradient(90deg, #FF6B35, #DC2626); padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff;">INFERNO</span>
+      </div>
+      <!-- Blurred preview -->
+      <div style="filter: blur(4px); opacity: 0.5; pointer-events: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+          <div style="background: #2a2a2a; border-radius: 8px; padding: 16px; height: 80px;">
+            <div style="font-size: 11px; color: #888;">L/R Asymmetry</div>
+            <div style="font-size: 20px; font-weight: 700; color: #10B981;">3.2%</div>
+          </div>
+          <div style="background: #2a2a2a; border-radius: 8px; padding: 16px; height: 80px;">
+            <div style="font-size: 11px; color: #888;">Avg ROM</div>
+            <div style="font-size: 20px; font-weight: 700; color: #F59E0B;">342mm</div>
+          </div>
+          <div style="background: #2a2a2a; border-radius: 8px; padding: 16px; height: 80px;">
+            <div style="font-size: 11px; color: #888;">Force Consistency</div>
+            <div style="font-size: 20px; font-weight: 700; color: #FF6B35;">87%</div>
+          </div>
+        </div>
+      </div>
+      <!-- Upgrade overlay -->
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,13,13,0.5);">
+        <div style="text-align: center;">
+          <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px;">Unlock Biomechanics</div>
+          <div style="font-size: 12px; color: #888; margin-bottom: 12px;">Force curves, asymmetry detection, and ROM tracking</div>
+          <div style="display: inline-block; padding: 8px 20px; background: linear-gradient(90deg, #FF6B35, #DC2626); border-radius: 8px; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer;">Upgrade to Inferno</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="margin-top: 24px; padding: 16px; border: 1px solid #333; border-radius: 8px; background: rgba(255,255,255,0.02);">
+  <h3 style="margin: 0 0 8px;">Key Design Decisions</h3>
+  <ul style="font-size: 13px; line-height: 1.8; margin: 0; padding-left: 20px; opacity: 0.85;">
+    <li><strong>Radar chart</strong> — ECharts radar with current vs previous period overlay. Instantly shows imbalances. Warning icon on undertrained groups</li>
+    <li><strong>Body heatmap</strong> — Enhanced existing SVG silhouette with volume-driven color intensity. Front/Back toggle. Click a region to filter the table below</li>
+    <li><strong>Detailed table</strong> — volume, sets, sessions, % of total with inline bar, period delta, and balance status badge per group</li>
+    <li><strong>Biomechanics teaser</strong> — blurred preview of Inferno-tier metrics with upgrade CTA. Shows enough to be enticing without giving it away</li>
+  </ul>
+</div>

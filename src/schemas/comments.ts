@@ -16,7 +16,7 @@ export const commentSchema = z.object({
 		.transform((s) => (s ? new Date(s) : null)),
 	profiles: z
 		.object({
-			display_name: z.string(),
+			display_name: z.string().nullable(),
 			avatar_url: z.string().nullable(),
 		})
 		.optional()

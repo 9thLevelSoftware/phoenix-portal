@@ -1,0 +1,376 @@
+<h2>Performance Tab — The Inferno Showcase</h2>
+<p class="subtitle">This is the premium experience. Every element must justify the $25/mo.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Analytics Hub — Performance Tab (Inferno Tier)</div>
+  <div class="mockup-body" style="background: #0D0D0D; padding: 24px; font-family: system-ui, sans-serif;">
+
+    <!-- Session/Exercise Selector -->
+    <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 20px;">
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #ccc; display: flex; align-items: center; gap: 6px;">
+        <span style="color: #888;">📅</span> Mar 16, 2026 — Push Day
+        <span style="color: #555;">▼</span>
+      </div>
+      <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #ccc; display: flex; align-items: center; gap: 6px;">
+        <span style="color: #888;">🏋️</span> Bench Press
+        <span style="color: #555;">▼</span>
+      </div>
+      <div style="display: flex; gap: 4px;">
+        <div style="padding: 6px 12px; background: #FF6B35; border-radius: 6px; font-size: 12px; font-weight: 600; color: #fff;">Set 1</div>
+        <div style="padding: 6px 12px; background: #2a2a2a; border-radius: 6px; font-size: 12px; color: #888;">Set 2</div>
+        <div style="padding: 6px 12px; background: #2a2a2a; border-radius: 6px; font-size: 12px; color: #888;">Set 3</div>
+        <div style="padding: 6px 12px; background: #2a2a2a; border-radius: 6px; font-size: 12px; color: #888;">Set 4</div>
+        <div style="padding: 6px 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; font-size: 12px; color: #FF6B35;">All Sets</div>
+      </div>
+    </div>
+
+    <!-- Community Benchmarks Row -->
+    <div style="background: linear-gradient(135deg, rgba(255,107,53,0.08), rgba(220,38,38,0.05)); border: 1px solid rgba(255,107,53,0.2); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: #fff;">Community Rankings</div>
+          <div style="font-size: 11px; color: #888;">How you compare to 142 active Phoenix users</div>
+        </div>
+        <div style="font-size: 10px; color: #666; background: #1a1a1a; padding: 4px 8px; border-radius: 4px;">Anonymous · Opt-in</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <!-- Bench Press percentile -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px; text-align: center;">
+          <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Bench Press</div>
+          <div style="font-size: 32px; font-weight: 800; color: #FF6B35; margin: 6px 0;">Top 15%</div>
+          <div style="font-size: 12px; color: #aaa;">225 lbs · Rank #21</div>
+          <!-- Mini distribution curve -->
+          <svg viewBox="0 0 120 35" width="100%" style="margin-top: 8px;">
+            <defs>
+              <linearGradient id="dist1" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#333"/>
+                <stop offset="85%" stop-color="#333"/>
+                <stop offset="85%" stop-color="#FF6B35"/>
+                <stop offset="100%" stop-color="#FF6B35"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34Z" fill="url(#dist1)" opacity="0.4"/>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34" fill="none" stroke="#555" stroke-width="1"/>
+            <!-- Your position marker -->
+            <line x1="92" y1="0" x2="92" y2="34" stroke="#FF6B35" stroke-width="2" stroke-dasharray="2 2"/>
+            <circle cx="92" cy="28" r="3" fill="#FF6B35"/>
+            <text x="92" y="8" text-anchor="middle" fill="#FF6B35" font-size="7" font-weight="700">YOU</text>
+          </svg>
+        </div>
+        <!-- Weekly volume percentile -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px; text-align: center;">
+          <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Weekly Volume</div>
+          <div style="font-size: 32px; font-weight: 800; color: #F59E0B; margin: 6px 0;">Top 30%</div>
+          <div style="font-size: 12px; color: #aaa;">12,400 lbs · Rank #43</div>
+          <svg viewBox="0 0 120 35" width="100%" style="margin-top: 8px;">
+            <defs>
+              <linearGradient id="dist2" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#333"/>
+                <stop offset="70%" stop-color="#333"/>
+                <stop offset="70%" stop-color="#F59E0B"/>
+                <stop offset="100%" stop-color="#F59E0B"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34Z" fill="url(#dist2)" opacity="0.4"/>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34" fill="none" stroke="#555" stroke-width="1"/>
+            <line x1="78" y1="0" x2="78" y2="34" stroke="#F59E0B" stroke-width="2" stroke-dasharray="2 2"/>
+            <circle cx="78" cy="24" r="3" fill="#F59E0B"/>
+            <text x="78" y="8" text-anchor="middle" fill="#F59E0B" font-size="7" font-weight="700">YOU</text>
+          </svg>
+        </div>
+        <!-- Consistency percentile -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px; text-align: center;">
+          <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Consistency</div>
+          <div style="font-size: 32px; font-weight: 800; color: #10B981; margin: 6px 0;">Top 8%</div>
+          <div style="font-size: 12px; color: #aaa;">4.2 sessions/wk · Rank #11</div>
+          <svg viewBox="0 0 120 35" width="100%" style="margin-top: 8px;">
+            <defs>
+              <linearGradient id="dist3" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#333"/>
+                <stop offset="92%" stop-color="#333"/>
+                <stop offset="92%" stop-color="#10B981"/>
+                <stop offset="100%" stop-color="#10B981"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34Z" fill="url(#dist3)" opacity="0.4"/>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34" fill="none" stroke="#555" stroke-width="1"/>
+            <line x1="104" y1="0" x2="104" y2="34" stroke="#10B981" stroke-width="2" stroke-dasharray="2 2"/>
+            <circle cx="104" cy="32" r="3" fill="#10B981"/>
+            <text x="104" y="8" text-anchor="middle" fill="#10B981" font-size="7" font-weight="700">YOU</text>
+          </svg>
+        </div>
+        <!-- Strength Score -->
+        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 16px; text-align: center;">
+          <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px;">Strength Score</div>
+          <div style="font-size: 32px; font-weight: 800; color: #6366F1; margin: 6px 0;">Top 22%</div>
+          <div style="font-size: 12px; color: #aaa;">Score: 847 · Rank #31</div>
+          <svg viewBox="0 0 120 35" width="100%" style="margin-top: 8px;">
+            <defs>
+              <linearGradient id="dist4" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#333"/>
+                <stop offset="78%" stop-color="#333"/>
+                <stop offset="78%" stop-color="#6366F1"/>
+                <stop offset="100%" stop-color="#6366F1"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34Z" fill="url(#dist4)" opacity="0.4"/>
+            <path d="M0,34 Q20,34 30,30 Q45,20 55,8 Q60,2 65,8 Q75,20 85,30 Q95,34 120,34" fill="none" stroke="#555" stroke-width="1"/>
+            <line x1="86" y1="0" x2="86" y2="34" stroke="#6366F1" stroke-width="2" stroke-dasharray="2 2"/>
+            <circle cx="86" cy="27" r="3" fill="#6366F1"/>
+            <text x="86" y="8" text-anchor="middle" fill="#6366F1" font-size="7" font-weight="700">YOU</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle Row: Velocity + Power side-by-side -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+
+      <!-- Velocity Profile with VBT zones -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <div style="font-size: 14px; font-weight: 600; color: #fff;">⚡ Velocity Profile</div>
+          <div style="font-size: 10px; color: #888;">Mean velocity per rep</div>
+        </div>
+        <div style="font-size: 11px; color: #666; margin-bottom: 12px;">VBT zone classification · Bryan Mann methodology</div>
+        <!-- Chart with zone bands -->
+        <div style="position: relative; height: 160px; border-left: 1px solid #333; border-bottom: 1px solid #333;">
+          <!-- Zone background bands -->
+          <div style="position: absolute; inset: 0; display: flex; flex-direction: column;">
+            <div style="flex: 1; background: rgba(220,38,38,0.06); border-bottom: 1px dashed rgba(220,38,38,0.15); display: flex; align-items: center; padding-left: 4px;">
+              <span style="font-size: 8px; color: rgba(220,38,38,0.5);">Starting Strength</span>
+            </div>
+            <div style="flex: 1; background: rgba(245,158,11,0.06); border-bottom: 1px dashed rgba(245,158,11,0.15); display: flex; align-items: center; padding-left: 4px;">
+              <span style="font-size: 8px; color: rgba(245,158,11,0.5);">Speed-Strength</span>
+            </div>
+            <div style="flex: 1; background: rgba(16,185,129,0.06); border-bottom: 1px dashed rgba(16,185,129,0.15); display: flex; align-items: center; padding-left: 4px;">
+              <span style="font-size: 8px; color: rgba(16,185,129,0.5);">Strength-Speed</span>
+            </div>
+            <div style="flex: 1; background: rgba(99,102,241,0.06); border-bottom: 1px dashed rgba(99,102,241,0.15); display: flex; align-items: center; padding-left: 4px;">
+              <span style="font-size: 8px; color: rgba(99,102,241,0.5);">Accelerative</span>
+            </div>
+            <div style="flex: 1; background: rgba(255,107,53,0.06); display: flex; align-items: center; padding-left: 4px;">
+              <span style="font-size: 8px; color: rgba(255,107,53,0.5);">Absolute Str.</span>
+            </div>
+          </div>
+          <!-- Bars -->
+          <div style="position: absolute; bottom: 0; left: 20px; right: 10px; height: 100%; display: flex; align-items: flex-end; justify-content: space-around; z-index: 1;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">0.82</span>
+              <div style="width: 28px; height: 52%; background: linear-gradient(to top, #10B981, #10B981); border-radius: 4px 4px 0 0; opacity: 0.8;"></div>
+              <span style="font-size: 9px; color: #666;">R1</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">0.75</span>
+              <div style="width: 28px; height: 47%; background: linear-gradient(to top, #10B981, #10B981); border-radius: 4px 4px 0 0; opacity: 0.8;"></div>
+              <span style="font-size: 9px; color: #666;">R2</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">0.71</span>
+              <div style="width: 28px; height: 44%; background: linear-gradient(to top, #6366F1, #6366F1); border-radius: 4px 4px 0 0; opacity: 0.8;"></div>
+              <span style="font-size: 9px; color: #666;">R3</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">0.63</span>
+              <div style="width: 28px; height: 39%; background: linear-gradient(to top, #6366F1, #6366F1); border-radius: 4px 4px 0 0; opacity: 0.8;"></div>
+              <span style="font-size: 9px; color: #666;">R4</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">0.55</span>
+              <div style="width: 28px; height: 34%; background: linear-gradient(to top, #6366F1, #6366F1); border-radius: 4px 4px 0 0; opacity: 0.8;"></div>
+              <span style="font-size: 9px; color: #666;">R5</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #DC2626;">0.41</span>
+              <div style="width: 28px; height: 26%; background: linear-gradient(to top, #FF6B35, #DC2626); border-radius: 4px 4px 0 0; opacity: 0.9;"></div>
+              <span style="font-size: 9px; color: #666;">R6</span>
+            </div>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 8px; font-size: 11px; color: #F59E0B;">
+          ⚡ Velocity dropped 34% across the set — high fatigue indicator
+        </div>
+      </div>
+
+      <!-- Power Output with peak highlight -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <div style="font-size: 14px; font-weight: 600; color: #fff;">⚡ Power Output</div>
+          <div style="font-size: 10px; color: #888;">Watts per rep</div>
+        </div>
+        <div style="font-size: 11px; color: #666; margin-bottom: 12px;">Force × Velocity · Peak highlighted</div>
+        <div style="position: relative; height: 160px; border-left: 1px solid #333; border-bottom: 1px solid #333;">
+          <div style="position: absolute; bottom: 0; left: 20px; right: 10px; height: 100%; display: flex; align-items: flex-end; justify-content: space-around;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">485W</span>
+              <div style="width: 28px; height: 72%; background: #FF6B35; border-radius: 4px 4px 0 0; opacity: 0.7;"></div>
+              <span style="font-size: 9px; color: #666;">R1</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #fff; font-weight: 700;">512W</span>
+              <div style="width: 28px; height: 76%; background: linear-gradient(to top, #FF6B35, #F59E0B); border-radius: 4px 4px 0 0; box-shadow: 0 0 12px rgba(255,107,53,0.5);"></div>
+              <span style="font-size: 9px; color: #FF6B35; font-weight: 600;">R2 ★</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">468W</span>
+              <div style="width: 28px; height: 70%; background: #FF6B35; border-radius: 4px 4px 0 0; opacity: 0.7;"></div>
+              <span style="font-size: 9px; color: #666;">R3</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">421W</span>
+              <div style="width: 28px; height: 63%; background: #FF6B35; border-radius: 4px 4px 0 0; opacity: 0.6;"></div>
+              <span style="font-size: 9px; color: #666;">R4</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">388W</span>
+              <div style="width: 28px; height: 58%; background: #FF6B35; border-radius: 4px 4px 0 0; opacity: 0.5;"></div>
+              <span style="font-size: 9px; color: #666;">R5</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <span style="font-size: 9px; color: #aaa;">342W</span>
+              <div style="width: 28px; height: 51%; background: #FF6B35; border-radius: 4px 4px 0 0; opacity: 0.4;"></div>
+              <span style="font-size: 9px; color: #666;">R6</span>
+            </div>
+          </div>
+          <!-- Trend line -->
+          <svg style="position: absolute; inset: 0; pointer-events: none;" viewBox="0 0 300 160">
+            <polyline points="35,44 85,38 140,48 195,60 245,68 285,80" fill="none" stroke="#DC2626" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.6"/>
+          </svg>
+        </div>
+        <div style="text-align: center; margin-top: 8px; font-size: 11px; color: #FF6B35;">
+          ★ Peak power on rep 2 — typical potentiation pattern
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Row: Training Efficiency + TUT + Session Score -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+
+      <!-- Training Efficiency -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 12px;">Training Efficiency</div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 4px;">
+              <span>Volume / Minute</span>
+              <span style="color: #10B981;">▲ 8%</span>
+            </div>
+            <div style="font-size: 20px; font-weight: 700; color: #fff;">186 <span style="font-size: 11px; color: #888;">lbs/min</span></div>
+            <svg width="100%" height="20" viewBox="0 0 150 20" style="margin-top: 4px;">
+              <polyline points="0,16 20,14 40,15 60,12 80,10 100,11 120,8 150,6" fill="none" stroke="#10B981" stroke-width="1.5" opacity="0.6"/>
+            </svg>
+          </div>
+          <div style="border-top: 1px solid #2a2a2a; padding-top: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 4px;">
+              <span>Avg Rest Time</span>
+              <span style="color: #F59E0B;">→ 0%</span>
+            </div>
+            <div style="font-size: 20px; font-weight: 700; color: #fff;">2:15 <span style="font-size: 11px; color: #888;">min</span></div>
+            <svg width="100%" height="20" viewBox="0 0 150 20" style="margin-top: 4px;">
+              <polyline points="0,10 20,12 40,9 60,11 80,10 100,10 120,11 150,10" fill="none" stroke="#F59E0B" stroke-width="1.5" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time Under Tension -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 12px;">Time Under Tension</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: #888; width: 24px;">R1</span>
+            <div style="flex: 1; height: 18px; background: #2a2a2a; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="width: 72%; height: 100%; background: linear-gradient(90deg, #FF6B35, #F59E0B); border-radius: 4px;"></div>
+              <!-- Target range marker -->
+              <div style="position: absolute; left: 60%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+              <div style="position: absolute; left: 80%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+            </div>
+            <span style="font-size: 11px; color: #ccc; width: 36px;">3.6s</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: #888; width: 24px;">R2</span>
+            <div style="flex: 1; height: 18px; background: #2a2a2a; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="width: 68%; height: 100%; background: linear-gradient(90deg, #FF6B35, #F59E0B); border-radius: 4px;"></div>
+              <div style="position: absolute; left: 60%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+              <div style="position: absolute; left: 80%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+            </div>
+            <span style="font-size: 11px; color: #ccc; width: 36px;">3.4s</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: #888; width: 24px;">R3</span>
+            <div style="flex: 1; height: 18px; background: #2a2a2a; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="width: 82%; height: 100%; background: linear-gradient(90deg, #10B981, #10B981); border-radius: 4px;"></div>
+              <div style="position: absolute; left: 60%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+              <div style="position: absolute; left: 80%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+            </div>
+            <span style="font-size: 11px; color: #10B981; width: 36px;">4.1s ✓</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: #888; width: 24px;">R4</span>
+            <div style="flex: 1; height: 18px; background: #2a2a2a; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="width: 90%; height: 100%; background: linear-gradient(90deg, #10B981, #10B981); border-radius: 4px;"></div>
+              <div style="position: absolute; left: 60%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+              <div style="position: absolute; left: 80%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+            </div>
+            <span style="font-size: 11px; color: #10B981; width: 36px;">4.5s ✓</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: #888; width: 24px;">R5</span>
+            <div style="flex: 1; height: 18px; background: #2a2a2a; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="width: 96%; height: 100%; background: linear-gradient(90deg, #F59E0B, #DC2626); border-radius: 4px;"></div>
+              <div style="position: absolute; left: 60%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+              <div style="position: absolute; left: 80%; top: 0; width: 2px; height: 100%; background: #fff; opacity: 0.3;"></div>
+            </div>
+            <span style="font-size: 11px; color: #F59E0B; width: 36px;">4.8s</span>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 10px; color: #666;">
+          <span>White markers = hypertrophy target range (3-4s)</span>
+        </div>
+      </div>
+
+      <!-- Session Intensity Score -->
+      <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px;">
+        <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 12px;">Session Score</div>
+        <div style="display: flex; justify-content: center; margin: 8px 0;">
+          <svg viewBox="0 0 120 120" width="120">
+            <!-- Background ring -->
+            <circle cx="60" cy="60" r="50" fill="none" stroke="#2a2a2a" stroke-width="8"/>
+            <!-- Score ring -->
+            <circle cx="60" cy="60" r="50" fill="none" stroke="#FF6B35" stroke-width="8"
+              stroke-dasharray="267 314" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+            <!-- Inner score -->
+            <text x="60" y="55" text-anchor="middle" fill="#fff" font-size="28" font-weight="800">85</text>
+            <text x="60" y="70" text-anchor="middle" fill="#888" font-size="10">/ 100</text>
+          </svg>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+          <div style="text-align: center; padding: 8px; background: #2a2a2a; border-radius: 6px;">
+            <div style="font-size: 14px; font-weight: 700; color: #FF6B35;">High</div>
+            <div style="font-size: 9px; color: #888;">Intensity</div>
+          </div>
+          <div style="text-align: center; padding: 8px; background: #2a2a2a; border-radius: 6px;">
+            <div style="font-size: 14px; font-weight: 700; color: #10B981;">Good</div>
+            <div style="font-size: 9px; color: #888;">Efficiency</div>
+          </div>
+        </div>
+        <div style="text-align: center; margin-top: 10px; font-size: 11px; color: #888;">
+          Composite of volume, intensity,<br/>efficiency, and consistency
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="margin-top: 24px; padding: 16px; border: 1px solid #FF6B35; border-radius: 8px; background: rgba(255,107,53,0.04);">
+  <h3 style="color: #FF6B35; margin: 0 0 8px;">What Makes This Worth $25/mo</h3>
+  <ul style="font-size: 13px; line-height: 1.8; margin: 0; padding-left: 20px; opacity: 0.85;">
+    <li><strong>Community rankings with distribution curves</strong> — you're not just seeing a number, you're seeing where you fall on the bell curve. Competitive and motivating.</li>
+    <li><strong>VBT zone-colored velocity bars</strong> — instantly tells you if you're training in the right velocity zone for your goal (strength vs power vs speed)</li>
+    <li><strong>Peak power highlight with glow</strong> — celebrates your best rep with a visual flourish</li>
+    <li><strong>TUT with target range markers</strong> — white lines show the hypertrophy/strength target range so you can see if your tempo is on point</li>
+    <li><strong>Session Score</strong> — a single composite number that gamifies each workout. "Can I beat 85 next time?"</li>
+    <li><strong>Training Efficiency trends</strong> — volume/min and rest time analysis that no other consumer fitness app provides</li>
+  </ul>
+</div>

@@ -1,0 +1,83 @@
+<h2>Analytics Enhancement — Three Approaches</h2>
+<p class="subtitle">Pick the approach that best matches your vision. All are under $50/mo.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>ECharts Overhaul + Custom Insights Engine</h3>
+      <p><strong>Cost: $0/mo</strong> — All open-source</p>
+      <div style="margin-top: 12px;">
+        <div style="color: #F59E0B; font-weight: 600; margin-bottom: 4px;">Charting</div>
+        <p style="font-size: 14px; opacity: 0.85;">Replace Recharts → <strong>Apache ECharts</strong>. GPU-accelerated Canvas rendering, built-in dark theme, drill-down interactions, animated transitions, 100K+ datapoint performance. Keep visx for telemetry force curves.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #F59E0B; font-weight: 600; margin-bottom: 4px;">Insights</div>
+        <p style="font-size: 14px; opacity: 0.85;">Build a <strong>rule-based training intelligence engine</strong> in Supabase Edge Functions. Resistance Training Load (RTL) scoring, plateau detection, muscle balance alerts, streak/consistency scoring, recovery estimation. No AI API costs.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #F59E0B; font-weight: 600; margin-bottom: 4px;">Social</div>
+        <p style="font-size: 14px; opacity: 0.85;">Community percentile rankings via aggregate Supabase queries. "Top 20% for weekly volume", exercise-specific leaderboards.</p>
+      </div>
+      <div class="pros-cons" style="margin-top: 16px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Zero ongoing costs</li><li>ECharts is massively capable (maps, gauges, radar, heatmaps)</li><li>Rule-based insights are deterministic and predictable</li><li>Huge community & documentation</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Larger migration effort (replace all Recharts code)</li><li>ECharts API is option-object based, less "React-native"</li><li>Rule-based insights lack the natural language feel of AI</li><li>Bundle size ~800KB (tree-shakeable)</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Nivo Upgrade + LLM Coaching Layer</h3>
+      <p><strong>Cost: $20-40/mo</strong> — Claude API for insights</p>
+      <div style="margin-top: 12px;">
+        <div style="color: #10B981; font-weight: 600; margin-bottom: 4px;">Charting</div>
+        <p style="font-size: 14px; opacity: 0.85;">Replace Recharts → <strong>Nivo</strong>. Built on D3, React-native components, excellent theming, SVG/Canvas/HTML rendering. Beautiful defaults, great animations. Keep visx for force curves.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #10B981; font-weight: 600; margin-bottom: 4px;">Insights</div>
+        <p style="font-size: 14px; opacity: 0.85;">Use <strong>Claude API via Edge Function</strong> to generate personalized coaching. "Your bench press has stalled for 3 weeks — try paused reps or drop the weight 10% and add volume." Natural language, contextual, specific.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #10B981; font-weight: 600; margin-bottom: 4px;">Social</div>
+        <p style="font-size: 14px; opacity: 0.85;">Same percentile rankings, plus AI-powered peer comparisons.</p>
+      </div>
+      <div class="pros-cons" style="margin-top: 16px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Most React-idiomatic charting API</li><li>AI coaching feels premium and personal</li><li>Natural language insights are more engaging</li><li>Nivo's theming system is excellent</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>$20-40/mo API costs (scales with users)</li><li>AI can hallucinate bad training advice</li><li>Nivo has fewer chart types than ECharts</li><li>API latency adds loading time to insights</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Maximize Existing Stack + Content Focus</h3>
+      <p><strong>Cost: $0/mo</strong> — No library changes</p>
+      <div style="margin-top: 12px;">
+        <div style="color: #FF6B35; font-weight: 600; margin-bottom: 4px;">Charting</div>
+        <p style="font-size: 14px; opacity: 0.85;">Keep <strong>Recharts + visx</strong> as-is. Instead of replacing them, add new chart types and enhance existing ones with better tooltips, comparison overlays, sparklines, trend indicators.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #FF6B35; font-weight: 600; margin-bottom: 4px;">Insights</div>
+        <p style="font-size: 14px; opacity: 0.85;">Build same rule-based engine as Approach A. Focus effort on <strong>data enrichment</strong> — better muscle group categorization, derived metrics (estimated 1RM, volume load, training density), period comparisons.</p>
+      </div>
+      <div style="margin-top: 12px;">
+        <div style="color: #FF6B35; font-weight: 600; margin-bottom: 4px;">Social</div>
+        <p style="font-size: 14px; opacity: 0.85;">Community percentile rankings. Same approach, less polish.</p>
+      </div>
+      <div class="pros-cons" style="margin-top: 16px;">
+        <div class="pros"><h4>Pros</h4><ul><li>Fastest to ship — no migration</li><li>Zero risk of breaking existing charts</li><li>Zero costs</li><li>Can iterate quickly on content</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Recharts still looks generic</li><li>Limited chart types (no radar, gauge, heatmap calendar)</li><li>Harder to differentiate from free fitness apps</li><li>visx has a steep learning curve for new chart types</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 32px; padding: 20px; border: 1px solid #FF6B35; border-radius: 12px; background: rgba(255, 107, 53, 0.05);">
+  <h3 style="color: #FF6B35; margin: 0 0 8px 0;">My Recommendation: Approach A</h3>
+  <p style="font-size: 14px; opacity: 0.85; margin: 0;">
+    Apache ECharts gives you the most visual differentiation at zero cost. Its built-in gauge charts, radar plots, calendar heatmaps, and animated transitions will make the analytics page feel like a premium product. The rule-based insights engine avoids AI cost scaling and hallucination risk while still delivering the "dashboard that talks to you" experience. You can always add an LLM layer later as a premium Inferno-tier feature.
+  </p>
+</div>
