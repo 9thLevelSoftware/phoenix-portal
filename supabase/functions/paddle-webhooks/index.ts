@@ -33,6 +33,13 @@ async function verifyPaddleSignature(
 
   if (!ts || !expectedHex) return false;
 
+  // Reject signatures older than 5 minutes to prevent replay attacks
+  const signatureAge = Math.abs(Date.now() / 1000 - parseInt(ts, 10));
+  if (signatureAge > 300) {
+    console.warn("[BILLING_ALERT] Webhook signature too old:", signatureAge, "seconds");
+    return false;
+  }
+
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -90,6 +97,9 @@ function mapPriceIdToTier(priceId: string): string {
   if (flamePriceIds.includes(priceId)) return "FLAME";
   if (emberPriceIds.includes(priceId)) return "EMBER";
 
+  if (priceId) {
+    console.warn("[BILLING_ALERT] Unknown price ID mapped to FREE tier:", priceId, "— check PADDLE_*_PRICE_IDS env vars");
+  }
   return "FREE";
 }
 
@@ -181,10 +191,10 @@ Deno.serve(async (req) => {
     // Extract user_id from custom_data
     const userId = event.data.custom_data?.user_id;
     if (!userId) {
-      console.error("Missing custom_data.user_id in Paddle event:", event.event_id);
+      console.error("[BILLING_ALERT] Missing custom_data.user_id in Paddle event:", event.event_id, "event_type:", event.event_type);
       return new Response(
         JSON.stringify({ error: "Missing user_id in custom_data" }),
-        { status: 400, headers: responseHeaders }
+        { status: 500, headers: responseHeaders }
       );
     }
 
