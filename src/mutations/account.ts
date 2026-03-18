@@ -45,7 +45,8 @@ export function useRequestDeletion(userId: string) {
 			});
 		},
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useRequestDeletion] failed:', error);
+			toast.error('Failed to schedule account deletion. Please try again.');
 		},
 	});
 }
@@ -75,7 +76,8 @@ export function useCancelDeletion(userId: string) {
 			});
 		},
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useCancelDeletion] failed:', error);
+			toast.error('Failed to cancel account deletion. Please try again.');
 		},
 	});
 }
@@ -99,9 +101,8 @@ export function useExecuteDeletion() {
 			await supabase.auth.signOut();
 		},
 		onError: (error: Error) => {
-			toast.error(
-				error.message || "Failed to delete account. Please try again.",
-			);
+			console.error('[useExecuteDeletion] failed:', error);
+			toast.error('Failed to delete account. Please try again.');
 		},
 	});
 }
