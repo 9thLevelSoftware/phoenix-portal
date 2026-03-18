@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Superpowers brainstorming mockups
+.superpowers/
+
 # Editor directories and files
 .idea/
 .vscode/
