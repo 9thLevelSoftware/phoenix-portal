@@ -15,7 +15,6 @@ export interface CommunityDistributionProps {
  */
 function generateBellCurvePoints(
 	percentiles: Record<string, number>,
-	userValue: number,
 ): [number, number][] {
 	// Extract known percentile values sorted by percentile rank
 	const knownPcts: Array<[number, number]> = Object.entries(percentiles)
@@ -69,8 +68,6 @@ function generateBellCurvePoints(
 		points.push([val, density]);
 	}
 
-	// Add user value marker on curve to ensure the markLine aligns
-	const _ = userValue; // referenced for completeness
 	return points;
 }
 
@@ -81,7 +78,7 @@ export function CommunityDistribution({
 	label,
 }: CommunityDistributionProps) {
 	const option = useMemo(() => {
-		const points = generateBellCurvePoints(percentiles, userValue);
+		const points = generateBellCurvePoints(percentiles);
 		if (points.length === 0) return {};
 
 		const minX = points[0][0];
@@ -96,7 +93,7 @@ export function CommunityDistribution({
 		const firstRight = rightPoints[0];
 		if (lastLeft && firstRight && lastLeft[0] !== firstRight[0]) {
 			// Interpolate y at userValue
-			const prevPt = points.findLast(([x]) => x < userValue);
+			const prevPt = [...points].reverse().find(([x]: [number, number]) => x < userValue);
 			const nextPt = points.find(([x]) => x > userValue);
 			if (prevPt && nextPt) {
 				const t = (userValue - prevPt[0]) / (nextPt[0] - prevPt[0]);
