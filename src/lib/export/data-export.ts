@@ -15,7 +15,7 @@ export async function exportAllUserData(
 	onProgress?: ProgressCallback,
 ): Promise<void> {
 	const zip = new JSZip();
-	const TOTAL_STEPS = 23;
+	const TOTAL_STEPS = 30;
 	let step = 0;
 
 	function progress(label: string) {
@@ -167,6 +167,53 @@ export async function exportAllUserData(
 			"shared_cycles",
 			"shared-cycles",
 			supabase.from("shared_cycles").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"earned_badges",
+			"earned-badges",
+			supabase.from("earned_badges").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"gamification_stats",
+			"gamification-stats",
+			supabase.from("gamification_stats").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"rpg_attributes",
+			"rpg-attributes",
+			supabase.from("rpg_attributes").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"content_reports",
+			"content-reports",
+			supabase
+				.from("content_reports")
+				.select(
+					"id, user_id, content_type, content_id, reason, description, status, created_at, updated_at",
+				)
+				.eq("user_id", userId),
+		);
+
+		await addTable(
+			"creator_follows",
+			"creator-follows",
+			supabase.from("creator_follows").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"user_blocks",
+			"user-blocks",
+			supabase.from("user_blocks").select("*").eq("user_id", userId),
+		);
+
+		await addTable(
+			"deletion_requests",
+			"deletion-requests",
+			supabase.from("deletion_requests").select("*").eq("user_id", userId),
 		);
 
 		// ──────────────────────────────────────
