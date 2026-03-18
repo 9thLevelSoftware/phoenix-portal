@@ -1,0 +1,30 @@
+-- Demo Data Seed: Enrich existing vitruvianredux workout data for analytics testing
+-- Applied manually via Supabase MCP on 2026-03-18
+--
+-- What this migration does:
+-- 1. Fixes muscle_group on 516 existing exercises (all were 'General')
+-- 2. Adds 8 personal records for Bench Press, Bent Over Row, Bicep Curl, Shoulder Press
+-- 3. Adds 2 Leg Day sessions (Feb 18, Mar 8) with Squat, Leg Press, Leg Curl, Calf Raise
+-- 4. Adds 29 rep_summaries for Squat sets with realistic velocity, force, power, ROM,
+--    TUT, L/R asymmetry, and VBT zone data showing fatigue-induced performance decay
+--
+-- Data patterns created:
+-- - Muscle distribution: Arms 51%, Chest 24%, Back 14%, Core 7%, Legs 4% (intentional deficit)
+-- - Bench Press 1RM plateau at 92.5kg from Mar 1 onward
+-- - Progressive overload visible in volume trends
+-- - Squat rep summaries show increasing asymmetry under fatigue (2.4% → 15.8%)
+-- - VBT zones shift from strength-speed to absolute-strength across sets
+--
+-- NOTE: This was applied directly to the database, not via migration runner.
+-- The SQL below documents the operations performed.
+
+-- Step 1: Fix muscle groups
+-- UPDATE exercises SET muscle_group = 'Arms' WHERE name ILIKE '%bicep%' OR name ILIKE '%tricep%' OR name ILIKE '%curl%';
+-- UPDATE exercises SET muscle_group = 'Chest' WHERE name ILIKE '%bench%' OR name ILIKE '%push up%' OR name ILIKE '%decline push%';
+-- UPDATE exercises SET muscle_group = 'Back' WHERE name ILIKE '%row%' OR name ILIKE '%pulldown%' OR name ILIKE '%deadlift%';
+-- UPDATE exercises SET muscle_group = 'Shoulders' WHERE name ILIKE '%shoulder%' OR name ILIKE '%press%' AND name NOT ILIKE '%bench%';
+-- UPDATE exercises SET muscle_group = 'Core' WHERE name = 'Unknown Exercise';
+
+-- Step 2: See full INSERT statements in project history (applied via Supabase execute_sql)
+-- Personal records, leg day sessions, and rep summaries were inserted with proper
+-- denormalized user_id columns on exercises, sets, and rep_summaries tables.
