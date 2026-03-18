@@ -45,7 +45,11 @@ import type { Routine } from "@/schemas/transforms";
 export function RoutinesEnhanced() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
-	const { data: routines, isPending } = useQuery(routineListOptions(user?.id));
+	const userId = user?.id ?? "";
+	const { data: routines, isPending } = useQuery({
+		...routineListOptions(userId),
+		enabled: !!userId,
+	});
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
 	const toggleFavoriteMutation = useToggleFavorite();
@@ -154,6 +158,7 @@ export function RoutinesEnhanced() {
 							<RoutineGrid
 								routines={allRoutines}
 								onEdit={(id: string) => navigate(`/routines/${id}`)}
+								onView={(id: string) => navigate(`/routines/${id}/view`)}
 								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
@@ -171,6 +176,7 @@ export function RoutinesEnhanced() {
 							<RoutineGrid
 								routines={favoriteRoutines}
 								onEdit={(id: string) => navigate(`/routines/${id}`)}
+								onView={(id: string) => navigate(`/routines/${id}/view`)}
 								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
@@ -197,12 +203,14 @@ export function RoutinesEnhanced() {
 function RoutineGrid({
 	routines,
 	onEdit,
+	onView,
 	onToggleFavorite,
 	isFavorite,
 	onShare,
 }: {
 	routines: Routine[];
 	onEdit: (id: string) => void;
+	onView: (id: string) => void;
 	onToggleFavorite: (id: string) => void;
 	isFavorite: (routine: Routine) => boolean;
 	onShare: () => void;
@@ -326,6 +334,7 @@ function RoutineGrid({
 									<Button
 										size="sm"
 										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+										onClick={() => onView(routine.id)}
 									>
 										<Eye className="w-4 h-4 mr-1" />
 										View

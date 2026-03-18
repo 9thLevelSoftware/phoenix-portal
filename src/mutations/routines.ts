@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
@@ -11,6 +12,7 @@ interface RoutineExerciseInput {
 	reps: number;
 	weight: number;
 	rest_seconds: number;
+	duration_seconds?: number | null;
 	mode: string;
 	order_index: number;
 	superset_id?: string | null;
@@ -19,12 +21,47 @@ interface RoutineExerciseInput {
 	per_set_weights?: unknown;
 	per_set_rest?: unknown;
 	is_amrap?: boolean;
+	is_bodyweight?: boolean;
 	pr_percentage?: number | null;
 	rep_count_timing?: string | null;
 	stop_at_position?: string | null;
 	stall_detection?: boolean;
 	eccentric_load?: string | null;
 	echo_level?: string | null;
+}
+
+type RoutineExerciseInsert =
+	Database["public"]["Tables"]["routine_exercises"]["Insert"];
+
+function toRoutineExerciseRows(
+	routineId: string,
+	exercises: RoutineExerciseInput[],
+): RoutineExerciseInsert[] {
+	return exercises.map((ex, i) => ({
+		routine_id: routineId,
+		name: ex.name,
+		muscle_group: ex.muscle_group,
+		sets: ex.sets,
+		reps: ex.reps,
+		weight: ex.weight,
+		rest_seconds: ex.rest_seconds,
+		duration_seconds: ex.duration_seconds ?? null,
+		mode: ex.mode,
+		order_index: i,
+		superset_id: ex.superset_id ?? null,
+		superset_color: ex.superset_color ?? null,
+		superset_order: ex.superset_order ?? null,
+		per_set_weights: (ex.per_set_weights ?? null) as Json,
+		per_set_rest: (ex.per_set_rest ?? null) as Json,
+		is_amrap: ex.is_amrap ?? false,
+		is_bodyweight: ex.is_bodyweight ?? false,
+		pr_percentage: ex.pr_percentage ?? null,
+		rep_count_timing: ex.rep_count_timing ?? null,
+		stop_at_position: ex.stop_at_position ?? null,
+		stall_detection: ex.stall_detection ?? false,
+		eccentric_load: ex.eccentric_load ?? null,
+		echo_level: ex.echo_level ?? null,
+	}));
 }
 
 interface SaveRoutineInput {
@@ -71,33 +108,13 @@ export function useSaveRoutine() {
 
 			// Insert exercises
 			if (input.exercises.length > 0) {
+				const routineExercises = toRoutineExerciseRows(
+					routine.id,
+					input.exercises,
+				);
 				const { error: exError } = await supabase
 					.from("routine_exercises")
-					.insert(
-						input.exercises.map((ex, i) => ({
-							routine_id: routine.id,
-							name: ex.name,
-							muscle_group: ex.muscle_group,
-							sets: ex.sets,
-							reps: ex.reps,
-							weight: ex.weight,
-							rest_seconds: ex.rest_seconds,
-							mode: ex.mode,
-							order_index: i,
-							superset_id: ex.superset_id ?? null,
-							superset_color: ex.superset_color ?? null,
-							superset_order: ex.superset_order ?? null,
-							per_set_weights: ex.per_set_weights ?? null,
-							per_set_rest: ex.per_set_rest ?? null,
-							is_amrap: ex.is_amrap ?? false,
-							pr_percentage: ex.pr_percentage ?? null,
-							rep_count_timing: ex.rep_count_timing ?? null,
-							stop_at_position: ex.stop_at_position ?? null,
-							stall_detection: ex.stall_detection ?? false,
-							eccentric_load: ex.eccentric_load ?? null,
-							echo_level: ex.echo_level ?? null,
-						})),
-					);
+					.insert(routineExercises);
 				if (exError) throw exError;
 			}
 
@@ -179,33 +196,13 @@ export function useUpdateRoutine() {
 			if (deleteError) throw deleteError;
 
 			if (input.exercises.length > 0) {
+				const routineExercises = toRoutineExerciseRows(
+					input.routineId,
+					input.exercises,
+				);
 				const { error: exError } = await supabase
 					.from("routine_exercises")
-					.insert(
-						input.exercises.map((ex, i) => ({
-							routine_id: input.routineId,
-							name: ex.name,
-							muscle_group: ex.muscle_group,
-							sets: ex.sets,
-							reps: ex.reps,
-							weight: ex.weight,
-							rest_seconds: ex.rest_seconds,
-							mode: ex.mode,
-							order_index: i,
-							superset_id: ex.superset_id ?? null,
-							superset_color: ex.superset_color ?? null,
-							superset_order: ex.superset_order ?? null,
-							per_set_weights: ex.per_set_weights ?? null,
-							per_set_rest: ex.per_set_rest ?? null,
-							is_amrap: ex.is_amrap ?? false,
-							pr_percentage: ex.pr_percentage ?? null,
-							rep_count_timing: ex.rep_count_timing ?? null,
-							stop_at_position: ex.stop_at_position ?? null,
-							stall_detection: ex.stall_detection ?? false,
-							eccentric_load: ex.eccentric_load ?? null,
-							echo_level: ex.echo_level ?? null,
-						})),
-					);
+					.insert(routineExercises);
 				if (exError) throw exError;
 			}
 

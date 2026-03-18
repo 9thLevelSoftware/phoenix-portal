@@ -42,9 +42,10 @@ export function communityFeedOptions(params: FeedParams) {
 			userId: params.userId,
 		}),
 		queryFn: async ({ pageParam = 0 }) => {
-			let query = supabase
-				.from(table)
-				.select("*, profiles(display_name, avatar_url)");
+			// shared_routines/shared_cycles.user_id -> auth.users(id), not profiles(id)
+			// PostgREST cannot resolve the profiles join directly, so we do a
+			// two-step fetch: get feed rows first, then batch-fetch profiles.
+			let query = supabase.from(table).select("*");
 
 			// Sort
 			if (params.sort === "new") {
@@ -78,7 +79,47 @@ export function communityFeedOptions(params: FeedParams) {
 
 			const { data, error } = await query;
 			if (error) throw error;
-			return schema.parse(data);
+
+			// Batch-fetch profiles for all non-null user_ids in this page
+			const userIds = [
+				...new Set(
+					(data as { user_id: string | null }[])
+						.map((row) => row.user_id)
+						.filter((id): id is string => id !== null),
+				),
+			];
+
+			let profileMap: Record<
+				string,
+				{ display_name: string; avatar_url: string | null }
+			> = {};
+
+			if (userIds.length > 0) {
+				const { data: profiles } = await supabase
+					.from("profiles")
+					.select("id, display_name, avatar_url")
+					.in("id", userIds);
+
+				if (profiles) {
+					for (const p of profiles as {
+						id: string;
+						display_name: string;
+						avatar_url: string | null;
+					}[]) {
+						profileMap[p.id] = {
+							display_name: p.display_name,
+							avatar_url: p.avatar_url,
+						};
+					}
+				}
+			}
+
+			const merged = (data as { user_id: string | null }[]).map((row) => ({
+				...row,
+				profiles: row.user_id ? (profileMap[row.user_id] ?? null) : null,
+			}));
+
+			return schema.parse(merged);
 		},
 		initialPageParam: 0,
 		getNextPageParam: (lastPage, allPages) => {

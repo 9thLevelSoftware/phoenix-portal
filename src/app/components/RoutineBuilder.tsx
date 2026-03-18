@@ -4,6 +4,7 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowLeft,
+	ChevronDown,
 	Dumbbell,
 	Edit,
 	Eye,
@@ -17,9 +18,15 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { SelectionModeBar } from "@/app/components/routine-builder/SelectionModeBar";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/app/components/ui/collapsible";
 import {
 	Dialog,
 	DialogContent,
@@ -28,13 +35,24 @@ import {
 	DialogTitle,
 } from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
+import { Label } from "@/app/components/ui/label";
+import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
 import { supabase } from "@/lib/supabase";
+import {
+	convertWeight,
+	formatWeight,
+	getUnitLabel,
+	toKg,
+	type WeightUnit,
+} from "@/lib/units";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
+
+const SUPERSET_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B"] as const;
 
 interface Exercise {
 	id: string;
@@ -44,6 +62,7 @@ interface Exercise {
 	reps: number;
 	weight: number;
 	rest: number;
+	durationSeconds: number | null;
 	mode: string;
 	supersetId: string | null;
 	supersetColor: string | null;
@@ -51,6 +70,7 @@ interface Exercise {
 	perSetWeights: unknown;
 	perSetRest: unknown;
 	isAmrap: boolean;
+	isBodyweight: boolean;
 	prPercentage: number | null;
 	repCountTiming: string | null;
 	stopAtPosition: string | null;
@@ -59,12 +79,99 @@ interface Exercise {
 	echoLevel: string | null;
 }
 
+type GroupedExerciseItem =
+	| { type: "exercise"; exercise: Exercise }
+	| {
+			type: "superset";
+			id: string;
+			color: string | null;
+			exercises: Exercise[];
+	  };
+
+function getDisplayWeight(weightKg: number, unit: WeightUnit) {
+	const converted = convertWeight(weightKg, unit);
+	return unit === "lbs" ? converted.toFixed(1) : `${Math.round(converted)}`;
+}
+
+function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
+	const loadLabel = exercise.isBodyweight
+		? "Bodyweight"
+		: formatWeight(exercise.weight, unit);
+
+	if (exercise.durationSeconds) {
+		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${exercise.mode}`;
+	}
+
+	if (exercise.isAmrap) {
+		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${exercise.mode}`;
+	}
+
+	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${exercise.mode}`;
+}
+
+function getPerSetValues(
+	source: unknown,
+	count: number,
+	fallback: number,
+): number[] {
+	if (Array.isArray(source)) {
+		return Array.from({ length: count }, (_, index) => {
+			const parsed = Number(source[index]);
+			return Number.isFinite(parsed) ? parsed : fallback;
+		});
+	}
+
+	return Array.from({ length: count }, () => fallback);
+}
+
+function getNextSupersetColor(exercises: Exercise[]) {
+	const usedColors = new Set(
+		exercises.map((exercise) => exercise.supersetColor).filter(Boolean),
+	);
+
+	return (
+		SUPERSET_COLORS.find((color) => !usedColors.has(color)) ??
+		SUPERSET_COLORS[0]
+	);
+}
+
+function groupExercises(exercises: Exercise[]): GroupedExerciseItem[] {
+	const seenSupersets = new Set<string>();
+	const grouped: GroupedExerciseItem[] = [];
+
+	for (const exercise of exercises) {
+		if (!exercise.supersetId) {
+			grouped.push({ type: "exercise", exercise });
+			continue;
+		}
+
+		if (seenSupersets.has(exercise.supersetId)) {
+			continue;
+		}
+
+		seenSupersets.add(exercise.supersetId);
+		grouped.push({
+			type: "superset",
+			id: exercise.supersetId,
+			color: exercise.supersetColor,
+			exercises: exercises
+				.filter((entry) => entry.supersetId === exercise.supersetId)
+				.sort((a, b) => (a.supersetOrder ?? 0) - (b.supersetOrder ?? 0)),
+		});
+	}
+
+	return grouped;
+}
+
 export function RoutineBuilder() {
 	const { routineId } = useParams<{ routineId: string }>();
 	const navigate = useNavigate();
 	const { user } = useAuth();
-	const { data: profile } = useQuery(profileOptions(user?.id ?? ""));
-	const weightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
+	const { data: profile } = useQuery({
+		...profileOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
+	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 	const saveMutation = useSaveRoutine();
 	const updateMutation = useUpdateRoutine();
 	const isEditing = !!routineId;
@@ -82,6 +189,10 @@ export function RoutineBuilder() {
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 	const [showPreview, setShowPreview] = useState(false);
+	const [isSelectionMode, setIsSelectionMode] = useState(false);
+	const [selectedExerciseIds, setSelectedExerciseIds] = useState<Set<string>>(
+		new Set(),
+	);
 
 	// Populate form state from existing routine
 	useEffect(() => {
@@ -96,6 +207,7 @@ export function RoutineBuilder() {
 					reps: ex.reps,
 					weight: ex.weight,
 					rest: ex.rest_seconds,
+					durationSeconds: ex.duration_seconds ?? null,
 					mode: ex.mode,
 					supersetId: ex.superset_id ?? null,
 					supersetColor: ex.superset_color ?? null,
@@ -103,6 +215,7 @@ export function RoutineBuilder() {
 					perSetWeights: ex.per_set_weights ?? null,
 					perSetRest: ex.per_set_rest ?? null,
 					isAmrap: ex.is_amrap ?? false,
+					isBodyweight: ex.is_bodyweight ?? false,
 					prPercentage: ex.pr_percentage ?? null,
 					repCountTiming: ex.rep_count_timing ?? null,
 					stopAtPosition: ex.stop_at_position ?? null,
@@ -113,6 +226,17 @@ export function RoutineBuilder() {
 			);
 		}
 	}, [existingRoutine]);
+
+	useEffect(() => {
+		setSelectedExerciseIds((current) => {
+			const next = new Set(
+				[...current].filter((id) =>
+					exercises.some((exercise) => exercise.id === id),
+				),
+			);
+			return next;
+		});
+	}, [exercises]);
 
 	const handleDragEnd = (event: { canceled: boolean }) => {
 		if (!event.canceled) {
@@ -129,6 +253,58 @@ export function RoutineBuilder() {
 		setHasUnsavedChanges(true);
 	};
 
+	const toggleExerciseSelection = (id: string) => {
+		setSelectedExerciseIds((current) => {
+			const next = new Set(current);
+			if (next.has(id)) {
+				next.delete(id);
+			} else {
+				next.add(id);
+			}
+			return next;
+		});
+	};
+
+	const handleCreateSuperset = () => {
+		const selectedIds = [...selectedExerciseIds];
+		if (selectedIds.length < 2) return;
+
+		const supersetId = crypto.randomUUID();
+		const supersetColor = getNextSupersetColor(exercises);
+
+		setExercises((current) =>
+			current.map((exercise) => {
+				const supersetOrder = selectedIds.indexOf(exercise.id);
+				if (supersetOrder === -1) return exercise;
+				return {
+					...exercise,
+					supersetId,
+					supersetColor,
+					supersetOrder,
+				};
+			}),
+		);
+		setSelectedExerciseIds(new Set());
+		setIsSelectionMode(false);
+		setHasUnsavedChanges(true);
+	};
+
+	const handleUngroupSuperset = (supersetId: string) => {
+		setExercises((current) =>
+			current.map((exercise) =>
+				exercise.supersetId === supersetId
+					? {
+							...exercise,
+							supersetId: null,
+							supersetColor: null,
+							supersetOrder: null,
+						}
+					: exercise,
+			),
+		);
+		setHasUnsavedChanges(true);
+	};
+
 	const buildExercisePayload = () =>
 		exercises.map((ex, i) => ({
 			name: ex.name,
@@ -137,6 +313,7 @@ export function RoutineBuilder() {
 			reps: ex.reps,
 			weight: ex.weight,
 			rest_seconds: ex.rest,
+			duration_seconds: ex.durationSeconds,
 			mode: ex.mode,
 			order_index: i,
 			superset_id: ex.supersetId,
@@ -145,6 +322,7 @@ export function RoutineBuilder() {
 			per_set_weights: ex.perSetWeights,
 			per_set_rest: ex.perSetRest,
 			is_amrap: ex.isAmrap,
+			is_bodyweight: ex.isBodyweight,
 			pr_percentage: ex.prPercentage,
 			rep_count_timing: ex.repCountTiming,
 			stop_at_position: ex.stopAtPosition,
@@ -189,9 +367,14 @@ export function RoutineBuilder() {
 	};
 
 	const isSaving = saveMutation.isPending || updateMutation.isPending;
+	const groupedExercises = groupExercises(exercises);
 
 	const totalDuration = exercises.reduce((sum, ex) => {
-		return sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest) / 60;
+		const workMinutes =
+			ex.durationSeconds != null
+				? (ex.durationSeconds * ex.sets) / 60
+				: ex.sets * 2.5;
+		return sum + workMinutes + ((ex.sets - 1) * ex.rest) / 60;
 	}, 0);
 
 	if (isEditing && isLoadingRoutine) {
@@ -281,21 +464,100 @@ export function RoutineBuilder() {
 									min
 								</p>
 							</div>
+							{exercises.length >= 2 && (
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() => {
+										setIsSelectionMode((current) => !current);
+										setSelectedExerciseIds(new Set());
+									}}
+									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+								>
+									{isSelectionMode ? "Cancel Superset" : "Create Superset"}
+								</Button>
+							)}
 						</div>
 
 						<DragDropProvider onDragEnd={handleDragEnd}>
 							<div className="space-y-3">
-								{exercises.map((exercise, index) => (
-									<SortableExerciseItem
-										key={exercise.id}
-										exercise={exercise}
-										index={index}
-										isSelected={selectedExercise === exercise.id}
-										onSelect={() => setSelectedExercise(exercise.id)}
-										onDelete={() => handleDeleteExercise(exercise.id)}
-										weightUnit={weightUnit}
-									/>
-								))}
+								{groupedExercises.map((item) =>
+									item.type === "exercise" ? (
+										<SortableExerciseItem
+											key={item.exercise.id}
+											exercise={item.exercise}
+											index={exercises.findIndex(
+												(exercise) => exercise.id === item.exercise.id,
+											)}
+											isSelected={selectedExercise === item.exercise.id}
+											isSelectionMode={isSelectionMode}
+											isSelectionSelected={selectedExerciseIds.has(
+												item.exercise.id,
+											)}
+											onSelect={() =>
+												isSelectionMode
+													? toggleExerciseSelection(item.exercise.id)
+													: setSelectedExercise(item.exercise.id)
+											}
+											onDelete={() => handleDeleteExercise(item.exercise.id)}
+											unit={unit}
+										/>
+									) : (
+										<div
+											key={item.id}
+											className="rounded-xl border border-secondary/70 bg-surface-2/40 p-4"
+											style={{
+												borderLeftColor: item.color ?? undefined,
+												borderLeftWidth: 4,
+											}}
+										>
+											<div className="mb-3 flex items-center justify-between">
+												<div className="flex items-center gap-2">
+													<Badge
+														variant="outline"
+														className="border-primary/40 text-primary"
+													>
+														Superset
+													</Badge>
+													<span className="text-sm text-muted-foreground">
+														{item.exercises.length} exercises
+													</span>
+												</div>
+												<Button
+													size="sm"
+													variant="ghost"
+													onClick={() => handleUngroupSuperset(item.id)}
+													className="text-muted-foreground hover:text-white"
+												>
+													Ungroup
+												</Button>
+											</div>
+											<div className="space-y-3">
+												{item.exercises.map((exercise) => (
+													<SortableExerciseItem
+														key={exercise.id}
+														exercise={exercise}
+														index={exercises.findIndex(
+															(entry) => entry.id === exercise.id,
+														)}
+														isSelected={selectedExercise === exercise.id}
+														isSelectionMode={isSelectionMode}
+														isSelectionSelected={selectedExerciseIds.has(
+															exercise.id,
+														)}
+														onSelect={() =>
+															isSelectionMode
+																? toggleExerciseSelection(exercise.id)
+																: setSelectedExercise(exercise.id)
+														}
+														onDelete={() => handleDeleteExercise(exercise.id)}
+														unit={unit}
+													/>
+												))}
+											</div>
+										</div>
+									),
+								)}
 							</div>
 						</DragDropProvider>
 
@@ -324,6 +586,15 @@ export function RoutineBuilder() {
 										setHasUnsavedChanges(true);
 									}}
 									onClose={() => setSelectedExercise(null)}
+									onUngroup={() => {
+										const currentExercise = exercises.find(
+											(ex) => ex.id === selectedExercise,
+										);
+										if (currentExercise?.supersetId) {
+											handleUngroupSuperset(currentExercise.supersetId);
+										}
+									}}
+									unit={unit}
 								/>
 							) : (
 								<EmptyDetailPanel />
@@ -346,6 +617,7 @@ export function RoutineBuilder() {
 								reps: 10,
 								weight: 0,
 								rest: 90,
+								durationSeconds: null,
 								mode: "Old School",
 								supersetId: null,
 								supersetColor: null,
@@ -353,6 +625,7 @@ export function RoutineBuilder() {
 								perSetWeights: null,
 								perSetRest: null,
 								isAmrap: false,
+								isBodyweight: false,
 								prPercentage: null,
 								repCountTiming: null,
 								stopAtPosition: null,
@@ -421,7 +694,7 @@ export function RoutineBuilder() {
 										</div>
 									</div>
 									<div className="text-sm text-muted-foreground">
-										{ex.sets}x{ex.reps} @ {ex.weight} {weightUnit}
+										{formatExerciseSummary(ex, unit)}
 									</div>
 								</div>
 							))}
@@ -429,6 +702,16 @@ export function RoutineBuilder() {
 					</div>
 				</DialogContent>
 			</Dialog>
+
+			<SelectionModeBar
+				selectedCount={selectedExerciseIds.size}
+				isActive={isSelectionMode}
+				onCreateSuperset={handleCreateSuperset}
+				onCancel={() => {
+					setIsSelectionMode(false);
+					setSelectedExerciseIds(new Set());
+				}}
+			/>
 		</div>
 	);
 }
@@ -437,16 +720,20 @@ function SortableExerciseItem({
 	exercise,
 	index,
 	isSelected,
+	isSelectionMode = false,
+	isSelectionSelected = false,
 	onSelect,
 	onDelete,
-	weightUnit,
+	unit,
 }: {
 	exercise: Exercise;
 	index: number;
 	isSelected: boolean;
+	isSelectionMode?: boolean;
+	isSelectionSelected?: boolean;
 	onSelect: () => void;
 	onDelete: () => void;
-	weightUnit: string;
+	unit: WeightUnit;
 }) {
 	const { ref, handleRef, isDragging } = useSortable({
 		id: exercise.id,
@@ -470,15 +757,27 @@ function SortableExerciseItem({
 				onClick={onSelect}
 				className={`p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all ${
 					isSelected ? "border-primary ring-1 ring-primary" : ""
-				}`}
+				} ${isSelectionSelected ? "border-primary ring-2 ring-primary/60" : ""}`}
 			>
 				<div className="flex items-center gap-3">
-					<button
-						ref={handleRef}
-						className="cursor-grab active:cursor-grabbing text-muted hover:text-muted-foreground"
-					>
-						<GripVertical className="w-5 h-5" />
-					</button>
+					{isSelectionMode ? (
+						<div
+							className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
+								isSelectionSelected
+									? "border-primary bg-primary text-white"
+									: "border-secondary text-muted-foreground"
+							}`}
+						>
+							{isSelectionSelected ? "✓" : ""}
+						</div>
+					) : (
+						<button
+							ref={handleRef}
+							className="cursor-grab active:cursor-grabbing text-muted hover:text-muted-foreground"
+						>
+							<GripVertical className="w-5 h-5" />
+						</button>
+					)}
 
 					<div className="flex-1">
 						<div className="flex items-center gap-2 mb-1">
@@ -488,10 +787,25 @@ function SortableExerciseItem({
 							>
 								{exercise.muscleGroup}
 							</Badge>
+							{exercise.isAmrap && (
+								<Badge
+									variant="outline"
+									className="border-accent/40 text-accent text-xs"
+								>
+									AMRAP
+								</Badge>
+							)}
+							{exercise.isBodyweight && (
+								<Badge
+									variant="outline"
+									className="border-secondary text-muted-foreground text-xs"
+								>
+									Bodyweight
+								</Badge>
+							)}
 						</div>
 						<p className="text-sm text-muted-foreground">
-							{exercise.sets} sets • {exercise.reps} reps • {exercise.weight}{" "}
-							{weightUnit}• {exercise.mode}
+							{formatExerciseSummary(exercise, unit)}
 						</p>
 						<p className="text-xs text-muted mt-1">
 							Rest: {exercise.rest}s between sets
@@ -507,6 +821,7 @@ function SortableExerciseItem({
 								onSelect();
 							}}
 							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+							disabled={isSelectionMode}
 						>
 							<Edit className="w-4 h-4" />
 						</Button>
@@ -518,6 +833,7 @@ function SortableExerciseItem({
 								onDelete();
 							}}
 							className="border-secondary text-destructive hover:border-destructive"
+							disabled={isSelectionMode}
 						>
 							<X className="w-4 h-4" />
 						</Button>
@@ -532,11 +848,50 @@ function ExerciseDetailPanel({
 	exercise,
 	onUpdate,
 	onClose,
+	onUngroup,
+	unit,
 }: {
 	exercise: Exercise;
 	onUpdate: (updates: Partial<Exercise>) => void;
 	onClose: () => void;
+	onUngroup: () => void;
+	unit: WeightUnit;
 }) {
+	const isDurationBased = exercise.durationSeconds != null;
+	const weightValues = getPerSetValues(
+		exercise.perSetWeights,
+		exercise.sets,
+		exercise.weight,
+	);
+	const restValues = getPerSetValues(
+		exercise.perSetRest,
+		exercise.sets,
+		exercise.rest,
+	);
+
+	const updatePerSetWeight = (index: number, value: string) => {
+		const nextWeights = [...weightValues];
+		const parsed = Number(value);
+		nextWeights[index] = Number.isFinite(parsed)
+			? unit === "lbs"
+				? toKg(parsed)
+				: parsed
+			: 0;
+		onUpdate({
+			weight: nextWeights[0] ?? 0,
+			perSetWeights: nextWeights,
+		});
+	};
+
+	const updatePerSetRest = (index: number, value: string) => {
+		const nextRest = [...restValues];
+		nextRest[index] = parseInt(value, 10) || 0;
+		onUpdate({
+			rest: nextRest[0] ?? 0,
+			perSetRest: nextRest,
+		});
+	};
+
 	return (
 		<motion.div
 			initial={{ opacity: 0, x: 20 }}
@@ -559,41 +914,173 @@ function ExerciseDetailPanel({
 				</div>
 
 				<div className="space-y-6">
-					{/* Sets Configuration */}
+					<div className="space-y-4 rounded-lg border border-secondary/70 bg-background/60 p-4">
+						<div className="flex items-center justify-between">
+							<div>
+								<Label className="text-white">Bodyweight</Label>
+								<p className="text-xs text-muted-foreground">
+									Hides external load and stores this movement as
+									bodyweight-only.
+								</p>
+							</div>
+							<Switch
+								checked={exercise.isBodyweight}
+								onCheckedChange={(checked) =>
+									onUpdate({
+										isBodyweight: checked,
+										weight: checked ? 0 : exercise.weight,
+										perSetWeights: checked ? null : exercise.perSetWeights,
+									})
+								}
+							/>
+						</div>
+
+						<div className="flex items-center justify-between gap-4">
+							<div>
+								<Label className="text-white">Exercise Type</Label>
+								<p className="text-xs text-muted-foreground">
+									Switch between rep-based and duration-based prescriptions.
+								</p>
+							</div>
+							<div className="flex gap-2">
+								<Button
+									size="sm"
+									variant={!isDurationBased ? "default" : "outline"}
+									onClick={() => onUpdate({ durationSeconds: null })}
+									className={!isDurationBased ? "bg-primary text-white" : ""}
+								>
+									Reps
+								</Button>
+								<Button
+									size="sm"
+									variant={isDurationBased ? "default" : "outline"}
+									onClick={() =>
+										onUpdate({
+											durationSeconds: exercise.durationSeconds ?? 30,
+										})
+									}
+									className={isDurationBased ? "bg-primary text-white" : ""}
+								>
+									Duration
+								</Button>
+							</div>
+						</div>
+
+						<div className="flex items-center justify-between">
+							<div>
+								<Label className="text-white">AMRAP</Label>
+								<p className="text-xs text-muted-foreground">
+									Marks the set target as as many reps as possible.
+								</p>
+							</div>
+							<Switch
+								checked={exercise.isAmrap}
+								onCheckedChange={(checked) => onUpdate({ isAmrap: checked })}
+							/>
+						</div>
+
+						{exercise.supersetId && (
+							<div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+								<div className="mb-2 flex items-center justify-between">
+									<div>
+										<Label className="text-white">Superset Group</Label>
+										<p className="text-xs text-muted-foreground">
+											This exercise is currently grouped with other movements.
+										</p>
+									</div>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={onUngroup}
+										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									>
+										Ungroup
+									</Button>
+								</div>
+								<Badge
+									variant="outline"
+									className="border-primary/40 text-primary"
+								>
+									Superset order {exercise.supersetOrder ?? 1}
+								</Badge>
+							</div>
+						)}
+					</div>
+
 					<div>
-						<label className="text-sm font-medium text-secondary-foreground mb-3 block">
+						<Label className="text-sm font-medium text-secondary-foreground mb-3 block">
 							Sets
-						</label>
+						</Label>
 						<div className="space-y-2">
 							{Array.from({ length: exercise.sets }).map((_, i) => (
-								<div key={i} className="grid grid-cols-3 gap-2 text-sm">
-									<Input
-										type="number"
-										value={exercise.reps}
-										onChange={(e) =>
-											onUpdate({ reps: parseInt(e.target.value, 10) || 0 })
-										}
-										className="bg-background border-secondary text-white"
-										placeholder="Reps"
-									/>
-									<Input
-										type="number"
-										value={exercise.weight}
-										onChange={(e) =>
-											onUpdate({ weight: parseInt(e.target.value, 10) || 0 })
-										}
-										className="bg-background border-secondary text-white"
-										placeholder="kg"
-									/>
-									<Input
-										type="number"
-										value={exercise.rest}
-										onChange={(e) =>
-											onUpdate({ rest: parseInt(e.target.value, 10) || 0 })
-										}
-										className="bg-background border-secondary text-white"
-										placeholder="Rest"
-									/>
+								<div
+									key={i}
+									className={`grid gap-3 text-sm ${
+										exercise.isBodyweight ? "grid-cols-2" : "grid-cols-3"
+									}`}
+								>
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">
+											{isDurationBased
+												? "Duration (sec)"
+												: exercise.isAmrap
+													? "AMRAP"
+													: "Reps"}
+										</Label>
+										{exercise.isAmrap && !isDurationBased ? (
+											<div className="flex h-10 items-center rounded-md border border-secondary bg-background px-3 text-sm text-accent">
+												AMRAP
+											</div>
+										) : (
+											<Input
+												type="number"
+												value={
+													isDurationBased
+														? (exercise.durationSeconds ?? 0)
+														: exercise.reps
+												}
+												onChange={(e) =>
+													isDurationBased
+														? onUpdate({
+																durationSeconds:
+																	parseInt(e.target.value, 10) || 0,
+															})
+														: onUpdate({
+																reps: parseInt(e.target.value, 10) || 0,
+															})
+												}
+												className="bg-background border-secondary text-white"
+												placeholder={isDurationBased ? "30" : "10"}
+											/>
+										)}
+									</div>
+									{!exercise.isBodyweight && (
+										<div className="space-y-1">
+											<Label className="text-xs text-muted-foreground">
+												Weight ({getUnitLabel(unit)})
+											</Label>
+											<Input
+												type="number"
+												step={unit === "lbs" ? "0.5" : "1"}
+												value={getDisplayWeight(weightValues[i] ?? 0, unit)}
+												onChange={(e) => updatePerSetWeight(i, e.target.value)}
+												className="bg-background border-secondary text-white"
+												placeholder={unit === "lbs" ? "45.0" : "20"}
+											/>
+										</div>
+									)}
+									<div className="space-y-1">
+										<Label className="text-xs text-muted-foreground">
+											Rest (sec)
+										</Label>
+										<Input
+											type="number"
+											value={restValues[i] ?? 0}
+											onChange={(e) => updatePerSetRest(i, e.target.value)}
+											className="bg-background border-secondary text-white"
+											placeholder="90"
+										/>
+									</div>
 								</div>
 							))}
 						</div>
@@ -620,11 +1107,10 @@ function ExerciseDetailPanel({
 						</div>
 					</div>
 
-					{/* Training Mode */}
 					<div>
-						<label className="text-sm font-medium text-secondary-foreground mb-2 block">
+						<Label className="text-sm font-medium text-secondary-foreground mb-2 block">
 							Training Mode
-						</label>
+						</Label>
 						<select
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
@@ -651,6 +1137,98 @@ function ExerciseDetailPanel({
 												: "Traditional resistance training"}
 						</p>
 					</div>
+
+					<Collapsible>
+						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-white">
+							<span>Advanced Settings</span>
+							<ChevronDown className="h-4 w-4" />
+						</CollapsibleTrigger>
+						<CollapsibleContent className="space-y-4 pt-4">
+							<div className="grid gap-4 sm:grid-cols-2">
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Eccentric Load
+									</Label>
+									<select
+										value={exercise.eccentricLoad ?? ""}
+										onChange={(e) =>
+											onUpdate({
+												eccentricLoad: e.target.value || null,
+											})
+										}
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Standard</option>
+										<option value="light">Light</option>
+										<option value="moderate">Moderate</option>
+										<option value="heavy">Heavy</option>
+									</select>
+								</div>
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Echo Level
+									</Label>
+									<select
+										value={exercise.echoLevel ?? ""}
+										onChange={(e) =>
+											onUpdate({ echoLevel: e.target.value || null })
+										}
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Off</option>
+										<option value="low">Low</option>
+										<option value="medium">Medium</option>
+										<option value="high">High</option>
+									</select>
+								</div>
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Rep Count Timing
+									</Label>
+									<Input
+										value={exercise.repCountTiming ?? ""}
+										onChange={(e) =>
+											onUpdate({
+												repCountTiming: e.target.value || null,
+											})
+										}
+										className="bg-background border-secondary text-white"
+										placeholder="2-0-2"
+									/>
+								</div>
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Stop at Position
+									</Label>
+									<Input
+										value={exercise.stopAtPosition ?? ""}
+										onChange={(e) =>
+											onUpdate({
+												stopAtPosition: e.target.value || null,
+											})
+										}
+										className="bg-background border-secondary text-white"
+										placeholder="Lockout"
+									/>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between rounded-lg border border-secondary/70 bg-background/60 px-4 py-3">
+								<div>
+									<Label className="text-white">Stall Detection</Label>
+									<p className="text-xs text-muted-foreground">
+										Flag stalled reps in synced session playback.
+									</p>
+								</div>
+								<Switch
+									checked={exercise.stallDetection}
+									onCheckedChange={(checked) =>
+										onUpdate({ stallDetection: checked })
+									}
+								/>
+							</div>
+						</CollapsibleContent>
+					</Collapsible>
 				</div>
 			</Card>
 		</motion.div>
