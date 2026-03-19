@@ -193,21 +193,24 @@ export async function exportAllUserData(
 			supabase
 				.from("content_reports")
 				.select(
-					"id, user_id, content_type, content_id, reason, description, status, created_at, updated_at",
+					"id, reporter_id, content_type, content_id, category, description, created_at",
 				)
-				.eq("user_id", userId),
+				.eq("reporter_id", userId),
 		);
 
 		await addTable(
 			"creator_follows",
 			"creator-follows",
-			supabase.from("creator_follows").select("*").eq("user_id", userId),
+			supabase
+				.from("creator_follows")
+				.select("*")
+				.eq("follower_id", userId),
 		);
 
 		await addTable(
 			"user_blocks",
 			"user-blocks",
-			supabase.from("user_blocks").select("*").eq("user_id", userId),
+			supabase.from("user_blocks").select("*").eq("blocker_id", userId),
 		);
 
 		await addTable(
