@@ -5,9 +5,9 @@
  * pure functions that translate Paddle webhook payloads into the shape
  * expected by the portal's `subscriptions` table.
  *
- * Column names in the subscriptions table are legacy from Stripe:
- *   stripe_customer_id  -> Paddle customer_id  (ctm_XXXX)
- *   stripe_subscription_id -> Paddle subscription_id (sub_XXXX)
+ * Column names in the subscriptions table:
+ *   paddle_customer_id  -> Paddle customer_id  (ctm_XXXX)
+ *   paddle_subscription_id -> Paddle subscription_id (sub_XXXX)
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -72,12 +72,15 @@ export function mapPriceIdToTier(priceId: string): string {
 		import.meta.env.VITE_PADDLE_INFERNO_PRICE_IDS ?? ""
 	)
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 	const flamePriceIds = (import.meta.env.VITE_PADDLE_FLAME_PRICE_IDS ?? "")
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 	const emberPriceIds = (import.meta.env.VITE_PADDLE_EMBER_PRICE_IDS ?? "")
 		.split(",")
+		.map((s: string) => s.trim())
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
@@ -97,12 +100,15 @@ export function mapPriceIdToTierServer(
 ): string {
 	const infernoPriceIds = (env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 	const flamePriceIds = (env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 	const emberPriceIds = (env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
 		.split(",")
+		.map((s) => s.trim())
 		.filter(Boolean);
 
 	if (infernoPriceIds.includes(priceId)) return "INFERNO";
@@ -141,9 +147,9 @@ export function mapPaddleStatusToSubscriptionStatus(
 /**
  * Builds the upsert payload for the subscriptions table from a Paddle webhook event.
  *
- * Uses legacy column names for backwards compatibility:
- *   stripe_customer_id  -> Paddle customer_id
- *   stripe_subscription_id -> Paddle subscription_id
+ * Maps Paddle IDs to the subscriptions table columns:
+ *   paddle_customer_id  -> Paddle customer_id
+ *   paddle_subscription_id -> Paddle subscription_id
  *
  * Returns null if the event has no user_id in custom_data (can't associate with portal user).
  */
@@ -173,8 +179,8 @@ export function buildSubscriptionUpsert(
 
 	return {
 		user_id: userId,
-		stripe_customer_id: data.customer_id, // Legacy column, stores Paddle customer_id
-		stripe_subscription_id: data.id, // Legacy column, stores Paddle subscription_id
+		paddle_customer_id: data.customer_id,
+		paddle_subscription_id: data.id,
 		tier,
 		status,
 		price_id: priceId || null,

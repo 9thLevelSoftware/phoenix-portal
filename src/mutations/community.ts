@@ -117,8 +117,9 @@ export function useShareContent() {
 			queryClient.invalidateQueries({ queryKey: queryKeys.community.all });
 		},
 
-		onError: (error) => {
-			toast.error(`Failed to share content: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useShareContent] failed:', error);
+			toast.error('Failed to share content. Please try again.');
 		},
 	});
 }
@@ -171,7 +172,8 @@ export function useFollowCreator() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(`Failed to update follow: ${error.message}`);
+			console.error('[useFollowCreator] failed:', error);
+			toast.error('Failed to complete action. Please try again.');
 		},
 	});
 }
@@ -220,7 +222,12 @@ export function useReportContent() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useReportContent] failed:', error);
+			if (error.message === "You have already reported this content") {
+				toast.error('You have already reported this content.');
+			} else {
+				toast.error('Failed to submit report. Please try again.');
+			}
 		},
 	});
 }
@@ -264,7 +271,8 @@ export function useBlockUser() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useBlockUser] failed:', error);
+			toast.error('Failed to block user. Please try again.');
 		},
 	});
 }
@@ -308,7 +316,8 @@ export function useUnblockUser() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useUnblockUser] failed:', error);
+			toast.error('Failed to unblock user. Please try again.');
 		},
 	});
 }
@@ -351,7 +360,8 @@ export function useDeleteSharedContent() {
 		},
 
 		onError: (error: Error) => {
-			toast.error(`Failed to delete: ${error.message}`);
+			console.error('[useDeleteSharedContent] failed:', error);
+			toast.error('Failed to remove content. Please try again.');
 		},
 	});
 }

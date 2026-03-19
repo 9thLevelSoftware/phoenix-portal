@@ -5,10 +5,8 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+const responseHeaders = {
+  "Content-Type": "application/json",
 };
 
 // ─── Signature Verification ─────────────────────────────────────────────────
@@ -34,6 +32,13 @@ async function verifyPaddleSignature(
   const expectedHex = h1Entry.slice(3);
 
   if (!ts || !expectedHex) return false;
+
+  // Reject signatures older than 5 minutes to prevent replay attacks
+  const signatureAge = Math.abs(Date.now() / 1000 - parseInt(ts, 10));
+  if (signatureAge > 300) {
+    console.warn("[BILLING_ALERT] Webhook signature too old:", signatureAge, "seconds");
+    return false;
+  }
 
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -77,18 +82,24 @@ async function verifyPaddleSignature(
 function mapPriceIdToTier(priceId: string): string {
   const infernoPriceIds = (Deno.env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
     .split(",")
+    .map(s => s.trim())
     .filter(Boolean);
   const flamePriceIds = (Deno.env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
     .split(",")
+    .map(s => s.trim())
     .filter(Boolean);
   const emberPriceIds = (Deno.env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
     .split(",")
+    .map(s => s.trim())
     .filter(Boolean);
 
   if (infernoPriceIds.includes(priceId)) return "INFERNO";
   if (flamePriceIds.includes(priceId)) return "FLAME";
   if (emberPriceIds.includes(priceId)) return "EMBER";
 
+  if (priceId) {
+    console.warn("[BILLING_ALERT] Unknown price ID mapped to FREE tier:", priceId, "— check PADDLE_*_PRICE_IDS env vars");
+  }
   return "FREE";
 }
 
@@ -117,16 +128,11 @@ function mapPaddleStatusToSubscriptionStatus(paddleStatus: string): string {
 // ─── Webhook Handler ────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
   // Only accept POST
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 405, headers: responseHeaders }
     );
   }
 
@@ -141,7 +147,7 @@ Deno.serve(async (req) => {
     if (!webhookSecret || !signatureHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: responseHeaders }
       );
     }
 
@@ -149,7 +155,7 @@ Deno.serve(async (req) => {
     if (!isValid) {
       return new Response(
         JSON.stringify({ error: "Invalid signature" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: responseHeaders }
       );
     }
 
@@ -159,7 +165,7 @@ Deno.serve(async (req) => {
     if (!event.event_id || !event.event_type || !event.data) {
       return new Response(
         JSON.stringify({ error: "Invalid event payload" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: responseHeaders }
       );
     }
 
@@ -178,17 +184,17 @@ Deno.serve(async (req) => {
       console.log(`Unhandled event type: ${event.event_type}`);
       return new Response(
         JSON.stringify({ received: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: responseHeaders }
       );
     }
 
     // Extract user_id from custom_data
     const userId = event.data.custom_data?.user_id;
     if (!userId) {
-      console.error("Missing custom_data.user_id in Paddle event:", event.event_id);
+      console.error("[BILLING_ALERT] Missing custom_data.user_id in Paddle event:", event.event_id, "event_type:", event.event_type);
       return new Response(
         JSON.stringify({ error: "Missing user_id in custom_data" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: responseHeaders }
       );
     }
 
@@ -202,7 +208,7 @@ Deno.serve(async (req) => {
     if (existing?.last_event_id === event.event_id) {
       return new Response(
         JSON.stringify({ received: true, duplicate: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: responseHeaders }
       );
     }
 
@@ -242,19 +248,19 @@ Deno.serve(async (req) => {
       console.error(`Error upserting subscription for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: responseHeaders }
       );
     }
 
     return new Response(
       JSON.stringify({ received: true }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: responseHeaders }
     );
   } catch (err) {
     console.error("Paddle webhook handler error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: responseHeaders }
     );
   }
 });

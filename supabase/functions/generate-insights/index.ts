@@ -262,7 +262,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    const periodDays = PERIOD_DAYS[period] ?? 30;
+    // Validate period is one of the known values
+    if (!PERIOD_DAYS[period]) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid period. Accepted values: 7d, 30d, 90d, 1y, all' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const periodDays = PERIOD_DAYS[period];
     const now = new Date();
     const currentStart = new Date(now.getTime() - periodDays * 86400_000);
     const previousStart = new Date(currentStart.getTime() - periodDays * 86400_000);
@@ -522,7 +530,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Unexpected error in generate-insights:', err);
     return new Response(
-      JSON.stringify({ error: err.message ?? 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }

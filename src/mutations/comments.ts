@@ -40,13 +40,14 @@ export function useCreateComment() {
 			});
 		},
 
-		onError: (error) => {
+		onError: (error: Error) => {
+			console.error('[useCreateComment] failed:', error);
 			if (error.message?.includes("Rate limit exceeded")) {
 				toast.error(
-					"Rate limit exceeded: you can post up to 5 comments per hour",
+					"You can post up to 5 comments per hour. Please wait and try again.",
 				);
 			} else {
-				toast.error(`Failed to post comment: ${error.message}`);
+				toast.error('Failed to post comment. Please try again.');
 			}
 		},
 	});
@@ -113,8 +114,13 @@ export function useUpdateComment() {
 			});
 		},
 
-		onError: (error) => {
-			toast.error(error.message);
+		onError: (error: Error) => {
+			console.error('[useUpdateComment] failed:', error);
+			if (error.message === "Edit window has expired") {
+				toast.error('Edit window has expired. Comments can only be edited within 5 minutes.');
+			} else {
+				toast.error('Failed to update comment. Please try again.');
+			}
 		},
 	});
 }
@@ -154,8 +160,9 @@ export function useDeleteComment() {
 			});
 		},
 
-		onError: (error) => {
-			toast.error(`Failed to delete comment: ${error.message}`);
+		onError: (error: Error) => {
+			console.error('[useDeleteComment] failed:', error);
+			toast.error('Failed to delete comment. Please try again.');
 		},
 	});
 }

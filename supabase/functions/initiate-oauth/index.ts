@@ -49,8 +49,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { provider } = await req.json();
-    if (!provider || !['strava', 'fitbit', 'garmin'].includes(provider)) {
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    const provider = body.provider;
+    if (!provider || typeof provider !== 'string' || !['strava', 'fitbit', 'garmin'].includes(provider)) {
       return new Response(JSON.stringify({ error: 'Invalid provider' }), {
         status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
       });
@@ -111,7 +119,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('Initiate OAuth error:', err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
