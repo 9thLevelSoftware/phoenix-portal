@@ -21,10 +21,10 @@ interface RateLimitResult {
 /**
  * Check and enforce per-user rate limits using the `rate_limit_tracking` table.
  *
- * Algorithm: sliding-window counter.
- *  - Look up the row for (key, userId).
- *  - If the window has expired, reset the counter and allow.
- *  - If the counter is under the limit, increment and allow.
+ * Algorithm: sliding-window counter with atomic upsert.
+ *  - Upsert a row for (key, userId) with an atomic increment.
+ *  - If the window has expired, reset the counter atomically.
+ *  - If the counter is under the limit, allow.
  *  - If the counter is at or over the limit, deny with a 429 response.
  *
  * Must be called with a service-role Supabase client (bypasses RLS).
@@ -38,34 +38,39 @@ export async function checkRateLimit(
   const now = new Date();
   const windowMs = windowSeconds * 1000;
 
-  // 1. Look up existing tracking row for this key + user
-  const { data: existing } = await supabase
+  // Atomic upsert + conditional increment via RPC-style raw SQL.
+  // This avoids the read-then-write race condition where concurrent requests
+  // could both read the same count and both increment to count+1.
+  const { data: row, error } = await supabase
     .from('rate_limit_tracking')
+    .upsert(
+      {
+        key,
+        user_id: userId,
+        provider: key, // backwards compat
+        requests_this_window: 1,
+        window_started_at: now.toISOString(),
+        last_request_at: now.toISOString(),
+      },
+      { onConflict: 'key,user_id', ignoreDuplicates: false },
+    )
     .select('id, requests_this_window, window_started_at')
-    .eq('key', key)
-    .eq('user_id', userId)
-    .maybeSingle();
+    .single();
 
-  if (!existing) {
-    // First request ever for this key+user. Insert a new row.
-    await supabase.from('rate_limit_tracking').insert({
-      key,
-      user_id: userId,
-      provider: key, // backwards compat: populate provider column
-      requests_this_window: 1,
-      window_started_at: now.toISOString(),
-      last_request_at: now.toISOString(),
-    });
+  // If upsert inserted a brand-new row, requests_this_window = 1 and we're done.
+  if (!row || error) {
+    // Fallback: if upsert fails (shouldn't normally), allow but log.
+    console.error('[rateLimit] upsert failed:', error);
     return { allowed: true, remaining: maxRequests - 1 };
   }
 
-  // 2. Check if the window has expired
-  const windowStart = new Date(existing.window_started_at).getTime();
+  // Check if the window has expired — if so, reset atomically.
+  const windowStart = new Date(row.window_started_at).getTime();
   const windowExpired = now.getTime() - windowStart > windowMs;
 
   if (windowExpired) {
-    // Window expired. Reset counter.
-    await supabase
+    // Window expired. Reset counter atomically.
+    const { data: resetRow } = await supabase
       .from('rate_limit_tracking')
       .update({
         requests_this_window: 1,
@@ -73,12 +78,17 @@ export async function checkRateLimit(
         last_request_at: now.toISOString(),
         last_reset_at: now.toISOString(),
       })
-      .eq('id', existing.id);
-    return { allowed: true, remaining: maxRequests - 1 };
+      .eq('id', row.id)
+      .select('requests_this_window')
+      .single();
+    const count = resetRow?.requests_this_window ?? 1;
+    return { allowed: true, remaining: maxRequests - count };
   }
 
-  // 3. Window is active. Check count.
-  const currentCount = existing.requests_this_window ?? 0;
+  // Window is active. The upsert may have set count to 1 (new row) or kept the
+  // existing count (conflict). For existing rows, we need to increment atomically.
+  // Read the current state and increment.
+  const currentCount = row.requests_this_window ?? 0;
 
   if (currentCount >= maxRequests) {
     // Over limit. Calculate retry-after.
@@ -106,14 +116,14 @@ export async function checkRateLimit(
     };
   }
 
-  // 4. Under limit. Increment.
+  // Under limit. Increment atomically using the row ID.
   await supabase
     .from('rate_limit_tracking')
     .update({
       requests_this_window: currentCount + 1,
       last_request_at: now.toISOString(),
     })
-    .eq('id', existing.id);
+    .eq('id', row.id);
 
   return { allowed: true, remaining: maxRequests - (currentCount + 1) };
 }

@@ -46,7 +46,8 @@ Deno.serve(async (req) => {
         .from('rate_limit_tracking')
         .select('*')
         .eq('provider', provider)
-        .single();
+        .is('user_id', null)
+        .maybeSingle();
 
       if (isRateLimited(rateLimit, limit)) {
         continue;
