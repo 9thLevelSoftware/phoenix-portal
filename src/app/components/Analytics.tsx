@@ -21,7 +21,6 @@ import {
 	AreaChart,
 	Bar,
 	BarChart,
-	Cell,
 	Pie,
 	PieChart,
 	ResponsiveContainer,
@@ -864,6 +863,7 @@ export function Analytics() {
 	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
 		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
+		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
 	}));
 	const strengthMap = new Map<string, number>();
 	for (const item of strengthRaw ?? []) {
@@ -1297,14 +1297,7 @@ export function Analytics() {
 															dataKey="value"
 															animationDuration={800}
 															animationEasing="ease-out"
-														>
-															{mobileMusclData.map((entry, index) => (
-																<Cell
-																	key={`cell-${index}`}
-																	fill={entry.color}
-																/>
-															))}
-														</Pie>
+														/>
 														<Tooltip content={<RechartsTooltip />} />
 													</PieChart>
 												</ResponsiveContainer>
