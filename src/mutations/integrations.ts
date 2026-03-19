@@ -125,17 +125,17 @@ export function useConnectIntegration() {
 		mutationFn: async ({
 			userId,
 			provider,
-			apiKey,
 		}: {
 			userId: string;
 			provider: IntegrationProvider;
-			apiKey?: string;
 		}) => {
+			// API keys must only flow through provider sync Edge Functions
+			// which store them in oauth_tokens (server-only table).
+			// Never write api_key to user_integrations (client-readable via RLS).
 			const { error } = await supabase.from("user_integrations").upsert(
 				{
 					user_id: userId,
 					provider,
-					api_key: apiKey,
 					status: "connected",
 					connected_at: new Date().toISOString(),
 				},
