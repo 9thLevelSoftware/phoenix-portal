@@ -1,2 +1,5 @@
 [functions.paddle-webhooks]
 verify_jwt = false
+
+[functions.garmin-webhook]
+verify_jwt = false

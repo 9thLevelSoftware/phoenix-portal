@@ -70,11 +70,14 @@ Deno.serve(async (req) => {
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- could be service-role call from process-sync-queue
-      // Service role key calls pass user_id in the body
-      if (!body.user_id) {
+      // Not a valid user JWT -- must be service-role call from process-sync-queue
+      // Verify the caller is actually using the service role key
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+
+      if (!isServiceRole || !body.user_id) {
         return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
+          JSON.stringify({ error: 'Not authenticated' }),
           { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
         );
       }

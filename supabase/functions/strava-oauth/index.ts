@@ -95,11 +95,7 @@ Deno.serve(async (req) => {
     });
 
     if (!tokenResponse.ok) {
-      console.error(
-        'Strava token exchange failed:',
-        tokenResponse.status,
-        await tokenResponse.text()
-      );
+      console.error('Strava token exchange failed: status', tokenResponse.status);
       return Response.redirect(
         `${APP_URL()}/integrations?error=auth_failed`,
         302

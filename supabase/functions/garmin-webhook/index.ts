@@ -122,18 +122,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate webhook shared secret if configured
+    // Validate webhook shared secret — mandatory, reject if not configured
     const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
-    if (WEBHOOK_SECRET) {
-      // Check common webhook authentication headers
-      const providedSecret = req.headers.get('x-webhook-secret')
-        ?? req.headers.get('authorization')?.replace('Bearer ', '');
-      if (providedSecret !== WEBHOOK_SECRET) {
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
-        );
-      }
+    if (!WEBHOOK_SECRET) {
+      console.error('[GARMIN_WEBHOOK] GARMIN_WEBHOOK_SECRET not configured');
+      return new Response(
+        JSON.stringify({ error: 'Webhook not configured' }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Check common webhook authentication headers
+    const providedSecret = req.headers.get('x-webhook-secret')
+      ?? req.headers.get('authorization')?.replace('Bearer ', '');
+    if (!providedSecret) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // Timing-safe comparison to prevent timing side-channel attacks
+    const encoder = new TextEncoder();
+    const a = encoder.encode(providedSecret);
+    const b = encoder.encode(WEBHOOK_SECRET);
+    if (a.length !== b.length) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) {
+      mismatch |= a[i] ^ b[i];
+    }
+    if (mismatch !== 0) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
     }
 
     const payload: GarminWebhookPayload = await req.json();

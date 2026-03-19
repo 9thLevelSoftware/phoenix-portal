@@ -86,8 +86,7 @@ Deno.serve(async (req) => {
     });
 
     if (!tokenResponse.ok) {
-      const errorBody = await tokenResponse.text();
-      console.error('Fitbit token exchange failed:', tokenResponse.status, errorBody);
+      console.error('Fitbit token exchange failed: status', tokenResponse.status);
       return Response.redirect(`${APP_URL}/integrations?error=token_exchange_failed`);
     }
 

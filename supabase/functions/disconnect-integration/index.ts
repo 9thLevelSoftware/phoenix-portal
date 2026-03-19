@@ -1,11 +1,19 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+
+// Service-role client for DB operations (bypasses RLS)
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+);
 
 const ALLOWED_PROVIDERS = new Set([
   'strava',
   'fitbit',
   'garmin',
   'hevy',
+  'liftosaur',
   'apple_health',
   'google_health',
 ]);
@@ -42,7 +50,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { provider } = await req.json();
+    // Rate limit: 5 requests per minute per user
+    const rateCheck = await checkRateLimit(supabaseAdmin, {
+      key: 'disconnect-integration',
+      userId: user.id,
+      maxRequests: 5,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    const provider = typeof body.provider === 'string' ? body.provider : '';
     if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
       return new Response(
         JSON.stringify({ error: 'Unsupported integration provider' }),
@@ -50,20 +76,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
     const timestamp = new Date().toISOString();
 
     const [{ error: tokenError }, { error: integrationError }, { error: queueError }] =
       await Promise.all([
-        admin
+        supabaseAdmin
           .from('oauth_tokens')
           .delete()
           .eq('user_id', user.id)
           .eq('provider', provider),
-        admin
+        supabaseAdmin
           .from('user_integrations')
           .update({
             status: 'disconnected',
@@ -73,7 +95,7 @@ Deno.serve(async (req) => {
           })
           .eq('user_id', user.id)
           .eq('provider', provider),
-        admin
+        supabaseAdmin
           .from('sync_queue')
           .update({
             status: 'failed',
@@ -96,7 +118,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('disconnect-integration error:', err);
     return new Response(
-      JSON.stringify({ error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }

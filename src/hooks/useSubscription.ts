@@ -13,8 +13,17 @@ export type SubscriptionStatus =
 	| "incomplete"
 	| "none";
 
+/** Statuses that grant access to the user's paid tier. */
+const ACTIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+	"active",
+	"trialing",
+]);
+
 interface SubscriptionData {
+	/** Access-control tier: falls back to FREE when subscription is not active/trialing. */
 	tier: SubscriptionTier;
+	/** Raw tier stored in the database (useful for display, e.g. "Your FLAME plan cancels on…"). */
+	rawTier: SubscriptionTier;
 	status: SubscriptionStatus;
 	currentPeriodEnd: string | null;
 	cancelAtPeriodEnd: boolean;
@@ -91,11 +100,19 @@ export function useSubscription(): SubscriptionData {
 		};
 	}, [user, queryClient]);
 
-	const tier = data?.tier ?? "FREE";
+	const rawTier: SubscriptionTier = data?.tier ?? "FREE";
+	const status: SubscriptionStatus = data?.status ?? "none";
+
+	// Effective tier mirrors server-side requireSubscription() logic:
+	// only active/trialing subscriptions grant paid access.
+	const tier: SubscriptionTier = ACTIVE_STATUSES.has(status)
+		? rawTier
+		: "FREE";
 
 	return {
 		tier,
-		status: data?.status ?? "none",
+		rawTier,
+		status,
 		currentPeriodEnd: data?.currentPeriodEnd ?? null,
 		cancelAtPeriodEnd: data?.cancelAtPeriodEnd ?? false,
 		isLoading,

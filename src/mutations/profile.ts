@@ -41,7 +41,8 @@ export function useUpdateProfile(userId: string | undefined) {
 			}
 		},
 		onError: (error: Error) => {
-			toast.error(error.message);
+			console.error('[useUpdateProfile] failed:', error);
+			toast.error('Failed to update profile. Please try again.');
 		},
 	});
 }
