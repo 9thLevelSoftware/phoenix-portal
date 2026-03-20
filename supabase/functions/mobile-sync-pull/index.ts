@@ -315,6 +315,8 @@ Deno.serve(async (req) => {
           stallDetection: re.stall_detection,
           eccentricLoad: re.eccentric_load,
           echoLevel: re.echo_level,
+          perSetEchoLevels: re.per_set_echo_levels ?? null,
+          warmupSets: re.warmup_sets ?? null,
         })),
       };
     });
