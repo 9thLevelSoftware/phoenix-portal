@@ -43,6 +43,27 @@ export const workoutSessionSchema = z.object({
 	routine_name: z.string().nullable(),
 	workout_mode: workoutModeSchema,
 	notes: z.string().nullable().optional(),
+	// Session enrichment (GAPs 3-6)
+	avg_velocity_mps: z.number().nullable().optional(),
+	avg_asymmetry_pct: z.number().nullable().optional(),
+	velocity_loss_pct: z.number().nullable().optional(),
+	dominant_side: z.string().nullable().optional(),
+	strength_profile: z.string().nullable().optional(),
+	form_score: z.number().nullable().optional(),
+	deload_warnings: z.number().nullable().optional(),
+	rom_violations: z.number().nullable().optional(),
+	spotter_activations: z.number().nullable().optional(),
+	peak_force_n: z.number().nullable().optional(),
+	estimated_calories: z.number().nullable().optional(),
+	heaviest_lift_kg: z
+		.number()
+		.nullable()
+		.optional()
+		.transform((v) => (v != null ? v * WEIGHT_MULTIPLIER : null)),
+	eccentric_load: z.number().nullable().optional(),
+	echo_level: z.number().nullable().optional(),
+	warmup_reps: z.number().nullable().optional(),
+	working_reps: z.number().nullable().optional(),
 });
 
 export const workoutListSchema = z.array(workoutSessionSchema);
@@ -79,6 +100,13 @@ export type WorkoutSet = z.infer<typeof setSchema>;
 
 // --- Personal Record ---
 
+// Workout phase display mapping
+const workoutPhaseMap: Record<string, string> = {
+	COMBINED: "Combined",
+	CONCENTRIC: "Concentric",
+	ECCENTRIC: "Eccentric",
+};
+
 export const personalRecordSchema = z.object({
 	id: z.string().uuid(),
 	user_id: z.string().uuid(),
@@ -92,6 +120,11 @@ export const personalRecordSchema = z.object({
 		.number()
 		.nullable()
 		.transform((v) => (v !== null ? v * WEIGHT_MULTIPLIER : null)),
+	workout_phase: z
+		.string()
+		.nullable()
+		.optional()
+		.transform((p) => (p ? (workoutPhaseMap[p] ?? p) : "Combined")),
 });
 
 export const personalRecordListSchema = z.array(personalRecordSchema);

@@ -65,7 +65,9 @@ export function dashboardStatsOptions(userId: string) {
 
 			const { data, error } = await supabase
 				.from("workout_sessions")
-				.select("started_at, total_volume, duration_seconds, pr_count")
+				.select(
+					"started_at, total_volume, duration_seconds, pr_count, estimated_calories, form_score",
+				)
 				.eq("user_id", userId)
 				.gte("started_at", weekAgo.toISOString())
 				.order("started_at", { ascending: true });

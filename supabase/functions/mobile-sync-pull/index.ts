@@ -196,6 +196,23 @@ Deno.serve(async (req) => {
         routineName: ws.routine_name,
         workoutMode: ws.workout_mode,
         routineSessionId: ws.routine_session_id,
+        // Session enrichment (GAPs 3-6)
+        avgVelocityMps: ws.avg_velocity_mps,
+        avgAsymmetryPct: ws.avg_asymmetry_pct,
+        velocityLossPct: ws.velocity_loss_pct,
+        dominantSide: ws.dominant_side,
+        strengthProfile: ws.strength_profile,
+        formScore: ws.form_score,
+        deloadWarnings: ws.deload_warnings,
+        romViolations: ws.rom_violations,
+        spotterActivations: ws.spotter_activations,
+        peakForceN: ws.peak_force_n,
+        estimatedCalories: ws.estimated_calories,
+        heaviestLiftKg: ws.heaviest_lift_kg,
+        eccentricLoad: ws.eccentric_load,
+        echoLevel: ws.echo_level,
+        warmupReps: ws.warmup_reps,
+        workingReps: ws.working_reps,
         exercises: wsExercises.map((ex) => ({
           id: ex.id,
           sessionId: ex.session_id,
@@ -235,12 +252,13 @@ Deno.serve(async (req) => {
     });
 
     // =========================================================================
-    // 7. Fetch routines — always ALL (table lacks updated_at)
+    // 7. Fetch routines — delta sync via updated_at (GAP 11 fix)
     // =========================================================================
     const { data: routinesRaw } = await supabase
       .from('routines')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .gt('updated_at', lastSyncISO);
 
     const routineIds = (routinesRaw ?? []).map((r: Record<string, unknown>) => r.id as string);
 
@@ -302,12 +320,13 @@ Deno.serve(async (req) => {
     });
 
     // =========================================================================
-    // 7b. Fetch training cycles — always ALL (table lacks updated_at)
+    // 7b. Fetch training cycles — delta sync via updated_at (GAP 11 fix)
     // =========================================================================
     const { data: cyclesRaw } = await supabase
       .from('training_cycles')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .gt('updated_at', lastSyncISO);
 
     const cycleIds = (cyclesRaw ?? []).map((c: Record<string, unknown>) => c.id as string);
 

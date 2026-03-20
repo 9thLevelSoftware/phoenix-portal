@@ -41,6 +41,22 @@ const milestones = [
 
 const TIMELINE_INITIAL_LIMIT = 3;
 
+const phaseFilters = ["all", "Combined", "Concentric", "Eccentric"] as const;
+
+/** Map raw record_type DB values to friendly display names */
+function formatRecordTypeLabel(recordType: string): string {
+	const labels: Record<string, string> = {
+		MAX_WEIGHT: "Weight PR",
+		"1RM": "1RM PR",
+		MAX_VOLUME: "Volume PR",
+		MAX_REPS: "Reps PR",
+		MAX_DURATION: "Duration PR",
+		MAX_FORCE: "Force PR",
+		MAX_VELOCITY: "Velocity PR",
+	};
+	return labels[recordType] ?? recordType;
+}
+
 function formatRecordMeasurement(
 	value: number,
 	originalUnit: string,
@@ -70,6 +86,9 @@ export function PersonalRecords() {
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const [activeFilter, setActiveFilter] = useState("All");
+	const [phaseFilter, setPhaseFilter] = useState<
+		"all" | "Combined" | "Concentric" | "Eccentric"
+	>("all");
 	const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
 	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
 	const [showAllTimeline, setShowAllTimeline] = useState(false);
@@ -85,9 +104,15 @@ export function PersonalRecords() {
 	const monthlyPRs =
 		records?.filter((r) => r.achieved_at >= startOfMonth).length ?? 0;
 
+	// Apply phase filter before grouping
+	const phaseFilteredRecords =
+		phaseFilter === "all"
+			? (records ?? [])
+			: (records ?? []).filter((r) => r.workout_phase === phaseFilter);
+
 	// Group records by exercise for the list view
 	const exerciseMap = new Map<string, PersonalRecord[]>();
-	for (const record of records ?? []) {
+	for (const record of phaseFilteredRecords) {
 		const existing = exerciseMap.get(record.exercise_name) ?? [];
 		existing.push(record);
 		exerciseMap.set(record.exercise_name, existing);
@@ -372,12 +397,23 @@ export function PersonalRecords() {
 													</div>
 												)}
 												<div className="flex items-center justify-between">
-													<Badge
-														variant="outline"
-														className="border-primary/30 text-primary"
-													>
-														{pr.record_type}
-													</Badge>
+													<div className="flex items-center gap-1.5">
+														<Badge
+															variant="outline"
+															className="border-primary/30 text-primary"
+														>
+															{formatRecordTypeLabel(pr.record_type)}
+														</Badge>
+														{pr.workout_phase &&
+															pr.workout_phase !== "Combined" && (
+																<Badge
+																	variant="outline"
+																	className="border-accent/40 text-accent text-xs"
+																>
+																	{pr.workout_phase}
+																</Badge>
+															)}
+													</div>
 													<span className="text-xs text-muted-foreground">
 														{pr.achieved_at.toLocaleDateString("en-US", {
 															month: "short",
@@ -445,6 +481,25 @@ export function PersonalRecords() {
 								Timeline
 							</Button>
 						</div>
+					</div>
+
+					{/* Phase Filter */}
+					<div className="flex gap-2 overflow-x-auto pb-2">
+						{phaseFilters.map((phase) => (
+							<Button
+								key={phase}
+								onClick={() => setPhaseFilter(phase)}
+								size="sm"
+								variant="outline"
+								className={
+									phaseFilter === phase
+										? "border-accent text-accent flex-shrink-0"
+										: "border-secondary text-muted-foreground hover:border-accent/50 flex-shrink-0"
+								}
+							>
+								{phase === "all" ? "All Phases" : phase}
+							</Button>
+						))}
 					</div>
 				</motion.div>
 
@@ -548,8 +603,8 @@ export function PersonalRecords() {
 																unit,
 															)}
 														</div>
-														<div className="text-sm text-muted-foreground">
-															{exercise.recordType}
+														<div className="text-sm text-primary">
+															{formatRecordTypeLabel(exercise.recordType)}
 														</div>
 													</div>
 													<div className="flex items-center gap-2">
@@ -670,6 +725,9 @@ export function PersonalRecords() {
 																	<th className="text-left py-2 text-muted-foreground">
 																		Type
 																	</th>
+																	<th className="text-left py-2 text-muted-foreground">
+																		Phase
+																	</th>
 																</tr>
 															</thead>
 															<tbody>
@@ -698,10 +756,25 @@ export function PersonalRecords() {
 																		<td className="py-3">
 																			<Badge
 																				variant="outline"
-																				className="border-secondary text-muted-foreground"
+																				className="border-primary/30 text-primary"
 																			>
-																				{entry.record_type}
+																				{formatRecordTypeLabel(entry.record_type)}
 																			</Badge>
+																		</td>
+																		<td className="py-3">
+																			{entry.workout_phase &&
+																			entry.workout_phase !== "Combined" ? (
+																				<Badge
+																					variant="outline"
+																					className="border-accent/40 text-accent text-xs"
+																				>
+																					{entry.workout_phase}
+																				</Badge>
+																			) : (
+																				<span className="text-muted-foreground text-xs">
+																					Combined
+																				</span>
+																			)}
 																		</td>
 																	</tr>
 																))}
@@ -783,6 +856,15 @@ export function PersonalRecords() {
 															>
 																{pr.muscle_group}
 															</Badge>
+															{pr.workout_phase &&
+																pr.workout_phase !== "Combined" && (
+																	<Badge
+																		variant="outline"
+																		className="border-accent/40 text-accent text-xs"
+																	>
+																		{pr.workout_phase}
+																	</Badge>
+																)}
 														</div>
 														<p className="text-xl font-bold text-primary">
 															{formatRecordMeasurement(pr.value, pr.unit, unit)}
@@ -793,7 +875,7 @@ export function PersonalRecords() {
 															variant="outline"
 															className="border-primary/30 text-primary mb-2"
 														>
-															{pr.record_type}
+															{formatRecordTypeLabel(pr.record_type)}
 														</Badge>
 														<div className="text-xs text-muted-foreground">
 															{pr.achieved_at.toLocaleDateString("en-US", {
