@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+	Activity,
 	AlertCircle,
 	ArrowLeft,
 	Award,
@@ -10,8 +11,11 @@ import {
 	Dumbbell,
 	Flame,
 	Printer,
+	Settings,
 	Share2,
+	Shield,
 	TrendingUp,
+	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
@@ -316,9 +320,243 @@ export function SessionDetail() {
 									{prCount}
 								</div>
 							</div>
+							{session.estimated_calories != null && (
+								<div className="text-center">
+									<div className="flex items-center justify-center gap-2 mb-2">
+										<Flame className="w-5 h-5 text-primary" />
+										<div className="text-sm text-muted-foreground">
+											Calories
+										</div>
+									</div>
+									<div className="text-2xl font-semibold text-white">
+										{Math.round(session.estimated_calories)}
+									</div>
+								</div>
+							)}
+							{session.heaviest_lift_kg != null && (
+								<div className="text-center">
+									<div className="flex items-center justify-center gap-2 mb-2">
+										<Zap className="w-5 h-5 text-accent" />
+										<div className="text-sm text-muted-foreground">
+											Heaviest Lift
+										</div>
+									</div>
+									<div className="text-2xl font-semibold text-white">
+										{formatWeight(session.heaviest_lift_kg, unit)}
+									</div>
+								</div>
+							)}
 						</div>
 					</Card>
 				</motion.div>
+
+				{/* Biomechanics Summary */}
+				{session.avg_velocity_mps != null && (
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.15 }}
+					>
+						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+							<div className="flex items-center gap-2 mb-4">
+								<Activity className="w-5 h-5 text-primary" />
+								<h3 className="text-lg font-semibold text-white">
+									Biomechanics Summary
+								</h3>
+							</div>
+							<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+								<div>
+									<div className="text-sm text-muted-foreground mb-1">
+										Avg Velocity
+									</div>
+									<div className="text-lg font-semibold text-white">
+										{session.avg_velocity_mps.toFixed(2)}{" "}
+										<span className="text-sm text-muted-foreground">m/s</span>
+									</div>
+								</div>
+								{session.avg_asymmetry_pct != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Asymmetry
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.avg_asymmetry_pct.toFixed(1)}%
+										</div>
+									</div>
+								)}
+								{session.velocity_loss_pct != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Velocity Loss
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.velocity_loss_pct.toFixed(1)}%
+										</div>
+									</div>
+								)}
+								{session.dominant_side && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Dominant Side
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.dominant_side}
+										</div>
+									</div>
+								)}
+								{session.strength_profile && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Strength Profile
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.strength_profile}
+										</div>
+									</div>
+								)}
+							</div>
+						</Card>
+					</motion.div>
+				)}
+
+				{/* Safety & Form */}
+				{(session.form_score != null ||
+					(session.deload_warnings ?? 0) > 0 ||
+					(session.rom_violations ?? 0) > 0 ||
+					(session.spotter_activations ?? 0) > 0) && (
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.15 }}
+					>
+						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+							<div className="flex items-center gap-2 mb-4">
+								<Shield className="w-5 h-5 text-success" />
+								<h3 className="text-lg font-semibold text-white">
+									Safety & Form
+								</h3>
+							</div>
+							<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+								{session.form_score != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-2">
+											Form Score
+										</div>
+										<div className="flex items-center gap-3">
+											<div className="flex-1 h-2.5 rounded-full bg-secondary overflow-hidden">
+												<div
+													className={`h-full rounded-full transition-all ${
+														session.form_score >= 80
+															? "bg-success"
+															: session.form_score >= 50
+																? "bg-warning"
+																: "bg-chart-2"
+													}`}
+													style={{
+														width: `${Math.min(session.form_score, 100)}%`,
+													}}
+												/>
+											</div>
+											<span className="text-lg font-semibold text-white">
+												{session.form_score}
+											</span>
+										</div>
+									</div>
+								)}
+								{(session.deload_warnings ?? 0) > 0 && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Deload Warnings
+										</div>
+										<div className="text-lg font-semibold text-warning">
+											{session.deload_warnings}
+										</div>
+									</div>
+								)}
+								{(session.rom_violations ?? 0) > 0 && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											ROM Violations
+										</div>
+										<div className="text-lg font-semibold text-chart-2">
+											{session.rom_violations}
+										</div>
+									</div>
+								)}
+								{(session.spotter_activations ?? 0) > 0 && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Spotter Activations
+										</div>
+										<div className="text-lg font-semibold text-accent">
+											{session.spotter_activations}
+										</div>
+									</div>
+								)}
+							</div>
+						</Card>
+					</motion.div>
+				)}
+
+				{/* Session Config */}
+				{(session.eccentric_load != null || session.echo_level != null) && (
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.15 }}
+					>
+						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+							<div className="flex items-center gap-2 mb-4">
+								<Settings className="w-5 h-5 text-accent" />
+								<h3 className="text-lg font-semibold text-white">
+									Session Config
+								</h3>
+							</div>
+							<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+								{session.eccentric_load != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Eccentric Load
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.eccentric_load}
+										</div>
+									</div>
+								)}
+								{session.echo_level != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Echo Level
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.echo_level}
+										</div>
+									</div>
+								)}
+								{session.warmup_reps != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Warmup Reps
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.warmup_reps}
+										</div>
+									</div>
+								)}
+								{session.working_reps != null && (
+									<div>
+										<div className="text-sm text-muted-foreground mb-1">
+											Working Reps
+										</div>
+										<div className="text-lg font-semibold text-white">
+											{session.working_reps}
+										</div>
+									</div>
+								)}
+							</div>
+						</Card>
+					</motion.div>
+				)}
 
 				{/* Exercise Breakdown */}
 				<motion.div
@@ -519,8 +757,8 @@ export function SessionDetail() {
 							</div>
 						) : (
 							<div className="rounded-lg border border-dashed border-secondary bg-background p-3 text-sm text-muted-foreground">
-								Completed workout sessions are treated as immutable once they sync
-								from the mobile app, so notes are read-only in the portal.
+								Completed workout sessions are treated as immutable once they
+								sync from the mobile app, so notes are read-only in the portal.
 							</div>
 						)}
 					</Card>

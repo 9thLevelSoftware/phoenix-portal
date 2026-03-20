@@ -364,6 +364,12 @@ export function Dashboard() {
 	);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
+	// Weekly estimated calories from dashboard stats
+	const weeklyCalories = (weeklyStats ?? []).reduce(
+		(sum, s) => sum + (s.estimated_calories ?? 0),
+		0,
+	);
+
 	// Mobile simple bar chart heights
 	const dailyVolumes = weeklyVolumeData.map((d) => d.volume);
 	const maxVolume = Math.max(...dailyVolumes, 1);
@@ -711,6 +717,15 @@ export function Dashboard() {
 									label="Volume"
 									gradient="from-success to-[#059669]"
 								/>
+								{weeklyCalories > 0 && (
+									<QuickStatCard
+										icon={<Flame className="w-5 h-5" />}
+										value={`${Math.round(weeklyCalories)}`}
+										numericValue={Math.round(weeklyCalories)}
+										label="Calories"
+										gradient="from-chart-2 to-primary"
+									/>
+								)}
 								<QuickStatCard
 									icon={<Target className="w-5 h-5" />}
 									value="--"
@@ -1189,6 +1204,20 @@ export function Dashboard() {
 														: "--"}
 												</span>
 											</div>
+											{weeklyCalories > 0 && (
+												<div className="flex items-center justify-between">
+													<div className="flex items-center gap-2 text-muted-foreground">
+														<Flame className="w-4 h-4" />
+														<span>Weekly Calories</span>
+													</div>
+													<span className="text-primary text-lg">
+														<NumberFlow
+															value={Math.round(weeklyCalories)}
+															className="tabular-nums"
+														/>
+													</span>
+												</div>
+											)}
 										</div>
 									)}
 								</Card>

@@ -7,16 +7,70 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 // TypeScript interfaces matching mobile DTO wire format (camelCase)
 // =============================================================================
 
+interface RepTelemetryDto {
+  id: string;
+  setId: string;
+  timestampMs: number;
+  forceN: number | null;
+  velocityMps: number | null;
+  positionMm: number | null;
+  cable: string | null;
+}
+
+interface PhaseStatisticsDto {
+  id: string;
+  sessionId: string;
+  concentricKgAvg: number;
+  concentricKgMax: number;
+  concentricVelAvg: number;
+  concentricVelMax: number;
+  concentricWattAvg: number;
+  concentricWattMax: number;
+  eccentricKgAvg: number;
+  eccentricKgMax: number;
+  eccentricVelAvg: number;
+  eccentricVelMax: number;
+  eccentricWattAvg: number;
+  eccentricWattMax: number;
+}
+
+interface ExerciseSignatureDto {
+  id: string;
+  exerciseId: string;
+  romMm: number;
+  durationMs: number;
+  symmetryRatio: number;
+  velocityProfile: string;
+  cableConfig: string;
+  sampleCount: number;
+  confidence: number;
+  updatedAt: string | null;
+}
+
+interface AssessmentResultDto {
+  id: string;
+  exerciseId: string;
+  estimatedOneRepMaxKg: number;
+  loadVelocityData: string;
+  assessmentSessionId: string | null;
+  userOverrideKg: number | null;
+  createdAt: string;
+}
+
 interface PushPayload {
   deviceId: string;
   platform: string;
   lastSync: string | null;
   sessions: SessionDto[];
+  telemetry: RepTelemetryDto[];
   routines: RoutineDto[];
   cycles: CycleDto[];
   rpgAttributes: RpgAttributesDto | null;
   badges: BadgeDto[];
   gamificationStats: GamificationStatsDto | null;
+  phaseStatistics: PhaseStatisticsDto[];
+  exerciseSignatures: ExerciseSignatureDto[];
+  assessments: AssessmentResultDto[];
 }
 
 interface SessionDto {
@@ -34,6 +88,23 @@ interface SessionDto {
   routineSessionId: string | null;
   notes: string | null;
   exercises: ExerciseDto[];
+  // Session enrichment (GAPs 3-6)
+  avgVelocityMps: number | null;
+  avgAsymmetryPct: number | null;
+  velocityLossPct: number | null;
+  dominantSide: string | null;
+  strengthProfile: string | null;
+  formScore: number | null;
+  deloadWarnings: number | null;
+  romViolations: number | null;
+  spotterActivations: number | null;
+  peakForceN: number | null;
+  estimatedCalories: number | null;
+  heaviestLiftKg: number | null;
+  eccentricLoad: number | null;
+  echoLevel: number | null;
+  warmupReps: number | null;
+  workingReps: number | null;
 }
 
 interface ExerciseDto {
@@ -54,6 +125,9 @@ interface SetDto {
   weightKg: number;
   rpe: number | null;
   isPr: boolean;
+  prType: string | null; // "MAX_WEIGHT" or "MAX_VOLUME"
+  prPhase: string | null; // "COMBINED", "CONCENTRIC", "ECCENTRIC"
+  prVolume: number | null;
   notes: string | null;
   workoutMode: string | null;
   repSummaries: RepSummaryDto[];
@@ -296,11 +370,15 @@ Deno.serve(async (req) => {
     let exercisesInserted = 0;
     let setsInserted = 0;
     let repSummariesInserted = 0;
+    let telemetryInserted = 0;
     let routinesUpserted = 0;
     let badgesUpserted = 0;
     let exerciseProgressInserted = 0;
     let personalRecordsInserted = 0;
     let cyclesUpserted = 0;
+    let phaseStatisticsInserted = 0;
+    let exerciseSignaturesUpserted = 0;
+    let assessmentsInserted = 0;
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -321,6 +399,23 @@ Deno.serve(async (req) => {
         workout_mode: s.workoutMode,
         routine_session_id: s.routineSessionId,
         notes: s.notes,
+        // Session enrichment (GAPs 3-6) — null-safe for older mobile clients
+        avg_velocity_mps: s.avgVelocityMps ?? null,
+        avg_asymmetry_pct: s.avgAsymmetryPct ?? null,
+        velocity_loss_pct: s.velocityLossPct ?? null,
+        dominant_side: s.dominantSide ?? null,
+        strength_profile: s.strengthProfile ?? null,
+        form_score: s.formScore ?? null,
+        deload_warnings: s.deloadWarnings ?? null,
+        rom_violations: s.romViolations ?? null,
+        spotter_activations: s.spotterActivations ?? null,
+        peak_force_n: s.peakForceN ?? null,
+        estimated_calories: s.estimatedCalories ?? null,
+        heaviest_lift_kg: s.heaviestLiftKg ?? null,
+        eccentric_load: s.eccentricLoad ?? null,
+        echo_level: s.echoLevel ?? null,
+        warmup_reps: s.warmupReps ?? null,
+        working_reps: s.workingReps ?? null,
       }));
 
       const { error: sessErr } = await supabase
@@ -409,6 +504,30 @@ Deno.serve(async (req) => {
         repSummariesInserted = repRows.length;
       }
 
+      // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
+      if (payload.telemetry && payload.telemetry.length > 0) {
+        // Insert in batches of 500 to avoid payload limits
+        const TELEMETRY_BATCH = 500;
+        for (let i = 0; i < payload.telemetry.length; i += TELEMETRY_BATCH) {
+          const batch = payload.telemetry.slice(i, i + TELEMETRY_BATCH).map((t) => ({
+            id: t.id,
+            set_id: t.setId,
+            user_id: userId,
+            timestamp_ms: t.timestampMs,
+            force_n: t.forceN,
+            velocity_mps: t.velocityMps,
+            position_mm: t.positionMm,
+            cable: t.cable,
+          }));
+
+          const { error: telErr } = await supabase
+            .from('rep_telemetry')
+            .upsert(batch, { onConflict: 'id' });
+          if (telErr) throw new Error(`rep_telemetry upsert failed: ${telErr.message}`);
+          telemetryInserted += batch.length;
+        }
+      }
+
       // =====================================================================
       // 5. Compute exercise_progress from sets (Brzycki 1RM for reps 1-12)
       // =====================================================================
@@ -487,14 +606,20 @@ Deno.serve(async (req) => {
         for (const exercise of session.exercises) {
           for (const set of exercise.sets) {
             if (set.isPr) {
+              // GAP 2 fix: Use actual PR type/phase from mobile instead of hardcoded '1RM'
+              const recordType = set.prType ?? '1RM';
+              const value = recordType === 'MAX_VOLUME'
+                ? (set.prVolume ?? set.weightKg * set.actualReps)
+                : set.weightKg;
               prRows.push({
                 user_id: userId,
                 exercise_name: exercise.name,
                 muscle_group: exercise.muscleGroup ?? 'General',
-                record_type: '1RM',
-                value: set.weightKg,
-                unit: 'kg',
+                record_type: recordType,
+                value,
+                unit: recordType === 'MAX_VOLUME' ? 'kg×reps' : 'kg',
                 achieved_at: session.startedAt,
+                workout_phase: set.prPhase ?? 'COMBINED',
               });
             }
           }
@@ -505,7 +630,7 @@ Deno.serve(async (req) => {
         const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
         const { data: existingPrs, error: existingPrErr } = await supabase
           .from('personal_records')
-          .select('exercise_name, achieved_at, value, record_type')
+          .select('exercise_name, achieved_at, value, record_type, workout_phase')
           .eq('user_id', userId)
           .in('achieved_at', achievedAtValues);
         if (existingPrErr) {
@@ -513,10 +638,10 @@ Deno.serve(async (req) => {
         }
 
         const existingPrKeys = new Set(
-          (existingPrs ?? []).map((row) => `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}`)
+          (existingPrs ?? []).map((row) => `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase ?? 'COMBINED'}`)
         );
         const dedupedPrRows = prRows.filter((row) => {
-          const key = `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}`;
+          const key = `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase}`;
           if (existingPrKeys.has(key)) return false;
           existingPrKeys.add(key);
           return true;
@@ -722,7 +847,96 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 11. Return sync result
+    // 11. Phase statistics (GAP 7)
+    // =========================================================================
+    if (payload.phaseStatistics && payload.phaseStatistics.length > 0) {
+      const phaseRows = payload.phaseStatistics.map((ps) => ({
+        session_id: ps.sessionId,
+        user_id: userId,
+        concentric_kg_avg: ps.concentricKgAvg,
+        concentric_kg_max: ps.concentricKgMax,
+        concentric_vel_avg: ps.concentricVelAvg,
+        concentric_vel_max: ps.concentricVelMax,
+        concentric_watt_avg: ps.concentricWattAvg,
+        concentric_watt_max: ps.concentricWattMax,
+        eccentric_kg_avg: ps.eccentricKgAvg,
+        eccentric_kg_max: ps.eccentricKgMax,
+        eccentric_vel_avg: ps.eccentricVelAvg,
+        eccentric_vel_max: ps.eccentricVelMax,
+        eccentric_watt_avg: ps.eccentricWattAvg,
+        eccentric_watt_max: ps.eccentricWattMax,
+      }));
+
+      const { error: psErr } = await supabase
+        .from('session_phase_statistics')
+        .upsert(phaseRows, { onConflict: 'session_id' });
+      if (psErr) console.warn('phase_statistics upsert warning:', psErr.message);
+      else phaseStatisticsInserted = phaseRows.length;
+    }
+
+    // =========================================================================
+    // 12. Exercise signatures (GAP 8)
+    // =========================================================================
+    if (payload.exerciseSignatures && payload.exerciseSignatures.length > 0) {
+      const sigRows = payload.exerciseSignatures.map((es) => ({
+        user_id: userId,
+        exercise_id: es.exerciseId,
+        rom_mm: es.romMm,
+        duration_ms: es.durationMs,
+        symmetry_ratio: es.symmetryRatio,
+        velocity_profile: es.velocityProfile,
+        cable_config: es.cableConfig,
+        sample_count: es.sampleCount,
+        confidence: es.confidence,
+        updated_at: es.updatedAt ?? new Date().toISOString(),
+      }));
+
+      const { error: sigErr } = await supabase
+        .from('exercise_signatures')
+        .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
+      if (sigErr) console.warn('exercise_signatures upsert warning:', sigErr.message);
+      else exerciseSignaturesUpserted = sigRows.length;
+    }
+
+    // =========================================================================
+    // 13. VBT assessment results (GAP 9)
+    // =========================================================================
+    if (payload.assessments && payload.assessments.length > 0) {
+      const assessRows = payload.assessments.map((a) => ({
+        user_id: userId,
+        exercise_id: a.exerciseId,
+        estimated_1rm_kg: a.estimatedOneRepMaxKg,
+        load_velocity_data: safeJsonParse(a.loadVelocityData),
+        assessment_session_id: a.assessmentSessionId,
+        user_override_kg: a.userOverrideKg,
+        created_at: a.createdAt,
+      }));
+
+      // Dedup by exercise_id + created_at
+      const { data: existingAssess } = await supabase
+        .from('vbt_assessments')
+        .select('exercise_id, created_at')
+        .eq('user_id', userId);
+
+      const existingKeys = new Set(
+        (existingAssess ?? []).map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
+      );
+      const newAssess = assessRows.filter((r) => {
+        const key = `${r.exercise_id}:${r.created_at}`;
+        return !existingKeys.has(key);
+      });
+
+      if (newAssess.length > 0) {
+        const { error: aErr } = await supabase
+          .from('vbt_assessments')
+          .insert(newAssess);
+        if (aErr) console.warn('vbt_assessments insert warning:', aErr.message);
+        else assessmentsInserted = newAssess.length;
+      }
+    }
+
+    // =========================================================================
+    // 14. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
     try {
@@ -752,11 +966,15 @@ Deno.serve(async (req) => {
         exercisesInserted,
         setsInserted,
         repSummariesInserted,
+        telemetryInserted,
         routinesUpserted,
         cyclesUpserted,
         badgesUpserted,
         exerciseProgressInserted,
         personalRecordsInserted,
+        phaseStatisticsInserted,
+        exerciseSignaturesUpserted,
+        assessmentsInserted,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
