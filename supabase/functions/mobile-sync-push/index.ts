@@ -60,7 +60,7 @@ interface AssessmentResultDto {
 interface PushPayload {
   deviceId: string;
   platform: string;
-  lastSync: string | null;
+  lastSync: number;
   sessions: SessionDto[];
   telemetry: RepTelemetryDto[];
   routines: RoutineDto[];
@@ -186,6 +186,8 @@ interface RoutineExerciseDto {
   stallDetection: boolean;
   eccentricLoad: string | null;
   echoLevel: string | null;
+  perSetEchoLevels: string | null;
+  warmupSets: string | null;
 }
 
 interface RpgAttributesDto {
@@ -710,6 +712,8 @@ Deno.serve(async (req) => {
           stall_detection: e.stallDetection,
           eccentric_load: e.eccentricLoad,
           echo_level: e.echoLevel,
+          per_set_echo_levels: e.perSetEchoLevels ?? null,
+          warmup_sets: e.warmupSets ?? null,
         }))
       );
 
