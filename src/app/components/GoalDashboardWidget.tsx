@@ -6,6 +6,7 @@ import { Card } from "@/app/components/ui/card";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { goalsOptions } from "@/queries/goals";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
 import { useGoalProgress } from "./Goals";
 
@@ -17,8 +18,9 @@ export function GoalDashboardWidget() {
 		enabled: isPremium && !!user?.id,
 	});
 
+	const { activeProfileId } = useProfileFilterStore();
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
-	const progressMap = useGoalProgress();
+	const progressMap = useGoalProgress(activeProfileId);
 
 	if (!isPremium) {
 		return (

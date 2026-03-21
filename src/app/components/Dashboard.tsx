@@ -57,6 +57,7 @@ import {
 	workoutListOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
 import { PortalBanner } from "./PortalBanner";
@@ -324,17 +325,18 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 export function Dashboard() {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const { activeProfileId } = useProfileFilterStore();
 
 	const { data: workouts, isPending: workoutsLoading } = useQuery({
-		...workoutListOptions(userId),
+		...workoutListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: weeklyStats, isPending: statsLoading } = useQuery({
-		...dashboardStatsOptions(userId),
+		...dashboardStatsOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: recentPRs, isPending: prsLoading } = useQuery({
-		...recentPRsOptions(userId),
+		...recentPRsOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: profile } = useQuery({
