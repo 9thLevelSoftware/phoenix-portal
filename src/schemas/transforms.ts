@@ -64,6 +64,7 @@ export const workoutSessionSchema = z.object({
 	echo_level: z.number().nullable().optional(),
 	warmup_reps: z.number().nullable().optional(),
 	working_reps: z.number().nullable().optional(),
+	local_profile_id: z.string().nullable().optional(),
 });
 
 export const workoutListSchema = z.array(workoutSessionSchema);
@@ -125,6 +126,7 @@ export const personalRecordSchema = z.object({
 		.nullable()
 		.optional()
 		.transform((p) => (p ? (workoutPhaseMap[p] ?? p) : "Combined")),
+	local_profile_id: z.string().nullable().optional(),
 });
 
 export const personalRecordListSchema = z.array(personalRecordSchema);
@@ -147,6 +149,7 @@ export const routineSchema = z.object({
 		.transform((s) => (s ? new Date(s) : null)),
 	tags: z.array(z.string()).nullable(),
 	is_favorite: z.boolean(),
+	local_profile_id: z.string().nullable().optional(),
 });
 
 export const routineListSchema = z.array(routineSchema);
@@ -174,6 +177,7 @@ export const trainingCycleSchema = z.object({
 		.string()
 		.nullable()
 		.transform((s) => (s ? new Date(s) : null)),
+	local_profile_id: z.string().nullable().optional(),
 });
 
 export const trainingCycleListSchema = z.array(trainingCycleSchema);
