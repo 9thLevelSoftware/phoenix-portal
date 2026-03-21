@@ -87,7 +87,9 @@ function FactorBar({
 function FreeRecoveryView() {
 	const { user } = useAuth();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? "", activeProfileId));
+	const { data: workouts } = useQuery(
+		workoutListOptions(user?.id ?? "", activeProfileId),
+	);
 
 	// Count rest days in the last 7 days
 	const now = new Date();

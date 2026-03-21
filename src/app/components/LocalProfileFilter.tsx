@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { localProfilesOptions } from "@/queries/localProfiles";
-import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	Select,
 	SelectContent,
@@ -8,6 +6,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/app/components/ui/select";
+import { localProfilesOptions } from "@/queries/localProfiles";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // Profile color palette (indexes 0-7 match mobile's ProfileSidePanel color array)
 const PROFILE_COLORS = [

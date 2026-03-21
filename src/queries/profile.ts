@@ -49,8 +49,10 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
 			}
 
-			const { data: sessions, error: sessionsError } = await sessionQuery
-				.order("started_at", { ascending: true });
+			const { data: sessions, error: sessionsError } = await sessionQuery.order(
+				"started_at",
+				{ ascending: true },
+			);
 			if (sessionsError) throw sessionsError;
 
 			const totalWorkouts = sessions?.length ?? 0;

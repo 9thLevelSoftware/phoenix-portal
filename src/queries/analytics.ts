@@ -3,9 +3,17 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 /** Volume trend over time (for area/bar chart) */
-export function volumeTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
+export function volumeTrendOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `volume-${period}`, profileId),
+		queryKey: queryKeys.analytics.summary(
+			userId,
+			`volume-${period}`,
+			profileId,
+		),
 		queryFn: async () => {
 			let query = supabase
 				.from("workout_sessions")
@@ -83,9 +91,16 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 }
 
 /** Strength progress (exercise-specific 1RM trends for line chart) */
-export function strengthProgressOptions(userId: string, profileId?: string | null) {
+export function strengthProgressOptions(
+	userId: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "strength-progress", profileId),
+		queryKey: queryKeys.analytics.summary(
+			userId,
+			"strength-progress",
+			profileId,
+		),
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
@@ -96,8 +111,9 @@ export function strengthProgressOptions(userId: string, profileId?: string | nul
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.order("achieved_at", { ascending: true });
+			const { data, error } = await query.order("achieved_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return data;
 		},
@@ -105,7 +121,11 @@ export function strengthProgressOptions(userId: string, profileId?: string | nul
 }
 
 /** Volume trend with previous period comparison */
-export function volumeComparisonOptions(userId: string, period: string = "4w", profileId?: string | null) {
+export function volumeComparisonOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(
 			userId,
@@ -163,9 +183,17 @@ function periodToDays(period: string): number {
 }
 
 /** Form score trend over time (GAP 4) */
-export function formScoreTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
+export function formScoreTrendOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `form-score-${period}`, profileId),
+		queryKey: queryKeys.analytics.summary(
+			userId,
+			`form-score-${period}`,
+			profileId,
+		),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();
@@ -191,9 +219,17 @@ export function formScoreTrendOptions(userId: string, period: string = "4w", pro
 }
 
 /** Safety events trend (deload warnings, ROM violations, spotter activations) (GAP 4) */
-export function safetyTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
+export function safetyTrendOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `safety-${period}`, profileId),
+		queryKey: queryKeys.analytics.summary(
+			userId,
+			`safety-${period}`,
+			profileId,
+		),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();
@@ -225,9 +261,17 @@ export function safetyTrendOptions(userId: string, period: string = "4w", profil
 }
 
 /** Calorie burn history (GAP 5) */
-export function calorieHistoryOptions(userId: string, period: string = "4w", profileId?: string | null) {
+export function calorieHistoryOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `calories-${period}`, profileId),
+		queryKey: queryKeys.analytics.summary(
+			userId,
+			`calories-${period}`,
+			profileId,
+		),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();

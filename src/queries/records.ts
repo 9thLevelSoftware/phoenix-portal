@@ -3,7 +3,10 @@ import { supabase } from "@/lib/supabase";
 import { personalRecordListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
-export function personalRecordsOptions(userId: string, profileId?: string | null) {
+export function personalRecordsOptions(
+	userId: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
 		queryKey: queryKeys.records.byUser(userId, profileId),
 		queryFn: async () => {
@@ -16,8 +19,9 @@ export function personalRecordsOptions(userId: string, profileId?: string | null
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.order("achieved_at", { ascending: false });
+			const { data, error } = await query.order("achieved_at", {
+				ascending: false,
+			});
 			if (error) throw error;
 			return personalRecordListSchema.parse(data);
 		},

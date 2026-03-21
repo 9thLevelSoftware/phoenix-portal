@@ -63,11 +63,17 @@ import { GoalProgressRing } from "./GoalProgressRing";
 
 // ---------- Progress computation hook (exported for Dashboard widget) ----------
 
-export function useGoalProgress(profileId?: string | null): Map<string, number> {
+export function useGoalProgress(
+	profileId?: string | null,
+): Map<string, number> {
 	const { user } = useAuth();
 	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
-	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? "", profileId));
-	const { data: records } = useQuery(personalRecordsOptions(user?.id ?? "", profileId));
+	const { data: workouts } = useQuery(
+		workoutListOptions(user?.id ?? "", profileId),
+	);
+	const { data: records } = useQuery(
+		personalRecordsOptions(user?.id ?? "", profileId),
+	);
 
 	return useMemo(() => {
 		const map = new Map<string, number>();
