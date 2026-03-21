@@ -9,7 +9,11 @@ const mocks = vi.hoisted(() => {
 	const removeChannel = vi.fn();
 	const mockChannel = {
 		on: vi.fn(
-			(_type: string, _filter: unknown, callback: (payload: unknown) => void) => {
+			(
+				_type: string,
+				_filter: unknown,
+				callback: (payload: unknown) => void,
+			) => {
 				broadcastHandler = callback;
 				return mockChannel;
 			},

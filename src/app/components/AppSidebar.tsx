@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
 	Award,
 	BarChart3,
@@ -36,7 +37,6 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "@/app/components/ui/sidebar";
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
 import { profileOptions } from "@/queries/profile";
@@ -114,8 +114,7 @@ function useAutoCollapse() {
 			setOpen(userPrefersOpen);
 			isAutoCollapsingRef.current = false;
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [setOpen]);
 
 	// Watch viewport changes crossing 1280px boundary
 	React.useEffect(() => {
@@ -168,9 +167,7 @@ export function AppSidebar() {
 
 	// Derive user initials from profile display name or email
 	const displayName =
-		profile?.display_name ??
-		user?.email?.split("@")[0] ??
-		"User";
+		profile?.display_name ?? user?.email?.split("@")[0] ?? "User";
 	const initials = displayName
 		.split(" ")
 		.map((n: string) => n[0])
@@ -207,7 +204,9 @@ export function AppSidebar() {
 			<SidebarContent>
 				{navGroups.map((group, groupIndex) => (
 					<React.Fragment key={group.label}>
-						{groupIndex > 0 && <SidebarSeparator className="sidebar-separator-phoenix" />}
+						{groupIndex > 0 && (
+							<SidebarSeparator className="sidebar-separator-phoenix" />
+						)}
 						<SidebarGroup>
 							<SidebarGroupLabel className="eyebrow text-muted-foreground">
 								{group.label}
@@ -225,14 +224,17 @@ export function AppSidebar() {
 												isActive={isActive}
 												tooltip={item.label}
 												size="lg"
-												className={isActive ? "group-data-[collapsible=icon]:ring-1 group-data-[collapsible=icon]:ring-primary/20" : undefined}
+												className={
+													isActive
+														? "group-data-[collapsible=icon]:ring-1 group-data-[collapsible=icon]:ring-primary/20"
+														: undefined
+												}
 											>
-												<NavLink
-													to={item.path}
-													className="relative"
-												>
+												<NavLink to={item.path} className="relative">
 													<item.icon className="shrink-0" />
-													<span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
+													<span className="group-data-[collapsible=icon]:hidden">
+														{item.label}
+													</span>
 													{isActive && (
 														<span className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
 													)}
@@ -320,8 +322,6 @@ export function AppSidebar() {
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
-
-
 			</SidebarFooter>
 		</Sidebar>
 	);

@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Activity,
@@ -19,6 +18,7 @@ import { VelocityProfile } from "@/app/components/charts/VelocityProfile";
 import { ExerciseProgress } from "@/app/components/ExerciseProgress";
 import { FormAnalysis } from "@/app/components/FormAnalysis";
 import { MuscleHeatmap } from "@/app/components/MuscleHeatmap";
+import { PageShell } from "@/app/components/PageShell";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { SummaryReport } from "@/app/components/SummaryReport";
 import { Button } from "@/app/components/ui/button";
@@ -509,7 +509,9 @@ export function BiomechanicsContent({
 																100,
 																(rep.tut_ms /
 																	Math.max(
-																		...repSummaries.map((entry) => entry.tut_ms),
+																		...repSummaries.map(
+																			(entry) => entry.tut_ms,
+																		),
 																		1,
 																	)) *
 																	100,

@@ -110,9 +110,7 @@ function FreeRecoveryView() {
 				>
 					<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 						<HeartPulse className="w-8 h-8 text-primary" />
-						<span className="text-white">
-							Recovery
-						</span>
+						<span className="text-white">Recovery</span>
 					</h1>
 					<p className="text-muted-foreground">
 						Track your training recovery and readiness
@@ -224,9 +222,7 @@ export function Recovery() {
 					>
 						<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
 							<HeartPulse className="w-8 h-8 text-primary" />
-							<span className="text-white">
-								Recovery Readiness
-							</span>
+							<span className="text-white">Recovery Readiness</span>
 						</h1>
 					</FeatureHint>
 					<p className="text-muted-foreground">

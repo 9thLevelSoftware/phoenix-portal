@@ -89,7 +89,7 @@ export function communityFeedOptions(params: FeedParams) {
 				),
 			];
 
-			let profileMap: Record<
+			const profileMap: Record<
 				string,
 				{ display_name: string; avatar_url: string | null }
 			> = {};

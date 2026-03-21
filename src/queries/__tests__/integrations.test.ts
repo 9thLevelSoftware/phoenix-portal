@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -64,9 +64,7 @@ describe("integrationsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { integrationsOptions } = await import("../integrations");
 		const opts = integrationsOptions("user-1");
-		expect(opts.queryKey).toEqual(
-			queryKeys.integrations.byUser("user-1"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.integrations.byUser("user-1"));
 	});
 
 	it("returns integration rows with connection status", async () => {
@@ -119,9 +117,7 @@ describe("externalActivitiesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { externalActivitiesOptions } = await import("../integrations");
 		const opts = externalActivitiesOptions("user-1");
-		expect(opts.queryKey).toEqual(
-			queryKeys.integrations.external("user-1"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.integrations.external("user-1"));
 	});
 
 	it("appends provider to query key when specified", async () => {

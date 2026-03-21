@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VBT_ZONES, classifyVbtZone } from "../vbt";
+import { classifyVbtZone, VBT_ZONES } from "../vbt";
 
 describe("VBT_ZONES", () => {
 	it("contains exactly 5 zones", () => {

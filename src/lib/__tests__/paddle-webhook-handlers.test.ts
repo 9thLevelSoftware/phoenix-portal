@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-	type PaddleWebhookEvent,
 	buildSubscriptionUpsert,
 	mapPaddleStatusToSubscriptionStatus,
 	mapPriceIdToTier,
 	mapPriceIdToTierServer,
+	type PaddleWebhookEvent,
 	verifyPaddleSignature,
 } from "../paddle";
 
@@ -239,27 +239,20 @@ describe("verifyPaddleSignature", () => {
 
 	it("returns false for an invalid signature", async () => {
 		const body = '{"event_type":"subscription.created"}';
-		const header = "ts=1710460800;h1=deadbeef0000000000000000000000000000000000000000000000000000dead";
+		const header =
+			"ts=1710460800;h1=deadbeef0000000000000000000000000000000000000000000000000000dead";
 
 		const result = await verifyPaddleSignature(body, header, secret);
 		expect(result).toBe(false);
 	});
 
 	it("returns false when ts= is missing from header", async () => {
-		const result = await verifyPaddleSignature(
-			"body",
-			"h1=abc123",
-			secret,
-		);
+		const result = await verifyPaddleSignature("body", "h1=abc123", secret);
 		expect(result).toBe(false);
 	});
 
 	it("returns false when h1= is missing from header", async () => {
-		const result = await verifyPaddleSignature(
-			"body",
-			"ts=1710460800",
-			secret,
-		);
+		const result = await verifyPaddleSignature("body", "ts=1710460800", secret);
 		expect(result).toBe(false);
 	});
 

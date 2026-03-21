@@ -45,18 +45,13 @@ export function LiftosaurConnect({
 
 		setIsSavingKey(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"liftosaur-sync",
-				{
-					body: { user_id: userId, api_key: apiKey.trim() },
-				},
-			);
+			const { error } = await supabase.functions.invoke("liftosaur-sync", {
+				body: { user_id: userId, api_key: apiKey.trim() },
+			});
 
 			if (error) throw error;
 
-			toast.success(
-				"Liftosaur API key saved and initial sync started",
-			);
+			toast.success("Liftosaur API key saved and initial sync started");
 			await Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.integrations.byUser(userId),
@@ -68,9 +63,7 @@ export function LiftosaurConnect({
 			setApiKey("");
 		} catch (err) {
 			toast.error(
-				err instanceof Error
-					? err.message
-					: "Failed to save API key",
+				err instanceof Error ? err.message : "Failed to save API key",
 			);
 		} finally {
 			setIsSavingKey(false);
@@ -90,13 +83,9 @@ export function LiftosaurConnect({
 			if (error) throw error;
 
 			if (data?.requires_premium) {
-				toast.error(
-					"Liftosaur Premium subscription required for API access",
-				);
+				toast.error("Liftosaur Premium subscription required for API access");
 			} else if (data?.success) {
-				toast.success(
-					`Connection verified. ${data.imported} workouts synced.`,
-				);
+				toast.success(`Connection verified. ${data.imported} workouts synced.`);
 				await queryClient.invalidateQueries({
 					queryKey: queryKeys.integrations.external(userId),
 				});
@@ -105,9 +94,7 @@ export function LiftosaurConnect({
 			}
 		} catch (err) {
 			toast.error(
-				err instanceof Error
-					? err.message
-					: "Connection test failed",
+				err instanceof Error ? err.message : "Connection test failed",
 			);
 		} finally {
 			setIsTesting(false);
@@ -122,12 +109,8 @@ export function LiftosaurConnect({
 						<Dumbbell className="size-5 text-[#8B5CF6]" />
 					</div>
 					<div className="flex-1">
-						<CardTitle className="text-base">
-							Liftosaur
-						</CardTitle>
-						<CardDescription>
-							Scriptable workout tracking
-						</CardDescription>
+						<CardTitle className="text-base">Liftosaur</CardTitle>
+						<CardDescription>Scriptable workout tracking</CardDescription>
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
@@ -136,11 +119,7 @@ export function LiftosaurConnect({
 								Connected
 							</span>
 							{onDisconnect && (
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={onDisconnect}
-								>
+								<Button variant="ghost" size="sm" onClick={onDisconnect}>
 									Disconnect
 								</Button>
 							)}
@@ -156,8 +135,7 @@ export function LiftosaurConnect({
 						<span className="font-medium text-purple-500">
 							Liftosaur Premium
 						</span>
-						. Create an API key in Liftosaur Settings &rarr;
-						API Keys.
+						. Create an API key in Liftosaur Settings &rarr; API Keys.
 					</p>
 				</div>
 

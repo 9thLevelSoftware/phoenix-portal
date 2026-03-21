@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type SessionSummary, compareSessions } from "../comparison";
+import { compareSessions, type SessionSummary } from "../comparison";
 
 /** Helper to create a SessionSummary with sensible defaults */
 function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
@@ -82,9 +82,27 @@ describe("compareSessions", () => {
 		const a = makeSession();
 		const b = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 4000, maxWeight: 90, sets: 3, avgVelocity: 0.7 },
-				{ name: "Squat", volume: 3500, maxWeight: 130, sets: 3, avgVelocity: 0.65 },
-				{ name: "Overhead Press", volume: 1500, maxWeight: 60, sets: 3, avgVelocity: 0.9 },
+				{
+					name: "Bench Press",
+					volume: 4000,
+					maxWeight: 90,
+					sets: 3,
+					avgVelocity: 0.7,
+				},
+				{
+					name: "Squat",
+					volume: 3500,
+					maxWeight: 130,
+					sets: 3,
+					avgVelocity: 0.65,
+				},
+				{
+					name: "Overhead Press",
+					volume: 1500,
+					maxWeight: 60,
+					sets: 3,
+					avgVelocity: 0.9,
+				},
 			],
 		});
 		const result = compareSessions(a, b);
@@ -95,12 +113,20 @@ describe("compareSessions", () => {
 	it("marks exercise only in A with onlyInA=true and deltaPct=0", () => {
 		const a = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const b = makeSession({ exercises: [] });
 		const result = compareSessions(a, b);
-		const benchDelta = result.exerciseDeltas.find((d) => d.name === "Bench Press");
+		const benchDelta = result.exerciseDeltas.find(
+			(d) => d.name === "Bench Press",
+		);
 		expect(benchDelta?.onlyInA).toBe(true);
 		expect(benchDelta?.onlyInB).toBe(false);
 		expect(benchDelta?.deltaPct).toBe(0);
@@ -110,7 +136,13 @@ describe("compareSessions", () => {
 		const a = makeSession({ exercises: [] });
 		const b = makeSession({
 			exercises: [
-				{ name: "Rows", volume: 3000, maxWeight: 80, sets: 3, avgVelocity: 0.7 },
+				{
+					name: "Rows",
+					volume: 3000,
+					maxWeight: 80,
+					sets: 3,
+					avgVelocity: 0.7,
+				},
 			],
 		});
 		const result = compareSessions(a, b);
@@ -123,16 +155,30 @@ describe("compareSessions", () => {
 	it("calculates per-exercise volume delta for shared exercises", () => {
 		const a = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 4000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 4000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const b = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 6000, maxWeight: 110, sets: 3, avgVelocity: 0.85 },
+				{
+					name: "Bench Press",
+					volume: 6000,
+					maxWeight: 110,
+					sets: 3,
+					avgVelocity: 0.85,
+				},
 			],
 		});
 		const result = compareSessions(a, b);
-		const benchDelta = result.exerciseDeltas.find((d) => d.name === "Bench Press");
+		const benchDelta = result.exerciseDeltas.find(
+			(d) => d.name === "Bench Press",
+		);
 		// ((6000 - 4000) / 4000) * 100 = 50
 		expect(benchDelta?.deltaPct).toBe(50);
 		expect(benchDelta?.onlyInA).toBe(false);
@@ -142,12 +188,24 @@ describe("compareSessions", () => {
 	it("warns when fewer than 2 shared exercises", () => {
 		const a = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const b = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const result = compareSessions(a, b);
@@ -168,12 +226,24 @@ describe("compareSessions", () => {
 	it("matches exercises case-insensitively", () => {
 		const a = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const b = makeSession({
 			exercises: [
-				{ name: "bench press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "bench press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const result = compareSessions(a, b);
@@ -187,12 +257,24 @@ describe("compareSessions", () => {
 	it("preserves original casing from session A for display name", () => {
 		const a = makeSession({
 			exercises: [
-				{ name: "Bench Press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "Bench Press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const b = makeSession({
 			exercises: [
-				{ name: "bench press", volume: 5000, maxWeight: 100, sets: 3, avgVelocity: 0.8 },
+				{
+					name: "bench press",
+					volume: 5000,
+					maxWeight: 100,
+					sets: 3,
+					avgVelocity: 0.8,
+				},
 			],
 		});
 		const result = compareSessions(a, b);

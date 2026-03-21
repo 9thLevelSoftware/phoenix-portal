@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RepSummary } from "@/schemas/telemetry";
-import {
-	FATIGUE_THRESHOLD_PERCENT,
-	detectFatigue,
-} from "../fatigue-detection";
+import { detectFatigue, FATIGUE_THRESHOLD_PERCENT } from "../fatigue-detection";
 
 /** Helper to create a RepSummary with only mean_velocity_mps varied */
 function makeRep(meanVelocity: number, repNumber = 1): RepSummary {
@@ -93,11 +90,7 @@ describe("detectFatigue", () => {
 	});
 
 	it("high fatigue insight mentions consider stopping at rep N", () => {
-		const reps = [
-			makeRep(1.0, 1),
-			makeRep(0.85, 2),
-			makeRep(0.65, 3),
-		];
+		const reps = [makeRep(1.0, 1), makeRep(0.85, 2), makeRep(0.65, 3)];
 		const result = detectFatigue(reps);
 		expect(result.insight).toContain("consider stopping at rep");
 	});

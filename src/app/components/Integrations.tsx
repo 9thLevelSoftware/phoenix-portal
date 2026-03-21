@@ -64,7 +64,9 @@ export function Integrations() {
 	const syncMutation = useManualSync();
 
 	// Helper to find a user's integration by provider
-	const getIntegration = (provider: IntegrationProvider): UserIntegration | null => {
+	const getIntegration = (
+		provider: IntegrationProvider,
+	): UserIntegration | null => {
 		const match = integrations?.find((i) => i.provider === provider);
 		return match ? (match as UserIntegration) : null;
 	};
@@ -158,9 +160,7 @@ export function Integrations() {
 						/>
 						<LiftosaurConnect
 							userId={userId}
-							isConnected={
-								getIntegration("liftosaur")?.status === "connected"
-							}
+							isConnected={getIntegration("liftosaur")?.status === "connected"}
 							onDisconnect={() =>
 								disconnectMutation.mutate({
 									userId,

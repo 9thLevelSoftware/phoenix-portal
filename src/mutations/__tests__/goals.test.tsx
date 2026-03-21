@@ -29,7 +29,12 @@ vi.mock("@/providers/AuthProvider", () => ({
 	}),
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -38,7 +43,10 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -126,7 +134,10 @@ describe("useCreateGoal", () => {
 			select: vi.fn(() => ({
 				single: vi.fn().mockResolvedValue({
 					data: null,
-					error: { message: "violates check constraint on target_value", code: "23514" },
+					error: {
+						message: "violates check constraint on target_value",
+						code: "23514",
+					},
 				}),
 			})),
 		}));
@@ -217,7 +228,11 @@ describe("useUpdateGoal", () => {
 
 		result.current.mutate({
 			goalId: "goal-1",
-			updates: { target_value: 5, status: "completed", completed_at: "2026-03-18T00:00:00Z" },
+			updates: {
+				target_value: 5,
+				status: "completed",
+				completed_at: "2026-03-18T00:00:00Z",
+			},
 		});
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));

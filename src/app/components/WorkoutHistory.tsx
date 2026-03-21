@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Award,
@@ -18,6 +17,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";

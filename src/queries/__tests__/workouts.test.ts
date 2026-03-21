@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -177,17 +177,14 @@ describe("sessionDetailOptions", () => {
 		let callCount = 0;
 		fromFn.mockImplementation(() => {
 			callCount++;
-			if (callCount === 1)
-				return buildChain({ data: sessionRow, error: null });
+			if (callCount === 1) return buildChain({ data: sessionRow, error: null });
 			if (callCount === 2)
 				return buildChain({ data: exerciseRows, error: null });
 			return buildChain({ data: setRows, error: null });
 		});
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions(
-			"11111111-1111-4111-8111-111111111111",
-		);
+		const opts = sessionDetailOptions("11111111-1111-4111-8111-111111111111");
 		const result = await opts.queryFn!({} as never);
 
 		expect(result.name).toBe("Leg Day");

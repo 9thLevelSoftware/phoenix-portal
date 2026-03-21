@@ -61,9 +61,7 @@ function exerciseBadges(exercise: {
 		exercise.echo_level ? `Echo: ${exercise.echo_level}` : null,
 		exercise.stall_detection ? "Stall Detection" : null,
 		exercise.rep_count_timing ? `Timing: ${exercise.rep_count_timing}` : null,
-		exercise.stop_at_position
-			? `Stop: ${exercise.stop_at_position}`
-			: null,
+		exercise.stop_at_position ? `Stop: ${exercise.stop_at_position}` : null,
 	].filter(Boolean) as string[];
 }
 
@@ -74,7 +72,11 @@ export function RoutineDetail() {
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
-	const { data: routine, isLoading, isError } = useQuery({
+	const {
+		data: routine,
+		isLoading,
+		isError,
+	} = useQuery({
 		...routineDetailOptions(routineId ?? ""),
 		enabled: !!routineId,
 	});
@@ -114,7 +116,10 @@ export function RoutineDetail() {
 
 	const groupedExercises = routine.routine_exercises.reduce<
 		Array<
-			| { type: "exercise"; exercise: (typeof routine.routine_exercises)[number] }
+			| {
+					type: "exercise";
+					exercise: (typeof routine.routine_exercises)[number];
+			  }
 			| {
 					type: "superset";
 					id: string;
@@ -128,7 +133,11 @@ export function RoutineDetail() {
 			return items;
 		}
 
-		if (items.some((item) => item.type === "superset" && item.id === exercise.superset_id)) {
+		if (
+			items.some(
+				(item) => item.type === "superset" && item.id === exercise.superset_id,
+			)
+		) {
 			return items;
 		}
 

@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -19,6 +18,7 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
+import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
 import { ExportSection } from "@/app/components/profile/ExportSection";
 import { TierBadge } from "@/app/components/TierBadge";
@@ -225,8 +225,9 @@ export function Profile() {
 		},
 		{
 			label: "Total Volume",
-			value:
-				statsLoading ? "..." : formatVolume(stats?.totalVolume ?? 0, weightUnit),
+			value: statsLoading
+				? "..."
+				: formatVolume(stats?.totalVolume ?? 0, weightUnit),
 			icon: Dumbbell,
 		},
 	];
@@ -511,7 +512,10 @@ export function Profile() {
 											Longest Streak
 										</div>
 										<div className="text-3xl text-success">
-											{gamificationStats?.longest_streak ?? stats?.bestStreak ?? 0} days
+											{gamificationStats?.longest_streak ??
+												stats?.bestStreak ??
+												0}{" "}
+											days
 										</div>
 									</div>
 								</div>
@@ -545,7 +549,9 @@ export function Profile() {
 												<div className="h-2 rounded-full bg-background overflow-hidden">
 													<div
 														className="h-full bg-gradient-to-r from-primary to-chart-2"
-														style={{ width: `${Math.min(value as number, 100)}%` }}
+														style={{
+															width: `${Math.min(value as number, 100)}%`,
+														}}
 													/>
 												</div>
 											</div>
@@ -558,7 +564,8 @@ export function Profile() {
 											No RPG profile yet
 										</p>
 										<p className="text-sm text-muted">
-											Train and sync from the mobile app to generate your class and attributes
+											Train and sync from the mobile app to generate your class
+											and attributes
 										</p>
 									</div>
 								)}
@@ -571,9 +578,13 @@ export function Profile() {
 								</h3>
 								<div className="space-y-4">
 									<div className="flex items-center justify-between py-2 border-b border-secondary">
-										<span className="text-muted-foreground">Total Workouts</span>
+										<span className="text-muted-foreground">
+											Total Workouts
+										</span>
 										<span className="text-white">
-											{gamificationStats?.total_workouts ?? stats?.totalWorkouts ?? 0}
+											{gamificationStats?.total_workouts ??
+												stats?.totalWorkouts ??
+												0}
 										</span>
 									</div>
 									<div className="flex items-center justify-between py-2 border-b border-secondary">
@@ -844,9 +855,7 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<Label className="text-white mb-2 block">
-										Display Name
-									</Label>
+									<Label className="text-white mb-2 block">Display Name</Label>
 									<div className="flex gap-2">
 										<Input
 											type="text"

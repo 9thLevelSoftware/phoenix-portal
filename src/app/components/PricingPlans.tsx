@@ -1,7 +1,15 @@
-import { ArrowUp, Check, Clock, Crown, Flame, Loader2, Sparkles } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+	ArrowUp,
+	Check,
+	Clock,
+	Crown,
+	Flame,
+	Loader2,
+	Sparkles,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -22,15 +30,15 @@ import {
 	CardTitle,
 } from "@/app/components/ui/card";
 import { Switch } from "@/app/components/ui/switch";
+import { useAuth } from "@/app/hooks/useAuth";
 import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
-import { useAuth } from "@/app/hooks/useAuth";
 import { openCheckout } from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
-import { queryKeys } from "@/queries/keys";
 import { supabase } from "@/lib/supabase";
+import { queryKeys } from "@/queries/keys";
 
 interface TierFeature {
 	label: string;
@@ -121,15 +129,16 @@ export function PricingPlans() {
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
 	const queryClient = useQueryClient();
-	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(null);
-	const [confirmUpgradeTier, setConfirmUpgradeTier] = useState<SubscriptionTier | null>(null);
+	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(
+		null,
+	);
+	const [confirmUpgradeTier, setConfirmUpgradeTier] =
+		useState<SubscriptionTier | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
 
 	const handleSubscribe = (tier: SubscriptionTier) => {
-		const tierPricing = TIER_PRICING.find(
-			(t: TierPricing) => t.tier === tier,
-		);
+		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
 		const priceId = isAnnual
@@ -188,9 +197,7 @@ export function PricingPlans() {
 		(currentStatus === "active" || currentStatus === "trialing");
 
 	const handleUpgrade = async (tier: SubscriptionTier) => {
-		const tierPricing = TIER_PRICING.find(
-			(t: TierPricing) => t.tier === tier,
-		);
+		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
 		const priceId = isAnnual
@@ -488,11 +495,13 @@ export function PricingPlans() {
 			>
 				<AlertDialogContent className="bg-surface-2 border-primary/30">
 					<AlertDialogHeader>
-						<AlertDialogTitle>Upgrade to {confirmUpgradeTier ?? ""}</AlertDialogTitle>
+						<AlertDialogTitle>
+							Upgrade to {confirmUpgradeTier ?? ""}
+						</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your payment method on file will be charged a prorated amount
-							for the remainder of your current billing period. The new plan
-							takes effect immediately.
+							Your payment method on file will be charged a prorated amount for
+							the remainder of your current billing period. The new plan takes
+							effect immediately.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

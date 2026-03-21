@@ -105,8 +105,8 @@ export function useSaveCycle() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useSaveCycle] failed:', error);
-			toast.error('Failed to save training cycle. Please try again.');
+			console.error("[useSaveCycle] failed:", error);
+			toast.error("Failed to save training cycle. Please try again.");
 		},
 	});
 }
@@ -177,8 +177,8 @@ export function useUpdateCycle() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useUpdateCycle] failed:', error);
-			toast.error('Failed to update training cycle. Please try again.');
+			console.error("[useUpdateCycle] failed:", error);
+			toast.error("Failed to update training cycle. Please try again.");
 		},
 	});
 }
@@ -221,8 +221,8 @@ export function useActivateCycle() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useActivateCycle] failed:', error);
-			toast.error('Failed to activate training cycle. Please try again.');
+			console.error("[useActivateCycle] failed:", error);
+			toast.error("Failed to activate training cycle. Please try again.");
 		},
 	});
 }

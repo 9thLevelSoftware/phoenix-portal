@@ -1,4 +1,9 @@
-import { CHART_COLORS, CHART_MARGINS, REP_COLORS, FONT_SIZES } from "./ChartTheme";
+import {
+	CHART_COLORS,
+	CHART_MARGINS,
+	FONT_SIZES,
+	REP_COLORS,
+} from "./ChartTheme";
 
 /** ECharts theme object matching the Phoenix dark palette */
 export const PHOENIX_ECHARTS_THEME = {
@@ -13,9 +18,16 @@ export const PHOENIX_ECHARTS_THEME = {
 		"#8B5CF6", // Purple
 	],
 	backgroundColor: "transparent",
-	textStyle: { color: CHART_COLORS.axisText, fontFamily: "system-ui, sans-serif" },
+	textStyle: {
+		color: CHART_COLORS.axisText,
+		fontFamily: "system-ui, sans-serif",
+	},
 	title: {
-		textStyle: { color: "#ffffff", fontSize: FONT_SIZES.title, fontWeight: 600 },
+		textStyle: {
+			color: "#ffffff",
+			fontSize: FONT_SIZES.title,
+			fontWeight: 600,
+		},
 	},
 	categoryAxis: {
 		axisLine: { lineStyle: { color: "#333" } },
@@ -43,7 +55,15 @@ export const PHOENIX_ECHARTS_THEME = {
 		splitArea: { areaStyle: { color: ["transparent"] } },
 	},
 	gauge: {
-		axisLine: { lineStyle: { color: [[0.3, "#10B981"], [0.7, "#F59E0B"], [1, "#DC2626"]] } },
+		axisLine: {
+			lineStyle: {
+				color: [
+					[0.3, "#10B981"],
+					[0.7, "#F59E0B"],
+					[1, "#DC2626"],
+				],
+			},
+		},
 	},
 } as const;
 
@@ -56,4 +76,4 @@ export const ECHARTS_GRID = {
 	containLabel: true,
 } as const;
 
-export { CHART_COLORS, CHART_MARGINS, REP_COLORS, FONT_SIZES };
+export { CHART_COLORS, CHART_MARGINS, FONT_SIZES, REP_COLORS };

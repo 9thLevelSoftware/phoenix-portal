@@ -37,11 +37,7 @@ function RecoverableScenario() {
 			FallbackComponent={PageErrorFallback}
 			onReset={() => setBroken(false)}
 		>
-			{broken ? (
-				<BombComponent shouldThrow />
-			) : (
-				<p>Recovered successfully</p>
-			)}
+			{broken ? <BombComponent shouldThrow /> : <p>Recovered successfully</p>}
 		</ErrorBoundary>
 	);
 }
@@ -58,7 +54,9 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 
 		expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 		expect(screen.getByText("Component exploded")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /try again/i }),
+		).toBeInTheDocument();
 	});
 
 	it("renders children normally when no error", () => {

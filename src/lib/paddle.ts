@@ -68,9 +68,7 @@ export interface PaddleWebhookEvent {
  */
 export function mapPriceIdToTier(priceId: string): string {
 	// Check env vars first (allows runtime configuration)
-	const infernoPriceIds = (
-		import.meta.env.VITE_PADDLE_INFERNO_PRICE_IDS ?? ""
-	)
+	const infernoPriceIds = (import.meta.env.VITE_PADDLE_INFERNO_PRICE_IDS ?? "")
 		.split(",")
 		.map((s: string) => s.trim())
 		.filter(Boolean);

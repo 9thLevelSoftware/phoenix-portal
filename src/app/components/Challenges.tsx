@@ -1,13 +1,5 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
-import {
-	Clock,
-	Flame,
-	Loader2,
-	Target,
-	Trophy,
-	Users,
-} from "lucide-react";
+import { Clock, Flame, Loader2, Target, Trophy, Users } from "lucide-react";
 import {
 	motion,
 	type PanInfo,
@@ -16,6 +8,7 @@ import {
 } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PageShell } from "@/app/components/PageShell";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -66,7 +59,9 @@ function getDifficultyColor(difficulty: string) {
 function getDaysRemaining(endDate: string) {
 	const end = new Date(endDate);
 	const now = new Date();
-	const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+	const diff = Math.ceil(
+		(end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+	);
 	return Math.max(0, diff);
 }
 
@@ -107,7 +102,9 @@ function ChallengeProgressBar({
 			<div className="mb-3">
 				<div className="flex items-center justify-between mb-1">
 					<span className="text-xs text-muted-foreground">Progress</span>
-					<span className="text-xs font-semibold text-primary">{percentage}%</span>
+					<span className="text-xs font-semibold text-primary">
+						{percentage}%
+					</span>
 				</div>
 				<Progress value={percentage} className="h-2" />
 			</div>
@@ -123,7 +120,8 @@ function ChallengeProgressBar({
 			<Progress value={percentage} className="h-3" />
 			{progress && (
 				<div className="text-xs text-muted-foreground mt-1">
-					{progress.current.toLocaleString()} / {progress.target.toLocaleString()}
+					{progress.current.toLocaleString()} /{" "}
+					{progress.target.toLocaleString()}
 				</div>
 			)}
 		</div>
@@ -214,7 +212,9 @@ function ChallengeCard({
 								</div>
 							</div>
 							<div>
-								<div className="text-xs text-muted-foreground mb-1">Time Left</div>
+								<div className="text-xs text-muted-foreground mb-1">
+									Time Left
+								</div>
 								<div className="text-xl text-warning">{daysLeft} days</div>
 							</div>
 							<div>
@@ -276,7 +276,9 @@ function ChallengeCard({
 						animate={{ opacity: 1, height: "auto" }}
 						className="mt-6 pt-6 border-t border-secondary"
 					>
-						<p className="text-muted-foreground mb-4">{challenge.description}</p>
+						<p className="text-muted-foreground mb-4">
+							{challenge.description}
+						</p>
 						<div className="flex gap-4 text-sm text-muted-foreground">
 							<div className="flex items-center gap-1">
 								<Clock className="w-4 h-4" />
@@ -288,7 +290,8 @@ function ChallengeCard({
 							<div className="flex items-center gap-1">
 								<Target className="w-4 h-4" />
 								<span>
-									{challenge.target_value.toLocaleString()} {challenge.target_unit}
+									{challenge.target_value.toLocaleString()}{" "}
+									{challenge.target_unit}
 								</span>
 							</div>
 						</div>
@@ -520,9 +523,7 @@ export function Challenges() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">
-						Challenges
-					</h1>
+					<h1 className="text-2xl font-bold text-white">Challenges</h1>
 				</header>
 
 				{/* Mobile Tabs */}
@@ -552,11 +553,14 @@ export function Challenges() {
 
 					{/* Mobile Active Challenges */}
 					<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
-						{activeChallenges.filter((c) => joinedIds.has(c.id)).length === 0 ? (
+						{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
+						0 ? (
 							<div className="text-center py-12 text-muted">
 								<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No active challenges right now</p>
-								<p className="text-xs mt-1">Join a challenge from the Discover tab</p>
+								<p className="text-xs mt-1">
+									Join a challenge from the Discover tab
+								</p>
 							</div>
 						) : (
 							<>
@@ -570,7 +574,9 @@ export function Challenges() {
 											<SwipeableCard
 												onSwipeRight={() =>
 													setMobileExpandedId(
-														mobileExpandedId === challenge.id ? null : challenge.id,
+														mobileExpandedId === challenge.id
+															? null
+															: challenge.id,
 													)
 												}
 												onSwipeLeft={() => setLeaveConfirmId(challenge.id)}
@@ -587,10 +593,14 @@ export function Challenges() {
 														{challenge.description}
 													</p>
 													<div className="flex items-center gap-4 text-xs text-muted-foreground">
-														<span className="capitalize">{challenge.challenge_type}</span>
+														<span className="capitalize">
+															{challenge.challenge_type}
+														</span>
 														<span>Target: {challenge.target_value}</span>
 														{challenge.prize && (
-															<span className="text-accent">{challenge.prize}</span>
+															<span className="text-accent">
+																{challenge.prize}
+															</span>
 														)}
 													</div>
 												</Card>
@@ -612,8 +622,8 @@ export function Challenges() {
 									Leave challenge?
 								</AlertDialogTitle>
 								<AlertDialogDescription>
-									Your progress in this challenge will be lost. This action cannot
-									be undone.
+									Your progress in this challenge will be lost. This action
+									cannot be undone.
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
@@ -659,7 +669,9 @@ export function Challenges() {
 												{challenge.description}
 											</p>
 											{challenge.prize && (
-												<div className="text-xs text-accent">{challenge.prize}</div>
+												<div className="text-xs text-accent">
+													{challenge.prize}
+												</div>
 											)}
 										</Card>
 									))}
@@ -717,9 +729,7 @@ export function Challenges() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
-							Challenges
-						</h1>
+						<h1 className="text-3xl sm:text-4xl mb-2 text-white">Challenges</h1>
 						<p className="text-muted-foreground">
 							Compete, conquer, and claim your glory
 						</p>

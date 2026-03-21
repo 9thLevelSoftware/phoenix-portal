@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -142,9 +142,7 @@ describe("routineDetailOptions", () => {
 		};
 		chain = buildChain({ data: detailRow, error: null });
 		const { routineDetailOptions } = await import("../routines");
-		const opts = routineDetailOptions(
-			"11111111-1111-4111-8111-111111111111",
-		);
+		const opts = routineDetailOptions("11111111-1111-4111-8111-111111111111");
 		const result = await opts.queryFn!({} as never);
 
 		expect(result.name).toBe("Push Day");

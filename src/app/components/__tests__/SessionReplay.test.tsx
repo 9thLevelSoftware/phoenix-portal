@@ -1,14 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { renderWithProviders } from "@/test/test-utils";
-import { SessionReplay } from "../session-replay/SessionReplay";
-import { FatigueSummary } from "../session-replay/FatigueSummary";
-import { PlaybackControls } from "../session-replay/PlaybackControls";
-import { SetNavigation } from "../session-replay/SetNavigation";
-import { QualityBadge } from "../session-replay/QualityBadge";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FatigueAnalysis } from "@/lib/fatigue-detection";
 import type { RepQualityResult } from "@/lib/rep-quality";
+import { renderWithProviders } from "@/test/test-utils";
+import { FatigueSummary } from "../session-replay/FatigueSummary";
+import { PlaybackControls } from "../session-replay/PlaybackControls";
+import { QualityBadge } from "../session-replay/QualityBadge";
+import { SessionReplay } from "../session-replay/SessionReplay";
+import { SetNavigation } from "../session-replay/SetNavigation";
 
 // --- Auth mock ---
 const mockAuth = vi.hoisted(() => ({
@@ -190,7 +190,9 @@ describe("SessionReplay", () => {
 		setupSubscription("INFERNO");
 		const { container } = renderWithProviders(<SessionReplay />);
 		// Skeleton uses bg-[#1a1a1a] class from custom Skeleton component
-		const skeletons = container.querySelectorAll(".rounded-lg.bg-\\[\\#1a1a1a\\]");
+		const skeletons = container.querySelectorAll(
+			".rounded-lg.bg-\\[\\#1a1a1a\\]",
+		);
 		expect(skeletons.length).toBeGreaterThan(0);
 	});
 
@@ -267,9 +269,7 @@ describe("FatigueSummary", () => {
 		expect(screen.getByText("Fatigue Detected")).toBeInTheDocument();
 		// "35%" appears in both the insight and the Max drop span
 		expect(screen.getAllByText(/35%/).length).toBeGreaterThanOrEqual(1);
-		expect(
-			screen.getByText(/consider stopping at rep 2/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/consider stopping at rep 2/i)).toBeInTheDocument();
 	});
 
 	it("shows fatigue start rep index", () => {
@@ -291,17 +291,13 @@ describe("PlaybackControls", () => {
 
 	it("renders play button when not playing", () => {
 		renderWithProviders(<PlaybackControls />);
-		expect(
-			screen.getByRole("button", { name: /play/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
 	});
 
 	it("renders pause button when playing", () => {
 		mockReplayStore.isPlaying = true;
 		renderWithProviders(<PlaybackControls />);
-		expect(
-			screen.getByRole("button", { name: /pause/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
 	});
 
 	it("calls togglePlayPause when button is clicked", async () => {
@@ -337,32 +333,24 @@ describe("SetNavigation", () => {
 	});
 
 	it("displays current set position", () => {
-		renderWithProviders(
-			<SetNavigation currentSetIndex={2} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={2} totalSets={5} />);
 		expect(screen.getByText("Set 3 of 5")).toBeInTheDocument();
 	});
 
 	it("disables Previous button on first set", () => {
-		renderWithProviders(
-			<SetNavigation currentSetIndex={0} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={0} totalSets={5} />);
 		const prevBtn = screen.getByRole("button", { name: /previous set/i });
 		expect(prevBtn).toBeDisabled();
 	});
 
 	it("disables Next button on last set", () => {
-		renderWithProviders(
-			<SetNavigation currentSetIndex={4} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={4} totalSets={5} />);
 		const nextBtn = screen.getByRole("button", { name: /next set/i });
 		expect(nextBtn).toBeDisabled();
 	});
 
 	it("enables both buttons for middle sets", () => {
-		renderWithProviders(
-			<SetNavigation currentSetIndex={2} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={2} totalSets={5} />);
 		expect(
 			screen.getByRole("button", { name: /previous set/i }),
 		).not.toBeDisabled();
@@ -373,9 +361,7 @@ describe("SetNavigation", () => {
 
 	it("calls nextSet when Next button is clicked", async () => {
 		const user = userEvent.setup();
-		renderWithProviders(
-			<SetNavigation currentSetIndex={1} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={1} totalSets={5} />);
 
 		const nextBtn = screen.getByRole("button", { name: /next set/i });
 		await user.click(nextBtn);
@@ -384,9 +370,7 @@ describe("SetNavigation", () => {
 
 	it("calls prevSet when Previous button is clicked", async () => {
 		const user = userEvent.setup();
-		renderWithProviders(
-			<SetNavigation currentSetIndex={2} totalSets={5} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={2} totalSets={5} />);
 
 		const prevBtn = screen.getByRole("button", { name: /previous set/i });
 		await user.click(prevBtn);
@@ -394,9 +378,7 @@ describe("SetNavigation", () => {
 	});
 
 	it("renders Set and Session view mode toggle", () => {
-		renderWithProviders(
-			<SetNavigation currentSetIndex={0} totalSets={3} />,
-		);
+		renderWithProviders(<SetNavigation currentSetIndex={0} totalSets={3} />);
 		expect(screen.getByText("Set")).toBeInTheDocument();
 		expect(screen.getByText("Session")).toBeInTheDocument();
 	});
@@ -440,9 +422,7 @@ describe("QualityBadge", () => {
 		renderWithProviders(
 			<QualityBadge qualityResult={goodQuality} repNumber={3} />,
 		);
-		expect(
-			screen.getByLabelText("Rep 3 quality: 85"),
-		).toBeInTheDocument();
+		expect(screen.getByLabelText("Rep 3 quality: 85")).toBeInTheDocument();
 	});
 
 	it("displays low quality score", () => {

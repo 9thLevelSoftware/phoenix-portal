@@ -25,7 +25,12 @@ vi.mock("@/lib/supabase", () => ({
 	},
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -37,7 +42,10 @@ const TEST_USER_ID = "test-user-id";
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -64,7 +72,9 @@ describe("useRequestDeletion", () => {
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
-		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), { wrapper });
+		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
@@ -87,7 +97,9 @@ describe("useRequestDeletion", () => {
 		});
 
 		const { wrapper } = createWrapper();
-		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), { wrapper });
+		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
@@ -121,7 +133,9 @@ describe("useCancelDeletion", () => {
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
-		const { result } = renderHook(() => useCancelDeletion(TEST_USER_ID), { wrapper });
+		const { result } = renderHook(() => useCancelDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
@@ -146,7 +160,9 @@ describe("useCancelDeletion", () => {
 		mockChain.update.mockImplementation(() => ({ eq: eqUserId }));
 
 		const { wrapper } = createWrapper();
-		const { result } = renderHook(() => useCancelDeletion(TEST_USER_ID), { wrapper });
+		const { result } = renderHook(() => useCancelDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
@@ -180,7 +196,9 @@ describe("useExecuteDeletion", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(mockInvoke).toHaveBeenCalledWith("delete-account");
-		expect(mockToast.success).toHaveBeenCalledWith("Account deleted. Signing out...");
+		expect(mockToast.success).toHaveBeenCalledWith(
+			"Account deleted. Signing out...",
+		);
 		// Must sign out after successful deletion
 		expect(mockSignOut).toHaveBeenCalled();
 	});

@@ -127,8 +127,8 @@ export function useSaveRoutine() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useSaveRoutine] failed:', error);
-			toast.error('Failed to save routine. Please try again.');
+			console.error("[useSaveRoutine] failed:", error);
+			toast.error("Failed to save routine. Please try again.");
 		},
 	});
 }
@@ -141,7 +141,10 @@ export function useToggleFavorite() {
 		mutationFn: async ({
 			routineId,
 			isFavorite,
-		}: { routineId: string; isFavorite: boolean }) => {
+		}: {
+			routineId: string;
+			isFavorite: boolean;
+		}) => {
 			if (!user) throw new Error("Must be logged in");
 			const { error } = await supabase
 				.from("routines")
@@ -219,8 +222,8 @@ export function useUpdateRoutine() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useUpdateRoutine] failed:', error);
-			toast.error('Failed to update routine. Please try again.');
+			console.error("[useUpdateRoutine] failed:", error);
+			toast.error("Failed to update routine. Please try again.");
 		},
 	});
 }

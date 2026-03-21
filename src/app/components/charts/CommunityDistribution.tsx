@@ -93,7 +93,9 @@ export function CommunityDistribution({
 		const firstRight = rightPoints[0];
 		if (lastLeft && firstRight && lastLeft[0] !== firstRight[0]) {
 			// Interpolate y at userValue
-			const prevPt = [...points].reverse().find(([x]: [number, number]) => x < userValue);
+			const prevPt = [...points]
+				.reverse()
+				.find(([x]: [number, number]) => x < userValue);
 			const nextPt = points.find(([x]) => x > userValue);
 			if (prevPt && nextPt) {
 				const t = (userValue - prevPt[0]) / (nextPt[0] - prevPt[0]);

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { EChartsWrapper } from "./shared/EChartsWrapper";
 import { CHART_COLORS } from "./shared/EChartsTheme";
+import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface TrainingLoadGaugeProps {
 	score: number;
@@ -91,10 +91,5 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 		[clamped, zoneColor, zoneLabel],
 	);
 
-	return (
-		<EChartsWrapper
-			option={option}
-			height={200}
-		/>
-	);
+	return <EChartsWrapper option={option} height={200} />;
 }

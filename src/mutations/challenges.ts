@@ -25,8 +25,8 @@ export function useJoinChallenge() {
 			});
 		},
 		onError: (error: Error) => {
-			console.error('[useJoinChallenge] failed:', error);
-			toast.error('Failed to join challenge. Please try again.');
+			console.error("[useJoinChallenge] failed:", error);
+			toast.error("Failed to join challenge. Please try again.");
 		},
 	});
 }
@@ -54,8 +54,8 @@ export function useLeaveChallenge() {
 			});
 		},
 		onError: (error: Error) => {
-			console.error('[useLeaveChallenge] failed:', error);
-			toast.error('Failed to leave challenge. Please try again.');
+			console.error("[useLeaveChallenge] failed:", error);
+			toast.error("Failed to leave challenge. Please try again.");
 		},
 	});
 }
@@ -83,8 +83,8 @@ export function useCompleteChallenge() {
 			});
 		},
 		onError: (error: Error) => {
-			console.error('[useCompleteChallenge] failed:', error);
-			toast.error('Failed to update challenge. Please try again.');
+			console.error("[useCompleteChallenge] failed:", error);
+			toast.error("Failed to update challenge. Please try again.");
 		},
 	});
 }

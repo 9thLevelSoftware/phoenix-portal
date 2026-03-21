@@ -105,9 +105,7 @@ export function useSubscription(): SubscriptionData {
 
 	// Effective tier mirrors server-side requireSubscription() logic:
 	// only active/trialing subscriptions grant paid access.
-	const tier: SubscriptionTier = ACTIVE_STATUSES.has(status)
-		? rawTier
-		: "FREE";
+	const tier: SubscriptionTier = ACTIVE_STATUSES.has(status) ? rawTier : "FREE";
 
 	return {
 		tier,

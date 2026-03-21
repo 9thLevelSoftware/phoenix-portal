@@ -14,7 +14,9 @@ const mockDeleteResult = vi.fn();
 const mockSelectSingle = vi.fn();
 
 const mockChain = {
-	insert: vi.fn(() => ({ select: vi.fn(() => ({ single: mockSelectSingle })) })),
+	insert: vi.fn(() => ({
+		select: vi.fn(() => ({ single: mockSelectSingle })),
+	})),
 	update: vi.fn(() => ({
 		eq: vi.fn((key: string, val: string) => {
 			// For useToggleFavorite, there's a second .eq() call
@@ -43,7 +45,12 @@ vi.mock("@/providers/AuthProvider", () => ({
 	}),
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -52,7 +59,10 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -85,7 +95,10 @@ describe("useSaveRoutine", () => {
 	it("inserts routine and exercises into Supabase on success", async () => {
 		const { useSaveRoutine } = await import("../routines");
 
-		mockSelectSingle.mockResolvedValue({ data: { id: "routine-1" }, error: null });
+		mockSelectSingle.mockResolvedValue({
+			data: { id: "routine-1" },
+			error: null,
+		});
 		mockChain.insert.mockImplementation((rows: unknown) => {
 			// Second insert call is for exercises — no .select().single() chain
 			if (Array.isArray(rows)) {
@@ -114,7 +127,9 @@ describe("useSaveRoutine", () => {
 		// Should show success toast
 		expect(mockToast.success).toHaveBeenCalledWith("Routine saved");
 		// Should invalidate routines cache
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.routines.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.routines.all,
+		});
 	});
 
 	it("shows user-friendly error message on failure (not raw backend error)", async () => {
@@ -122,7 +137,10 @@ describe("useSaveRoutine", () => {
 
 		mockSelectSingle.mockResolvedValue({
 			data: null,
-			error: { message: "duplicate key value violates unique constraint", code: "23505" },
+			error: {
+				message: "duplicate key value violates unique constraint",
+				code: "23505",
+			},
 		});
 		mockChain.insert.mockImplementation(() => ({
 			select: vi.fn(() => ({ single: mockSelectSingle })),
@@ -139,7 +157,9 @@ describe("useSaveRoutine", () => {
 		await waitFor(() => expect(result.current.isError).toBe(true));
 
 		// Must show sanitized message, not raw Supabase error
-		expect(mockToast.error).toHaveBeenCalledWith("Failed to save routine. Please try again.");
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to save routine. Please try again.",
+		);
 		expect(mockToast.error).not.toHaveBeenCalledWith(
 			expect.stringContaining("duplicate key"),
 		);
@@ -212,7 +232,9 @@ describe("useUpdateRoutine", () => {
 		// Toast
 		expect(mockToast.success).toHaveBeenCalledWith("Routine updated");
 		// Cache invalidation: both all and detail
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.routines.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.routines.all,
+		});
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.routines.detail("routine-1"),
 		});
@@ -224,7 +246,10 @@ describe("useUpdateRoutine", () => {
 		mockChain.update.mockImplementation(() => ({
 			eq: vi.fn(() =>
 				Promise.resolve({
-					error: { message: "new row violates check constraint", code: "23514" },
+					error: {
+						message: "new row violates check constraint",
+						code: "23514",
+					},
 				}),
 			),
 		}));

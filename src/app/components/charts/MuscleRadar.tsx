@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { EChartsWrapper } from "./shared/EChartsWrapper";
 import { CHART_COLORS } from "./shared/EChartsTheme";
+import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface MuscleRadarProps {
 	currentData: Record<string, number>;
@@ -105,10 +105,5 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 		};
 	}, [currentData, previousData]);
 
-	return (
-		<EChartsWrapper
-			option={option}
-			height={300}
-		/>
-	);
+	return <EChartsWrapper option={option} height={300} />;
 }

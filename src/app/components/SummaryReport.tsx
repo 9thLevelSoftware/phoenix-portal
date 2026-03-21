@@ -437,7 +437,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 												stroke={PHOENIX.ember}
 												strokeWidth={2}
 												dot={false}
-t											animationDuration={800}
+												t
+												animationDuration={800}
 												animationEasing="ease-out"
 											/>
 										</LineChart>

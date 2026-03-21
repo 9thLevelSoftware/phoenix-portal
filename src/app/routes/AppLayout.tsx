@@ -2,7 +2,6 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useLocation, useOutlet } from "react-router";
-import { pageTransition } from "@/lib/animations";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
@@ -19,6 +18,7 @@ import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useStreakSync } from "@/hooks/useStreakSync";
+import { pageTransition } from "@/lib/animations";
 
 /**
  * Authenticated shell layout.
@@ -62,7 +62,9 @@ export function AppLayout() {
 
 					<SidebarInset className="bg-transparent">
 						{needsOnboarding && (
-							<OnboardingOverlay onComplete={() => completeOnboarding.mutate()} />
+							<OnboardingOverlay
+								onComplete={() => completeOnboarding.mutate()}
+							/>
 						)}
 
 						{needsWhatsNew && (

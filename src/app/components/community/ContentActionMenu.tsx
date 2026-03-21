@@ -136,10 +136,7 @@ export function ContentActionMenu({
 				</AlertDialogContent>
 			</AlertDialog>
 
-			<AlertDialog
-				open={showDeleteConfirm}
-				onOpenChange={setShowDeleteConfirm}
-			>
+			<AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
 				<AlertDialogContent className="bg-background border-secondary">
 					<AlertDialogHeader>
 						<AlertDialogTitle className="text-white">

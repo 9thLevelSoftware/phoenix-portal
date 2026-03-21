@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { CycleBuilder } from "../CycleBuilder";
 
@@ -18,7 +18,9 @@ vi.mock("@/providers/AuthProvider", () => mockAuth);
 
 // --- Router mocks ---
 const mockNavigate = vi.fn();
-const mockParams = vi.hoisted(() => ({ current: {} as Record<string, string> }));
+const mockParams = vi.hoisted(() => ({
+	current: {} as Record<string, string>,
+}));
 vi.mock("react-router", async () => {
 	const actual = await vi.importActual("react-router");
 	return {
@@ -114,9 +116,7 @@ describe("CycleBuilder", () => {
 	// ---------------------------------------------------------------
 	it("renders Cancel, Preview, and Save buttons", () => {
 		renderWithProviders(<CycleBuilder />);
-		expect(
-			screen.getByRole("button", { name: /cancel/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /preview/i }),
 		).toBeInTheDocument();
@@ -245,9 +245,7 @@ describe("CycleBuilder", () => {
 	it("renders description textarea", () => {
 		renderWithProviders(<CycleBuilder />);
 		expect(
-			screen.getByPlaceholderText(
-				/describe your training cycle/i,
-			),
+			screen.getByPlaceholderText(/describe your training cycle/i),
 		).toBeInTheDocument();
 	});
 
@@ -293,6 +291,8 @@ describe("CycleBuilder", () => {
 	it("renders optional start date field", () => {
 		renderWithProviders(<CycleBuilder />);
 		expect(screen.getByText(/start date/i)).toBeInTheDocument();
-		expect(screen.getByText(/leave blank to start anytime/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/leave blank to start anytime/i),
+		).toBeInTheDocument();
 	});
 });

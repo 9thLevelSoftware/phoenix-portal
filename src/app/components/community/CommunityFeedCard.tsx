@@ -39,7 +39,7 @@ export function CommunityFeedCard({
 	const isDeletedUser = item.user_id === null;
 	const authorName = isDeletedUser
 		? "[Deleted User]"
-		: (item.profiles?.display_name || "Anonymous");
+		: item.profiles?.display_name || "Anonymous";
 	const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
 
 	return (
@@ -126,11 +126,11 @@ export function CommunityFeedCard({
 							<div className="flex items-center gap-1">
 								<Clock className="w-3.5 h-3.5" />
 								<span>
-								{item.estimated_duration > 300
-									? Math.round(item.estimated_duration / 60)
-									: item.estimated_duration}{" "}
-								min
-							</span>
+									{item.estimated_duration > 300
+										? Math.round(item.estimated_duration / 60)
+										: item.estimated_duration}{" "}
+									min
+								</span>
 							</div>
 						</>
 					) : (
