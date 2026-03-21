@@ -4,6 +4,7 @@ import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface RoutineExerciseInput {
 	name: string;
@@ -87,6 +88,7 @@ export function useSaveRoutine() {
 				.from("routines")
 				.insert({
 					user_id: user.id,
+					local_profile_id: useProfileFilterStore.getState().activeProfileId,
 					name: input.name,
 					description: input.description ?? "",
 					exercise_count: input.exercises.length,
@@ -155,11 +157,9 @@ export function useToggleFavorite() {
 			return { routineId, isFavorite };
 		},
 		onSuccess: () => {
-			if (user) {
-				queryClient.invalidateQueries({
-					queryKey: queryKeys.routines.byUser(user.id),
-				});
-			}
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.routines.all,
+			});
 		},
 	});
 }
