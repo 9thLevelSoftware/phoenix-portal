@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { type ComponentType, lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { NotFound } from "@/app/components/NotFound";
 import { PageLoading } from "@/app/components/PageLoading";
@@ -6,116 +6,148 @@ import { AppLayout } from "./AppLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { SubscribedRoute } from "./SubscribedRoute";
 
+/**
+ * Wraps a dynamic import so that chunk-load failures (caused by a new deploy
+ * invalidating old hashed filenames) trigger a single page reload to fetch the
+ * updated index.html and asset manifest.
+ */
+function lazyWithReload<T extends ComponentType<unknown>>(
+	factory: () => Promise<{ default: T }>,
+) {
+	return lazy(() =>
+		factory().catch((error: unknown) => {
+			const msg =
+				error instanceof Error ? error.message.toLowerCase() : "";
+			const isChunkError =
+				msg.includes("failed to fetch dynamically imported module") ||
+				msg.includes("loading chunk") ||
+				msg.includes("loading css chunk");
+
+			if (isChunkError) {
+				const key = "phoenix-chunk-reload";
+				const last = sessionStorage.getItem(key);
+				const now = Date.now();
+				if (!last || now - Number(last) > 30_000) {
+					sessionStorage.setItem(key, String(now));
+					window.location.reload();
+				}
+			}
+			// Re-throw so the error boundary still catches it if reload didn't fire
+			throw error;
+		}),
+	);
+}
+
 // Lazy-load all page components for code splitting
-const LandingPage = lazy(() =>
+const LandingPage = lazyWithReload(() =>
 	import("@/app/components/LandingPage").then((m) => ({
 		default: m.LandingPage,
 	})),
 );
-const PrivacyPolicy = lazy(() =>
+const PrivacyPolicy = lazyWithReload(() =>
 	import("@/app/components/PrivacyPolicy").then((m) => ({
 		default: m.PrivacyPolicy,
 	})),
 );
-const TermsOfService = lazy(() =>
+const TermsOfService = lazyWithReload(() =>
 	import("@/app/components/TermsOfService").then((m) => ({
 		default: m.TermsOfService,
 	})),
 );
-const ResetPassword = lazy(() =>
+const ResetPassword = lazyWithReload(() =>
 	import("@/app/components/ResetPassword").then((m) => ({
 		default: m.ResetPassword,
 	})),
 );
-const Dashboard = lazy(() =>
+const Dashboard = lazyWithReload(() =>
 	import("@/app/components/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
-const WorkoutHistory = lazy(() =>
+const WorkoutHistory = lazyWithReload(() =>
 	import("@/app/components/WorkoutHistory").then((m) => ({
 		default: m.WorkoutHistory,
 	})),
 );
-const SessionDetail = lazy(() =>
+const SessionDetail = lazyWithReload(() =>
 	import("@/app/components/SessionDetail").then((m) => ({
 		default: m.SessionDetail,
 	})),
 );
-const PersonalRecords = lazy(() =>
+const PersonalRecords = lazyWithReload(() =>
 	import("@/app/components/PersonalRecords").then((m) => ({
 		default: m.PersonalRecords,
 	})),
 );
-const Analytics = lazy(() =>
+const Analytics = lazyWithReload(() =>
 	import("@/app/components/Analytics").then((m) => ({ default: m.Analytics })),
 );
-const Challenges = lazy(() =>
+const Challenges = lazyWithReload(() =>
 	import("@/app/components/Challenges").then((m) => ({
 		default: m.Challenges,
 	})),
 );
-const Community = lazy(() =>
+const Community = lazyWithReload(() =>
 	import("@/app/components/Community").then((m) => ({ default: m.Community })),
 );
-const RoutinesEnhanced = lazy(() =>
+const RoutinesEnhanced = lazyWithReload(() =>
 	import("@/app/components/RoutinesEnhanced").then((m) => ({
 		default: m.RoutinesEnhanced,
 	})),
 );
-const RoutineBuilder = lazy(() =>
+const RoutineBuilder = lazyWithReload(() =>
 	import("@/app/components/RoutineBuilder").then((m) => ({
 		default: m.RoutineBuilder,
 	})),
 );
-const RoutineDetail = lazy(() =>
+const RoutineDetail = lazyWithReload(() =>
 	import("@/app/components/RoutineDetail").then((m) => ({
 		default: m.RoutineDetail,
 	})),
 );
-const TrainingCycles = lazy(() =>
+const TrainingCycles = lazyWithReload(() =>
 	import("@/app/components/TrainingCycles").then((m) => ({
 		default: m.TrainingCycles,
 	})),
 );
-const CycleBuilder = lazy(() =>
+const CycleBuilder = lazyWithReload(() =>
 	import("@/app/components/CycleBuilder").then((m) => ({
 		default: m.CycleBuilder,
 	})),
 );
-const CelebrationDemo = lazy(() =>
+const CelebrationDemo = lazyWithReload(() =>
 	import("@/app/components/CelebrationDemo").then((m) => ({
 		default: m.CelebrationDemo,
 	})),
 );
-const Profile = lazy(() =>
+const Profile = lazyWithReload(() =>
 	import("@/app/components/Profile").then((m) => ({ default: m.Profile })),
 );
-const PricingPlans = lazy(() =>
+const PricingPlans = lazyWithReload(() =>
 	import("@/app/components/PricingPlans").then((m) => ({
 		default: m.PricingPlans,
 	})),
 );
-const SessionReplay = lazy(() =>
+const SessionReplay = lazyWithReload(() =>
 	import("@/app/components/session-replay/SessionReplay").then((m) => ({
 		default: m.SessionReplay,
 	})),
 );
-const Integrations = lazy(() =>
+const Integrations = lazyWithReload(() =>
 	import("@/app/components/Integrations").then((m) => ({
 		default: m.Integrations,
 	})),
 );
-const ComparisonView = lazy(() =>
+const ComparisonView = lazyWithReload(() =>
 	import("@/app/components/ComparisonView").then((m) => ({
 		default: m.ComparisonView,
 	})),
 );
-const Goals = lazy(() =>
+const Goals = lazyWithReload(() =>
 	import("@/app/components/Goals").then((m) => ({ default: m.Goals })),
 );
-const Recovery = lazy(() =>
+const Recovery = lazyWithReload(() =>
 	import("@/app/components/Recovery").then((m) => ({ default: m.Recovery })),
 );
-const FAQ = lazy(() =>
+const FAQ = lazyWithReload(() =>
 	import("@/app/components/FAQ").then((m) => ({ default: m.FAQ })),
 );
 
