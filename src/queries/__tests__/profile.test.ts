@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -148,8 +148,7 @@ describe("profileStatsOptions", () => {
 		let callCount = 0;
 		fromFn.mockImplementation(() => {
 			callCount++;
-			if (callCount === 1)
-				return buildChain({ data: sessions, error: null });
+			if (callCount === 1) return buildChain({ data: sessions, error: null });
 			// PR count query uses { count: "exact", head: true }
 			return buildChain({ data: null, error: null, count: 5 });
 		});
@@ -170,8 +169,7 @@ describe("profileStatsOptions", () => {
 		let callCount = 0;
 		fromFn.mockImplementation(() => {
 			callCount++;
-			if (callCount === 1)
-				return buildChain({ data: [], error: null });
+			if (callCount === 1) return buildChain({ data: [], error: null });
 			return buildChain({ data: null, error: null, count: 0 });
 		});
 
@@ -196,9 +194,7 @@ describe("topExercisesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		expect(opts.queryKey).toEqual(
-			queryKeys.profile.topExercises("user-1"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.profile.topExercises("user-1"));
 	});
 
 	it("returns top 5 exercises by frequency", async () => {
@@ -218,8 +214,7 @@ describe("topExercisesOptions", () => {
 		let callCount = 0;
 		fromFn.mockImplementation(() => {
 			callCount++;
-			if (callCount === 1)
-				return buildChain({ data: sessions, error: null });
+			if (callCount === 1) return buildChain({ data: sessions, error: null });
 			return buildChain({ data: exercises, error: null });
 		});
 
@@ -322,9 +317,7 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		expect(opts.queryKey).toEqual(
-			queryKeys.profile.gamification("user-1"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.profile.gamification("user-1"));
 	});
 
 	it("returns Zod-transformed gamification stats", async () => {

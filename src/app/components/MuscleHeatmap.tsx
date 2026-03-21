@@ -215,10 +215,8 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 		return 0.15 + ((volume - minVolume) / (maxVolume - minVolume)) * 0.85;
 	}
 
-	const regions =
-		view === "front" ? FRONT_MUSCLE_REGIONS : BACK_MUSCLE_REGIONS;
-	const bodyOutline =
-		view === "front" ? BODY_OUTLINE_FRONT : BODY_OUTLINE_BACK;
+	const regions = view === "front" ? FRONT_MUSCLE_REGIONS : BACK_MUSCLE_REGIONS;
+	const bodyOutline = view === "front" ? BODY_OUTLINE_FRONT : BODY_OUTLINE_BACK;
 
 	return (
 		<div

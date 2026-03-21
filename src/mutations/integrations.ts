@@ -3,7 +3,11 @@ import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
-const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = ["strava", "fitbit", "hevy"];
+const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = [
+	"strava",
+	"fitbit",
+	"hevy",
+];
 
 /**
  * Disconnect an integration server-side so oauth_tokens are cleared alongside

@@ -66,9 +66,7 @@ export function MobileBottomNav() {
 	const location = useLocation();
 	const streak = useUIStore((s) => s.streak);
 
-	const isMoreActive = moreItemPaths.some(
-		(path) => location.pathname === path,
-	);
+	const isMoreActive = moreItemPaths.some((path) => location.pathname === path);
 
 	// Handle browser back button to close drawer
 	const handleDrawerChange = useCallback((open: boolean) => {
@@ -258,7 +256,9 @@ export function MobileBottomNav() {
 												}`}
 											>
 												<Icon className="h-5 w-5" />
-												<span className="text-sm font-medium">{item.label}</span>
+												<span className="text-sm font-medium">
+													{item.label}
+												</span>
 											</Link>
 										);
 									})}

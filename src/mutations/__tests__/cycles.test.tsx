@@ -31,7 +31,12 @@ vi.mock("@/providers/AuthProvider", () => ({
 	}),
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -40,7 +45,10 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -91,7 +99,9 @@ describe("useSaveCycle", () => {
 			// training_cycles insert with .select().single()
 			return {
 				select: vi.fn(() => ({
-					single: vi.fn().mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
+					single: vi
+						.fn()
+						.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
 				})),
 			};
 		});
@@ -108,7 +118,9 @@ describe("useSaveCycle", () => {
 		expect(from).toHaveBeenCalledWith("training_cycles");
 		expect(from).toHaveBeenCalledWith("cycle_days");
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle saved");
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cycles.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.cycles.all,
+		});
 	});
 
 	it("counts workout and rest days correctly", async () => {
@@ -121,7 +133,9 @@ describe("useSaveCycle", () => {
 				capturedInsertPayload = rows as Record<string, unknown>;
 				return {
 					select: vi.fn(() => ({
-						single: vi.fn().mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
+						single: vi
+							.fn()
+							.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
 					})),
 				};
 			}
@@ -147,7 +161,10 @@ describe("useSaveCycle", () => {
 			select: vi.fn(() => ({
 				single: vi.fn().mockResolvedValue({
 					data: null,
-					error: { message: "relation \"training_cycles\" violates RLS policy", code: "42501" },
+					error: {
+						message: 'relation "training_cycles" violates RLS policy',
+						code: "42501",
+					},
 				}),
 			})),
 		}));
@@ -196,7 +213,9 @@ describe("useUpdateCycle", () => {
 		expect(from).toHaveBeenCalledWith("training_cycles");
 		expect(from).toHaveBeenCalledWith("cycle_days");
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle updated");
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cycles.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.cycles.all,
+		});
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.cycles.detail("cycle-1"),
 		});
@@ -206,7 +225,9 @@ describe("useUpdateCycle", () => {
 		const { useUpdateCycle } = await import("../cycles");
 
 		const eqSecond = vi.fn(() =>
-			Promise.resolve({ error: { message: "permission denied for table", code: "42501" } }),
+			Promise.resolve({
+				error: { message: "permission denied for table", code: "42501" },
+			}),
 		);
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
 		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
@@ -262,7 +283,9 @@ describe("useActivateCycle", () => {
 		// Should have called update twice: once to deactivate, once to activate
 		expect(mockChain.update).toHaveBeenCalledTimes(2);
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle activated");
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cycles.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.cycles.all,
+		});
 	});
 
 	it("shows user-friendly error on activation failure", async () => {
@@ -272,7 +295,9 @@ describe("useActivateCycle", () => {
 			eq: vi.fn(() => ({
 				eq: vi.fn(() =>
 					Promise.resolve({
-						error: { message: "could not serialize access due to concurrent update" },
+						error: {
+							message: "could not serialize access due to concurrent update",
+						},
 					}),
 				),
 			})),

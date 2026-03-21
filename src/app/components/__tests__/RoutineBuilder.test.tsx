@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { RoutineBuilder } from "../RoutineBuilder";
 
@@ -18,7 +18,9 @@ vi.mock("@/providers/AuthProvider", () => mockAuth);
 
 // --- Router mocks ---
 const mockNavigate = vi.fn();
-const mockParams = vi.hoisted(() => ({ current: {} as Record<string, string> }));
+const mockParams = vi.hoisted(() => ({
+	current: {} as Record<string, string>,
+}));
 vi.mock("react-router", async () => {
 	const actual = await vi.importActual("react-router");
 	return {
@@ -115,9 +117,7 @@ describe("RoutineBuilder", () => {
 	// ---------------------------------------------------------------
 	it("renders Cancel, Preview, and Save buttons", () => {
 		renderWithProviders(<RoutineBuilder />);
-		expect(
-			screen.getByRole("button", { name: /cancel/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /preview/i }),
 		).toBeInTheDocument();
@@ -239,9 +239,7 @@ describe("RoutineBuilder", () => {
 	it("shows empty detail panel when no exercise is selected", () => {
 		renderWithProviders(<RoutineBuilder />);
 		// The EmptyDetailPanel renders instructions
-		expect(
-			screen.getByText(/select an exercise/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/select an exercise/i)).toBeInTheDocument();
 	});
 
 	// ---------------------------------------------------------------

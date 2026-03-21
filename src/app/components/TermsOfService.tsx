@@ -198,9 +198,7 @@ export function TermsOfService() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">
-											Merchant of Record:
-										</span>{" "}
+										<span className="font-semibold">Merchant of Record:</span>{" "}
 										Paddle.com is the Merchant of Record for all subscription
 										transactions. For tax, billing, and payment inquiries,
 										Paddle's terms of service apply alongside these terms

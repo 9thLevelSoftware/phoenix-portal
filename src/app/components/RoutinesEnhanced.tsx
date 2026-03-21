@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Clock,
@@ -15,6 +14,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
+import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -296,7 +296,13 @@ function RoutineGrid({
 								</div>
 								<div className="flex items-center gap-1 text-muted-foreground">
 									<Clock className="w-4 h-4" />
-									<span>~{routine.estimated_duration > 300 ? Math.round(routine.estimated_duration / 60) : routine.estimated_duration} min</span>
+									<span>
+										~
+										{routine.estimated_duration > 300
+											? Math.round(routine.estimated_duration / 60)
+											: routine.estimated_duration}{" "}
+										min
+									</span>
 								</div>
 							</div>
 

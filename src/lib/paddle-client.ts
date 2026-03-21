@@ -80,9 +80,7 @@ export function initializePaddle(
 ): void {
 	if (initialized) return;
 
-	const token = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as
-		| string
-		| undefined;
+	const token = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
 
 	if (!token) {
 		console.warn(
@@ -99,7 +97,9 @@ export function initializePaddle(
 	}
 
 	// Use sandbox environment when explicitly configured
-	const paddleEnv = import.meta.env.VITE_PADDLE_ENVIRONMENT as string | undefined;
+	const paddleEnv = import.meta.env.VITE_PADDLE_ENVIRONMENT as
+		| string
+		| undefined;
 	if (paddleEnv === "sandbox") {
 		window.Paddle.Environment.set("sandbox");
 	}

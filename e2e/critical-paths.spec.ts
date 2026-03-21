@@ -224,9 +224,10 @@ test.describe("Session Detail with Full Data", () => {
 		await expect(page.getByText("Barbell Row")).toBeVisible();
 
 		// Session stats visible (duration, volume, or exercise count)
+		// UI renders duration as "60m" (Zod schema converts seconds→minutes)
 		await expect(
-			page.getByText(/60.*min|1.*hour|3600/i).first(),
-		).toBeVisible();
+			page.getByText(/60\s*m|1\s*h|3600/i).first(),
+		).toBeVisible({ timeout: 10000 });
 
 		// PR indicator visible for at least one set
 		await expect(

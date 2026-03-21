@@ -147,8 +147,8 @@ export function ConsistencyWidget({
 					Last week
 				</span>
 				<span className="flex items-center gap-1">
-					<span className="inline-block w-2 h-2 rounded-full bg-[#10B981]" />
-					2 weeks ago
+					<span className="inline-block w-2 h-2 rounded-full bg-[#10B981]" />2
+					weeks ago
 				</span>
 			</div>
 

@@ -61,7 +61,9 @@ describe("useCommunityStore", () => {
 		useCommunityStore.getState().setActiveTab("cycles");
 		useCommunityStore.getState().setSort("top");
 		useCommunityStore.getState().setSearch("squat");
-		useCommunityStore.getState().setFilters({ muscleGroup: "legs", difficulty: "hard" });
+		useCommunityStore
+			.getState()
+			.setFilters({ muscleGroup: "legs", difficulty: "hard" });
 		useCommunityStore.getState().setSelectedItemId("item-456");
 		useCommunityStore.getState().setBlockedUserIds(new Set(["u1"]));
 

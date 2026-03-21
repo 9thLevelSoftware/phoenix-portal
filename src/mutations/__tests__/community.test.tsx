@@ -29,7 +29,12 @@ vi.mock("@/providers/AuthProvider", () => ({
 	}),
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -38,7 +43,10 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -150,7 +158,9 @@ describe("useShareContent", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("shared_routines");
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.community.all });
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.community.all,
+		});
 	});
 
 	it("inserts into shared_cycles for cycle type", async () => {
@@ -239,7 +249,10 @@ describe("useReportContent", () => {
 		const { useReportContent } = await import("../community");
 
 		mockChain.insert.mockResolvedValue({
-			error: { message: "duplicate key value violates unique constraint", code: "23505" },
+			error: {
+				message: "duplicate key value violates unique constraint",
+				code: "23505",
+			},
 		});
 
 		const { wrapper } = createWrapper();
@@ -419,8 +432,12 @@ describe("useDeleteSharedContent", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("shared_routines");
-		expect(mockToast.success).toHaveBeenCalledWith("Content removed from community");
-		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.community.all });
+		expect(mockToast.success).toHaveBeenCalledWith(
+			"Content removed from community",
+		);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.community.all,
+		});
 	});
 
 	it("deletes shared cycle when contentType is cycle", async () => {

@@ -1,19 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = [
-		"select",
-		"eq",
-		"order",
-		"gte",
-		"lt",
-		"in",
-		"limit",
-	];
+	const methods = ["select", "eq", "order", "gte", "lt", "in", "limit"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}

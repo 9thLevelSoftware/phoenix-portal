@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import MuscleHighlighter, { type ExtendedBodyPart, type Slug } from "react-muscle-highlighter";
 import {
 	Activity,
 	AlertCircle,
@@ -15,6 +14,10 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import MuscleHighlighter, {
+	type ExtendedBodyPart,
+	type Slug,
+} from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
 import {
 	Area,
@@ -29,15 +32,18 @@ import {
 	YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
+import { BiomechanicsContent } from "@/app/components/Biomechanics";
+import { CommunityRankings } from "@/app/components/CommunityRankings";
 import { ConsistencyWidget } from "@/app/components/charts/ConsistencyWidget";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
+import {
+	CHART_COLORS,
+	ECHARTS_GRID,
+} from "@/app/components/charts/shared/EChartsTheme";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
-import { CHART_COLORS, ECHARTS_GRID } from "@/app/components/charts/shared/EChartsTheme";
+import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
-import { CommunityRankings } from "@/app/components/CommunityRankings";
-import { InsightsFeed, type InsightItem } from "@/app/components/InsightsFeed";
-import { BiomechanicsContent } from "@/app/components/Biomechanics";
+import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Badge } from "@/app/components/ui/badge";
@@ -426,6 +432,25 @@ function percentDelta(current: number, previous: number): number | null {
 	return Math.round(((current - previous) / previous) * 100);
 }
 
+// Map muscle group names → react-muscle-highlighter slugs for body heatmap
+const muscleSlugToGroup: Record<string, string> = {
+	chest: "Chest",
+	deltoids: "Shoulders",
+	trapezius: "Shoulders",
+	biceps: "Arms",
+	triceps: "Arms",
+	forearm: "Arms",
+	abs: "Core",
+	obliques: "Core",
+	quadriceps: "Legs",
+	hamstring: "Legs",
+	calves: "Legs",
+	adductors: "Legs",
+	gluteal: "Legs",
+	"upper-back": "Back",
+	"lower-back": "Back",
+};
+
 export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
@@ -436,7 +461,7 @@ export function Analytics() {
 	const rawTab = searchParams.get("tab") || "overview";
 	const activeTab = VALID_TABS.includes(rawTab)
 		? rawTab
-		: TAB_MIGRATION[rawTab] ?? "overview";
+		: (TAB_MIGRATION[rawTab] ?? "overview");
 	const setActiveTab = (tab: string) => setSearchParams({ tab });
 
 	const queryPeriod = periodToDays(timePeriod);
@@ -489,20 +514,15 @@ export function Analytics() {
 		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
 	}));
 
-	// Map muscle group names → react-muscle-highlighter slugs for body heatmap
-	const muscleSlugToGroup: Record<string, string> = {
-		chest: "Chest", deltoids: "Shoulders", trapezius: "Shoulders",
-		biceps: "Arms", triceps: "Arms", forearm: "Arms",
-		abs: "Core", obliques: "Core",
-		quadriceps: "Legs", hamstring: "Legs", calves: "Legs", adductors: "Legs", gluteal: "Legs",
-		"upper-back": "Back", "lower-back": "Back",
-	};
 	const muscleHighlighterData: ExtendedBodyPart[] = useMemo(() => {
 		if (muscleGroupData.length === 0) return [];
 		const maxVal = Math.max(...muscleGroupData.map((m) => m.value), 1);
 		const groupToIntensity: Record<string, number> = {};
 		for (const m of muscleGroupData) {
-			groupToIntensity[m.name] = Math.max(1, Math.round((m.value / maxVal) * 5));
+			groupToIntensity[m.name] = Math.max(
+				1,
+				Math.round((m.value / maxVal) * 5),
+			);
 		}
 		return Object.entries(muscleSlugToGroup).map(([slug, group]) => ({
 			slug: slug as Slug,
@@ -584,9 +604,12 @@ export function Analytics() {
 		const dayCounts: Record<string, number> = {};
 		const totalWeeks = Math.max(
 			1,
-			Math.ceil(raw.length > 0
-				? (now.getTime() - new Date(raw[0].started_at).getTime()) / (7 * 24 * 60 * 60 * 1000)
-				: 1),
+			Math.ceil(
+				raw.length > 0
+					? (now.getTime() - new Date(raw[0].started_at).getTime()) /
+							(7 * 24 * 60 * 60 * 1000)
+					: 1,
+			),
 		);
 		let weeklyHits = 0;
 		const weekSessionCounts = new Map<string, number>();
@@ -808,7 +831,11 @@ export function Analytics() {
 	// --- Insights feed data (from server or local fallback) ---
 	const insightsFeedItems: InsightItem[] = useMemo(() => {
 		// If we have server-generated insights, use them
-		if (insightsData && Array.isArray(insightsData) && insightsData.length > 0) {
+		if (
+			insightsData &&
+			Array.isArray(insightsData) &&
+			insightsData.length > 0
+		) {
 			return insightsData.map((item: Record<string, unknown>) => ({
 				id: (item.id as string) ?? String(Math.random()),
 				type: ((item.type as string) ?? "info") as InsightItem["type"],
@@ -821,11 +848,12 @@ export function Analytics() {
 		// Fallback: convert local insights to InsightsFeed format
 		return insights.map((i, idx) => ({
 			id: `local-${idx}`,
-			type: i.type === "positive"
-				? "success" as const
-				: i.type === "warning"
-					? "warning" as const
-					: "info" as const,
+			type:
+				i.type === "positive"
+					? ("success" as const)
+					: i.type === "warning"
+						? ("warning" as const)
+						: ("info" as const),
 			title: i.title,
 			description: i.description,
 		}));
@@ -975,13 +1003,25 @@ export function Analytics() {
 							label: "Volume",
 							value: formatVolume(totalVolume, unit),
 							icon: <TrendingUp className="w-5 h-5" />,
-							delta: heroDeltas.volume != null ? { value: heroDeltas.volume, positive: heroDeltas.volume >= 0 } : undefined,
+							delta:
+								heroDeltas.volume != null
+									? {
+											value: heroDeltas.volume,
+											positive: heroDeltas.volume >= 0,
+										}
+									: undefined,
 						},
 						{
 							label: "Workouts",
 							value: `${mobileTotalWorkouts}`,
 							icon: <Dumbbell className="w-5 h-5" />,
-							delta: heroDeltas.workouts != null ? { value: heroDeltas.workouts, positive: heroDeltas.workouts >= 0 } : undefined,
+							delta:
+								heroDeltas.workouts != null
+									? {
+											value: heroDeltas.workouts,
+											positive: heroDeltas.workouts >= 0,
+										}
+									: undefined,
 						},
 						{
 							label: "Load",
@@ -1241,8 +1281,8 @@ export function Analytics() {
 													Track your training trends
 												</p>
 												<p className="text-xs">
-													Complete a few workouts to see your volume and strength
-													trends here
+													Complete a few workouts to see your volume and
+													strength trends here
 												</p>
 											</div>
 										)}
@@ -1320,7 +1360,10 @@ export function Analytics() {
 											</MobileChartCard>
 
 											{/* Biomechanics — gated for Inferno */}
-											<SubscriptionGate requiredTier="INFERNO" featureName="Biomechanics Analysis">
+											<SubscriptionGate
+												requiredTier="INFERNO"
+												featureName="Biomechanics Analysis"
+											>
 												<Card className="p-4 border-secondary">
 													<BiomechanicsContent view="biomechanics" />
 												</Card>
@@ -1642,9 +1685,7 @@ export function Analytics() {
 									{/* Training Load + Consistency + Insights */}
 									<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">
-												Training Load
-											</h3>
+											<h3 className="text-lg text-white mb-4">Training Load</h3>
 											<TrainingLoadGauge
 												score={trainingLoad.rtl}
 												zone={trainingLoad.zone}
@@ -1652,16 +1693,12 @@ export function Analytics() {
 										</Card>
 
 										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">
-												Consistency
-											</h3>
+											<h3 className="text-lg text-white mb-4">Consistency</h3>
 											<ConsistencyWidget {...consistencyData} />
 										</Card>
 
 										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">
-												Insights
-											</h3>
+											<h3 className="text-lg text-white mb-4">Insights</h3>
 											<InsightsFeed
 												insights={insightsFeedItems.slice(0, 3)}
 												loading={insightsPending}
@@ -1696,10 +1733,7 @@ export function Analytics() {
 											Volume & Frequency Trends
 										</h3>
 										{volumeAreaOption ? (
-											<EChartsWrapper
-												option={volumeAreaOption}
-												height={300}
-											/>
+											<EChartsWrapper option={volumeAreaOption} height={300} />
 										) : (
 											<div className="h-[300px] flex items-center justify-center text-muted">
 												No volume data for this period
@@ -1904,9 +1938,7 @@ export function Analytics() {
 									{/* Interactive Body Heatmap */}
 									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 										<div className="flex justify-between items-center mb-6">
-											<h3 className="text-xl text-white">
-												Body Overview
-											</h3>
+											<h3 className="text-xl text-white">Body Overview</h3>
 											<div className="flex bg-muted/20 rounded-lg overflow-hidden">
 												<button
 													type="button"
@@ -1934,17 +1966,35 @@ export function Analytics() {
 												defaultFill="#2a2a2a"
 												defaultStroke="#444"
 												defaultStrokeWidth={0.5}
-												colors={["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"]}
+												colors={[
+													"#FF6B3520",
+													"#FF6B3550",
+													"#FF6B3580",
+													"#FF6B35B0",
+													"#FF6B35",
+												]}
 												onBodyPartPress={(part) => {
 													if (part.slug) {
-														toast.info(`${part.slug}: ${muscleSlugToGroup[part.slug] ?? "General"}`);
+														toast.info(
+															`${part.slug}: ${muscleSlugToGroup[part.slug] ?? "General"}`,
+														);
 													}
 												}}
 											/>
 										</div>
 										<div className="flex justify-center gap-1 mt-4">
-											{["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"].map((c) => (
-												<div key={c} className="w-10 h-2 rounded" style={{ backgroundColor: c }} />
+											{[
+												"#FF6B3520",
+												"#FF6B3550",
+												"#FF6B3580",
+												"#FF6B35B0",
+												"#FF6B35",
+											].map((c) => (
+												<div
+													key={c}
+													className="w-10 h-2 rounded"
+													style={{ backgroundColor: c }}
+												/>
 											))}
 										</div>
 										<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
@@ -1967,7 +2017,8 @@ export function Analytics() {
 													Community Rankings
 												</h3>
 												<p className="text-sm text-muted-foreground mb-4">
-													Rankings update daily based on all participating Phoenix users.
+													Rankings update daily based on all participating
+													Phoenix users.
 												</p>
 												<CommunityRankings rankings={[]} loading={false} />
 											</Card>
@@ -1996,8 +2047,7 @@ export function Analytics() {
 																		const totalMin =
 																			volumeComparison.current.reduce(
 																				(s, r) =>
-																					s +
-																					(r.duration_seconds ?? 0) / 60,
+																					s + (r.duration_seconds ?? 0) / 60,
 																				0,
 																			);
 																		return totalMin > 0
@@ -2016,8 +2066,7 @@ export function Analytics() {
 															volumeComparison.current.length > 0
 																? `${Math.round(
 																		volumeComparison.current.reduce(
-																			(s, r) =>
-																				s + (r.duration_seconds ?? 0),
+																			(s, r) => s + (r.duration_seconds ?? 0),
 																			0,
 																		) /
 																			volumeComparison.current.length /

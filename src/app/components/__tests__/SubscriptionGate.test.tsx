@@ -36,17 +36,12 @@ vi.mock("@/app/components/UpgradePrompt", () => ({
 		<div data-testid="upgrade-prompt">
 			<span data-testid="required-tier">{requiredTier}</span>
 			<span data-testid="current-tier">{currentTier}</span>
-			{featureName && (
-				<span data-testid="feature-name">{featureName}</span>
-			)}
+			{featureName && <span data-testid="feature-name">{featureName}</span>}
 		</div>
 	),
 }));
 
-function setupSubscription(overrides: {
-	tier?: string;
-	isLoading?: boolean;
-}) {
+function setupSubscription(overrides: { tier?: string; isLoading?: boolean }) {
 	mockUseSubscription.useSubscription.mockReturnValue({
 		tier: overrides.tier ?? "FREE",
 		rawTier: overrides.tier ?? "FREE",
@@ -55,8 +50,7 @@ function setupSubscription(overrides: {
 		cancelAtPeriodEnd: false,
 		isLoading: overrides.isLoading ?? false,
 		isPremium: (overrides.tier ?? "FREE") !== "FREE",
-		isFlame:
-			overrides.tier === "FLAME" || overrides.tier === "INFERNO",
+		isFlame: overrides.tier === "FLAME" || overrides.tier === "INFERNO",
 		isInferno: overrides.tier === "INFERNO",
 	});
 }

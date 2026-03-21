@@ -1,5 +1,5 @@
-import { motion } from "motion/react";
 import { Flame } from "lucide-react";
+import { motion } from "motion/react";
 
 export function PageLoading() {
 	return (
@@ -17,10 +17,7 @@ export function PageLoading() {
 					}}
 					className="relative"
 				>
-					<Flame
-						className="w-10 h-10 text-primary"
-						strokeWidth={1.5}
-					/>
+					<Flame className="w-10 h-10 text-primary" strokeWidth={1.5} />
 					<motion.div
 						className="absolute inset-0 rounded-full bg-primary/20 blur-xl"
 						animate={{

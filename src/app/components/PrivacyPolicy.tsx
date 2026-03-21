@@ -14,9 +14,7 @@ export function PrivacyPolicy() {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<PhoenixLogo size="sm" animated={false} />
-							<span className="text-xl text-primary">
-								Project Phoenix
-							</span>
+							<span className="text-xl text-primary">Project Phoenix</span>
 						</div>
 						<Button
 							variant="outline"
@@ -98,8 +96,8 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Subscription tier and billing status (managed via
-									Paddle, our payment processor)
+										Subscription tier and billing status (managed via Paddle,
+										our payment processor)
 									</span>
 								</li>
 							</ul>
@@ -262,9 +260,7 @@ export function PrivacyPolicy() {
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">
-											Paddle Billing:
-										</span>{" "}
+										<span className="font-semibold">Paddle Billing:</span>{" "}
 										Subscription payments are processed by Paddle, our merchant
 										of record. We do not store payment card details.
 										Subscription status is synced to the Portal via Paddle

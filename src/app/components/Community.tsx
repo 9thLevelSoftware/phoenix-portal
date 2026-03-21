@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -8,6 +7,7 @@ import { CommunityFilterPanel } from "@/app/components/community/CommunityFilter
 import { CommunitySearch } from "@/app/components/community/CommunitySearch";
 import { CreatorProfile } from "@/app/components/community/CreatorProfile";
 import { FeaturedCreators } from "@/app/components/community/FeaturedCreators";
+import { PageShell } from "@/app/components/PageShell";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import {
@@ -126,9 +126,7 @@ export function Community() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="flex items-center justify-between px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">
-						Community
-					</h1>
+					<h1 className="text-2xl font-bold text-white">Community</h1>
 				</header>
 
 				{/* Mobile Tabs */}
@@ -223,12 +221,14 @@ export function Community() {
 									<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
 									{hasActiveFilters ? (
 										<p>
-											No {activeTab === "routines" ? "routines" : "cycles"} found
+											No {activeTab === "routines" ? "routines" : "cycles"}{" "}
+											found
 										</p>
 									) : (
 										<>
 											<p>
-												No shared {activeTab === "routines" ? "routines" : "cycles"} yet
+												No shared{" "}
+												{activeTab === "routines" ? "routines" : "cycles"} yet
 											</p>
 											<p className="mt-1 text-sm text-muted-foreground">
 												Be the first to share{" "}
@@ -410,12 +410,17 @@ export function Community() {
 							)}
 
 							{/* Desktop Infinite scroll sentinel */}
-							<div ref={sentinelRef} className="h-10 flex items-center justify-center">
+							<div
+								ref={sentinelRef}
+								className="h-10 flex items-center justify-center"
+							>
 								{isFetchingNextPage && (
 									<div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
 								)}
 								{hasNextPage && !isFetchingNextPage && (
-									<p className="text-xs text-muted-foreground">Scroll for more</p>
+									<p className="text-xs text-muted-foreground">
+										Scroll for more
+									</p>
 								)}
 							</div>
 						</>

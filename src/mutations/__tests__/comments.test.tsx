@@ -28,7 +28,12 @@ vi.mock("@/providers/AuthProvider", () => ({
 	}),
 }));
 
-const mockToast = { success: vi.fn(), error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() };
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	loading: vi.fn(),
+	dismiss: vi.fn(),
+};
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 // ---------------------------------------------------------------------------
@@ -37,7 +42,10 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 function createWrapper() {
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0 },
+			mutations: { retry: false },
+		},
 	});
 	return {
 		queryClient,
@@ -89,7 +97,10 @@ describe("useCreateComment", () => {
 		const { useCreateComment } = await import("../comments");
 
 		mockChain.insert.mockResolvedValue({
-			error: { message: "Rate limit exceeded: 5 comments per hour", code: "P0001" },
+			error: {
+				message: "Rate limit exceeded: 5 comments per hour",
+				code: "P0001",
+			},
 		});
 
 		const { wrapper } = createWrapper();

@@ -1,15 +1,21 @@
-import ReactEChartsCore from "echarts-for-react/lib/core";
-import * as echarts from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
-import { BarChart, LineChart, PieChart, RadarChart, GaugeChart } from "echarts/charts";
 import {
+	BarChart,
+	GaugeChart,
+	LineChart,
+	PieChart,
+	RadarChart,
+} from "echarts/charts";
+import {
+	DataZoomComponent,
 	GridComponent,
-	TooltipComponent,
 	LegendComponent,
 	TitleComponent,
-	DataZoomComponent,
 	ToolboxComponent,
+	TooltipComponent,
 } from "echarts/components";
+import * as echarts from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
+import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useEffect, useRef } from "react";
 import { PHOENIX_ECHARTS_THEME } from "./EChartsTheme";
 

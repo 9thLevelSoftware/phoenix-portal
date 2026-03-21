@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -45,18 +45,14 @@ describe("insightsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1");
-		expect(opts.queryKey).toEqual(
-			queryKeys.insights.byUser("user-1", "30d"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.insights.byUser("user-1", "30d"));
 	});
 
 	it("uses insights.byUser query key with custom period", async () => {
 		chain = buildChain({ data: [], error: null });
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1", "7d");
-		expect(opts.queryKey).toEqual(
-			queryKeys.insights.byUser("user-1", "7d"),
-		);
+		expect(opts.queryKey).toEqual(queryKeys.insights.byUser("user-1", "7d"));
 	});
 
 	it("returns insight rows from user_insights table", async () => {

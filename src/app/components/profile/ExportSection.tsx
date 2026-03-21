@@ -16,8 +16,8 @@ import {
 	generateRecordsCSV,
 	generateWorkoutCSV,
 } from "@/lib/export/csv";
-import { profileOptions } from "@/queries/profile";
 import { exportAllUserData } from "@/lib/export/data-export";
+import { profileOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 

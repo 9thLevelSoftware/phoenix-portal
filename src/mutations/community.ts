@@ -118,8 +118,8 @@ export function useShareContent() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useShareContent] failed:', error);
-			toast.error('Failed to share content. Please try again.');
+			console.error("[useShareContent] failed:", error);
+			toast.error("Failed to share content. Please try again.");
 		},
 	});
 }
@@ -172,8 +172,8 @@ export function useFollowCreator() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useFollowCreator] failed:', error);
-			toast.error('Failed to complete action. Please try again.');
+			console.error("[useFollowCreator] failed:", error);
+			toast.error("Failed to complete action. Please try again.");
 		},
 	});
 }
@@ -222,11 +222,11 @@ export function useReportContent() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useReportContent] failed:', error);
+			console.error("[useReportContent] failed:", error);
 			if (error.message === "You have already reported this content") {
-				toast.error('You have already reported this content.');
+				toast.error("You have already reported this content.");
 			} else {
-				toast.error('Failed to submit report. Please try again.');
+				toast.error("Failed to submit report. Please try again.");
 			}
 		},
 	});
@@ -271,8 +271,8 @@ export function useBlockUser() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useBlockUser] failed:', error);
-			toast.error('Failed to block user. Please try again.');
+			console.error("[useBlockUser] failed:", error);
+			toast.error("Failed to block user. Please try again.");
 		},
 	});
 }
@@ -316,8 +316,8 @@ export function useUnblockUser() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useUnblockUser] failed:', error);
-			toast.error('Failed to unblock user. Please try again.');
+			console.error("[useUnblockUser] failed:", error);
+			toast.error("Failed to unblock user. Please try again.");
 		},
 	});
 }
@@ -360,8 +360,8 @@ export function useDeleteSharedContent() {
 		},
 
 		onError: (error: Error) => {
-			console.error('[useDeleteSharedContent] failed:', error);
-			toast.error('Failed to remove content. Please try again.');
+			console.error("[useDeleteSharedContent] failed:", error);
+			toast.error("Failed to remove content. Please try again.");
 		},
 	});
 }

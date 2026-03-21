@@ -67,7 +67,8 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-	EMBER: "bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-[var(--color-forge-green)]/30",
+	EMBER:
+		"bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-[var(--color-forge-green)]/30",
 	FLAME: "bg-primary/20 text-primary border-primary/30",
 	INFERNO: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
@@ -603,8 +604,6 @@ export function LandingPage() {
 					style={{ y: heroY, opacity: heroOpacity }}
 					className="text-center z-10 flex flex-col items-center"
 				>
-					
-
 					<motion.h1
 						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
 						initial={{ opacity: 0 }}
@@ -642,7 +641,10 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.8 }}
 					>
-						<motion.div whileTap={tap.press} className="inline-flex w-full sm:w-auto">
+						<motion.div
+							whileTap={tap.press}
+							className="inline-flex w-full sm:w-auto"
+						>
 							<Button
 								size="lg"
 								onClick={openAuth}
@@ -736,10 +738,7 @@ export function LandingPage() {
 			</section>
 
 			{/* Pricing Section */}
-			<section
-				id="pricing"
-				className="relative py-24 px-4 sm:px-6 lg:px-8"
-			>
+			<section id="pricing" className="relative py-24 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-7xl mx-auto">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -786,9 +785,7 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl text-primary">
-											{tier.price}
-										</span>
+										<span className="text-5xl text-primary">{tier.price}</span>
 										<span className="text-muted-foreground ml-2">
 											/ {tier.period}
 										</span>
@@ -855,7 +852,10 @@ export function LandingPage() {
 							recovery, and a community that trains like you do.
 						</p>
 						<div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
-							<motion.div whileTap={tap.press} className="inline-flex w-full sm:w-auto">
+							<motion.div
+								whileTap={tap.press}
+								className="inline-flex w-full sm:w-auto"
+							>
 								<Button
 									size="lg"
 									onClick={openAuth}
@@ -896,9 +896,7 @@ export function LandingPage() {
 						<div>
 							<div className="flex items-center gap-2 mb-4">
 								<PhoenixLogo size="sm" animated={false} />
-								<span className="text-xl text-primary">
-									Phoenix Portal
-								</span>
+								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
 								Rise From the Ashes. Forge Your Strength.
@@ -971,9 +969,7 @@ export function LandingPage() {
 					</div>
 					<div className="pt-8 border-t border-secondary text-center space-y-3">
 						<p className="text-muted-foreground text-sm">
-							<span className="text-primary font-semibold">
-								Phoenix Portal
-							</span>{" "}
+							<span className="text-primary font-semibold">Phoenix Portal</span>{" "}
 							is a community preservation project by{" "}
 							<span className="text-white font-semibold">
 								9th Level Software LLC

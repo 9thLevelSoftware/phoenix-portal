@@ -201,10 +201,7 @@ export async function exportAllUserData(
 		await addTable(
 			"creator_follows",
 			"creator-follows",
-			supabase
-				.from("creator_follows")
-				.select("*")
-				.eq("follower_id", userId),
+			supabase.from("creator_follows").select("*").eq("follower_id", userId),
 		);
 
 		await addTable(

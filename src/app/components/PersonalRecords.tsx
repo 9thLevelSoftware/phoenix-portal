@@ -1,4 +1,3 @@
-import { PageShell } from "@/app/components/PageShell";
 import { useQuery } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -758,7 +758,9 @@ export function PersonalRecords() {
 																				variant="outline"
 																				className="border-primary/30 text-primary"
 																			>
-																				{formatRecordTypeLabel(entry.record_type)}
+																				{formatRecordTypeLabel(
+																					entry.record_type,
+																				)}
 																			</Badge>
 																		</td>
 																		<td className="py-3">

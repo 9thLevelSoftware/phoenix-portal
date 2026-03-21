@@ -144,10 +144,7 @@ export function AppRoutes() {
 						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
 							<Route path="/dashboard" element={<Dashboard />} />
 							<Route path="/history" element={<WorkoutHistory />} />
-							<Route
-								path="/history/:sessionId"
-								element={<SessionDetail />}
-							/>
+							<Route path="/history/:sessionId" element={<SessionDetail />} />
 							<Route path="/records" element={<PersonalRecords />} />
 							<Route path="/goals" element={<Goals />} />
 							<Route path="/recovery" element={<Recovery />} />
@@ -159,29 +156,17 @@ export function AppRoutes() {
 							<Route path="/analytics" element={<Analytics />} />
 							<Route path="/community" element={<Community />} />
 							<Route path="/routines" element={<RoutinesEnhanced />} />
-							<Route
-								path="/routines/new"
-								element={<RoutineBuilder />}
-							/>
+							<Route path="/routines/new" element={<RoutineBuilder />} />
 							<Route
 								path="/routines/:routineId/view"
 								element={<RoutineDetail />}
 							/>
-							<Route
-								path="/routines/:routineId"
-								element={<RoutineBuilder />}
-							/>
+							<Route path="/routines/:routineId" element={<RoutineBuilder />} />
 							<Route path="/cycles" element={<TrainingCycles />} />
 							<Route path="/cycles/new" element={<CycleBuilder />} />
-							<Route
-								path="/cycles/:cycleId"
-								element={<CycleBuilder />}
-							/>
+							<Route path="/cycles/:cycleId" element={<CycleBuilder />} />
 							<Route path="/compare" element={<ComparisonView />} />
-							<Route
-								path="/integrations"
-								element={<Integrations />}
-							/>
+							<Route path="/integrations" element={<Integrations />} />
 							<Route
 								path="/biomechanics"
 								element={<Navigate to="/analytics?tab=biomechanics" replace />}
@@ -190,10 +175,7 @@ export function AppRoutes() {
 
 						{/* INFERNO tier — session replay */}
 						<Route element={<SubscribedRoute requiredTier="INFERNO" />}>
-							<Route
-								path="/replay/:sessionId"
-								element={<SessionReplay />}
-							/>
+							<Route path="/replay/:sessionId" element={<SessionReplay />} />
 						</Route>
 
 						{/* Catch-all for authenticated users */}
