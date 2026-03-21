@@ -16,8 +16,7 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 ) {
 	return lazy(() =>
 		factory().catch((error: unknown) => {
-			const msg =
-				error instanceof Error ? error.message.toLowerCase() : "";
+			const msg = error instanceof Error ? error.message.toLowerCase() : "";
 			const isChunkError =
 				msg.includes("failed to fetch dynamically imported module") ||
 				msg.includes("loading chunk") ||

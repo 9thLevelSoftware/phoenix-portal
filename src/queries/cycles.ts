@@ -19,8 +19,10 @@ export function cycleListOptions(userId: string, profileId?: string | null) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.order("last_used_at", { ascending: false, nullsFirst: false });
+			const { data, error } = await query.order("last_used_at", {
+				ascending: false,
+				nullsFirst: false,
+			});
 			if (error) throw error;
 			return trainingCycleListSchema.parse(data);
 		},

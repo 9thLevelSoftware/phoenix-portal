@@ -7,17 +7,16 @@ export function routineListOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.routines.byUser(userId, profileId),
 		queryFn: async () => {
-			let query = supabase
-				.from("routines")
-				.select("*")
-				.eq("user_id", userId);
+			let query = supabase.from("routines").select("*").eq("user_id", userId);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.order("last_used_at", { ascending: false, nullsFirst: false });
+			const { data, error } = await query.order("last_used_at", {
+				ascending: false,
+				nullsFirst: false,
+			});
 			if (error) throw error;
 			return routineListSchema.parse(data);
 		},

@@ -110,9 +110,7 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		);
 
 		expect(screen.getByText("New version available")).toBeInTheDocument();
-		expect(
-			screen.getByRole("button", { name: /reload/i }),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
 
 		sessionStorage.removeItem("phoenix-chunk-reload");
 	});

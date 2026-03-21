@@ -42,9 +42,17 @@ export function workoutListOptions(userId: string, profileId?: string | null) {
 /**
  * Fetch the next page of workout sessions, offset by the number already loaded.
  */
-export function workoutListPageOptions(userId: string, offset: number, profileId?: string | null) {
+export function workoutListPageOptions(
+	userId: string,
+	offset: number,
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: [...queryKeys.workouts.list(userId, profileId), "page", offset] as const,
+		queryKey: [
+			...queryKeys.workouts.list(userId, profileId),
+			"page",
+			offset,
+		] as const,
 		queryFn: async () => {
 			let query = supabase
 				.from("workout_sessions")
@@ -68,9 +76,17 @@ export function workoutListPageOptions(userId: string, offset: number, profileId
  * Dashboard summary stats -- recent workouts for the past 7 days.
  * Returns raw rows so the Dashboard component can aggregate (weekly volume chart, totals).
  */
-export function dashboardStatsOptions(userId: string, profileId?: string | null) {
+export function dashboardStatsOptions(
+	userId: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: [...queryKeys.workouts.all, "dashboard-stats", userId, profileId ?? "all"] as const,
+		queryKey: [
+			...queryKeys.workouts.all,
+			"dashboard-stats",
+			userId,
+			profileId ?? "all",
+		] as const,
 		queryFn: async () => {
 			const weekAgo = new Date();
 			weekAgo.setDate(weekAgo.getDate() - 7);
@@ -101,7 +117,12 @@ export function dashboardStatsOptions(userId: string, profileId?: string | null)
  */
 export function recentPRsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: [...queryKeys.records.all, "recent", userId, profileId ?? "all"] as const,
+		queryKey: [
+			...queryKeys.records.all,
+			"recent",
+			userId,
+			profileId ?? "all",
+		] as const,
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")

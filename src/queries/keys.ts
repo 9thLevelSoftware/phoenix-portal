@@ -21,7 +21,13 @@ export const queryKeys = {
 	analytics: {
 		all: ["analytics"] as const,
 		summary: (userId: string, period: string, profileId?: string | null) =>
-			[...queryKeys.analytics.all, "summary", userId, period, profileId ?? "all"] as const,
+			[
+				...queryKeys.analytics.all,
+				"summary",
+				userId,
+				period,
+				profileId ?? "all",
+			] as const,
 	},
 	routines: {
 		all: ["routines"] as const,
@@ -59,11 +65,31 @@ export const queryKeys = {
 	progress: {
 		all: ["progress"] as const,
 		exercises: (userId: string, profileId?: string | null) =>
-			[...queryKeys.progress.all, "exercises", userId, profileId ?? "all"] as const,
-		byExercise: (userId: string, exerciseName: string, profileId?: string | null) =>
-			[...queryKeys.progress.all, userId, exerciseName, profileId ?? "all"] as const,
+			[
+				...queryKeys.progress.all,
+				"exercises",
+				userId,
+				profileId ?? "all",
+			] as const,
+		byExercise: (
+			userId: string,
+			exerciseName: string,
+			profileId?: string | null,
+		) =>
+			[
+				...queryKeys.progress.all,
+				userId,
+				exerciseName,
+				profileId ?? "all",
+			] as const,
 		summary: (userId: string, period: string, profileId?: string | null) =>
-			[...queryKeys.progress.all, "summary", userId, period, profileId ?? "all"] as const,
+			[
+				...queryKeys.progress.all,
+				"summary",
+				userId,
+				period,
+				profileId ?? "all",
+			] as const,
 	},
 	replay: {
 		all: ["replay"] as const,
@@ -140,7 +166,12 @@ export const queryKeys = {
 		stats: (userId: string, profileId?: string | null) =>
 			[...queryKeys.profile.all, "stats", userId, profileId ?? "all"] as const,
 		topExercises: (userId: string, profileId?: string | null) =>
-			[...queryKeys.profile.all, "top-exercises", userId, profileId ?? "all"] as const,
+			[
+				...queryKeys.profile.all,
+				"top-exercises",
+				userId,
+				profileId ?? "all",
+			] as const,
 		badges: (userId: string) =>
 			[...queryKeys.profile.all, "badges", userId] as const,
 		rpg: (userId: string) => [...queryKeys.profile.all, "rpg", userId] as const,

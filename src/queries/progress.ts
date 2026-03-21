@@ -27,7 +27,11 @@ export function exerciseListOptions(userId: string, profileId?: string | null) {
 }
 
 /** Exercise-specific progress over time (1RM, volume, weight trends) */
-export function exerciseProgressOptions(userId: string, exerciseName: string, profileId?: string | null) {
+export function exerciseProgressOptions(
+	userId: string,
+	exerciseName: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
 		queryKey: queryKeys.progress.byExercise(userId, exerciseName, profileId),
 		queryFn: async () => {
@@ -41,8 +45,9 @@ export function exerciseProgressOptions(userId: string, exerciseName: string, pr
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.order("recorded_at", { ascending: true });
+			const { data, error } = await query.order("recorded_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return z.array(exerciseProgressSchema).parse(data);
 		},
@@ -53,7 +58,11 @@ export function exerciseProgressOptions(userId: string, exerciseName: string, pr
  * Weekly/monthly summary: fetches raw exercise progress for client-side aggregation.
  * Consistent with existing patterns (volume bucketing in analytics).
  */
-export function weeklySummaryOptions(userId: string, period: "week" | "month", profileId?: string | null) {
+export function weeklySummaryOptions(
+	userId: string,
+	period: "week" | "month",
+	profileId?: string | null,
+) {
 	return queryOptions({
 		queryKey: queryKeys.progress.summary(userId, period, profileId),
 		queryFn: async () => {
