@@ -6,14 +6,20 @@ import {
 } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
-export function cycleListOptions(userId: string) {
+export function cycleListOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.cycles.byUser(userId),
+		queryKey: queryKeys.cycles.byUser(userId, profileId),
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("training_cycles")
 				.select("*")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("last_used_at", { ascending: false, nullsFirst: false });
 			if (error) throw error;
 			return trainingCycleListSchema.parse(data);

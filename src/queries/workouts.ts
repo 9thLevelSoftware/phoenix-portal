@@ -17,14 +17,20 @@ import { queryKeys } from "./keys";
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
-export function workoutListOptions(userId: string) {
+export function workoutListOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.workouts.list(userId),
+		queryKey: queryKeys.workouts.list(userId, profileId),
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("*")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("started_at", { ascending: false })
 				.limit(WORKOUTS_PAGE_SIZE);
 			if (error) throw error;
@@ -36,14 +42,20 @@ export function workoutListOptions(userId: string) {
 /**
  * Fetch the next page of workout sessions, offset by the number already loaded.
  */
-export function workoutListPageOptions(userId: string, offset: number) {
+export function workoutListPageOptions(userId: string, offset: number, profileId?: string | null) {
 	return queryOptions({
-		queryKey: [...queryKeys.workouts.list(userId), "page", offset] as const,
+		queryKey: [...queryKeys.workouts.list(userId, profileId), "page", offset] as const,
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("*")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("started_at", { ascending: false })
 				.range(offset, offset + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
@@ -56,19 +68,25 @@ export function workoutListPageOptions(userId: string, offset: number) {
  * Dashboard summary stats -- recent workouts for the past 7 days.
  * Returns raw rows so the Dashboard component can aggregate (weekly volume chart, totals).
  */
-export function dashboardStatsOptions(userId: string) {
+export function dashboardStatsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: [...queryKeys.workouts.all, "dashboard-stats", userId] as const,
+		queryKey: [...queryKeys.workouts.all, "dashboard-stats", userId, profileId ?? "all"] as const,
 		queryFn: async () => {
 			const weekAgo = new Date();
 			weekAgo.setDate(weekAgo.getDate() - 7);
 
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select(
 					"started_at, total_volume, duration_seconds, pr_count, estimated_calories, form_score",
 				)
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.gte("started_at", weekAgo.toISOString())
 				.order("started_at", { ascending: true });
 			if (error) throw error;
@@ -81,14 +99,20 @@ export function dashboardStatsOptions(userId: string) {
  * Most recent personal records for the dashboard PR widget.
  * Returns Zod-transformed PersonalRecord[] (weights doubled, dates as Date).
  */
-export function recentPRsOptions(userId: string) {
+export function recentPRsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: [...queryKeys.records.all, "recent", userId] as const,
+		queryKey: [...queryKeys.records.all, "recent", userId, profileId ?? "all"] as const,
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("personal_records")
 				.select("*")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("achieved_at", { ascending: false })
 				.limit(5);
 			if (error) throw error;

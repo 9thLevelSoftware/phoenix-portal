@@ -1,8 +1,8 @@
 export const queryKeys = {
 	workouts: {
 		all: ["workouts"] as const,
-		list: (userId: string) =>
-			[...queryKeys.workouts.all, "list", userId] as const,
+		list: (userId: string, profileId?: string | null) =>
+			[...queryKeys.workouts.all, "list", userId, profileId ?? "all"] as const,
 		detail: (sessionId: string) =>
 			[...queryKeys.workouts.all, "detail", sessionId] as const,
 		comparison: (sessionAId: string, sessionBId: string) =>
@@ -15,16 +15,18 @@ export const queryKeys = {
 	},
 	records: {
 		all: ["records"] as const,
-		byUser: (userId: string) => [...queryKeys.records.all, userId] as const,
+		byUser: (userId: string, profileId?: string | null) =>
+			[...queryKeys.records.all, userId, profileId ?? "all"] as const,
 	},
 	analytics: {
 		all: ["analytics"] as const,
-		summary: (userId: string, period: string) =>
-			[...queryKeys.analytics.all, "summary", userId, period] as const,
+		summary: (userId: string, period: string, profileId?: string | null) =>
+			[...queryKeys.analytics.all, "summary", userId, period, profileId ?? "all"] as const,
 	},
 	routines: {
 		all: ["routines"] as const,
-		byUser: (userId: string) => [...queryKeys.routines.all, userId] as const,
+		byUser: (userId: string, profileId?: string | null) =>
+			[...queryKeys.routines.all, userId, profileId ?? "all"] as const,
 		detail: (routineId: string) =>
 			[...queryKeys.routines.all, "detail", routineId] as const,
 	},
@@ -35,7 +37,8 @@ export const queryKeys = {
 	},
 	cycles: {
 		all: ["cycles"] as const,
-		byUser: (userId: string) => [...queryKeys.cycles.all, userId] as const,
+		byUser: (userId: string, profileId?: string | null) =>
+			[...queryKeys.cycles.all, userId, profileId ?? "all"] as const,
 		detail: (cycleId: string) =>
 			[...queryKeys.cycles.all, "detail", cycleId] as const,
 	},
@@ -55,12 +58,12 @@ export const queryKeys = {
 	},
 	progress: {
 		all: ["progress"] as const,
-		exercises: (userId: string) =>
-			[...queryKeys.progress.all, "exercises", userId] as const,
-		byExercise: (userId: string, exerciseName: string) =>
-			[...queryKeys.progress.all, userId, exerciseName] as const,
-		summary: (userId: string, period: string) =>
-			[...queryKeys.progress.all, "summary", userId, period] as const,
+		exercises: (userId: string, profileId?: string | null) =>
+			[...queryKeys.progress.all, "exercises", userId, profileId ?? "all"] as const,
+		byExercise: (userId: string, exerciseName: string, profileId?: string | null) =>
+			[...queryKeys.progress.all, userId, exerciseName, profileId ?? "all"] as const,
+		summary: (userId: string, period: string, profileId?: string | null) =>
+			[...queryKeys.progress.all, "summary", userId, period, profileId ?? "all"] as const,
 	},
 	replay: {
 		all: ["replay"] as const,
@@ -134,10 +137,10 @@ export const queryKeys = {
 	profile: {
 		all: ["profile"] as const,
 		byUser: (userId: string) => [...queryKeys.profile.all, userId] as const,
-		stats: (userId: string) =>
-			[...queryKeys.profile.all, "stats", userId] as const,
-		topExercises: (userId: string) =>
-			[...queryKeys.profile.all, "top-exercises", userId] as const,
+		stats: (userId: string, profileId?: string | null) =>
+			[...queryKeys.profile.all, "stats", userId, profileId ?? "all"] as const,
+		topExercises: (userId: string, profileId?: string | null) =>
+			[...queryKeys.profile.all, "top-exercises", userId, profileId ?? "all"] as const,
 		badges: (userId: string) =>
 			[...queryKeys.profile.all, "badges", userId] as const,
 		rpg: (userId: string) => [...queryKeys.profile.all, "rpg", userId] as const,
