@@ -35,15 +35,21 @@ export function profileOptions(userId: string) {
  * - Personal records count
  * - Best streak (max consecutive workout days)
  */
-export function profileStatsOptions(userId: string) {
+export function profileStatsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.profile.stats(userId),
+		queryKey: queryKeys.profile.stats(userId, profileId),
 		queryFn: async () => {
 			// Fetch all workout sessions for stats computation
-			const { data: sessions, error: sessionsError } = await supabase
+			let sessionQuery = supabase
 				.from("workout_sessions")
 				.select("started_at, total_volume")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
+			}
+
+			const { data: sessions, error: sessionsError } = await sessionQuery
 				.order("started_at", { ascending: true });
 			if (sessionsError) throw sessionsError;
 
@@ -58,10 +64,16 @@ export function profileStatsOptions(userId: string) {
 			const bestStreak = computeBestStreak(sessions ?? []);
 
 			// Count personal records
-			const { count: prCount, error: prError } = await supabase
+			let prQuery = supabase
 				.from("personal_records")
 				.select("id", { count: "exact", head: true })
 				.eq("user_id", userId);
+
+			if (profileId) {
+				prQuery = prQuery.eq("local_profile_id", profileId);
+			}
+
+			const { count: prCount, error: prError } = await prQuery;
 			if (prError) throw prError;
 
 			return {
@@ -77,15 +89,21 @@ export function profileStatsOptions(userId: string) {
 /**
  * Fetch top 5 exercises by frequency from the exercises table.
  */
-export function topExercisesOptions(userId: string) {
+export function topExercisesOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.profile.topExercises(userId),
+		queryKey: queryKeys.profile.topExercises(userId, profileId),
 		queryFn: async () => {
 			// Get all session IDs for this user
-			const { data: sessions, error: sessionsError } = await supabase
+			let sessionQuery = supabase
 				.from("workout_sessions")
 				.select("id")
 				.eq("user_id", userId);
+
+			if (profileId) {
+				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
+			}
+
+			const { data: sessions, error: sessionsError } = await sessionQuery;
 			if (sessionsError) throw sessionsError;
 
 			if (!sessions || sessions.length === 0) return [];

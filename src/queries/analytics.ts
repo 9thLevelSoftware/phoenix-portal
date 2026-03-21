@@ -3,15 +3,20 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 /** Volume trend over time (for area/bar chart) */
-export function volumeTrendOptions(userId: string, period: string = "4w") {
+export function volumeTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `volume-${period}`),
+		queryKey: queryKeys.analytics.summary(userId, `volume-${period}`, profileId),
 		queryFn: async () => {
 			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, total_volume")
-				.eq("user_id", userId)
-				.order("started_at", { ascending: true });
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			query = query.order("started_at", { ascending: true });
 
 			// Apply date filter unless "all" (fetch everything)
 			if (period !== "all") {
@@ -36,15 +41,21 @@ export function volumeTrendOptions(userId: string, period: string = "4w") {
 }
 
 /** Muscle group distribution (for pie/donut chart) */
-export function muscleGroupOptions(userId: string) {
+export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "muscle-groups"),
+		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
 		queryFn: async () => {
 			// Two-step approach: get user's session IDs, then get exercises grouped by muscle_group
-			const { data: sessions, error: sessionError } = await supabase
+			let sessionQuery = supabase
 				.from("workout_sessions")
 				.select("id")
 				.eq("user_id", userId);
+
+			if (profileId) {
+				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
+			}
+
+			const { data: sessions, error: sessionError } = await sessionQuery;
 			if (sessionError) throw sessionError;
 
 			if (!sessions || sessions.length === 0) return [];
@@ -72,14 +83,20 @@ export function muscleGroupOptions(userId: string) {
 }
 
 /** Strength progress (exercise-specific 1RM trends for line chart) */
-export function strengthProgressOptions(userId: string) {
+export function strengthProgressOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "strength-progress"),
+		queryKey: queryKeys.analytics.summary(userId, "strength-progress", profileId),
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("personal_records")
 				.select("exercise_name, value, achieved_at")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("achieved_at", { ascending: true });
 			if (error) throw error;
 			return data;
@@ -88,11 +105,12 @@ export function strengthProgressOptions(userId: string) {
 }
 
 /** Volume trend with previous period comparison */
-export function volumeComparisonOptions(userId: string, period: string = "4w") {
+export function volumeComparisonOptions(userId: string, period: string = "4w", profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(
 			userId,
 			`volume-comparison-${period}`,
+			profileId,
 		),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
@@ -101,21 +119,29 @@ export function volumeComparisonOptions(userId: string, period: string = "4w") {
 			const previousStart = new Date();
 			previousStart.setDate(previousStart.getDate() - daysBack * 2);
 
+			let currentQuery = supabase
+				.from("workout_sessions")
+				.select(
+					"started_at, total_volume, duration_seconds, set_count, exercise_count",
+				)
+				.eq("user_id", userId);
+			let previousQuery = supabase
+				.from("workout_sessions")
+				.select(
+					"started_at, total_volume, duration_seconds, set_count, exercise_count",
+				)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				currentQuery = currentQuery.eq("local_profile_id", profileId);
+				previousQuery = previousQuery.eq("local_profile_id", profileId);
+			}
+
 			const [currentData, previousData] = await Promise.all([
-				supabase
-					.from("workout_sessions")
-					.select(
-						"started_at, total_volume, duration_seconds, set_count, exercise_count",
-					)
-					.eq("user_id", userId)
+				currentQuery
 					.gte("started_at", currentStart.toISOString())
 					.order("started_at", { ascending: true }),
-				supabase
-					.from("workout_sessions")
-					.select(
-						"started_at, total_volume, duration_seconds, set_count, exercise_count",
-					)
-					.eq("user_id", userId)
+				previousQuery
 					.gte("started_at", previousStart.toISOString())
 					.lt("started_at", currentStart.toISOString())
 					.order("started_at", { ascending: true }),
@@ -137,18 +163,24 @@ function periodToDays(period: string): number {
 }
 
 /** Form score trend over time (GAP 4) */
-export function formScoreTrendOptions(userId: string, period: string = "4w") {
+export function formScoreTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `form-score-${period}`),
+		queryKey: queryKeys.analytics.summary(userId, `form-score-${period}`, profileId),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();
 			since.setDate(since.getDate() - daysBack);
 
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, form_score")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.not("form_score", "is", null)
 				.gte("started_at", since.toISOString())
 				.order("started_at", { ascending: true });
@@ -159,20 +191,26 @@ export function formScoreTrendOptions(userId: string, period: string = "4w") {
 }
 
 /** Safety events trend (deload warnings, ROM violations, spotter activations) (GAP 4) */
-export function safetyTrendOptions(userId: string, period: string = "4w") {
+export function safetyTrendOptions(userId: string, period: string = "4w", profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `safety-${period}`),
+		queryKey: queryKeys.analytics.summary(userId, `safety-${period}`, profileId),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();
 			since.setDate(since.getDate() - daysBack);
 
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select(
 					"started_at, deload_warnings, rom_violations, spotter_activations",
 				)
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.gte("started_at", since.toISOString())
 				.order("started_at", { ascending: true });
 			if (error) throw error;
@@ -187,18 +225,24 @@ export function safetyTrendOptions(userId: string, period: string = "4w") {
 }
 
 /** Calorie burn history (GAP 5) */
-export function calorieHistoryOptions(userId: string, period: string = "4w") {
+export function calorieHistoryOptions(userId: string, period: string = "4w", profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, `calories-${period}`),
+		queryKey: queryKeys.analytics.summary(userId, `calories-${period}`, profileId),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
 			const since = new Date();
 			since.setDate(since.getDate() - daysBack);
 
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, estimated_calories")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.not("estimated_calories", "is", null)
 				.gte("started_at", since.toISOString())
 				.order("started_at", { ascending: true });

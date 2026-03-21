@@ -3,14 +3,20 @@ import { supabase } from "@/lib/supabase";
 import { personalRecordListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
-export function personalRecordsOptions(userId: string) {
+export function personalRecordsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.records.byUser(userId),
+		queryKey: queryKeys.records.byUser(userId, profileId),
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("personal_records")
 				.select("*")
-				.eq("user_id", userId)
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
 				.order("achieved_at", { ascending: false });
 			if (error) throw error;
 			return personalRecordListSchema.parse(data);
