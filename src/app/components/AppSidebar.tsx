@@ -41,6 +41,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
 import { profileOptions } from "@/queries/profile";
 import { useUIStore } from "@/stores/useUIStore";
+import { LocalProfileFilter } from "./LocalProfileFilter";
 import { PhoenixLogo } from "./PhoenixLogo";
 import { TierBadge } from "./TierBadge";
 
@@ -197,6 +198,11 @@ export function AppSidebar() {
 					<SidebarTrigger className="text-muted-foreground hover:text-primary transition-colors" />
 				</div>
 			</SidebarHeader>
+
+			{/* ----------------------------------------------------------------- */}
+			{/* Profile filter (hidden when collapsed — unusable at icon size)     */}
+			{/* ----------------------------------------------------------------- */}
+			{userId && !isCollapsed && <LocalProfileFilter userId={userId} />}
 
 			{/* ----------------------------------------------------------------- */}
 			{/* Nav groups                                                         */}
