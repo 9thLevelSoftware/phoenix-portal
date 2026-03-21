@@ -6,17 +6,22 @@ import { getCorsHeaders } from '../_shared/cors.ts';
  *
  * POST /functions/v1/mobile-sync-pull
  * Authorization: Bearer <GoTrue JWT>
- * Body: { deviceId: string, lastSync: number }  (lastSync = Unix ms, 0 for first sync)
+ * Body: { deviceId: string, lastSync: number, profileId?: string }
+ *   lastSync  = Unix ms, 0 for first sync
+ *   profileId = optional local profile UUID; when set, profile-scoped tables
+ *               (workout_sessions, routines, training_cycles, personal_records)
+ *               are filtered by local_profile_id
  *
  * Returns nested hierarchy:
  *   sessions → exercises → sets → repSummaries
  *   routines → exercises
- *   rpgAttributes, badges, gamificationStats
+ *   personalRecords, rpgAttributes, badges, gamificationStats, localProfiles
  */
 
 interface PullRequest {
   deviceId: string;
   lastSync: number;
+  profileId?: string;
 }
 
 Deno.serve(async (req) => {
@@ -78,17 +83,22 @@ Deno.serve(async (req) => {
     // 3. Parse request body
     // =========================================================================
     const body: PullRequest = await req.json();
+    const profileId: string | null = body.profileId ?? null;
     const lastSyncISO = new Date(body.lastSync ?? 0).toISOString();
     const syncTime = Date.now();
 
     // =========================================================================
     // 4. Fetch workout sessions modified since lastSync
     // =========================================================================
-    const { data: sessions, error: sessionsError } = await supabase
+    let sessionsQuery = supabase
       .from('workout_sessions')
       .select('*')
       .eq('user_id', userId)
       .gt('started_at', lastSyncISO);
+    if (profileId) {
+      sessionsQuery = sessionsQuery.eq('local_profile_id', profileId);
+    }
+    const { data: sessions, error: sessionsError } = await sessionsQuery;
 
     if (sessionsError) {
       console.error('Error fetching sessions:', sessionsError);
@@ -254,11 +264,15 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 7. Fetch routines — delta sync via updated_at (GAP 11 fix)
     // =========================================================================
-    const { data: routinesRaw } = await supabase
+    let routinesQuery = supabase
       .from('routines')
       .select('*')
       .eq('user_id', userId)
       .gt('updated_at', lastSyncISO);
+    if (profileId) {
+      routinesQuery = routinesQuery.eq('local_profile_id', profileId);
+    }
+    const { data: routinesRaw } = await routinesQuery;
 
     const routineIds = (routinesRaw ?? []).map((r: Record<string, unknown>) => r.id as string);
 
@@ -324,11 +338,15 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 7b. Fetch training cycles — delta sync via updated_at (GAP 11 fix)
     // =========================================================================
-    const { data: cyclesRaw } = await supabase
+    let cyclesQuery = supabase
       .from('training_cycles')
       .select('*')
       .eq('user_id', userId)
       .gt('updated_at', lastSyncISO);
+    if (profileId) {
+      cyclesQuery = cyclesQuery.eq('local_profile_id', profileId);
+    }
+    const { data: cyclesRaw } = await cyclesQuery;
 
     const cycleIds = (cyclesRaw ?? []).map((c: Record<string, unknown>) => c.id as string);
 
@@ -381,6 +399,34 @@ Deno.serve(async (req) => {
         })),
       };
     });
+
+    // =========================================================================
+    // 7c. Fetch personal records — delta sync with optional profile filter
+    // =========================================================================
+    let personalRecordsQuery = supabase
+      .from('personal_records')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', lastSyncISO);
+    if (profileId) {
+      personalRecordsQuery = personalRecordsQuery.eq('local_profile_id', profileId);
+    }
+    const { data: personalRecords } = await personalRecordsQuery;
+
+    const personalRecordDtos = (personalRecords ?? []).map((pr: Record<string, unknown>) => ({
+      id: pr.id,
+      userId: pr.user_id,
+      exerciseName: pr.exercise_name,
+      muscleGroup: pr.muscle_group,
+      recordType: pr.record_type,
+      value: pr.value,
+      weightKg: pr.weight_kg,
+      reps: pr.reps,
+      workoutPhase: pr.workout_phase,
+      sessionId: pr.session_id,
+      achievedAt: pr.achieved_at,
+      updatedAt: pr.updated_at,
+    }));
 
     // =========================================================================
     // 8. RPG attributes (delta sync)
@@ -452,16 +498,26 @@ Deno.serve(async (req) => {
       : null;
 
     // =========================================================================
-    // 11. Return assembled response
+    // 11. Fetch local profiles for the user
+    // =========================================================================
+    const { data: localProfiles } = await supabase
+      .from('local_profiles')
+      .select('id, name, color_index, device_id, created_at, updated_at')
+      .eq('user_id', userId);
+
+    // =========================================================================
+    // 12. Return assembled response
     // =========================================================================
     const response = {
       syncTime,
       sessions: sessionDtos,
       routines: routineDtos,
       cycles: cycleDtos,
+      personalRecords: personalRecordDtos,
       rpgAttributes: rpgDto,
       badges: badgeDtos,
       gamificationStats: gamificationDto,
+      localProfiles: localProfiles ?? [],
     };
 
     return new Response(JSON.stringify(response), {
