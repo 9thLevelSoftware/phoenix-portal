@@ -57,16 +57,17 @@ import { goalsOptions } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalCelebration } from "./GoalCelebration";
 import { GoalProgressRing } from "./GoalProgressRing";
 
 // ---------- Progress computation hook (exported for Dashboard widget) ----------
 
-export function useGoalProgress(): Map<string, number> {
+export function useGoalProgress(profileId?: string | null): Map<string, number> {
 	const { user } = useAuth();
 	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
-	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? ""));
-	const { data: records } = useQuery(personalRecordsOptions(user?.id ?? ""));
+	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? "", profileId));
+	const { data: records } = useQuery(personalRecordsOptions(user?.id ?? "", profileId));
 
 	return useMemo(() => {
 		const map = new Map<string, number>();
@@ -263,12 +264,13 @@ function ExerciseNameCombobox({
 export function Goals() {
 	const { user } = useAuth();
 	const { isPremium, isInferno } = useSubscription();
+	const { activeProfileId } = useProfileFilterStore();
 	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
 	const { data: records } = useQuery({
-		...personalRecordsOptions(user?.id ?? ""),
+		...personalRecordsOptions(user?.id ?? "", activeProfileId),
 		enabled: !!user?.id,
 	});
-	const progressMap = useGoalProgress();
+	const progressMap = useGoalProgress(activeProfileId);
 	const createGoal = useCreateGoal();
 	const updateGoal = useUpdateGoal();
 	const archiveGoal = useArchiveGoal();

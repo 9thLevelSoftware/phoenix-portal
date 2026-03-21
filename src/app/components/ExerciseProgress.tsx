@@ -31,6 +31,7 @@ import {
 	exerciseProgressOptions,
 } from "@/queries/progress";
 import type { ExerciseProgress as ExerciseProgressType } from "@/schemas/telemetry";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 export interface ExerciseProgressProps {
 	userId: string;
@@ -148,9 +149,10 @@ export function ExerciseProgress({
 		initialExercise ?? "",
 	);
 	const [timeRange, setTimeRange] = useState<string>("3M");
+	const { activeProfileId } = useProfileFilterStore();
 
 	const { data: exercises, isPending: exercisesPending } = useQuery(
-		exerciseListOptions(userId),
+		exerciseListOptions(userId, activeProfileId),
 	);
 	const { data: profile } = useQuery({
 		...profileOptions(userId),
@@ -158,7 +160,7 @@ export function ExerciseProgress({
 	});
 
 	const { data: progressRaw, isPending: progressPending } = useQuery({
-		...exerciseProgressOptions(userId, selectedExercise),
+		...exerciseProgressOptions(userId, selectedExercise, activeProfileId),
 		enabled: !!selectedExercise,
 	});
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";

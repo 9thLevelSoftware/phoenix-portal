@@ -57,6 +57,7 @@ import {
 	topExercisesOptions,
 } from "@/queries/profile";
 import { workoutListOptions } from "@/queries/workouts";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 const PLAN_LABELS: Record<string, string> = {
 	FREE: "No Active Subscription",
@@ -87,6 +88,7 @@ export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
 	const { tier, currentPeriodEnd, cancelAtPeriodEnd } = useSubscription();
+	const { activeProfileId } = useProfileFilterStore();
 
 	// Real data queries
 	const { data: profile, isPending: profileLoading } = useQuery({
@@ -94,12 +96,12 @@ export function Profile() {
 		enabled: !!userId,
 	});
 	const { data: stats, isPending: statsLoading } = useQuery({
-		...profileStatsOptions(userId),
+		...profileStatsOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: workouts } = useQuery(workoutListOptions(userId));
 	const { data: topExercises, isPending: exercisesLoading } = useQuery({
-		...topExercisesOptions(userId),
+		...topExercisesOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: integrations, isPending: integrationsLoading } = useQuery({

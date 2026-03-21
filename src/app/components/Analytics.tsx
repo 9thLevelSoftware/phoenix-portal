@@ -82,6 +82,7 @@ import {
 import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
 	Chest: PHOENIX.ember,
@@ -467,25 +468,26 @@ export function Analytics() {
 	const queryPeriod = periodToDays(timePeriod);
 	const insightPeriod = periodToInsightPeriod(timePeriod);
 	const userId = user?.id ?? "";
+	const { activeProfileId } = useProfileFilterStore();
 	const { data: profile } = useQuery({
 		...profileOptions(userId),
 		enabled: !!userId,
 	});
 	const { data: volumeRaw, isPending: volumePending } = useQuery(
-		volumeTrendOptions(userId, queryPeriod),
+		volumeTrendOptions(userId, queryPeriod, activeProfileId),
 	);
 	const { data: muscleGroupRaw, isPending: musclePending } = useQuery(
-		muscleGroupOptions(userId),
+		muscleGroupOptions(userId, activeProfileId),
 	);
 	const { data: strengthRaw, isPending: strengthPending } = useQuery(
-		strengthProgressOptions(userId),
+		strengthProgressOptions(userId, activeProfileId),
 	);
 	const { data: externalActivities } = useQuery({
 		...externalActivitiesOptions(userId),
 		enabled: !!user,
 	});
 	const { data: volumeComparison } = useQuery({
-		...volumeComparisonOptions(userId, queryPeriod),
+		...volumeComparisonOptions(userId, queryPeriod, activeProfileId),
 		enabled: !!userId,
 	});
 	const { data: insightsData, isPending: insightsPending } = useQuery({

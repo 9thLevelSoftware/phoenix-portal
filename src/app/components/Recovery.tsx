@@ -28,6 +28,7 @@ import {
 	GATING_THRESHOLD_DAYS,
 } from "@/lib/recovery";
 import { workoutListOptions } from "@/queries/workouts";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { RecoveryScore } from "./RecoveryScore";
 
 const DISCLAIMER_KEY = "phoenix_recovery_disclaimer_dismissed";
@@ -85,7 +86,8 @@ function FactorBar({
 /** Free tier simplified view */
 function FreeRecoveryView() {
 	const { user } = useAuth();
-	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? ""));
+	const { activeProfileId } = useProfileFilterStore();
+	const { data: workouts } = useQuery(workoutListOptions(user?.id ?? "", activeProfileId));
 
 	// Count rest days in the last 7 days
 	const now = new Date();

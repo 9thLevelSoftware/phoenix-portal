@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { PHOENIX } from "@/lib/colors";
 import { weeklySummaryOptions } from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 export interface SummaryReportProps {
 	userId: string;
@@ -303,9 +304,10 @@ function SkeletonCards() {
 
 export function SummaryReport({ userId }: SummaryReportProps) {
 	const [period, setPeriod] = useState<"week" | "month">("week");
+	const { activeProfileId } = useProfileFilterStore();
 
 	const { data: rawData, isPending } = useQuery(
-		weeklySummaryOptions(userId, period),
+		weeklySummaryOptions(userId, period, activeProfileId),
 	);
 
 	const summary = useMemo(

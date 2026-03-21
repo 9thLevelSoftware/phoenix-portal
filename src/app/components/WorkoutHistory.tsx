@@ -34,12 +34,14 @@ import {
 	workoutListPageOptions,
 } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 export function WorkoutHistory() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
+	const { activeProfileId } = useProfileFilterStore();
 	const { data: workouts, isPending } = useQuery(
-		workoutListOptions(user?.id ?? ""),
+		workoutListOptions(user?.id ?? "", activeProfileId),
 	);
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),
