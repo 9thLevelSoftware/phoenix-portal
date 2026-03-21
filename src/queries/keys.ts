@@ -154,4 +154,9 @@ export const queryKeys = {
 		distribution: (metricType: string, metricKey?: string) =>
 			[...queryKeys.benchmarks.all, metricType, metricKey] as const,
 	},
+	localProfiles: {
+		all: ["localProfiles"] as const,
+		byUser: (userId: string) =>
+			[...queryKeys.localProfiles.all, userId] as const,
+	},
 } as const;
