@@ -86,6 +86,37 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
 	});
 
+	it("shows 'New version available' for chunk load errors", () => {
+		function ChunkErrorComponent() {
+			throw new Error(
+				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/WorkoutHistory-Dwz9vD3g.js",
+			);
+		}
+
+		// Mock window.location.reload to prevent actual reload
+		const reloadMock = vi.fn();
+		Object.defineProperty(window, "location", {
+			value: { ...window.location, reload: reloadMock },
+			writable: true,
+		});
+
+		// Set sessionStorage to prevent auto-reload (simulate already reloaded)
+		sessionStorage.setItem("phoenix-chunk-reload", String(Date.now()));
+
+		renderWithProviders(
+			<BoundaryWrapper>
+				<ChunkErrorComponent />
+			</BoundaryWrapper>,
+		);
+
+		expect(screen.getByText("New version available")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /reload/i }),
+		).toBeInTheDocument();
+
+		sessionStorage.removeItem("phoenix-chunk-reload");
+	});
+
 	it("does not show blank screen on error (always shows actionable UI)", () => {
 		renderWithProviders(
 			<BoundaryWrapper>
