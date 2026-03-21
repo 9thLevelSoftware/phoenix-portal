@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface CycleDayInput {
 	day_number: number;
@@ -62,6 +63,7 @@ export function useSaveCycle() {
 				.from("training_cycles")
 				.insert({
 					user_id: user.id,
+					local_profile_id: useProfileFilterStore.getState().activeProfileId,
 					name: input.name,
 					description: input.description ?? "",
 					duration_weeks: input.duration_weeks,

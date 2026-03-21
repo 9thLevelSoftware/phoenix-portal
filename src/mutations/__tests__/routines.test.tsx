@@ -293,9 +293,9 @@ describe("useToggleFavorite", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("routines");
-		// Should invalidate user-specific routines cache
+		// Should invalidate all routines cache (prefix invalidation for profile filtering)
 		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: queryKeys.routines.byUser("test-user-id"),
+			queryKey: queryKeys.routines.all,
 		});
 	});
 });
