@@ -57,6 +57,12 @@ interface AssessmentResultDto {
   createdAt: string;
 }
 
+interface LocalProfileDto {
+  id: string;
+  name: string;
+  colorIndex: number;
+}
+
 interface PushPayload {
   deviceId: string;
   platform: string;
@@ -71,6 +77,9 @@ interface PushPayload {
   phaseStatistics: PhaseStatisticsDto[];
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
+  profileId?: string | null;
+  profileName?: string | null;
+  allProfiles?: LocalProfileDto[] | null;
 }
 
 interface SessionDto {
@@ -367,6 +376,63 @@ Deno.serve(async (req) => {
       );
     }
 
+    // =========================================================================
+    // 3b. Sync local profiles
+    // =========================================================================
+    const localProfileId: string | null = payload.profileId ?? null;
+    const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
+
+    if (allProfiles && allProfiles.length > 0) {
+      // Upsert all profiles from the device
+      const profileRows = allProfiles.map((p) => ({
+        user_id: userId,
+        id: p.id,
+        name: p.name,
+        color_index: p.colorIndex,
+        device_id: payload.deviceId,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error: upsertError } = await supabase
+        .from('local_profiles')
+        .upsert(profileRows, { onConflict: 'user_id,id' });
+
+      if (upsertError) {
+        console.warn('Failed to upsert local profiles:', upsertError.message);
+      }
+
+      // Delete profiles that no longer exist on the device (from this device only)
+      const activeIds = allProfiles.map((p) => p.id);
+      const { error: deleteError } = await supabase
+        .from('local_profiles')
+        .delete()
+        .eq('user_id', userId)
+        .eq('device_id', payload.deviceId)
+        .not('id', 'in', `(${activeIds.join(',')})`);
+
+      if (deleteError) {
+        console.warn('Failed to clean stale profiles:', deleteError.message);
+      }
+    } else if (localProfileId && payload.profileName) {
+      // Fallback for older clients: upsert just the active profile
+      const { error: profileError } = await supabase
+        .from('local_profiles')
+        .upsert(
+          {
+            user_id: userId,
+            id: localProfileId,
+            name: payload.profileName,
+            device_id: payload.deviceId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,id' }
+        );
+
+      if (profileError) {
+        console.warn('Failed to upsert local profile:', profileError.message);
+      }
+    }
+
     // Counters for response
     let sessionsInserted = 0;
     let exercisesInserted = 0;
@@ -390,6 +456,7 @@ Deno.serve(async (req) => {
       const sessionRows = payload.sessions.map((s) => ({
         id: s.id,
         user_id: userId,
+        local_profile_id: localProfileId,
         name: s.name,
         started_at: s.startedAt,
         duration_seconds: s.durationSeconds,
@@ -558,6 +625,7 @@ Deno.serve(async (req) => {
 
           progressRows.push({
             user_id: userId,
+            local_profile_id: localProfileId,
             exercise_name: exercise.name,
             session_id: session.id,
             recorded_at: session.startedAt,
@@ -615,6 +683,7 @@ Deno.serve(async (req) => {
                 : set.weightKg;
               prRows.push({
                 user_id: userId,
+                local_profile_id: localProfileId,
                 exercise_name: exercise.name,
                 muscle_group: exercise.muscleGroup ?? 'General',
                 record_type: recordType,
@@ -639,11 +708,12 @@ Deno.serve(async (req) => {
           throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
         }
 
+        const profileTag = localProfileId ?? '__no_profile__';
         const existingPrKeys = new Set(
-          (existingPrs ?? []).map((row) => `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase ?? 'COMBINED'}`)
+          (existingPrs ?? []).map((row) => `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase ?? 'COMBINED'}`)
         );
         const dedupedPrRows = prRows.filter((row) => {
-          const key = `${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase}`;
+          const key = `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase}`;
           if (existingPrKeys.has(key)) return false;
           existingPrKeys.add(key);
           return true;
@@ -666,6 +736,7 @@ Deno.serve(async (req) => {
       const routineRows = payload.routines.map((r) => ({
         id: r.id,
         user_id: userId,
+        local_profile_id: localProfileId,
         name: r.name,
         description: r.description,
         exercise_count: r.exerciseCount,
@@ -732,6 +803,7 @@ Deno.serve(async (req) => {
       const cycleRows = payload.cycles.map((c) => ({
         id: c.id,
         user_id: userId,
+        local_profile_id: localProfileId,
         name: c.name,
         description: c.description ?? '',
         duration_weeks: c.durationWeeks,
@@ -950,6 +1022,8 @@ Deno.serve(async (req) => {
           syncTime,
           deviceId: payload.deviceId,
           platform: payload.platform,
+          profileId: localProfileId,
+          profileName: payload.profileName ?? null,
           sessionsInserted,
           routinesUpserted,
           cyclesUpserted,
