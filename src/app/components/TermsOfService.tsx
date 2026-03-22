@@ -339,10 +339,16 @@ export function TermsOfService() {
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">11. Governing Law</h2>
 							<p className="text-secondary-foreground leading-relaxed">
-								These Terms are governed by the laws of the jurisdiction in
-								which 9th Level Software LLC operates. Any disputes arising from
-								these terms will be resolved through good-faith negotiation
-								before any formal legal proceedings.
+								These Terms are governed by the laws of the State of [STATE],
+								United States, without regard to conflict of law principles. Any
+								disputes arising from these terms will be resolved through
+								good-faith negotiation before any formal legal proceedings.
+							</p>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								Nothing in these Terms affects your rights as a consumer under
+								mandatory consumer protection laws of your country of residence,
+								including rights under the General Data Protection Regulation
+								(GDPR) for EU/EEA residents and the UK GDPR for UK residents.
 							</p>
 						</section>
 
