@@ -1,5 +1,6 @@
 :root {
   --font-size: 16px;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
   /* Phoenix Project Color Palette */
   --phoenix-black: #0D0D0D;
@@ -129,6 +130,7 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
+  --font-family-display: var(--font-display);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
@@ -357,6 +359,37 @@
     border-color: rgba(255, 255, 255, 0.06) !important;
   }
 
+  /* CTA shimmer sweep — draws attention to primary call-to-action */
+  @keyframes shimmer-sweep {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(200%);
+    }
+  }
+
+  .btn-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.12) 45%,
+      rgba(255, 255, 255, 0.18) 50%,
+      rgba(255, 255, 255, 0.12) 55%,
+      transparent 70%
+    );
+    animation: shimmer-sweep 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
 }
 
 @layer utilities {
@@ -420,6 +453,29 @@
   .sidebar-avatar-hover:hover {
     box-shadow: 0 0 8px rgba(255, 107, 53, 0.2);
   }
+
+  /* Landing nav link — expanding underline from center on hover */
+  .nav-link-landing {
+    position: relative;
+    padding-bottom: 2px;
+  }
+
+  .nav-link-landing::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 1px;
+    background: var(--primary);
+    transition: width 200ms ease, left 200ms ease;
+  }
+
+  .nav-link-landing:hover::after,
+  .nav-link-landing:focus-visible::after {
+    width: 100%;
+    left: 0;
+  }
 }
 
 /* Reduced-motion: suppress decorative animations, keep functional (spin) */
@@ -435,6 +491,10 @@
   .animate-pulse,
   .animate-bounce,
   .animate-ping {
+    animation: none;
+  }
+
+  .btn-shimmer::after {
     animation: none;
   }
 
