@@ -1,10 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	Activity,
-	ArrowRight,
 	Cloud,
-	ExternalLink,
-	Flame,
 	Loader2,
 	Mail,
 	Play,
@@ -35,7 +32,6 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { tap } from "@/lib/animations";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { PhoenixLogo } from "./PhoenixLogo";
@@ -849,54 +845,52 @@ export function LandingPage() {
 			</section>
 
 			{/* CTA Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-amber-900/20 via-background to-background">
-				<div className="max-w-4xl mx-auto text-center">
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
+				<div className="max-w-3xl mx-auto text-center">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
-						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
-						<h2 className="text-4xl sm:text-5xl mb-6 text-white font-family-display">
-							Fan the flames.
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							Start syncing workouts.
 						</h2>
-						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
-							Your Vitruvian machine captures incredible data every rep. Phoenix
-							Portal finally lets you see it all — force curves, biomechanics,
-							recovery, and a community that trains like you do.
+						<p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
+							Connect the Project Phoenix mobile app, complete a workout, and
+							your data flows here automatically. Force curves, recovery,
+							records — everything updates in real time.
 						</p>
-						<div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
-							<motion.div
-								whileTap={tap.press}
-								className="inline-flex w-full sm:w-auto"
+						<div className="flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
+							<Button
+								asChild
+								size="lg"
+								className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0"
 							>
-								<Button
-									size="lg"
-									onClick={openAuth}
-									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6 btn-shimmer"
+								<a
+									href="https://github.com/nicholascross/ProjectPhoenix"
+									target="_blank"
+									rel="noopener noreferrer"
 								>
-									<span className="flex items-center gap-2">
-										Get Started
-										<ArrowRight className="w-5 h-5" />
-									</span>
-								</Button>
-							</motion.div>
+									Get the mobile app
+								</a>
+							</Button>
+							<Button
+								size="lg"
+								variant="outline"
+								onClick={openAuth}
+								className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+							>
+								Preview dashboard
+							</Button>
+						</div>
+						<div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-muted-foreground">
 							<a
 								href="https://ko-fi.com/vitruvianredux"
 								target="_blank"
 								rel="noopener noreferrer"
-								className="w-full sm:w-auto"
+								className="hover:text-primary transition-colors"
 							>
-								<Button
-									size="lg"
-									variant="outline"
-									className="w-full border-2 border-primary text-primary hover:bg-primary/10 text-lg px-8 py-6"
-								>
-									<span className="flex items-center gap-2">
-										Support on Ko-fi
-										<ExternalLink className="w-4 h-4" />
-									</span>
-								</Button>
+								Support on Ko-fi
 							</a>
 						</div>
 					</motion.div>
@@ -913,7 +907,7 @@ export function LandingPage() {
 								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
-								Rise From the Ashes. Forge Your Strength.
+								Performance data for Vitruvian athletes.
 							</p>
 						</div>
 						<div>
