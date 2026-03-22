@@ -11,7 +11,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import type { ExtendedBodyPart, Slug } from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -60,16 +60,30 @@ import { profileOptions } from "@/queries/profile";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // Lazy-loaded tab components for code splitting (desktop)
-const OverviewTab = lazy(() => import("@/app/components/analytics/OverviewTab"));
-const ProgressTab = lazy(() => import("@/app/components/analytics/ProgressTab"));
+const OverviewTab = lazy(
+	() => import("@/app/components/analytics/OverviewTab"),
+);
+const ProgressTab = lazy(
+	() => import("@/app/components/analytics/ProgressTab"),
+);
 const BodyTab = lazy(() => import("@/app/components/analytics/BodyTab"));
-const PerformanceTab = lazy(() => import("@/app/components/analytics/PerformanceTab"));
+const PerformanceTab = lazy(
+	() => import("@/app/components/analytics/PerformanceTab"),
+);
 
 // Lazy-loaded tab components for code splitting (mobile)
-const MobileOverviewTab = lazy(() => import("@/app/components/analytics/MobileOverviewTab"));
-const MobileProgressTab = lazy(() => import("@/app/components/analytics/MobileProgressTab"));
-const MobileBodyTab = lazy(() => import("@/app/components/analytics/MobileBodyTab"));
-const MobilePerformanceTab = lazy(() => import("@/app/components/analytics/MobilePerformanceTab"));
+const MobileOverviewTab = lazy(
+	() => import("@/app/components/analytics/MobileOverviewTab"),
+);
+const MobileProgressTab = lazy(
+	() => import("@/app/components/analytics/MobileProgressTab"),
+);
+const MobileBodyTab = lazy(
+	() => import("@/app/components/analytics/MobileBodyTab"),
+);
+const MobilePerformanceTab = lazy(
+	() => import("@/app/components/analytics/MobilePerformanceTab"),
+);
 
 function AnalyticsTabSkeleton() {
 	return (
@@ -1067,44 +1081,50 @@ export function Analytics() {
 							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
 						/>
 					) : (
-						<Suspense fallback={<AnalyticsTabSkeleton />}>
+						<>
 							{activeTab === "overview" && (
-								<MobileOverviewTab
-									mobileVolumeData={mobileVolumeData}
-									trainingLoad={trainingLoad}
-									consistencyData={consistencyData}
-									insightsFeedItems={insightsFeedItems}
-									insightsPending={insightsPending}
-								/>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileOverviewTab
+										mobileVolumeData={mobileVolumeData}
+										trainingLoad={trainingLoad}
+										consistencyData={consistencyData}
+										insightsFeedItems={insightsFeedItems}
+										insightsPending={insightsPending}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "progress" && (
-								<MobileProgressTab
-									unit={unit}
-									mobileStrengthData={mobileStrengthData}
-									mobileVolumeData={mobileVolumeData}
-									prCount={prCount}
-									daysSinceLastPR={daysSinceLastPR}
-								/>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileProgressTab
+										unit={unit}
+										mobileStrengthData={mobileStrengthData}
+										mobileVolumeData={mobileVolumeData}
+										prCount={prCount}
+										daysSinceLastPR={daysSinceLastPR}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "body" && (
-								<MobileBodyTab
-									muscleGroupData={muscleGroupData}
-									muscleRadarData={muscleRadarData}
-									mobileMusclData={mobileMusclData}
-								/>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileBodyTab
+										muscleGroupData={muscleGroupData}
+										muscleRadarData={muscleRadarData}
+										mobileMusclData={mobileMusclData}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "performance" && (
-								<MobilePerformanceTab />
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobilePerformanceTab />
+								</Suspense>
 							)}
-						</Suspense>
+						</>
 					)}
 				</div>
 			</div>
-
-			{/* ---- DESKTOP LAYOUT (>= 768px) ---- */}
 			<div className="hidden md:block">
 				<PageShell>
 					{/* Header */}
@@ -1344,6 +1364,7 @@ export function Analytics() {
 					)}
 				</PageShell>
 			</div>
+			;
 		</div>
 	);
 }

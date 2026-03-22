@@ -95,9 +95,9 @@ export default function ProgressTab({
 				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 					<h3 className="text-xl text-white mb-4">Trend Insights</h3>
 					<div className="flex flex-col gap-3">
-						{insights.map((insight, index) => (
+						{insights.map((insight) => (
 							<div
-								key={index}
+								key={insight.title}
 								className={`flex items-start gap-3 p-3 rounded-lg border ${
 									insight.type === "positive"
 										? "bg-success/5 border-success/30"
