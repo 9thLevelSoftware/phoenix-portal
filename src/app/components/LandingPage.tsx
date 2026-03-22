@@ -921,7 +921,7 @@ export function LandingPage() {
 			</section>
 
 			{/* Footer */}
-			<footer className="relative py-12 px-4 sm:px-6 lg:px-8 border-t border-secondary">
+			<footer className="relative pt-16 pb-12 px-4 sm:px-6 lg:px-8 border-t border-primary/10">
 				<div className="max-w-7xl mx-auto">
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
 						<div>
@@ -1006,7 +1006,7 @@ export function LandingPage() {
 								9th Level Software LLC
 							</span>
 						</p>
-						<div className="text-muted text-xs max-w-3xl mx-auto space-y-2">
+						<div className="text-muted text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
 							<p className="font-semibold text-muted-foreground">
 								Legal Notice
 							</p>
