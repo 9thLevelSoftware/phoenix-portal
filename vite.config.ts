@@ -136,6 +136,12 @@ export default defineConfig({
 					"vendor-zod": ["zod"],
 					"vendor-zustand": ["zustand"],
 					"vendor-recharts": ["recharts"],
+					"vendor-echarts": [
+						"echarts/core",
+						"echarts/charts",
+						"echarts/components",
+						"echarts/renderers",
+					],
 					"vendor-visx": [
 						"@visx/axis",
 						"@visx/curve",
