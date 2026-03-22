@@ -65,9 +65,8 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-	EMBER:
-		"bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-[var(--color-forge-green)]/30",
-	FLAME: "bg-primary/20 text-primary border-primary/30",
+	EMBER: "bg-primary/20 text-primary border-primary/30",
+	FLAME: "bg-red-500/20 text-red-400 border-red-500/30",
 	INFERNO: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
@@ -635,7 +634,7 @@ export function LandingPage() {
 					className="text-center z-10 flex flex-col items-center"
 				>
 					<motion.h1
-						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
+						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
@@ -729,7 +728,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+						<p className="eyebrow text-primary mb-3">FEATURES</p>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
 							Built for serious athletes.
 						</h2>
 						<p className="text-xl text-muted max-w-2xl mx-auto">
@@ -747,9 +747,9 @@ export function LandingPage() {
 								viewport={{ once: true }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 card-landing-feature group cursor-pointer h-full">
-									<div className="flex items-center justify-between mb-4">
-										<div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
+								<Card className="p-5 card-landing-feature group cursor-pointer h-full">
+									<div className="flex items-center justify-between mb-3">
+										<div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center ring-1 ring-primary/25">
 											<feature.icon className="w-5 h-5 text-primary" />
 										</div>
 										<span
@@ -758,8 +758,8 @@ export function LandingPage() {
 											{feature.badge}
 										</span>
 									</div>
-									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
-									<p className="text-muted-foreground">{feature.description}</p>
+									<h3 className="text-lg font-semibold mb-1.5 text-white">{feature.title}</h3>
+									<p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
 								</Card>
 							</motion.div>
 						))}
@@ -776,7 +776,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+						<p className="eyebrow text-primary mb-3">PRICING</p>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
 							Choose Your Path
 						</h2>
 						<p className="text-xl text-muted">
@@ -815,7 +816,7 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl text-primary">{tier.price}</span>
+										<span className="text-5xl text-primary font-family-display font-bold tabular-nums">{tier.price}</span>
 										<span className="text-muted-foreground ml-2">
 											/ {tier.period}
 										</span>
@@ -873,7 +874,7 @@ export function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
-						<h2 className="text-4xl sm:text-5xl mb-6 text-white">
+						<h2 className="text-4xl sm:text-5xl mb-6 text-white font-family-display">
 							Fan the flames.
 						</h2>
 						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
