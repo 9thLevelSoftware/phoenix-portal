@@ -339,7 +339,7 @@ export function TermsOfService() {
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">11. Governing Law</h2>
 							<p className="text-secondary-foreground leading-relaxed">
-								These Terms are governed by the laws of the State of [STATE],
+								These Terms are governed by the laws of the State of Florida,
 								United States, without regard to conflict of law principles. Any
 								disputes arising from these terms will be resolved through
 								good-faith negotiation before any formal legal proceedings.

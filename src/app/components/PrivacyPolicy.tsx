@@ -84,10 +84,10 @@ export function PrivacyPolicy() {
 									<br />
 									Email:{" "}
 									<a
-										href="mailto:privacy@9thlevel.software"
+										href="mailto:support@phoenix-portal.com"
 										className="text-primary hover:text-accent underline"
 									>
-										privacy@9thlevel.software
+										support@phoenix-portal.com
 									</a>
 								</p>
 							</div>
@@ -690,10 +690,10 @@ export function PrivacyPolicy() {
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								To exercise any of these rights, contact us at{" "}
 								<a
-									href="mailto:privacy@9thlevel.software"
+									href="mailto:support@phoenix-portal.com"
 									className="text-primary hover:text-accent underline"
 								>
-									privacy@9thlevel.software
+									support@phoenix-portal.com
 								</a>
 								. We will respond to your request within 30 days as required by
 								the GDPR.
@@ -771,10 +771,10 @@ export function PrivacyPolicy() {
 									<span>
 										Email:{" "}
 										<a
-											href="mailto:privacy@9thlevel.software"
+											href="mailto:support@phoenix-portal.com"
 											className="text-primary hover:text-accent underline"
 										>
-											privacy@9thlevel.software
+											support@phoenix-portal.com
 										</a>
 									</span>
 								</li>
