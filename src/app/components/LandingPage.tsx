@@ -12,7 +12,7 @@ import {
 	Target,
 	Trophy,
 } from "lucide-react";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
@@ -35,11 +35,11 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { breathing, tap } from "@/lib/animations";
+import { tap } from "@/lib/animations";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
-import { EmberParticles } from "./EmberParticles";
 import { PhoenixLogo } from "./PhoenixLogo";
+import { ProductShowcase } from "./landing/ProductShowcase";
 
 // Validation schemas
 const signInSchema = z.object({
@@ -78,11 +78,6 @@ export function LandingPage() {
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
 	const [scrolled, setScrolled] = useState(false);
-
-	// Scroll parallax for hero content
-	const { scrollY } = useScroll();
-	const heroY = useTransform(scrollY, [0, 500], [0, -80]);
-	const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -560,8 +555,6 @@ export function LandingPage() {
 
 	return (
 		<div className="min-h-screen bg-background text-white overflow-x-hidden">
-			<EmberParticles />
-
 			{authDialog}
 
 			{/* Sticky Nav Header */}
@@ -615,104 +608,87 @@ export function LandingPage() {
 			</nav>
 
 			{/* Hero Section */}
-			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-				{/* Phoenix hero background */}
-				<div className="absolute inset-0 overflow-hidden">
-					<img
-						src="/phoenix-hero.png"
-						alt=""
-						className="absolute inset-0 w-full h-full object-cover opacity-30"
-					/>
-					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
-				</div>
-
+			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 pt-24">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.8 }}
-					style={{ y: heroY, opacity: heroOpacity }}
-					className="text-center z-10 flex flex-col items-center"
+					transition={{ duration: 0.6 }}
+					className="text-center z-10 flex flex-col items-center max-w-4xl mx-auto"
 				>
 					<motion.h1
-						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
+						className="text-5xl sm:text-6xl md:text-7xl tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.2 }}
+						transition={{ delay: 0.15 }}
 					>
-						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
-							Your workouts, unlocked.
+						<span className="block text-white">
+							See every rep as data.
 						</span>
 					</motion.h1>
 
 					<motion.p
-						className="mt-6 text-xl sm:text-2xl md:text-3xl text-secondary-foreground"
+						className="mt-5 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.4 }}
+						transition={{ delay: 0.3 }}
 					>
-						Rise From the Ashes. Forge Your Strength.
+						Force curves, recovery signals, PR trends, and session analysis
+						— synced from the Project Phoenix app.
 					</motion.p>
 
-					<motion.p
-						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
+					<motion.div
+						className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.45 }}
+					>
+						<Button
+							size="lg"
+							onClick={openAuth}
+							className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0 btn-shimmer"
+						>
+							Preview dashboard
+						</Button>
+						<Button
+							asChild
+							size="lg"
+							variant="outline"
+							className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+						>
+							<a
+								href="https://github.com/nicholascross/ProjectPhoenix"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								Get the mobile app
+							</a>
+						</Button>
+					</motion.div>
+
+					{/* Proof row */}
+					<motion.div
+						className="mt-6 flex items-center gap-4 sm:gap-6 text-sm text-muted-foreground"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						Phoenix Portal turns your Vitruvian Force data into force curves,
-						biomechanics insights, recovery readiness scores, and a community of
-						athletes — all synced from the Project Phoenix app.
-					</motion.p>
-
-					<motion.div
-						className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 0.8 }}
-					>
-						<motion.div
-							whileTap={tap.press}
-							className="inline-flex w-full sm:w-auto"
-						>
-							<Button
-								size="lg"
-								onClick={openAuth}
-								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300 btn-shimmer"
-							>
-								<span className="relative z-10 flex items-center gap-2">
-									Get Started
-									<ArrowRight className="w-5 h-5" />
-								</span>
-							</Button>
-						</motion.div>
-						<Button
-							size="lg"
-							variant="outline"
-							onClick={() => scrollToSection("pricing")}
-							className="w-full sm:w-auto border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
-						>
-							View Plans
-						</Button>
+						{["Force curves", "Recovery signals", "Records", "Replay"].map((item) => (
+							<span key={item} className="flex items-center gap-1.5">
+								<span className="w-1 h-1 rounded-full bg-primary" aria-hidden="true" />
+								{item}
+							</span>
+						))}
 					</motion.div>
-
-					<motion.p
-						className="mt-4 text-sm text-muted"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 1.0 }}
-					>
-						Requires the Project Phoenix mobile app for workout data sync
-					</motion.p>
 				</motion.div>
 
+				{/* Product showcase panels */}
 				<motion.div
-					className="absolute bottom-10"
-					initial={{ opacity: 0 }}
-					animate={breathing.animate}
+					className="mt-12 md:mt-16 w-full max-w-lg z-10"
+					initial={{ opacity: 0, y: 24 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.5, duration: 0.6 }}
 				>
-					<div className="w-6 h-10 border-2 border-primary rounded-full flex items-start justify-center p-2">
-						<div className="w-1.5 h-1.5 bg-primary rounded-full" />
-					</div>
+					<ProductShowcase />
 				</motion.div>
 			</section>
 
