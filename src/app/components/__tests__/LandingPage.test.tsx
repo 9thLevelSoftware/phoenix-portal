@@ -22,4 +22,19 @@ describe("LandingPage", () => {
 			/your workouts, unlocked\./i,
 		);
 	});
+
+	it("renders feature cards with correct tier badges", () => {
+		renderWithProviders(<LandingPage />);
+		const badges = screen.getAllByText(/^(EMBER|FLAME|INFERNO)$/);
+		expect(badges.length).toBeGreaterThanOrEqual(6);
+		expect(screen.getAllByText("EMBER")).toHaveLength(2);
+		expect(screen.getAllByText("FLAME")).toHaveLength(2);
+		expect(screen.getAllByText("INFERNO")).toHaveLength(2);
+	});
+
+	it("renders section eyebrow labels", () => {
+		renderWithProviders(<LandingPage />);
+		expect(screen.getByText("FEATURES")).toBeInTheDocument();
+		expect(screen.getByText("PRICING")).toBeInTheDocument();
+	});
 });

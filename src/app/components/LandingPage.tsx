@@ -65,9 +65,8 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-	EMBER:
-		"bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-[var(--color-forge-green)]/30",
-	FLAME: "bg-primary/20 text-primary border-primary/30",
+	EMBER: "bg-primary/20 text-primary border-primary/30",
+	FLAME: "bg-red-500/20 text-red-400 border-red-500/30",
 	INFERNO: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
@@ -569,7 +568,7 @@ export function LandingPage() {
 			<nav
 				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
 					scrolled
-						? "bg-background/80 backdrop-blur-lg border-b border-secondary/50"
+						? "bg-background/80 backdrop-blur-lg border-b border-primary/15 shadow-[0_1px_12px_rgba(255,107,53,0.06)]"
 						: "bg-transparent"
 				}`}
 			>
@@ -584,14 +583,14 @@ export function LandingPage() {
 						<button
 							type="button"
 							onClick={() => scrollToSection("features")}
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Features
 						</button>
 						<button
 							type="button"
 							onClick={() => scrollToSection("pricing")}
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Pricing
 						</button>
@@ -599,7 +598,7 @@ export function LandingPage() {
 							href="https://ko-fi.com/vitruvianredux"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Support
 						</a>
@@ -635,7 +634,7 @@ export function LandingPage() {
 					className="text-center z-10 flex flex-col items-center"
 				>
 					<motion.h1
-						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight"
+						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
@@ -678,7 +677,7 @@ export function LandingPage() {
 							<Button
 								size="lg"
 								onClick={openAuth}
-								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
+								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300 btn-shimmer"
 							>
 								<span className="relative z-10 flex items-center gap-2">
 									Get Started
@@ -729,7 +728,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+						<p className="eyebrow text-primary mb-3">FEATURES</p>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
 							Built for serious athletes.
 						</h2>
 						<p className="text-xl text-muted max-w-2xl mx-auto">
@@ -747,9 +747,9 @@ export function LandingPage() {
 								viewport={{ once: true }}
 								transition={{ delay: index * 0.1 }}
 							>
-								<Card className="p-6 card-landing-feature group cursor-pointer h-full">
-									<div className="flex items-center justify-between mb-4">
-										<div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
+								<Card className="p-5 card-landing-feature group cursor-pointer h-full">
+									<div className="flex items-center justify-between mb-3">
+										<div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center ring-1 ring-primary/25">
 											<feature.icon className="w-5 h-5 text-primary" />
 										</div>
 										<span
@@ -758,8 +758,12 @@ export function LandingPage() {
 											{feature.badge}
 										</span>
 									</div>
-									<h3 className="text-xl mb-2 text-white">{feature.title}</h3>
-									<p className="text-muted-foreground">{feature.description}</p>
+									<h3 className="text-lg font-semibold mb-1.5 text-white">
+										{feature.title}
+									</h3>
+									<p className="text-sm text-muted-foreground leading-relaxed">
+										{feature.description}
+									</p>
 								</Card>
 							</motion.div>
 						))}
@@ -776,7 +780,8 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white">
+						<p className="eyebrow text-primary mb-3">PRICING</p>
+						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
 							Choose Your Path
 						</h2>
 						<p className="text-xl text-muted">
@@ -815,7 +820,9 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl text-primary">{tier.price}</span>
+										<span className="text-5xl text-primary font-family-display font-bold tabular-nums">
+											{tier.price}
+										</span>
 										<span className="text-muted-foreground ml-2">
 											/ {tier.period}
 										</span>
@@ -832,6 +839,7 @@ export function LandingPage() {
 													viewBox="0 0 24 24"
 													stroke="currentColor"
 													strokeWidth={2}
+													aria-hidden="true"
 												>
 													<path
 														strokeLinecap="round"
@@ -873,7 +881,7 @@ export function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
-						<h2 className="text-4xl sm:text-5xl mb-6 text-white">
+						<h2 className="text-4xl sm:text-5xl mb-6 text-white font-family-display">
 							Fan the flames.
 						</h2>
 						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
@@ -889,7 +897,7 @@ export function LandingPage() {
 								<Button
 									size="lg"
 									onClick={openAuth}
-									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
+									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6 btn-shimmer"
 								>
 									<span className="flex items-center gap-2">
 										Get Started
@@ -920,7 +928,7 @@ export function LandingPage() {
 			</section>
 
 			{/* Footer */}
-			<footer className="relative py-12 px-4 sm:px-6 lg:px-8 border-t border-secondary">
+			<footer className="relative pt-16 pb-12 px-4 sm:px-6 lg:px-8 border-t border-primary/10">
 				<div className="max-w-7xl mx-auto">
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
 						<div>
@@ -1005,7 +1013,7 @@ export function LandingPage() {
 								9th Level Software LLC
 							</span>
 						</p>
-						<div className="text-muted text-xs max-w-3xl mx-auto space-y-2">
+						<div className="text-muted text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
 							<p className="font-semibold text-muted-foreground">
 								Legal Notice
 							</p>
