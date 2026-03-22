@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
 	AlertCircle,
 	CheckCircle,
+	Download,
 	Dumbbell,
 	FileText,
 	Key,
@@ -25,6 +26,10 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import {
+	downloadCSV,
+	exportWorkoutsAsCSV,
+} from "@/lib/integrations/export-csv";
 import { importHevyActivities, parseHevyCSV } from "@/lib/integrations/hevy";
 import type { NormalizedActivity } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
@@ -60,6 +65,9 @@ export function HevyConnect({
 	const [isImporting, setIsImporting] = useState(false);
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	// CSV export state
+	const [isExporting, setIsExporting] = useState(false);
 
 	// =========================================================================
 	// API Key Handlers
@@ -206,6 +214,35 @@ export function HevyConnect({
 	}, []);
 
 	// =========================================================================
+	// CSV Export Handler
+	// =========================================================================
+
+	const handleExport = useCallback(async () => {
+		setIsExporting(true);
+		try {
+			// Hevy uses lbs internally, so export in lbs for Hevy import
+			const result = await exportWorkoutsAsCSV(userId, { weightUnit: "lbs" });
+
+			if (result.sessionCount === 0) {
+				toast.error("No workouts found to export");
+				return;
+			}
+
+			const date = new Date().toISOString().slice(0, 10);
+			downloadCSV(result.csv, `phoenix-workouts-hevy-${date}.csv`);
+			toast.success(
+				`Exported ${result.sessionCount} workouts (${result.setCount} sets)`,
+			);
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to export workouts",
+			);
+		} finally {
+			setIsExporting(false);
+		}
+	}, [userId]);
+
+	// =========================================================================
 	// Preview Helpers
 	// =========================================================================
 
@@ -241,7 +278,7 @@ export function HevyConnect({
 					</div>
 					<div className="flex-1">
 						<CardTitle className="text-base">Hevy</CardTitle>
-						<CardDescription>Import strength training workouts</CardDescription>
+						<CardDescription>Import, export, and sync workouts</CardDescription>
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
@@ -259,23 +296,51 @@ export function HevyConnect({
 				</div>
 			</CardHeader>
 			<CardContent>
-				<Tabs defaultValue="csv">
+				<Tabs defaultValue="export">
 					<TabsList className="w-full">
+						<TabsTrigger value="export" className="flex-1">
+							<Download className="size-3.5 mr-1.5" />
+							Export
+						</TabsTrigger>
 						<TabsTrigger value="csv" className="flex-1">
 							<Upload className="size-3.5 mr-1.5" />
-							CSV Import
+							Import
 						</TabsTrigger>
 						<TabsTrigger value="api" className="flex-1">
 							<Key className="size-3.5 mr-1.5" />
-							API (PRO)
+							API
 						</TabsTrigger>
 					</TabsList>
+
+					{/* Export Tab */}
+					<TabsContent value="export" className="space-y-4 mt-4">
+						<p className="text-sm text-muted-foreground">
+							Download your Phoenix workouts as a CSV file that can be imported
+							directly into Hevy. Weights are exported in lbs (Hevy's default).
+						</p>
+
+						<Button
+							onClick={handleExport}
+							disabled={isExporting}
+							size="sm"
+							className="bg-[#2563EB] hover:bg-[#2563EB]/90 text-white"
+						>
+							{isExporting ? (
+								"Exporting..."
+							) : (
+								<>
+									<Download className="size-3.5 mr-1.5" />
+									Export All Workouts
+								</>
+							)}
+						</Button>
+					</TabsContent>
 
 					{/* CSV Import Tab */}
 					<TabsContent value="csv" className="space-y-4 mt-4">
 						<p className="text-sm text-muted-foreground">
 							Export your workouts from Hevy (Settings &rarr; Export Data) and
-							upload the CSV file.
+							upload the CSV file here.
 						</p>
 
 						<div className="space-y-2">
