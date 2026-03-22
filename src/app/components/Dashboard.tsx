@@ -876,17 +876,17 @@ export function Dashboard() {
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
-						className="mb-8"
+						className="mb-10"
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2">
+						<h1 className="text-4xl lg:text-5xl font-bold tracking-tight mb-2">
 							Welcome back,{" "}
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-primary glow-text">
 								{profile?.display_name ??
 									user?.email?.split("@")[0] ??
 									"Athlete"}
 							</span>
 						</h1>
-						<p className="text-muted-foreground">
+						<p className="text-muted-foreground text-lg">
 							Let's make today count. Your strength awaits.
 						</p>
 					</motion.div>
@@ -894,183 +894,265 @@ export function Dashboard() {
 					{/* Portal Banner */}
 					<PortalBanner />
 
-					{/* Main Grid */}
-					<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-						{/* Left Column - Main Stats */}
-						<div className="lg:col-span-2 space-y-6">
-							{/* Streak Card */}
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.1 }}
-								whileHover={hover.lift}
-							>
-								<Card className="p-6 card-hero animate-phoenix-glow">
-									<div className="flex items-center justify-between">
-										<div>
-											<div className="flex items-center gap-3 mb-2">
-												<Flame
-													className="w-8 h-8 text-accent animate-flame-flicker"
-													fill={PHOENIX.ember}
-												/>
+					{/* ── Top Row: Streak + Quick Stats (5/7 split) ── */}
+					<div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+						{/* Streak Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.1 }}
+							whileHover={hover.lift}
+							className="col-span-1 lg:col-span-5"
+						>
+							<div className="glass-panel p-8 flex items-center justify-center relative overflow-hidden glow-box h-full">
+								<div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent opacity-50" />
+								<div className="flex items-center gap-6 z-10">
+									<motion.div
+										animate={{
+											scale: [1, 1.1, 1],
+											filter: [
+												"drop-shadow(0 0 10px #FF6B35)",
+												"drop-shadow(0 0 20px #DC2626)",
+												"drop-shadow(0 0 10px #FF6B35)",
+											],
+										}}
+										transition={{
+											duration: 2,
+											repeat: Number.POSITIVE_INFINITY,
+											ease: "easeInOut",
+										}}
+									>
+										<Flame
+											className="w-16 h-16 text-primary"
+											fill={PHOENIX.ember}
+										/>
+									</motion.div>
+									<div>
+										<h3 className="text-3xl font-bold mb-1 text-white">
+											<NumberFlow
+												value={streak ?? 0}
+												className="tabular-nums"
+											/>{" "}
+											Day Streak
+										</h3>
+										<p className="text-muted-foreground">
+											{streak > 0
+												? "Keep the fire burning!"
+												: "Start your streak today!"}
+										</p>
+									</div>
+								</div>
+							</div>
+						</motion.div>
+
+						{/* Quick Stats Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.15 }}
+							className="col-span-1 lg:col-span-7"
+						>
+							<div className="glass-panel p-6 h-full">
+								<h3 className="text-lg font-medium mb-6 text-white">
+									Quick Stats
+								</h3>
+								{workoutsLoading ? (
+									<div className="grid grid-cols-2 gap-y-6 gap-x-4">
+										{Array.from({ length: 4 }).map((_, i) => (
+											<div key={i} className="flex items-center gap-4">
+												<Skeleton className="w-12 h-12 rounded-xl" />
 												<div>
-													<h3 className="text-2xl text-white">
-														<NumberFlow
-															value={streak ?? 0}
-															className="tabular-nums"
-														/>{" "}
-														Day Streak
-													</h3>
-													<p className="text-secondary-foreground text-sm">
-														Keep the fire burning!
-													</p>
+													<Skeleton className="h-3 w-20 mb-2" />
+													<Skeleton className="h-6 w-12" />
+												</div>
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="grid grid-cols-2 gap-y-6 gap-x-4">
+										<div className="flex items-center gap-4">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+												<Dumbbell className="w-5 h-5" />
+											</div>
+											<div>
+												<div className="text-sm text-muted-foreground mb-1">
+													Total Workouts
+												</div>
+												<div className="text-2xl font-semibold text-white">
+													<NumberFlow
+														value={workouts?.length ?? 0}
+														className="tabular-nums"
+													/>
 												</div>
 											</div>
 										</div>
-										<div className="text-right">
-											<div className="text-4xl text-primary">{"\u{1F525}"}</div>
+										<div className="flex items-center gap-4">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+												<Trophy className="w-5 h-5" />
+											</div>
+											<div>
+												<div className="text-sm text-muted-foreground mb-1">
+													Personal Records
+												</div>
+												<div className="text-2xl font-semibold text-white">
+													<NumberFlow
+														value={recentPRs?.length ?? 0}
+														className="tabular-nums"
+													/>
+												</div>
+											</div>
+										</div>
+										<div className="flex items-center gap-4">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+												<Award className="w-5 h-5" />
+											</div>
+											<div>
+												<div className="text-sm text-muted-foreground mb-1">
+													Badges Earned
+												</div>
+												<div className="text-2xl font-semibold text-white">
+													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
+												</div>
+											</div>
+										</div>
+										<div className="flex items-center gap-4">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+												<TrendingUp className="w-5 h-5" />
+											</div>
+											<div>
+												<div className="text-sm text-muted-foreground mb-1">
+													Weekly Volume
+												</div>
+												<div className="text-2xl font-semibold text-white">
+													{weeklyTotal > 0
+														? formatVolume(weeklyTotal, unit)
+														: "--"}
+												</div>
+											</div>
 										</div>
 									</div>
-								</Card>
-							</motion.div>
-
-							{/* Today's Workout / Scheduled Workout Card */}
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.2 }}
-							>
-								{activeCycle ? (
-									<NextWorkoutWidget cycleId={activeCycle.id} />
-								) : (
-									<Card className="p-6 card-secondary">
-										<div className="flex items-center justify-between mb-4">
-											<h3 className="text-xl text-white">Scheduled Workout</h3>
-										</div>
-										<div className="flex flex-col items-center justify-center py-8 text-center">
-											<Calendar className="w-12 h-12 text-secondary mb-4" />
-											<p className="text-muted-foreground mb-2">
-												No scheduled workout
-											</p>
-											<p className="text-sm text-muted mb-4">
-												Create a training cycle to see your next workout here
-											</p>
-											<Button
-												className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-												asChild
-											>
-												<Link to="/cycles">
-													<Calendar className="w-4 h-4 mr-2" />
-													Browse Training Cycles
-												</Link>
-											</Button>
-										</div>
-									</Card>
 								)}
-							</motion.div>
+							</div>
+						</motion.div>
+					</div>
 
-							{/* Weekly Volume Chart */}
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.3 }}
-							>
-								{statsLoading ? (
-									<ChartSkeleton />
-								) : (
-									<Card className="p-6 card-secondary">
-										<h3 className="text-xl text-white mb-6">Weekly Volume</h3>
-										{weeklyTotal === 0 ? (
-											<div className="flex flex-col items-center justify-center py-12 text-center">
-												<Dumbbell className="w-12 h-12 text-secondary mb-4" />
-												<p className="text-muted-foreground mb-2">
-													No workouts this week yet
-												</p>
-												<p className="text-sm text-muted">
-													Complete a workout in the mobile app to see your
-													volume here
-												</p>
+					{/* ── Middle Row: 4-column widget grid ── */}
+					<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
+						{/* Scheduled Workout */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.2 }}
+						>
+							{activeCycle ? (
+								<NextWorkoutWidget cycleId={activeCycle.id} />
+							) : (
+								<div className="glass-panel glass-panel-hover p-6 flex flex-col items-center justify-center text-center h-full">
+									<Calendar className="w-12 h-12 text-primary mb-4 opacity-80" />
+									<h3 className="text-xl font-medium text-white mb-6">
+										Scheduled
+										<br />
+										Workout
+									</h3>
+									<Button
+										variant="outline"
+										className="w-full border-white/10 hover:bg-surface-3"
+										asChild
+									>
+										<Link to="/cycles">Browse Training Cycles</Link>
+									</Button>
+								</div>
+							)}
+						</motion.div>
+
+						{/* Weekly Volume */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.25 }}
+						>
+							{statsLoading ? (
+								<ChartSkeleton />
+							) : (
+								<div className="glass-panel p-6 flex flex-col h-full">
+									<h3 className="text-lg font-medium mb-6 text-white">
+										Weekly Volume
+									</h3>
+									{weeklyTotal === 0 ? (
+										<div className="flex-1 flex flex-col items-center justify-center text-center">
+											<Dumbbell className="w-10 h-10 text-secondary mb-3" />
+											<p className="text-sm text-muted-foreground">
+												No workouts this week
+											</p>
+										</div>
+									) : (
+										<>
+											<div className="flex-1 flex items-end justify-between gap-2 mb-2 min-h-[128px]">
+												{barHeights.map((height, i) => (
+													<div
+														key={i}
+														className="flex-1 flex flex-col items-center gap-0 h-full justify-end"
+													>
+														<motion.div
+															className="w-full bg-primary rounded-t-sm"
+															initial={{ height: 0 }}
+															animate={{
+																height: `${Math.max(height, 2)}%`,
+															}}
+															transition={{
+																delay: 0.5 + i * 0.1,
+																duration: 0.5,
+															}}
+															style={{
+																background: `linear-gradient(to top, var(--primary), var(--accent))`,
+															}}
+														/>
+													</div>
+												))}
 											</div>
-										) : (
-											<>
-												<ResponsiveContainer width="100%" height={200}>
-													<AreaChart data={weeklyVolumeData}>
-														<defs>
-															<linearGradient
-																id="volumeGradient"
-																x1="0"
-																y1="0"
-																x2="0"
-																y2="1"
-															>
-																<stop
-																	offset="5%"
-																	stopColor={PHOENIX.ember}
-																	stopOpacity={0.8}
-																/>
-																<stop
-																	offset="95%"
-																	stopColor={PHOENIX.flameRed}
-																	stopOpacity={0.1}
-																/>
-															</linearGradient>
-														</defs>
-														<CartesianGrid
-															strokeOpacity={0.3}
-															vertical={false}
-														/>
-														<XAxis
-															dataKey="day"
-															stroke={PHOENIX.mutedForeground}
-															tickLine={false}
-															axisLine={false}
-															tick={{
-																fontSize: 11,
-																fontFamily: "Inter, sans-serif",
-															}}
-														/>
-														<YAxis
-															stroke={PHOENIX.mutedForeground}
-															tickLine={false}
-															axisLine={false}
-															tick={{
-																fontSize: 11,
-																fontFamily: "Inter, sans-serif",
-															}}
-														/>
-														<Tooltip content={<RechartsTooltip />} />
-														<Area
-															type="monotone"
-															dataKey="volume"
-															stroke={PHOENIX.ember}
-															strokeWidth={2}
-															fill="url(#volumeGradient)"
-															animationDuration={800}
-															animationEasing="ease-out"
-														/>
-													</AreaChart>
-												</ResponsiveContainer>
-												<div className="mt-4 flex items-center justify-between text-sm">
-													<span className="text-muted-foreground">
-														Total this week
-													</span>
-													<span className="text-primary font-semibold">
-														{formatVolume(weeklyTotal, unit)}
-													</span>
-												</div>
-											</>
-										)}
-									</Card>
-								)}
-							</motion.div>
+											<div className="flex justify-between text-xs text-muted-foreground">
+												{["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(
+													(day) => (
+														<span key={day}>{day}</span>
+													),
+												)}
+											</div>
+										</>
+									)}
+								</div>
+							)}
+						</motion.div>
 
+						{/* Goals Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.3 }}
+						>
+							<GoalDashboardWidget />
+						</motion.div>
+
+						{/* Recovery Widget */}
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ delay: 0.35 }}
+						>
+							<RecoveryDashboardWidget />
+						</motion.div>
+					</div>
+
+					{/* ── Bottom Section: Activity + Sidebar Widgets ── */}
+					<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+						{/* Left: Recent Activity + Volume Chart */}
+						<div className="lg:col-span-2 space-y-6">
 							{/* Recent Workouts */}
 							<motion.div
 								initial={{ opacity: 0, y: 20 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-6 card-secondary">
+								<Card className="p-6 glass-panel">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="text-xl text-white">Recent Activity</h3>
 										<Button
@@ -1105,7 +1187,7 @@ export function Dashboard() {
 											{recentWorkouts.map((workout: WorkoutSession) => (
 												<div
 													key={workout.id}
-													className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary hover:border-primary/50 transition-all cursor-pointer"
+													className="flex items-center justify-between p-3 bg-background rounded-lg border border-white/5 hover:border-primary/50 transition-all cursor-pointer"
 												>
 													<div className="flex-1">
 														<div className="flex items-center gap-2 mb-1">
@@ -1135,109 +1217,95 @@ export function Dashboard() {
 									)}
 								</Card>
 							</motion.div>
+
+							{/* Detailed Volume Chart (larger space for the area chart) */}
+							{weeklyTotal > 0 && (
+								<motion.div
+									initial={{ opacity: 0, y: 20 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{ delay: 0.45 }}
+								>
+									<Card className="p-6 glass-panel">
+										<h3 className="text-xl text-white mb-6">
+											Volume Breakdown
+										</h3>
+										<ResponsiveContainer width="100%" height={200}>
+											<AreaChart data={weeklyVolumeData}>
+												<defs>
+													<linearGradient
+														id="volumeGradient"
+														x1="0"
+														y1="0"
+														x2="0"
+														y2="1"
+													>
+														<stop
+															offset="5%"
+															stopColor={PHOENIX.ember}
+															stopOpacity={0.8}
+														/>
+														<stop
+															offset="95%"
+															stopColor={PHOENIX.flameRed}
+															stopOpacity={0.1}
+														/>
+													</linearGradient>
+												</defs>
+												<CartesianGrid strokeOpacity={0.3} vertical={false} />
+												<XAxis
+													dataKey="day"
+													stroke={PHOENIX.mutedForeground}
+													tickLine={false}
+													axisLine={false}
+													tick={{
+														fontSize: 11,
+														fontFamily: "Inter, sans-serif",
+													}}
+												/>
+												<YAxis
+													stroke={PHOENIX.mutedForeground}
+													tickLine={false}
+													axisLine={false}
+													tick={{
+														fontSize: 11,
+														fontFamily: "Inter, sans-serif",
+													}}
+												/>
+												<Tooltip content={<RechartsTooltip />} />
+												<Area
+													type="monotone"
+													dataKey="volume"
+													stroke={PHOENIX.ember}
+													strokeWidth={2}
+													fill="url(#volumeGradient)"
+													animationDuration={800}
+													animationEasing="ease-out"
+												/>
+											</AreaChart>
+										</ResponsiveContainer>
+										<div className="mt-4 flex items-center justify-between text-sm">
+											<span className="text-muted-foreground">
+												Total this week
+											</span>
+											<span className="text-primary font-semibold">
+												{formatVolume(weeklyTotal, unit)}
+											</span>
+										</div>
+									</Card>
+								</motion.div>
+							)}
 						</div>
 
-						{/* Right Column - Quick Stats & Challenges */}
+						{/* Right: PRs, Challenges, Badges */}
 						<motion.div
 							variants={staggerContainer}
 							initial="hidden"
 							animate="visible"
 							className="space-y-6"
 						>
-							{/* Quick Stats */}
-							<motion.div variants={fadeUp} whileHover={hover.lift}>
-								<Card className="p-6 card-secondary">
-									<h3 className="text-xl text-white mb-4">Quick Stats</h3>
-									{workoutsLoading ? (
-										<div className="space-y-4">
-											{Array.from({ length: 4 }).map((_, i) => (
-												<div
-													key={i}
-													className="flex items-center justify-between"
-												>
-													<Skeleton className="h-4 w-28" />
-													<Skeleton className="h-5 w-12" />
-												</div>
-											))}
-										</div>
-									) : (
-										<div className="space-y-4">
-											<div className="flex items-center justify-between">
-												<div className="flex items-center gap-2 text-muted-foreground">
-													<Calendar className="w-4 h-4" />
-													<span>Total Workouts</span>
-												</div>
-												<span className="text-white text-lg">
-													<NumberFlow
-														value={workouts?.length ?? 0}
-														className="tabular-nums"
-													/>
-												</span>
-											</div>
-											<div className="flex items-center justify-between">
-												<div className="flex items-center gap-2 text-muted-foreground">
-													<Trophy className="w-4 h-4" />
-													<span>Personal Records</span>
-												</div>
-												<span className="text-white text-lg">
-													<NumberFlow
-														value={recentPRs?.length ?? 0}
-														className="tabular-nums"
-													/>
-												</span>
-											</div>
-											<div className="flex items-center justify-between">
-												<div className="flex items-center gap-2 text-muted-foreground">
-													<Award className="w-4 h-4" />
-													<span>Badges Earned</span>
-												</div>
-												<span className="text-white text-lg">
-													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
-												</span>
-											</div>
-											<div className="flex items-center justify-between">
-												<div className="flex items-center gap-2 text-muted-foreground">
-													<TrendingUp className="w-4 h-4" />
-													<span>Weekly Volume</span>
-												</div>
-												<span className="text-primary text-lg">
-													{weeklyTotal > 0
-														? formatVolume(weeklyTotal, unit)
-														: "--"}
-												</span>
-											</div>
-											{weeklyCalories > 0 && (
-												<div className="flex items-center justify-between">
-													<div className="flex items-center gap-2 text-muted-foreground">
-														<Flame className="w-4 h-4" />
-														<span>Weekly Calories</span>
-													</div>
-													<span className="text-primary text-lg">
-														<NumberFlow
-															value={Math.round(weeklyCalories)}
-															className="tabular-nums"
-														/>
-													</span>
-												</div>
-											)}
-										</div>
-									)}
-								</Card>
-							</motion.div>
-
-							{/* Goal Progress Widget */}
-							<motion.div variants={fadeUp}>
-								<GoalDashboardWidget />
-							</motion.div>
-
-							{/* Recovery Readiness Widget */}
-							<motion.div variants={fadeUp}>
-								<RecoveryDashboardWidget />
-							</motion.div>
-
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 card-secondary">
+								<Card className="p-6 glass-panel">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
@@ -1247,7 +1315,7 @@ export function Dashboard() {
 											{Array.from({ length: 3 }).map((_, i) => (
 												<div
 													key={i}
-													className="p-3 rounded-lg border border-secondary"
+													className="p-3 rounded-lg border border-white/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-4 w-32" />
@@ -1291,7 +1359,7 @@ export function Dashboard() {
 
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 card-secondary">
+								<Card className="p-6 glass-panel">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
@@ -1299,14 +1367,14 @@ export function Dashboard() {
 
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 card-secondary">
+								<Card className="p-6 glass-panel">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
 											{Array.from({ length: 3 }).map((_, i) => (
 												<div
 													key={i}
-													className="p-3 rounded-lg border border-secondary"
+													className="p-3 rounded-lg border border-white/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-3 w-32" />
