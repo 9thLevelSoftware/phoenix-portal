@@ -471,7 +471,8 @@
     transition: width 200ms ease, left 200ms ease;
   }
 
-  .nav-link-landing:hover::after {
+  .nav-link-landing:hover::after,
+  .nav-link-landing:focus-visible::after {
     width: 100%;
     left: 0;
   }
