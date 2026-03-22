@@ -1,5 +1,6 @@
 :root {
   --font-size: 16px;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
   /* Phoenix Project Color Palette */
   --phoenix-black: #0D0D0D;
@@ -129,6 +130,7 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
+  --font-family-display: var(--font-display);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
