@@ -50,7 +50,7 @@ describe("LandingPage", () => {
 
 	it("renders section eyebrow labels", () => {
 		renderWithProviders(<LandingPage />);
-		expect(screen.getByText("FEATURES")).toBeInTheDocument();
+		expect(screen.getByText("WHAT YOU GET")).toBeInTheDocument();
 		expect(screen.getByText("PRICING")).toBeInTheDocument();
 	});
 });

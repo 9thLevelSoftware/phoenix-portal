@@ -191,45 +191,45 @@ export function LandingPage() {
 	const features = [
 		{
 			icon: Cloud,
-			title: "Cloud Sync & Backup",
+			title: "Sync & Backup",
 			badge: "EMBER",
 			description:
-				"Your workouts, synced and backed up automatically. Restore data across devices and never lose a session again.",
+				"Workouts sync from the Project Phoenix mobile app automatically. Full history, searchable, exportable. Never lose a session.",
 		},
 		{
 			icon: Trophy,
-			title: "Challenges & Leaderboards",
+			title: "Records & Leaderboards",
 			badge: "EMBER",
 			description:
-				"Compete in community challenges, climb leaderboards, and earn badges. See how you stack up against other Vitruvian athletes.",
+				"Personal records tracked per exercise, phase, and weight. See where you rank against other Vitruvian athletes on community leaderboards.",
 		},
 		{
 			icon: Share2,
-			title: "Community Hub",
+			title: "Routines & Cycles",
 			badge: "FLAME",
 			description:
-				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
+				"Build training routines with supersets, AMRAP, and PR scaling. Organize into periodized cycles. Share with the community.",
 		},
 		{
 			icon: Activity,
-			title: "Advanced Analytics",
+			title: "Analytics & Trends",
 			badge: "FLAME",
 			description:
-				"Deep dive into your training data with force curve analysis, volume trends, and progressive overload tracking across every exercise.",
+				"Volume trends, muscle group distribution, training load, and progressive overload tracking across every exercise and time period.",
 		},
 		{
 			icon: Target,
-			title: "Asymmetry Detection",
+			title: "Biomechanics & Asymmetry",
 			badge: "INFERNO",
 			description:
-				"L/R force threshold flagging catches muscle imbalances before they become injuries. Full biomechanics dashboard with muscle heatmap.",
+				"Cable A/B force comparison catches left-right imbalances at the 2% threshold. Full biomechanics dashboard with velocity-based training zones.",
 		},
 		{
 			icon: Play,
 			title: "Session Replay",
 			badge: "INFERNO",
 			description:
-				"Relive every workout with Canvas 2D telemetry playback at 50Hz. Scrub through sets, analyze rep quality, and detect fatigue.",
+				"50Hz telemetry playback of every rep. Scrub through sets on a Canvas timeline, overlay force curves, and spot fatigue patterns.",
 		},
 	];
 
@@ -704,13 +704,13 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<p className="eyebrow text-primary mb-3">FEATURES</p>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
-							Built for serious athletes.
+						<p className="eyebrow text-primary mb-3">WHAT YOU GET</p>
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							What your machine captures — finally visible.
 						</h2>
-						<p className="text-xl text-muted max-w-2xl mx-auto">
-							The insights your Vitruvian machine captures but never shows you —
-							from force output to recovery readiness.
+						<p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+							Every rep generates force, velocity, and timing data. Phoenix Portal
+							turns it into actionable training intelligence.
 						</p>
 					</motion.div>
 
