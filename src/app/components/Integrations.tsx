@@ -7,6 +7,7 @@ import { HevyConnect } from "@/app/components/integrations/HevyConnect";
 import { LiftosaurConnect } from "@/app/components/integrations/LiftosaurConnect";
 import { MobileOnlyProvider } from "@/app/components/integrations/MobileOnlyProvider";
 import { ProviderCard } from "@/app/components/integrations/ProviderCard";
+import { StrongConnect } from "@/app/components/integrations/StrongConnect";
 import { SyncStatus } from "@/app/components/integrations/SyncStatus";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { useAuth } from "@/app/hooks/useAuth";
@@ -165,6 +166,16 @@ export function Integrations() {
 								disconnectMutation.mutate({
 									userId,
 									provider: "liftosaur",
+								})
+							}
+						/>
+						<StrongConnect
+							userId={userId}
+							isConnected={getIntegration("strong")?.status === "connected"}
+							onDisconnect={() =>
+								disconnectMutation.mutate({
+									userId,
+									provider: "strong",
 								})
 							}
 						/>

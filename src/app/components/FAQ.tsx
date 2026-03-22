@@ -88,9 +88,16 @@ const faqCategories: FAQCategory[] = [
 				question: "Can I cancel my subscription?",
 				answer: (
 					<p>
-						Yes, you can cancel anytime from your Profile settings. Your access
-						continues until the end of the current billing period — no partial
-						refunds, but no surprise charges either.
+						Yes, you can cancel anytime from your{" "}
+						<Link to="/profile" className="text-primary hover:underline">
+							Profile
+						</Link>{" "}
+						page or the{" "}
+						<Link to="/pricing" className="text-primary hover:underline">
+							Pricing
+						</Link>{" "}
+						page. Your access continues until the end of the current billing
+						period — no partial refunds, but no surprise charges either.
 					</p>
 				),
 			},

@@ -4,6 +4,7 @@ export type IntegrationProvider =
 	| "garmin"
 	| "hevy"
 	| "liftosaur"
+	| "strong"
 	| "apple_health"
 	| "google_health";
 
@@ -88,6 +89,13 @@ export const PROVIDER_METADATA: Record<
 		name: "Liftosaur",
 		icon: "Dumbbell",
 		description: "Scriptable workout tracking",
+		oauthRequired: false,
+		mobileOnly: false,
+	},
+	strong: {
+		name: "Strong",
+		icon: "Dumbbell",
+		description: "Strength training via CSV import",
 		oauthRequired: false,
 		mobileOnly: false,
 	},
