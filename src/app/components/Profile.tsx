@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
 	Award,
@@ -22,6 +22,16 @@ import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
 import { ExportSection } from "@/app/components/profile/ExportSection";
 import { TierBadge } from "@/app/components/TierBadge";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import {
 	Avatar,
 	AvatarFallback,
@@ -48,6 +58,7 @@ import { supabase } from "@/lib/supabase";
 import { formatVolume } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
+import { queryKeys } from "@/queries/keys";
 import {
 	earnedBadgesOptions,
 	gamificationStatsOptions,
@@ -71,6 +82,7 @@ const PROVIDER_META: Record<string, { label: string; logo: string }> = {
 	fitbit: { label: "Fitbit", logo: "F" },
 	garmin: { label: "Garmin Connect", logo: "G" },
 	hevy: { label: "Hevy", logo: "H" },
+	strong: { label: "Strong", logo: "S" },
 	apple_health: { label: "Apple Health", logo: "A" },
 };
 
@@ -87,8 +99,47 @@ function getInitials(name: string | null | undefined): string {
 export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
-	const { tier, currentPeriodEnd, cancelAtPeriodEnd } = useSubscription();
+	const {
+		tier,
+		status: subStatus,
+		currentPeriodEnd,
+		cancelAtPeriodEnd,
+	} = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
+	const queryClient = useQueryClient();
+	const [confirmCancel, setConfirmCancel] = useState(false);
+	const [isCanceling, setIsCanceling] = useState(false);
+
+	const handleCancelSubscription = async () => {
+		setIsCanceling(true);
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-cancel-subscription",
+			);
+			if (error) {
+				toast.error(error.message || "Failed to cancel subscription");
+				return;
+			}
+			toast.success(
+				"Subscription canceled. You'll retain access until the end of your billing period.",
+			);
+			if (user) {
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setIsCanceling(false);
+			setConfirmCancel(false);
+		}
+	};
+
+	const canCancel =
+		tier !== "FREE" &&
+		!cancelAtPeriodEnd &&
+		(subStatus === "active" || subStatus === "trialing");
 
 	// Real data queries
 	const { data: profile, isPending: profileLoading } = useQuery({
@@ -350,7 +401,7 @@ export function Profile() {
 									)}
 								</div>
 							</div>
-							<div className="flex gap-2 flex-wrap">
+							<div className="flex gap-2 flex-wrap items-center">
 								{tier === "FREE" ? (
 									<Button
 										asChild
@@ -359,9 +410,21 @@ export function Profile() {
 										<Link to="/pricing">Subscribe</Link>
 									</Button>
 								) : (
-									<p className="text-sm text-muted-foreground">
-										Manage your subscription on the pricing page
-									</p>
+									<>
+										<Button asChild variant="outline" size="sm">
+											<Link to="/pricing">Manage Plan</Link>
+										</Button>
+										{canCancel && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="text-muted-foreground hover:text-destructive"
+												onClick={() => setConfirmCancel(true)}
+											>
+												Cancel Subscription
+											</Button>
+										)}
+									</>
 								)}
 							</div>
 						</div>
@@ -1017,6 +1080,33 @@ export function Profile() {
 					</TabsContent>
 				</Tabs>
 			</PageShell>
+
+			{/* Cancel Subscription Confirmation */}
+			<AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+				<AlertDialogContent className="bg-surface-2 border-destructive/30">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Your subscription will remain active until the end of your current
+							billing period
+							{currentPeriodEnd
+								? ` (${format(new Date(currentPeriodEnd), "MMM d, yyyy")})`
+								: ""}
+							. After that, you'll be downgraded to the Free plan.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep subscription</AlertDialogCancel>
+						<AlertDialogAction
+							className="bg-destructive text-destructive-foreground"
+							onClick={handleCancelSubscription}
+							disabled={isCanceling}
+						>
+							{isCanceling ? "Canceling..." : "Yes, cancel"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }
