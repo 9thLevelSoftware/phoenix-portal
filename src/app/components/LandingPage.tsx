@@ -757,11 +757,11 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">PRICING</p>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
-							Choose Your Path
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							Plans
 						</h2>
-						<p className="text-xl text-muted">
-							Select the plan that fits your journey
+						<p className="text-lg text-muted-foreground">
+							Each tier unlocks deeper analysis.
 						</p>
 					</motion.div>
 
@@ -778,12 +778,12 @@ export function LandingPage() {
 								<Card
 									className={`p-8 h-full flex flex-col ${
 										tier.highlight
-											? "bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2 ring-4 ring-primary/20"
-											: "bg-gradient-to-br from-surface-2 to-background border-secondary"
+											? "bg-surface-2 border-primary border ring-1 ring-primary/20"
+											: "bg-surface-1 border-white/[0.06]"
 									}`}
 								>
 									{tier.highlight && (
-										<div className="mb-4 px-4 py-1 bg-gradient-to-r from-primary to-chart-2 rounded-full text-sm text-center w-fit mx-auto">
+										<div className="mb-4 px-3 py-0.5 bg-primary/15 text-primary text-xs font-medium rounded-full text-center w-fit mx-auto border border-primary/25">
 											RECOMMENDED
 										</div>
 									)}
@@ -835,8 +835,8 @@ export function LandingPage() {
 											tier.comingSoon
 												? "w-full border-2 border-accent/30 bg-transparent text-accent/60 cursor-not-allowed"
 												: tier.highlight
-													? "w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
-													: "w-full border-2 border-primary bg-transparent text-primary hover:bg-primary/10"
+													? "w-full bg-primary hover:bg-primary/90 border-0"
+													: "w-full border border-white/15 text-white hover:bg-white/5"
 										}
 									>
 										{tier.cta}
