@@ -568,7 +568,7 @@ export function LandingPage() {
 			<nav
 				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
 					scrolled
-						? "bg-background/80 backdrop-blur-lg border-b border-secondary/50"
+						? "bg-background/80 backdrop-blur-lg border-b border-primary/15 shadow-[0_1px_12px_rgba(255,107,53,0.06)]"
 						: "bg-transparent"
 				}`}
 			>
@@ -583,14 +583,14 @@ export function LandingPage() {
 						<button
 							type="button"
 							onClick={() => scrollToSection("features")}
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Features
 						</button>
 						<button
 							type="button"
 							onClick={() => scrollToSection("pricing")}
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Pricing
 						</button>
@@ -598,7 +598,7 @@ export function LandingPage() {
 							href="https://ko-fi.com/vitruvianredux"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-sm text-muted-foreground hover:text-white transition-colors"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Support
 						</a>
@@ -677,7 +677,7 @@ export function LandingPage() {
 							<Button
 								size="lg"
 								onClick={openAuth}
-								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300"
+								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300 btn-shimmer"
 							>
 								<span className="relative z-10 flex items-center gap-2">
 									Get Started
@@ -890,7 +890,7 @@ export function LandingPage() {
 								<Button
 									size="lg"
 									onClick={openAuth}
-									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6"
+									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6 btn-shimmer"
 								>
 									<span className="flex items-center gap-2">
 										Get Started
