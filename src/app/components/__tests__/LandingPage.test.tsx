@@ -53,4 +53,10 @@ describe("LandingPage", () => {
 		expect(screen.getByText("WHAT YOU GET")).toBeInTheDocument();
 		expect(screen.getByText("PRICING")).toBeInTheDocument();
 	});
+
+	it("renders interactive demo section", () => {
+		renderWithProviders(<LandingPage />);
+		expect(screen.getByText("TRY IT")).toBeInTheDocument();
+		expect(screen.getByText(/explore a real force curve/i)).toBeInTheDocument();
+	});
 });
