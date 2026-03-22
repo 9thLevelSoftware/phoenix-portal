@@ -159,6 +159,12 @@ export function PricingPlans() {
 			priceId,
 			userId: user.id,
 			userEmail: user.email ?? "",
+			onSuccess: () => {
+				toast.success("Subscription activated!");
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			},
 		});
 	};
 

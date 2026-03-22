@@ -106,14 +106,22 @@ function loadPaddleScript(): Promise<void> {
 let initialized = false;
 
 /**
+ * Mutable module-level callbacks that the Paddle event handler reads from.
+ * Each `openCheckout` call updates these BEFORE opening the overlay, so that
+ * the single registered `eventCallback` always delegates to the latest caller.
+ */
+let activeCallbacks: {
+	onSuccess?: (event: PaddleEvent) => void;
+	onClose?: () => void;
+} = {};
+
+/**
  * Dynamically loads Paddle.js (if not yet present) and initializes the SDK
  * with the client-side token from env vars. In development mode, Paddle is
  * set to sandbox environment.
  * Safe to call multiple times -- subsequent calls are no-ops.
  */
-export async function initializePaddle(
-	eventCallback?: (event: PaddleEvent) => void,
-): Promise<void> {
+export async function initializePaddle(): Promise<void> {
 	if (initialized) return;
 
 	const token = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
@@ -129,9 +137,7 @@ export async function initializePaddle(
 	await loadPaddleScript();
 
 	if (!window.Paddle) {
-		console.warn(
-			"[Paddle] Paddle.js SDK not available after script load.",
-		);
+		console.warn("[Paddle] Paddle.js SDK not available after script load.");
 		return;
 	}
 
@@ -145,7 +151,14 @@ export async function initializePaddle(
 
 	window.Paddle.Initialize({
 		token,
-		eventCallback,
+		eventCallback: (event: PaddleEvent) => {
+			if (event.name === "checkout.completed") {
+				activeCallbacks.onSuccess?.(event);
+			}
+			if (event.name === "checkout.closed") {
+				activeCallbacks.onClose?.();
+			}
+		},
 	});
 
 	initialized = true;
@@ -177,16 +190,13 @@ export async function openCheckout({
 	onSuccess,
 	onClose,
 }: OpenCheckoutOptions): Promise<void> {
+	// Update the active callbacks BEFORE opening checkout so that the
+	// single registered eventCallback always delegates to the latest caller.
+	activeCallbacks = { onSuccess, onClose };
+
 	// Ensure SDK is loaded and initialized before opening checkout
 	if (!initialized) {
-		await initializePaddle((event) => {
-			if (event.name === "checkout.completed" && onSuccess) {
-				onSuccess(event);
-			}
-			if (event.name === "checkout.closed" && onClose) {
-				onClose();
-			}
-		});
+		await initializePaddle();
 	}
 
 	if (!window.Paddle) {

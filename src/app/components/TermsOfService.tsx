@@ -145,8 +145,8 @@ export function TermsOfService() {
 								4. Subscription Terms
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
-								Phoenix Portal offers two paid subscription tiers: Ember and
-								Inferno.
+								Phoenix Portal offers three paid subscription tiers: Ember,
+								Flame, and Inferno.
 							</p>
 							<ul className="space-y-2 text-secondary-foreground ml-6">
 								<li className="flex items-start gap-2">

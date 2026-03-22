@@ -6,27 +6,12 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { MobileChartCard } from "@/app/components/analytics/MobileChartCard";
 import { ConsistencyWidget } from "@/app/components/charts/ConsistencyWidget";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
-import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
-
-function MobileChartCard({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
-			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
-			{children}
-		</Card>
-	);
-}
 
 interface ConsistencyData {
 	weeklyData: {

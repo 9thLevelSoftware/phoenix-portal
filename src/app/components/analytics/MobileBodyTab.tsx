@@ -1,25 +1,11 @@
 import { Activity } from "lucide-react";
 import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { MobileChartCard } from "@/app/components/analytics/MobileChartCard";
 import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Card } from "@/app/components/ui/card";
-
-function MobileChartCard({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
-			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
-			{children}
-		</Card>
-	);
-}
 
 interface MuscleEntry {
 	name: string;
