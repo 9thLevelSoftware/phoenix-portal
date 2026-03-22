@@ -34,9 +34,9 @@ import {
 import { useAuth } from "@/app/hooks/useAuth";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
-import { PhoenixLogo } from "./PhoenixLogo";
 import { ForceCurveDemo } from "./landing/ForceCurveDemo";
 import { ProductShowcase } from "./landing/ProductShowcase";
+import { PhoenixLogo } from "./PhoenixLogo";
 
 // Validation schemas
 const signInSchema = z.object({
@@ -618,9 +618,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.15 }}
 					>
-						<span className="block text-white">
-							See every rep as data.
-						</span>
+						<span className="block text-white">See every rep as data.</span>
 					</motion.h1>
 
 					<motion.p
@@ -629,8 +627,8 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.3 }}
 					>
-						Force curves, recovery signals, PR trends, and session analysis
-						— synced from the Project Phoenix app.
+						Force curves, recovery signals, PR trends, and session analysis —
+						synced from the Project Phoenix app.
 					</motion.p>
 
 					<motion.div
@@ -669,12 +667,17 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						{["Force curves", "Recovery signals", "Records", "Replay"].map((item) => (
-							<span key={item} className="flex items-center gap-1.5">
-								<span className="w-1 h-1 rounded-full bg-primary" aria-hidden="true" />
-								{item}
-							</span>
-						))}
+						{["Force curves", "Recovery signals", "Records", "Replay"].map(
+							(item) => (
+								<span key={item} className="flex items-center gap-1.5">
+									<span
+										className="w-1 h-1 rounded-full bg-primary"
+										aria-hidden="true"
+									/>
+									{item}
+								</span>
+							),
+						)}
 					</motion.div>
 				</motion.div>
 
@@ -706,8 +709,8 @@ export function LandingPage() {
 							What your machine captures — finally visible.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-							Every rep generates force, velocity, and timing data. Phoenix Portal
-							turns it into actionable training intelligence.
+							Every rep generates force, velocity, and timing data. Phoenix
+							Portal turns it into actionable training intelligence.
 						</p>
 					</motion.div>
 
@@ -758,8 +761,8 @@ export function LandingPage() {
 							Explore a real force curve.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-xl mx-auto">
-							This is one rep of sample data. The full portal shows every
-							set, every session, with velocity zones and fatigue detection.
+							This is one rep of sample data. The full portal shows every set,
+							every session, with velocity zones and fatigue detection.
 						</p>
 					</motion.div>
 					<motion.div

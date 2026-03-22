@@ -33,9 +33,13 @@ describe("LandingPage", () => {
 
 	it("renders product-aligned CTAs", () => {
 		renderWithProviders(<LandingPage />);
-		const previewBtns = screen.getAllByRole("button", { name: /preview dashboard/i });
+		const previewBtns = screen.getAllByRole("button", {
+			name: /preview dashboard/i,
+		});
 		expect(previewBtns.length).toBeGreaterThanOrEqual(1);
-		const appLinks = screen.getAllByRole("link", { name: /get the mobile app/i });
+		const appLinks = screen.getAllByRole("link", {
+			name: /get the mobile app/i,
+		});
 		expect(appLinks.length).toBeGreaterThanOrEqual(1);
 	});
 
