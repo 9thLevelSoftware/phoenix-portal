@@ -35,6 +35,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { PhoenixLogo } from "./PhoenixLogo";
+import { ForceCurveDemo } from "./landing/ForceCurveDemo";
 import { ProductShowcase } from "./landing/ProductShowcase";
 
 // Validation schemas
@@ -740,6 +741,35 @@ export function LandingPage() {
 							</motion.div>
 						))}
 					</div>
+				</div>
+			</section>
+
+			{/* Interactive Demo Section */}
+			<section className="relative py-20 px-4 sm:px-6 lg:px-8">
+				<div className="max-w-7xl mx-auto">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						className="text-center mb-10"
+					>
+						<p className="eyebrow text-primary mb-3">TRY IT</p>
+						<h2 className="text-3xl sm:text-4xl mb-3 text-white font-family-display">
+							Explore a real force curve.
+						</h2>
+						<p className="text-lg text-muted-foreground max-w-xl mx-auto">
+							This is one rep of sample data. The full portal shows every
+							set, every session, with velocity zones and fatigue detection.
+						</p>
+					</motion.div>
+					<motion.div
+						initial={{ opacity: 0, y: 16 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						transition={{ delay: 0.15 }}
+					>
+						<ForceCurveDemo />
+					</motion.div>
 				</div>
 			</section>
 
