@@ -758,8 +758,12 @@ export function LandingPage() {
 											{feature.badge}
 										</span>
 									</div>
-									<h3 className="text-lg font-semibold mb-1.5 text-white">{feature.title}</h3>
-									<p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+									<h3 className="text-lg font-semibold mb-1.5 text-white">
+										{feature.title}
+									</h3>
+									<p className="text-sm text-muted-foreground leading-relaxed">
+										{feature.description}
+									</p>
 								</Card>
 							</motion.div>
 						))}
@@ -816,7 +820,9 @@ export function LandingPage() {
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
-										<span className="text-5xl text-primary font-family-display font-bold tabular-nums">{tier.price}</span>
+										<span className="text-5xl text-primary font-family-display font-bold tabular-nums">
+											{tier.price}
+										</span>
 										<span className="text-muted-foreground ml-2">
 											/ {tier.period}
 										</span>
