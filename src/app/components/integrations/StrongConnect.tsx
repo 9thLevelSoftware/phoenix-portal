@@ -1,5 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Dumbbell, FileText, Upload } from "lucide-react";
+import {
+	CheckCircle,
+	Download,
+	Dumbbell,
+	FileText,
+	Upload,
+} from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
@@ -12,6 +18,16 @@ import {
 } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/app/components/ui/tabs";
+import {
+	downloadCSV,
+	exportWorkoutsAsCSV,
+} from "@/lib/integrations/export-csv";
 import {
 	importStrongActivities,
 	parseStrongCSV,
@@ -26,9 +42,10 @@ interface StrongConnectProps {
 }
 
 /**
- * Strong connection component -- CSV import only (no API available).
- * Includes a weight unit selector since Strong exports in the user's
- * configured unit (kg or lbs) with no way to determine which from the file.
+ * Strong integration component with two paths:
+ * 1. Import: Upload a Strong CSV export to bring workout history into Phoenix
+ * 2. Export: Download Phoenix workouts as Strong-compatible CSV for import
+ *    into Strong, Hevy, or any app that accepts the Strong CSV format
  */
 export function StrongConnect({
 	userId,
@@ -43,8 +60,12 @@ export function StrongConnect({
 	>(null);
 	const [isImporting, setIsImporting] = useState(false);
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
-	const [weightUnit, setWeightUnit] = useState<"kg" | "lbs">("kg");
+	const [importWeightUnit, setImportWeightUnit] = useState<"kg" | "lbs">("kg");
 	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	// CSV export state
+	const [isExporting, setIsExporting] = useState(false);
+	const [exportWeightUnit, setExportWeightUnit] = useState<"kg" | "lbs">("kg");
 
 	// =========================================================================
 	// CSV Import Handlers
@@ -66,7 +87,7 @@ export function StrongConnect({
 			reader.onload = (e) => {
 				try {
 					const csvContent = e.target?.result as string;
-					const activities = parseStrongCSV(csvContent, weightUnit);
+					const activities = parseStrongCSV(csvContent, importWeightUnit);
 
 					if (activities.length === 0) {
 						toast.error(
@@ -89,7 +110,7 @@ export function StrongConnect({
 			};
 			reader.readAsText(file);
 		},
-		[weightUnit],
+		[importWeightUnit],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -126,6 +147,36 @@ export function StrongConnect({
 	}, []);
 
 	// =========================================================================
+	// CSV Export Handler
+	// =========================================================================
+
+	const handleExport = useCallback(async () => {
+		setIsExporting(true);
+		try {
+			const result = await exportWorkoutsAsCSV(userId, {
+				weightUnit: exportWeightUnit,
+			});
+
+			if (result.sessionCount === 0) {
+				toast.error("No workouts found to export");
+				return;
+			}
+
+			const date = new Date().toISOString().slice(0, 10);
+			downloadCSV(result.csv, `phoenix-workouts-${date}.csv`);
+			toast.success(
+				`Exported ${result.sessionCount} workouts (${result.setCount} sets)`,
+			);
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to export workouts",
+			);
+		} finally {
+			setIsExporting(false);
+		}
+	}, [userId, exportWeightUnit]);
+
+	// =========================================================================
 	// Preview Helpers
 	// =========================================================================
 
@@ -149,6 +200,55 @@ export function StrongConnect({
 	}
 
 	// =========================================================================
+	// Shared UI: Weight Unit Toggle
+	// =========================================================================
+
+	function WeightUnitToggle({
+		value,
+		onChange,
+		description,
+	}: {
+		value: "kg" | "lbs";
+		onChange: (unit: "kg" | "lbs") => void;
+		description: string;
+	}) {
+		return (
+			<div className="space-y-2">
+				<Label>Weight unit</Label>
+				<div className="flex gap-2">
+					<Button
+						type="button"
+						variant={value === "kg" ? "default" : "outline"}
+						size="sm"
+						onClick={() => onChange("kg")}
+						className={
+							value === "kg"
+								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								: ""
+						}
+					>
+						kg
+					</Button>
+					<Button
+						type="button"
+						variant={value === "lbs" ? "default" : "outline"}
+						size="sm"
+						onClick={() => onChange("lbs")}
+						className={
+							value === "lbs"
+								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								: ""
+						}
+					>
+						lbs
+					</Button>
+				</div>
+				<p className="text-xs text-muted-foreground">{description}</p>
+			</div>
+		);
+	}
+
+	// =========================================================================
 	// Render
 	// =========================================================================
 
@@ -161,7 +261,9 @@ export function StrongConnect({
 					</div>
 					<div className="flex-1">
 						<CardTitle className="text-base">Strong</CardTitle>
-						<CardDescription>Import workouts via CSV export</CardDescription>
+						<CardDescription>
+							Import and export workouts via CSV
+						</CardDescription>
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
@@ -178,114 +280,132 @@ export function StrongConnect({
 					)}
 				</div>
 			</CardHeader>
-			<CardContent className="space-y-4">
-				<p className="text-sm text-muted-foreground">
-					Export your workouts from Strong (Settings &rarr; Export Workout Data)
-					and upload the CSV file.
-				</p>
+			<CardContent>
+				<Tabs defaultValue="export">
+					<TabsList className="w-full">
+						<TabsTrigger value="export" className="flex-1">
+							<Download className="size-3.5 mr-1.5" />
+							Export
+						</TabsTrigger>
+						<TabsTrigger value="import" className="flex-1">
+							<Upload className="size-3.5 mr-1.5" />
+							Import
+						</TabsTrigger>
+					</TabsList>
 
-				{/* Weight Unit Selector */}
-				<div className="space-y-2">
-					<Label>Weight unit in your Strong app</Label>
-					<div className="flex gap-2">
+					{/* Export Tab */}
+					<TabsContent value="export" className="space-y-4 mt-4">
+						<p className="text-sm text-muted-foreground">
+							Download your Phoenix workouts as a Strong-compatible CSV. This
+							file can be imported into Strong, Hevy, or any app that accepts
+							Strong CSV format.
+						</p>
+
+						<WeightUnitToggle
+							value={exportWeightUnit}
+							onChange={setExportWeightUnit}
+							description="Choose the weight unit for the exported file. Select the unit your target app uses."
+						/>
+
 						<Button
-							type="button"
-							variant={weightUnit === "kg" ? "default" : "outline"}
+							onClick={handleExport}
+							disabled={isExporting}
 							size="sm"
-							onClick={() => setWeightUnit("kg")}
-							className={
-								weightUnit === "kg"
-									? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
-									: ""
-							}
+							className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
 						>
-							kg
-						</Button>
-						<Button
-							type="button"
-							variant={weightUnit === "lbs" ? "default" : "outline"}
-							size="sm"
-							onClick={() => setWeightUnit("lbs")}
-							className={
-								weightUnit === "lbs"
-									? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
-									: ""
-							}
-						>
-							lbs
-						</Button>
-					</div>
-					<p className="text-xs text-muted-foreground">
-						Strong exports weights in your app's unit setting. Select the unit
-						your Strong app uses so we can store values correctly.
-					</p>
-				</div>
-
-				{/* File Input */}
-				<div className="space-y-2">
-					<Label htmlFor="strong-csv">Select CSV File</Label>
-					<Input
-						ref={fileInputRef}
-						id="strong-csv"
-						type="file"
-						accept=".csv"
-						onChange={handleFileSelect}
-						className="cursor-pointer"
-					/>
-				</div>
-
-				{/* Import Preview */}
-				{parsedActivities && parsedActivities.length > 0 && (
-					<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
-						<div className="flex items-center gap-2 text-sm font-medium">
-							<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
-							Import Preview
-							{csvFileName && (
-								<span className="text-muted-foreground font-normal">
-									({csvFileName})
-								</span>
+							{isExporting ? (
+								"Exporting..."
+							) : (
+								<>
+									<Download className="size-3.5 mr-1.5" />
+									Export All Workouts
+								</>
 							)}
+						</Button>
+					</TabsContent>
+
+					{/* Import Tab */}
+					<TabsContent value="import" className="space-y-4 mt-4">
+						<p className="text-sm text-muted-foreground">
+							Export your workouts from Strong (Settings &rarr; Export Workout
+							Data) and upload the CSV file here.
+						</p>
+
+						<WeightUnitToggle
+							value={importWeightUnit}
+							onChange={setImportWeightUnit}
+							description="Strong exports weights in your app's unit setting. Select the unit your Strong app uses so we can store values correctly."
+						/>
+
+						{/* File Input */}
+						<div className="space-y-2">
+							<Label htmlFor="strong-csv">Select CSV File</Label>
+							<Input
+								ref={fileInputRef}
+								id="strong-csv"
+								type="file"
+								accept=".csv"
+								onChange={handleFileSelect}
+								className="cursor-pointer"
+							/>
 						</div>
-						<div className="grid grid-cols-3 gap-3 text-sm">
-							<div>
-								<p className="text-muted-foreground text-xs">Workouts</p>
-								<p className="font-semibold">{parsedActivities.length}</p>
+
+						{/* Import Preview */}
+						{parsedActivities && parsedActivities.length > 0 && (
+							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
+								<div className="flex items-center gap-2 text-sm font-medium">
+									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									Import Preview
+									{csvFileName && (
+										<span className="text-muted-foreground font-normal">
+											({csvFileName})
+										</span>
+									)}
+								</div>
+								<div className="grid grid-cols-3 gap-3 text-sm">
+									<div>
+										<p className="text-muted-foreground text-xs">Workouts</p>
+										<p className="font-semibold">{parsedActivities.length}</p>
+									</div>
+									<div>
+										<p className="text-muted-foreground text-xs">Date Range</p>
+										<p className="font-semibold text-xs">
+											{getDateRange(parsedActivities)}
+										</p>
+									</div>
+									<div>
+										<p className="text-muted-foreground text-xs">
+											Total Duration
+										</p>
+										<p className="font-semibold">
+											{getTotalDuration(parsedActivities)}
+										</p>
+									</div>
+								</div>
+								<div className="flex gap-2">
+									<Button
+										onClick={handleImport}
+										disabled={isImporting}
+										size="sm"
+										className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+									>
+										{isImporting
+											? "Importing..."
+											: `Import ${parsedActivities.length} Workouts`}
+									</Button>
+									<Button
+										onClick={handleClearPreview}
+										variant="outline"
+										size="sm"
+										disabled={isImporting}
+									>
+										Cancel
+									</Button>
+								</div>
 							</div>
-							<div>
-								<p className="text-muted-foreground text-xs">Date Range</p>
-								<p className="font-semibold text-xs">
-									{getDateRange(parsedActivities)}
-								</p>
-							</div>
-							<div>
-								<p className="text-muted-foreground text-xs">Total Duration</p>
-								<p className="font-semibold">
-									{getTotalDuration(parsedActivities)}
-								</p>
-							</div>
-						</div>
-						<div className="flex gap-2">
-							<Button
-								onClick={handleImport}
-								disabled={isImporting}
-								size="sm"
-								className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
-							>
-								{isImporting
-									? "Importing..."
-									: `Import ${parsedActivities.length} Workouts`}
-							</Button>
-							<Button
-								onClick={handleClearPreview}
-								variant="outline"
-								size="sm"
-								disabled={isImporting}
-							>
-								Cancel
-							</Button>
-						</div>
-					</div>
-				)}
+						)}
+					</TabsContent>
+				</Tabs>
 			</CardContent>
 		</Card>
 	);
