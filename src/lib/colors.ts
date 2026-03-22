@@ -30,6 +30,15 @@ export const SURFACE = {
 	overlay: "rgba(13, 13, 13, 0.95)",
 } as const;
 
+/** Semantic colors for data contexts (programmatic use) */
+export const SEMANTIC = {
+  positive: "#10B981",
+  caution: "#F59E0B",
+  info: "#60A5FA",
+  negative: "#EF4444",
+  neutral: "#6B7280",
+} as const;
+
 /** Chart palette for visx/Recharts programmatic configuration */
 export const CHART_PALETTE = [
 	PHOENIX.ember,

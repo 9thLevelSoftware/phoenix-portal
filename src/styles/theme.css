@@ -82,6 +82,13 @@
   --icon-success: var(--phoenix-forge-green);
   --icon-warning: var(--phoenix-gold);
   --icon-danger: var(--phoenix-crimson);
+
+  /* Semantic data colors — use instead of brand orange for contextual meaning */
+  --semantic-positive: #10B981;    /* recovery ready, improvement, streak */
+  --semantic-caution: #F59E0B;     /* high load, approaching limit */
+  --semantic-info: #60A5FA;        /* synced status, neutral data, info badges */
+  --semantic-negative: #EF4444;    /* fatigue, regression, alert */
+  --semantic-neutral: #6B7280;     /* inactive, empty, placeholder */
 }
 
 
@@ -131,6 +138,11 @@
   --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
   --font-family-display: var(--font-display);
+  --color-semantic-positive: var(--semantic-positive);
+  --color-semantic-caution: var(--semantic-caution);
+  --color-semantic-info: var(--semantic-info);
+  --color-semantic-negative: var(--semantic-negative);
+  --color-semantic-neutral: var(--semantic-neutral);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
