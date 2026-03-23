@@ -19,8 +19,28 @@ describe("LandingPage", () => {
 	it("renders without crashing", () => {
 		renderWithProviders(<LandingPage />);
 		expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-			/your workouts, unlocked\./i,
+			/see every rep as data/i,
 		);
+	});
+
+	it("renders proof row capabilities", () => {
+		renderWithProviders(<LandingPage />);
+		expect(screen.getByText("Force curves")).toBeInTheDocument();
+		expect(screen.getByText("Recovery signals")).toBeInTheDocument();
+		expect(screen.getByText("Records")).toBeInTheDocument();
+		expect(screen.getByText("Replay")).toBeInTheDocument();
+	});
+
+	it("renders product-aligned CTAs", () => {
+		renderWithProviders(<LandingPage />);
+		const previewBtns = screen.getAllByRole("button", {
+			name: /preview dashboard/i,
+		});
+		expect(previewBtns.length).toBeGreaterThanOrEqual(1);
+		const appLinks = screen.getAllByRole("link", {
+			name: /get the mobile app/i,
+		});
+		expect(appLinks.length).toBeGreaterThanOrEqual(1);
 	});
 
 	it("renders feature cards with correct tier badges", () => {
@@ -34,7 +54,13 @@ describe("LandingPage", () => {
 
 	it("renders section eyebrow labels", () => {
 		renderWithProviders(<LandingPage />);
-		expect(screen.getByText("FEATURES")).toBeInTheDocument();
+		expect(screen.getByText("WHAT YOU GET")).toBeInTheDocument();
 		expect(screen.getByText("PRICING")).toBeInTheDocument();
+	});
+
+	it("renders interactive demo section", () => {
+		renderWithProviders(<LandingPage />);
+		expect(screen.getByText("TRY IT")).toBeInTheDocument();
+		expect(screen.getByText(/explore a real force curve/i)).toBeInTheDocument();
 	});
 });

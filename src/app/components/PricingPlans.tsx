@@ -137,7 +137,7 @@ export function PricingPlans() {
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
 
-	const handleSubscribe = (tier: SubscriptionTier) => {
+	const handleSubscribe = async (tier: SubscriptionTier) => {
 		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
@@ -155,10 +155,16 @@ export function PricingPlans() {
 			return;
 		}
 
-		openCheckout({
+		await openCheckout({
 			priceId,
 			userId: user.id,
 			userEmail: user.email ?? "",
+			onSuccess: () => {
+				toast.success("Subscription activated!");
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			},
 		});
 	};
 
