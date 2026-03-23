@@ -89,12 +89,14 @@ Deno.serve(async (req) => {
 
     // =========================================================================
     // 4. Fetch workout sessions modified since lastSync
+    //    Uses updated_at for proper delta sync (covers upserts from any device).
+    //    Falls back to started_at if updated_at isn't populated yet.
     // =========================================================================
     let sessionsQuery = supabase
       .from('workout_sessions')
       .select('*')
       .eq('user_id', userId)
-      .gt('started_at', lastSyncISO);
+      .or(`updated_at.gt.${lastSyncISO},started_at.gt.${lastSyncISO}`);
     if (profileId) {
       sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
@@ -272,7 +274,10 @@ Deno.serve(async (req) => {
     if (profileId) {
       routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
-    const { data: routinesRaw } = await routinesQuery;
+    const { data: routinesRaw, error: routinesError } = await routinesQuery;
+    if (routinesError) {
+      console.error('Error fetching routines:', routinesError);
+    }
 
     const routineIds = (routinesRaw ?? []).map((r: Record<string, unknown>) => r.id as string);
 
@@ -346,7 +351,10 @@ Deno.serve(async (req) => {
     if (profileId) {
       cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
-    const { data: cyclesRaw } = await cyclesQuery;
+    const { data: cyclesRaw, error: cyclesError } = await cyclesQuery;
+    if (cyclesError) {
+      console.error('Error fetching cycles:', cyclesError);
+    }
 
     const cycleIds = (cyclesRaw ?? []).map((c: Record<string, unknown>) => c.id as string);
 
@@ -411,7 +419,10 @@ Deno.serve(async (req) => {
     if (profileId) {
       personalRecordsQuery = personalRecordsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
-    const { data: personalRecords } = await personalRecordsQuery;
+    const { data: personalRecords, error: personalRecordsError } = await personalRecordsQuery;
+    if (personalRecordsError) {
+      console.error('Error fetching personal records:', personalRecordsError);
+    }
 
     const personalRecordDtos = (personalRecords ?? []).map((pr: Record<string, unknown>) => ({
       id: pr.id,
