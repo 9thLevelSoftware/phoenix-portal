@@ -177,6 +177,7 @@ CREATE TRIGGER cycles_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Backfill existing rows with current timestamp
-UPDATE routines SET updated_at = COALESCE(created_at, now()) WHERE updated_at IS NULL;
-UPDATE training_cycles SET updated_at = COALESCE(created_at, now()) WHERE updated_at IS NULL;
+-- Backfill existing rows with best available timestamp
+-- (routines and training_cycles have no created_at column)
+UPDATE routines SET updated_at = COALESCE(last_used_at, now()) WHERE updated_at IS NULL;
+UPDATE training_cycles SET updated_at = COALESCE(started_at, now()) WHERE updated_at IS NULL;

@@ -19,7 +19,7 @@ describe("LandingPage", () => {
 	it("renders without crashing", () => {
 		renderWithProviders(<LandingPage />);
 		expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-			/see every rep as data/i,
+			/your workouts, unlocked/i,
 		);
 	});
 
