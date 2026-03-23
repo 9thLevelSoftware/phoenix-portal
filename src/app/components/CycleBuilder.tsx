@@ -11,7 +11,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { RoutinePickerModal } from "@/app/components/modals/RoutinePickerModal";
 import { Badge } from "@/app/components/ui/badge";
@@ -110,13 +110,17 @@ export function CycleBuilder() {
 		enabled: !!user?.id,
 	});
 
-	const routines = (routinesRaw ?? []).map((r) => ({
-		id: r.id,
-		name: r.name,
-		exercises: r.exercise_count,
-		duration: r.estimated_duration,
-		muscleGroup: r.tags?.[0] ?? "General",
-	}));
+	const routines = useMemo(
+		() =>
+			(routinesRaw ?? []).map((r) => ({
+				id: r.id,
+				name: r.name,
+				exercises: r.exercise_count,
+				duration: r.estimated_duration,
+				muscleGroup: r.tags?.[0] ?? "General",
+			})),
+		[routinesRaw],
+	);
 
 	// Populate form from existing cycle when editing
 	useEffect(() => {

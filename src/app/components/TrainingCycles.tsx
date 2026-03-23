@@ -30,11 +30,13 @@ import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useActivateCycle } from "@/mutations/cycles";
 import { cycleListOptions } from "@/queries/cycles";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 export function TrainingCycles() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
-	const { data: cycles, isPending } = useQuery(cycleListOptions(user?.id));
+	const { activeProfileId } = useProfileFilterStore();
+	const { data: cycles, isPending } = useQuery(cycleListOptions(user?.id, activeProfileId));
 
 	const activateMutation = useActivateCycle();
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
