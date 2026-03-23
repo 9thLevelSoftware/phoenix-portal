@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 24 of 26 (Infrastructure & Ops) — Planned
-Plan: 0 of 4 in current phase — 4 plans across 2 waves
-Status: Phase 24 planned — board-conditioned (code fixes + infrastructure deployment)
-Last activity: 2026-03-22 — Phase 24 planning (board beta-readiness conditions incorporated)
+Phase: 24 of 26 (Infrastructure & Ops) — Wave 1 Complete, Wave 2 Pending
+Plan: 3 of 4 in current phase — Wave 1 code fixes done + reviewed, Wave 2 manual ops pending
+Status: Phase 24 Wave 1 complete — review passed (1 cycle, 1 blocker fixed). Wave 2 (manual ops) awaiting user execution.
+Last activity: 2026-03-22 — Phase 24 Wave 1 review passed
 
-Progress: [████████████████████] 100% (v1.2) | [████████..] 70% (v1.3) — 7/11 plans complete, 4 planned
+Progress: [████████████████████] 100% (v1.2) | [█████████.] 80% (v1.3) — 10/11 code plans complete, 1 manual ops plan pending
 
 ## Performance Metrics
 
