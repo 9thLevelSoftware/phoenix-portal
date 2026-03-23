@@ -202,7 +202,7 @@ export function PersonalRecords() {
 		const colors: Record<string, string> = {
 			Chest: "from-primary to-chart-2",
 			Shoulders: "from-accent to-warning",
-			Back: "from-success to-[#059669]",
+			Back: "from-success to-emerald-600",
 			Legs: "from-chart-2 to-[#991B1B]",
 			Arms: "from-warning to-accent",
 			Core: "from-[#8B5CF6] to-[#7C3AED]",

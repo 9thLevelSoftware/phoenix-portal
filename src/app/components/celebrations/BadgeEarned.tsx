@@ -45,7 +45,7 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 		switch (badgeData.tier) {
 			case "bronze":
 				return {
-					bg: "from-[#D97706] to-[#92400E]",
+					bg: "from-amber-600 to-amber-800",
 					particles: "rgba(217, 119, 6, 0.8)",
 					glow: "#D97706",
 				};
@@ -57,7 +57,7 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 				};
 			case "gold":
 				return {
-					bg: "from-accent to-[#D97706]",
+					bg: "from-accent to-amber-600",
 					particles: "rgba(245, 158, 11, 0.9)",
 					glow: PHOENIX.gold,
 				};
