@@ -288,7 +288,7 @@ export function WorkoutComplete({
 											</Button>
 										</motion.div>
 
-										<p className="text-xs text-center text-muted mt-4">
+										<p className="text-xs text-center text-muted-foreground mt-4">
 											Tap anywhere to dismiss
 										</p>
 									</div>

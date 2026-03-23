@@ -120,7 +120,7 @@ export function DayEditor({
 								<h4 className="font-semibold text-white mb-2">
 									Day-Specific Overrides
 								</h4>
-								<p className="text-xs text-muted mb-4">
+								<p className="text-xs text-muted-foreground mb-4">
 									Adjust settings for this day only
 								</p>
 
@@ -168,7 +168,7 @@ export function DayEditor({
 											+
 										</Button>
 									</div>
-									<p className="text-xs text-muted mt-1">
+									<p className="text-xs text-muted-foreground mt-1">
 										Increase or decrease all weights for this day
 									</p>
 								</div>
@@ -217,7 +217,7 @@ export function DayEditor({
 											+
 										</Button>
 									</div>
-									<p className="text-xs text-muted mt-1">
+									<p className="text-xs text-muted-foreground mt-1">
 										Add or subtract reps per set
 									</p>
 								</div>
@@ -354,7 +354,7 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Complete Rest
 											</div>
-											<div className="text-sm text-muted">
+											<div className="text-sm text-muted-foreground">
 												No structured activity
 											</div>
 										</div>
@@ -372,7 +372,7 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Active Recovery
 											</div>
-											<div className="text-sm text-muted">
+											<div className="text-sm text-muted-foreground">
 												Light movement, walking
 											</div>
 										</div>
@@ -390,7 +390,7 @@ export function DayEditor({
 											<div className="font-semibold text-white">
 												Mobility & Stretching
 											</div>
-											<div className="text-sm text-muted">
+											<div className="text-sm text-muted-foreground">
 												Foam rolling, yoga
 											</div>
 										</div>

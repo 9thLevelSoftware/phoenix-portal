@@ -570,10 +570,10 @@ export function WorkoutHistory() {
 												<span
 													className={`text-sm sm:text-base ${
 														dayLocked
-															? "text-muted/50"
+															? "text-muted-foreground/50"
 															: hasWorkoutDay
 																? "text-white font-semibold"
-																: "text-muted"
+																: "text-muted-foreground"
 													}`}
 												>
 													{day}

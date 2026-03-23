@@ -484,7 +484,7 @@ export function Profile() {
 										<p className="text-muted-foreground mb-1">
 											No exercises yet
 										</p>
-										<p className="text-sm text-muted">
+										<p className="text-sm text-muted-foreground">
 											Complete workouts to see your top exercises here
 										</p>
 									</div>
@@ -628,7 +628,7 @@ export function Profile() {
 										<p className="text-muted-foreground mb-1">
 											No RPG profile yet
 										</p>
-										<p className="text-sm text-muted">
+										<p className="text-sm text-muted-foreground">
 											Train and sync from the mobile app to generate your class
 											and attributes
 										</p>
@@ -700,7 +700,7 @@ export function Profile() {
 									<p className="text-muted-foreground mb-1">
 										No badges earned yet
 									</p>
-									<p className="text-sm text-muted">
+									<p className="text-sm text-muted-foreground">
 										Complete workouts in the mobile app to start earning badges
 									</p>
 								</div>
@@ -717,7 +717,7 @@ export function Profile() {
 													<div className="text-sm text-muted-foreground">
 														{badge.badge_description ?? badge.badge_id}
 													</div>
-													<div className="text-xs text-muted mt-2">
+													<div className="text-xs text-muted-foreground mt-2">
 														Earned {format(badge.earned_at, "MMM d, yyyy")}
 													</div>
 												</div>
@@ -760,7 +760,7 @@ export function Profile() {
 									<p className="text-muted-foreground mb-1">
 										No connected apps
 									</p>
-									<p className="text-sm text-muted mb-4">
+									<p className="text-sm text-muted-foreground mb-4">
 										Connect your fitness apps to sync data
 									</p>
 									<Button

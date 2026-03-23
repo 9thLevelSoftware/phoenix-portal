@@ -86,7 +86,7 @@ export function CelebrationDemo() {
 									1RM Estimate
 								</Button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Phoenix rise animation, ember trail, particle
 								burst, glowing PR card
 							</p>
@@ -155,7 +155,7 @@ export function CelebrationDemo() {
 									Platinum
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: 3D card flip, tier-specific particles, confetti for
 								Gold/Platinum
 							</p>
@@ -200,7 +200,7 @@ export function CelebrationDemo() {
 									</button>
 								))}
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Flame intensify, expanding fire rings, ember
 								particles, special 365-day animation
 							</p>
@@ -260,7 +260,7 @@ export function CelebrationDemo() {
 									🥉 3rd Place
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Podium rise, avatar drop, spotlights, confetti
 								burst, rewards card
 							</p>
@@ -298,7 +298,7 @@ export function CelebrationDemo() {
 									Complete
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Checkmark animation, particle burst, confetti
 							</p>
 						</div>
@@ -333,7 +333,7 @@ export function CelebrationDemo() {
 								</div>
 								<div>
 									<div className="text-white font-medium">Set Complete</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Brief pulse + checkmark animation
 									</div>
 								</div>
@@ -345,7 +345,7 @@ export function CelebrationDemo() {
 								</div>
 								<div>
 									<div className="text-white font-medium">Weight Increase</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Arrow animation + ember sparkle
 									</div>
 								</div>
@@ -359,7 +359,7 @@ export function CelebrationDemo() {
 									<div className="text-white font-medium">
 										Rest Timer Complete
 									</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Gentle pulse + wing flap icon
 									</div>
 								</div>

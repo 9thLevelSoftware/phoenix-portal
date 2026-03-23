@@ -232,7 +232,7 @@ function ExerciseNameCombobox({
 								No matching exercises.
 							</span>
 							<br />
-							<span className="text-xs text-muted">
+							<span className="text-xs text-muted-foreground">
 								The typed name will be used as-is.
 							</span>
 						</CommandEmpty>
@@ -475,7 +475,7 @@ export function Goals() {
 													{getProgressText(goal, progress)}
 												</p>
 												{goal.deadline && (
-													<p className="text-xs text-muted mt-1">
+													<p className="text-xs text-muted-foreground mt-1">
 														Deadline: {goal.deadline.toLocaleDateString()}
 													</p>
 												)}
@@ -596,7 +596,7 @@ export function Goals() {
 													<p className="text-sm text-muted-foreground">
 														{getGoalDescription(goal)}
 													</p>
-													<p className="text-xs text-muted mt-0.5">
+													<p className="text-xs text-muted-foreground mt-0.5">
 														Archived {goal.updated_at.toLocaleDateString()}
 													</p>
 												</div>
@@ -631,7 +631,7 @@ export function Goals() {
 					transition={{ delay: 0.4 }}
 					className="mt-6 text-center"
 				>
-					<p className="text-xs text-muted">
+					<p className="text-xs text-muted-foreground">
 						{isInferno
 							? `${activeGoals.length} active goal${activeGoals.length !== 1 ? "s" : ""} (unlimited)`
 							: `${activeGoals.length}/${maxGoals} active goal${maxGoals > 1 ? "s" : ""}`}
@@ -825,7 +825,7 @@ function GoalFormDialog({
 								<span className="capitalize">
 									{goalType === "pr" ? "Personal Record" : goalType}
 								</span>
-								<span className="text-muted text-xs">
+								<span className="text-muted-foreground text-xs">
 									(type cannot be changed)
 								</span>
 							</div>

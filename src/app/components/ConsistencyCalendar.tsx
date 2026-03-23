@@ -283,7 +283,7 @@ export function ConsistencyCalendar({
 			</div>
 
 			{/* Legend */}
-			<div className="mt-2 flex items-center gap-2 text-xs text-muted">
+			<div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
 				<span>Less</span>
 				{[BG_EMPTY, `${EMBER}66`, `${EMBER}B3`, EMBER].map((color, i) => (
 					<div

@@ -773,7 +773,7 @@ function SortableExerciseItem({
 					) : (
 						<button
 							ref={handleRef}
-							className="cursor-grab active:cursor-grabbing text-muted hover:text-muted-foreground"
+							className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-muted-foreground"
 						>
 							<GripVertical className="w-5 h-5" />
 						</button>
@@ -807,7 +807,7 @@ function SortableExerciseItem({
 						<p className="text-sm text-muted-foreground">
 							{formatExerciseSummary(exercise, unit)}
 						</p>
-						<p className="text-xs text-muted mt-1">
+						<p className="text-xs text-muted-foreground mt-1">
 							Rest: {exercise.rest}s between sets
 						</p>
 					</div>
@@ -1123,7 +1123,7 @@ function ExerciseDetailPanel({
 							<option>Eccentric Only</option>
 							<option>Echo</option>
 						</select>
-						<p className="text-xs text-muted mt-1">
+						<p className="text-xs text-muted-foreground mt-1">
 							{exercise.mode === "Pump"
 								? "High-rep hypertrophy focused training"
 								: exercise.mode === "TUT"
@@ -1244,7 +1244,7 @@ function EmptyDetailPanel() {
 		>
 			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
 				<div className="text-center py-12">
-					<Dumbbell className="w-12 h-12 text-muted mx-auto mb-4" />
+					<Dumbbell className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
 					<p className="text-muted-foreground">
 						Select an exercise to configure
 					</p>

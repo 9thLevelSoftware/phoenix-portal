@@ -167,7 +167,7 @@ function MobileRecentActivityCard({
 		<Card className="p-4 card-secondary active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
 				<h4 className="font-semibold text-white">{title}</h4>
-				<span className="text-xs text-muted">{time}</span>
+				<span className="text-xs text-muted-foreground">{time}</span>
 			</div>
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
 				<span>{volume}</span>
@@ -253,7 +253,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 					<p className="text-sm text-muted-foreground">
 						No active challenges yet
 					</p>
-					<p className="mt-1 text-xs text-muted">
+					<p className="mt-1 text-xs text-muted-foreground">
 						Join challenges from the Challenges page to track your progress here
 					</p>
 				</div>
@@ -652,7 +652,7 @@ export function Dashboard() {
 									<p className="text-muted-foreground mb-1">
 										No scheduled workout
 									</p>
-									<p className="text-sm text-muted mb-4">
+									<p className="text-sm text-muted-foreground mb-4">
 										Create a training cycle to see your next workout here
 									</p>
 									<Button
@@ -756,7 +756,7 @@ export function Dashboard() {
 									<p className="text-muted-foreground mb-1">
 										No workouts this week
 									</p>
-									<p className="text-sm text-muted">
+									<p className="text-sm text-muted-foreground">
 										Complete a workout in the mobile app to see your stats here
 									</p>
 								</div>
@@ -785,7 +785,7 @@ export function Dashboard() {
 												animate={{ height: `${Math.max(height, 2)}%` }}
 												transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
 											/>
-											<span className="text-xs text-muted">
+											<span className="text-xs text-muted-foreground">
 												{["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"][i]}
 											</span>
 										</div>
@@ -841,7 +841,7 @@ export function Dashboard() {
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
-									<p className="text-sm text-muted">
+									<p className="text-sm text-muted-foreground">
 										Sync from the Vitruvian mobile app to see your activity
 									</p>
 								</div>
@@ -1174,7 +1174,7 @@ export function Dashboard() {
 											<p className="text-muted-foreground mb-1">
 												No workouts yet
 											</p>
-											<p className="text-sm text-muted">
+											<p className="text-sm text-muted-foreground">
 												Sync your first workout from the Vitruvian mobile app
 											</p>
 										</div>
@@ -1383,7 +1383,7 @@ export function Dashboard() {
 											<p className="text-sm text-muted-foreground">
 												No badges earned yet
 											</p>
-											<p className="text-xs text-muted mt-1">
+											<p className="text-xs text-muted-foreground mt-1">
 												Complete workouts in the mobile app to start earning
 												badges
 											</p>

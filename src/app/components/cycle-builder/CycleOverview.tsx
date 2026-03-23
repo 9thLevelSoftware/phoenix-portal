@@ -133,7 +133,7 @@ export function CycleOverview({
 						min={new Date().toISOString().split("T")[0]}
 						className="bg-background border-secondary focus:border-primary focus:ring-primary/20"
 					/>
-					<p className="text-xs text-muted mt-1">
+					<p className="text-xs text-muted-foreground mt-1">
 						Leave blank to start whenever you're ready
 					</p>
 				</div>

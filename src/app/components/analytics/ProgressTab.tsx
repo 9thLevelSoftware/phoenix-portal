@@ -40,7 +40,7 @@ export default function ProgressTab({
 				{strengthEChartsOption ? (
 					<EChartsWrapper option={strengthEChartsOption} height={400} />
 				) : (
-					<div className="h-[400px] flex items-center justify-center text-muted">
+					<div className="h-[400px] flex items-center justify-center text-muted-foreground">
 						No strength progress data yet. Set some PRs to see your progression!
 					</div>
 				)}
@@ -52,7 +52,7 @@ export default function ProgressTab({
 				{volumeAreaOption ? (
 					<EChartsWrapper option={volumeAreaOption} height={300} />
 				) : (
-					<div className="h-[300px] flex items-center justify-center text-muted">
+					<div className="h-[300px] flex items-center justify-center text-muted-foreground">
 						No volume data for this period
 					</div>
 				)}
@@ -121,7 +121,7 @@ export default function ProgressTab({
 												? "text-success"
 												: insight.type === "warning"
 													? "text-warning"
-													: "text-muted"
+													: "text-muted-foreground"
 										}`}
 									/>
 								</div>

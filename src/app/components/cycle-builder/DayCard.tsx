@@ -40,7 +40,7 @@ export function DayCard({
 					</div>
 
 					<div className="text-center space-y-3 py-4">
-						<div className="w-12 h-12 mx-auto rounded-full border-2 border-dashed border-secondary flex items-center justify-center text-2xl text-muted">
+						<div className="w-12 h-12 mx-auto rounded-full border-2 border-dashed border-secondary flex items-center justify-center text-2xl text-muted-foreground">
 							+
 						</div>
 						<div className="text-sm text-muted-foreground">Add Routine</div>
@@ -51,7 +51,7 @@ export function DayCard({
 							e.stopPropagation();
 							onSetRest();
 						}}
-						className="w-full text-xs text-muted hover:text-muted-foreground transition-colors mt-2"
+						className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors mt-2"
 					>
 						Mark as Rest Day
 					</button>
@@ -155,7 +155,7 @@ export function DayCard({
 				<div className="text-center space-y-2 py-4">
 					<div className="text-4xl">🛋️</div>
 					<div className="font-semibold text-muted-foreground">REST</div>
-					<div className="text-xs text-muted capitalize">
+					<div className="text-xs text-muted-foreground capitalize">
 						{day.restType || "complete"} rest
 					</div>
 				</div>
@@ -165,7 +165,7 @@ export function DayCard({
 						e.stopPropagation();
 						onClick();
 					}}
-					className="w-full text-xs text-muted hover:text-muted-foreground transition-colors mt-2"
+					className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors mt-2"
 				>
 					Convert to Workout
 				</button>

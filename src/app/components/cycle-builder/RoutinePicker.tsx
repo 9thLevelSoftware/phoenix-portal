@@ -80,7 +80,7 @@ export function RoutinePicker({
 							{/* Search & Filters */}
 							<div className="p-6 space-y-4 border-b border-secondary">
 								<div className="relative">
-									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
 									<Input
 										value={searchQuery}
 										onChange={(e) => setSearchQuery(e.target.value)}
@@ -154,7 +154,7 @@ export function RoutinePicker({
 											))}
 										</div>
 									) : (
-										<div className="text-center py-8 text-muted">
+										<div className="text-center py-8 text-muted-foreground">
 											<p>No routines found</p>
 											<p className="text-sm mt-2">
 												Try adjusting your search or filters
@@ -218,11 +218,11 @@ function RoutineItem({
 						<div className="font-semibold text-white mb-1">{routine.name}</div>
 						<div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
 							<span>{routine.exercises} exercises</span>
-							<span className="text-muted">•</span>
+							<span className="text-muted-foreground">•</span>
 							<span>~{routine.duration} min</span>
 							{showLastUsed && routine.lastUsed && (
 								<>
-									<span className="text-muted">•</span>
+									<span className="text-muted-foreground">•</span>
 									<span>Last used: {getTimeAgo(routine.lastUsed)}</span>
 								</>
 							)}

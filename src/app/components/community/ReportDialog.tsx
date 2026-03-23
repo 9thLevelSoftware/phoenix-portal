@@ -109,7 +109,7 @@ export function ReportDialog({
 									? "text-destructive font-medium"
 									: description.length >= 400
 										? "text-amber-400"
-										: "text-muted"
+										: "text-muted-foreground"
 							}`}
 						>
 							{description.length}/500

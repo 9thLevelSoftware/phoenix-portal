@@ -62,7 +62,7 @@ export function DaySchedule({
 				</div>
 			</div>
 
-			<p className="text-sm text-muted mt-4 text-center">
+			<p className="text-sm text-muted-foreground mt-4 text-center">
 				Click a day to configure • Scroll horizontally for more days
 			</p>
 		</Card>
