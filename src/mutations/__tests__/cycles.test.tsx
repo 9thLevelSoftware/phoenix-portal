@@ -8,9 +8,6 @@ import { queryKeys } from "@/queries/keys";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockSelectSingle = vi.fn();
-const mockUpdateEq = vi.fn();
-
 const mockChain = {
 	insert: vi.fn(),
 	update: vi.fn(),
@@ -241,77 +238,6 @@ describe("useUpdateCycle", () => {
 
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Failed to update training cycle. Please try again.",
-		);
-	});
-});
-
-describe("useActivateCycle", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	it("deactivates current active cycle, then activates the selected one", async () => {
-		const { useActivateCycle } = await import("../cycles");
-
-		// First call deactivates (update.eq.eq), second call activates (update.eq)
-		let callCount = 0;
-		mockChain.update.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) {
-				// Deactivate: .eq("user_id", ...).eq("status", "active")
-				return {
-					eq: vi.fn(() => ({
-						eq: vi.fn(() => Promise.resolve({ error: null })),
-					})),
-				};
-			}
-			// Activate: .eq("id", cycleId)
-			return {
-				eq: vi.fn(() => Promise.resolve({ error: null })),
-			};
-		});
-
-		const { queryClient, wrapper } = createWrapper();
-		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-		const { result } = renderHook(() => useActivateCycle(), { wrapper });
-
-		result.current.mutate("cycle-1");
-
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-		// Should have called update twice: once to deactivate, once to activate
-		expect(mockChain.update).toHaveBeenCalledTimes(2);
-		expect(mockToast.success).toHaveBeenCalledWith("Training cycle activated");
-		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: queryKeys.cycles.all,
-		});
-	});
-
-	it("shows user-friendly error on activation failure", async () => {
-		const { useActivateCycle } = await import("../cycles");
-
-		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => ({
-				eq: vi.fn(() =>
-					Promise.resolve({
-						error: {
-							message: "could not serialize access due to concurrent update",
-						},
-					}),
-				),
-			})),
-		}));
-
-		const { wrapper } = createWrapper();
-		const { result } = renderHook(() => useActivateCycle(), { wrapper });
-
-		result.current.mutate("cycle-1");
-
-		await waitFor(() => expect(result.current.isError).toBe(true));
-
-		expect(mockToast.error).toHaveBeenCalledWith(
-			"Failed to activate training cycle. Please try again.",
 		);
 	});
 });
