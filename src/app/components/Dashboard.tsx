@@ -348,7 +348,7 @@ export function Dashboard() {
 		enabled: !!userId,
 	});
 	const { data: cycles } = useQuery({
-		...cycleListOptions(userId),
+		...cycleListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 
