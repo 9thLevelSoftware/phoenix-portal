@@ -646,7 +646,7 @@ export function Dashboard() {
 						{activeCycle ? (
 							<NextWorkoutWidget cycleId={activeCycle.id} />
 						) : (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Calendar className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -744,13 +744,13 @@ export function Dashboard() {
 					>
 						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
 						{statsLoading ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<Skeleton className="h-8 w-32 mb-1" />
 								<Skeleton className="h-4 w-40 mb-4" />
 								<Skeleton className="h-32 w-full" />
 							</Card>
 						) : weeklyTotal === 0 ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-8 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -762,7 +762,7 @@ export function Dashboard() {
 								</div>
 							</Card>
 						) : (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="mb-4">
 									<div className="text-3xl font-bold text-white mb-1">
 										{formatVolume(weeklyTotal, unit)}
@@ -837,7 +837,7 @@ export function Dashboard() {
 								))}
 							</div>
 						) : recentWorkouts.length === 0 ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
@@ -1148,7 +1148,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="text-xl text-white">Recent Activity</h3>
 										<Button
@@ -1221,7 +1221,7 @@ export function Dashboard() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: 0.45 }}
 								>
-									<Card className="p-6 glass-panel">
+									<Card className="p-5 glass-panel">
 										<h3 className="text-xl text-white mb-6">
 											Volume Breakdown
 										</h3>
@@ -1301,7 +1301,7 @@ export function Dashboard() {
 						>
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
@@ -1355,7 +1355,7 @@ export function Dashboard() {
 
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
@@ -1363,7 +1363,7 @@ export function Dashboard() {
 
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
