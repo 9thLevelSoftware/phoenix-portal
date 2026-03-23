@@ -28,7 +28,6 @@ import { EmptyState } from "@/app/components/ui/empty-state";
 import { Progress } from "@/app/components/ui/progress";
 import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { useActivateCycle } from "@/mutations/cycles";
 import { cycleListOptions } from "@/queries/cycles";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
@@ -36,9 +35,10 @@ export function TrainingCycles() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: cycles, isPending } = useQuery(cycleListOptions(user?.id, activeProfileId));
+	const { data: cycles, isPending } = useQuery(
+		cycleListOptions(user?.id, activeProfileId),
+	);
 
-	const activateMutation = useActivateCycle();
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
 	const allCycles = (cycles ?? []).map((c) => {
 		// Compute current_week from started_at instead of using the hardcoded DB value
@@ -336,18 +336,6 @@ export function TrainingCycles() {
 												<Edit className="w-4 h-4 mr-1" />
 												Edit
 											</Button>
-											{cycle.status !== "active" && (
-												<Button
-													size="sm"
-													className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
-													disabled={activateMutation.isPending}
-													onClick={() => activateMutation.mutate(cycle.id)}
-												>
-													{activateMutation.isPending
-														? "Activating..."
-														: "Activate"}
-												</Button>
-											)}
 										</div>
 									</Card>
 								</motion.div>
