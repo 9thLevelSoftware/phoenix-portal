@@ -606,36 +606,58 @@ export function LandingPage() {
 
 			{/* Hero Section */}
 			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 pt-24">
+				{/* Phoenix hero background */}
+				<div className="absolute inset-0 overflow-hidden">
+					<img
+						src="/phoenix-hero.png"
+						alt=""
+						className="absolute inset-0 w-full h-full object-cover opacity-30"
+					/>
+					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
+				</div>
+
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.6 }}
+					transition={{ duration: 0.8 }}
 					className="text-center z-10 flex flex-col items-center max-w-4xl mx-auto"
 				>
 					<motion.h1
-						className="text-5xl sm:text-6xl md:text-7xl tracking-tight font-family-display"
+						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.15 }}
+						transition={{ delay: 0.2 }}
 					>
-						<span className="block text-white">See every rep as data.</span>
+						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
+							Your workouts, unlocked.
+						</span>
 					</motion.h1>
 
 					<motion.p
-						className="mt-5 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
+						className="mt-6 text-xl sm:text-2xl md:text-3xl text-secondary-foreground"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.3 }}
+						transition={{ delay: 0.4 }}
 					>
-						Force curves, recovery signals, PR trends, and session analysis —
-						synced from the Project Phoenix app.
+						Rise From the Ashes. Forge Your Strength.
+					</motion.p>
+
+					<motion.p
+						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.6 }}
+					>
+						Phoenix Portal turns your Vitruvian Force data into force curves,
+						biomechanics insights, recovery readiness scores, and a community of
+						athletes — all synced from the Project Phoenix app.
 					</motion.p>
 
 					<motion.div
 						className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.45 }}
+						transition={{ delay: 0.8 }}
 					>
 						<Button
 							size="lg"
@@ -659,13 +681,46 @@ export function LandingPage() {
 							</a>
 						</Button>
 					</motion.div>
+				</motion.div>
 
-					{/* Proof row */}
+				{/* Product showcase panels */}
+				<motion.div
+					className="mt-12 md:mt-16 w-full max-w-lg z-10"
+					initial={{ opacity: 0, y: 24 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.9, duration: 0.6 }}
+				>
+					<ProductShowcase />
+				</motion.div>
+			</section>
+
+			{/* Data-focused value proposition */}
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
+				<div className="max-w-4xl mx-auto text-center">
+					<motion.h2
+						className="text-4xl sm:text-5xl md:text-6xl tracking-tight font-family-display text-white"
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+					>
+						See every rep as data.
+					</motion.h2>
+					<motion.p
+						className="mt-5 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
+						initial={{ opacity: 0, y: 16 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						transition={{ delay: 0.15 }}
+					>
+						Force curves, recovery signals, PR trends, and session analysis —
+						synced from the Project Phoenix app.
+					</motion.p>
 					<motion.div
-						className="mt-6 flex items-center gap-4 sm:gap-6 text-sm text-muted-foreground"
+						className="mt-8 flex items-center justify-center gap-4 sm:gap-6 text-sm text-muted-foreground"
 						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 0.6 }}
+						whileInView={{ opacity: 1 }}
+						viewport={{ once: true }}
+						transition={{ delay: 0.3 }}
 					>
 						{["Force curves", "Recovery signals", "Records", "Replay"].map(
 							(item) => (
@@ -679,17 +734,7 @@ export function LandingPage() {
 							),
 						)}
 					</motion.div>
-				</motion.div>
-
-				{/* Product showcase panels */}
-				<motion.div
-					className="mt-12 md:mt-16 w-full max-w-lg z-10"
-					initial={{ opacity: 0, y: 24 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ delay: 0.5, duration: 0.6 }}
-				>
-					<ProductShowcase />
-				</motion.div>
+				</div>
 			</section>
 
 			{/* Features Section */}
