@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .gt('started_at', lastSyncISO);
     if (profileId) {
-      sessionsQuery = sessionsQuery.eq('local_profile_id', profileId);
+      sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
     const { data: sessions, error: sessionsError } = await sessionsQuery;
 
@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .gt('updated_at', lastSyncISO);
     if (profileId) {
-      routinesQuery = routinesQuery.eq('local_profile_id', profileId);
+      routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
     const { data: routinesRaw } = await routinesQuery;
 
@@ -344,7 +344,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .gt('updated_at', lastSyncISO);
     if (profileId) {
-      cyclesQuery = cyclesQuery.eq('local_profile_id', profileId);
+      cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
     const { data: cyclesRaw } = await cyclesQuery;
 
@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .gt('updated_at', lastSyncISO);
     if (profileId) {
-      personalRecordsQuery = personalRecordsQuery.eq('local_profile_id', profileId);
+      personalRecordsQuery = personalRecordsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
     }
     const { data: personalRecords } = await personalRecordsQuery;
 
