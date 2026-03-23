@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 23 of 26 (Feature Fixes) — Complete
-Plan: 2 of 2 in current phase — all executed successfully
-Status: Phase 23 complete — all plans executed successfully
-Last activity: 2026-03-15 — Phase 23 execution complete
+Phase: 24 of 26 (Infrastructure & Ops) — Wave 1 Complete, Wave 2 Pending
+Plan: 3 of 4 in current phase — Wave 1 code fixes done + reviewed, Wave 2 manual ops pending
+Status: Phase 24 Wave 1 complete — review passed (1 cycle, 1 blocker fixed). Wave 2 (manual ops) awaiting user execution.
+Last activity: 2026-03-22 — Phase 24 Wave 1 review passed
 
-Progress: [████████████████████] 100% (v1.2) | [███████...] 64% (v1.3) — 7/11 plans complete
+Progress: [████████████████████] 100% (v1.2) | [█████████.] 80% (v1.3) — 10/11 code plans complete, 1 manual ops plan pending
 
 ## Performance Metrics
 
@@ -62,7 +62,8 @@ Key v1.3 constraints:
 
 ### Pending Todos
 
-None.
+- Board Tier 2 conditions (first 2 weeks of beta): CWV instrumentation, performance budget CI gate, Biome a11y rules, chart aria-labels, Sentry alert rules
+- Board Tier 3 conditions (within 30 days): content moderation policy, data retention periods in privacy policy
 
 ### Blockers/Concerns
 
@@ -77,6 +78,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-15
-Stopped at: Phase 23 complete. Run `/legion:plan 24` to plan Phase 24: Infrastructure & Ops.
-Resume file: .planning/phases/22-paddle-billing/22-CONTEXT.md
+Last session: 2026-03-22
+Stopped at: Phase 24 planned (4 plans, 2 waves). Run `/legion:build` to execute Phase 24: Infrastructure & Ops.
+Resume file: .planning/phases/24-infrastructure-ops/24-CONTEXT.md
+Board decision: .planning/board/2026-03-22-beta-readiness.md

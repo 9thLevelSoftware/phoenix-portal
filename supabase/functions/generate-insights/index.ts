@@ -1,6 +1,7 @@
 // Canonical rules live in src/lib/insights.ts — keep in sync.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 // ── Types (mirrored from src/lib/insights.ts) ────────────────────────────────
 
@@ -248,6 +249,15 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Rate limit: 5 requests per minute per user
+    const rateCheck = await checkRateLimit(supabaseAdmin, {
+      key: 'generate-insights',
+      userId: user.id,
+      maxRequests: 5,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
 
     // ── Parse request ─────────────────────────────────────────────────────────
     const body = await req.json().catch(() => ({}));

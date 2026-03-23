@@ -74,8 +74,34 @@ export function PrivacyPolicy() {
 						</section>
 
 						<section>
+							<h2 className="text-2xl mb-4 text-primary">2. Data Controller</h2>
+							<p className="text-secondary-foreground leading-relaxed mb-3">
+								The data controller responsible for your personal data is:
+							</p>
+							<div className="p-4 rounded-lg bg-card/50 border border-secondary">
+								<p className="text-secondary-foreground leading-relaxed">
+									<span className="font-semibold">9th Level Software LLC</span>
+									<br />
+									Email:{" "}
+									<a
+										href="mailto:support@phoenix-portal.com"
+										className="text-primary hover:text-accent underline"
+									>
+										support@phoenix-portal.com
+									</a>
+								</p>
+							</div>
+							<p className="text-secondary-foreground leading-relaxed mt-3 text-sm">
+								We have not appointed a Data Protection Officer (DPO) as we are
+								a small business that does not engage in large-scale systematic
+								monitoring or processing of special category data. For any
+								privacy inquiries, please contact us at the email above.
+							</p>
+						</section>
+
+						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								2. Information We Collect
+								3. Information We Collect
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-4">
 								Project Phoenix requires an account to use. When you sign up and
@@ -168,7 +194,88 @@ export function PrivacyPolicy() {
 
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								3. Bluetooth Permissions
+								4. Legal Basis for Processing
+							</h2>
+							<p className="text-secondary-foreground leading-relaxed mb-4">
+								Under the General Data Protection Regulation (GDPR), we process
+								your personal data on the following legal bases:
+							</p>
+							<ul className="space-y-3 text-secondary-foreground ml-6">
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Account data (email, display name, avatar):
+										</span>{" "}
+										Contract performance — necessary to provide you with the
+										Service (Article 6(1)(b))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Workout data (sets, reps, weight, velocity, power):
+										</span>{" "}
+										Contract performance — core functionality of the fitness
+										dashboard you signed up for (Article 6(1)(b))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Recovery and workload data (ACWR scores, fatigue metrics):
+										</span>{" "}
+										Legitimate interest — providing training insights that help
+										you avoid overtraining and injury. You may object to this
+										processing at any time (Article 6(1)(f))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Payment and subscription data:
+										</span>{" "}
+										Contract performance — processed by Paddle (our Merchant of
+										Record) as a data processor on our behalf. We do not store
+										payment card details (Article 6(1)(b))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											OAuth tokens (Strava, Fitbit, Garmin, Hevy):
+										</span>{" "}
+										Consent — you explicitly authorize each integration
+										connection. You may withdraw consent by disconnecting the
+										integration at any time (Article 6(1)(a))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Error monitoring (Sentry):
+										</span>{" "}
+										Consent — only activated after you accept cookies via our
+										consent banner. No personal workout data is included in
+										error reports (Article 6(1)(a))
+									</span>
+								</li>
+							</ul>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								We do not collect usage analytics beyond Sentry error
+								monitoring. We do not use advertising trackers or marketing
+								analytics tools.
+							</p>
+						</section>
+
+						<section>
+							<h2 className="text-2xl mb-4 text-primary">
+								5. Bluetooth Permissions
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								The App requires Bluetooth Low Energy (BLE) permissions to
@@ -202,7 +309,7 @@ export function PrivacyPolicy() {
 
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								4. Data Storage and Security
+								6. Data Storage and Security
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-4">
 								Your data is stored securely on Supabase, a cloud database
@@ -244,7 +351,7 @@ export function PrivacyPolicy() {
 
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								5. Third-Party Services
+								7. Third-Party Services
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								The App integrates with the following third-party services:
@@ -335,7 +442,7 @@ export function PrivacyPolicy() {
 						</section>
 
 						<section>
-							<h2 className="text-2xl mb-4 text-primary">6. Data Sharing</h2>
+							<h2 className="text-2xl mb-4 text-primary">8. Data Sharing</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								<span className="font-semibold">We do not sell your data.</span>{" "}
 								Your data is shared only with the third-party services listed
@@ -371,43 +478,203 @@ export function PrivacyPolicy() {
 						</section>
 
 						<section>
+							<h2 className="text-2xl mb-4 text-primary">9. Data Retention</h2>
+							<p className="text-secondary-foreground leading-relaxed mb-4">
+								We retain your personal data only for as long as necessary to
+								provide the Service and fulfill the purposes described in this
+								policy. Specific retention periods are:
+							</p>
+							<ul className="space-y-2 text-secondary-foreground ml-6">
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Account data:</span>{" "}
+										Retained until you delete your account
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Workout data:</span>{" "}
+										Retained until you delete your account or manually delete
+										individual workouts. You may export your data as CSV before
+										deletion
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Routines and training cycles:
+										</span>{" "}
+										Retained until you delete them individually or delete your
+										account
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">OAuth tokens:</span>{" "}
+										Retained until you disconnect the integration or delete your
+										account
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Error logs (Sentry):</span>{" "}
+										90 days (Sentry's default retention period)
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Rate limit records:</span>{" "}
+										24 hours
+									</span>
+								</li>
+							</ul>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								When you delete your account, all associated data is permanently
+								removed from our systems via a cascading deletion process. This
+								action is irreversible.
+							</p>
+						</section>
+
+						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								7. Your Rights and Data Control
+								10. International Data Transfers
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
-								You have control over your data:
+								Your data may be transferred to and processed in countries
+								outside your country of residence:
+							</p>
+							<ul className="space-y-2 text-secondary-foreground ml-6">
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Supabase:</span> Data is
+										stored and processed on infrastructure located in the United
+										States. Supabase maintains appropriate technical and
+										organizational measures and relies on Standard Contractual
+										Clauses (SCCs) for transfers from the EEA/UK
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Paddle:</span> Payment
+										processing is handled by Paddle, headquartered in the United
+										Kingdom. The UK has received an adequacy decision from the
+										European Commission. Paddle maintains its own GDPR
+										compliance as the Merchant of Record
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">Sentry:</span> Error
+										monitoring data (when consented to) is processed on servers
+										in the United States. Sentry relies on Standard Contractual
+										Clauses for EEA/UK data transfers
+									</span>
+								</li>
+							</ul>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								Where your data is transferred outside the European Economic
+								Area (EEA) or UK, we ensure appropriate safeguards are in place
+								as required by applicable data protection law, including
+								Standard Contractual Clauses approved by the European
+								Commission.
+							</p>
+						</section>
+
+						<section>
+							<h2 className="text-2xl mb-4 text-primary">
+								11. Your Rights and Data Control
+							</h2>
+							<p className="text-secondary-foreground leading-relaxed mb-3">
+								You have control over your data. Under the GDPR and other
+								applicable data protection laws, you have the following rights:
 							</p>
 							<ul className="space-y-2 text-secondary-foreground ml-6 mb-4">
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Access:</span> All your data
-										is visible within the App's history, analytics, and profile
-										screens
+										<span className="font-semibold">
+											Right of Access (Article 15):
+										</span>{" "}
+										All your data is visible within the App's history,
+										analytics, and profile screens. You may also request a
+										complete copy of your personal data by contacting us
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Export:</span> You can
-										export your workout history and personal records as CSV
-										files from your profile
+										<span className="font-semibold">
+											Right to Data Portability (Article 20):
+										</span>{" "}
+										You can export your workout history and personal records as
+										CSV files from your profile
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Deletion:</span> You can
-										delete individual workouts and routines within the App, or
-										contact us to delete your account and all associated data
+										<span className="font-semibold">
+											Right to Erasure (Article 17):
+										</span>{" "}
+										You can delete individual workouts and routines within the
+										App, or delete your account and all associated data from
+										your profile settings
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										<span className="font-semibold">Disconnect:</span> You can
-										disconnect third-party fitness integrations at any time from
-										the Integrations page
+										<span className="font-semibold">
+											Right to Rectification (Article 16):
+										</span>{" "}
+										You can update your profile information (display name,
+										avatar) at any time. For corrections to other data, contact
+										us
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Right to Restriction of Processing (Article 18):
+										</span>{" "}
+										You may request that we restrict the processing of your
+										personal data in certain circumstances, such as when you
+										contest the accuracy of the data
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Right to Object (Article 21):
+										</span>{" "}
+										You may object to processing based on legitimate interest
+										(such as recovery/workload analysis). We will cease
+										processing unless we demonstrate compelling legitimate
+										grounds
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Right to Withdraw Consent (Article 7(3)):
+										</span>{" "}
+										Where processing is based on consent (fitness integrations,
+										Sentry error monitoring), you may withdraw consent at any
+										time. Disconnect integrations from the Integrations page, or
+										manage cookie preferences to control Sentry. Withdrawal does
+										not affect the lawfulness of processing before withdrawal
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -416,16 +683,53 @@ export function PrivacyPolicy() {
 										<span className="font-semibold">Cookie Preferences:</span>{" "}
 										You can manage your cookie preferences at any time. A
 										consent banner appears on your first visit. To reset your
-										preference, clear your browser's local storage for this
-										site.
+										preference, clear your browser's local storage for this site
 									</span>
 								</li>
 							</ul>
+							<p className="text-secondary-foreground leading-relaxed mb-3">
+								To exercise any of these rights, contact us at{" "}
+								<a
+									href="mailto:support@phoenix-portal.com"
+									className="text-primary hover:text-accent underline"
+								>
+									support@phoenix-portal.com
+								</a>
+								. We will respond to your request within 30 days as required by
+								the GDPR.
+							</p>
 						</section>
 
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								8. Children's Privacy
+								12. Right to Lodge a Complaint
+							</h2>
+							<p className="text-secondary-foreground leading-relaxed">
+								If you believe that our processing of your personal data
+								infringes data protection law, you have the right to lodge a
+								complaint with a supervisory authority. You may do so in the EU
+								Member State of your habitual residence, your place of work, or
+								the place of the alleged infringement. A list of EU data
+								protection authorities can be found on the{" "}
+								<a
+									href="https://edpb.europa.eu/about-edpb/about-edpb/members_en"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-primary hover:text-accent underline"
+								>
+									European Data Protection Board website
+								</a>
+								.
+							</p>
+							<p className="text-secondary-foreground leading-relaxed mt-4">
+								We encourage you to contact us first so we have the opportunity
+								to address your concern directly.
+							</p>
+						</section>
+
+						<section>
+							<h2 className="text-2xl mb-4 text-primary">
+								13. Children's Privacy
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								The App is not directed at children under the age of 13. We do
@@ -437,7 +741,7 @@ export function PrivacyPolicy() {
 
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
-								9. Changes to This Privacy Policy
+								14. Changes to This Privacy Policy
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								We may update this Privacy Policy from time to time. Any changes
@@ -447,7 +751,7 @@ export function PrivacyPolicy() {
 						</section>
 
 						<section>
-							<h2 className="text-2xl mb-4 text-primary">10. Open Source</h2>
+							<h2 className="text-2xl mb-4 text-primary">15. Open Source</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								Project Phoenix is an open-source, community-driven project. You
 								can review our source code to verify our privacy practices at
@@ -456,12 +760,24 @@ export function PrivacyPolicy() {
 						</section>
 
 						<section>
-							<h2 className="text-2xl mb-4 text-primary">11. Contact Us</h2>
+							<h2 className="text-2xl mb-4 text-primary">16. Contact Us</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								If you have any questions about this Privacy Policy or the App's
 								data practices, you can:
 							</p>
 							<ul className="space-y-2 text-secondary-foreground ml-6">
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										Email:{" "}
+										<a
+											href="mailto:support@phoenix-portal.com"
+											className="text-primary hover:text-accent underline"
+										>
+											support@phoenix-portal.com
+										</a>
+									</span>
+								</li>
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>Open an issue on our GitHub repository</span>

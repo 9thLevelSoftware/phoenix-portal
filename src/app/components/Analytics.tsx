@@ -2,50 +2,25 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertCircle,
-	Clock,
 	Download,
 	Dumbbell,
 	Flame,
-	Globe,
 	Target,
 	TrendingDown,
 	TrendingUp,
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
-import MuscleHighlighter, {
-	type ExtendedBodyPart,
-	type Slug,
-} from "react-muscle-highlighter";
+import { lazy, Suspense, useMemo, useState } from "react";
+import type { ExtendedBodyPart, Slug } from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
-import {
-	Area,
-	AreaChart,
-	Bar,
-	BarChart,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
 import { toast } from "sonner";
-import { BiomechanicsContent } from "@/app/components/Biomechanics";
-import { CommunityRankings } from "@/app/components/CommunityRankings";
-import { ConsistencyWidget } from "@/app/components/charts/ConsistencyWidget";
-import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import {
 	CHART_COLORS,
 	ECHARTS_GRID,
 } from "@/app/components/charts/shared/EChartsTheme";
-import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
-import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
-import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
-import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
+import type { InsightItem } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
-import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -83,6 +58,44 @@ import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+
+// Lazy-loaded tab components for code splitting (desktop)
+const OverviewTab = lazy(
+	() => import("@/app/components/analytics/OverviewTab"),
+);
+const ProgressTab = lazy(
+	() => import("@/app/components/analytics/ProgressTab"),
+);
+const BodyTab = lazy(() => import("@/app/components/analytics/BodyTab"));
+const PerformanceTab = lazy(
+	() => import("@/app/components/analytics/PerformanceTab"),
+);
+
+// Lazy-loaded tab components for code splitting (mobile)
+const MobileOverviewTab = lazy(
+	() => import("@/app/components/analytics/MobileOverviewTab"),
+);
+const MobileProgressTab = lazy(
+	() => import("@/app/components/analytics/MobileProgressTab"),
+);
+const MobileBodyTab = lazy(
+	() => import("@/app/components/analytics/MobileBodyTab"),
+);
+const MobilePerformanceTab = lazy(
+	() => import("@/app/components/analytics/MobilePerformanceTab"),
+);
+
+function AnalyticsTabSkeleton() {
+	return (
+		<div className="space-y-6">
+			<ChartSkeleton />
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+				<ChartSkeleton />
+				<ChartSkeleton />
+			</div>
+		</div>
+	);
+}
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
 	Chest: PHOENIX.ember,
@@ -412,21 +425,6 @@ function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 	);
 }
 
-function MobileChartCard({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
-			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
-			{children}
-		</Card>
-	);
-}
-
 /** Compute percent delta between two values, returning null if not meaningful */
 function percentDelta(current: number, previous: number): number | null {
 	if (previous === 0) return current > 0 ? 100 : null;
@@ -456,7 +454,6 @@ export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
 	const [searchParams, setSearchParams] = useSearchParams();
-	const [bodySide, setBodySide] = useState<"front" | "back">("front");
 
 	// Map old tab names to new ones for backward compatibility
 	const rawTab = searchParams.get("tab") || "overview";
@@ -1086,320 +1083,48 @@ export function Analytics() {
 					) : (
 						<>
 							{activeTab === "overview" && (
-								<>
-									<MobileChartCard title="VOLUME OVER TIME">
-										{mobileVolumeData.length > 0 ? (
-											<ResponsiveContainer width="100%" height={200}>
-												<AreaChart data={mobileVolumeData}>
-													<defs>
-														<linearGradient
-															id="mobileVolumeGradient"
-															x1="0"
-															y1="0"
-															x2="0"
-															y2="1"
-														>
-															<stop
-																offset="5%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0.3}
-															/>
-															<stop
-																offset="95%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0}
-															/>
-														</linearGradient>
-													</defs>
-													<XAxis
-														dataKey="date"
-														stroke={PHOENIX.ashGray}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<YAxis
-														stroke={PHOENIX.ashGray}
-														tickFormatter={(value) => `${value / 1000}k`}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<Tooltip content={<RechartsTooltip />} />
-													<Area
-														type="monotone"
-														dataKey="volume"
-														stroke={PHOENIX.ember}
-														strokeWidth={2}
-														fill="url(#mobileVolumeGradient)"
-														animationDuration={800}
-														animationEasing="ease-out"
-													/>
-												</AreaChart>
-											</ResponsiveContainer>
-										) : (
-											<div className="h-[200px] flex items-center justify-center text-muted text-sm">
-												No volume data for this period
-											</div>
-										)}
-									</MobileChartCard>
-
-									<MobileChartCard title="TRAINING LOAD">
-										<TrainingLoadGauge
-											score={trainingLoad.rtl}
-											zone={trainingLoad.zone}
-										/>
-									</MobileChartCard>
-
-									<MobileChartCard title="CONSISTENCY">
-										<ConsistencyWidget {...consistencyData} />
-									</MobileChartCard>
-
-									<MobileChartCard title="INSIGHTS">
-										<InsightsFeed
-											insights={insightsFeedItems}
-											loading={insightsPending}
-										/>
-									</MobileChartCard>
-								</>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileOverviewTab
+										mobileVolumeData={mobileVolumeData}
+										trainingLoad={trainingLoad}
+										consistencyData={consistencyData}
+										insightsFeedItems={insightsFeedItems}
+										insightsPending={insightsPending}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "progress" && (
-								<>
-									<MobileChartCard
-										title={`TOP LIFTS (1RM - ${unit.toUpperCase()})`}
-									>
-										{mobileStrengthData.length > 0 ? (
-											<ResponsiveContainer width="100%" height={250}>
-												<BarChart data={mobileStrengthData} layout="vertical">
-													<XAxis
-														type="number"
-														stroke={PHOENIX.ashGray}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<YAxis
-														type="category"
-														dataKey="exercise"
-														stroke={PHOENIX.ashGray}
-														width={70}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<Tooltip content={<RechartsTooltip />} />
-													<Bar
-														dataKey="weight"
-														name={`Weight (${unit})`}
-														fill={PHOENIX.ember}
-														radius={[0, 4, 4, 0]}
-														animationDuration={800}
-														animationEasing="ease-out"
-													/>
-												</BarChart>
-											</ResponsiveContainer>
-										) : (
-											<div className="h-[250px] flex items-center justify-center text-muted text-sm">
-												No strength data yet. Set some PRs!
-											</div>
-										)}
-									</MobileChartCard>
-
-									<MobileChartCard title="VOLUME TREND">
-										{mobileVolumeData.length > 0 ? (
-											<ResponsiveContainer width="100%" height={250}>
-												<AreaChart data={mobileVolumeData}>
-													<defs>
-														<linearGradient
-															id="mobileTrendGradient"
-															x1="0"
-															y1="0"
-															x2="0"
-															y2="1"
-														>
-															<stop
-																offset="5%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0.3}
-															/>
-															<stop
-																offset="95%"
-																stopColor={PHOENIX.ember}
-																stopOpacity={0}
-															/>
-														</linearGradient>
-													</defs>
-													<XAxis
-														dataKey="date"
-														stroke={PHOENIX.ashGray}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<YAxis
-														stroke={PHOENIX.ashGray}
-														tickFormatter={(value) =>
-															value >= 1000 ? `${value / 1000}k` : `${value}`
-														}
-														tickLine={false}
-														axisLine={false}
-														tick={{
-															fontSize: 11,
-															fontFamily: "Inter, sans-serif",
-														}}
-													/>
-													<Tooltip content={<RechartsTooltip />} />
-													<Area
-														type="monotone"
-														dataKey="volume"
-														stroke={PHOENIX.ember}
-														strokeWidth={2}
-														fill="url(#mobileTrendGradient)"
-														animationDuration={800}
-														animationEasing="ease-out"
-													/>
-												</AreaChart>
-											</ResponsiveContainer>
-										) : (
-											<div className="text-center py-12 text-muted">
-												<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
-												<p className="font-medium mb-1">
-													Track your training trends
-												</p>
-												<p className="text-xs">
-													Complete a few workouts to see your volume and
-													strength trends here
-												</p>
-											</div>
-										)}
-									</MobileChartCard>
-
-									{/* PR counter */}
-									{prCount > 0 && (
-										<MobileChartCard title="PERSONAL RECORDS">
-											<div className="flex items-center gap-4">
-												<div className="flex flex-col items-center justify-center rounded-lg bg-primary/10 px-4 py-3">
-													<span className="text-2xl font-bold text-primary">
-														{prCount}
-													</span>
-													<span className="text-[10px] text-muted-foreground">
-														total PRs
-													</span>
-												</div>
-												{daysSinceLastPR != null && (
-													<div className="flex flex-col items-center justify-center rounded-lg bg-muted/30 px-4 py-3">
-														<span className="text-2xl font-bold text-white">
-															{daysSinceLastPR}
-														</span>
-														<span className="text-[10px] text-muted-foreground">
-															days since last PR
-														</span>
-													</div>
-												)}
-											</div>
-										</MobileChartCard>
-									)}
-								</>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileProgressTab
+										unit={unit}
+										mobileStrengthData={mobileStrengthData}
+										mobileVolumeData={mobileVolumeData}
+										prCount={prCount}
+										daysSinceLastPR={daysSinceLastPR}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "body" && (
-								<>
-									{muscleGroupData.length > 0 ? (
-										<>
-											<MobileChartCard title="MUSCLE BALANCE">
-												<MuscleRadar currentData={muscleRadarData} />
-											</MobileChartCard>
-
-											<MobileChartCard title="MUSCLE DISTRIBUTION">
-												<ResponsiveContainer width="100%" height={200}>
-													<PieChart>
-														<Pie
-															data={mobileMusclData}
-															cx="50%"
-															cy="50%"
-															innerRadius={50}
-															outerRadius={80}
-															paddingAngle={2}
-															dataKey="value"
-															animationDuration={800}
-															animationEasing="ease-out"
-														/>
-														<Tooltip content={<RechartsTooltip />} />
-													</PieChart>
-												</ResponsiveContainer>
-												<div className="flex flex-wrap gap-2 mt-3 justify-center">
-													{mobileMusclData.map((muscle) => (
-														<div
-															key={muscle.name}
-															className="flex items-center gap-1 text-xs"
-														>
-															<div
-																className="w-3 h-3 rounded-full"
-																style={{ backgroundColor: muscle.color }}
-															/>
-															<span className="text-muted-foreground">
-																{muscle.name} {muscle.value}%
-															</span>
-														</div>
-													))}
-												</div>
-											</MobileChartCard>
-
-											{/* Biomechanics — gated for Inferno */}
-											<SubscriptionGate
-												requiredTier="INFERNO"
-												featureName="Biomechanics Analysis"
-											>
-												<Card className="p-4 border-secondary">
-													<BiomechanicsContent view="biomechanics" />
-												</Card>
-											</SubscriptionGate>
-										</>
-									) : (
-										<div className="text-center py-12 text-muted">
-											<Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
-											<p className="font-medium mb-1">
-												Body analysis coming soon
-											</p>
-											<p className="text-xs mb-4">
-												Complete some workouts to see your muscle balance and
-												body part analysis
-											</p>
-										</div>
-									)}
-								</>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobileBodyTab
+										muscleGroupData={muscleGroupData}
+										muscleRadarData={muscleRadarData}
+										mobileMusclData={mobileMusclData}
+									/>
+								</Suspense>
 							)}
 
 							{activeTab === "performance" && (
-								<SubscriptionGate
-									requiredTier="INFERNO"
-									featureName="Performance Analytics"
-								>
-									<BiomechanicsContent view="performance" />
-								</SubscriptionGate>
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<MobilePerformanceTab />
+								</Suspense>
 							)}
 						</>
 					)}
 				</div>
 			</div>
-
-			{/* ---- DESKTOP LAYOUT (>= 768px) ---- */}
 			<div className="hidden md:block">
 				<PageShell>
 					{/* Header */}
@@ -1582,511 +1307,64 @@ export function Analytics() {
 
 								{/* ====== TAB 1: OVERVIEW ====== */}
 								<TabsContent value="overview" className="space-y-6">
-									{/* Activity Sources (folded in from External tab) */}
-									{(totalWorkouts > 0 || externalCount > 0) && (
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-4">
-												Activity Sources
-											</h3>
-											<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-												<div>
-													<p className="text-2xl font-bold text-primary">
-														{totalWorkouts}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														Phoenix Workouts
-													</p>
-												</div>
-												<div>
-													<p className="text-2xl font-bold text-blue-400">
-														{externalCount}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														External Activities
-													</p>
-												</div>
-												<div>
-													<p className="text-2xl font-bold text-white">
-														{totalWorkouts + externalCount}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														Total Activities
-													</p>
-												</div>
-												<div>
-													<p className="text-2xl font-bold text-emerald-400">
-														{externalChartData
-															.reduce((sum, a) => sum + a.calories, 0)
-															.toLocaleString()}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														External Calories
-													</p>
-												</div>
-											</div>
-											{/* Provider badges */}
-											{externalCount > 0 && (
-												<div className="flex gap-2 mt-4 pt-4 border-t border-secondary">
-													{Array.from(
-														new Set(externalChartData.map((a) => a.provider)),
-													).map((provider) => {
-														const count = externalChartData.filter(
-															(a) => a.provider === provider,
-														).length;
-														return (
-															<Badge
-																key={provider}
-																variant="outline"
-																className="capitalize text-xs"
-															>
-																<Globe className="w-3 h-3 mr-1" />
-																{provider} ({count})
-															</Badge>
-														);
-													})}
-												</div>
-											)}
-										</Card>
-									)}
-
-									{/* Volume Over Time + Muscle Distribution */}
-									<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-6">
-												Volume Over Time
-											</h3>
-											{volumeEChartsOption ? (
-												<EChartsWrapper
-													option={volumeEChartsOption}
-													height={300}
-												/>
-											) : (
-												<div className="h-[300px] flex items-center justify-center text-muted">
-													No volume data for this period
-												</div>
-											)}
-										</Card>
-
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-6">
-												Muscle Group Distribution
-											</h3>
-											{muscleDonutOption ? (
-												<EChartsWrapper
-													option={muscleDonutOption}
-													height={300}
-												/>
-											) : (
-												<div className="h-[300px] flex items-center justify-center text-muted">
-													No muscle group data yet
-												</div>
-											)}
-										</Card>
-									</div>
-
-									{/* Training Load + Consistency + Insights */}
-									<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">Training Load</h3>
-											<TrainingLoadGauge
-												score={trainingLoad.rtl}
-												zone={trainingLoad.zone}
-											/>
-										</Card>
-
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">Consistency</h3>
-											<ConsistencyWidget {...consistencyData} />
-										</Card>
-
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-lg text-white mb-4">Insights</h3>
-											<InsightsFeed
-												insights={insightsFeedItems.slice(0, 3)}
-												loading={insightsPending}
-											/>
-										</Card>
-									</div>
+									<Suspense fallback={<AnalyticsTabSkeleton />}>
+										<OverviewTab
+											totalWorkouts={totalWorkouts}
+											externalCount={externalCount}
+											externalChartData={externalChartData}
+											volumeEChartsOption={volumeEChartsOption}
+											muscleDonutOption={muscleDonutOption}
+											trainingLoad={trainingLoad}
+											consistencyData={consistencyData}
+											insightsFeedItems={insightsFeedItems}
+											insightsPending={insightsPending}
+										/>
+									</Suspense>
 								</TabsContent>
 
 								{/* ====== TAB 2: PROGRESS ====== */}
 								<TabsContent value="progress" className="space-y-6">
-									{/* 1RM Progression */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-6">
-											1RM Progression ({unit})
-										</h3>
-										{strengthEChartsOption ? (
-											<EChartsWrapper
-												option={strengthEChartsOption}
-												height={400}
-											/>
-										) : (
-											<div className="h-[400px] flex items-center justify-center text-muted">
-												No strength progress data yet. Set some PRs to see your
-												progression!
-											</div>
-										)}
-									</Card>
-
-									{/* Volume & Frequency Trends */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-6">
-											Volume & Frequency Trends
-										</h3>
-										{volumeAreaOption ? (
-											<EChartsWrapper option={volumeAreaOption} height={300} />
-										) : (
-											<div className="h-[300px] flex items-center justify-center text-muted">
-												No volume data for this period
-											</div>
-										)}
-									</Card>
-
-									{/* PR Timeline + Insights */}
-									<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-										{/* PR Timeline */}
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-4">
-												Personal Records
-											</h3>
-											<div className="flex items-center gap-6 mb-4">
-												<div className="flex flex-col items-center justify-center rounded-xl bg-primary/10 px-6 py-4">
-													<span className="text-3xl font-bold text-primary">
-														{prCount}
-													</span>
-													<span className="text-xs text-muted-foreground mt-1">
-														total PRs
-													</span>
-												</div>
-												{daysSinceLastPR != null && (
-													<div className="flex flex-col items-center justify-center rounded-xl bg-muted/20 px-6 py-4">
-														<div className="flex items-center gap-1.5">
-															<Clock className="w-4 h-4 text-muted-foreground" />
-															<span className="text-3xl font-bold text-white">
-																{daysSinceLastPR}
-															</span>
-														</div>
-														<span className="text-xs text-muted-foreground mt-1">
-															days since last PR
-														</span>
-													</div>
-												)}
-											</div>
-											{strengthExercises.length > 0 && (
-												<div className="text-sm text-muted-foreground">
-													Tracking: {strengthExercises.join(", ")}
-												</div>
-											)}
-										</Card>
-
-										{/* Insight cards (legacy style) */}
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-4">
-												Trend Insights
-											</h3>
-											<div className="flex flex-col gap-3">
-												{insights.map((insight, index) => (
-													<div
-														key={index}
-														className={`flex items-start gap-3 p-3 rounded-lg border ${
-															insight.type === "positive"
-																? "bg-success/5 border-success/30"
-																: insight.type === "warning"
-																	? "bg-warning/5 border-warning/30"
-																	: "bg-muted/5 border-muted/30"
-														}`}
-													>
-														<div
-															className={`p-2 rounded-lg ${
-																insight.type === "positive"
-																	? "bg-success/20"
-																	: insight.type === "warning"
-																		? "bg-warning/20"
-																		: "bg-muted/20"
-															}`}
-														>
-															<insight.icon
-																className={`w-4 h-4 ${
-																	insight.type === "positive"
-																		? "text-success"
-																		: insight.type === "warning"
-																			? "text-warning"
-																			: "text-muted"
-																}`}
-															/>
-														</div>
-														<div className="flex-1 min-w-0">
-															<h4 className="text-sm font-semibold text-white">
-																{insight.title}
-															</h4>
-															<p className="text-xs text-muted-foreground mt-0.5">
-																{insight.description}
-															</p>
-														</div>
-													</div>
-												))}
-											</div>
-										</Card>
-									</div>
+									<Suspense fallback={<AnalyticsTabSkeleton />}>
+										<ProgressTab
+											unit={unit}
+											strengthEChartsOption={strengthEChartsOption}
+											volumeAreaOption={volumeAreaOption}
+											prCount={prCount}
+											daysSinceLastPR={daysSinceLastPR}
+											strengthExercises={strengthExercises}
+											insights={insights}
+										/>
+									</Suspense>
 								</TabsContent>
 
 								{/* ====== TAB 3: BODY ====== */}
 								<TabsContent value="body" className="space-y-6">
-									<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-										{/* Muscle Balance Radar */}
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-6">
-												Muscle Balance Radar
-											</h3>
-											{muscleGroupData.length > 0 ? (
-												<MuscleRadar currentData={muscleRadarData} />
-											) : (
-												<div className="h-[300px] flex items-center justify-center text-muted">
-													No muscle data yet
-												</div>
-											)}
-										</Card>
-
-										{/* Muscle Distribution Donut */}
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-											<h3 className="text-xl text-white mb-6">
-												Muscle Distribution
-											</h3>
-											{muscleDonutOption ? (
-												<EChartsWrapper
-													option={muscleDonutOption}
-													height={300}
-												/>
-											) : (
-												<div className="h-[300px] flex items-center justify-center text-muted">
-													No muscle group data yet
-												</div>
-											)}
-										</Card>
-									</div>
-
-									{/* Muscle Group Breakdown Table */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<h3 className="text-xl text-white mb-6">
-											Muscle Group Breakdown
-										</h3>
-										{muscleGroupData.length > 0 ? (
-											<div className="overflow-x-auto">
-												<table className="w-full text-sm">
-													<thead>
-														<tr className="border-b border-secondary text-muted-foreground">
-															<th className="text-left py-2 px-3 font-medium">
-																Muscle Group
-															</th>
-															<th className="text-right py-2 px-3 font-medium">
-																Volume %
-															</th>
-															<th className="text-left py-2 px-3 font-medium w-1/2">
-																Distribution
-															</th>
-														</tr>
-													</thead>
-													<tbody>
-														{[...muscleGroupData]
-															.sort((a, b) => b.value - a.value)
-															.map((muscle) => (
-																<tr
-																	key={muscle.name}
-																	className="border-b border-secondary/50"
-																>
-																	<td className="py-3 px-3">
-																		<div className="flex items-center gap-2">
-																			<div
-																				className="w-3 h-3 rounded-full shrink-0"
-																				style={{
-																					backgroundColor: muscle.color,
-																				}}
-																			/>
-																			<span className="text-white">
-																				{muscle.name}
-																			</span>
-																		</div>
-																	</td>
-																	<td
-																		className="text-right py-3 px-3 font-medium"
-																		style={{ color: muscle.color }}
-																	>
-																		{muscle.value}%
-																	</td>
-																	<td className="py-3 px-3">
-																		<div className="h-2 w-full rounded-full bg-muted/20 overflow-hidden">
-																			<div
-																				className="h-full rounded-full transition-all duration-500"
-																				style={{
-																					width: `${muscle.value}%`,
-																					backgroundColor: muscle.color,
-																				}}
-																			/>
-																		</div>
-																	</td>
-																</tr>
-															))}
-													</tbody>
-												</table>
-											</div>
-										) : (
-											<div className="text-center py-12 text-muted">
-												No body part data yet
-											</div>
-										)}
-									</Card>
-
-									{/* Interactive Body Heatmap */}
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-										<div className="flex justify-between items-center mb-6">
-											<h3 className="text-xl text-white">Body Overview</h3>
-											<div className="flex bg-muted/20 rounded-lg overflow-hidden">
-												<button
-													type="button"
-													className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
-													onClick={() => setBodySide("front")}
-												>
-													Front
-												</button>
-												<button
-													type="button"
-													className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
-													onClick={() => setBodySide("back")}
-												>
-													Back
-												</button>
-											</div>
-										</div>
-										<div className="flex justify-center">
-											<MuscleHighlighter
-												data={muscleHighlighterData}
-												side={bodySide}
-												gender="male"
-												scale={1.5}
-												border="none"
-												defaultFill="#2a2a2a"
-												defaultStroke="#444"
-												defaultStrokeWidth={0.5}
-												colors={[
-													"#FF6B3520",
-													"#FF6B3550",
-													"#FF6B3580",
-													"#FF6B35B0",
-													"#FF6B35",
-												]}
-												onBodyPartPress={(part) => {
-													if (part.slug) {
-														toast.info(
-															`${part.slug}: ${muscleSlugToGroup[part.slug] ?? "General"}`,
-														);
-													}
-												}}
-											/>
-										</div>
-										<div className="flex justify-center gap-1 mt-4">
-											{[
-												"#FF6B3520",
-												"#FF6B3550",
-												"#FF6B3580",
-												"#FF6B35B0",
-												"#FF6B35",
-											].map((c) => (
-												<div
-													key={c}
-													className="w-10 h-2 rounded"
-													style={{ backgroundColor: c }}
-												/>
-											))}
-										</div>
-										<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
-											<span>Low volume</span>
-											<span>High volume</span>
-										</div>
-									</Card>
+									<Suspense fallback={<AnalyticsTabSkeleton />}>
+										<BodyTab
+											muscleGroupData={muscleGroupData}
+											muscleDonutOption={muscleDonutOption}
+											muscleRadarData={muscleRadarData}
+											muscleHighlighterData={muscleHighlighterData}
+											muscleSlugToGroup={muscleSlugToGroup}
+										/>
+									</Suspense>
 								</TabsContent>
 
 								{/* ====== TAB 4: PERFORMANCE ====== */}
 								<TabsContent value="performance" className="space-y-6">
-									<SubscriptionGate
-										requiredTier="INFERNO"
-										featureName="Performance Analytics"
-									>
-										{/* Community Rankings — populated once benchmark Edge Function is scheduled */}
-										<div className="space-y-6">
-											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-												<h3 className="text-xl text-white mb-4">
-													Community Rankings
-												</h3>
-												<p className="text-sm text-muted-foreground mb-4">
-													Rankings update daily based on all participating
-													Phoenix users.
-												</p>
-												<CommunityRankings rankings={[]} loading={false} />
-											</Card>
-
-											{/* Performance Metrics (Velocity, Power, TUT) */}
-											<BiomechanicsContent view="performance" />
-
-											{/* Training Efficiency */}
-											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
-												<h3 className="text-xl text-white mb-4">
-													Training Efficiency
-												</h3>
-												<div className="grid grid-cols-2 gap-4">
-													<div className="rounded-lg bg-muted/20 p-4">
-														<p className="text-sm text-muted-foreground mb-1">
-															Volume / Minute
-														</p>
-														<p className="text-2xl font-bold text-white">
-															{volumeComparison?.current
-																? (() => {
-																		const totalVol =
-																			volumeComparison.current.reduce(
-																				(s, r) => s + (r.total_volume ?? 0),
-																				0,
-																			);
-																		const totalMin =
-																			volumeComparison.current.reduce(
-																				(s, r) =>
-																					s + (r.duration_seconds ?? 0) / 60,
-																				0,
-																			);
-																		return totalMin > 0
-																			? `${Math.round(convertWeight(totalVol / totalMin, unit))} ${unit}/min`
-																			: "--";
-																	})()
-																: "--"}
-														</p>
-													</div>
-													<div className="rounded-lg bg-muted/20 p-4">
-														<p className="text-sm text-muted-foreground mb-1">
-															Avg Session Duration
-														</p>
-														<p className="text-2xl font-bold text-white">
-															{volumeComparison?.current &&
-															volumeComparison.current.length > 0
-																? `${Math.round(
-																		volumeComparison.current.reduce(
-																			(s, r) => s + (r.duration_seconds ?? 0),
-																			0,
-																		) /
-																			volumeComparison.current.length /
-																			60,
-																	)} min`
-																: "--"}
-														</p>
-													</div>
-												</div>
-											</Card>
-										</div>
-									</SubscriptionGate>
+									<Suspense fallback={<AnalyticsTabSkeleton />}>
+										<PerformanceTab
+											volumeComparison={volumeComparison}
+											unit={unit}
+										/>
+									</Suspense>
 								</TabsContent>
 							</Tabs>
 						</>
 					)}
 				</PageShell>
 			</div>
+			;
 		</div>
 	);
 }

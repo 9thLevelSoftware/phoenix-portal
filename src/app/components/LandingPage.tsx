@@ -1,10 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	Activity,
-	ArrowRight,
 	Cloud,
-	ExternalLink,
-	Flame,
 	Loader2,
 	Mail,
 	Play,
@@ -12,7 +9,7 @@ import {
 	Target,
 	Trophy,
 } from "lucide-react";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
@@ -35,10 +32,10 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { breathing, tap } from "@/lib/animations";
 import { TIER_PRICING } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
-import { EmberParticles } from "./EmberParticles";
+import { ForceCurveDemo } from "./landing/ForceCurveDemo";
+import { ProductShowcase } from "./landing/ProductShowcase";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 // Validation schemas
@@ -78,11 +75,6 @@ export function LandingPage() {
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
 	const [scrolled, setScrolled] = useState(false);
-
-	// Scroll parallax for hero content
-	const { scrollY } = useScroll();
-	const heroY = useTransform(scrollY, [0, 500], [0, -80]);
-	const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -196,45 +188,45 @@ export function LandingPage() {
 	const features = [
 		{
 			icon: Cloud,
-			title: "Cloud Sync & Backup",
+			title: "Sync & Backup",
 			badge: "EMBER",
 			description:
-				"Your workouts, synced and backed up automatically. Restore data across devices and never lose a session again.",
+				"Workouts sync from the Project Phoenix mobile app automatically. Full history, searchable, exportable. Never lose a session.",
 		},
 		{
 			icon: Trophy,
-			title: "Challenges & Leaderboards",
+			title: "Records & Leaderboards",
 			badge: "EMBER",
 			description:
-				"Compete in community challenges, climb leaderboards, and earn badges. See how you stack up against other Vitruvian athletes.",
+				"Personal records tracked per exercise, phase, and weight. See where you rank against other Vitruvian athletes on community leaderboards.",
 		},
 		{
 			icon: Share2,
-			title: "Community Hub",
+			title: "Routines & Cycles",
 			badge: "FLAME",
 			description:
-				"Share routines, vote on workouts, follow featured creators, and discover proven programs from the Vitruvian community.",
+				"Build training routines with supersets, AMRAP, and PR scaling. Organize into periodized cycles. Share with the community.",
 		},
 		{
 			icon: Activity,
-			title: "Advanced Analytics",
+			title: "Analytics & Trends",
 			badge: "FLAME",
 			description:
-				"Deep dive into your training data with force curve analysis, volume trends, and progressive overload tracking across every exercise.",
+				"Volume trends, muscle group distribution, training load, and progressive overload tracking across every exercise and time period.",
 		},
 		{
 			icon: Target,
-			title: "Asymmetry Detection",
+			title: "Biomechanics & Asymmetry",
 			badge: "INFERNO",
 			description:
-				"L/R force threshold flagging catches muscle imbalances before they become injuries. Full biomechanics dashboard with muscle heatmap.",
+				"Cable A/B force comparison catches left-right imbalances at the 2% threshold. Full biomechanics dashboard with velocity-based training zones.",
 		},
 		{
 			icon: Play,
 			title: "Session Replay",
 			badge: "INFERNO",
 			description:
-				"Relive every workout with Canvas 2D telemetry playback at 50Hz. Scrub through sets, analyze rep quality, and detect fatigue.",
+				"50Hz telemetry playback of every rep. Scrub through sets on a Canvas timeline, overlay force curves, and spot fatigue patterns.",
 		},
 	];
 
@@ -560,8 +552,6 @@ export function LandingPage() {
 
 	return (
 		<div className="min-h-screen bg-background text-white overflow-x-hidden">
-			<EmberParticles />
-
 			{authDialog}
 
 			{/* Sticky Nav Header */}
@@ -615,104 +605,90 @@ export function LandingPage() {
 			</nav>
 
 			{/* Hero Section */}
-			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-				{/* Phoenix hero background */}
-				<div className="absolute inset-0 overflow-hidden">
-					<img
-						src="/phoenix-hero.png"
-						alt=""
-						className="absolute inset-0 w-full h-full object-cover opacity-30"
-					/>
-					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
-				</div>
-
+			<section className="relative min-h-[80svh] md:min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 pt-24">
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.8 }}
-					style={{ y: heroY, opacity: heroOpacity }}
-					className="text-center z-10 flex flex-col items-center"
+					transition={{ duration: 0.6 }}
+					className="text-center z-10 flex flex-col items-center max-w-4xl mx-auto"
 				>
 					<motion.h1
-						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
+						className="text-5xl sm:text-6xl md:text-7xl tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.2 }}
+						transition={{ delay: 0.15 }}
 					>
-						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
-							Your workouts, unlocked.
-						</span>
+						<span className="block text-white">See every rep as data.</span>
 					</motion.h1>
 
 					<motion.p
-						className="mt-6 text-xl sm:text-2xl md:text-3xl text-secondary-foreground"
+						className="mt-5 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
-						transition={{ delay: 0.4 }}
+						transition={{ delay: 0.3 }}
 					>
-						Rise From the Ashes. Forge Your Strength.
+						Force curves, recovery signals, PR trends, and session analysis —
+						synced from the Project Phoenix app.
 					</motion.p>
 
-					<motion.p
-						className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
+					<motion.div
+						className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.45 }}
+					>
+						<Button
+							size="lg"
+							onClick={openAuth}
+							className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0 btn-shimmer"
+						>
+							Preview dashboard
+						</Button>
+						<Button
+							asChild
+							size="lg"
+							variant="outline"
+							className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+						>
+							<a
+								href="https://github.com/nicholascross/ProjectPhoenix"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								Get the mobile app
+							</a>
+						</Button>
+					</motion.div>
+
+					{/* Proof row */}
+					<motion.div
+						className="mt-6 flex items-center gap-4 sm:gap-6 text-sm text-muted-foreground"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						Phoenix Portal turns your Vitruvian Force data into force curves,
-						biomechanics insights, recovery readiness scores, and a community of
-						athletes — all synced from the Project Phoenix app.
-					</motion.p>
-
-					<motion.div
-						className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 0.8 }}
-					>
-						<motion.div
-							whileTap={tap.press}
-							className="inline-flex w-full sm:w-auto"
-						>
-							<Button
-								size="lg"
-								onClick={openAuth}
-								className="relative group w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 transition-all duration-300 btn-shimmer"
-							>
-								<span className="relative z-10 flex items-center gap-2">
-									Get Started
-									<ArrowRight className="w-5 h-5" />
+						{["Force curves", "Recovery signals", "Records", "Replay"].map(
+							(item) => (
+								<span key={item} className="flex items-center gap-1.5">
+									<span
+										className="w-1 h-1 rounded-full bg-primary"
+										aria-hidden="true"
+									/>
+									{item}
 								</span>
-							</Button>
-						</motion.div>
-						<Button
-							size="lg"
-							variant="outline"
-							onClick={() => scrollToSection("pricing")}
-							className="w-full sm:w-auto border-2 border-primary text-primary hover:bg-primary/10 hover:border-chart-2"
-						>
-							View Plans
-						</Button>
+							),
+						)}
 					</motion.div>
-
-					<motion.p
-						className="mt-4 text-sm text-muted"
-						initial={{ opacity: 0 }}
-						animate={{ opacity: 1 }}
-						transition={{ delay: 1.0 }}
-					>
-						Requires the Project Phoenix mobile app for workout data sync
-					</motion.p>
 				</motion.div>
 
+				{/* Product showcase panels */}
 				<motion.div
-					className="absolute bottom-10"
-					initial={{ opacity: 0 }}
-					animate={breathing.animate}
+					className="mt-12 md:mt-16 w-full max-w-lg z-10"
+					initial={{ opacity: 0, y: 24 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ delay: 0.5, duration: 0.6 }}
 				>
-					<div className="w-6 h-10 border-2 border-primary rounded-full flex items-start justify-center p-2">
-						<div className="w-1.5 h-1.5 bg-primary rounded-full" />
-					</div>
+					<ProductShowcase />
 				</motion.div>
 			</section>
 
@@ -728,13 +704,13 @@ export function LandingPage() {
 						viewport={{ once: true }}
 						className="text-center mb-16"
 					>
-						<p className="eyebrow text-primary mb-3">FEATURES</p>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
-							Built for serious athletes.
+						<p className="eyebrow text-primary mb-3">WHAT YOU GET</p>
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							What your machine captures — finally visible.
 						</h2>
-						<p className="text-xl text-muted max-w-2xl mx-auto">
-							The insights your Vitruvian machine captures but never shows you —
-							from force output to recovery readiness.
+						<p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+							Every rep generates force, velocity, and timing data. Phoenix
+							Portal turns it into actionable training intelligence.
 						</p>
 					</motion.div>
 
@@ -771,6 +747,35 @@ export function LandingPage() {
 				</div>
 			</section>
 
+			{/* Interactive Demo Section */}
+			<section className="relative py-20 px-4 sm:px-6 lg:px-8">
+				<div className="max-w-7xl mx-auto">
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						className="text-center mb-10"
+					>
+						<p className="eyebrow text-primary mb-3">TRY IT</p>
+						<h2 className="text-3xl sm:text-4xl mb-3 text-white font-family-display">
+							Explore a real force curve.
+						</h2>
+						<p className="text-lg text-muted-foreground max-w-xl mx-auto">
+							This is one rep of sample data. The full portal shows every set,
+							every session, with velocity zones and fatigue detection.
+						</p>
+					</motion.div>
+					<motion.div
+						initial={{ opacity: 0, y: 16 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+						transition={{ delay: 0.15 }}
+					>
+						<ForceCurveDemo />
+					</motion.div>
+				</div>
+			</section>
+
 			{/* Pricing Section */}
 			<section id="pricing" className="relative py-24 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-7xl mx-auto">
@@ -781,11 +786,11 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">PRICING</p>
-						<h2 className="text-4xl sm:text-5xl mb-4 text-white font-family-display">
-							Choose Your Path
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							Plans
 						</h2>
-						<p className="text-xl text-muted">
-							Select the plan that fits your journey
+						<p className="text-lg text-muted-foreground">
+							Each tier unlocks deeper analysis.
 						</p>
 					</motion.div>
 
@@ -802,12 +807,12 @@ export function LandingPage() {
 								<Card
 									className={`p-8 h-full flex flex-col ${
 										tier.highlight
-											? "bg-gradient-to-br from-primary/20 to-chart-2/20 border-primary border-2 ring-4 ring-primary/20"
-											: "bg-gradient-to-br from-surface-2 to-background border-secondary"
+											? "bg-surface-2 border-primary border ring-1 ring-primary/20"
+											: "bg-surface-1 border-white/[0.06]"
 									}`}
 								>
 									{tier.highlight && (
-										<div className="mb-4 px-4 py-1 bg-gradient-to-r from-primary to-chart-2 rounded-full text-sm text-center w-fit mx-auto">
+										<div className="mb-4 px-3 py-0.5 bg-primary/15 text-primary text-xs font-medium rounded-full text-center w-fit mx-auto border border-primary/25">
 											RECOMMENDED
 										</div>
 									)}
@@ -859,8 +864,8 @@ export function LandingPage() {
 											tier.comingSoon
 												? "w-full border-2 border-accent/30 bg-transparent text-accent/60 cursor-not-allowed"
 												: tier.highlight
-													? "w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
-													: "w-full border-2 border-primary bg-transparent text-primary hover:bg-primary/10"
+													? "w-full bg-primary hover:bg-primary/90 border-0"
+													: "w-full border border-white/15 text-white hover:bg-white/5"
 										}
 									>
 										{tier.cta}
@@ -873,54 +878,52 @@ export function LandingPage() {
 			</section>
 
 			{/* CTA Section */}
-			<section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-amber-900/20 via-background to-background">
-				<div className="max-w-4xl mx-auto text-center">
+			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
+				<div className="max-w-3xl mx-auto text-center">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
-						<Flame className="w-12 h-12 text-primary mx-auto mb-6" />
-						<h2 className="text-4xl sm:text-5xl mb-6 text-white font-family-display">
-							Fan the flames.
+						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+							Start syncing workouts.
 						</h2>
-						<p className="text-xl text-secondary-foreground mb-8 max-w-2xl mx-auto">
-							Your Vitruvian machine captures incredible data every rep. Phoenix
-							Portal finally lets you see it all — force curves, biomechanics,
-							recovery, and a community that trains like you do.
+						<p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
+							Connect the Project Phoenix mobile app, complete a workout, and
+							your data flows here automatically. Force curves, recovery,
+							records — everything updates in real time.
 						</p>
-						<div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
-							<motion.div
-								whileTap={tap.press}
-								className="inline-flex w-full sm:w-auto"
+						<div className="flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
+							<Button
+								asChild
+								size="lg"
+								className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0"
 							>
-								<Button
-									size="lg"
-									onClick={openAuth}
-									className="w-full sm:w-auto bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent text-white border-0 shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/70 text-lg px-8 py-6 btn-shimmer"
+								<a
+									href="https://github.com/nicholascross/ProjectPhoenix"
+									target="_blank"
+									rel="noopener noreferrer"
 								>
-									<span className="flex items-center gap-2">
-										Get Started
-										<ArrowRight className="w-5 h-5" />
-									</span>
-								</Button>
-							</motion.div>
+									Get the mobile app
+								</a>
+							</Button>
+							<Button
+								size="lg"
+								variant="outline"
+								onClick={openAuth}
+								className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+							>
+								Preview dashboard
+							</Button>
+						</div>
+						<div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-muted-foreground">
 							<a
 								href="https://ko-fi.com/vitruvianredux"
 								target="_blank"
 								rel="noopener noreferrer"
-								className="w-full sm:w-auto"
+								className="hover:text-primary transition-colors"
 							>
-								<Button
-									size="lg"
-									variant="outline"
-									className="w-full border-2 border-primary text-primary hover:bg-primary/10 text-lg px-8 py-6"
-								>
-									<span className="flex items-center gap-2">
-										Support on Ko-fi
-										<ExternalLink className="w-4 h-4" />
-									</span>
-								</Button>
+								Support on Ko-fi
 							</a>
 						</div>
 					</motion.div>
@@ -937,7 +940,7 @@ export function LandingPage() {
 								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
-								Rise From the Ashes. Forge Your Strength.
+								Performance data for Vitruvian athletes.
 							</p>
 						</div>
 						<div>
