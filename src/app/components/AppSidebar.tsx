@@ -236,7 +236,7 @@ export function AppSidebar() {
 														: undefined
 												}
 											>
-												<NavLink to={item.path} className="relative">
+												<NavLink to={item.path} className="relative" aria-label={item.label}>
 													<item.icon className="shrink-0" />
 													<span className="group-data-[collapsible=icon]:hidden">
 														{item.label}
