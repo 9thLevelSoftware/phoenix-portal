@@ -83,6 +83,18 @@ export function LandingPage() {
 		}
 	}, [user, loading, navigate]);
 
+	// Lazy-load Space Grotesk font for landing page
+	useEffect(() => {
+		const link = document.createElement("link");
+		link.rel = "stylesheet";
+		link.href =
+			"https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
+		document.head.appendChild(link);
+		return () => {
+			document.head.removeChild(link);
+		};
+	}, []);
+
 	// Track scroll for sticky nav
 	useEffect(() => {
 		const handleScroll = () => setScrolled(window.scrollY > 20);
