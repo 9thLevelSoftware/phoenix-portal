@@ -555,7 +555,7 @@ export function Challenges() {
 					<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
 						{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
 						0 ? (
-							<div className="text-center py-12 text-muted">
+							<div className="text-center py-12 text-muted-foreground">
 								<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No active challenges right now</p>
 								<p className="text-xs mt-1">
@@ -564,7 +564,7 @@ export function Challenges() {
 							</div>
 						) : (
 							<>
-								<div className="text-xs text-muted mb-2">
+								<div className="text-xs text-muted-foreground mb-2">
 									Swipe left to leave, right to view
 								</div>
 								{activeChallenges
@@ -646,7 +646,7 @@ export function Challenges() {
 					{/* Mobile Past Challenges */}
 					<TabsContent value="past" className="px-4 py-12 mt-0">
 						{completedIds.size === 0 ? (
-							<div className="text-center text-muted">
+							<div className="text-center text-muted-foreground">
 								<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No past challenges yet</p>
 								<p className="text-xs mt-1">
@@ -682,7 +682,7 @@ export function Challenges() {
 					{/* Mobile Discover */}
 					<TabsContent value="discover" className="px-4 py-4 mt-0">
 						{discoverChallenges.length === 0 ? (
-							<div className="text-center py-12 text-muted">
+							<div className="text-center py-12 text-muted-foreground">
 								<Target className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No new challenges available</p>
 								<p className="text-xs mt-1">Check back soon</p>
@@ -755,7 +755,7 @@ export function Challenges() {
 						<TabsContent value="active" className="space-y-6">
 							{activeChallenges.length === 0 ? (
 								<div className="text-center py-16">
-									<Trophy className="w-16 h-16 text-muted mx-auto mb-4" />
+									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
 									<h3 className="text-xl font-semibold text-white mb-2">
 										No active challenges right now
 									</h3>
@@ -791,7 +791,7 @@ export function Challenges() {
 						<TabsContent value="past" className="space-y-6">
 							{pastChallenges.length === 0 ? (
 								<div className="text-center py-16">
-									<Trophy className="w-16 h-16 text-muted mx-auto mb-4" />
+									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
 									<p className="text-muted-foreground">
 										Complete your first challenge to see it here
 									</p>

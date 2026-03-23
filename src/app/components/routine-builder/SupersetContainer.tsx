@@ -57,7 +57,7 @@ export function SupersetContainer({
 			{/* Superset Header */}
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2">
-					<GripVertical className="w-5 h-5 text-muted cursor-grab active:cursor-grabbing" />
+					<GripVertical className="w-5 h-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
 					<div
 						className="text-sm font-bold px-2 py-1 rounded"
 						style={{
@@ -67,7 +67,7 @@ export function SupersetContainer({
 					>
 						SUPERSET {label}
 					</div>
-					<span className="text-xs text-muted">
+					<span className="text-xs text-muted-foreground">
 						{supersetExercises.length} exercises
 					</span>
 				</div>
@@ -91,7 +91,7 @@ export function SupersetContainer({
 						<div className="p-3 bg-background rounded-lg border border-secondary hover:border-primary transition-all">
 							<div className="flex items-center justify-between">
 								<div className="flex-1 flex items-center gap-3">
-									<GripVertical className="w-4 h-4 text-muted cursor-grab active:cursor-grabbing" />
+									<GripVertical className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
 									<div className="flex-1">
 										<div className="flex items-center gap-2 mb-1">
 											<span className="font-semibold text-white">
@@ -101,7 +101,7 @@ export function SupersetContainer({
 												{exercise.muscleGroup}
 											</span>
 										</div>
-										<div className="text-sm text-muted">
+										<div className="text-sm text-muted-foreground">
 											{exercise.sets.length} sets •{" "}
 											{exercise.sets[0]?.reps || 0} reps •{" "}
 											{exercise.sets[0]?.weight || 0} kg •{" "}
@@ -203,7 +203,7 @@ function TransitionIndicator({
 
 	return (
 		<div className="flex items-center justify-center my-2">
-			<div className="flex items-center gap-2 text-xs text-muted">
+			<div className="flex items-center gap-2 text-xs text-muted-foreground">
 				<ArrowDown className="w-4 h-4" />
 				{isEditing ? (
 					<div className="flex items-center gap-1">

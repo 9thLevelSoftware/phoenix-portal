@@ -106,7 +106,7 @@ function CommentItem({
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<span className="text-sm text-white font-medium">{authorName}</span>
-						<span className="text-xs text-muted">{timeAgo}</span>
+						<span className="text-xs text-muted-foreground">{timeAgo}</span>
 					</div>
 					{currentUserId && !isOwn && (
 						<ContentActionMenu
@@ -128,7 +128,7 @@ function CommentItem({
 						/>
 						<div className="flex items-center justify-between">
 							<span
-								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted"}`}
+								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
 							>
 								{editBody.length}/500
 							</span>
@@ -292,7 +292,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 					/>
 					<div className="flex items-center justify-between">
 						<span
-							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted"}`}
+							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
 						>
 							{newComment.length}/500
 						</span>

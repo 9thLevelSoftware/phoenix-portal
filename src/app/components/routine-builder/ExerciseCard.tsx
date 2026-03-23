@@ -62,7 +62,7 @@ export function ExerciseCard({
 									{isSelected && <Check className="w-3 h-3 text-white" />}
 								</div>
 							) : (
-								<GripVertical className="w-5 h-5 text-muted cursor-grab active:cursor-grabbing" />
+								<GripVertical className="w-5 h-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
 							)}
 						</div>
 
@@ -79,7 +79,7 @@ export function ExerciseCard({
 									{exercise.muscleGroup}
 								</Badge>
 							</div>
-							<div className="text-sm text-muted">
+							<div className="text-sm text-muted-foreground">
 								{exercise.sets.length} sets • {exercise.sets[0]?.reps || 0} reps
 								• {exercise.sets[0]?.weight || 0} kg • {exercise.programMode}
 							</div>

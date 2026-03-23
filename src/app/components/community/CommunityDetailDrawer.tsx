@@ -78,7 +78,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 					</div>
 					<div>
 						<p className="text-sm text-white">{authorName}</p>
-						<p className="text-xs text-muted">Shared {sharedAgo}</p>
+						<p className="text-xs text-muted-foreground">Shared {sharedAgo}</p>
 					</div>
 				</div>
 				{user && (
@@ -144,7 +144,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 									key={i}
 									className="flex items-center gap-2 p-2 bg-surface-2 rounded-md text-sm"
 								>
-									<span className="text-muted w-5 text-right">{i + 1}</span>
+									<span className="text-muted-foreground w-5 text-right">{i + 1}</span>
 									<span className="text-white">
 										{typeof ex === "object" && ex?.name
 											? ex.name
@@ -189,7 +189,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 
 			{/* Linked reference indicator */}
 			{isSaved && (
-				<div className="flex items-center gap-1.5 text-xs text-muted pt-1">
+				<div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1">
 					<Link2 className="w-3 h-3" />
 					<span>Linked to original</span>
 				</div>

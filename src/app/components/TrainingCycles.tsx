@@ -199,7 +199,7 @@ export function TrainingCycles() {
 										<span>{activeCycle.workout_days} workout days/week</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<BedDouble className="w-4 h-4 text-muted" />
+										<BedDouble className="w-4 h-4 text-muted-foreground" />
 										<span>{activeCycle.rest_days} rest days/week</span>
 									</div>
 								</div>
@@ -296,8 +296,8 @@ export function TrainingCycles() {
 													<span className="text-white font-medium">
 														{cycle.workout_days}
 													</span>
-													<span className="text-muted">/</span>
-													<BedDouble className="w-4 h-4 text-muted" />
+													<span className="text-muted-foreground">/</span>
+													<BedDouble className="w-4 h-4 text-muted-foreground" />
 													<span className="text-muted-foreground">
 														{cycle.rest_days}
 													</span>

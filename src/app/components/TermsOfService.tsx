@@ -46,7 +46,7 @@ export function TermsOfService() {
 					<p className="text-xl text-muted-foreground mb-2">
 						Project Phoenix - Vitruvian Trainer Companion App
 					</p>
-					<p className="text-sm text-muted mb-8">
+					<p className="text-sm text-muted-foreground mb-8">
 						Effective Date: February 27, 2026
 					</p>
 
@@ -396,7 +396,7 @@ export function TermsOfService() {
 			{/* Footer */}
 			<footer className="border-t border-secondary py-8 mt-12">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-					<p className="text-muted text-sm">
+					<p className="text-muted-foreground text-sm">
 						&copy; 2026 9th Level Software LLC. All rights reserved.
 					</p>
 				</div>

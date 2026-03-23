@@ -241,7 +241,7 @@ export function RoutineDetail() {
 									<p className="text-muted-foreground">
 										{formatExercisePrescription(item.exercise, unit)}
 									</p>
-									<p className="mt-2 text-sm text-muted">
+									<p className="mt-2 text-sm text-muted-foreground">
 										Rest: {item.exercise.rest_seconds}s between sets
 									</p>
 								</div>
@@ -297,7 +297,7 @@ export function RoutineDetail() {
 												<p className="text-muted-foreground">
 													{formatExercisePrescription(exercise, unit)}
 												</p>
-												<p className="mt-2 text-sm text-muted">
+												<p className="mt-2 text-sm text-muted-foreground">
 													Rest: {exercise.rest_seconds}s between sets
 												</p>
 											</div>

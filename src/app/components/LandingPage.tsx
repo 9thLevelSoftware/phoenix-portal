@@ -495,7 +495,7 @@ export function LandingPage() {
 								<div className="w-full border-t border-secondary" />
 							</div>
 							<div className="relative flex justify-center text-sm">
-								<span className="bg-surface-2 px-2 text-muted">
+								<span className="bg-surface-2 px-2 text-muted-foreground">
 									or continue with
 								</span>
 							</div>
@@ -1073,7 +1073,7 @@ export function LandingPage() {
 								9th Level Software LLC
 							</span>
 						</p>
-						<div className="text-muted text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
+						<div className="text-muted-foreground text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
 							<p className="font-semibold text-muted-foreground">
 								Legal Notice
 							</p>
@@ -1096,7 +1096,7 @@ export function LandingPage() {
 								disclaimers.
 							</p>
 						</div>
-						<p className="text-muted text-xs">
+						<p className="text-muted-foreground text-xs">
 							&copy; 2026 9th Level Software LLC. All rights reserved.
 						</p>
 					</div>
