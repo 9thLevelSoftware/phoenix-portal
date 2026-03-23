@@ -144,7 +144,7 @@ function QuickStatCard({
 						value
 					)}
 				</div>
-				<div className="text-xs text-muted-foreground">{label}</div>
+				<div className="eyebrow text-muted-foreground">{label}</div>
 			</Card>
 		</motion.div>
 	);
