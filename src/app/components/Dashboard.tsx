@@ -305,7 +305,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 						<Progress value={progress?.percentage ?? 0} className="h-2" />
 						<p className="mt-2 text-xs text-muted-foreground">
 							{progress
-								? `${progress.current.toLocaleString()} / ${progress.target.toLocaleString()}`
+								? `${Math.round(progress.current).toLocaleString()} / ${Math.round(progress.target).toLocaleString()}`
 								: "Calculating progress..."}
 						</p>
 					</div>
@@ -713,9 +713,7 @@ export function Dashboard() {
 								/>
 								<QuickStatCard
 									icon={<TrendingUp className="w-5 h-5" />}
-									value={
-										weeklyTotal > 0 ? formatVolume(weeklyTotal, unit) : "--"
-									}
+									value={formatVolume(weeklyTotal, unit)}
 									label="Volume"
 									gradient="from-success to-[#059669]"
 								/>
@@ -1024,9 +1022,7 @@ export function Dashboard() {
 													Weekly Volume
 												</div>
 												<div className="text-2xl font-semibold text-white">
-													{weeklyTotal > 0
-														? formatVolume(weeklyTotal, unit)
-														: "--"}
+													{formatVolume(weeklyTotal, unit)}
 												</div>
 											</div>
 										</div>
