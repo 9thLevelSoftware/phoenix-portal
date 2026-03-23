@@ -44,9 +44,9 @@ import {
 function getDifficultyColor(difficulty: string) {
 	switch (difficulty) {
 		case "easy":
-			return "from-success to-[#059669]";
+			return "from-success to-emerald-600";
 		case "medium":
-			return "from-accent to-[#D97706]";
+			return "from-accent to-amber-600";
 		case "hard":
 			return "from-primary to-chart-2";
 		case "extreme":

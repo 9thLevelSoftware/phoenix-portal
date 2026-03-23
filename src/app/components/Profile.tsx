@@ -526,7 +526,7 @@ export function Profile() {
 												: formatVolume(stats?.totalVolume ?? 0, weightUnit)}
 										</div>
 									</div>
-									<div className="p-4 bg-gradient-to-br from-success/10 to-[#059669]/10 border border-success/30 rounded-lg">
+									<div className="p-4 bg-gradient-to-br from-success/10 to-emerald-600/10 border border-success/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
