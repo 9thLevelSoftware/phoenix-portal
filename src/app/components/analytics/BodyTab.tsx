@@ -1,11 +1,31 @@
-import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Suspense, lazy, useState } from "react";
 import MuscleHighlighter, {
 	type ExtendedBodyPart,
 } from "react-muscle-highlighter";
-import { toast } from "sonner";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
 import { Card } from "@/app/components/ui/card";
+import type { Recommendation } from "@/lib/recommendations";
+import type { MuscleRecovery } from "@/lib/sra-recovery";
+import type { WeightUnit } from "@/lib/units";
+
+const ExerciseDeepDive = lazy(() =>
+	import("./ExerciseDeepDive").then((m) => ({ default: m.ExerciseDeepDive })),
+);
+const VolumeLandmarks = lazy(() =>
+	import("./VolumeLandmarks").then((m) => ({ default: m.VolumeLandmarks })),
+);
+const SraRecoveryMatrix = lazy(() =>
+	import("./SraRecoveryMatrix").then((m) => ({
+		default: m.SraRecoveryMatrix,
+	})),
+);
+const RecommendationsPanel = lazy(() =>
+	import("./RecommendationsPanel").then((m) => ({
+		default: m.RecommendationsPanel,
+	})),
+);
 
 type ChartOption = Record<string, unknown>;
 
@@ -21,6 +41,17 @@ export interface BodyTabProps {
 	muscleRadarData: Record<string, number>;
 	muscleHighlighterData: ExtendedBodyPart[];
 	muscleSlugToGroup: Record<string, string>;
+	weeklyVolume: Record<string, number>;
+	totalSessions: number;
+	muscleRecoveries: MuscleRecovery[];
+	recommendations: Recommendation[];
+	exercisesByMuscle: Record<
+		string,
+		Array<{ name: string; sessionCount: number }>
+	>;
+	userId: string;
+	unit: WeightUnit;
+	profileId?: string | null;
 }
 
 export default function BodyTab({
@@ -29,8 +60,19 @@ export default function BodyTab({
 	muscleRadarData,
 	muscleHighlighterData,
 	muscleSlugToGroup,
+	weeklyVolume,
+	totalSessions,
+	muscleRecoveries,
+	recommendations,
+	exercisesByMuscle,
+	userId,
+	unit,
+	profileId,
 }: BodyTabProps) {
 	const [bodySide, setBodySide] = useState<"front" | "back">("front");
+	const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<
+		string | null
+	>(null);
 
 	return (
 		<>
@@ -129,21 +171,32 @@ export default function BodyTab({
 			<Card className="p-6 bg-surface-2 border-secondary">
 				<div className="flex justify-between items-center mb-6">
 					<h3 className="text-xl text-white">Body Overview</h3>
-					<div className="flex bg-muted/20 rounded-lg overflow-hidden">
-						<button
-							type="button"
-							className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
-							onClick={() => setBodySide("front")}
-						>
-							Front
-						</button>
-						<button
-							type="button"
-							className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
-							onClick={() => setBodySide("back")}
-						>
-							Back
-						</button>
+					<div className="flex items-center gap-3">
+						{selectedMuscleGroup && (
+							<button
+								type="button"
+								className="text-xs text-primary hover:text-white transition-colors"
+								onClick={() => setSelectedMuscleGroup(null)}
+							>
+								Clear selection
+							</button>
+						)}
+						<div className="flex bg-muted/20 rounded-lg overflow-hidden">
+							<button
+								type="button"
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+								onClick={() => setBodySide("front")}
+							>
+								Front
+							</button>
+							<button
+								type="button"
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+								onClick={() => setBodySide("back")}
+							>
+								Back
+							</button>
+						</div>
 					</div>
 				</div>
 				<div className="flex justify-center">
@@ -165,8 +218,9 @@ export default function BodyTab({
 						]}
 						onBodyPartPress={(part) => {
 							if (part.slug) {
-								toast.info(
-									`${part.slug}: ${muscleSlugToGroup[part.slug] ?? "General"}`,
+								const group = muscleSlugToGroup[part.slug] ?? null;
+								setSelectedMuscleGroup((prev) =>
+									prev === group ? null : group,
 								);
 							}
 						}}
@@ -188,6 +242,71 @@ export default function BodyTab({
 					<span>High volume</span>
 				</div>
 			</Card>
+
+			{/* Exercise Deep-Dive (slides in when muscle selected) */}
+			<AnimatePresence>
+				{selectedMuscleGroup &&
+					exercisesByMuscle[selectedMuscleGroup] && (
+						<motion.div
+							key={selectedMuscleGroup}
+							initial={{ opacity: 0, height: 0 }}
+							animate={{ opacity: 1, height: "auto" }}
+							exit={{ opacity: 0, height: 0 }}
+							transition={{ duration: 0.3 }}
+						>
+							<Suspense
+								fallback={
+									<div className="h-64 animate-pulse bg-surface-2 rounded-lg" />
+								}
+							>
+								<ExerciseDeepDive
+									muscleGroup={selectedMuscleGroup}
+									exercises={
+										exercisesByMuscle[selectedMuscleGroup] ?? []
+									}
+									userId={userId}
+									unit={unit}
+									profileId={profileId}
+								/>
+							</Suspense>
+						</motion.div>
+					)}
+			</AnimatePresence>
+
+			{/* Volume Landmarks */}
+			<Suspense
+				fallback={
+					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
+				}
+			>
+				<VolumeLandmarks
+					weeklyVolume={weeklyVolume}
+					selectedMuscleGroup={selectedMuscleGroup}
+					recommendations={recommendations}
+					totalSessions={totalSessions}
+				/>
+			</Suspense>
+
+			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
+			<Suspense
+				fallback={
+					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
+				}
+			>
+				<SraRecoveryMatrix
+					recoveries={muscleRecoveries}
+					recommendations={recommendations}
+				/>
+			</Suspense>
+
+			{/* Recommendations Panel (self-gates for INFERNO) */}
+			<Suspense
+				fallback={
+					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
+				}
+			>
+				<RecommendationsPanel recommendations={recommendations} />
+			</Suspense>
 		</>
 	);
 }
