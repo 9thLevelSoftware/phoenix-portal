@@ -40,7 +40,10 @@ export interface MobileBodyTabProps {
 	totalSessions: number;
 	muscleRecoveries: MuscleRecovery[];
 	recommendations: Recommendation[];
-	exercisesByMuscle: Record<string, Array<{ name: string; sessionCount: number }>>;
+	exercisesByMuscle: Record<
+		string,
+		Array<{ name: string; sessionCount: number }>
+	>;
 	userId: string;
 	unit: WeightUnit;
 	profileId?: string | null;
