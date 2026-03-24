@@ -135,7 +135,7 @@ function FreeRecoveryView() {
 						</div>
 
 						<div className="flex items-center gap-4 sm:gap-6">
-							<div className="text-4xl sm:text-5xl font-bold text-primary">
+							<div className="text-4xl sm:text-5xl font-bold text-primary font-data">
 								{restDays}
 							</div>
 							<div>

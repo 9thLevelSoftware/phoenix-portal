@@ -348,7 +348,7 @@ export function Profile() {
 								)}
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
 									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
-									<span className="text-white">{streak} day streak</span>
+									<span className="text-white font-data">{streak} day streak</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
 									<TierBadge className="text-sm px-3 py-1" />
@@ -363,7 +363,7 @@ export function Profile() {
 										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-										<div className="text-2xl text-white mb-1">{stat.value}</div>
+										<div className="text-2xl text-white mb-1 font-data">{stat.value}</div>
 										<div className="text-xs text-muted-foreground">
 											{stat.label}
 										</div>
@@ -502,7 +502,7 @@ export function Profile() {
 													<div className="text-white">{exercise.name}</div>
 												</div>
 												<div className="text-right">
-													<div className="text-primary">
+													<div className="text-primary font-data">
 														{exercise.count} times
 													</div>
 												</div>
@@ -520,7 +520,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Total Volume Lifted
 										</div>
-										<div className="text-3xl text-primary">
+										<div className="text-3xl text-primary font-data">
 											{statsLoading
 												? "..."
 												: formatVolume(stats?.totalVolume ?? 0, weightUnit)}
@@ -530,7 +530,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
-										<div className="text-3xl text-success">
+										<div className="text-3xl text-success font-data">
 											{statsLoading ? "..." : `${stats?.bestStreak ?? 0} days`}
 										</div>
 									</div>
@@ -538,7 +538,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Personal Records
 										</div>
-										<div className="text-3xl text-accent">
+										<div className="text-3xl text-accent font-data">
 											{statsLoading ? "..." : (stats?.prCount ?? 0)}
 										</div>
 									</div>
@@ -560,7 +560,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Badges Earned
 										</div>
-										<div className="text-3xl text-white">
+										<div className="text-3xl text-white font-data">
 											{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
 										</div>
 									</div>
@@ -568,7 +568,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Current Streak
 										</div>
-										<div className="text-3xl text-primary">
+										<div className="text-3xl text-primary font-data">
 											{gamificationStats?.current_streak ?? streak} days
 										</div>
 									</div>
@@ -576,7 +576,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Longest Streak
 										</div>
-										<div className="text-3xl text-success">
+										<div className="text-3xl text-success font-data">
 											{gamificationStats?.longest_streak ??
 												stats?.bestStreak ??
 												0}{" "}
@@ -609,7 +609,7 @@ export function Profile() {
 											<div key={label as string}>
 												<div className="flex items-center justify-between text-sm mb-1">
 													<span className="text-muted-foreground">{label}</span>
-													<span className="text-white">{value as number}</span>
+													<span className="text-white font-data">{value as number}</span>
 												</div>
 												<div className="h-2 rounded-full bg-background overflow-hidden">
 													<div
@@ -646,7 +646,7 @@ export function Profile() {
 										<span className="text-muted-foreground">
 											Total Workouts
 										</span>
-										<span className="text-white">
+										<span className="text-white font-data">
 											{gamificationStats?.total_workouts ??
 												stats?.totalWorkouts ??
 												0}
@@ -654,13 +654,13 @@ export function Profile() {
 									</div>
 									<div className="flex items-center justify-between py-2 border-b border-secondary">
 										<span className="text-muted-foreground">Total Reps</span>
-										<span className="text-white">
+										<span className="text-white font-data">
 											{gamificationStats?.total_reps ?? 0}
 										</span>
 									</div>
 									<div className="flex items-center justify-between py-2">
 										<span className="text-muted-foreground">Total Volume</span>
-										<span className="text-primary">
+										<span className="text-primary font-data">
 											{formatVolume(
 												gamificationStats?.total_volume_kg ??
 													stats?.totalVolume ??

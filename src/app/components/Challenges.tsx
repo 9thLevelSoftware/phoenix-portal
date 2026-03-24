@@ -102,7 +102,7 @@ function ChallengeProgressBar({
 			<div className="mb-3">
 				<div className="flex items-center justify-between mb-1">
 					<span className="text-xs text-muted-foreground">Progress</span>
-					<span className="text-xs font-semibold text-primary">
+					<span className="text-xs font-semibold text-primary font-data">
 						{percentage}%
 					</span>
 				</div>
@@ -115,11 +115,11 @@ function ChallengeProgressBar({
 		<div>
 			<div className="flex items-center justify-between mb-2 text-sm">
 				<span className="text-muted-foreground">Your Progress</span>
-				<span className="text-white">{percentage}%</span>
+				<span className="text-white font-data">{percentage}%</span>
 			</div>
 			<Progress value={percentage} className="h-3" />
 			{progress && (
-				<div className="text-xs text-muted-foreground mt-1">
+				<div className="text-xs text-muted-foreground mt-1 font-data">
 					{progress.current.toLocaleString()} /{" "}
 					{progress.target.toLocaleString()}
 				</div>
@@ -206,7 +206,7 @@ function ChallengeCard({
 						<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Target</div>
-								<div className="text-xl text-white">
+								<div className="text-xl text-white font-data">
 									{challenge.target_value.toLocaleString()}{" "}
 									{challenge.target_unit}
 								</div>
@@ -215,7 +215,7 @@ function ChallengeCard({
 								<div className="text-xs text-muted-foreground mb-1">
 									Time Left
 								</div>
-								<div className="text-xl text-warning">{daysLeft} days</div>
+								<div className="text-xl text-warning font-data">{daysLeft} days</div>
 							</div>
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Type</div>

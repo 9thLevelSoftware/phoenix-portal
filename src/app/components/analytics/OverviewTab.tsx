@@ -61,11 +61,11 @@ export default function OverviewTab({
 					<h3 className="text-xl text-white mb-4">Activity Sources</h3>
 					<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 						<div>
-							<p className="text-2xl font-bold text-primary">{totalWorkouts}</p>
+							<p className="text-2xl font-bold text-primary font-data">{totalWorkouts}</p>
 							<p className="text-sm text-muted-foreground">Phoenix Workouts</p>
 						</div>
 						<div>
-							<p className="text-2xl font-bold text-blue-400">
+							<p className="text-2xl font-bold text-blue-400 font-data">
 								{externalCount}
 							</p>
 							<p className="text-sm text-muted-foreground">
@@ -73,13 +73,13 @@ export default function OverviewTab({
 							</p>
 						</div>
 						<div>
-							<p className="text-2xl font-bold text-white">
+							<p className="text-2xl font-bold text-white font-data">
 								{totalWorkouts + externalCount}
 							</p>
 							<p className="text-sm text-muted-foreground">Total Activities</p>
 						</div>
 						<div>
-							<p className="text-2xl font-bold text-emerald-400">
+							<p className="text-2xl font-bold text-emerald-400 font-data">
 								{externalChartData
 									.reduce((sum, a) => sum + a.calories, 0)
 									.toLocaleString()}

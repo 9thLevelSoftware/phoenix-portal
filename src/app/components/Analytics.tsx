@@ -402,7 +402,7 @@ function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
-					<span className="text-2xl font-bold text-white">{value}</span>
+					<span className="text-2xl font-bold text-white font-data">{value}</span>
 					<div className="text-primary">{icon}</div>
 				</div>
 				{delta && (

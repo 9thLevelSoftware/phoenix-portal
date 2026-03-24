@@ -647,7 +647,7 @@ export function WorkoutHistory() {
 								<Card className="inline-block bg-gradient-to-br from-primary/20 to-chart-2/20 border-2 border-primary/30 px-8 py-4">
 									<div className="flex items-center gap-3">
 										<Flame className="w-6 h-6 text-primary" />
-										<span className="text-2xl font-semibold text-white">
+										<span className="text-2xl font-semibold text-white font-data">
 											{streak} Day Streak
 										</span>
 										<Flame className="w-6 h-6 text-primary" />
@@ -792,7 +792,7 @@ export function WorkoutHistory() {
 																	<div className="text-sm text-muted-foreground mb-1">
 																		Volume
 																	</div>
-																	<div className="text-lg font-semibold text-white">
+																	<div className="text-lg font-semibold text-white font-data">
 																		{formatVolume(workout.total_volume, unit)}
 																	</div>
 																</div>
@@ -800,7 +800,7 @@ export function WorkoutHistory() {
 																	<div className="text-sm text-muted-foreground mb-1">
 																		Duration
 																	</div>
-																	<div className="text-lg font-semibold text-white flex items-center justify-center gap-1">
+																	<div className="text-lg font-semibold text-white flex items-center justify-center gap-1 font-data">
 																		<Clock className="w-4 h-4" />
 																		{workout.duration_seconds}m
 																	</div>
@@ -986,11 +986,11 @@ export function WorkoutHistory() {
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Duration</span>
-												<span>{workout.duration_seconds} min</span>
+												<span className="font-data">{workout.duration_seconds} min</span>
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Volume</span>
-												<span>{formatVolume(workout.total_volume, unit)}</span>
+												<span className="font-data">{formatVolume(workout.total_volume, unit)}</span>
 											</div>
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">
