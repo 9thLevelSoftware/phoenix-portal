@@ -61,7 +61,7 @@ export function TermsOfService() {
 					</div>
 
 					{/* Terms Sections */}
-					<div className="space-y-8">
+					<article className="space-y-8">
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">
 								1. Acceptance of Terms
@@ -378,7 +378,7 @@ export function TermsOfService() {
 								</li>
 							</ul>
 						</section>
-					</div>
+					</article>
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">

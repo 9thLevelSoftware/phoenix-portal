@@ -270,8 +270,8 @@ export function FAQ() {
 						data, and account management.
 					</p>
 
-					{/* FAQ categories */}
-					<div className="space-y-10">
+					{/* FAQ categories and contact section */}
+					<article className="space-y-10">
 						{faqCategories.map((category) => (
 							<section key={category.title}>
 								<h2 className="text-2xl font-semibold text-white mb-4">
@@ -294,63 +294,63 @@ export function FAQ() {
 								</Accordion>
 							</section>
 						))}
-					</div>
 
-					{/* Contact section */}
-					<div className="mt-16">
-						<Card className="border-primary/20 bg-card/50">
-							<CardHeader>
-								<div className="flex items-center gap-3">
-									<MessageSquare className="w-6 h-6 text-primary" />
-									<CardTitle className="text-2xl font-semibold">
-										Still Need Help?
-									</CardTitle>
-								</div>
-							</CardHeader>
-							<CardContent className="space-y-4">
-								<div className="space-y-3">
-									<div className="flex items-start gap-3">
-										<ExternalLink className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-										<div>
-											<p className="font-medium text-white">GitHub Issues</p>
-											<p className="text-muted-foreground text-sm">
-												For bug reports, feature requests, and technical
-												support, open an issue on our GitHub repository. This is
-												the primary support channel.
-											</p>
-											<a
-												href="https://github.com/dasBlueworker/phoenix-portal/issues"
-												target="_blank"
-												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 text-primary hover:underline text-sm mt-1"
-											>
-												Open an issue on GitHub
-												<ExternalLink className="w-3.5 h-3.5" />
-											</a>
+						{/* Contact section */}
+						<div className="mt-16">
+							<Card className="border-primary/20 bg-card/50">
+								<CardHeader>
+									<div className="flex items-center gap-3">
+										<MessageSquare className="w-6 h-6 text-primary" />
+										<CardTitle className="text-2xl font-semibold">
+											Still Need Help?
+										</CardTitle>
+									</div>
+								</CardHeader>
+								<CardContent className="space-y-4">
+									<div className="space-y-3">
+										<div className="flex items-start gap-3">
+											<ExternalLink className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+											<div>
+												<p className="font-medium text-white">GitHub Issues</p>
+												<p className="text-muted-foreground text-sm">
+													For bug reports, feature requests, and technical
+													support, open an issue on our GitHub repository. This is
+													the primary support channel.
+												</p>
+												<a
+													href="https://github.com/dasBlueworker/phoenix-portal/issues"
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 text-primary hover:underline text-sm mt-1"
+												>
+													Open an issue on GitHub
+													<ExternalLink className="w-3.5 h-3.5" />
+												</a>
+											</div>
+										</div>
+
+										<div className="flex items-start gap-3">
+											<MessageSquare className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+											<div>
+												<p className="font-medium text-white">Community</p>
+												<p className="text-muted-foreground text-sm">
+													For workout-related questions, training advice, and
+													routine sharing, check out the Community section inside
+													the app. Fellow Phoenix users are happy to help.
+												</p>
+											</div>
 										</div>
 									</div>
 
-									<div className="flex items-start gap-3">
-										<MessageSquare className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-										<div>
-											<p className="font-medium text-white">Community</p>
-											<p className="text-muted-foreground text-sm">
-												For workout-related questions, training advice, and
-												routine sharing, check out the Community section inside
-												the app. Fellow Phoenix users are happy to help.
-											</p>
-										</div>
-									</div>
-								</div>
-
-								<p className="text-xs text-muted-foreground pt-2 border-t border-border">
-									Phoenix Portal is a solo-developer community project. GitHub
-									issues are monitored regularly and are the fastest way to get
-									a response.
-								</p>
-							</CardContent>
-						</Card>
-					</div>
+									<p className="text-xs text-muted-foreground pt-2 border-t border-border">
+										Phoenix Portal is a solo-developer community project. GitHub
+										issues are monitored regularly and are the fastest way to get
+										a response.
+									</p>
+								</CardContent>
+							</Card>
+						</div>
+					</article>
 				</motion.div>
 			</main>
 		</div>
