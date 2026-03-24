@@ -45,15 +45,27 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
+import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
+import type { Recommendation } from "@/lib/recommendations";
+import {
+	generateSraRecommendations,
+	generateVolumeRecommendations,
+	mergeRecommendations,
+} from "@/lib/recommendations";
+import type { MuscleRecovery } from "@/lib/sra-recovery";
+import { computeSraStatus } from "@/lib/sra-recovery";
 import { calculateRTL, classifyTrainingLoad } from "@/lib/training-load";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import type { ExerciseSessionData } from "@/lib/volume-landmarks";
+import { computeWeeklyVolume } from "@/lib/volume-landmarks";
 import {
 	muscleGroupOptions,
 	strengthProgressOptions,
 	volumeComparisonOptions,
 	volumeTrendOptions,
 } from "@/queries/analytics";
+import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
 import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
@@ -402,7 +414,9 @@ function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
-					<span className="text-2xl font-bold text-white font-data">{value}</span>
+					<span className="text-2xl font-bold text-white font-data">
+						{value}
+					</span>
 					<div className="text-primary">{icon}</div>
 				</div>
 				{delta && (
@@ -491,9 +505,121 @@ export function Analytics() {
 		...insightsOptions(userId, insightPeriod),
 		enabled: !!userId,
 	});
+	const { data: bodyIntelData } = useQuery({
+		...bodyIntelligenceOptions(userId, 7, activeProfileId),
+		enabled: !!userId,
+	});
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const isPending = volumePending || musclePending || strengthPending;
+
+	// --- Body Intelligence derived data ---
+
+	// Transform query result to ExerciseSessionData for volume computation
+	const exerciseSessionData: ExerciseSessionData[] = useMemo(() => {
+		return (bodyIntelData ?? []).map((row) => ({
+			name: row.name,
+			muscleGroup: row.muscle_group,
+			setCount: row.setCount,
+		}));
+	}, [bodyIntelData]);
+
+	const weeklyVolume = useMemo(
+		() => computeWeeklyVolume(exerciseSessionData),
+		[exerciseSessionData],
+	);
+
+	// Group exercises by primary muscle group for ExerciseDeepDive
+	const exercisesByMuscle = useMemo(() => {
+		const grouped: Record<string, Map<string, number>> = {};
+		for (const ex of exerciseSessionData) {
+			const profile = getExerciseProfile(ex.name, ex.muscleGroup ?? undefined);
+			const group = profile.primary.group;
+			if (group === "General") continue;
+			if (!grouped[group]) grouped[group] = new Map();
+			const current = grouped[group].get(ex.name) ?? 0;
+			grouped[group].set(ex.name, current + 1);
+		}
+		const result: Record<
+			string,
+			Array<{ name: string; sessionCount: number }>
+		> = {};
+		for (const [group, exercises] of Object.entries(grouped)) {
+			result[group] = [...exercises.entries()]
+				.map(([name, count]) => ({ name, sessionCount: count }))
+				.sort((a, b) => b.sessionCount - a.sessionCount);
+		}
+		return result;
+	}, [exerciseSessionData]);
+
+	// Compute SRA recovery for each muscle group
+	const muscleRecoveries: MuscleRecovery[] = useMemo(() => {
+		const groups = ["Chest", "Back", "Shoulders", "Legs", "Arms", "Core"];
+		return groups.map((group) => {
+			// Find most recent session for this muscle group
+			const exercisesForGroup = (bodyIntelData ?? []).filter((row) => {
+				const profile = getExerciseProfile(
+					row.name,
+					row.muscle_group ?? undefined,
+				);
+				return profile.primary.group === group;
+			});
+
+			if (exercisesForGroup.length === 0) {
+				return computeSraStatus(group, {
+					hoursSinceLastTrained: null,
+					isHeavy: false,
+					isHighVolume: false,
+				});
+			}
+
+			// Find most recent session timestamp
+			const mostRecent = exercisesForGroup.reduce(
+				(latest, ex) => {
+					const sessionDate = ex.workout_sessions?.started_at;
+					if (!sessionDate) return latest;
+					const date = new Date(sessionDate);
+					return !latest || date > latest ? date : latest;
+				},
+				null as Date | null,
+			);
+
+			const hoursSince = mostRecent
+				? (Date.now() - mostRecent.getTime()) / (1000 * 60 * 60)
+				: null;
+
+			// Simple intensity/volume check (without per-set weight data for now)
+			const setsForGroup = weeklyVolume[group] ?? 0;
+			const isHighVolume =
+				setsForGroup >
+				({
+					Chest: 18,
+					Back: 20,
+					Shoulders: 16,
+					Legs: 16,
+					Arms: 14,
+					Core: 12,
+				}[group] ?? 16);
+
+			return computeSraStatus(group, {
+				hoursSinceLastTrained: hoursSince,
+				isHeavy: false, // Conservative default; intensity calc deferred to sessionSetWeights integration
+				isHighVolume,
+			});
+		});
+	}, [bodyIntelData, weeklyVolume]);
+
+	// Compute recommendations
+	const recommendations: Recommendation[] = useMemo(() => {
+		const volumeRecos = generateVolumeRecommendations(weeklyVolume);
+		const sraRecos = generateSraRecommendations(muscleRecoveries);
+		return mergeRecommendations([...volumeRecos, ...sraRecos]);
+	}, [weeklyVolume, muscleRecoveries]);
+
+	const totalSessions = useMemo(() => {
+		const sessionIds = new Set((bodyIntelData ?? []).map((r) => r.session_id));
+		return sessionIds.size;
+	}, [bodyIntelData]);
 
 	// Convert external activities to chart-compatible format
 	const externalChartData = (externalActivities ?? []).map((activity) => ({
@@ -1112,6 +1238,14 @@ export function Analytics() {
 										muscleGroupData={muscleGroupData}
 										muscleRadarData={muscleRadarData}
 										mobileMusclData={mobileMusclData}
+										weeklyVolume={weeklyVolume}
+										totalSessions={totalSessions}
+										muscleRecoveries={muscleRecoveries}
+										recommendations={recommendations}
+										exercisesByMuscle={exercisesByMuscle}
+										userId={userId}
+										unit={unit}
+										profileId={activeProfileId}
 									/>
 								</Suspense>
 							)}
@@ -1130,9 +1264,7 @@ export function Analytics() {
 					{/* Header */}
 					<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">
-								Analytics Hub
-							</h1>
+							<h1 className="text-display-2 mb-2 text-white">Analytics Hub</h1>
 							<p className="text-muted-foreground">
 								Comprehensive insights into your training
 							</p>
@@ -1279,18 +1411,10 @@ export function Analytics() {
 								className="space-y-6"
 							>
 								<TabsList variant="panel">
-									<TabsTrigger value="overview">
-										Overview
-									</TabsTrigger>
-									<TabsTrigger value="progress">
-										Progress
-									</TabsTrigger>
-									<TabsTrigger value="body">
-										Body
-									</TabsTrigger>
-									<TabsTrigger value="performance">
-										Performance
-									</TabsTrigger>
+									<TabsTrigger value="overview">Overview</TabsTrigger>
+									<TabsTrigger value="progress">Progress</TabsTrigger>
+									<TabsTrigger value="body">Body</TabsTrigger>
+									<TabsTrigger value="performance">Performance</TabsTrigger>
 								</TabsList>
 
 								{/* ====== TAB 1: OVERVIEW ====== */}
@@ -1334,6 +1458,14 @@ export function Analytics() {
 											muscleRadarData={muscleRadarData}
 											muscleHighlighterData={muscleHighlighterData}
 											muscleSlugToGroup={muscleSlugToGroup}
+											weeklyVolume={weeklyVolume}
+											totalSessions={totalSessions}
+											muscleRecoveries={muscleRecoveries}
+											recommendations={recommendations}
+											exercisesByMuscle={exercisesByMuscle}
+											userId={userId}
+											unit={unit}
+											profileId={activeProfileId}
 										/>
 									</Suspense>
 								</TabsContent>
