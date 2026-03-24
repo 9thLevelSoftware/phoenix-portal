@@ -1,11 +1,18 @@
-/* Phoenix Typography — Inter Variable */
+/* Phoenix Typography — Inter (UI) + JetBrains Mono (Data) */
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --default-font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-data: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
 }
 
 /* Data/Numbers — Tabular figures */
 .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Data font utility — monospace for metrics, values, readouts */
+.font-data {
+  font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
 }

@@ -1,6 +1,6 @@
 :root {
   --font-size: 16px;
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Phoenix Project Color Palette */
   --phoenix-black: #0D0D0D;
