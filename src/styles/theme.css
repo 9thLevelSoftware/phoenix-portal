@@ -2,8 +2,8 @@
   --font-size: 16px;
   --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* Phoenix Project Color Palette */
-  --phoenix-black: #0D0D0D;
+  /* Signal palette — instrument panel */
+  --phoenix-black: #06060a;
   --phoenix-ember: #FF6B35;
   --phoenix-flame-red: #DC2626;
   --phoenix-gold: #F59E0B;
@@ -12,83 +12,90 @@
   --phoenix-forge-green: #10B981;
   --phoenix-flame-yellow: #FBBF24;
   --phoenix-crimson: #EF4444;
-  --phoenix-white: #FFFFFF;
+  --phoenix-white: #e0e0e8;
   --phoenix-light-gray: #E5E7EB;
 
-  --background: #0D0D0D;
-  --foreground: #FFFFFF;
-  --card: rgba(13, 13, 13, 0.8);
-  --card-foreground: #E5E7EB;
-  --popover: #1a1a1a;
-  --popover-foreground: #FFFFFF;
+  /* Signal-specific */
+  --cable-a: #FF6B35;
+  --cable-b: #6ba3f7;
+  --signal-ok: #00e676;
+  --signal-warn: #ffab00;
+  --signal-danger: #ff5252;
+
+  --background: #06060a;
+  --foreground: #e0e0e8;
+  --card: #0a0a10;
+  --card-foreground: #e0e0e8;
+  --popover: #0e0e14;
+  --popover-foreground: #e0e0e8;
   --primary: #FF6B35;
   --primary-foreground: #FFFFFF;
-  --secondary: #374151;
-  --secondary-foreground: #E5E7EB;
-  --muted: #838B98;
-  --muted-foreground: #9CA3AF;
+  --secondary: #1a1a24;
+  --secondary-foreground: #e0e0e8;
+  --muted: #4a4a56;
+  --muted-foreground: #888894;
   --accent: #F59E0B;
-  --accent-foreground: #0D0D0D;
-  --destructive: #EF4444;
+  --accent-foreground: #06060a;
+  --destructive: #ff5252;
   --destructive-foreground: #FFFFFF;
-  --success: #10B981;
-  --success-foreground: #FFFFFF;
-  --warning: #FBBF24;
-  --warning-foreground: #0D0D0D;
-  --border: rgba(255, 107, 53, 0.2);
-  --input: rgba(55, 65, 81, 0.5);
-  --input-background: rgba(55, 65, 81, 0.3);
-  --switch-background: #374151;
+  --success: #00e676;
+  --success-foreground: #06060a;
+  --warning: #ffab00;
+  --warning-foreground: #06060a;
+  --border: #1a1a24;
+  --input: rgba(26, 26, 36, 0.5);
+  --input-background: rgba(26, 26, 36, 0.3);
+  --switch-background: #1a1a24;
   --ring: #FF6B35;
 
-  /* Phoenix gradient colors for charts */
+  /* Chart colors — Signal palette */
   --chart-1: #FF6B35;
-  --chart-2: #DC2626;
+  --chart-2: #6ba3f7;
   --chart-3: #F59E0B;
-  --chart-4: #10B981;
-  --chart-5: #6B7280;
+  --chart-4: #00e676;
+  --chart-5: #7c4dff;
 
   --radius: var(--radius-lg);
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 
-  --sidebar: rgba(13, 13, 13, 0.95);
-  --sidebar-foreground: #E5E7EB;
+  --sidebar: rgba(6, 6, 10, 0.95);
+  --sidebar-foreground: #e0e0e8;
   --sidebar-primary: #FF6B35;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: rgba(255, 107, 53, 0.1);
   --sidebar-accent-foreground: #FF6B35;
-  --sidebar-border: rgba(255, 107, 53, 0.2);
+  --sidebar-border: #1a1a24;
   --sidebar-ring: #FF6B35;
-  --sidebar-group-label: #B08968;
+  --sidebar-group-label: #4a4a56;
 
-  /* Elevation / Surface layers */
-  --surface-0: #0D0D0D;
-  --surface-1: #141414;
-  --surface-2: #1A1A1A;
-  --surface-3: #222222;
-  --surface-overlay: rgba(13, 13, 13, 0.95);
+  /* Surface layers — deeper, more contrast */
+  --surface-0: #06060a;
+  --surface-1: #0a0a10;
+  --surface-2: #0e0e14;
+  --surface-3: #141420;
+  --surface-overlay: rgba(6, 6, 10, 0.95);
 
-  /* Elevation shadows (brand-tinted — warm ember undertone) */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.01);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.015);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.02);
+  /* Shadows — minimal, no brand tint */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
 
   /* Icon colors */
   --icon-default: var(--foreground);
   --icon-muted: var(--muted-foreground);
   --icon-accent: var(--phoenix-ember);
-  --icon-success: var(--phoenix-forge-green);
-  --icon-warning: var(--phoenix-gold);
-  --icon-danger: var(--phoenix-crimson);
+  --icon-success: var(--signal-ok);
+  --icon-warning: var(--signal-warn);
+  --icon-danger: var(--signal-danger);
 
-  /* Semantic data colors — use instead of brand orange for contextual meaning */
-  --semantic-positive: #10B981;    /* recovery ready, improvement, streak */
-  --semantic-caution: #F59E0B;     /* high load, approaching limit */
-  --semantic-info: #60A5FA;        /* synced status, neutral data, info badges */
-  --semantic-negative: #EF4444;    /* fatigue, regression, alert */
-  --semantic-neutral: #6B7280;     /* inactive, empty, placeholder */
+  /* Semantic data colors */
+  --semantic-positive: #00e676;
+  --semantic-caution: #ffab00;
+  --semantic-info: #6ba3f7;
+  --semantic-negative: #ff5252;
+  --semantic-neutral: #4a4a56;
 }
 
 
@@ -143,13 +150,19 @@
   --color-semantic-info: var(--semantic-info);
   --color-semantic-negative: var(--semantic-negative);
   --color-semantic-neutral: var(--semantic-neutral);
+  --color-cable-a: var(--cable-a);
+  --color-cable-b: var(--cable-b);
+  --color-signal-ok: var(--signal-ok);
+  --color-signal-warn: var(--signal-warn);
+  --color-signal-danger: var(--signal-danger);
+  --font-family-data: var(--font-data);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
 @theme {
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 107, 53, 0.01);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 107, 53, 0.015);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 107, 53, 0.02);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 @layer base {
