@@ -14,7 +14,7 @@ export function RecoveryDashboardWidget() {
 	if (!isPremium) {
 		return (
 			<Card className="relative overflow-hidden p-6 signal-panel">
-				<div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-chart-2/5 pointer-events-none" />
+				<div className="absolute inset-0 bg-primary/5 pointer-events-none" />
 				<div className="relative z-10">
 					<div className="flex items-center justify-between mb-3">
 						<h3 className="text-xl text-white flex items-center gap-2">

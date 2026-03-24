@@ -68,7 +68,7 @@ export function UpgradePrompt({
 
 	return (
 		<Card
-			className={`relative overflow-hidden bg-gradient-to-br from-surface-2 to-background ${colors.border} p-8`}
+			className={`relative overflow-hidden bg-surface-2 ${colors.border} p-8`}
 		>
 			{/* Subtle gradient glow */}
 			<div

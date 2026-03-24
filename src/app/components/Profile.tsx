@@ -294,7 +294,7 @@ export function Profile() {
 					animate={{ opacity: 1, y: 0 }}
 					className="mb-8"
 				>
-					<Card className="p-8 bg-gradient-to-br from-surface-2 to-background border-secondary relative overflow-hidden">
+					<Card className="p-8 bg-surface-2 border-secondary relative overflow-hidden">
 						{/* Background Effect */}
 						<div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-chart-2/10 opacity-50" />
 
@@ -305,7 +305,7 @@ export function Profile() {
 									{profile?.avatar_url ? (
 										<AvatarImage src={profile.avatar_url} alt={displayName} />
 									) : null}
-									<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-3xl">
+									<AvatarFallback className="bg-primary text-white text-3xl">
 										{profileLoading ? "..." : initials}
 									</AvatarFallback>
 								</Avatar>
@@ -381,7 +381,7 @@ export function Profile() {
 					transition={{ delay: 0.1 }}
 					className="mb-8"
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 							<CreditCard className="w-5 h-5 text-primary" />
 							Subscription
@@ -464,7 +464,7 @@ export function Profile() {
 					<TabsContent value="stats" className="space-y-6">
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Top Exercises */}
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 bg-surface-2 border-secondary">
 								<h3 className="text-xl text-white mb-6">Top Exercises</h3>
 								{exercisesLoading ? (
 									<div className="space-y-4">
@@ -513,7 +513,7 @@ export function Profile() {
 							</Card>
 
 							{/* Achievement Summary */}
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 bg-surface-2 border-secondary">
 								<h3 className="text-xl text-white mb-6">Achievement Summary</h3>
 								<div className="space-y-4">
 									<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
@@ -550,7 +550,7 @@ export function Profile() {
 					{/* Badges Tab */}
 					<TabsContent value="badges" className="space-y-6">
 						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 bg-surface-2 border-secondary">
 								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 									<Award className="w-5 h-5 text-primary" />
 									Badge Summary
@@ -586,7 +586,7 @@ export function Profile() {
 								</div>
 							</Card>
 
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 bg-surface-2 border-secondary">
 								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 									<Shield className="w-5 h-5 text-accent" />
 									RPG Attributes
@@ -613,7 +613,7 @@ export function Profile() {
 												</div>
 												<div className="h-2 rounded-full bg-background overflow-hidden">
 													<div
-														className="h-full bg-gradient-to-r from-primary to-chart-2"
+														className="h-full bg-primary"
 														style={{
 															width: `${Math.min(value as number, 100)}%`,
 														}}
@@ -636,7 +636,7 @@ export function Profile() {
 								)}
 							</Card>
 
-							<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-6 bg-surface-2 border-secondary">
 								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 									<Flame className="w-5 h-5 text-warning" />
 									Gamification
@@ -673,7 +673,7 @@ export function Profile() {
 							</Card>
 						</div>
 
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<div className="flex items-center justify-between mb-6">
 								<h3 className="text-xl text-white">Earned Badges</h3>
 								{earnedBadges && earnedBadges.length > 0 && (
@@ -734,7 +734,7 @@ export function Profile() {
 
 					{/* Integrations Tab */}
 					<TabsContent value="integrations" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<h3 className="text-xl text-white mb-6">Connected Apps</h3>
 							{integrationsLoading ? (
 								<div className="space-y-4">
@@ -828,7 +828,7 @@ export function Profile() {
 
 					{/* Settings Tab */}
 					<TabsContent value="settings" className="space-y-6">
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Bell className="w-5 h-5" />
 								Notification Settings
@@ -913,7 +913,7 @@ export function Profile() {
 							</div>
 						</Card>
 
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Globe className="w-5 h-5" />
 								General Settings
@@ -964,7 +964,7 @@ export function Profile() {
 										<Button
 											className={
 												weightUnit === "kg"
-													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
+													? "flex-1 bg-primary border-0"
 													: "flex-1 border-secondary text-muted-foreground"
 											}
 											variant={weightUnit === "kg" ? "default" : "outline"}
@@ -981,7 +981,7 @@ export function Profile() {
 										<Button
 											className={
 												weightUnit === "lbs"
-													? "flex-1 bg-gradient-to-r from-primary to-chart-2 border-0"
+													? "flex-1 bg-primary border-0"
 													: "flex-1 border-secondary text-muted-foreground"
 											}
 											variant={weightUnit === "lbs" ? "default" : "outline"}
@@ -1000,7 +1000,7 @@ export function Profile() {
 							</div>
 						</Card>
 
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<Shield className="w-5 h-5" />
 								Privacy & Security
@@ -1057,7 +1057,7 @@ export function Profile() {
 						{/* Account Deletion - available to all tiers (GDPR right to erasure) */}
 						<DangerZone />
 
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-6 bg-surface-2 border-secondary">
 							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
 								<LogOut className="w-5 h-5" />
 								Account

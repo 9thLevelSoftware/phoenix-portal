@@ -28,7 +28,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 	if (isPending) {
 		return (
 			<Card
-				className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary"
+				className="p-6 bg-surface-2 border-secondary"
 				data-print-hide
 			>
 				<div className="flex items-center justify-between mb-4">
@@ -47,7 +47,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 	if (isError || !cycleDetail) {
 		return (
 			<Card
-				className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary"
+				className="p-6 bg-surface-2 border-secondary"
 				data-print-hide
 			>
 				<div className="flex items-center justify-between mb-4">
@@ -74,7 +74,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 	if (!result) {
 		return (
 			<Card
-				className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary"
+				className="p-6 bg-surface-2 border-secondary"
 				data-print-hide
 			>
 				<div className="flex items-center justify-between mb-4">
@@ -98,7 +98,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 	if (result.isRestDay) {
 		return (
 			<Card
-				className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-success/50 transition-all duration-300"
+				className="p-6 bg-surface-2 border-secondary hover:border-success/50 transition-all duration-300"
 				data-print-hide
 			>
 				<div className="flex items-center justify-between mb-4">
@@ -139,7 +139,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 	// Workout day card
 	return (
 		<Card
-			className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all duration-300"
+			className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all duration-300"
 			data-print-hide
 		>
 			<div className="flex items-center justify-between mb-4">

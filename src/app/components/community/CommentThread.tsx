@@ -96,7 +96,7 @@ function CommentItem({
 					className="w-8 h-8 rounded-full object-cover shrink-0"
 				/>
 			) : (
-				<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-xs shrink-0">
+				<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs shrink-0">
 					{authorName.charAt(0).toUpperCase()}
 				</div>
 			)}

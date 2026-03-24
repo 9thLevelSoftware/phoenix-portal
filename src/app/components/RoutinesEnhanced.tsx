@@ -233,7 +233,7 @@ function RoutineGrid({
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: index * 0.05 }}
 					>
-						<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all group">
+						<Card className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all group">
 							{/* Header */}
 							<div className="flex items-start justify-between mb-3">
 								<div className="flex-1">

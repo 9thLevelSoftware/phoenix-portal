@@ -130,7 +130,7 @@ export function WorkoutComplete({
 								transition={{ type: "spring", damping: 20 }}
 								className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[102] w-full max-w-md px-4"
 							>
-								<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-2 border-success overflow-hidden relative">
+								<Card className="p-6 bg-surface-2 border-2 border-success overflow-hidden relative">
 									{/* Glow effect */}
 									<motion.div
 										className="absolute inset-0 bg-success/10 blur-xl"
@@ -182,7 +182,7 @@ export function WorkoutComplete({
 											</div>
 
 											<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
-												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
+												<div className="w-10 h-10 rounded-lg bg-success flex items-center justify-center">
 													<Dumbbell className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
@@ -202,7 +202,7 @@ export function WorkoutComplete({
 													animate={{ scale: 1 }}
 													transition={{ delay: 0.3, type: "spring" }}
 												>
-													<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center">
+													<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
 														<TrendingUp className="w-5 h-5 text-white" />
 													</div>
 													<div className="flex-1">

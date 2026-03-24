@@ -34,7 +34,7 @@ export function CycleOverview({
 	const isCustomDuration = customMode || !durationPresets.includes(duration);
 
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 bg-surface-2 border-secondary">
 			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
 				<Calendar className="w-5 h-5 text-primary" />
 				Cycle Details

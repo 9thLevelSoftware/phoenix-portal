@@ -461,7 +461,7 @@ export function Goals() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.1 }}
 								>
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
+									<Card className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all">
 										<div className="flex items-center gap-4">
 											<GoalProgressRing progress={progress} />
 											<div className="flex-1 min-w-0">

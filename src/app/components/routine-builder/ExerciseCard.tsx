@@ -38,7 +38,7 @@ export function ExerciseCard({
 		>
 			<Card
 				onClick={handleCardClick}
-				className={`p-4 bg-gradient-to-br from-surface-2 to-background border transition-all ${
+				className={`p-4 bg-surface-2 border transition-all ${
 					isSelectionMode ? "cursor-pointer" : ""
 				} ${
 					isSelected

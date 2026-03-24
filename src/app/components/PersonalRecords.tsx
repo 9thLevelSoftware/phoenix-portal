@@ -200,12 +200,12 @@ export function PersonalRecords() {
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
 		const colors: Record<string, string> = {
-			Chest: "from-primary to-chart-2",
-			Shoulders: "from-accent to-warning",
-			Back: "from-success to-emerald-600",
-			Legs: "from-chart-2 to-[#991B1B]",
-			Arms: "from-warning to-accent",
-			Core: "from-[#8B5CF6] to-[#7C3AED]",
+			Chest: "bg-primary",
+			Shoulders: "bg-accent",
+			Back: "bg-success",
+			Legs: "bg-chart-2",
+			Arms: "bg-warning",
+			Core: "bg-[#8B5CF6]",
 		};
 		return colors[muscleGroup] || "from-muted to-muted";
 	};
@@ -297,7 +297,7 @@ export function PersonalRecords() {
 						transition={{ delay: 0.1 }}
 						className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6"
 					>
-						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 bg-surface-2 border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<Trophy className="w-5 h-5 text-accent" />
 								<div className="text-sm text-muted-foreground">Total PRs</div>
@@ -306,7 +306,7 @@ export function PersonalRecords() {
 								{totalPRs}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 bg-surface-2 border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<TrendingUp className="w-5 h-5 text-success" />
 								<div className="text-sm text-muted-foreground">This Month</div>
@@ -315,7 +315,7 @@ export function PersonalRecords() {
 								{monthlyPRs}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 bg-surface-2 border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<Flame className="w-5 h-5 text-primary" />
 								<div className="text-sm text-muted-foreground">
@@ -326,7 +326,7 @@ export function PersonalRecords() {
 								{exercisePRs.length}
 							</div>
 						</Card>
-						<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 bg-surface-2 border-secondary">
 							<div className="flex items-center gap-2 mb-2">
 								<Star className="w-5 h-5 text-warning" />
 								<div className="text-sm text-muted-foreground">
@@ -367,11 +367,11 @@ export function PersonalRecords() {
 										transition={{ delay: 0.3 + index * 0.1 }}
 										className="flex-shrink-0 w-80 snap-start"
 									>
-										<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-2 border-primary relative overflow-hidden group hover:scale-105 transition-transform">
+										<Card className="p-6 bg-surface-2 border-2 border-primary relative overflow-hidden group transition-transform">
 											<div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 opacity-50 group-hover:opacity-70 transition-opacity" />
 											<div className="relative z-10">
 												{isNew && (
-													<Badge className="mb-3 bg-gradient-to-r from-accent to-warning text-white border-0 animate-pulse">
+													<Badge className="mb-3 bg-accent text-white border-0 animate-pulse">
 														NEW
 													</Badge>
 												)}
@@ -446,7 +446,7 @@ export function PersonalRecords() {
 									size="sm"
 									className={
 										activeFilter === filter
-											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+											? "bg-primary border-0 text-white flex-shrink-0"
 											: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 									}
 								>
@@ -574,7 +574,7 @@ export function PersonalRecords() {
 										animate={{ opacity: 1, y: 0 }}
 										transition={{ delay: index * 0.05 }}
 									>
-										<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
+										<Card className="bg-surface-2 border-secondary overflow-hidden">
 											<button
 												onClick={() => toggleExercise(exercise.exercise)}
 												className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
@@ -586,7 +586,7 @@ export function PersonalRecords() {
 														</h3>
 														<div className="flex items-center gap-2 mt-1">
 															<Badge
-																className={`bg-gradient-to-r ${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
+																className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
 															>
 																{exercise.muscleGroup}
 															</Badge>
@@ -815,7 +815,7 @@ export function PersonalRecords() {
 											transition={{ delay: index * 0.1 }}
 											className="relative pl-20"
 										>
-											<div className="absolute left-4 w-8 h-8 rounded-full bg-gradient-to-br from-accent to-warning flex items-center justify-center border-4 border-background">
+											<div className="absolute left-4 w-8 h-8 rounded-full bg-accent flex items-center justify-center border-4 border-background">
 												<milestone.icon className="w-4 h-4 text-white" />
 											</div>
 											<Card className="p-4 bg-gradient-to-br from-accent/20 to-warning/20 border-2 border-accent/50">
@@ -845,8 +845,8 @@ export function PersonalRecords() {
 											}}
 											className="relative pl-20"
 										>
-											<div className="absolute left-5 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-chart-2 border-4 border-background" />
-											<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
+											<div className="absolute left-5 w-6 h-6 rounded-full bg-primary border-4 border-background" />
+											<Card className="p-4 bg-surface-2 border-secondary hover:border-primary/50 transition-all">
 												<div className="flex items-center justify-between">
 													<div>
 														<div className="flex items-center gap-2 mb-1">
@@ -854,7 +854,7 @@ export function PersonalRecords() {
 																{pr.exercise_name}
 															</h3>
 															<Badge
-																className={`bg-gradient-to-r ${getMuscleGroupColor(pr.muscle_group)} text-white border-0 text-xs`}
+																className={`${getMuscleGroupColor(pr.muscle_group)} text-white border-0 text-xs`}
 															>
 																{pr.muscle_group}
 															</Badge>
