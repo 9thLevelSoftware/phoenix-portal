@@ -134,22 +134,14 @@ export function Community() {
 					value={activeTab}
 					onValueChange={(v) => setActiveTab(v as "routines" | "cycles")}
 				>
-					<div className="border-b border-secondary">
-						<TabsList className="flex w-full bg-transparent px-4 gap-1">
-							<TabsTrigger
-								value="routines"
-								className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-							>
-								Routines
-							</TabsTrigger>
-							<TabsTrigger
-								value="cycles"
-								className="flex-1 py-3 text-sm font-medium data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-							>
-								Cycles
-							</TabsTrigger>
-						</TabsList>
-					</div>
+					<TabsList variant="underline" className="w-full px-4">
+						<TabsTrigger variant="underline" value="routines">
+							Routines
+						</TabsTrigger>
+						<TabsTrigger variant="underline" value="cycles">
+							Cycles
+						</TabsTrigger>
+					</TabsList>
 				</Tabs>
 
 				{/* Mobile Search */}

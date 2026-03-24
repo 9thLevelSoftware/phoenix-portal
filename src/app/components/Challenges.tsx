@@ -530,24 +530,15 @@ export function Challenges() {
 
 				{/* Mobile Tabs */}
 				<Tabs defaultValue="active">
-					<div className="overflow-x-auto scrollbar-hide border-b border-secondary">
-						<TabsList className="flex px-4 gap-1 bg-transparent">
-							<TabsTrigger
-								value="active"
-								className="px-4 py-3 text-sm font-medium whitespace-nowrap data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-							>
+					<div className="overflow-x-auto scrollbar-hide">
+						<TabsList variant="underline" className="px-4">
+							<TabsTrigger variant="underline" value="active">
 								Active
 							</TabsTrigger>
-							<TabsTrigger
-								value="past"
-								className="px-4 py-3 text-sm font-medium whitespace-nowrap data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-							>
+							<TabsTrigger variant="underline" value="past">
 								Past
 							</TabsTrigger>
-							<TabsTrigger
-								value="discover"
-								className="px-4 py-3 text-sm font-medium whitespace-nowrap data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-primary"
-							>
+							<TabsTrigger variant="underline" value="discover">
 								Discover
 							</TabsTrigger>
 						</TabsList>
