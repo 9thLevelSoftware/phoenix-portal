@@ -56,6 +56,29 @@ export const pageTransition = {
 	},
 } as const;
 
+// --- Exit presets (mirror entries with ease-in) ---
+
+/** Single element exit: opacity 1→0, y 0→-8 (reverse of fadeUp) */
+export const fadeOut = {
+	visible: { opacity: 1, y: 0 },
+	exit: {
+		opacity: 0,
+		y: -8,
+		transition: { duration: 0.15, ease: [0.7, 0, 0.84, 0] },
+	},
+} as const;
+
+/** Combined entry/exit for AnimatePresence wrappers */
+export const fadeUpDown = {
+	hidden: { opacity: 0, y: 8 },
+	visible: { opacity: 1, y: 0, transition: springs.smooth },
+	exit: {
+		opacity: 0,
+		y: -8,
+		transition: { duration: 0.15, ease: [0.7, 0, 0.84, 0] },
+	},
+} as const;
+
 // --- Hover & tap presets ---
 
 export const hover = {

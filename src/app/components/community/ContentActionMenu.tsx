@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Ban, Flag, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -16,7 +17,9 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { toastWithUndo } from "@/lib/toast-undo";
 import { useBlockUser, useDeleteSharedContent } from "@/mutations/community";
+import { queryKeys } from "@/queries/keys";
 import { ReportDialog } from "./ReportDialog";
 
 interface ContentActionMenuProps {
@@ -36,9 +39,9 @@ export function ContentActionMenu({
 }: ContentActionMenuProps) {
 	const [showReportDialog, setShowReportDialog] = useState(false);
 	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
-	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const blockMutation = useBlockUser();
 	const deleteMutation = useDeleteSharedContent();
+	const queryClient = useQueryClient();
 
 	const isOwnContent = authorId === currentUserId;
 
@@ -74,7 +77,22 @@ export function ContentActionMenu({
 								</DropdownMenuItem>
 							)}
 							<DropdownMenuItem
-								onClick={() => setShowDeleteConfirm(true)}
+								onClick={() => {
+									// Undo toast pattern: immediate feedback with recovery window.
+									// Better UX than confirmation dialog for reversible community actions.
+									toastWithUndo({
+										message: `${contentType === "routine" ? "Routine" : "Cycle"} removed from community`,
+										action: () =>
+											deleteMutation.mutateAsync({
+												contentId,
+												contentType: contentType as "routine" | "cycle",
+											}),
+										onUndo: () =>
+											queryClient.invalidateQueries({
+												queryKey: queryKeys.community.all,
+											}),
+									});
+								}}
 								variant="destructive"
 								className="cursor-pointer"
 							>
@@ -136,35 +154,6 @@ export function ContentActionMenu({
 				</AlertDialogContent>
 			</AlertDialog>
 
-			<AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-				<AlertDialogContent className="bg-background border-secondary">
-					<AlertDialogHeader>
-						<AlertDialogTitle className="text-white">
-							Delete this {contentType}?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will permanently remove your shared {contentType} from the
-							community feed. This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel className="border-secondary text-muted-foreground">
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={() =>
-								deleteMutation.mutate({
-									contentId,
-									contentType: contentType as "routine" | "cycle",
-								})
-							}
-							className="bg-destructive hover:bg-destructive/90"
-						>
-							{deleteMutation.isPending ? "Deleting..." : "Delete"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</>
+			</>
 	);
 }

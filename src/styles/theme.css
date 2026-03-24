@@ -311,14 +311,15 @@
    * Body font (h4, p, label, etc): Inter — realist, screen-optimized
    * Data font (metrics): JetBrains Mono — tabular monospace
    *
-   * Scale from 16px base:
-   *   3.157rem (50.5px) — hero/display only
-   *   2.369rem (37.9px) — h1
-   *   1.777rem (28.4px) — h2
-   *   1.333rem (21.3px) — h3
-   *   1rem     (16px)   — h4, body, base
-   *   0.75rem  (12px)   — small, captions
-   *   0.688rem (11px)   — eyebrow labels
+   * Fluid headings scale between mobile min and desktop max via clamp():
+   *   h1: 28.4px (mobile) → 37.9px (desktop)  clamp(1.777rem, 1.2rem + 2.5vw, 2.369rem)
+   *   h2: 21.3px (mobile) → 28.4px (desktop)  clamp(1.333rem, 0.9rem + 1.8vw, 1.777rem)
+   *   h3: 18px   (mobile) → 21.3px (desktop)  clamp(1.125rem, 0.9rem + 0.9vw, 1.333rem)
+   *
+   * Static sizes (no scaling needed):
+   *   h4, body: 1rem (16px)
+   *   small:    0.75rem (12px)
+   *   eyebrow:  0.688rem (11px)
    *
    * Leading (Ch. 3 / Appendix B): 1.2-1.4em for body copy
    * Letter-spacing: tighter at display sizes, neutral at body, wide on eyebrows
@@ -326,7 +327,7 @@
 
   h1 {
     font-family: var(--font-display);
-    font-size: 2.369rem;   /* 37.9px — 16 * 1.333^3 */
+    font-size: clamp(1.777rem, 1.2rem + 2.5vw, 2.369rem);
     font-weight: 700;
     line-height: 1.05;
     letter-spacing: -0.03em;
@@ -334,7 +335,7 @@
 
   h2 {
     font-family: var(--font-display);
-    font-size: 1.777rem;   /* 28.4px — 16 * 1.333^2 */
+    font-size: clamp(1.333rem, 0.9rem + 1.8vw, 1.777rem);
     font-weight: 600;
     line-height: 1.15;
     letter-spacing: -0.02em;
@@ -342,7 +343,7 @@
 
   h3 {
     font-family: var(--font-display);
-    font-size: 1.333rem;   /* 21.3px — 16 * 1.333^1 */
+    font-size: clamp(1.125rem, 0.9rem + 0.9vw, 1.333rem);
     font-weight: 500;
     line-height: 1.25;
     letter-spacing: -0.01em;
@@ -402,6 +403,20 @@
 }
 
 @layer utilities {
+  /* ---- Container query contexts ----
+   * Apply .cq-container to any parent whose children should respond
+   * to the container's width rather than the viewport.
+   * Use @container queries in component CSS to adapt layout.
+   */
+  .cq-container {
+    container-type: inline-size;
+  }
+
+  .cq-container-named {
+    container-type: inline-size;
+    container-name: card;
+  }
+
   /* Signal panel — bordered instrument panel, no glass, no glow */
   .signal-panel {
     background: var(--surface-1);
@@ -467,6 +482,7 @@
   }
 }
 
+/* ---- Reduced motion: respect user preference for ALL CSS animations ---- */
 @media (prefers-reduced-motion: reduce) {
   .animate-signal-pulse {
     animation: none;
@@ -476,6 +492,37 @@
   .animate-bounce,
   .animate-ping {
     animation: none;
+  }
+
+  /* Catch-all: collapse durations for any CSS animation/transition we missed.
+     Framer Motion is handled separately via <MotionConfig reducedMotion="user"> in App.tsx */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- Touch targets: minimum 44x44px on coarse pointers (mobile/tablet) ---- */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a[href],
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Icon-only buttons: ensure square 44px hit area */
+  [data-slot="button"]:has(> svg:only-child) {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
