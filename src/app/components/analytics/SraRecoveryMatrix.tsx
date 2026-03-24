@@ -46,13 +46,31 @@ const SRA_SIGNAL_TYPES = new Set([
 
 function getRecoIcon(signal: string) {
 	if (signal === "sra_supercompensated") {
-		return <Zap className="w-4 h-4" style={{ color: "#60A5FA" }} aria-hidden="true" />;
+		return (
+			<Zap
+				className="w-4 h-4"
+				style={{ color: "#60A5FA" }}
+				aria-hidden="true"
+			/>
+		);
 	}
 	if (signal === "sra_recovered") {
-		return <CheckCircle className="w-4 h-4" style={{ color: "#10B981" }} aria-hidden="true" />;
+		return (
+			<CheckCircle
+				className="w-4 h-4"
+				style={{ color: "#10B981" }}
+				aria-hidden="true"
+			/>
+		);
 	}
 	// sra_fatigued
-	return <AlertTriangle className="w-4 h-4" style={{ color: "#F59E0B" }} aria-hidden="true" />;
+	return (
+		<AlertTriangle
+			className="w-4 h-4"
+			style={{ color: "#F59E0B" }}
+			aria-hidden="true"
+		/>
+	);
 }
 
 function getRecoBorderColor(signal: string): string {
@@ -74,19 +92,17 @@ interface MuscleGroupCardProps {
 }
 
 function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
-	const {
-		muscleGroup,
-		status,
-		hoursSinceLastTrained,
-		hoursRemaining,
-	} = recovery;
+	const { muscleGroup, status, hoursSinceLastTrained, hoursRemaining } =
+		recovery;
 
 	const color = STATUS_COLORS[status];
 	const label = STATUS_LABELS[status];
 	const bgColor = STATUS_BG_COLORS[status];
 	const isNoData = hoursSinceLastTrained === 0;
 	const showRemaining =
-		!isNoData && (status === "FATIGUED" || status === "RECOVERING") && hoursRemaining !== null;
+		!isNoData &&
+		(status === "FATIGUED" || status === "RECOVERING") &&
+		hoursRemaining !== null;
 
 	return (
 		<div
@@ -104,7 +120,9 @@ function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
 
 			{/* Text content */}
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-medium text-white leading-snug">{muscleGroup}</p>
+				<p className="text-sm font-medium text-white leading-snug">
+					{muscleGroup}
+				</p>
 
 				{isNoData ? (
 					<p className="text-xs text-muted-foreground mt-0.5">No data</p>
@@ -118,8 +136,8 @@ function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
 						</p>
 						{showRemaining && (
 							<p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-								<Clock className="w-3 h-3" aria-hidden="true" />
-								~{hoursRemaining}h remaining
+								<Clock className="w-3 h-3" aria-hidden="true" />~
+								{hoursRemaining}h remaining
 							</p>
 						)}
 					</>
@@ -133,7 +151,9 @@ interface SraRecommendationCalloutProps {
 	recommendation: Recommendation;
 }
 
-function SraRecommendationCallout({ recommendation }: SraRecommendationCalloutProps) {
+function SraRecommendationCallout({
+	recommendation,
+}: SraRecommendationCalloutProps) {
 	const borderColor = getRecoBorderColor(recommendation.signal);
 	const bgColor = getRecoBgColor(recommendation.signal);
 
@@ -149,8 +169,12 @@ function SraRecommendationCallout({ recommendation }: SraRecommendationCalloutPr
 				{getRecoIcon(recommendation.signal)}
 			</span>
 			<div className="min-w-0">
-				<p className="font-medium text-white leading-snug">{recommendation.title}</p>
-				<p className="text-muted-foreground text-xs mt-0.5">{recommendation.action}</p>
+				<p className="font-medium text-white leading-snug">
+					{recommendation.title}
+				</p>
+				<p className="text-muted-foreground text-xs mt-0.5">
+					{recommendation.action}
+				</p>
 			</div>
 		</div>
 	);
@@ -164,7 +188,9 @@ export function SraRecoveryMatrix({
 }: SraRecoveryMatrixProps) {
 	const { isInferno } = useSubscription();
 
-	const sraRecos = recommendations.filter((r) => SRA_SIGNAL_TYPES.has(r.signal));
+	const sraRecos = recommendations.filter((r) =>
+		SRA_SIGNAL_TYPES.has(r.signal),
+	);
 
 	return (
 		<div className="relative">
@@ -181,18 +207,21 @@ export function SraRecoveryMatrix({
 						{/* 2-column grid of muscle group cards */}
 						<div className="grid grid-cols-2 gap-3" data-testid="sra-grid">
 							{recoveries.map((recovery) => (
-								<MuscleGroupCard key={recovery.muscleGroup} recovery={recovery} />
+								<MuscleGroupCard
+									key={recovery.muscleGroup}
+									recovery={recovery}
+								/>
 							))}
 						</div>
 
 						{/* Inline SRA recommendation callouts */}
 						{sraRecos.length > 0 && (
-							<div
-								className="mt-5 space-y-2"
-								data-testid="sra-recommendations"
-							>
+							<div className="mt-5 space-y-2" data-testid="sra-recommendations">
 								{sraRecos.map((reco) => (
-									<SraRecommendationCallout key={reco.id} recommendation={reco} />
+									<SraRecommendationCallout
+										key={reco.id}
+										recommendation={reco}
+									/>
 								))}
 							</div>
 						)}
@@ -208,10 +237,12 @@ export function SraRecoveryMatrix({
 					aria-label="Premium feature preview"
 				>
 					<div className="text-center max-w-sm p-6">
-						<h3 className="text-white text-lg mb-2">Unlock Training Intelligence</h3>
+						<h3 className="text-white text-lg mb-2">
+							Unlock Training Intelligence
+						</h3>
 						<p className="text-muted-foreground text-sm mb-4">
-							SRA Recovery tracking tells you exactly when each muscle group is ready to
-							train again.
+							SRA Recovery tracking tells you exactly when each muscle group is
+							ready to train again.
 						</p>
 						<Button variant="cta" asChild>
 							<Link to="/pricing">Upgrade to Inferno</Link>
