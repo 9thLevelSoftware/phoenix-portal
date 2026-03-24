@@ -202,7 +202,7 @@ export function PersonalRecords() {
 		const colors: Record<string, string> = {
 			Chest: "from-primary to-chart-2",
 			Shoulders: "from-accent to-warning",
-			Back: "from-success to-[#059669]",
+			Back: "from-success to-emerald-600",
 			Legs: "from-chart-2 to-[#991B1B]",
 			Arms: "from-warning to-accent",
 			Core: "from-[#8B5CF6] to-[#7C3AED]",
@@ -562,7 +562,7 @@ export function PersonalRecords() {
 								PR List by Exercise
 							</h2>
 							{filteredExercises.length === 0 ? (
-								<div className="text-center py-12 text-muted">
+								<div className="text-center py-12 text-muted-foreground">
 									<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
 									<p>No records for this muscle group yet</p>
 								</div>
@@ -613,7 +613,7 @@ export function PersonalRecords() {
 															{getTrendText(exercise.trend)}
 														</span>
 													</div>
-													<span className="text-xs text-muted hidden sm:inline">
+													<span className="text-xs text-muted-foreground hidden sm:inline">
 														{exercise.lastPRDate.toLocaleDateString("en-US", {
 															month: "short",
 															day: "numeric",

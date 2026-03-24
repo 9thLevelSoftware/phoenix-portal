@@ -118,7 +118,7 @@ export function RoutinesEnhanced() {
 
 						<Button
 							onClick={() => navigate("/routines/new")}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 						>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Routine
@@ -168,7 +168,7 @@ export function RoutinesEnhanced() {
 
 					<TabsContent value="favorites">
 						{favoriteRoutines.length === 0 ? (
-							<div className="text-center py-12 text-muted">
+							<div className="text-center py-12 text-muted-foreground">
 								<Heart className="w-12 h-12 mx-auto mb-3 opacity-50" />
 								<p>No favorite routines yet. Heart a routine to add it here.</p>
 							</div>
@@ -323,7 +323,7 @@ function RoutineGrid({
 
 							{/* Footer */}
 							<div className="flex items-center justify-between pt-4 border-t border-secondary">
-								<div className="text-xs text-muted">
+								<div className="text-xs text-muted-foreground">
 									<div>Used {routine.times_completed} times</div>
 									<div>Last used: {lastUsedText}</div>
 								</div>
@@ -339,7 +339,7 @@ function RoutineGrid({
 									</Button>
 									<Button
 										size="sm"
-										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+										variant="cta"
 										onClick={() => onView(routine.id)}
 									>
 										<Eye className="w-4 h-4 mr-1" />

@@ -41,7 +41,7 @@ export default function BodyTab({
 					{muscleGroupData.length > 0 ? (
 						<MuscleRadar currentData={muscleRadarData} />
 					) : (
-						<div className="h-[300px] flex items-center justify-center text-muted">
+						<div className="h-[300px] flex items-center justify-center text-muted-foreground">
 							No muscle data yet
 						</div>
 					)}
@@ -53,7 +53,7 @@ export default function BodyTab({
 					{muscleDonutOption ? (
 						<EChartsWrapper option={muscleDonutOption} height={300} />
 					) : (
-						<div className="h-[300px] flex items-center justify-center text-muted">
+						<div className="h-[300px] flex items-center justify-center text-muted-foreground">
 							No muscle group data yet
 						</div>
 					)}
@@ -119,7 +119,7 @@ export default function BodyTab({
 						</table>
 					</div>
 				) : (
-					<div className="text-center py-12 text-muted">
+					<div className="text-center py-12 text-muted-foreground">
 						No body part data yet
 					</div>
 				)}

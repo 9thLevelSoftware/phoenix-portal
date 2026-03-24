@@ -97,7 +97,7 @@ export function TrainingCycles() {
 							</div>
 							<Button
 								onClick={() => navigate("/cycles/new")}
-								className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+								variant="cta"
 							>
 								<Plus className="w-4 h-4 mr-2" />
 								Create Cycle
@@ -137,7 +137,7 @@ export function TrainingCycles() {
 
 						<Button
 							onClick={() => navigate("/cycles/new")}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 						>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Cycle
@@ -199,7 +199,7 @@ export function TrainingCycles() {
 										<span>{activeCycle.workout_days} workout days/week</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<BedDouble className="w-4 h-4 text-muted" />
+										<BedDouble className="w-4 h-4 text-muted-foreground" />
 										<span>{activeCycle.rest_days} rest days/week</span>
 									</div>
 								</div>
@@ -296,8 +296,8 @@ export function TrainingCycles() {
 													<span className="text-white font-medium">
 														{cycle.workout_days}
 													</span>
-													<span className="text-muted">/</span>
-													<BedDouble className="w-4 h-4 text-muted" />
+													<span className="text-muted-foreground">/</span>
+													<BedDouble className="w-4 h-4 text-muted-foreground" />
 													<span className="text-muted-foreground">
 														{cycle.rest_days}
 													</span>

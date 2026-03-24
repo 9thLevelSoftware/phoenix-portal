@@ -210,7 +210,7 @@ export function CreatorProfile({
 										<p className="text-lg font-bold text-white leading-none">
 											{stats.total_shares}
 										</p>
-										<p className="text-[10px] text-muted">Shares</p>
+										<p className="text-[10px] text-muted-foreground">Shares</p>
 									</div>
 								</div>
 
@@ -221,7 +221,7 @@ export function CreatorProfile({
 										<p className="text-lg font-bold text-white leading-none">
 											{stats.total_upvotes}
 										</p>
-										<p className="text-[10px] text-muted">Upvotes</p>
+										<p className="text-[10px] text-muted-foreground">Upvotes</p>
 									</div>
 								</div>
 
@@ -232,7 +232,7 @@ export function CreatorProfile({
 										<p className="text-lg font-bold text-white leading-none">
 											{stats.featured_count}
 										</p>
-										<p className="text-[10px] text-muted">Featured</p>
+										<p className="text-[10px] text-muted-foreground">Featured</p>
 									</div>
 								</div>
 							</div>
@@ -241,7 +241,7 @@ export function CreatorProfile({
 				</Card>
 			) : (
 				<Card className="p-6 bg-surface-2 border-secondary mb-6">
-					<p className="text-muted">Creator not found</p>
+					<p className="text-muted-foreground">Creator not found</p>
 				</Card>
 			)}
 
@@ -260,7 +260,7 @@ export function CreatorProfile({
 					))}
 				</div>
 			) : allItems.length === 0 ? (
-				<div className="text-center py-12 text-muted">
+				<div className="text-center py-12 text-muted-foreground">
 					<p>This creator has not shared any content yet.</p>
 				</div>
 			) : (

@@ -554,7 +554,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								))}
 							</div>
 						) : (
-							<div className="text-xs text-muted">No new PRs this {period}</div>
+							<div className="text-xs text-muted-foreground">No new PRs this {period}</div>
 						)}
 					</Card>
 				</motion.div>
@@ -623,7 +623,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 											{summary.bestSessionVolume} kg
 										</span>
 										{summary.bestSessionDate && (
-											<span className="text-muted text-xs ml-1">
+											<span className="text-muted-foreground text-xs ml-1">
 												on {summary.bestSessionDate}
 											</span>
 										)}

@@ -110,7 +110,8 @@ export function UpgradePrompt({
 				{/* CTA */}
 				<Button
 					asChild
-					className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white px-8"
+					variant="cta"
+					className="px-8"
 				>
 					<Link to="/pricing">Compare Plans</Link>
 				</Button>

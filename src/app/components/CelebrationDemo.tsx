@@ -69,24 +69,24 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
 								>
 									Weight PR
 								</Button>
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-[#6366F1] to-[#4F46E5] hover:from-[#4F46E5] hover:to-[#6366F1] border-0"
+									className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-500 border-0"
 								>
 									Volume PR
 								</Button>
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-accent to-[#D97706] hover:from-[#D97706] hover:to-accent border-0"
+									className="bg-gradient-to-r from-accent to-amber-600 hover:from-amber-600 hover:to-accent border-0"
 								>
 									1RM Estimate
 								</Button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Phoenix rise animation, ember trail, particle
 								burst, glowing PR card
 							</p>
@@ -102,7 +102,7 @@ export function CelebrationDemo() {
 				>
 					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center">
 								<Award className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -123,7 +123,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("bronze");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#D97706] to-[#92400E] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-amber-600 to-amber-800 text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Bronze
 								</button>
@@ -141,7 +141,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("gold");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-[#D97706] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-amber-600 text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Gold
 								</button>
@@ -155,7 +155,7 @@ export function CelebrationDemo() {
 									Platinum
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: 3D card flip, tier-specific particles, confetti for
 								Gold/Platinum
 							</p>
@@ -200,7 +200,7 @@ export function CelebrationDemo() {
 									</button>
 								))}
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Flame intensify, expanding fire rings, ember
 								particles, special 365-day animation
 							</p>
@@ -255,12 +255,12 @@ export function CelebrationDemo() {
 										setSelectedPlacement(3);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-[#D97706] to-[#92400E] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-amber-600 to-amber-800 text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									🥉 3rd Place
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Podium rise, avatar drop, spotlights, confetti
 								burst, rewards card
 							</p>
@@ -276,7 +276,7 @@ export function CelebrationDemo() {
 				>
 					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
 								<Check className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -293,12 +293,12 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 								<button
 									onClick={() => setShowWorkoutComplete(true)}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-success to-[#059669] text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-gradient-to-br from-success to-emerald-600 text-white text-sm font-medium hover:scale-105 transition-transform"
 								>
 									Complete
 								</button>
 							</div>
-							<p className="text-xs text-muted">
+							<p className="text-xs text-muted-foreground">
 								✨ Features: Checkmark animation, particle burst, confetti
 							</p>
 						</div>
@@ -313,7 +313,7 @@ export function CelebrationDemo() {
 				>
 					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
 								<Zap className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -333,7 +333,7 @@ export function CelebrationDemo() {
 								</div>
 								<div>
 									<div className="text-white font-medium">Set Complete</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Brief pulse + checkmark animation
 									</div>
 								</div>
@@ -345,21 +345,21 @@ export function CelebrationDemo() {
 								</div>
 								<div>
 									<div className="text-white font-medium">Weight Increase</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Arrow animation + ember sparkle
 									</div>
 								</div>
 							</div>
 
 							<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
-								<div className="w-8 h-8 rounded-full bg-[#6366F1]/20 flex items-center justify-center">
+								<div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
 									<span className="text-lg">⏱️</span>
 								</div>
 								<div>
 									<div className="text-white font-medium">
 										Rest Timer Complete
 									</div>
-									<div className="text-xs text-muted">
+									<div className="text-xs text-muted-foreground">
 										Gentle pulse + wing flap icon
 									</div>
 								</div>
@@ -373,6 +373,7 @@ export function CelebrationDemo() {
 			<PRCelebration
 				isOpen={showPR}
 				onClose={() => setShowPR(false)}
+				unit="kg"
 				prData={{
 					exerciseName: "Bench Press",
 					weight: 120,
@@ -421,7 +422,8 @@ export function CelebrationDemo() {
 				isOpen={showWorkoutComplete}
 				onClose={() => setShowWorkoutComplete(false)}
 				duration="58 min"
-				volume="5,200 kg"
+				volume={5200}
+				unit="kg"
 				prsAchieved={2}
 				streakContinued={true}
 				onViewSummary={() => {

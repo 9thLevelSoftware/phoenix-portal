@@ -99,7 +99,7 @@ export default function MobileOverviewTab({
 						</AreaChart>
 					</ResponsiveContainer>
 				) : (
-					<div className="h-[200px] flex items-center justify-center text-muted text-sm">
+					<div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
 						No volume data for this period
 					</div>
 				)}

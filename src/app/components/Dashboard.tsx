@@ -144,7 +144,7 @@ function QuickStatCard({
 						value
 					)}
 				</div>
-				<div className="text-xs text-muted-foreground">{label}</div>
+				<div className="eyebrow text-muted-foreground">{label}</div>
 			</Card>
 		</motion.div>
 	);
@@ -167,7 +167,7 @@ function MobileRecentActivityCard({
 		<Card className="p-4 card-secondary active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
 				<h4 className="font-semibold text-white">{title}</h4>
-				<span className="text-xs text-muted">{time}</span>
+				<span className="text-xs text-muted-foreground">{time}</span>
 			</div>
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
 				<span>{volume}</span>
@@ -253,7 +253,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 					<p className="text-sm text-muted-foreground">
 						No active challenges yet
 					</p>
-					<p className="mt-1 text-xs text-muted">
+					<p className="mt-1 text-xs text-muted-foreground">
 						Join challenges from the Challenges page to track your progress here
 					</p>
 				</div>
@@ -305,7 +305,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 						<Progress value={progress?.percentage ?? 0} className="h-2" />
 						<p className="mt-2 text-xs text-muted-foreground">
 							{progress
-								? `${progress.current.toLocaleString()} / ${progress.target.toLocaleString()}`
+								? `${Math.round(progress.current).toLocaleString()} / ${Math.round(progress.target).toLocaleString()}`
 								: "Calculating progress..."}
 						</p>
 					</div>
@@ -459,7 +459,7 @@ export function Dashboard() {
 							<Link to="/challenges">
 								<Card className="p-5 card-secondary">
 									<div className="flex items-center gap-4">
-										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center flex-shrink-0">
+										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center flex-shrink-0">
 											<Trophy className="w-5 h-5 text-white" />
 										</div>
 										<div>
@@ -538,7 +538,7 @@ export function Dashboard() {
 						<motion.div variants={fadeUp}>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 card-secondary h-full">
-									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center mb-4">
+									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center mb-4">
 										<Trophy className="w-6 h-6 text-white" />
 									</div>
 									<h3 className="text-lg font-semibold text-white mb-2">
@@ -646,17 +646,17 @@ export function Dashboard() {
 						{activeCycle ? (
 							<NextWorkoutWidget cycleId={activeCycle.id} />
 						) : (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Calendar className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
 										No scheduled workout
 									</p>
-									<p className="text-sm text-muted mb-4">
+									<p className="text-sm text-muted-foreground mb-4">
 										Create a training cycle to see your next workout here
 									</p>
 									<Button
-										className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+										variant="cta"
 										asChild
 									>
 										<Link to="/cycles">
@@ -709,15 +709,13 @@ export function Dashboard() {
 										workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0
 									}
 									label="PRs"
-									gradient="from-accent to-[#D97706]"
+									gradient="from-accent to-amber-600"
 								/>
 								<QuickStatCard
 									icon={<TrendingUp className="w-5 h-5" />}
-									value={
-										weeklyTotal > 0 ? formatVolume(weeklyTotal, unit) : "--"
-									}
+									value={formatVolume(weeklyTotal, unit)}
 									label="Volume"
-									gradient="from-success to-[#059669]"
+									gradient="from-success to-emerald-600"
 								/>
 								{weeklyCalories > 0 && (
 									<QuickStatCard
@@ -732,7 +730,7 @@ export function Dashboard() {
 									icon={<Target className="w-5 h-5" />}
 									value="--"
 									label="Goals"
-									gradient="from-[#6366F1] to-[#4F46E5]"
+									gradient="from-indigo-500 to-indigo-600"
 								/>
 							</div>
 						)}
@@ -746,25 +744,25 @@ export function Dashboard() {
 					>
 						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
 						{statsLoading ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<Skeleton className="h-8 w-32 mb-1" />
 								<Skeleton className="h-4 w-40 mb-4" />
 								<Skeleton className="h-32 w-full" />
 							</Card>
 						) : weeklyTotal === 0 ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-8 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
 										No workouts this week
 									</p>
-									<p className="text-sm text-muted">
+									<p className="text-sm text-muted-foreground">
 										Complete a workout in the mobile app to see your stats here
 									</p>
 								</div>
 							</Card>
 						) : (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="mb-4">
 									<div className="text-3xl font-bold text-white mb-1">
 										{formatVolume(weeklyTotal, unit)}
@@ -787,7 +785,7 @@ export function Dashboard() {
 												animate={{ height: `${Math.max(height, 2)}%` }}
 												transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
 											/>
-											<span className="text-xs text-muted">
+											<span className="text-xs text-muted-foreground">
 												{["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"][i]}
 											</span>
 										</div>
@@ -839,11 +837,11 @@ export function Dashboard() {
 								))}
 							</div>
 						) : recentWorkouts.length === 0 ? (
-							<Card className="p-6 card-secondary">
+							<Card className="p-5 card-secondary">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
-									<p className="text-sm text-muted">
+									<p className="text-sm text-muted-foreground">
 										Sync from the Vitruvian mobile app to see your activity
 									</p>
 								</div>
@@ -1024,9 +1022,7 @@ export function Dashboard() {
 													Weekly Volume
 												</div>
 												<div className="text-2xl font-semibold text-white">
-													{weeklyTotal > 0
-														? formatVolume(weeklyTotal, unit)
-														: "--"}
+													{formatVolume(weeklyTotal, unit)}
 												</div>
 											</div>
 										</div>
@@ -1152,7 +1148,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="text-xl text-white">Recent Activity</h3>
 										<Button
@@ -1178,7 +1174,7 @@ export function Dashboard() {
 											<p className="text-muted-foreground mb-1">
 												No workouts yet
 											</p>
-											<p className="text-sm text-muted">
+											<p className="text-sm text-muted-foreground">
 												Sync your first workout from the Vitruvian mobile app
 											</p>
 										</div>
@@ -1225,7 +1221,7 @@ export function Dashboard() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: 0.45 }}
 								>
-									<Card className="p-6 glass-panel">
+									<Card className="p-5 glass-panel">
 										<h3 className="text-xl text-white mb-6">
 											Volume Breakdown
 										</h3>
@@ -1305,7 +1301,7 @@ export function Dashboard() {
 						>
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
@@ -1359,7 +1355,7 @@ export function Dashboard() {
 
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
@@ -1367,7 +1363,7 @@ export function Dashboard() {
 
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-6 glass-panel">
+								<Card className="p-5 glass-panel">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
@@ -1387,7 +1383,7 @@ export function Dashboard() {
 											<p className="text-sm text-muted-foreground">
 												No badges earned yet
 											</p>
-											<p className="text-xs text-muted mt-1">
+											<p className="text-xs text-muted-foreground mt-1">
 												Complete workouts in the mobile app to start earning
 												badges
 											</p>

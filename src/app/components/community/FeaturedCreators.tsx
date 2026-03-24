@@ -60,7 +60,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 
 	return (
 		<div className="mb-6">
-			<p className="text-xs text-muted uppercase tracking-wider mb-3">
+			<p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
 				Featured Creators
 			</p>
 

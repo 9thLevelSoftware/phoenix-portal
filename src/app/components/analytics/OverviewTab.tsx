@@ -119,7 +119,7 @@ export default function OverviewTab({
 					{volumeEChartsOption ? (
 						<EChartsWrapper option={volumeEChartsOption} height={300} />
 					) : (
-						<div className="h-[300px] flex items-center justify-center text-muted">
+						<div className="h-[300px] flex items-center justify-center text-muted-foreground">
 							No volume data for this period
 						</div>
 					)}
@@ -130,7 +130,7 @@ export default function OverviewTab({
 					{muscleDonutOption ? (
 						<EChartsWrapper option={muscleDonutOption} height={300} />
 					) : (
-						<div className="h-[300px] flex items-center justify-center text-muted">
+						<div className="h-[300px] flex items-center justify-center text-muted-foreground">
 							No muscle group data yet
 						</div>
 					)}
