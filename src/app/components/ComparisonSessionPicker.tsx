@@ -89,10 +89,10 @@ export function ComparisonSessionPicker({
 							<Card
 								key={workout.id}
 								onClick={() => handleSelect(workout.id)}
-								className="p-3 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all cursor-pointer"
+								className="p-3 bg-surface-2 border-secondary hover:border-primary/50 transition-all cursor-pointer"
 							>
 								<div className="flex items-center gap-3">
-									<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center shrink-0">
+									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
 										<Dumbbell className="w-5 h-5 text-white" />
 									</div>
 									<div className="flex-1 min-w-0">

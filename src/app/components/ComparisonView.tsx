@@ -74,7 +74,7 @@ function SessionSummaryCard({
 	label: string;
 }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<div className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
 				{label}
 			</div>
@@ -115,7 +115,7 @@ function SessionSummaryCard({
 
 function OverallDeltas({ result }: { result: ComparisonResult }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider mb-4">
 				Overall Change
 			</h3>
@@ -139,7 +139,7 @@ function OverallDeltas({ result }: { result: ComparisonResult }) {
 
 function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider mb-4">
 				Per-Exercise Breakdown
 			</h3>
@@ -240,7 +240,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 			{result.exerciseDeltas.map((ex) => (
 				<Card
 					key={ex.name}
-					className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4"
+					className="bg-surface-2 border-secondary p-4"
 				>
 					<div className="font-medium text-white mb-3">{ex.name}</div>
 					{ex.onlyInA || ex.onlyInB ? (

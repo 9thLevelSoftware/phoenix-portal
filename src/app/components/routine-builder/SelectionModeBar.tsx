@@ -27,7 +27,7 @@ export function SelectionModeBar({
 					transition={{ type: "spring", damping: 25, stiffness: 300 }}
 					className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50 px-4"
 				>
-					<Card className="px-6 py-4 bg-gradient-to-br from-surface-2 to-background border-2 border-primary shadow-2xl">
+					<Card className="px-6 py-4 bg-surface-2 border-2 border-primary shadow-2xl">
 						<div className="flex items-center gap-6">
 							<div className="flex items-center gap-2 text-white">
 								<Check className="w-5 h-5 text-success" />

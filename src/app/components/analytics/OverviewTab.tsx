@@ -57,7 +57,7 @@ export default function OverviewTab({
 		<>
 			{/* Activity Sources (folded in from External tab) */}
 			{(totalWorkouts > 0 || externalCount > 0) && (
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-4">Activity Sources</h3>
 					<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 						<div>
@@ -114,7 +114,7 @@ export default function OverviewTab({
 
 			{/* Volume Over Time + Muscle Distribution */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-6">Volume Over Time</h3>
 					{volumeEChartsOption ? (
 						<EChartsWrapper option={volumeEChartsOption} height={300} />
@@ -125,7 +125,7 @@ export default function OverviewTab({
 					)}
 				</Card>
 
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-6">Muscle Group Distribution</h3>
 					{muscleDonutOption ? (
 						<EChartsWrapper option={muscleDonutOption} height={300} />
@@ -139,7 +139,7 @@ export default function OverviewTab({
 
 			{/* Training Load + Consistency + Insights */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-lg text-white mb-4">Training Load</h3>
 					<TrainingLoadGauge
 						score={trainingLoad.rtl}
@@ -147,12 +147,12 @@ export default function OverviewTab({
 					/>
 				</Card>
 
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-lg text-white mb-4">Consistency</h3>
 					<ConsistencyWidget {...consistencyData} />
 				</Card>
 
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-lg text-white mb-4">Insights</h3>
 					<InsightsFeed
 						insights={insightsFeedItems.slice(0, 3)}

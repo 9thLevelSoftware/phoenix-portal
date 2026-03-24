@@ -101,7 +101,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 								className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[102] w-full max-w-md px-4"
 								onClick={handleDismiss}
 							>
-								<Card className="relative p-8 bg-gradient-to-br from-surface-2 to-background border-2 border-primary overflow-hidden">
+								<Card className="relative p-8 bg-surface-2 border-2 border-primary overflow-hidden">
 									{/* Animated gradient border */}
 									<motion.div
 										className="absolute inset-0 opacity-50"

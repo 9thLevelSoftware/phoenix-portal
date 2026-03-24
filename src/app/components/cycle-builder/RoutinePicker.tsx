@@ -66,7 +66,7 @@ export function RoutinePicker({
 						exit={{ opacity: 0, scale: 0.95, y: 20 }}
 						className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl z-50 max-h-[85vh] overflow-hidden"
 					>
-						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="bg-surface-2 border-secondary">
 							{/* Header */}
 							<div className="flex items-center justify-between p-6 border-b border-secondary">
 								<h2 className="text-2xl font-semibold text-white">
@@ -211,7 +211,7 @@ function RoutineItem({
 		>
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3 flex-1">
-					<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center flex-shrink-0">
+					<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
 						<Dumbbell className="w-5 h-5 text-white" />
 					</div>
 					<div className="flex-1 min-w-0">

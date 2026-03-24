@@ -45,25 +45,25 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 		switch (badgeData.tier) {
 			case "bronze":
 				return {
-					bg: "from-amber-600 to-amber-800",
+					bg: "bg-accent",
 					particles: "rgba(217, 119, 6, 0.8)",
 					glow: "#D97706",
 				};
 			case "silver":
 				return {
-					bg: "from-secondary-foreground to-muted-foreground",
+					bg: "bg-secondary-foreground",
 					particles: "rgba(156, 163, 175, 0.8)",
 					glow: PHOENIX.lightGray,
 				};
 			case "gold":
 				return {
-					bg: "from-accent to-amber-600",
+					bg: "bg-accent",
 					particles: "rgba(245, 158, 11, 0.9)",
 					glow: PHOENIX.gold,
 				};
 			case "platinum":
 				return {
-					bg: "from-secondary-foreground via-[#F3F4F6] to-secondary-foreground",
+					bg: "bg-secondary-foreground",
 					particles: "rgba(229, 231, 235, 0.9)",
 					glow: PHOENIX.lightGray,
 				};
@@ -123,7 +123,7 @@ export function BadgeEarned({ isOpen, onClose, badgeData }: BadgeEarnedProps) {
 									rotateY: 180,
 								}}
 							>
-								<Card className="h-96 bg-gradient-to-br from-surface-2 to-background border-2 border-primary flex items-center justify-center">
+								<Card className="h-96 bg-surface-2 border-2 border-primary flex items-center justify-center">
 									<div className="text-primary text-9xl opacity-20">?</div>
 								</Card>
 							</motion.div>

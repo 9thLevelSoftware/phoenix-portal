@@ -102,7 +102,7 @@ export function SessionDetail() {
 					</div>
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+					<Card className="bg-surface-2 border-secondary p-6">
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
 							{[1, 2, 3, 4].map((i) => (
 								<div key={i} className="text-center space-y-2">
@@ -115,7 +115,7 @@ export function SessionDetail() {
 					{[1, 2, 3].map((i) => (
 						<Card
 							key={i}
-							className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4"
+							className="bg-surface-2 border-secondary p-4"
 						>
 							<div className="flex items-center gap-3">
 								<Skeleton className="h-10 w-10 rounded-lg bg-surface-2" />
@@ -283,7 +283,7 @@ export function SessionDetail() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+					<Card className="bg-surface-2 border-secondary p-6">
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
 							<div className="text-center">
 								<div className="flex items-center justify-center gap-2 mb-2">
@@ -358,7 +358,7 @@ export function SessionDetail() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.15 }}
 					>
-						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Activity className="w-5 h-5 text-primary" />
 								<h3 className="text-lg font-semibold text-white">
@@ -430,7 +430,7 @@ export function SessionDetail() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.15 }}
 					>
-						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Shield className="w-5 h-5 text-success" />
 								<h3 className="text-lg font-semibold text-white">
@@ -506,7 +506,7 @@ export function SessionDetail() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.15 }}
 					>
-						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-6">
+						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Settings className="w-5 h-5 text-accent" />
 								<h3 className="text-lg font-semibold text-white">
@@ -576,14 +576,14 @@ export function SessionDetail() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.3 + index * 0.05 }}
 							>
-								<Card className="exercise-card bg-gradient-to-br from-surface-2 to-background border-secondary overflow-hidden">
+								<Card className="exercise-card bg-surface-2 border-secondary overflow-hidden">
 									{/* Exercise Header */}
 									<button
 										onClick={() => toggleExercise(exercise.id)}
 										className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
 									>
 										<div className="flex items-center gap-3">
-											<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
+											<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
 												<Dumbbell className="w-5 h-5 text-white" />
 											</div>
 											<div className="text-left">
@@ -670,7 +670,7 @@ export function SessionDetail() {
 																</td>
 																<td className="py-3">
 																	{set.is_pr && (
-																		<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																		<Badge className="bg-accent text-white border-0">
 																			NEW PR
 																		</Badge>
 																	)}
@@ -749,7 +749,7 @@ export function SessionDetail() {
 					transition={{ delay: 0.5 }}
 					className="print:hidden"
 				>
-					<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4">
+					<Card className="bg-surface-2 border-secondary p-4">
 						<h3 className="text-lg font-semibold text-white mb-3">
 							Workout Notes
 						</h3>

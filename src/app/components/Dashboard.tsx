@@ -459,7 +459,7 @@ export function Dashboard() {
 							<Link to="/challenges">
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
-										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center flex-shrink-0">
+										<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
 											<Trophy className="w-5 h-5 text-white" />
 										</div>
 										<div>
@@ -538,7 +538,7 @@ export function Dashboard() {
 						<motion.div variants={fadeUp}>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
-									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center mb-4">
+									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
 										<Trophy className="w-6 h-6 text-white" />
 									</div>
 									<h3 className="text-lg font-semibold text-white mb-2">
@@ -698,7 +698,7 @@ export function Dashboard() {
 									value={String(workouts?.length ?? 0)}
 									numericValue={workouts?.length ?? 0}
 									label="Workouts"
-									gradient="from-primary to-chart-2"
+									gradient="bg-primary"
 								/>
 								<QuickStatCard
 									icon={<Award className="w-5 h-5" />}
@@ -709,13 +709,13 @@ export function Dashboard() {
 										workouts?.reduce((sum, w) => sum + w.pr_count, 0) ?? 0
 									}
 									label="PRs"
-									gradient="from-accent to-amber-600"
+									gradient="bg-accent"
 								/>
 								<QuickStatCard
 									icon={<TrendingUp className="w-5 h-5" />}
 									value={formatVolume(weeklyTotal, unit)}
 									label="Volume"
-									gradient="from-success to-emerald-600"
+									gradient="bg-success"
 								/>
 								{weeklyCalories > 0 && (
 									<QuickStatCard

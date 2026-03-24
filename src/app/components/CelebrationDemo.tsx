@@ -49,9 +49,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
 								<Trophy className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -81,7 +81,7 @@ export function CelebrationDemo() {
 								</Button>
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-accent to-amber-600 hover:from-amber-600 hover:to-accent border-0"
+									className="bg-accent hover:bg-accent/90 border-0"
 								>
 									1RM Estimate
 								</Button>
@@ -100,9 +100,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.2 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center">
 								<Award className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -123,7 +123,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("bronze");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-amber-600 to-amber-800 text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium transition-transform"
 								>
 									Bronze
 								</button>
@@ -132,7 +132,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("silver");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground to-muted-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-secondary-foreground text-surface-2 text-sm font-medium transition-transform"
 								>
 									Silver
 								</button>
@@ -141,7 +141,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("gold");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-amber-600 text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium transition-transform"
 								>
 									Gold
 								</button>
@@ -150,7 +150,7 @@ export function CelebrationDemo() {
 										setSelectedBadgeTier("platinum");
 										setShowBadge(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground via-[#F3F4F6] to-secondary-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-secondary-foreground text-surface-2 text-sm font-medium transition-transform"
 								>
 									Platinum
 								</button>
@@ -169,9 +169,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.3 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
 								<Flame className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -194,7 +194,7 @@ export function CelebrationDemo() {
 											setSelectedStreak(streak);
 											setShowStreak(true);
 										}}
-										className="px-3 py-2 rounded-lg bg-gradient-to-br from-surface-2 to-background border border-secondary hover:border-primary text-white text-sm font-medium transition-all"
+										className="px-3 py-2 rounded-lg bg-surface-2 border border-secondary hover:border-primary text-white text-sm font-medium transition-all"
 									>
 										{streak} days
 									</button>
@@ -214,9 +214,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.4 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
 								<Medal className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -237,7 +237,7 @@ export function CelebrationDemo() {
 										setSelectedPlacement(1);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-accent to-warning text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium transition-transform"
 								>
 									👑 1st Place
 								</button>
@@ -246,7 +246,7 @@ export function CelebrationDemo() {
 										setSelectedPlacement(2);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-secondary-foreground to-muted-foreground text-surface-2 text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-secondary-foreground text-surface-2 text-sm font-medium transition-transform"
 								>
 									🥈 2nd Place
 								</button>
@@ -255,7 +255,7 @@ export function CelebrationDemo() {
 										setSelectedPlacement(3);
 										setShowChallengeWon(true);
 									}}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-amber-600 to-amber-800 text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium transition-transform"
 								>
 									🥉 3rd Place
 								</button>
@@ -274,9 +274,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.5 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-success flex items-center justify-center">
 								<Check className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">
@@ -293,7 +293,7 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 								<button
 									onClick={() => setShowWorkoutComplete(true)}
-									className="px-3 py-2 rounded-lg bg-gradient-to-br from-success to-emerald-600 text-white text-sm font-medium hover:scale-105 transition-transform"
+									className="px-3 py-2 rounded-lg bg-success text-white text-sm font-medium transition-transform"
 								>
 									Complete
 								</button>
@@ -311,9 +311,9 @@ export function CelebrationDemo() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.6 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-start gap-4 mb-4">
-							<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
+							<div className="w-12 h-12 rounded-lg bg-success flex items-center justify-center">
 								<Zap className="w-6 h-6 text-white" />
 							</div>
 							<div className="flex-1">

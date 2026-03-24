@@ -113,7 +113,7 @@ export function MobileBottomNav() {
 									{isActive && (
 										<motion.div
 											layoutId="activeMobileTab"
-											className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
+											className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
 											transition={{
 												type: "spring",
 												stiffness: 500,
@@ -191,7 +191,7 @@ export function MobileBottomNav() {
 							{isMoreActive && (
 								<motion.div
 									layoutId="activeMobileTab"
-									className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
+									className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
 									transition={{ type: "spring", stiffness: 500, damping: 30 }}
 								/>
 							)}

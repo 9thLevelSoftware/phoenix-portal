@@ -35,7 +35,7 @@ export default function ProgressTab({
 	return (
 		<>
 			{/* 1RM Progression */}
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+			<Card className="p-6 bg-surface-2 border-secondary">
 				<h3 className="text-xl text-white mb-6">1RM Progression ({unit})</h3>
 				{strengthEChartsOption ? (
 					<EChartsWrapper option={strengthEChartsOption} height={400} />
@@ -47,7 +47,7 @@ export default function ProgressTab({
 			</Card>
 
 			{/* Volume & Frequency Trends */}
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+			<Card className="p-6 bg-surface-2 border-secondary">
 				<h3 className="text-xl text-white mb-6">Volume & Frequency Trends</h3>
 				{volumeAreaOption ? (
 					<EChartsWrapper option={volumeAreaOption} height={300} />
@@ -61,7 +61,7 @@ export default function ProgressTab({
 			{/* PR Timeline + Insights */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				{/* PR Timeline */}
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-4">Personal Records</h3>
 					<div className="flex items-center gap-6 mb-4">
 						<div className="flex flex-col items-center justify-center rounded-xl bg-primary/10 px-6 py-4">
@@ -92,7 +92,7 @@ export default function ProgressTab({
 				</Card>
 
 				{/* Insight cards (legacy style) */}
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-4">Trend Insights</h3>
 					<div className="flex flex-col gap-3">
 						{insights.map((insight) => (

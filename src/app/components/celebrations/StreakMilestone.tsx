@@ -164,7 +164,7 @@ export function StreakMilestone({
 									className={`p-6 text-center ${
 										isYearMilestone
 											? "bg-gradient-to-br from-accent to-chart-2 border-accent"
-											: "bg-gradient-to-br from-surface-2 to-background border-primary"
+											: "bg-surface-2 border-primary"
 									} border-2 overflow-hidden relative`}
 								>
 									{/* Shimmer effect for year milestone */}

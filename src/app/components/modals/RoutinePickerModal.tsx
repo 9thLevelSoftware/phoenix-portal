@@ -44,7 +44,7 @@ export function RoutinePickerModal({
 						exit={{ opacity: 0, scale: 0.95, y: 20 }}
 						className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl z-50 max-h-[80vh] overflow-hidden"
 					>
-						<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="bg-surface-2 border-secondary">
 							{/* Header */}
 							<div className="flex items-center justify-between p-6 border-b border-secondary">
 								<h2 className="text-xl font-semibold text-white">
@@ -82,7 +82,7 @@ export function RoutinePickerModal({
 											>
 												<div className="flex items-center justify-between">
 													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center">
+														<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
 															<Dumbbell className="w-5 h-5 text-white" />
 														</div>
 														<div>

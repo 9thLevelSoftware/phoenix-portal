@@ -755,7 +755,7 @@ function SortableExerciseItem({
 		<div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }}>
 			<Card
 				onClick={onSelect}
-				className={`p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all ${
+				className={`p-4 bg-surface-2 border-secondary hover:border-primary/50 cursor-pointer transition-all ${
 					isSelected ? "border-primary ring-1 ring-primary" : ""
 				} ${isSelectionSelected ? "border-primary ring-2 ring-primary/60" : ""}`}
 			>
@@ -898,7 +898,7 @@ function ExerciseDetailPanel({
 			animate={{ opacity: 1, x: 0 }}
 			exit={{ opacity: 0, x: 20 }}
 		>
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
+			<Card className="p-6 bg-surface-2 border-secondary sticky top-24">
 				<div className="flex items-center justify-between mb-6">
 					<h3 className="text-lg font-semibold text-white">
 						Exercise Settings
@@ -1242,7 +1242,7 @@ function EmptyDetailPanel() {
 			animate={{ opacity: 1 }}
 			exit={{ opacity: 0 }}
 		>
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary sticky top-24">
+			<Card className="p-6 bg-surface-2 border-secondary sticky top-24">
 				<div className="text-center py-12">
 					<Dumbbell className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
 					<p className="text-muted-foreground">
@@ -1355,7 +1355,7 @@ function ExercisePickerModal({
 							onClick={() => setMuscleFilter(null)}
 							className={
 								!muscleFilter
-									? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+									? "bg-primary border-0 text-white flex-shrink-0"
 									: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 							}
 						>
@@ -1370,7 +1370,7 @@ function ExercisePickerModal({
 								}
 								className={
 									muscleFilter === group
-										? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white flex-shrink-0"
+										? "bg-primary border-0 text-white flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>

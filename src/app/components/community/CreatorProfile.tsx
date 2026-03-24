@@ -140,7 +140,7 @@ export function CreatorProfile({
 							{stats.avatar_url && (
 								<AvatarImage src={stats.avatar_url} alt={stats.display_name} />
 							)}
-							<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-lg">
+							<AvatarFallback className="bg-primary text-white text-lg">
 								{getInitials(stats.display_name)}
 							</AvatarFallback>
 						</Avatar>
