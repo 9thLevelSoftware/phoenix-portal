@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Suspense, lazy, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import MuscleHighlighter, {
 	type ExtendedBodyPart,
 } from "react-muscle-highlighter";
@@ -70,9 +70,9 @@ export default function BodyTab({
 	profileId,
 }: BodyTabProps) {
 	const [bodySide, setBodySide] = useState<"front" | "back">("front");
-	const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<
-		string | null
-	>(null);
+	const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string | null>(
+		null,
+	);
 
 	return (
 		<>
@@ -245,32 +245,29 @@ export default function BodyTab({
 
 			{/* Exercise Deep-Dive (slides in when muscle selected) */}
 			<AnimatePresence>
-				{selectedMuscleGroup &&
-					exercisesByMuscle[selectedMuscleGroup] && (
-						<motion.div
-							key={selectedMuscleGroup}
-							initial={{ opacity: 0, height: 0 }}
-							animate={{ opacity: 1, height: "auto" }}
-							exit={{ opacity: 0, height: 0 }}
-							transition={{ duration: 0.3 }}
+				{selectedMuscleGroup && exercisesByMuscle[selectedMuscleGroup] && (
+					<motion.div
+						key={selectedMuscleGroup}
+						initial={{ opacity: 0, height: 0 }}
+						animate={{ opacity: 1, height: "auto" }}
+						exit={{ opacity: 0, height: 0 }}
+						transition={{ duration: 0.3 }}
+					>
+						<Suspense
+							fallback={
+								<div className="h-64 animate-pulse bg-surface-2 rounded-lg" />
+							}
 						>
-							<Suspense
-								fallback={
-									<div className="h-64 animate-pulse bg-surface-2 rounded-lg" />
-								}
-							>
-								<ExerciseDeepDive
-									muscleGroup={selectedMuscleGroup}
-									exercises={
-										exercisesByMuscle[selectedMuscleGroup] ?? []
-									}
-									userId={userId}
-									unit={unit}
-									profileId={profileId}
-								/>
-							</Suspense>
-						</motion.div>
-					)}
+							<ExerciseDeepDive
+								muscleGroup={selectedMuscleGroup}
+								exercises={exercisesByMuscle[selectedMuscleGroup] ?? []}
+								userId={userId}
+								unit={unit}
+								profileId={profileId}
+							/>
+						</Suspense>
+					</motion.div>
+				)}
 			</AnimatePresence>
 
 			{/* Volume Landmarks */}
