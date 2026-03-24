@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { VolumeLandmarks } from "../analytics/VolumeLandmarks";
+import { describe, expect, it } from "vitest";
 import type { Recommendation } from "@/lib/recommendations";
 import { VOLUME_LANDMARKS } from "@/lib/volume-landmarks";
+import { VolumeLandmarks } from "../analytics/VolumeLandmarks";
 
 // VolumeLandmarks has no auth/query deps — plain render is sufficient.
 
@@ -36,21 +36,14 @@ const BELOW_MEV_RECO: Recommendation = {
 describe("VolumeLandmarks", () => {
 	it("renders without crashing with valid props", () => {
 		const { container } = render(
-			<VolumeLandmarks
-				weeklyVolume={FULL_VOLUME}
-				selectedMuscleGroup={null}
-			/>,
+			<VolumeLandmarks weeklyVolume={FULL_VOLUME} selectedMuscleGroup={null} />,
 		);
 		expect(container.firstChild).toBeTruthy();
 	});
 
 	it('shows "No workouts this week" when weeklyVolume is empty', () => {
-		render(
-			<VolumeLandmarks weeklyVolume={{}} selectedMuscleGroup={null} />,
-		);
-		expect(
-			screen.getByText(/no workouts this week/i),
-		).toBeInTheDocument();
+		render(<VolumeLandmarks weeklyVolume={{}} selectedMuscleGroup={null} />);
+		expect(screen.getByText(/no workouts this week/i)).toBeInTheDocument();
 	});
 
 	it('shows "No workouts this week" when all volumes are 0', () => {
@@ -60,17 +53,12 @@ describe("VolumeLandmarks", () => {
 		render(
 			<VolumeLandmarks weeklyVolume={zeroVolume} selectedMuscleGroup={null} />,
 		);
-		expect(
-			screen.getByText(/no workouts this week/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/no workouts this week/i)).toBeInTheDocument();
 	});
 
 	it("renders all 6 muscle group bars when data is present", () => {
 		render(
-			<VolumeLandmarks
-				weeklyVolume={FULL_VOLUME}
-				selectedMuscleGroup={null}
-			/>,
+			<VolumeLandmarks weeklyVolume={FULL_VOLUME} selectedMuscleGroup={null} />,
 		);
 		for (const { muscleGroup } of VOLUME_LANDMARKS) {
 			expect(
@@ -87,12 +75,8 @@ describe("VolumeLandmarks", () => {
 				recommendations={[ABOVE_MRV_RECO, BELOW_MEV_RECO]}
 			/>,
 		);
-		expect(
-			screen.getByTestId("volume-recommendations"),
-		).toBeInTheDocument();
-		expect(
-			screen.getByText("Chest volume exceeds MRV"),
-		).toBeInTheDocument();
+		expect(screen.getByTestId("volume-recommendations")).toBeInTheDocument();
+		expect(screen.getByText("Chest volume exceeds MRV")).toBeInTheDocument();
 		expect(screen.getByText("Arms below MEV")).toBeInTheDocument();
 	});
 
