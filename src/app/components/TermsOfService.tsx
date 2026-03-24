@@ -38,7 +38,7 @@ export function TermsOfService() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.5 }}
 				>
-					<h1 className="text-4xl sm:text-5xl mb-4">
+					<h1 className="text-display-1 mb-4">
 						<span className="text-primary">
 							Terms of Service
 						</span>

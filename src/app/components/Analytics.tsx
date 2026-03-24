@@ -1130,7 +1130,7 @@ export function Analytics() {
 					{/* Header */}
 					<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-white">
 								Analytics Hub
 							</h1>
 							<p className="text-muted-foreground">

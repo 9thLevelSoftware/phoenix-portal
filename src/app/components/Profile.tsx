@@ -340,7 +340,7 @@ export function Profile() {
 									</>
 								) : (
 									<>
-										<h1 className="text-3xl text-white mb-2">{displayName}</h1>
+										<h1 className="text-display-2 text-white mb-2">{displayName}</h1>
 										<p className="text-muted-foreground mb-4">
 											{memberSince ? `Member since ${memberSince}` : "Member"}
 										</p>

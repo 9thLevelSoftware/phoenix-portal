@@ -255,7 +255,7 @@ export function PersonalRecords() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl text-white">
+							<h1 className="text-display-2 text-white">
 								Personal Records
 							</h1>
 						</div>
@@ -283,7 +283,7 @@ export function PersonalRecords() {
 					>
 						<div className="flex items-center gap-3 mb-2">
 							<Trophy className="w-8 h-8 text-accent" />
-							<h1 className="text-3xl sm:text-4xl text-white">
+							<h1 className="text-display-2 text-white">
 								Personal Records
 							</h1>
 						</div>

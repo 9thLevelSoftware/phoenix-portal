@@ -112,7 +112,7 @@ function FreeRecoveryView() {
 					animate={{ opacity: 1, y: 0 }}
 					className="mb-8"
 				>
-					<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
+					<h1 className="text-display-2 mb-2 flex items-center gap-3">
 						<HeartPulse className="w-8 h-8 text-primary" />
 						<span className="text-white">Recovery</span>
 					</h1>
@@ -224,7 +224,7 @@ export function Recovery() {
 						content="Monitor your training load and recovery status based on workout patterns"
 						side="bottom"
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2 flex items-center gap-3">
+						<h1 className="text-display-2 mb-2 flex items-center gap-3">
 							<HeartPulse className="w-8 h-8 text-primary" />
 							<span className="text-white">Recovery Readiness</span>
 						</h1>

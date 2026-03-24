@@ -59,7 +59,7 @@ export function TrainingCycles() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-white">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
@@ -90,7 +90,7 @@ export function TrainingCycles() {
 							className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 						>
 							<div>
-								<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-white">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
@@ -129,7 +129,7 @@ export function TrainingCycles() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-white">
 								Training Cycles
 							</h1>
 							<p className="text-muted-foreground">Periodize your progress</p>

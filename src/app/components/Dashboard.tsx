@@ -394,7 +394,7 @@ export function Dashboard() {
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-8 h-8 text-primary" fill={PHOENIX.ember} />
 						</div>
-						<h1 className="text-3xl font-bold mb-3 text-white">
+						<h1 className="text-display-2 mb-3 text-white">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
@@ -488,7 +488,7 @@ export function Dashboard() {
 						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-10 h-10 text-primary" />
 						</div>
-						<h1 className="text-4xl sm:text-5xl mb-4 text-white">
+						<h1 className="text-display-1 mb-4 text-white">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
@@ -876,7 +876,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						className="mb-8 pb-8 border-b border-border"
 					>
-						<h1 className="text-4xl lg:text-5xl font-bold tracking-tight mb-2">
+						<h1 className="text-display-1 mb-2">
 							Welcome back,{" "}
 							<span className="text-primary">
 								{profile?.display_name ??

@@ -722,7 +722,7 @@ export function Challenges() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">Challenges</h1>
+						<h1 className="text-display-2 mb-2 text-white">Challenges</h1>
 						<p className="text-muted-foreground">
 							Compete, conquer, and claim your glory
 						</p>

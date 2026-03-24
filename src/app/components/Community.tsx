@@ -271,7 +271,7 @@ export function Community() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+						<h1 className="text-display-2 mb-2 text-white">
 							Community Hub
 						</h1>
 						<p className="text-muted-foreground">

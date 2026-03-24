@@ -349,7 +349,7 @@ export function PricingPlans() {
 			<div className="max-w-5xl mx-auto">
 				{/* Header */}
 				<div className="text-center mb-10">
-					<h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
+					<h1 className="text-display-2 text-white mb-3">
 						Choose Your Plan
 					</h1>
 					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
