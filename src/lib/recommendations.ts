@@ -3,10 +3,7 @@
 // Pure computation: no React deps, no DB access.
 
 import type { MuscleRecovery } from "@/lib/sra-recovery";
-import {
-	classifyVolumeStatus,
-	getVolumeLandmark,
-} from "@/lib/volume-landmarks";
+import { classifyVolumeStatus, VOLUME_LANDMARKS } from "@/lib/volume-landmarks";
 
 // --- Types ---
 
@@ -45,20 +42,20 @@ export function generateVolumeRecommendations(
 ): Recommendation[] {
 	const recommendations: Recommendation[] = [];
 
-	for (const [muscleGroup, sets] of Object.entries(weeklyVolume)) {
-		const status = classifyVolumeStatus(muscleGroup, sets);
-		const landmark = getVolumeLandmark(muscleGroup);
+	for (const landmark of VOLUME_LANDMARKS) {
+		const sets = weeklyVolume[landmark.muscleGroup] ?? 0;
+		const status = classifyVolumeStatus(landmark.muscleGroup, sets);
 
-		if (!status || !landmark) continue;
+		if (!status) continue;
 
 		if (status === "above_mrv") {
 			const excess = sets - landmark.mrv;
 			recommendations.push({
-				id: `volume_above_mrv_${muscleGroup}`,
+				id: `volume_above_mrv_${landmark.muscleGroup}`,
 				priority: "critical",
 				signal: "volume_above_mrv",
-				muscleGroup,
-				title: `${muscleGroup} volume exceeds MRV`,
+				muscleGroup: landmark.muscleGroup,
+				title: `${landmark.muscleGroup} volume exceeds MRV`,
 				action: `Reduce by ${excess} set${excess !== 1 ? "s" : ""} next week (${sets}/${landmark.mrv} sets)`,
 				metric: {
 					current: sets,
@@ -69,11 +66,11 @@ export function generateVolumeRecommendations(
 		} else if (status === "below_mev") {
 			const deficit = landmark.mev - sets;
 			recommendations.push({
-				id: `volume_below_mev_${muscleGroup}`,
+				id: `volume_below_mev_${landmark.muscleGroup}`,
 				priority: "actionable",
 				signal: "volume_below_mev",
-				muscleGroup,
-				title: `${muscleGroup} below MEV`,
+				muscleGroup: landmark.muscleGroup,
+				title: `${landmark.muscleGroup} below MEV`,
 				action: `Add ${deficit} set${deficit !== 1 ? "s" : ""} to maintain progress (${sets}/${landmark.mev} sets)`,
 				metric: {
 					current: sets,
@@ -105,8 +102,14 @@ export function generateSraRecommendations(
 	for (const recovery of recoveries) {
 		const { muscleGroup, status, hoursRemaining } = recovery;
 
+		// Skip "ready to train" callouts for muscles that were never trained.
+		// computeSraStatus returns hoursSinceLastTrained === 0 for the null-input
+		// (never-trained) path, so we use that as the sentinel.
+		const neverTrained = recovery.hoursSinceLastTrained === 0;
+
 		switch (status) {
 			case "SUPERCOMPENSATED":
+				if (neverTrained) break;
 				recommendations.push({
 					id: `sra_supercompensated_${muscleGroup}`,
 					priority: "positive",
@@ -118,6 +121,7 @@ export function generateSraRecommendations(
 				break;
 
 			case "RECOVERED":
+				if (neverTrained) break;
 				recommendations.push({
 					id: `sra_recovered_${muscleGroup}`,
 					priority: "positive",

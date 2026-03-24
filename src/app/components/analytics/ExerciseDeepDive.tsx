@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { Card } from "@/app/components/ui/card";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
-import { formatWeight, type WeightUnit } from "@/lib/units";
+import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
 import { exerciseProgressOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
 import type { ExerciseProgress } from "@/schemas/telemetry";
@@ -133,9 +133,9 @@ export function ExerciseDeepDive({
 		() =>
 			filteredProgress.map((d) => ({
 				date: formatShortDate(d.recorded_at),
-				oneRM: d.estimated_1rm_kg,
+				oneRM: convertWeight(d.estimated_1rm_kg, unit),
 			})),
-		[filteredProgress],
+		[filteredProgress, unit],
 	);
 
 	const delta = useMemo(
@@ -345,7 +345,11 @@ export function ExerciseDeepDive({
 												}}
 												labelStyle={{ color: "#e0e0e8" }}
 												itemStyle={{ color: "#FF6B35" }}
-												formatter={(v: number) => formatWeight(v, unit)}
+												formatter={(v: number) =>
+													unit === "lbs"
+														? `${v.toFixed(1)} lbs`
+														: `${Math.round(v)} kg`
+												}
 											/>
 											<Area
 												type="monotone"

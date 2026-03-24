@@ -23,8 +23,8 @@ export interface MuscleRecovery {
 	estimatedRecoveryHours: number;
 	/** null when status is RECOVERED or SUPERCOMPENSATED */
 	hoursRemaining: number | null;
-	lastSessionVolume: string | null;
-	lastSessionIntensity: string | null;
+	lastSessionVolume: number | null;
+	lastSessionIntensity: number | null;
 }
 
 // --- Recovery windows ---
@@ -101,7 +101,7 @@ export function computeSraStatus(
 	if (ratio < THRESHOLD_FATIGUED_END) {
 		status = "FATIGUED";
 		hoursRemaining = Math.ceil(
-			estimatedRecoveryHours * THRESHOLD_FATIGUED_END - hoursSinceLastTrained,
+			estimatedRecoveryHours * THRESHOLD_RECOVERING_END - hoursSinceLastTrained,
 		);
 	} else if (ratio < THRESHOLD_RECOVERING_END) {
 		status = "RECOVERING";

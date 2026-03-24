@@ -43,7 +43,8 @@ describe("computeSraStatus", () => {
 			isHighVolume: false,
 		});
 		expect(result.status).toBe("FATIGUED");
-		expect(result.hoursRemaining).toBeGreaterThan(0);
+		// hoursRemaining should be time to RECOVERED (80% of 60h = 48h), not to end of FATIGUED phase
+		expect(result.hoursRemaining).toBe(38); // 48 - 10
 	});
 
 	it("returns RECOVERING when 33-80% elapsed", () => {
