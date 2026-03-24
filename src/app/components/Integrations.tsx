@@ -85,7 +85,7 @@ export function Integrations() {
 			<div className="container mx-auto p-6 space-y-8">
 				<div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
 					<div>
-						<h1 className="text-3xl font-bold">Integrations</h1>
+						<h1 className="text-display-2">Integrations</h1>
 						<p className="text-muted-foreground">
 							Connect your fitness services to see all your data in one place
 						</p>

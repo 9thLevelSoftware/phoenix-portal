@@ -303,7 +303,7 @@ export function WorkoutHistory() {
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+						<h1 className="text-display-2 mb-2 text-white">
 							Workout History
 						</h1>
 						<p className="text-muted-foreground">
@@ -336,7 +336,7 @@ export function WorkoutHistory() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-white">
 								Workout History
 							</h1>
 							<p className="text-muted-foreground">

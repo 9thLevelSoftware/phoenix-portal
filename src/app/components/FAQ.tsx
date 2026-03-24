@@ -259,7 +259,7 @@ export function FAQ() {
 					{/* Page heading */}
 					<div className="flex items-center gap-3 mb-2">
 						<HelpCircle className="w-8 h-8 text-primary" />
-						<h1 className="text-4xl sm:text-5xl">
+						<h1 className="text-display-1">
 							<span className="text-primary">
 								Frequently Asked Questions
 							</span>

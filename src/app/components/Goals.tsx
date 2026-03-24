@@ -362,7 +362,7 @@ export function Goals() {
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+						<h1 className="text-display-2 mb-2 text-white">
 							Training Goals
 						</h1>
 						<p className="text-muted-foreground mb-8">
@@ -398,7 +398,7 @@ export function Goals() {
 					className="flex items-center justify-between mb-8"
 				>
 					<div>
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+						<h1 className="text-display-2 mb-2 text-white">
 							Training Goals
 						</h1>
 						<p className="text-muted-foreground">

@@ -592,7 +592,7 @@ export function Biomechanics() {
 	return (
 		<PageShell className="min-h-screen">
 			<div className="mb-8">
-				<h1 className="text-3xl font-bold text-white">Biomechanics</h1>
+				<h1 className="text-display-2 text-white">Biomechanics</h1>
 				<p className="text-muted-foreground mt-1">
 					Advanced training analytics
 				</p>

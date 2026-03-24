@@ -233,7 +233,7 @@ export function SessionDetail() {
 							</SubscriptionGate>
 						</div>
 
-						<h1 className="text-3xl sm:text-4xl mb-2 text-white">
+						<h1 className="text-display-2 mb-2 text-white">
 							{session.name}
 						</h1>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
