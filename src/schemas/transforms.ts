@@ -371,3 +371,20 @@ export const challengeParticipantListSchema = z.array(
 );
 
 export type ChallengeParticipant = z.infer<typeof challengeParticipantSchema>;
+
+// --- Body Intelligence ---
+
+export const bodyIntelligenceRowSchema = z.object({
+	id: z.string().uuid(),
+	name: z.string(),
+	muscle_group: z.string().nullable(),
+	session_id: z.string().uuid(),
+	setCount: z.number(),
+	workout_sessions: z.object({
+		id: z.string().uuid(),
+		started_at: z.coerce.date(),
+		user_id: z.string().uuid(),
+	}),
+});
+
+export const bodyIntelligenceSchema = z.array(bodyIntelligenceRowSchema);
