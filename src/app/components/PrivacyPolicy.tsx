@@ -804,7 +804,7 @@ export function PrivacyPolicy() {
 					<div className="mt-12 text-center">
 						<Button
 							onClick={() => navigate(-1)}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 						>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to Home

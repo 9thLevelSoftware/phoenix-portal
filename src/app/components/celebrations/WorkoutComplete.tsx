@@ -275,7 +275,8 @@ export function WorkoutComplete({
 													e.stopPropagation();
 													onViewSummary();
 												}}
-												className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+												variant="cta"
+										className="flex-1"
 											>
 												View Summary
 											</Button>

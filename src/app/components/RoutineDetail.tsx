@@ -174,7 +174,7 @@ export function RoutineDetail() {
 
 				<Button
 					asChild
-					className="border-0 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent"
+					variant="cta"
 				>
 					<Link to={`/routines/${routine.id}`}>
 						<Edit className="mr-2 h-4 w-4" />

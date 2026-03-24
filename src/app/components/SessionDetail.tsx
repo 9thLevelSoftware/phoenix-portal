@@ -160,7 +160,8 @@ export function SessionDetail() {
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
-						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="mt-6"
 					>
 						Return to History
 					</Button>
@@ -701,7 +702,8 @@ export function SessionDetail() {
 				>
 					{isPremium ? (
 						<Button
-							className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
+							className="flex-1"
 							onClick={() => setPickerOpen(true)}
 						>
 							<BarChart3 className="w-4 h-4 mr-2" />

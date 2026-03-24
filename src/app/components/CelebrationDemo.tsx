@@ -69,7 +69,7 @@ export function CelebrationDemo() {
 							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 								<Button
 									onClick={() => setShowPR(true)}
-									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
 								>
 									Weight PR
 								</Button>

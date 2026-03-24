@@ -237,7 +237,8 @@ function ChallengeCard({
 						{isJoined ? (
 							<div className="space-y-2">
 								<Button
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
+									className="w-full"
 									onClick={onToggleExpand}
 								>
 									{isExpanded ? "Hide Details" : "View Details"}
@@ -256,7 +257,8 @@ function ChallengeCard({
 							</div>
 						) : (
 							<Button
-								className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+								variant="cta"
+								className="w-full"
 								onClick={onJoin}
 								disabled={joinPending}
 							>
