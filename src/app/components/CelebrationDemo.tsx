@@ -24,7 +24,7 @@ export function CelebrationDemo() {
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}

@@ -213,39 +213,39 @@
   /* Phoenix sidebar scrollbar */
   [data-sidebar="content"] {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 107, 53, 0.15) transparent;
+    scrollbar-color: rgba(255, 107, 53, 0.1) transparent;
   }
   [data-sidebar="content"]::-webkit-scrollbar {
-    width: 6px;
+    width: 5px;
   }
   [data-sidebar="content"]::-webkit-scrollbar-track {
     background: transparent;
   }
   [data-sidebar="content"]::-webkit-scrollbar-thumb {
-    background: rgba(255, 107, 53, 0.15);
-    border-radius: 3px;
+    background: rgba(255, 107, 53, 0.1);
+    border-radius: 2px;
   }
   [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 107, 53, 0.3);
+    background: rgba(255, 107, 53, 0.2);
   }
 
   /* Main content scrollbar — subtle dark styling */
   main {
     scrollbar-width: thin;
-    scrollbar-color: rgba(51, 51, 58, 1) rgba(26, 26, 30, 1);
+    scrollbar-color: #1a1a24 #06060a;
   }
   main::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
   }
   main::-webkit-scrollbar-track {
-    background: rgba(26, 26, 30, 1);
+    background: #06060a;
   }
   main::-webkit-scrollbar-thumb {
-    background: rgba(51, 51, 58, 1);
-    border-radius: 4px;
+    background: #1a1a24;
+    border-radius: 2px;
   }
   main::-webkit-scrollbar-thumb:hover {
-    background: rgba(85, 85, 96, 1);
+    background: #2a2a36;
   }
 
   /* Phoenix sidebar icons — 20px in expanded, revert to default 16px in collapsed */

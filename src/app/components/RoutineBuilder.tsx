@@ -391,7 +391,7 @@ export function RoutineBuilder() {
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Top Bar */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex items-center justify-between">
 						<Button
