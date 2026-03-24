@@ -1,8 +1,8 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { renderWithProviders } from "@/test/test-utils";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
+import { renderWithProviders } from "@/test/test-utils";
 import { SraRecoveryMatrix } from "../analytics/SraRecoveryMatrix";
 
 // --- useSubscription mock ---
@@ -143,9 +143,13 @@ describe("SraRecoveryMatrix", () => {
 		setupSubscription(false);
 		renderWithProviders(<SraRecoveryMatrix recoveries={RECOVERIES} />);
 
-		const overlay = screen.getByRole("region", { name: "Premium feature preview" });
+		const overlay = screen.getByRole("region", {
+			name: "Premium feature preview",
+		});
 		expect(overlay).toBeInTheDocument();
-		expect(screen.getByText("Unlock Training Intelligence")).toBeInTheDocument();
+		expect(
+			screen.getByText("Unlock Training Intelligence"),
+		).toBeInTheDocument();
 		expect(screen.getByText("Upgrade to Inferno")).toBeInTheDocument();
 	});
 
@@ -216,10 +220,7 @@ describe("SraRecoveryMatrix", () => {
 	it("renders inline SRA recommendation callouts", () => {
 		setupSubscription(true);
 		renderWithProviders(
-			<SraRecoveryMatrix
-				recoveries={RECOVERIES}
-				recommendations={SRA_RECOS}
-			/>,
+			<SraRecoveryMatrix recoveries={RECOVERIES} recommendations={SRA_RECOS} />,
 		);
 
 		expect(screen.getByTestId("sra-recommendations")).toBeInTheDocument();
@@ -238,18 +239,14 @@ describe("SraRecoveryMatrix", () => {
 			/>,
 		);
 
-		expect(
-			screen.queryByTestId("sra-recommendations"),
-		).not.toBeInTheDocument();
+		expect(screen.queryByTestId("sra-recommendations")).not.toBeInTheDocument();
 	});
 
 	it("does not render recommendations section when no SRA recommendations provided", () => {
 		setupSubscription(true);
 		renderWithProviders(<SraRecoveryMatrix recoveries={RECOVERIES} />);
 
-		expect(
-			screen.queryByTestId("sra-recommendations"),
-		).not.toBeInTheDocument();
+		expect(screen.queryByTestId("sra-recommendations")).not.toBeInTheDocument();
 	});
 
 	// --- Empty state ---
@@ -258,8 +255,6 @@ describe("SraRecoveryMatrix", () => {
 		setupSubscription(true);
 		renderWithProviders(<SraRecoveryMatrix recoveries={[]} />);
 
-		expect(
-			screen.getByText(/no recovery data/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/no recovery data/i)).toBeInTheDocument();
 	});
 });
