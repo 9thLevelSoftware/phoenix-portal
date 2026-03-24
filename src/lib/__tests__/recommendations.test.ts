@@ -24,7 +24,18 @@ describe("generateVolumeRecommendations", () => {
 
 	it("generates no recommendation when in optimal range", () => {
 		const recos = generateVolumeRecommendations({ Chest: 16 });
-		expect(recos).toHaveLength(0);
+		// Chest is in-range, but other untrained groups still produce below-MEV
+		// (except Core which has MEV=0). Filter to only Chest recos.
+		const chestRecos = recos.filter((r) => r.muscleGroup === "Chest");
+		expect(chestRecos).toHaveLength(0);
+	});
+
+	it("generates below_mev for untrained muscle groups", () => {
+		// Empty volume = all muscles untrained
+		const recos = generateVolumeRecommendations({});
+		// Should have below-MEV for all groups except Core (which has MEV=0)
+		const belowMev = recos.filter((r) => r.signal === "volume_below_mev");
+		expect(belowMev.length).toBe(5); // Chest, Back, Shoulders, Legs, Arms (not Core since MEV=0)
 	});
 });
 
@@ -39,7 +50,7 @@ describe("generateSraRecommendations", () => {
 				hoursRemaining: null,
 				lastSessionVolume: 12,
 				lastSessionIntensity: 0.75,
-			} as never,
+			},
 		]);
 		expect(recos.some((r) => r.signal === "sra_supercompensated")).toBe(true);
 	});
@@ -54,11 +65,26 @@ describe("generateSraRecommendations", () => {
 				hoursRemaining: 55,
 				lastSessionVolume: 20,
 				lastSessionIntensity: 0.9,
-			} as never,
+			},
 		]);
 		const info = recos.find((r) => r.signal === "sra_fatigued");
 		expect(info).toBeDefined();
 		expect(info?.priority).toBe("info");
+	});
+
+	it("skips recommendations for never-trained muscles", () => {
+		const recos = generateSraRecommendations([
+			{
+				muscleGroup: "Chest",
+				status: "RECOVERED",
+				hoursSinceLastTrained: 0,
+				estimatedRecoveryHours: 60,
+				hoursRemaining: null,
+				lastSessionVolume: null,
+				lastSessionIntensity: null,
+			},
+		]);
+		expect(recos).toHaveLength(0);
 	});
 });
 
