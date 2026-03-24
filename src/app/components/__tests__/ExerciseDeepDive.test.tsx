@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { ExerciseDeepDive } from "../analytics/ExerciseDeepDive";
@@ -55,7 +55,9 @@ const BASE_PROPS = {
 
 describe("ExerciseDeepDive", () => {
 	it("renders without crashing with valid props", () => {
-		const { container } = renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
+		const { container } = renderWithProviders(
+			<ExerciseDeepDive {...BASE_PROPS} />,
+		);
 		expect(container.firstChild).toBeTruthy();
 	});
 
@@ -95,9 +97,7 @@ describe("ExerciseDeepDive", () => {
 	});
 
 	it("shows empty state when exercise list is empty", () => {
-		renderWithProviders(
-			<ExerciseDeepDive {...BASE_PROPS} exercises={[]} />,
-		);
+		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} exercises={[]} />);
 		expect(
 			screen.getByText(/no exercises found for chest/i),
 		).toBeInTheDocument();
@@ -106,9 +106,7 @@ describe("ExerciseDeepDive", () => {
 	it("shows 'Not enough data for 1RM estimate' when progress data is empty", () => {
 		// Query mocks return [] by default so empty state should render
 		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
-		expect(
-			screen.getByTestId("empty-state"),
-		).toBeInTheDocument();
+		expect(screen.getByTestId("empty-state")).toBeInTheDocument();
 	});
 
 	it("renders without crashing with lbs unit", () => {

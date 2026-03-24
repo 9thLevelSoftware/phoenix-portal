@@ -11,10 +11,8 @@ import {
 import { Card } from "@/app/components/ui/card";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { formatWeight, type WeightUnit } from "@/lib/units";
+import { exerciseProgressOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
-import {
-	exerciseProgressOptions,
-} from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +84,9 @@ function StatCard({
 	return (
 		<div className="bg-surface-2 rounded-lg p-3 flex flex-col gap-1">
 			<span className="text-[11px] text-muted-foreground">{label}</span>
-			<span className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-white"}`}>
+			<span
+				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-white"}`}
+			>
 				{value}
 			</span>
 		</div>
@@ -121,9 +121,7 @@ export function ExerciseDeepDive({
 		enabled: !!selectedExercise,
 	});
 
-	const { data: records } = useQuery(
-		personalRecordsOptions(userId, profileId),
-	);
+	const { data: records } = useQuery(personalRecordsOptions(userId, profileId));
 
 	// ── Derived data ─────────────────────────────────────────────────────────
 	const filteredProgress = useMemo(
@@ -347,9 +345,7 @@ export function ExerciseDeepDive({
 												}}
 												labelStyle={{ color: "#e0e0e8" }}
 												itemStyle={{ color: "#FF6B35" }}
-												formatter={(v: number) =>
-													formatWeight(v, unit)
-												}
+												formatter={(v: number) => formatWeight(v, unit)}
 											/>
 											<Area
 												type="monotone"
@@ -386,16 +382,11 @@ export function ExerciseDeepDive({
 					</div>
 
 					{/* Stats Row */}
-					<div
-						className="grid grid-cols-4 gap-2"
-						data-testid="stats-row"
-					>
+					<div className="grid grid-cols-4 gap-2" data-testid="stats-row">
 						<StatCard
 							label="Current 1RM"
 							value={
-								currentOneRM != null
-									? formatWeight(currentOneRM, unit)
-									: "—"
+								currentOneRM != null ? formatWeight(currentOneRM, unit) : "—"
 							}
 						/>
 						<StatCard
