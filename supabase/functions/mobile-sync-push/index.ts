@@ -730,7 +730,10 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 7. Upsert routines + delete/reinsert routine_exercises
+    // 7. Upsert routines + upsert routine_exercises (safe replace pattern)
+    //    Uses upsert-by-PK instead of delete+insert to prevent data loss if
+    //    the insert step fails after a successful delete. Orphan exercises
+    //    (removed from routine on mobile) are cleaned up after upsert succeeds.
     // =========================================================================
     if (payload.routines && payload.routines.length > 0) {
       const routineRows = payload.routines.map((r) => ({
@@ -751,14 +754,8 @@ Deno.serve(async (req) => {
       if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
       routinesUpserted = routineRows.length;
 
-      // Delete existing routine_exercises for these routines, then reinsert
-      const routineIds = payload.routines.map((r) => r.id);
-      const { error: delErr } = await supabase
-        .from('routine_exercises')
-        .delete()
-        .in('routine_id', routineIds);
-      if (delErr) throw new Error(`routine_exercises delete failed: ${delErr.message}`);
-
+      // Upsert exercises by primary key (id). Each exercise has a stable UUID
+      // generated on mobile, so onConflict: 'id' safely updates existing rows.
       const reRows = payload.routines.flatMap((r) =>
         r.exercises.map((e) => ({
           id: e.id,
@@ -791,13 +788,42 @@ Deno.serve(async (req) => {
       if (reRows.length > 0) {
         const { error: reErr } = await supabase
           .from('routine_exercises')
-          .insert(reRows);
-        if (reErr) throw new Error(`routine_exercises insert failed: ${reErr.message}`);
+          .upsert(reRows, { onConflict: 'id' });
+        if (reErr) throw new Error(`routine_exercises upsert failed: ${reErr.message}`);
+      }
+
+      // Remove orphan exercises: rows belonging to synced routines whose IDs
+      // are not in the current payload. This handles exercises deleted on mobile.
+      const syncedExerciseIds = reRows.map((r) => r.id);
+      const routineIds = payload.routines.map((r) => r.id);
+      for (const routineId of routineIds) {
+        const idsForRoutine = syncedExerciseIds.length > 0
+          ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
+          : [];
+
+        if (idsForRoutine.length > 0) {
+          // Delete exercises in this routine that are NOT in the payload
+          const { error: orphanErr } = await supabase
+            .from('routine_exercises')
+            .delete()
+            .eq('routine_id', routineId)
+            .not('id', 'in', `(${idsForRoutine.join(',')})`);
+          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+        } else {
+          // Routine has zero exercises now -- delete all
+          const { error: orphanErr } = await supabase
+            .from('routine_exercises')
+            .delete()
+            .eq('routine_id', routineId);
+          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+        }
       }
     }
 
     // =========================================================================
-    // 7b. Upsert training_cycles + delete/reinsert cycle_days
+    // 7b. Upsert training_cycles + upsert cycle_days (safe replace pattern)
+    //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
+    //     constraint instead of delete+insert.
     // =========================================================================
     if (payload.cycles && payload.cycles.length > 0) {
       const cycleRows = payload.cycles.map((c) => ({
@@ -823,14 +849,7 @@ Deno.serve(async (req) => {
       if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
       cyclesUpserted = cycleRows.length;
 
-      // Delete existing cycle_days for these cycles, then reinsert
-      const cycleIds = payload.cycles.map((c) => c.id);
-      const { error: delCdErr } = await supabase
-        .from('cycle_days')
-        .delete()
-        .in('cycle_id', cycleIds);
-      if (delCdErr) throw new Error(`cycle_days delete failed: ${delCdErr.message}`);
-
+      // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
       const dayRows = payload.cycles.flatMap((c) =>
         c.days.map((d) => ({
           id: d.id,
@@ -849,8 +868,21 @@ Deno.serve(async (req) => {
       if (dayRows.length > 0) {
         const { error: dayErr } = await supabase
           .from('cycle_days')
-          .insert(dayRows);
-        if (dayErr) throw new Error(`cycle_days insert failed: ${dayErr.message}`);
+          .upsert(dayRows, { onConflict: 'cycle_id,day_number' });
+        if (dayErr) throw new Error(`cycle_days upsert failed: ${dayErr.message}`);
+      }
+
+      // Remove orphan days: day_numbers beyond the cycle's current day count
+      for (const cycle of payload.cycles) {
+        const maxDayNumber = cycle.days.length > 0
+          ? Math.max(...cycle.days.map((d) => d.dayNumber))
+          : -1;
+        const { error: orphanErr } = await supabase
+          .from('cycle_days')
+          .delete()
+          .eq('cycle_id', cycle.id)
+          .gt('day_number', maxDayNumber);
+        if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
       }
     }
 
