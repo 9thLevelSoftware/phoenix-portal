@@ -134,7 +134,9 @@ describe("RecommendationsPanel", () => {
 			<RecommendationsPanel recommendations={RECOMMENDATIONS} />,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 		expect(screen.getByTestId("recommendations-list")).toBeInTheDocument();
 	});
 
@@ -147,7 +149,9 @@ describe("RecommendationsPanel", () => {
 		);
 
 		// Expand
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 
 		const list = screen.getByTestId("recommendations-list");
 		const titles = list.querySelectorAll("p.font-medium.text-white");
@@ -181,7 +185,9 @@ describe("RecommendationsPanel", () => {
 		);
 
 		// Expand
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 
 		const list = screen.getByTestId("recommendations-list");
 		// Each card has a role="alert"
@@ -199,15 +205,15 @@ describe("RecommendationsPanel", () => {
 			<RecommendationsPanel recommendations={MANY_RECOMMENDATIONS} />,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 		fireEvent.click(screen.getByTestId("show-all-button"));
 
 		const list = screen.getByTestId("recommendations-list");
 		const cards = list.querySelectorAll("[role='alert']");
 		expect(cards).toHaveLength(9);
-		expect(
-			screen.queryByTestId("show-all-button"),
-		).not.toBeInTheDocument();
+		expect(screen.queryByTestId("show-all-button")).not.toBeInTheDocument();
 	});
 
 	it("does NOT show Show all button when 8 or fewer recommendations", () => {
@@ -216,11 +222,11 @@ describe("RecommendationsPanel", () => {
 			<RecommendationsPanel recommendations={RECOMMENDATIONS} />,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 
-		expect(
-			screen.queryByTestId("show-all-button"),
-		).not.toBeInTheDocument();
+		expect(screen.queryByTestId("show-all-button")).not.toBeInTheDocument();
 	});
 
 	// --- Empty state ---
@@ -229,11 +235,11 @@ describe("RecommendationsPanel", () => {
 		setupSubscription(true);
 		renderWithProviders(<RecommendationsPanel recommendations={[]} />);
 
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 
-		expect(
-			screen.getByText(/all looking good/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/all looking good/i)).toBeInTheDocument();
 	});
 
 	// --- Metric display ---
@@ -244,7 +250,9 @@ describe("RecommendationsPanel", () => {
 			<RecommendationsPanel recommendations={[RECOMMENDATIONS[0]]} />,
 		);
 
-		fireEvent.click(screen.getByRole("button", { name: /training recommendations/i }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /training recommendations/i }),
+		);
 
 		// The metric row shows "Current: 22 sets / Threshold: 20 sets"
 		expect(screen.getByText(/Current:/)).toBeInTheDocument();
