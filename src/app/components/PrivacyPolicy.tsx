@@ -58,7 +58,7 @@ export function PrivacyPolicy() {
 					</div>
 
 					{/* Policy Sections */}
-					<div className="space-y-8">
+					<article className="space-y-8">
 						<section>
 							<h2 className="text-2xl mb-4 text-primary">1. Introduction</h2>
 							<p className="text-secondary-foreground leading-relaxed">
@@ -798,7 +798,7 @@ export function PrivacyPolicy() {
 								</li>
 							</ul>
 						</section>
-					</div>
+					</article>
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">
