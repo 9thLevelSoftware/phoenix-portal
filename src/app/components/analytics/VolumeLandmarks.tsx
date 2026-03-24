@@ -1,12 +1,12 @@
-import { AnimatePresence, motion } from "motion/react";
 import { AlertTriangle, CheckCircle, TrendingDown } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { Card } from "@/app/components/ui/card";
+import type { Recommendation } from "@/lib/recommendations";
 import {
-	VOLUME_LANDMARKS,
 	classifyVolumeStatus,
+	VOLUME_LANDMARKS,
 	type VolumeStatus,
 } from "@/lib/volume-landmarks";
-import type { Recommendation } from "@/lib/recommendations";
 
 // --- Props ---
 
@@ -154,14 +154,11 @@ export function VolumeLandmarks({
 							const sets = weeklyVolume[landmark.muscleGroup] ?? 0;
 							const status = classifyVolumeStatus(landmark.muscleGroup, sets);
 							const barColor = getBarColor(status);
-							const isSelected =
-								selectedMuscleGroup === landmark.muscleGroup;
-							const isDimmed =
-								selectedMuscleGroup !== null && !isSelected;
+							const isSelected = selectedMuscleGroup === landmark.muscleGroup;
+							const isDimmed = selectedMuscleGroup !== null && !isSelected;
 
 							// Marker positions as % of maxMrv
-							const pct = (v: number) =>
-								Math.min((v / maxMrv) * 100, 100);
+							const pct = (v: number) => Math.min((v / maxMrv) * 100, 100);
 							const barWidthPct = Math.min((sets / maxMrv) * 100, 100);
 
 							const isOptimal = status === "in_mav";
@@ -258,7 +255,10 @@ export function VolumeLandmarks({
 
 					{/* Inline recommendation callouts */}
 					{volumeRecos.length > 0 && (
-						<div className="mt-5 space-y-2" data-testid="volume-recommendations">
+						<div
+							className="mt-5 space-y-2"
+							data-testid="volume-recommendations"
+						>
 							{volumeRecos.map((reco) => (
 								<RecommendationCallout key={reco.id} recommendation={reco} />
 							))}
