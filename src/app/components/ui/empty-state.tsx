@@ -32,14 +32,14 @@ export function EmptyState({
 				(actionHref ? (
 					<Button
 						asChild
-						className="bg-gradient-to-r from-primary to-chart-2 border-0"
+						variant="cta"
 					>
 						<Link to={actionHref}>{actionLabel}</Link>
 					</Button>
 				) : onAction ? (
 					<Button
 						onClick={onAction}
-						className="bg-gradient-to-r from-primary to-chart-2 border-0"
+						variant="cta"
 					>
 						{actionLabel}
 					</Button>

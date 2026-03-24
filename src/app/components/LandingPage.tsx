@@ -309,7 +309,8 @@ export function LandingPage() {
 							type="button"
 							disabled={authLoading}
 							onClick={handleResetPassword}
-							className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
+							className="w-full"
 						>
 							{authLoading ? (
 								<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -397,7 +398,8 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
+									className="w-full"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -477,7 +479,8 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
+									className="w-full"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -674,7 +677,8 @@ export function LandingPage() {
 						<Button
 							size="lg"
 							onClick={openAuth}
-							className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0 btn-shimmer"
+							variant="cta"
+					className="w-full sm:w-auto btn-shimmer"
 						>
 							Preview dashboard
 						</Button>

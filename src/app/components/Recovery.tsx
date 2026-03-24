@@ -171,7 +171,7 @@ function FreeRecoveryView() {
 							wearable data integration.
 						</p>
 						<Button
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 							asChild
 						>
 							<Link to="/pricing">View Plans</Link>

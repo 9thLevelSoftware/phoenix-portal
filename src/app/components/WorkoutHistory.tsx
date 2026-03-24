@@ -674,7 +674,7 @@ export function WorkoutHistory() {
 										<Button
 											size="sm"
 											onClick={handleCompareSelected}
-											className="bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											variant="cta"
 										>
 											<BarChart3 className="w-4 h-4 mr-2" />
 											Compare Selected
@@ -877,7 +877,7 @@ export function WorkoutHistory() {
 												</p>
 												<Button
 													asChild
-													className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white"
+													variant="cta"
 												>
 													<Link to="/pricing">View Plans</Link>
 												</Button>

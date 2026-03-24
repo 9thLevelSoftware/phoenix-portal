@@ -413,7 +413,7 @@ export function Goals() {
 						<Button
 							onClick={() => setCreateOpen(true)}
 							disabled={atLimit}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 							title={
 								atLimit && maxGoals !== Infinity
 									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
@@ -981,7 +981,8 @@ function GoalFormDialog({
 					{/* Submit */}
 					<Button
 						onClick={handleSubmit}
-						className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="w-full"
 						disabled={
 							!targetValue ||
 							parseFloat(targetValue) <= 0 ||

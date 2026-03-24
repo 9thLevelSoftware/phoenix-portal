@@ -169,7 +169,8 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 					</p>
 				</div>
 				<Button
-					className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
+					variant="cta"
+					className="w-full shadow-lg shadow-primary/50"
 					asChild
 				>
 					<Link to={`/cycles/${cycleId}`}>
