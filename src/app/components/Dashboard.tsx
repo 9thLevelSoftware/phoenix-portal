@@ -874,7 +874,7 @@ export function Dashboard() {
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
-						className="mb-10"
+						className="mb-8 pb-8 border-b border-border"
 					>
 						<h1 className="text-4xl lg:text-5xl font-bold tracking-tight mb-2">
 							Welcome back,{" "}
