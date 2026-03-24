@@ -2,11 +2,11 @@
 // Aggregates training recommendations from volume landmarks and SRA recovery data.
 // Pure computation: no React deps, no DB access.
 
+import type { MuscleRecovery } from "@/lib/sra-recovery";
 import {
 	classifyVolumeStatus,
 	getVolumeLandmark,
 } from "@/lib/volume-landmarks";
-import type { MuscleRecovery } from "@/lib/sra-recovery";
 
 // --- Types ---
 
