@@ -1,8 +1,24 @@
-/* Phoenix Typography — Inter (UI) + JetBrains Mono (Data) */
+/* Phoenix Typography — Three-font system
+ *
+ * Display:  Chakra Petch — angular, squared terminals, mechanical.
+ *           Used for headings h1-h3. Extreme structural contrast with Inter.
+ * UI/Body:  Inter — realist sans-serif, screen-optimized.
+ *           Used for body text, labels, buttons, inputs.
+ * Data:     JetBrains Mono — monospace, tabular figures.
+ *           Used for metrics, values, readouts.
+ *
+ * Pairing rationale (Design for Hackers, Appendix A):
+ *   Inter (realist, rounded shoulder on 'n') + Chakra Petch (geometric-angular,
+ *   blocky shoulder on 'n') = extreme structure contrast. The book says this
+ *   deliberate contrast is the valid exception to the one-serif-one-sans rule.
+ *
+ * Type scale: Perfect Fourth (1.333x) = 3:4 ratio (Ch. 5 recommended proportion)
+ */
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --default-font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Chakra Petch", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-data: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
 }
 

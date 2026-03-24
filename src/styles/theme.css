@@ -1,6 +1,6 @@
 :root {
   --font-size: 16px;
-  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Chakra Petch", "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Signal palette — instrument panel */
   --phoenix-black: #06060a;
@@ -304,55 +304,82 @@
     font-size: var(--font-size);
   }
 
-  /* Typography hierarchy — 1.25x Major Third scale, Inter Variable weights */
+  /*
+   * Typography hierarchy — Perfect Fourth scale (1.333x = 3:4 ratio)
+   *
+   * Display font (h1-h3): Chakra Petch — squared terminals, mechanical edge
+   * Body font (h4, p, label, etc): Inter — realist, screen-optimized
+   * Data font (metrics): JetBrains Mono — tabular monospace
+   *
+   * Scale from 16px base:
+   *   3.157rem (50.5px) — hero/display only
+   *   2.369rem (37.9px) — h1
+   *   1.777rem (28.4px) — h2
+   *   1.333rem (21.3px) — h3
+   *   1rem     (16px)   — h4, body, base
+   *   0.75rem  (12px)   — small, captions
+   *   0.688rem (11px)   — eyebrow labels
+   *
+   * Leading (Ch. 3 / Appendix B): 1.2-1.4em for body copy
+   * Letter-spacing: tighter at display sizes, neutral at body, wide on eyebrows
+   */
+
   h1 {
-    font-size: 1.953rem;  /* ~31px — 16 * 1.25^3 */
+    font-family: var(--font-display);
+    font-size: 2.369rem;   /* 37.9px — 16 * 1.333^3 */
     font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
   }
 
   h2 {
-    font-size: 1.563rem;  /* ~25px — 16 * 1.25^2 */
+    font-family: var(--font-display);
+    font-size: 1.777rem;   /* 28.4px — 16 * 1.333^2 */
     font-weight: 600;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
   }
 
   h3 {
-    font-size: 1.25rem;   /* 20px — 16 * 1.25^1 */
+    font-family: var(--font-display);
+    font-size: 1.333rem;   /* 21.3px — 16 * 1.333^1 */
     font-weight: 500;
-    line-height: 1.35;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
   }
 
   h4 {
-    font-size: 1rem;      /* 16px — base */
+    font-size: 1rem;        /* 16px — base, Inter */
     font-weight: 500;
-    line-height: 1.5;
+    line-height: 1.4;
+  }
+
+  p {
+    line-height: 1.4;       /* Book: 1.2-1.4em for body (was 1.5) */
   }
 
   label {
     font-size: 1rem;
     font-weight: 500;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   button {
     font-size: 1rem;
     font-weight: 500;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   input {
     font-size: 1rem;
     font-weight: 400;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
-  /* Eyebrow / stat label treatment */
+  /* Eyebrow / stat label treatment — Inter uppercase, wide-tracked */
   .eyebrow {
     font-weight: 450;
-    font-size: 0.6875rem;  /* 11px */
+    font-size: 0.688rem;   /* 11px */
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
