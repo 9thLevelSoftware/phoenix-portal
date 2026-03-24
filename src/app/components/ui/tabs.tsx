@@ -1,6 +1,7 @@
 "use client";
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
 import { cn } from "./utils";
@@ -18,37 +19,75 @@ function Tabs({
 	);
 }
 
+/* ── TabsList ── */
+
+const tabsListVariants = cva(
+	"text-muted-foreground flex items-center justify-center",
+	{
+		variants: {
+			variant: {
+				default: "bg-muted/40 h-9 w-fit rounded-lg p-[3px]",
+				panel: "bg-surface-2 border border-secondary p-1 rounded-lg",
+				underline:
+					"bg-transparent gap-1 rounded-none p-0 h-auto border-b border-secondary",
+			},
+		},
+		defaultVariants: {
+			variant: "default",
+		},
+	},
+);
+
 function TabsList({
 	className,
+	variant,
 	...props
-}: React.ComponentProps<typeof TabsPrimitive.List>) {
+}: React.ComponentProps<typeof TabsPrimitive.List> &
+	VariantProps<typeof tabsListVariants>) {
 	return (
 		<TabsPrimitive.List
 			data-slot="tabs-list"
-			className={cn(
-				"bg-muted/40 text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-xl p-[3px] flex",
-				className,
-			)}
+			className={cn(tabsListVariants({ variant }), className)}
 			{...props}
 		/>
 	);
 }
 
+/* ── TabsTrigger ── */
+
+const tabsTriggerVariants = cva(
+	"inline-flex items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-ring focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	{
+		variants: {
+			variant: {
+				default:
+					"flex-1 h-[calc(100%-1px)] rounded-md border border-transparent px-2 py-1 text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
+				underline:
+					"flex-1 rounded-none border-b-2 border-transparent px-4 py-3 text-secondary-foreground data-[state=active]:border-primary data-[state=active]:text-white",
+			},
+		},
+		defaultVariants: {
+			variant: "default",
+		},
+	},
+);
+
 function TabsTrigger({
 	className,
+	variant,
 	...props
-}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+}: React.ComponentProps<typeof TabsPrimitive.Trigger> &
+	VariantProps<typeof tabsTriggerVariants>) {
 	return (
 		<TabsPrimitive.Trigger
 			data-slot="tabs-trigger"
-			className={cn(
-				"data-[state=active]:bg-input/30 data-[state=active]:text-foreground data-[state=active]:border-input focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring text-secondary-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-xl border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-				className,
-			)}
+			className={cn(tabsTriggerVariants({ variant }), className)}
 			{...props}
 		/>
 	);
 }
+
+/* ── TabsContent ── */
 
 function TabsContent({
 	className,
