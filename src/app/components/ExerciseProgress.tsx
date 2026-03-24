@@ -262,12 +262,12 @@ export function ExerciseProgress({
 				</Select>
 
 				<Tabs value={timeRange} onValueChange={setTimeRange}>
-					<TabsList className="bg-surface-2 border border-secondary">
+					<TabsList variant="panel">
 						{TIME_RANGES.map((r) => (
 							<TabsTrigger
 								key={r.label}
 								value={r.label}
-								className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs px-3"
+								className="text-xs px-3"
 							>
 								{r.label}
 							</TabsTrigger>

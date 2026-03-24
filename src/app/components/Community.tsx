@@ -293,17 +293,11 @@ export function Community() {
 						onValueChange={(v) => setActiveTab(v as "routines" | "cycles")}
 						className="mb-6"
 					>
-						<TabsList className="bg-surface-2 border border-secondary p-1">
-							<TabsTrigger
-								value="routines"
-								className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-							>
+						<TabsList variant="panel">
+							<TabsTrigger value="routines">
 								Routines
 							</TabsTrigger>
-							<TabsTrigger
-								value="cycles"
-								className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-							>
+							<TabsTrigger value="cycles">
 								Cycles
 							</TabsTrigger>
 						</TabsList>

@@ -433,29 +433,17 @@ export function Profile() {
 
 				{/* Main Content */}
 				<Tabs defaultValue="stats" className="space-y-6">
-					<TabsList className="bg-surface-2 border border-secondary p-1">
-						<TabsTrigger
-							value="stats"
-							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-						>
+					<TabsList variant="panel">
+						<TabsTrigger value="stats">
 							Public Stats
 						</TabsTrigger>
-						<TabsTrigger
-							value="badges"
-							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-						>
+						<TabsTrigger value="badges">
 							Badges
 						</TabsTrigger>
-						<TabsTrigger
-							value="integrations"
-							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-						>
+						<TabsTrigger value="integrations">
 							Integrations
 						</TabsTrigger>
-						<TabsTrigger
-							value="settings"
-							className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
-						>
+						<TabsTrigger value="settings">
 							Settings
 						</TabsTrigger>
 					</TabsList>

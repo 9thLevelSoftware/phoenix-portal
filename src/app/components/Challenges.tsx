@@ -738,17 +738,11 @@ export function Challenges() {
 					</div>
 
 					<Tabs defaultValue="active" className="space-y-6">
-						<TabsList className="bg-surface-2 border border-secondary p-1">
-							<TabsTrigger
-								value="active"
-								className="data-[state=active]:bg-primary"
-							>
+						<TabsList variant="panel">
+							<TabsTrigger value="active">
 								Active Challenges
 							</TabsTrigger>
-							<TabsTrigger
-								value="past"
-								className="data-[state=active]:bg-primary"
-							>
+							<TabsTrigger value="past">
 								Past Challenges
 							</TabsTrigger>
 						</TabsList>

@@ -130,17 +130,11 @@ export function RoutinesEnhanced() {
 			{/* Content */}
 			<PageShell>
 				<Tabs defaultValue="my-routines" className="w-full">
-					<TabsList className="bg-surface-2 border border-secondary mb-6">
-						<TabsTrigger
-							value="my-routines"
-							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-chart-2"
-						>
+					<TabsList variant="panel" className="mb-6">
+						<TabsTrigger value="my-routines">
 							My Routines
 						</TabsTrigger>
-						<TabsTrigger
-							value="favorites"
-							className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-chart-2"
-						>
+						<TabsTrigger value="favorites">
 							Favorites
 						</TabsTrigger>
 					</TabsList>

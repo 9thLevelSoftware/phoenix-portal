@@ -338,12 +338,12 @@ export function BiomechanicsContent({
 				{/* Set selector */}
 				{sets.length > 0 && (
 					<Tabs value={effectiveSetId} onValueChange={setSelectedSetId}>
-						<TabsList className="bg-surface-2 border border-secondary">
+						<TabsList variant="panel">
 							{sets.map((s, i) => (
 								<TabsTrigger
 									key={s.id}
 									value={s.id}
-									className="data-[state=active]:bg-primary data-[state=active]:text-white text-xs px-3"
+									className="text-xs px-3"
 								>
 									Set {i + 1}
 								</TabsTrigger>
