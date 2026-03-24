@@ -1278,29 +1278,17 @@ export function Analytics() {
 								onValueChange={setActiveTab}
 								className="space-y-6"
 							>
-								<TabsList className="bg-surface-2 border border-secondary p-1">
-									<TabsTrigger
-										value="overview"
-										className="data-[state=active]:bg-primary"
-									>
+								<TabsList variant="panel">
+									<TabsTrigger value="overview">
 										Overview
 									</TabsTrigger>
-									<TabsTrigger
-										value="progress"
-										className="data-[state=active]:bg-primary"
-									>
+									<TabsTrigger value="progress">
 										Progress
 									</TabsTrigger>
-									<TabsTrigger
-										value="body"
-										className="data-[state=active]:bg-primary"
-									>
+									<TabsTrigger value="body">
 										Body
 									</TabsTrigger>
-									<TabsTrigger
-										value="performance"
-										className="data-[state=active]:bg-primary"
-									>
+									<TabsTrigger value="performance">
 										Performance
 									</TabsTrigger>
 								</TabsList>

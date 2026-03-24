@@ -328,17 +328,11 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 		return (
 			<div className="space-y-6">
 				<Tabs value={period}>
-					<TabsList className="bg-surface-2 border border-secondary">
-						<TabsTrigger
-							value="week"
-							className="data-[state=active]:bg-primary"
-						>
+					<TabsList variant="panel">
+						<TabsTrigger value="week">
 							This Week
 						</TabsTrigger>
-						<TabsTrigger
-							value="month"
-							className="data-[state=active]:bg-primary"
-						>
+						<TabsTrigger value="month">
 							This Month
 						</TabsTrigger>
 					</TabsList>
@@ -357,17 +351,11 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					value={period}
 					onValueChange={(v) => setPeriod(v as "week" | "month")}
 				>
-					<TabsList className="bg-surface-2 border border-secondary">
-						<TabsTrigger
-							value="week"
-							className="data-[state=active]:bg-primary"
-						>
+					<TabsList variant="panel">
+						<TabsTrigger value="week">
 							This Week
 						</TabsTrigger>
-						<TabsTrigger
-							value="month"
-							className="data-[state=active]:bg-primary"
-						>
+						<TabsTrigger value="month">
 							This Month
 						</TabsTrigger>
 					</TabsList>
@@ -395,11 +383,11 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 				value={period}
 				onValueChange={(v) => setPeriod(v as "week" | "month")}
 			>
-				<TabsList className="bg-surface-2 border border-secondary">
-					<TabsTrigger value="week" className="data-[state=active]:bg-primary">
+				<TabsList variant="panel">
+					<TabsTrigger value="week">
 						This Week
 					</TabsTrigger>
-					<TabsTrigger value="month" className="data-[state=active]:bg-primary">
+					<TabsTrigger value="month">
 						This Month
 					</TabsTrigger>
 				</TabsList>
