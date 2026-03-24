@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-	VOLUME_LANDMARKS,
-	computeWeeklyVolume,
 	classifyVolumeStatus,
-	type VolumeStatus,
+	computeWeeklyVolume,
 	type ExerciseSessionData,
+	VOLUME_LANDMARKS,
 } from "@/lib/volume-landmarks";
 
 describe("VOLUME_LANDMARKS", () => {
