@@ -137,7 +137,7 @@ function QuickStatCard({
 				>
 					{icon}
 				</div>
-				<div className="text-2xl font-bold text-white mb-1">
+				<div className="text-2xl font-bold text-white mb-1 font-data">
 					{numericValue != null ? (
 						<NumberFlow value={numericValue} className="tabular-nums" />
 					) : (
@@ -298,7 +298,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 						</div>
 						<div className="mb-2 flex items-center justify-between text-xs">
 							<span className="text-muted-foreground">Progress</span>
-							<span className="font-semibold text-primary">
+							<span className="font-semibold text-primary font-data">
 								{progress?.percentage ?? 0}%
 							</span>
 						</div>
@@ -608,7 +608,7 @@ export function Dashboard() {
 									/>
 								</motion.div>
 								<div className="flex-1">
-									<div className="text-4xl font-bold text-white mb-1">
+									<div className="text-4xl font-bold text-white mb-1 font-data">
 										<NumberFlow value={streak ?? 0} className="tabular-nums" />{" "}
 										{streak === 1 ? "Day" : "Days"}
 									</div>
@@ -764,7 +764,7 @@ export function Dashboard() {
 						) : (
 							<Card className="p-5 signal-panel">
 								<div className="mb-4">
-									<div className="text-3xl font-bold text-white mb-1">
+									<div className="text-3xl font-bold text-white mb-1 font-data">
 										{formatVolume(weeklyTotal, unit)}
 									</div>
 									<div className="text-sm text-success flex items-center gap-1">
@@ -926,7 +926,7 @@ export function Dashboard() {
 										/>
 									</motion.div>
 									<div>
-										<h3 className="text-3xl font-bold mb-1 text-white">
+										<h3 className="text-3xl font-bold mb-1 text-white font-data">
 											<NumberFlow
 												value={streak ?? 0}
 												className="tabular-nums"
@@ -976,7 +976,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Total Workouts
 												</div>
-												<div className="text-2xl font-semibold text-white">
+												<div className="text-2xl font-semibold text-white font-data">
 													<NumberFlow
 														value={workouts?.length ?? 0}
 														className="tabular-nums"
@@ -992,7 +992,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Personal Records
 												</div>
-												<div className="text-2xl font-semibold text-white">
+												<div className="text-2xl font-semibold text-white font-data">
 													<NumberFlow
 														value={recentPRs?.length ?? 0}
 														className="tabular-nums"
@@ -1008,7 +1008,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Badges Earned
 												</div>
-												<div className="text-2xl font-semibold text-white">
+												<div className="text-2xl font-semibold text-white font-data">
 													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
 												</div>
 											</div>
@@ -1021,7 +1021,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Weekly Volume
 												</div>
-												<div className="text-2xl font-semibold text-white">
+												<div className="text-2xl font-semibold text-white font-data">
 													{formatVolume(weeklyTotal, unit)}
 												</div>
 											</div>
@@ -1200,10 +1200,10 @@ export function Dashboard() {
 														</p>
 													</div>
 													<div className="text-right">
-														<div className="text-primary font-semibold">
+														<div className="text-primary font-semibold font-data">
 															{formatVolume(workout.total_volume, unit)}
 														</div>
-														<div className="text-sm text-muted-foreground">
+														<div className="text-sm text-muted-foreground font-data">
 															{workout.duration_seconds} min
 														</div>
 													</div>
@@ -1283,7 +1283,7 @@ export function Dashboard() {
 											<span className="text-muted-foreground">
 												Total this week
 											</span>
-											<span className="text-primary font-semibold">
+											<span className="text-primary font-semibold font-data">
 												{formatVolume(weeklyTotal, unit)}
 											</span>
 										</div>
@@ -1339,7 +1339,7 @@ export function Dashboard() {
 														</Badge>
 													</div>
 													<div className="flex items-center justify-between">
-														<span className="text-primary">
+														<span className="text-primary font-data">
 															{formatPersonalRecordValue(pr, unit)}
 														</span>
 														<span className="text-sm text-muted-foreground">

@@ -471,7 +471,7 @@ export function Goals() {
 														{getGoalDescription(goal)}
 													</h3>
 												</div>
-												<p className="text-sm text-muted-foreground">
+												<p className="text-sm text-muted-foreground font-data">
 													{getProgressText(goal, progress)}
 												</p>
 												{goal.deadline && (

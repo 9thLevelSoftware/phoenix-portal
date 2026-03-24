@@ -444,7 +444,7 @@ export function PricingPlans() {
 									{/* Price */}
 									<div className="mb-6">
 										<div className="flex items-baseline justify-center gap-1">
-											<span className="text-4xl font-bold text-white">
+											<span className="text-4xl font-bold text-white font-data">
 												{isAnnual
 													? tierConfig.annualMonthly
 													: tierConfig.monthlyPrice}

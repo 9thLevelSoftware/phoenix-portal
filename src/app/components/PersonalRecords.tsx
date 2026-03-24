@@ -302,7 +302,7 @@ export function PersonalRecords() {
 								<Trophy className="w-5 h-5 text-accent" />
 								<div className="text-sm text-muted-foreground">Total PRs</div>
 							</div>
-							<div className="text-2xl font-semibold text-white">
+							<div className="text-2xl font-semibold text-white font-data">
 								{totalPRs}
 							</div>
 						</Card>
@@ -311,7 +311,7 @@ export function PersonalRecords() {
 								<TrendingUp className="w-5 h-5 text-success" />
 								<div className="text-sm text-muted-foreground">This Month</div>
 							</div>
-							<div className="text-2xl font-semibold text-white">
+							<div className="text-2xl font-semibold text-white font-data">
 								{monthlyPRs}
 							</div>
 						</Card>
@@ -322,7 +322,7 @@ export function PersonalRecords() {
 									Exercises Tracked
 								</div>
 							</div>
-							<div className="text-2xl font-semibold text-white">
+							<div className="text-2xl font-semibold text-white font-data">
 								{exercisePRs.length}
 							</div>
 						</Card>
@@ -383,7 +383,7 @@ export function PersonalRecords() {
 												>
 													{pr.muscle_group}
 												</Badge>
-												<div className="text-3xl font-bold text-primary mb-2">
+												<div className="text-3xl font-bold text-primary mb-2 font-data">
 													{formatRecordMeasurement(pr.value, pr.unit, unit)}
 												</div>
 												{pr.previous_value && (
@@ -596,7 +596,7 @@ export function PersonalRecords() {
 
 												<div className="flex items-center gap-4">
 													<div className="text-right hidden sm:block">
-														<div className="text-lg font-semibold text-white">
+														<div className="text-lg font-semibold text-white font-data">
 															{formatRecordMeasurement(
 																exercise.currentValue,
 																exercise.unit,
@@ -664,7 +664,7 @@ export function PersonalRecords() {
 																			{isHovered && (
 																				<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
 																					<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
-																						<div className="text-sm font-semibold text-white">
+																						<div className="text-sm font-semibold text-white font-data">
 																							{formatRecordMeasurement(
 																								entry.value,
 																								entry.unit,
@@ -689,7 +689,7 @@ export function PersonalRecords() {
 																			)}
 																			{/* Value label on hover */}
 																			<div
-																				className={`text-xs font-semibold text-primary transition-opacity ${isHovered ? "opacity-100" : "opacity-0"}`}
+																				className={`text-xs font-semibold text-primary transition-opacity font-data ${isHovered ? "opacity-100" : "opacity-0"}`}
 																			>
 																				{entry.value}
 																			</div>
@@ -746,7 +746,7 @@ export function PersonalRecords() {
 																				},
 																			)}
 																		</td>
-																		<td className="py-3 text-white font-semibold">
+																		<td className="py-3 text-white font-semibold font-data">
 																			{formatRecordMeasurement(
 																				entry.value,
 																				entry.unit,
@@ -868,7 +868,7 @@ export function PersonalRecords() {
 																	</Badge>
 																)}
 														</div>
-														<p className="text-xl font-bold text-primary">
+														<p className="text-xl font-bold text-primary font-data">
 															{formatRecordMeasurement(pr.value, pr.unit, unit)}
 														</p>
 													</div>

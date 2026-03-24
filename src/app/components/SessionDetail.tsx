@@ -290,7 +290,7 @@ export function SessionDetail() {
 									<Clock className="w-5 h-5 text-primary" />
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
-								<div className="text-2xl font-semibold text-white">
+								<div className="text-2xl font-semibold text-white font-data">
 									{session.duration_seconds}m
 								</div>
 							</div>
@@ -299,7 +299,7 @@ export function SessionDetail() {
 									<TrendingUp className="w-5 h-5 text-success" />
 									<div className="text-sm text-muted-foreground">Volume</div>
 								</div>
-								<div className="text-2xl font-semibold text-white">
+								<div className="text-2xl font-semibold text-white font-data">
 									{formatVolume(session.total_volume, unit)}
 								</div>
 							</div>
@@ -308,7 +308,7 @@ export function SessionDetail() {
 									<Dumbbell className="w-5 h-5 text-accent" />
 									<div className="text-sm text-muted-foreground">Sets</div>
 								</div>
-								<div className="text-2xl font-semibold text-white">
+								<div className="text-2xl font-semibold text-white font-data">
 									{totalSets}
 								</div>
 							</div>
@@ -317,7 +317,7 @@ export function SessionDetail() {
 									<Award className="w-5 h-5 text-warning" />
 									<div className="text-sm text-muted-foreground">PRs</div>
 								</div>
-								<div className="text-2xl font-semibold text-primary">
+								<div className="text-2xl font-semibold text-primary font-data">
 									{prCount}
 								</div>
 							</div>
@@ -329,7 +329,7 @@ export function SessionDetail() {
 											Calories
 										</div>
 									</div>
-									<div className="text-2xl font-semibold text-white">
+									<div className="text-2xl font-semibold text-white font-data">
 										{Math.round(session.estimated_calories)}
 									</div>
 								</div>
@@ -342,7 +342,7 @@ export function SessionDetail() {
 											Heaviest Lift
 										</div>
 									</div>
-									<div className="text-2xl font-semibold text-white">
+									<div className="text-2xl font-semibold text-white font-data">
 										{formatWeight(session.heaviest_lift_kg, unit)}
 									</div>
 								</div>
@@ -370,7 +370,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground mb-1">
 										Avg Velocity
 									</div>
-									<div className="text-lg font-semibold text-white">
+									<div className="text-lg font-semibold text-white font-data">
 										{session.avg_velocity_mps.toFixed(2)}{" "}
 										<span className="text-sm text-muted-foreground">m/s</span>
 									</div>
@@ -380,7 +380,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Asymmetry
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.avg_asymmetry_pct.toFixed(1)}%
 										</div>
 									</div>
@@ -390,7 +390,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Velocity Loss
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.velocity_loss_pct.toFixed(1)}%
 										</div>
 									</div>
@@ -458,7 +458,7 @@ export function SessionDetail() {
 													}}
 												/>
 											</div>
-											<span className="text-lg font-semibold text-white">
+											<span className="text-lg font-semibold text-white font-data">
 												{session.form_score}
 											</span>
 										</div>
@@ -469,7 +469,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Deload Warnings
 										</div>
-										<div className="text-lg font-semibold text-warning">
+										<div className="text-lg font-semibold text-warning font-data">
 											{session.deload_warnings}
 										</div>
 									</div>
@@ -479,7 +479,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											ROM Violations
 										</div>
-										<div className="text-lg font-semibold text-chart-2">
+										<div className="text-lg font-semibold text-chart-2 font-data">
 											{session.rom_violations}
 										</div>
 									</div>
@@ -489,7 +489,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Spotter Activations
 										</div>
-										<div className="text-lg font-semibold text-accent">
+										<div className="text-lg font-semibold text-accent font-data">
 											{session.spotter_activations}
 										</div>
 									</div>
@@ -519,7 +519,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Eccentric Load
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.eccentric_load}
 										</div>
 									</div>
@@ -529,7 +529,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Echo Level
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.echo_level}
 										</div>
 									</div>
@@ -539,7 +539,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Warmup Reps
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.warmup_reps}
 										</div>
 									</div>
@@ -549,7 +549,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Working Reps
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-white font-data">
 											{session.working_reps}
 										</div>
 									</div>
@@ -653,19 +653,19 @@ export function SessionDetail() {
 																		: ""
 																}`}
 															>
-																<td className="py-3 text-white font-semibold">
+																<td className="py-3 text-white font-semibold font-data">
 																	{set.set_number}
 																</td>
-																<td className="py-3 text-secondary-foreground">
+																<td className="py-3 text-secondary-foreground font-data">
 																	{set.target_reps}
 																</td>
-																<td className="py-3 text-secondary-foreground">
+																<td className="py-3 text-secondary-foreground font-data">
 																	{set.actual_reps}
 																</td>
-																<td className="py-3 text-secondary-foreground">
+																<td className="py-3 text-secondary-foreground font-data">
 																	{formatWeight(set.weight_kg, unit)}
 																</td>
-																<td className="py-3 text-secondary-foreground">
+																<td className="py-3 text-secondary-foreground font-data">
 																	{set.rpe ?? "-"}
 																</td>
 																<td className="py-3">

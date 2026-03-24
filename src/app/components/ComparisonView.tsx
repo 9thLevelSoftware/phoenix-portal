@@ -90,23 +90,23 @@ function SessionSummaryCard({
 			<div className="grid grid-cols-2 gap-4 text-sm">
 				<div>
 					<div className="text-muted-foreground">Volume</div>
-					<div className="text-white font-semibold">
+					<div className="text-white font-semibold font-data">
 						{summary.totalVolume.toLocaleString()} kg
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Duration</div>
-					<div className="text-white font-semibold">{summary.duration}m</div>
+					<div className="text-white font-semibold font-data">{summary.duration}m</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Exercises</div>
-					<div className="text-white font-semibold">
+					<div className="text-white font-semibold font-data">
 						{summary.exerciseCount}
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Sets</div>
-					<div className="text-white font-semibold">{summary.setCount}</div>
+					<div className="text-white font-semibold font-data">{summary.setCount}</div>
 				</div>
 			</div>
 		</Card>
@@ -122,13 +122,13 @@ function OverallDeltas({ result }: { result: ComparisonResult }) {
 			<div className="grid grid-cols-2 gap-6">
 				<div>
 					<div className="text-sm text-muted-foreground mb-1">Volume</div>
-					<div className="text-xl font-semibold">
+					<div className="text-xl font-semibold font-data">
 						<DeltaIndicator value={result.volumeDelta} />
 					</div>
 				</div>
 				<div>
 					<div className="text-sm text-muted-foreground mb-1">Duration</div>
-					<div className="text-xl font-semibold">
+					<div className="text-xl font-semibold font-data">
 						<DeltaIndicator value={result.durationDelta} />
 					</div>
 				</div>
@@ -254,7 +254,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 							<div className="text-muted-foreground text-right">Change</div>
 
 							<div className="text-secondary-foreground">Volume</div>
-							<div className="text-center text-secondary-foreground">
+							<div className="text-center text-secondary-foreground font-data">
 								{ex.volumeA.toLocaleString()} / {ex.volumeB.toLocaleString()}
 							</div>
 							<div className="text-right">
