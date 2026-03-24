@@ -643,7 +643,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
 					>
-						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
+						<span className="block text-primary">
 							Your workouts, unlocked.
 						</span>
 					</motion.h1>

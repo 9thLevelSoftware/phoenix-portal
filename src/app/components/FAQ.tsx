@@ -227,12 +227,12 @@ export function FAQ() {
 	return (
 		<div className="min-h-screen bg-background text-white">
 			{/* Header */}
-			<header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-secondary">
+			<header className="sticky top-0 z-50 bg-surface-1 border-b border-secondary">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<PhoenixLogo size="sm" animated={false} />
-							<span className="text-xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-xl text-primary">
 								Project Phoenix
 							</span>
 						</div>
@@ -260,7 +260,7 @@ export function FAQ() {
 					<div className="flex items-center gap-3 mb-2">
 						<HelpCircle className="w-8 h-8 text-primary" />
 						<h1 className="text-4xl sm:text-5xl">
-							<span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+							<span className="text-primary">
 								Frequently Asked Questions
 							</span>
 						</h1>
