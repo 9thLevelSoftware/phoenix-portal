@@ -678,7 +678,7 @@ export function LandingPage() {
 							size="lg"
 							onClick={openAuth}
 							variant="cta"
-					className="w-full sm:w-auto btn-shimmer"
+					className="w-full sm:w-auto"
 						>
 							Preview dashboard
 						</Button>
