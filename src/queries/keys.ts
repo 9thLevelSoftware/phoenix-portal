@@ -28,7 +28,11 @@ export const queryKeys = {
 				period,
 				profileId ?? "all",
 			] as const,
-		bodyIntelligence: (userId: string, days: number, profileId?: string | null) =>
+		bodyIntelligence: (
+			userId: string,
+			days: number,
+			profileId?: string | null,
+		) =>
 			[
 				...queryKeys.analytics.all,
 				"body-intelligence",
@@ -37,11 +41,7 @@ export const queryKeys = {
 				profileId ?? "all",
 			] as const,
 		sessionSetWeights: (sessionId: string) =>
-			[
-				...queryKeys.analytics.all,
-				"session-set-weights",
-				sessionId,
-			] as const,
+			[...queryKeys.analytics.all, "session-set-weights", sessionId] as const,
 	},
 	routines: {
 		all: ["routines"] as const,
