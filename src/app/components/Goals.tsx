@@ -540,7 +540,7 @@ export function Goals() {
 											<div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center">
 												<Award className="w-4 h-4 text-success" />
 											</div>
-											<div className="flex-1">
+											<div>
 												<p className="text-sm text-white">
 													{getGoalDescription(goal)}
 												</p>
@@ -592,7 +592,7 @@ export function Goals() {
 												<div className="w-8 h-8 rounded-full bg-muted/20 flex items-center justify-center">
 													<Icon className="w-4 h-4 text-muted-foreground" />
 												</div>
-												<div className="flex-1">
+												<div>
 													<p className="text-sm text-muted-foreground">
 														{getGoalDescription(goal)}
 													</p>
@@ -831,15 +831,15 @@ function GoalFormDialog({
 							</div>
 						) : (
 							<TabsList className="w-full">
-								<TabsTrigger value="frequency" className="flex-1">
+								<TabsTrigger value="frequency">
 									<Target className="w-4 h-4 mr-1" />
 									Frequency
 								</TabsTrigger>
-								<TabsTrigger value="volume" className="flex-1">
+								<TabsTrigger value="volume">
 									<TrendingUp className="w-4 h-4 mr-1" />
 									Volume
 								</TabsTrigger>
-								<TabsTrigger value="pr" className="flex-1">
+								<TabsTrigger value="pr">
 									<Award className="w-4 h-4 mr-1" />
 									PR
 								</TabsTrigger>

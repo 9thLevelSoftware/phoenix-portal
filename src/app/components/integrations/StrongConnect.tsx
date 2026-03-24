@@ -259,7 +259,7 @@ export function StrongConnect({
 					<div className="flex items-center justify-center size-10 rounded-lg bg-[#5856D6]/10">
 						<Dumbbell className="size-5 text-[#5856D6]" />
 					</div>
-					<div className="flex-1">
+					<div>
 						<CardTitle className="text-base">Strong</CardTitle>
 						<CardDescription>
 							Import and export workouts via CSV
@@ -283,11 +283,11 @@ export function StrongConnect({
 			<CardContent>
 				<Tabs defaultValue="export">
 					<TabsList className="w-full">
-						<TabsTrigger value="export" className="flex-1">
+						<TabsTrigger value="export">
 							<Download className="size-3.5 mr-1.5" />
 							Export
 						</TabsTrigger>
-						<TabsTrigger value="import" className="flex-1">
+						<TabsTrigger value="import">
 							<Upload className="size-3.5 mr-1.5" />
 							Import
 						</TabsTrigger>

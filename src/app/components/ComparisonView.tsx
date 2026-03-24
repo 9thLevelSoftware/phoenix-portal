@@ -567,10 +567,10 @@ export function ComparisonView() {
 					>
 						<Tabs defaultValue="a">
 							<TabsList className="w-full">
-								<TabsTrigger value="a" className="flex-1">
+								<TabsTrigger value="a">
 									Session A
 								</TabsTrigger>
-								<TabsTrigger value="b" className="flex-1">
+								<TabsTrigger value="b">
 									Session B
 								</TabsTrigger>
 							</TabsList>

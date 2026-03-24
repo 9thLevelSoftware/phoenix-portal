@@ -276,7 +276,7 @@ export function HevyConnect({
 					<div className="flex items-center justify-center size-10 rounded-lg bg-[#2563EB]/10">
 						<Dumbbell className="size-5 text-[#2563EB]" />
 					</div>
-					<div className="flex-1">
+					<div>
 						<CardTitle className="text-base">Hevy</CardTitle>
 						<CardDescription>Import, export, and sync workouts</CardDescription>
 					</div>
@@ -298,15 +298,15 @@ export function HevyConnect({
 			<CardContent>
 				<Tabs defaultValue="export">
 					<TabsList className="w-full">
-						<TabsTrigger value="export" className="flex-1">
+						<TabsTrigger value="export">
 							<Download className="size-3.5 mr-1.5" />
 							Export
 						</TabsTrigger>
-						<TabsTrigger value="csv" className="flex-1">
+						<TabsTrigger value="csv">
 							<Upload className="size-3.5 mr-1.5" />
 							Import
 						</TabsTrigger>
-						<TabsTrigger value="api" className="flex-1">
+						<TabsTrigger value="api">
 							<Key className="size-3.5 mr-1.5" />
 							API
 						</TabsTrigger>
