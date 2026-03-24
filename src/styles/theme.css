@@ -284,10 +284,10 @@
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
     background: rgba(255, 107, 53, 0.06) !important;
-    color: #fff !important;
+    color: var(--primary-foreground) !important;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
-    color: #fff !important;
+    color: var(--primary-foreground) !important;
   }
 
   /* Phoenix sidebar group labels — warm grey */
@@ -383,6 +383,31 @@
     font-size: 0.688rem;   /* 11px */
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+
+  /*
+   * Fluid display sizes — for page titles and section headings in app views.
+   * Extends the Perfect Fourth scale (1.333x) above the h1 base level.
+   * Use these instead of static Tailwind text-3xl/4xl/5xl on page headings.
+   *
+   * Display scale (above h1):
+   *   .text-display-1: 37.9px → 50.5px   (1.333^4 from 16px base)
+   *   .text-display-2: 28.4px → 37.9px   (same as h1 — alias for explicit use)
+   */
+  .text-display-1 {
+    font-family: var(--font-display);
+    font-size: clamp(2.369rem, 1.5rem + 3.5vw, 3.157rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+
+  .text-display-2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.777rem, 1.2rem + 2.5vw, 2.369rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
   }
 
   /* Signal pulse — for live status indicators only */
