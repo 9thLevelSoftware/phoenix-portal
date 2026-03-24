@@ -175,34 +175,30 @@
     position: relative;
   }
 
-  /* Ambient ember/flame glow — cinematic but restrained */
+  /* Scan-line texture — instrument panel feel, barely perceptible */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 0;
-    background-image:
-      radial-gradient(
-        ellipse 50vw 50vh at 0% 0%,
-        rgba(255, 107, 53, 0.025) 0%,
-        transparent 70%
-      ),
-      radial-gradient(
-        ellipse 50vw 50vh at 100% 100%,
-        rgba(220, 38, 38, 0.02) 0%,
-        transparent 70%
-      );
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(255, 255, 255, 0.006) 3px,
+      rgba(255, 255, 255, 0.006) 6px
+    );
   }
 
-  /* Grain/noise texture — nearly invisible depth layer */
+  /* Keep grain texture but darken */
   body::after {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 1;
-    opacity: 0.025;
+    opacity: 0.015;
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-repeat: repeat;
@@ -267,10 +263,10 @@
     justify-content: center !important;
   }
 
-  /* Phoenix sidebar background — warm gradient + ember border glow */
+  /* Phoenix sidebar background */
   [data-sidebar="sidebar"] {
-    background: linear-gradient(to bottom, var(--surface-1), var(--surface-0)) !important;
-    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.15);
+    background: var(--surface-1) !important;
+    border-right: 1px solid var(--border);
   }
 
   /* Phoenix sidebar active state — ember gradient */
@@ -361,163 +357,63 @@
     text-transform: uppercase;
   }
 
-  /* Phoenix Project Custom Animations */
-  @keyframes flame-flicker {
+  /* Signal pulse — for live status indicators only */
+  @keyframes signal-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.8; }
+    50% { opacity: 0.4; }
   }
 
-  @keyframes ember-rise {
-    from {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-    to {
-      transform: translateY(-100px) scale(0);
-      opacity: 0;
-    }
+  .animate-signal-pulse {
+    animation: signal-pulse 2.5s ease-in-out infinite;
   }
 
-  @keyframes phoenix-glow {
-    0%, 100% {
-      box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
-    }
-    50% {
-      box-shadow: 0 0 30px rgba(255, 107, 53, 0.6);
-    }
-  }
-
-  .animate-flame-flicker {
-    animation: flame-flicker 2s ease-in-out infinite;
-  }
-
-  .animate-ember-rise {
-    animation: ember-rise 4s ease-out infinite;
-  }
-
-  .animate-phoenix-glow {
-    animation: phoenix-glow 2s ease-in-out infinite;
-  }
-
-  /* VIS-05: Subtle card borders replacing heavier #374151 */
+  /* VIS-05: Subtle card borders */
   .border-secondary {
-    border-color: rgba(255, 255, 255, 0.06) !important;
-  }
-
-  /* CTA shimmer sweep — draws attention to primary call-to-action */
-  @keyframes shimmer-sweep {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(200%);
-    }
-  }
-
-  .btn-shimmer {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .btn-shimmer::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      105deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.12) 45%,
-      rgba(255, 255, 255, 0.18) 50%,
-      rgba(255, 255, 255, 0.12) 55%,
-      transparent 70%
-    );
-    animation: shimmer-sweep 3s ease-in-out infinite;
-    pointer-events: none;
+    border-color: var(--border) !important;
   }
 
 }
 
 @layer utilities {
-  /* VIS-06/07/08/09: Card tier hierarchy */
-
-  /* Hero tier — streak, active goal, recovery score (max 1 per page) */
-  .card-hero {
-    background: linear-gradient(135deg, rgba(255,107,53,0.12) 0%, rgba(220,38,38,0.06) 100%);
-    border: 2px solid rgba(255, 107, 53, 0.4);
-    box-shadow: var(--shadow-lg), 0 0 12px rgba(255, 107, 53, 0.06);
+  /* Signal panel — bordered instrument panel, no glass, no glow */
+  .signal-panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
   }
 
-  /* Primary tier — key metric cards with glassmorphism (max 2 per viewport on desktop, 0 on mobile) */
-  .card-primary {
-    background: rgba(26, 26, 26, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: var(--shadow-md);
-  }
-  @media (min-width: 768px) {
-    .card-primary {
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-  }
-
-  /* Secondary tier — informational content (default) */
-  .card-secondary {
-    background: linear-gradient(135deg, var(--surface-2), var(--surface-0));
-    border: 1px solid rgba(255, 255, 255, 0.06);
+  /* Signal panel with highlight border (replaces card-hero) */
+  .signal-panel-highlight {
+    background: var(--surface-1);
+    border: 1px solid var(--cable-a);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
   }
 
-  /* Landing feature card — clean panel, subtle hover lift */
+  /* Signal metric strip cell */
+  .signal-metric {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Landing feature card — clean panel, subtle hover border shift */
   .card-landing-feature {
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
     background: var(--surface-2);
     box-shadow: var(--shadow-sm);
-    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+    border-radius: var(--radius-md);
   }
   .card-landing-feature:hover {
-    transform: translateY(-2px);
-    border-color: rgba(255, 107, 53, 0.2);
+    border-color: rgba(255, 107, 53, 0.3);
     box-shadow: var(--shadow-md);
   }
 
-  /* Phoenix sidebar separator — ember gradient fade */
+  /* Phoenix sidebar separator */
   .sidebar-separator-phoenix {
-    background: linear-gradient(90deg, transparent, rgba(255, 107, 53, 0.15), transparent) !important;
+    background: var(--border) !important;
     border: none;
     height: 1px;
-  }
-
-  /* Phoenix sidebar avatar hover glow */
-  .sidebar-avatar-hover {
-    transition: box-shadow 150ms ease;
-  }
-  .sidebar-avatar-hover:hover {
-    box-shadow: 0 0 8px rgba(255, 107, 53, 0.2);
-  }
-
-  /* Glass panel — prominent glassmorphism for dashboard widgets */
-  .glass-panel {
-    background: rgba(26, 26, 30, 0.6);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: var(--radius-lg);
-    transition: background-color 300ms ease, border-color 300ms ease;
-  }
-
-  .glass-panel-hover:hover {
-    background-color: rgba(26, 26, 30, 0.8);
-    border-color: rgba(255, 107, 53, 0.3);
-  }
-
-  /* Glow text — ember text-shadow for highlighted names/values */
-  .glow-text {
-    text-shadow: 0 0 10px rgba(255, 107, 53, 0.6);
-  }
-
-  /* Glow box — outer ember glow for hero widgets */
-  .glow-box {
-    box-shadow: 0 0 15px rgba(255, 107, 53, 0.2);
   }
 
   /* Landing nav link — expanding underline from center on hover */
@@ -544,27 +440,16 @@
   }
 }
 
-/* Reduced-motion: suppress decorative animations, keep functional (spin) */
 @media (prefers-reduced-motion: reduce) {
-  /* Suppress decorative custom animations */
-  .animate-flame-flicker,
-  .animate-ember-rise,
-  .animate-phoenix-glow {
+  .animate-signal-pulse {
     animation: none;
   }
 
-  /* Suppress decorative Tailwind animations */
   .animate-pulse,
   .animate-bounce,
   .animate-ping {
     animation: none;
   }
-
-  .btn-shimmer::after {
-    animation: none;
-  }
-
-  /* Keep animate-spin for loading indicators (functional, not decorative) */
 }
 
 /* Print-only utility: hidden on screen, visible in @media print */
