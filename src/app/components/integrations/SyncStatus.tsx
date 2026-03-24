@@ -48,7 +48,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 	const processing = queue?.find((q) => q.status === "processing");
 
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="bg-surface-2 border-secondary">
 			<CardHeader className="pb-3">
 				<CardTitle className="text-lg">Sync Status</CardTitle>
 			</CardHeader>

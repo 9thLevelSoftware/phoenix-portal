@@ -86,7 +86,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
 		buttonClass:
-			"bg-gradient-to-r from-primary to-chart-2 hover:from-primary/90 hover:to-chart-2/90 text-white border-0",
+			"bg-primary hover:bg-primary/90 text-white border-0",
 		popular: true,
 	},
 	INFERNO: {
@@ -95,7 +95,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBg: "from-accent/10 to-[#B45309]/10",
 		accentText: "text-accent",
 		buttonClass:
-			"bg-gradient-to-r from-accent to-[#B45309] hover:from-accent/90 hover:to-[#B45309]/90 text-black border-0",
+			"bg-accent hover:bg-accent/90 text-black border-0",
 	},
 };
 
@@ -513,7 +513,7 @@ export function PricingPlans() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							className="bg-gradient-to-r from-primary to-chart-2 text-white border-0"
+							className="bg-primary text-white border-0"
 							onClick={() => {
 								if (confirmUpgradeTier) {
 									handleUpgrade(confirmUpgradeTier);

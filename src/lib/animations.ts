@@ -1,30 +1,32 @@
 /**
- * Centralized animation presets for Phoenix Portal.
- * All Framer Motion animations should import from here.
+ * Centralized animation presets for Phoenix Portal — Signal aesthetic.
+ * Tight, responsive instrument-panel feel. No bounce. No glow.
  * These are plain objects — no runtime dependency on motion/react.
  */
 
 // --- Spring presets (Framer Motion transition configs) ---
 
 export const springs = {
+	/** Standard interaction — buttons, cards, toggles */
 	snappy: { type: "spring", damping: 30, stiffness: 500 } as const,
-	smooth: { type: "spring", damping: 25, stiffness: 200 } as const,
-	bouncy: { type: "spring", damping: 15, stiffness: 300 } as const,
-	gentle: { type: "spring", damping: 20, stiffness: 100 } as const,
+	/** Content transitions — panels opening, route changes */
+	smooth: { type: "spring", damping: 28, stiffness: 250 } as const,
+	/** Quick micro-interactions — checkboxes, small state changes */
+	quick: { type: "spring", damping: 35, stiffness: 600 } as const,
 } as const;
 
 // --- Variant presets (Framer Motion variants objects) ---
 
-/** Single element entrance: opacity 0→1, y 12→0 */
+/** Single element entrance: opacity 0→1, y 8→0 (tighter than before) */
 export const fadeUp = {
-	hidden: { opacity: 0, y: 12 },
+	hidden: { opacity: 0, y: 8 },
 	visible: { opacity: 1, y: 0, transition: springs.smooth },
 } as const;
 
 /** Simple opacity entrance */
 export const fadeIn = {
 	hidden: { opacity: 0 },
-	visible: { opacity: 1, transition: { duration: 0.3 } },
+	visible: { opacity: 1, transition: { duration: 0.2 } },
 } as const;
 
 /** Parent variant for staggered children */
@@ -33,46 +35,46 @@ export const staggerContainer = {
 	visible: {
 		opacity: 1,
 		transition: {
-			staggerChildren: 0.06,
-			delayChildren: 0.1,
+			staggerChildren: 0.04,
+			delayChildren: 0.05,
 		},
 	},
 } as const;
 
 /** Route transition variant (used by AnimatePresence) */
 export const pageTransition = {
-	initial: { opacity: 0, y: 8 },
+	initial: { opacity: 0, y: 6 },
 	animate: {
 		opacity: 1,
 		y: 0,
-		transition: { duration: 0.25, ease: "easeOut" },
+		transition: { duration: 0.2, ease: "easeOut" },
 	},
 	exit: {
 		opacity: 0,
-		y: -8,
-		transition: { duration: 0.15, ease: "easeIn" },
+		y: -6,
+		transition: { duration: 0.12, ease: "easeIn" },
 	},
 } as const;
 
 // --- Hover & tap presets ---
 
 export const hover = {
-	lift: { scale: 1.015, y: -2, transition: springs.snappy },
-	glow: { scale: 1.01, transition: springs.smooth },
+	/** Subtle lift — cards, interactive panels */
+	lift: { scale: 1.005, y: -1, transition: springs.snappy },
 } as const;
 
 export const tap = {
-	press: { scale: 0.97 },
+	press: { scale: 0.98 },
 } as const;
 
 // --- Breathing animation (scroll indicator) ---
 
 export const breathing = {
 	animate: {
-		y: [0, 6, 0] as number[],
-		opacity: [0.6, 1, 0.6] as number[],
+		y: [0, 4, 0] as number[],
+		opacity: [0.5, 1, 0.5] as number[],
 		transition: {
-			duration: 2,
+			duration: 2.5,
 			repeat: Number.POSITIVE_INFINITY,
 			ease: "easeInOut",
 		},

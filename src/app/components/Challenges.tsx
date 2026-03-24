@@ -44,13 +44,13 @@ import {
 function getDifficultyColor(difficulty: string) {
 	switch (difficulty) {
 		case "easy":
-			return "from-success to-emerald-600";
+			return "bg-success";
 		case "medium":
-			return "from-accent to-amber-600";
+			return "bg-accent";
 		case "hard":
-			return "from-primary to-chart-2";
+			return "bg-primary";
 		case "extreme":
-			return "from-chart-2 to-[#991B1B]";
+			return "bg-chart-2";
 		default:
 			return "from-muted to-muted";
 	}
@@ -163,7 +163,7 @@ function ChallengeCard({
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ delay: index * 0.1 }}
 		>
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
+			<Card className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all">
 				<div className="flex flex-col lg:flex-row gap-6">
 					{/* Left Section */}
 					<div className="flex-1 space-y-4">
@@ -183,7 +183,7 @@ function ChallengeCard({
 									</div>
 								</div>
 								<Badge
-									className={`bg-gradient-to-r ${getDifficultyColor(challenge.difficulty)} text-white border-0`}
+									className={`${getDifficultyColor(challenge.difficulty)} text-white border-0`}
 								>
 									{challenge.difficulty.toUpperCase()}
 								</Badge>
@@ -399,7 +399,7 @@ function MobileChallengeCard({
 	userId: string;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-4 bg-surface-2 border-secondary">
 			<div className="flex items-start gap-3">
 				<div className="text-3xl">
 					{challenge.challenge_type === "volume"
@@ -662,7 +662,7 @@ export function Challenges() {
 									.map((challenge) => (
 										<Card
 											key={challenge.id}
-											className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary"
+											className="p-4 bg-surface-2 border-secondary"
 										>
 											<h3 className="text-white font-semibold mb-1">
 												{challenge.name}
@@ -694,7 +694,7 @@ export function Challenges() {
 								{discoverChallenges.map((challenge) => (
 									<Card
 										key={challenge.id}
-										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary"
+										className="p-4 bg-surface-2 border-secondary"
 									>
 										<h3 className="text-white font-semibold mb-1">
 											{challenge.name}
@@ -709,7 +709,7 @@ export function Challenges() {
 											<button
 												onClick={() => joinMutation.mutate(challenge.id)}
 												disabled={joinMutation.isPending}
-												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-gradient-to-r from-primary to-chart-2 text-white"
+												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-white"
 											>
 												{joinMutation.isPending ? (
 													<Loader2 className="w-4 h-4 animate-spin" />
@@ -807,7 +807,7 @@ export function Challenges() {
 											animate={{ opacity: 1, y: 0 }}
 											transition={{ delay: index * 0.1 }}
 										>
-											<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary h-full">
+											<Card className="p-6 bg-surface-2 border-secondary h-full">
 												<div className="mb-4">
 													<h3 className="text-lg text-white mb-2">
 														{challenge.name}

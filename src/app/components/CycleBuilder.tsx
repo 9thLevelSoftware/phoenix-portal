@@ -338,7 +338,7 @@ export function CycleBuilder() {
 	return (
 		<div className="min-h-screen pb-8">
 			{/* Sticky Top Bar */}
-			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
+			<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">
 					<div className="flex items-center gap-4 flex-1">
 						<Button
@@ -405,7 +405,7 @@ export function CycleBuilder() {
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
 							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
@@ -495,7 +495,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-center justify-between mb-6">
 							<h2 className="text-xl font-semibold text-white flex items-center gap-2">
 								<Dumbbell className="w-5 h-5 text-primary" />
@@ -626,7 +626,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.3 }}
 				>
-					<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-6 bg-surface-2 border-secondary">
 						<h2 className="text-xl font-semibold text-white mb-6">
 							Week at a Glance
 						</h2>
@@ -833,7 +833,7 @@ function DayEditorPanel({
 	onUpdate: (updates: Partial<DayConfig>) => void;
 }) {
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-6">
 				<h3 className="text-lg font-semibold text-white">
 					Day {day.dayNumber} Configuration
@@ -1087,7 +1087,7 @@ function ProgressionRules({
 	onDeloadVolumeChange: (v: number) => void;
 }) {
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 bg-surface-2 border-secondary">
 			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
 				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules

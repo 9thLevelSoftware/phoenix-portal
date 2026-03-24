@@ -74,7 +74,7 @@ function SessionSummaryCard({
 	label: string;
 }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<div className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
 				{label}
 			</div>
@@ -115,7 +115,7 @@ function SessionSummaryCard({
 
 function OverallDeltas({ result }: { result: ComparisonResult }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider mb-4">
 				Overall Change
 			</h3>
@@ -139,7 +139,7 @@ function OverallDeltas({ result }: { result: ComparisonResult }) {
 
 function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-5">
+		<Card className="bg-surface-2 border-secondary p-5">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider mb-4">
 				Per-Exercise Breakdown
 			</h3>
@@ -240,7 +240,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 			{result.exerciseDeltas.map((ex) => (
 				<Card
 					key={ex.name}
-					className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4"
+					className="bg-surface-2 border-secondary p-4"
 				>
 					<div className="font-medium text-white mb-3">{ex.name}</div>
 					{ex.onlyInA || ex.onlyInB ? (
@@ -311,7 +311,7 @@ export function ComparisonView() {
 	if (!subLoading && !isPremium) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
@@ -348,7 +348,7 @@ export function ComparisonView() {
 	if (sessionAId && sessionBId && sessionAId === sessionBId) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
@@ -385,7 +385,7 @@ export function ComparisonView() {
 	if (!sessionAId || !sessionBId) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
@@ -422,7 +422,7 @@ export function ComparisonView() {
 	if (pendingA || pendingB || subLoading) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
@@ -453,7 +453,7 @@ export function ComparisonView() {
 	if (errorA || errorB || !summaryA || !summaryB) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<Button
 							variant="outline"
@@ -497,7 +497,7 @@ export function ComparisonView() {
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}

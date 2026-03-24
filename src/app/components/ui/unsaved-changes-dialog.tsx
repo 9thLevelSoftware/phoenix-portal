@@ -48,7 +48,7 @@ export function UnsavedChangesDialog({
 					</AlertDialogAction>
 					<AlertDialogAction
 						onClick={onSave}
-						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 text-white"
+						className="bg-primary hover:bg-primary/90 border-0 text-white"
 					>
 						Save
 					</AlertDialogAction>

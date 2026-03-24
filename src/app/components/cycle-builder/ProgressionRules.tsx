@@ -37,7 +37,7 @@ export function ProgressionRules({
 	};
 
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 bg-surface-2 border-secondary">
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
 				className="w-full flex items-center justify-between mb-6 group"

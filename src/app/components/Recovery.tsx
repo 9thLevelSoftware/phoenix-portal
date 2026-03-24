@@ -126,7 +126,7 @@ function FreeRecoveryView() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.1 }}
 				>
-					<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+					<Card className="p-4 sm:p-8 bg-surface-2 border-secondary">
 						<div className="flex items-center gap-3 mb-4 sm:mb-6">
 							<Moon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
 							<h2 className="text-lg sm:text-xl text-white">
@@ -278,7 +278,7 @@ export function Recovery() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.1 }}
 					>
-						<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+						<Card className="p-4 sm:p-8 bg-surface-2 border-secondary">
 							<div className="flex flex-col items-center text-center">
 								<AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-accent mb-3 sm:mb-4" />
 								<h2 className="text-lg sm:text-xl text-white mb-2 sm:mb-3">
@@ -345,7 +345,7 @@ export function Recovery() {
 							transition={{ delay: 0.1 }}
 							className="mb-6"
 						>
-							<Card className="p-4 sm:p-8 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-4 sm:p-8 bg-surface-2 border-secondary">
 								<div className="flex flex-col items-center">
 									<RecoveryScore result={recovery} size="lg" />
 									{recovery.isClamped && (
@@ -364,7 +364,7 @@ export function Recovery() {
 							transition={{ delay: 0.2 }}
 							className="mb-6"
 						>
-							<Card className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-4 sm:p-6 bg-surface-2 border-secondary">
 								<h2 className="text-lg sm:text-xl text-white mb-4 sm:mb-6 flex items-center gap-2">
 									<Activity className="w-5 h-5 text-primary" />
 									Contributing Factors
@@ -459,7 +459,7 @@ export function Recovery() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.3 }}
 						>
-							<Card className="p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+							<Card className="p-4 sm:p-6 bg-surface-2 border-secondary">
 								<h2 className="text-lg sm:text-xl text-white mb-3 sm:mb-4 flex items-center gap-2">
 									<Link2 className="w-5 h-5 text-primary" />
 									Wearable Recovery Data

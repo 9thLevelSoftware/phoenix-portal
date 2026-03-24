@@ -573,7 +573,7 @@ export function LandingPage() {
 			<nav
 				className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
 					scrolled
-						? "bg-background/80 backdrop-blur-lg border-b border-primary/15 shadow-[0_1px_12px_rgba(255,107,53,0.06)]"
+						? "bg-surface-1 border-b border-primary/15 shadow-[0_1px_12px_rgba(255,107,53,0.06)]"
 						: "bg-transparent"
 				}`}
 			>
@@ -643,7 +643,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
 					>
-						<span className="block bg-gradient-to-r from-primary via-chart-2 to-accent bg-clip-text text-transparent">
+						<span className="block text-primary">
 							Your workouts, unlocked.
 						</span>
 					</motion.h1>
@@ -678,7 +678,7 @@ export function LandingPage() {
 							size="lg"
 							onClick={openAuth}
 							variant="cta"
-					className="w-full sm:w-auto btn-shimmer"
+					className="w-full sm:w-auto"
 						>
 							Preview dashboard
 						</Button>

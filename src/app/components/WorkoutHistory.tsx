@@ -328,7 +328,7 @@ export function WorkoutHistory() {
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -360,7 +360,7 @@ export function WorkoutHistory() {
 									}}
 									className={
 										compareMode
-											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											? "bg-primary border-0 text-white"
 											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									}
 								>
@@ -394,7 +394,7 @@ export function WorkoutHistory() {
 									onClick={() => setViewMode("calendar")}
 									className={
 										viewMode === "calendar"
-											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											? "bg-primary border-0 text-white"
 											: "bg-transparent border-0 text-muted-foreground hover:text-white"
 									}
 								>
@@ -406,7 +406,7 @@ export function WorkoutHistory() {
 									onClick={() => setViewMode("list")}
 									className={
 										viewMode === "list"
-											? "bg-gradient-to-r from-primary to-chart-2 border-0 text-white"
+											? "bg-primary border-0 text-white"
 											: "bg-transparent border-0 text-muted-foreground hover:text-white"
 									}
 								>
@@ -433,7 +433,7 @@ export function WorkoutHistory() {
 					{/* Free-tier upgrade banner for extended date ranges */}
 					{isFreeTierExtendedRange && (
 						<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-							<Card className="p-4 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5">
+							<Card className="p-4 border-primary/20 bg-primary/5">
 								<div className="flex items-center gap-3">
 									<Lock className="w-5 h-5 text-primary shrink-0" />
 									<div className="flex-1">
@@ -497,7 +497,7 @@ export function WorkoutHistory() {
 							</div>
 
 							{/* Calendar Grid */}
-							<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary p-4 sm:p-6 mb-6">
+							<Card className="bg-surface-2 border-secondary p-4 sm:p-6 mb-6">
 								{/* Week Day Headers */}
 								<div className="grid grid-cols-7 gap-2 sm:gap-4 mb-4">
 									{weekDays.map((day) => (
@@ -592,7 +592,7 @@ export function WorkoutHistory() {
 
 							{/* Calendar month locked banner (free-tier) */}
 							{isCalendarMonthLocked(currentMonth) && (
-								<Card className="p-4 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5 mb-6">
+								<Card className="p-4 border-primary/20 bg-primary/5 mb-6">
 									<div className="flex items-center gap-3">
 										<Lock className="w-5 h-5 text-primary shrink-0" />
 										<div className="flex-1">
@@ -716,7 +716,7 @@ export function WorkoutHistory() {
 																navigate(`/history/${workout.id}`);
 															}
 														}}
-														className={`p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background transition-all cursor-pointer group ${
+														className={`p-4 sm:p-6 bg-surface-2 transition-all cursor-pointer group ${
 															isSelected
 																? "border-primary ring-1 ring-primary/50"
 																: "border-secondary hover:border-primary/50"
@@ -741,7 +741,7 @@ export function WorkoutHistory() {
 															{/* Left: Icon & Date */}
 															<div className="flex items-center gap-4">
 																<div className="relative">
-																	<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center group-hover:scale-110 transition-transform">
+																	<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-primary flex items-center justify-center group- transition-transform">
 																		<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
 																	</div>
 																	<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
@@ -807,7 +807,7 @@ export function WorkoutHistory() {
 																</div>
 																{workout.pr_count > 0 && (
 																	<div className="text-center col-span-2 sm:col-span-1">
-																		<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+																		<Badge className="bg-accent text-white border-0">
 																			<Award className="w-3 h-3 mr-1" />
 																			{workout.pr_count} PR
 																			{workout.pr_count > 1 ? "s" : ""}
@@ -831,7 +831,7 @@ export function WorkoutHistory() {
 													delay: (unlocked.length + index) * 0.05,
 												}}
 											>
-												<Card className="relative p-4 sm:p-6 bg-gradient-to-br from-surface-2 to-background border-secondary pointer-events-none select-none">
+												<Card className="relative p-4 sm:p-6 bg-surface-2 border-secondary pointer-events-none select-none">
 													{/* Lock overlay */}
 													<div className="absolute inset-0 flex items-center justify-center z-10">
 														<Lock className="w-6 h-6 text-primary/60" />
@@ -864,7 +864,7 @@ export function WorkoutHistory() {
 
 										{/* Upgrade banner after locked entries */}
 										{locked.length > 0 && (
-											<Card className="p-6 border-primary/20 bg-gradient-to-r from-primary/5 to-chart-2/5 text-center">
+											<Card className="p-6 border-primary/20 bg-primary/5 text-center">
 												<Lock className="w-8 h-8 text-primary mx-auto mb-3" />
 												<h3 className="text-lg font-semibold text-zinc-200 mb-1">
 													Unlock your full workout history
@@ -969,7 +969,7 @@ export function WorkoutHistory() {
 											setSelectedDay(null);
 											navigate(`/history/${workout.id}`);
 										}}
-										className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 cursor-pointer transition-all"
+										className="p-4 bg-surface-2 border-secondary hover:border-primary/50 cursor-pointer transition-all"
 									>
 										<h4 className="text-lg font-semibold text-white mb-2">
 											{workout.name}
@@ -995,7 +995,7 @@ export function WorkoutHistory() {
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">
 													<span className="text-muted-foreground">PRs</span>
-													<Badge className="bg-gradient-to-r from-accent to-warning text-white border-0">
+													<Badge className="bg-accent text-white border-0">
 														{workout.pr_count}
 													</Badge>
 												</div>

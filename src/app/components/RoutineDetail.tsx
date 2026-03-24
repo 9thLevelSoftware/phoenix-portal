@@ -98,7 +98,7 @@ export function RoutineDetail() {
 	if (isError || !routine) {
 		return (
 			<PageShell className="min-h-screen">
-				<Card className="mx-auto max-w-2xl border-secondary bg-gradient-to-br from-surface-2 to-background p-8 text-center">
+				<Card className="mx-auto max-w-2xl border-secondary bg-surface-2 p-8 text-center">
 					<h1 className="mb-2 text-2xl font-semibold text-white">
 						Routine unavailable
 					</h1>
@@ -184,7 +184,7 @@ export function RoutineDetail() {
 			</div>
 
 			<div className="mb-8 grid gap-4 md:grid-cols-4">
-				<Card className="border-secondary bg-gradient-to-br from-surface-2 to-background p-4">
+				<Card className="border-secondary bg-surface-2 p-4">
 					<div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
 						<Dumbbell className="h-4 w-4" />
 						Exercises
@@ -193,7 +193,7 @@ export function RoutineDetail() {
 						{routine.exercise_count}
 					</div>
 				</Card>
-				<Card className="border-secondary bg-gradient-to-br from-surface-2 to-background p-4">
+				<Card className="border-secondary bg-surface-2 p-4">
 					<div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
 						<Clock className="h-4 w-4" />
 						Estimated Duration
@@ -202,7 +202,7 @@ export function RoutineDetail() {
 						~{routine.estimated_duration} min
 					</div>
 				</Card>
-				<Card className="border-secondary bg-gradient-to-br from-surface-2 to-background p-4">
+				<Card className="border-secondary bg-surface-2 p-4">
 					<div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
 						<Repeat className="h-4 w-4" />
 						Times Completed
@@ -211,7 +211,7 @@ export function RoutineDetail() {
 						{routine.times_completed}
 					</div>
 				</Card>
-				<Card className="border-secondary bg-gradient-to-br from-surface-2 to-background p-4">
+				<Card className="border-secondary bg-surface-2 p-4">
 					<div className="mb-2 text-sm text-muted-foreground">Last Used</div>
 					<div className="text-lg font-semibold text-white">
 						{routine.last_used_at
@@ -226,7 +226,7 @@ export function RoutineDetail() {
 					item.type === "exercise" ? (
 						<Card
 							key={item.exercise.id}
-							className="border-secondary bg-gradient-to-br from-surface-2 to-background p-5"
+							className="border-secondary bg-surface-2 p-5"
 						>
 							<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 								<div>
@@ -282,7 +282,7 @@ export function RoutineDetail() {
 								{item.exercises.map((exercise) => (
 									<Card
 										key={exercise.id}
-										className="border-secondary bg-gradient-to-br from-surface-2 to-background p-5"
+										className="border-secondary bg-surface-2 p-5"
 									>
 										<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 											<div>
