@@ -131,7 +131,7 @@ function QuickStatCard({
 }) {
 	return (
 		<motion.div whileHover={hover.lift}>
-			<Card className="p-4 card-secondary min-w-[120px] flex-shrink-0">
+			<Card className="p-4 signal-panel min-w-[120px] flex-shrink-0">
 				<div
 					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
 				>
@@ -164,7 +164,7 @@ function MobileRecentActivityCard({
 	prs: number;
 }) {
 	return (
-		<Card className="p-4 card-secondary active:scale-[0.98] transition-transform">
+		<Card className="p-4 signal-panel active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
 				<h4 className="font-semibold text-white">{title}</h4>
 				<span className="text-xs text-muted-foreground">{time}</span>
@@ -409,9 +409,9 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
 						>
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<div className="flex items-center gap-4">
-									<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center flex-shrink-0">
+									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
 										<TrendingUp className="w-5 h-5 text-white" />
 									</div>
 									<div>
@@ -432,7 +432,7 @@ export function Dashboard() {
 							transition={{ delay: 0.2 }}
 						>
 							<Link to="/routines/new">
-								<Card className="p-5 card-secondary">
+								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
 											<Dumbbell className="w-5 h-5 text-white" />
@@ -457,7 +457,7 @@ export function Dashboard() {
 							transition={{ delay: 0.3 }}
 						>
 							<Link to="/challenges">
-								<Card className="p-5 card-secondary">
+								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center flex-shrink-0">
 											<Trophy className="w-5 h-5 text-white" />
@@ -504,8 +504,8 @@ export function Dashboard() {
 						className="grid grid-cols-1 md:grid-cols-3 gap-6"
 					>
 						<motion.div variants={fadeUp}>
-							<Card className="p-6 card-secondary h-full">
-								<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center mb-4">
+							<Card className="p-6 signal-panel h-full">
+								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-white" />
 								</div>
 								<h3 className="text-lg font-semibold text-white mb-2">
@@ -520,7 +520,7 @@ export function Dashboard() {
 
 						<motion.div variants={fadeUp}>
 							<Link to="/routines/new" className="block h-full">
-								<Card className="p-6 card-secondary h-full">
+								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
 										<Dumbbell className="w-6 h-6 text-white" />
 									</div>
@@ -537,7 +537,7 @@ export function Dashboard() {
 
 						<motion.div variants={fadeUp}>
 							<Link to="/challenges" className="block h-full">
-								<Card className="p-6 card-secondary h-full">
+								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center mb-4">
 										<Trophy className="w-6 h-6 text-white" />
 									</div>
@@ -573,7 +573,7 @@ export function Dashboard() {
 							onClick={() => toast("Notifications coming in a future update")}
 						>
 							<Bell className="w-6 h-6 text-secondary-foreground" />
-							<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
+							<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-signal-pulse" />
 						</button>
 					</div>
 				</div>
@@ -585,7 +585,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.1 }}
 					>
-						<Card className="p-6 card-hero">
+						<Card className="p-6 signal-panel-highlight">
 							<div className="flex items-center gap-4">
 								<motion.div
 									animate={{
@@ -646,7 +646,7 @@ export function Dashboard() {
 						{activeCycle ? (
 							<NextWorkoutWidget cycleId={activeCycle.id} />
 						) : (
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Calendar className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -683,7 +683,7 @@ export function Dashboard() {
 								{Array.from({ length: 4 }).map((_, i) => (
 									<Card
 										key={i}
-										className="p-4 card-secondary min-w-[120px] flex-shrink-0"
+										className="p-4 signal-panel min-w-[120px] flex-shrink-0"
 									>
 										<Skeleton className="w-10 h-10 rounded-lg mb-3" />
 										<Skeleton className="h-7 w-16 mb-1" />
@@ -744,13 +744,13 @@ export function Dashboard() {
 					>
 						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
 						{statsLoading ? (
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<Skeleton className="h-8 w-32 mb-1" />
 								<Skeleton className="h-4 w-40 mb-4" />
 								<Skeleton className="h-32 w-full" />
 							</Card>
 						) : weeklyTotal === 0 ? (
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<div className="flex flex-col items-center justify-center py-8 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">
@@ -762,7 +762,7 @@ export function Dashboard() {
 								</div>
 							</Card>
 						) : (
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<div className="mb-4">
 									<div className="text-3xl font-bold text-white mb-1">
 										{formatVolume(weeklyTotal, unit)}
@@ -837,7 +837,7 @@ export function Dashboard() {
 								))}
 							</div>
 						) : recentWorkouts.length === 0 ? (
-							<Card className="p-5 card-secondary">
+							<Card className="p-5 signal-panel">
 								<div className="flex flex-col items-center justify-center py-6 text-center">
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
@@ -878,7 +878,7 @@ export function Dashboard() {
 					>
 						<h1 className="text-4xl lg:text-5xl font-bold tracking-tight mb-2">
 							Welcome back,{" "}
-							<span className="text-primary glow-text">
+							<span className="text-primary">
 								{profile?.display_name ??
 									user?.email?.split("@")[0] ??
 									"Athlete"}
@@ -902,7 +902,7 @@ export function Dashboard() {
 							whileHover={hover.lift}
 							className="col-span-1 lg:col-span-5"
 						>
-							<div className="glass-panel p-8 flex items-center justify-center relative overflow-hidden glow-box h-full">
+							<div className="signal-panel p-8 flex items-center justify-center relative overflow-hidden h-full">
 								<div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent opacity-50" />
 								<div className="flex items-center gap-6 z-10">
 									<motion.div
@@ -950,7 +950,7 @@ export function Dashboard() {
 							transition={{ delay: 0.15 }}
 							className="col-span-1 lg:col-span-7"
 						>
-							<div className="glass-panel p-6 h-full">
+							<div className="signal-panel p-6 h-full">
 								<h3 className="text-lg font-medium mb-6 text-white">
 									Quick Stats
 								</h3>
@@ -1043,7 +1043,7 @@ export function Dashboard() {
 							{activeCycle ? (
 								<NextWorkoutWidget cycleId={activeCycle.id} />
 							) : (
-								<div className="glass-panel glass-panel-hover p-6 flex flex-col items-center justify-center text-center h-full">
+								<div className="signal-panel p-6 flex flex-col items-center justify-center text-center h-full">
 									<Calendar className="w-12 h-12 text-primary mb-4 opacity-80" />
 									<h3 className="text-xl font-medium text-white mb-6">
 										Scheduled
@@ -1070,7 +1070,7 @@ export function Dashboard() {
 							{statsLoading ? (
 								<ChartSkeleton />
 							) : (
-								<div className="glass-panel p-6 flex flex-col h-full">
+								<div className="signal-panel p-6 flex flex-col h-full">
 									<h3 className="text-lg font-medium mb-6 text-white">
 										Weekly Volume
 									</h3>
@@ -1148,7 +1148,7 @@ export function Dashboard() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								<Card className="p-5 glass-panel">
+								<Card className="p-5 signal-panel">
 									<div className="flex items-center justify-between mb-4">
 										<h3 className="text-xl text-white">Recent Activity</h3>
 										<Button
@@ -1221,7 +1221,7 @@ export function Dashboard() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: 0.45 }}
 								>
-									<Card className="p-5 glass-panel">
+									<Card className="p-5 signal-panel">
 										<h3 className="text-xl text-white mb-6">
 											Volume Breakdown
 										</h3>
@@ -1301,7 +1301,7 @@ export function Dashboard() {
 						>
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-5 glass-panel">
+								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
@@ -1355,7 +1355,7 @@ export function Dashboard() {
 
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-5 glass-panel">
+								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
@@ -1363,7 +1363,7 @@ export function Dashboard() {
 
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
-								<Card className="p-5 glass-panel">
+								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
