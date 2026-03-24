@@ -58,7 +58,7 @@ export function DayEditor({
 				transition={{ type: "spring", damping: 25, stiffness: 200 }}
 				className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-surface-2 border-l border-secondary z-50 overflow-y-auto"
 			>
-				<div className="sticky top-0 bg-background/95 backdrop-blur-lg border-b border-secondary px-6 py-4 flex items-center justify-between">
+				<div className="sticky top-0 bg-surface-1 border-b border-secondary px-6 py-4 flex items-center justify-between">
 					<h3 className="text-lg font-semibold text-white">
 						Day {day.dayNumber}{" "}
 						{day.type === "rest" ? "- Rest Day" : "Configuration"}

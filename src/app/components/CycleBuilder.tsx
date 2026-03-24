@@ -338,7 +338,7 @@ export function CycleBuilder() {
 	return (
 		<div className="min-h-screen pb-8">
 			{/* Sticky Top Bar */}
-			<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
+			<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">
 					<div className="flex items-center gap-4 flex-1">
 						<Button

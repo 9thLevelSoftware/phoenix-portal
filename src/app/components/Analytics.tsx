@@ -915,7 +915,7 @@ export function Analytics() {
 			<div className="min-h-screen pb-20 md:pb-8">
 				{/* Mobile loading skeleton */}
 				<div className="block md:hidden">
-					<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
+					<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 						<Skeleton className="h-6 w-32" />
 					</div>
 					<div className="flex overflow-x-auto gap-3 px-4 py-4">
@@ -958,7 +958,7 @@ export function Analytics() {
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Compact Header */}
-				<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
+				<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
 						<h1 className="text-xl font-bold text-white">Analytics Hub</h1>
 						<div className="flex items-center gap-2">

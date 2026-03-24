@@ -562,7 +562,7 @@ export function Dashboard() {
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Mobile compact header */}
-				<div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b border-secondary px-4 py-4">
+				<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 					<div className="flex items-center justify-between">
 						<div>
 							<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
