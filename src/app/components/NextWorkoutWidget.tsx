@@ -86,7 +86,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 				<div className="flex flex-col items-center justify-center py-6 text-center">
 					<Calendar className="w-10 h-10 text-secondary mb-3" />
 					<p className="text-muted-foreground">Cycle schedule unavailable</p>
-					<p className="text-sm text-muted mt-1">
+					<p className="text-sm text-muted-foreground mt-1">
 						The cycle may have ended or not started yet
 					</p>
 				</div>
@@ -169,7 +169,8 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 					</p>
 				</div>
 				<Button
-					className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 shadow-lg shadow-primary/50"
+					variant="cta"
+					className="w-full shadow-lg shadow-primary/50"
 					asChild
 				>
 					<Link to={`/cycles/${cycleId}`}>

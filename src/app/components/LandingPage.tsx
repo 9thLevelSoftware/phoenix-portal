@@ -83,6 +83,18 @@ export function LandingPage() {
 		}
 	}, [user, loading, navigate]);
 
+	// Lazy-load Space Grotesk font for landing page
+	useEffect(() => {
+		const link = document.createElement("link");
+		link.rel = "stylesheet";
+		link.href =
+			"https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
+		document.head.appendChild(link);
+		return () => {
+			document.head.removeChild(link);
+		};
+	}, []);
+
 	// Track scroll for sticky nav
 	useEffect(() => {
 		const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -297,7 +309,8 @@ export function LandingPage() {
 							type="button"
 							disabled={authLoading}
 							onClick={handleResetPassword}
-							className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
+							className="w-full"
 						>
 							{authLoading ? (
 								<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -385,7 +398,8 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
+									className="w-full"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -465,7 +479,8 @@ export function LandingPage() {
 								<Button
 									type="submit"
 									disabled={authLoading}
-									className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+									variant="cta"
+									className="w-full"
 								>
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -483,7 +498,7 @@ export function LandingPage() {
 								<div className="w-full border-t border-secondary" />
 							</div>
 							<div className="relative flex justify-center text-sm">
-								<span className="bg-surface-2 px-2 text-muted">
+								<span className="bg-surface-2 px-2 text-muted-foreground">
 									or continue with
 								</span>
 							</div>
@@ -662,7 +677,8 @@ export function LandingPage() {
 						<Button
 							size="lg"
 							onClick={openAuth}
-							className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0 btn-shimmer"
+							variant="cta"
+					className="w-full sm:w-auto btn-shimmer"
 						>
 							Preview dashboard
 						</Button>
@@ -1061,7 +1077,7 @@ export function LandingPage() {
 								9th Level Software LLC
 							</span>
 						</p>
-						<div className="text-muted text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
+						<div className="text-muted-foreground text-[11px] max-w-3xl mx-auto space-y-1.5 leading-relaxed">
 							<p className="font-semibold text-muted-foreground">
 								Legal Notice
 							</p>
@@ -1084,7 +1100,7 @@ export function LandingPage() {
 								disclaimers.
 							</p>
 						</div>
-						<p className="text-muted text-xs">
+						<p className="text-muted-foreground text-xs">
 							&copy; 2026 9th Level Software LLC. All rights reserved.
 						</p>
 					</div>

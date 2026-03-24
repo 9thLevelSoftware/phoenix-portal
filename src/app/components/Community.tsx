@@ -205,7 +205,7 @@ export function Community() {
 									/>
 								))
 							) : isError ? (
-								<div className="text-center py-12 text-muted">
+								<div className="text-center py-12 text-muted-foreground">
 									<p className="mb-2">Something went wrong</p>
 									<Button
 										variant="outline"
@@ -217,7 +217,7 @@ export function Community() {
 									</Button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-12 text-muted">
+								<div className="text-center py-12 text-muted-foreground">
 									<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
 									{hasActiveFilters ? (
 										<p>
@@ -360,7 +360,7 @@ export function Community() {
 									))}
 								</div>
 							) : isError ? (
-								<div className="text-center py-16 text-muted">
+								<div className="text-center py-16 text-muted-foreground">
 									<p className="text-lg mb-2">Something went wrong</p>
 									<p className="text-sm mb-4">
 										Failed to load community feed. Please try again.
@@ -373,7 +373,7 @@ export function Community() {
 									</button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-16 text-muted">
+								<div className="text-center py-16 text-muted-foreground">
 									<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
 									<p className="text-lg">
 										{hasActiveFilters

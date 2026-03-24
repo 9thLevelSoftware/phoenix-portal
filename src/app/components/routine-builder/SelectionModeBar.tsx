@@ -45,7 +45,8 @@ export function SelectionModeBar({
 								<Button
 									onClick={onCreateSuperset}
 									disabled={selectedCount < 2}
-									className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0 disabled:opacity-50"
+									variant="cta"
+									className="disabled:opacity-50"
 								>
 									Create Superset
 								</Button>

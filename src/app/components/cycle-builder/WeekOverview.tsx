@@ -48,7 +48,7 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 							>
 								{day?.type === "workout" ? "🏋️" : "🛋️"}
 							</div>
-							<div className="text-xs text-muted mt-1 truncate">
+							<div className="text-xs text-muted-foreground mt-1 truncate">
 								{day?.routineName || (day?.type === "rest" ? "REST" : "-")}
 							</div>
 						</div>

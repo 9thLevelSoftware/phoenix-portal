@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
+import { formatVolume, type WeightUnit } from "@/lib/units";
 
 interface WorkoutCompleteProps {
 	isOpen: boolean;
 	onClose: () => void;
 	duration: string;
-	volume: string;
+	/** Total volume in kg (display-ready) */
+	volume: number;
+	unit: WeightUnit;
 	prsAchieved: number;
 	streakContinued?: boolean;
 	onViewSummary: () => void;
@@ -20,6 +23,7 @@ export function WorkoutComplete({
 	onClose,
 	duration,
 	volume,
+	unit,
 	prsAchieved,
 	streakContinued = false,
 	onViewSummary,
@@ -164,7 +168,7 @@ export function WorkoutComplete({
 											transition={{ delay: 0.2 }}
 										>
 											<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
-												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center">
+												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
 													<Clock className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
@@ -178,7 +182,7 @@ export function WorkoutComplete({
 											</div>
 
 											<div className="flex items-center gap-3 p-3 bg-background rounded-lg border border-secondary">
-												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-success to-[#059669] flex items-center justify-center">
+												<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-success to-emerald-600 flex items-center justify-center">
 													<Dumbbell className="w-5 h-5 text-white" />
 												</div>
 												<div className="flex-1">
@@ -186,19 +190,19 @@ export function WorkoutComplete({
 														Total Volume
 													</div>
 													<div className="text-lg font-bold text-white">
-														{volume}
+														{formatVolume(volume, unit)}
 													</div>
 												</div>
 											</div>
 
 											{prsAchieved > 0 && (
 												<motion.div
-													className="flex items-center gap-3 p-3 bg-gradient-to-br from-accent/20 to-[#D97706]/10 rounded-lg border-2 border-accent"
+													className="flex items-center gap-3 p-3 bg-gradient-to-br from-accent/20 to-amber-600/10 rounded-lg border-2 border-accent"
 													initial={{ scale: 0.9 }}
 													animate={{ scale: 1 }}
 													transition={{ delay: 0.3, type: "spring" }}
 												>
-													<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-[#D97706] flex items-center justify-center">
+													<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-amber-600 flex items-center justify-center">
 														<TrendingUp className="w-5 h-5 text-white" />
 													</div>
 													<div className="flex-1">
@@ -271,7 +275,8 @@ export function WorkoutComplete({
 													e.stopPropagation();
 													onViewSummary();
 												}}
-												className="flex-1 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+												variant="cta"
+										className="flex-1"
 											>
 												View Summary
 											</Button>
@@ -284,7 +289,7 @@ export function WorkoutComplete({
 											</Button>
 										</motion.div>
 
-										<p className="text-xs text-center text-muted mt-4">
+										<p className="text-xs text-center text-muted-foreground mt-4">
 											Tap anywhere to dismiss
 										</p>
 									</div>

@@ -408,7 +408,7 @@ export function BiomechanicsContent({
 										selectedRep={selectedRep}
 									/>
 								) : (
-									<div className="py-8 text-center text-sm text-muted">
+									<div className="py-8 text-center text-sm text-muted-foreground">
 										No telemetry data for this set
 									</div>
 								)}
@@ -523,7 +523,7 @@ export function BiomechanicsContent({
 										))}
 									</div>
 								) : (
-									<div className="py-8 text-center text-sm text-muted">
+									<div className="py-8 text-center text-sm text-muted-foreground">
 										No TUT data available for this set
 									</div>
 								)}
@@ -543,7 +543,7 @@ export function BiomechanicsContent({
 										}))}
 									/>
 								) : (
-									<div className="py-8 text-center text-sm text-muted">
+									<div className="py-8 text-center text-sm text-muted-foreground">
 										Need at least 2 reps with telemetry data for form analysis
 									</div>
 								)}

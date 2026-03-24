@@ -205,7 +205,7 @@ export function StreakMilestone({
 										)}
 
 										<p
-											className={`text-xs ${isYearMilestone ? "text-white/70" : "text-muted"} mt-4`}
+											className={`text-xs ${isYearMilestone ? "text-white/70" : "text-muted-foreground"} mt-4`}
 										>
 											{phase >= 5 || isYearMilestone
 												? "Tap to continue"

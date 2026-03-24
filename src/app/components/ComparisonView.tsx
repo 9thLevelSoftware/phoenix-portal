@@ -335,7 +335,7 @@ export function ComparisonView() {
 					</p>
 					<Button
 						onClick={() => navigate("/pricing")}
-						className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
 					>
 						View Plans
 					</Button>
@@ -371,7 +371,8 @@ export function ComparisonView() {
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
-						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="mt-6"
 					>
 						Return to History
 					</Button>
@@ -407,7 +408,8 @@ export function ComparisonView() {
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
-						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="mt-6"
 					>
 						Go to History
 					</Button>
@@ -476,7 +478,8 @@ export function ComparisonView() {
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
-						className="mt-6 bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="mt-6"
 					>
 						Return to History
 					</Button>

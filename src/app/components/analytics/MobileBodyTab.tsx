@@ -27,7 +27,7 @@ export default function MobileBodyTab({
 }: MobileBodyTabProps) {
 	if (muscleGroupData.length === 0) {
 		return (
-			<div className="text-center py-12 text-muted">
+			<div className="text-center py-12 text-muted-foreground">
 				<Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
 				<p className="font-medium mb-1">Body analysis coming soon</p>
 				<p className="text-xs mb-4">

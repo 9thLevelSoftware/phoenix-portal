@@ -69,7 +69,7 @@ export default function MobileProgressTab({
 						</BarChart>
 					</ResponsiveContainer>
 				) : (
-					<div className="h-[250px] flex items-center justify-center text-muted text-sm">
+					<div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
 						No strength data yet. Set some PRs!
 					</div>
 				)}
@@ -134,7 +134,7 @@ export default function MobileProgressTab({
 						</AreaChart>
 					</ResponsiveContainer>
 				) : (
-					<div className="text-center py-12 text-muted">
+					<div className="text-center py-12 text-muted-foreground">
 						<TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
 						<p className="font-medium mb-1">Track your training trends</p>
 						<p className="text-xs">

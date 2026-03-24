@@ -136,7 +136,7 @@ export function GoalCelebration({
 											{goalData.achievedValue}
 										</motion.div>
 
-										<p className="text-xs text-muted mt-4">
+										<p className="text-xs text-muted-foreground mt-4">
 											Tap anywhere to continue
 										</p>
 									</div>

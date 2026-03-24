@@ -107,7 +107,8 @@ export function ResetPassword() {
 					<Button
 						type="submit"
 						disabled={loading}
-						className="w-full bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+						variant="cta"
+						className="w-full"
 					>
 						{loading ? (
 							<Loader2 className="w-4 h-4 animate-spin mr-2" />

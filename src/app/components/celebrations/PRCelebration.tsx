@@ -173,7 +173,7 @@ export function PRCelebration({ isOpen, onClose, prData }: PRCelebrationProps) {
 											<Award className="w-5 h-5" />
 										</div>
 
-										<p className="text-xs text-muted mt-6">
+										<p className="text-xs text-muted-foreground mt-6">
 											Tap anywhere to continue
 										</p>
 									</div>

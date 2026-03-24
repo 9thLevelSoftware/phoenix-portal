@@ -383,7 +383,7 @@ export function CycleBuilder() {
 						<Button
 							onClick={handleSave}
 							disabled={saveMutation.isPending || updateMutation.isPending}
-							className="bg-gradient-to-r from-primary to-chart-2 hover:from-chart-2 hover:to-accent border-0"
+							variant="cta"
 						>
 							{saveMutation.isPending || updateMutation.isPending ? (
 								<Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -481,7 +481,7 @@ export function CycleBuilder() {
 										min: new Date().toISOString().split("T")[0],
 									})}
 								/>
-								<p className="text-xs text-muted mt-1">
+								<p className="text-xs text-muted-foreground mt-1">
 									Leave blank to start anytime
 								</p>
 							</div>
@@ -526,7 +526,7 @@ export function CycleBuilder() {
 							</div>
 						</div>
 
-						<p className="text-sm text-muted mt-4 text-center">
+						<p className="text-sm text-muted-foreground mt-4 text-center">
 							Click a day to configure -- Scroll horizontally for more days
 						</p>
 					</Card>
@@ -673,7 +673,7 @@ export function CycleBuilder() {
 												</span>
 											)}
 										</div>
-										<div className="text-xs text-muted mt-1 truncate">
+										<div className="text-xs text-muted-foreground mt-1 truncate">
 											{day.routineName || (day.type === "rest" ? "REST" : "-")}
 										</div>
 									</div>
@@ -786,7 +786,7 @@ function DayCard({
 					</div>
 				) : day.type === "workout" ? (
 					<div className="text-center space-y-2">
-						<div className="text-4xl text-muted">+</div>
+						<div className="text-4xl text-muted-foreground">+</div>
 						<div className="text-xs text-muted-foreground">Add Routine</div>
 					</div>
 				) : (
@@ -887,7 +887,7 @@ function DayEditorPanel({
 						<Label className="text-secondary-foreground mb-2">
 							Day-Specific Overrides
 						</Label>
-						<p className="text-xs text-muted mb-4">
+						<p className="text-xs text-muted-foreground mb-4">
 							Optional - override routine defaults for this day only
 						</p>
 
@@ -1115,7 +1115,7 @@ function ProgressionRules({
 								<SelectItem value="manual">Manual Adjustment</SelectItem>
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted mt-1">
+						<p className="text-xs text-muted-foreground mt-1">
 							{progressionType === "percentage"
 								? "Increase weight by a percentage each cycle"
 								: progressionType === "fixed"
@@ -1160,7 +1160,7 @@ function ProgressionRules({
 							className="bg-background border-secondary"
 							min={1}
 						/>
-						<p className="text-xs text-muted mt-1">
+						<p className="text-xs text-muted-foreground mt-1">
 							How often to apply progression
 						</p>
 					</div>
@@ -1186,7 +1186,7 @@ function ProgressionRules({
 								<SelectItem value="cycle_complete">Cycle Complete</SelectItem>
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted mt-1">When to advance weight</p>
+						<p className="text-xs text-muted-foreground mt-1">When to advance weight</p>
 					</div>
 				</div>
 
@@ -1338,21 +1338,21 @@ function PreviewModal({
 							<div className="text-2xl font-bold text-white">
 								{cycle.duration}
 							</div>
-							<div className="text-xs text-muted">days</div>
+							<div className="text-xs text-muted-foreground">days</div>
 						</div>
 						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
 							<div className="text-sm text-muted-foreground">Workout</div>
 							<div className="text-2xl font-bold text-primary">
 								{workoutDays}
 							</div>
-							<div className="text-xs text-muted">days</div>
+							<div className="text-xs text-muted-foreground">days</div>
 						</div>
 						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
 							<div className="text-sm text-muted-foreground">Rest</div>
 							<div className="text-2xl font-bold text-muted-foreground">
 								{restDays}
 							</div>
-							<div className="text-xs text-muted">days</div>
+							<div className="text-xs text-muted-foreground">days</div>
 						</div>
 					</div>
 

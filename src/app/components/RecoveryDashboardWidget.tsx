@@ -81,7 +81,7 @@ export function RecoveryDashboardWidget() {
 					<p className="text-sm text-muted-foreground mb-1">
 						Building baseline...
 					</p>
-					<p className="text-xs text-muted">
+					<p className="text-xs text-muted-foreground">
 						{GATING_THRESHOLD_DAYS - daysSinceFirstSession} days remaining
 					</p>
 				</div>
@@ -97,7 +97,7 @@ export function RecoveryDashboardWidget() {
 									: "Increased fatigue"}
 						</p>
 						{recovery.isClamped && (
-							<p className="text-xs text-muted">Limited range</p>
+							<p className="text-xs text-muted-foreground">Limited range</p>
 						)}
 					</div>
 				</div>

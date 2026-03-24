@@ -20,7 +20,7 @@ export function CommunitySearch() {
 
 	return (
 		<div className="relative flex-1">
-			<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+			<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 			<Input
 				value={localValue}
 				onChange={(e) => setLocalValue(e.target.value)}
@@ -30,7 +30,7 @@ export function CommunitySearch() {
 			{localValue && (
 				<button
 					onClick={() => setLocalValue("")}
-					className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
+					className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
 				>
 					<X className="w-4 h-4" />
 				</button>
