@@ -1,18 +1,28 @@
 /* Phoenix Typography — Three-font system
  *
  * Display:  Chakra Petch — angular, squared terminals, mechanical.
- *           Used for headings h1-h3. Extreme structural contrast with Inter.
+ *           Used for headings h1-h3 and .text-display-1/2 utilities.
+ *           Extreme structural contrast with Inter (Design for Hackers, Appendix A).
  * UI/Body:  Inter — realist sans-serif, screen-optimized.
  *           Used for body text, labels, buttons, inputs.
+ *           Inter is a common "AI default" font, but retained here because:
+ *           (1) designed specifically for screens (Ch. 3 medium-form match),
+ *           (2) large x-height + open counters for data-dense dashboard,
+ *           (3) variable font with tabular figures for metrics,
+ *           (4) paired with distinctive Chakra Petch display font that
+ *               eliminates the "generic AI" impression.
  * Data:     JetBrains Mono — monospace, tabular figures.
  *           Used for metrics, values, readouts.
  *
- * Pairing rationale (Design for Hackers, Appendix A):
- *   Inter (realist, rounded shoulder on 'n') + Chakra Petch (geometric-angular,
- *   blocky shoulder on 'n') = extreme structure contrast. The book says this
- *   deliberate contrast is the valid exception to the one-serif-one-sans rule.
+ * Pairing: Inter (realist, rounded 'n') + Chakra Petch (geometric-angular,
+ *   blocky 'n') = extreme structure contrast — the valid exception to the
+ *   one-serif-one-sans rule (Appendix A).
  *
- * Type scale: Perfect Fourth (1.333x) = 3:4 ratio (Ch. 5 recommended proportion)
+ * Type scale: Perfect Fourth (1.333x) = 3:4 ratio (Ch. 5).
+ *
+ * Spacing: Tailwind 4px base unit (ordinal, not proportional).
+ *   Hierarchy: space-y-2 (8px) within → space-y-4 (16px) between →
+ *   space-y-6 (24px) sections → gap-8 (32px) major breaks.
  */
 
 @theme {
