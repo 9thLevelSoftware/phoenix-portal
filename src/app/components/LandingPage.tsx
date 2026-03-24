@@ -333,10 +333,10 @@ export function LandingPage() {
 				) : (
 					<Tabs defaultValue="signin" className="w-full">
 						<TabsList className="w-full mb-4">
-							<TabsTrigger value="signin" className="flex-1">
+							<TabsTrigger value="signin">
 								Sign In
 							</TabsTrigger>
-							<TabsTrigger value="signup" className="flex-1">
+							<TabsTrigger value="signup">
 								Sign Up
 							</TabsTrigger>
 						</TabsList>
