@@ -626,6 +626,7 @@ export function LandingPage() {
 					<img
 						src="/phoenix-hero.png"
 						alt=""
+						role="presentation"
 						className="absolute inset-0 w-full h-full object-cover opacity-30"
 					/>
 					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
