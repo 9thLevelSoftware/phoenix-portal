@@ -96,7 +96,7 @@ export function MobileBottomNav() {
 	const closeDrawer = () => setMoreOpen(false);
 
 	return (
-		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-secondary pb-safe">
+		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-1 border-t border-secondary pb-safe">
 			<div className="flex items-center justify-around px-2 py-2 max-w-screen-xl mx-auto">
 				{primaryItems.map((item) => (
 					<NavLink
@@ -113,7 +113,7 @@ export function MobileBottomNav() {
 									{isActive && (
 										<motion.div
 											layoutId="activeMobileTab"
-											className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
+											className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
 											transition={{
 												type: "spring",
 												stiffness: 500,
@@ -191,7 +191,7 @@ export function MobileBottomNav() {
 							{isMoreActive && (
 								<motion.div
 									layoutId="activeMobileTab"
-									className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-chart-2 rounded-full"
+									className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
 									transition={{ type: "spring", stiffness: 500, damping: 30 }}
 								/>
 							)}

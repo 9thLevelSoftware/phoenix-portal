@@ -398,7 +398,7 @@ interface MobileStatCardProps {
 
 function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 	return (
-		<Card className="min-w-[120px] p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="min-w-[120px] p-4 bg-surface-2 border-secondary">
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
@@ -915,7 +915,7 @@ export function Analytics() {
 			<div className="min-h-screen pb-20 md:pb-8">
 				{/* Mobile loading skeleton */}
 				<div className="block md:hidden">
-					<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
+					<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 						<Skeleton className="h-6 w-32" />
 					</div>
 					<div className="flex overflow-x-auto gap-3 px-4 py-4">
@@ -958,7 +958,7 @@ export function Analytics() {
 			{/* ---- MOBILE LAYOUT (< 768px) ---- */}
 			<div className="block md:hidden">
 				{/* Compact Header */}
-				<div className="sticky top-0 bg-background/95 backdrop-blur-lg z-10 px-4 py-3 border-b border-secondary">
+				<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
 						<h1 className="text-xl font-bold text-white">Analytics Hub</h1>
 						<div className="flex items-center gap-2">
@@ -1225,7 +1225,7 @@ export function Analytics() {
 										animate={{ opacity: 1, y: 0 }}
 										transition={{ delay: index * 0.08 }}
 									>
-										<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary">
+										<Card className="p-4 bg-surface-2 border-secondary">
 											<div className="flex items-center justify-between mb-1">
 												<span className="text-sm text-muted-foreground">
 													{stat.label}

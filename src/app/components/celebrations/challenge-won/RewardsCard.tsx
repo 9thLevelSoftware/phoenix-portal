@@ -38,7 +38,7 @@ export function RewardsCard({ rewards }: RewardsCardProps) {
 			}}
 			className="w-full max-w-md mx-auto px-4"
 		>
-			<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+			<Card className="p-6 bg-surface-2 border-secondary">
 				<h3 className="text-lg font-semibold text-white mb-4 text-center">
 					REWARDS EARNED
 				</h3>

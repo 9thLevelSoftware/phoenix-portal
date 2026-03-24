@@ -73,7 +73,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 			{/* Author */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-chart-2 flex items-center justify-center text-white text-sm">
+					<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm">
 						{authorName.charAt(0).toUpperCase()}
 					</div>
 					<div>

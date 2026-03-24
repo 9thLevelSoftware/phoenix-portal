@@ -22,7 +22,7 @@ export function DaySchedule({
 	onRemoveDay,
 }: DayScheduleProps) {
 	return (
-		<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-6">
 				<h2 className="text-xl font-semibold text-white flex items-center gap-2">
 					<Dumbbell className="w-5 h-5 text-primary" />

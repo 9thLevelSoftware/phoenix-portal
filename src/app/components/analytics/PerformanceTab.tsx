@@ -33,7 +33,7 @@ export default function PerformanceTab({
 		>
 			{/* Community Rankings -- populated once benchmark Edge Function is scheduled */}
 			<div className="space-y-6">
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-4">Community Rankings</h3>
 					<p className="text-sm text-muted-foreground mb-4">
 						Rankings update daily based on all participating Phoenix users.
@@ -45,7 +45,7 @@ export default function PerformanceTab({
 				<BiomechanicsContent view="performance" />
 
 				{/* Training Efficiency */}
-				<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary">
+				<Card className="p-6 bg-surface-2 border-secondary">
 					<h3 className="text-xl text-white mb-4">Training Efficiency</h3>
 					<div className="grid grid-cols-2 gap-4">
 						<div className="rounded-lg bg-muted/20 p-4">

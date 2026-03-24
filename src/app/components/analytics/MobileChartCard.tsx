@@ -9,7 +9,7 @@ export function MobileChartCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<Card className="p-4 bg-gradient-to-br from-surface-2 to-background border-secondary active:scale-[0.98] transition-transform">
+		<Card className="p-4 bg-surface-2 border-secondary active:scale-[0.98] transition-transform">
 			<h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
 			{children}
 		</Card>

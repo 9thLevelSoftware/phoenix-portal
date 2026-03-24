@@ -56,7 +56,7 @@ export function DangerZone() {
 
 	if (isLoading) {
 		return (
-			<Card className="border-secondary bg-gradient-to-br from-surface-2 to-background">
+			<Card className="border-secondary bg-surface-2">
 				<CardContent className="flex items-center justify-center py-8">
 					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
 				</CardContent>
@@ -97,7 +97,7 @@ export function DangerZone() {
 	if (hasPendingRequest && gracePeriodExpired) {
 		return (
 			<>
-				<Card className="border-red-900/50 bg-gradient-to-br from-surface-2 to-background">
+				<Card className="border-red-900/50 bg-surface-2">
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-red-400">
 							<AlertTriangle className="h-5 w-5" />
@@ -176,7 +176,7 @@ export function DangerZone() {
 	// =========================================================================
 	if (hasPendingRequest && !gracePeriodExpired) {
 		return (
-			<Card className="border-amber-900/50 bg-gradient-to-br from-surface-2 to-background">
+			<Card className="border-amber-900/50 bg-surface-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2 text-amber-400">
 						<AlertTriangle className="h-5 w-5" />
@@ -217,7 +217,7 @@ export function DangerZone() {
 	// =========================================================================
 	return (
 		<>
-			<Card className="border-red-900/50 bg-gradient-to-br from-surface-2 to-background">
+			<Card className="border-red-900/50 bg-surface-2">
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2 text-red-400">
 						<AlertTriangle className="h-5 w-5" />

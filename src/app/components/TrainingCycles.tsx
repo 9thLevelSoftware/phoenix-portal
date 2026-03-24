@@ -55,7 +55,7 @@ export function TrainingCycles() {
 	if (isPending) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
@@ -82,7 +82,7 @@ export function TrainingCycles() {
 	if (allCycles.length === 0) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
-				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<motion.div
 							initial={{ opacity: 0, y: 20 }}
@@ -121,7 +121,7 @@ export function TrainingCycles() {
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
-			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40 backdrop-blur-xl">
+			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -156,7 +156,7 @@ export function TrainingCycles() {
 					>
 						<Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-chart-2/10 border-2 border-primary/50 relative overflow-hidden">
 							<div className="absolute top-4 right-4">
-								<Badge className="bg-gradient-to-r from-primary to-chart-2 text-white border-0">
+								<Badge className="bg-primary text-white border-0">
 									<Flame className="w-3 h-3 mr-1" />
 									ACTIVE CYCLE
 								</Badge>
@@ -237,7 +237,7 @@ export function TrainingCycles() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.05 }}
 								>
-									<Card className="p-6 bg-gradient-to-br from-surface-2 to-background border-secondary hover:border-primary/50 transition-all">
+									<Card className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all">
 										<div className="flex items-start justify-between mb-4">
 											<div className="flex-1">
 												<h3 className="text-lg font-semibold text-white mb-2">

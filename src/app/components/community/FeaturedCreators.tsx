@@ -118,7 +118,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 													alt={creator.display_name}
 												/>
 											)}
-											<AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white text-sm">
+											<AvatarFallback className="bg-primary text-white text-sm">
 												{getInitials(creator.display_name)}
 											</AvatarFallback>
 										</Avatar>

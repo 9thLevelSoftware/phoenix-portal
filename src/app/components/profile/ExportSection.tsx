@@ -106,7 +106,7 @@ export function ExportSection() {
 	};
 
 	return (
-		<Card className="bg-gradient-to-br from-surface-2 to-background border-secondary">
+		<Card className="bg-surface-2 border-secondary">
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2 text-white">
 					<FileSpreadsheet className="h-5 w-5 text-primary" />
