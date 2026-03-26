@@ -517,6 +517,30 @@ Deno.serve(async (req) => {
       .eq('user_id', userId);
 
     // =========================================================================
+    // 11b. Fetch external activities (delta sync via synced_at)
+    // =========================================================================
+    const { data: externalActivitiesRaw } = await supabase
+      .from('external_activities')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('synced_at', lastSyncISO);
+
+    const externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+      externalId: a.external_id,
+      provider: a.provider,
+      name: a.name,
+      activityType: a.activity_type,
+      startedAt: a.started_at,
+      durationSeconds: a.duration_seconds,
+      distanceMeters: a.distance_meters,
+      calories: a.calories,
+      avgHeartRate: a.avg_heart_rate,
+      maxHeartRate: a.max_heart_rate,
+      elevationGainMeters: a.elevation_gain_meters,
+      rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+    }));
+
+    // =========================================================================
     // 12. Return assembled response
     // =========================================================================
     const response = {
@@ -529,6 +553,7 @@ Deno.serve(async (req) => {
       badges: badgeDtos,
       gamificationStats: gamificationDto,
       localProfiles: localProfiles ?? [],
+      externalActivities: externalActivityDtos,
     };
 
     return new Response(JSON.stringify(response), {
