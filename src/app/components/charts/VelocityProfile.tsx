@@ -4,7 +4,8 @@ import ParentSize from "@visx/responsive/lib/components/ParentSize";
 import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
-import { classifyVbtZone, VBT_ZONES } from "@/lib/vbt";
+import { classifyMannZone, MANN_ZONES, getDominantMannZone } from "@/lib/vbt";
+import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
@@ -14,6 +15,12 @@ export interface VelocityProfileProps {
 	height?: number;
 	showPeakVelocity?: boolean;
 	showZoneLabels?: boolean;
+	/** Zone system to display - defaults to Dr. Mann VBT zones */
+	zoneSystem?: "mann" | "simplified";
+	/** Show zone indicator badge */
+	showZoneIndicator?: boolean;
+	/** Show dominant zone badge */
+	showDominantZone?: boolean;
 }
 
 function VelocityProfileInner({
@@ -21,6 +28,9 @@ function VelocityProfileInner({
 	height = 280,
 	showPeakVelocity = true,
 	showZoneLabels = true,
+	zoneSystem = "mann",
+	showZoneIndicator = true,
+	showDominantZone = true,
 	width,
 }: VelocityProfileProps & { width: number }) {
 	const {
@@ -85,16 +95,33 @@ function VelocityProfileInner({
 	}
 
 	const legendHeight = 36;
+	const dominantZone = getDominantMannZone(repSummaries.map(r => r.mean_velocity_mps));
 
 	return (
 		<div style={{ position: "relative" }}>
+			{/* Zone indicator header */}
+			{(showZoneIndicator || showDominantZone) && (
+				<div className="flex items-center justify-between px-2 mb-2">
+					{showDominantZone && dominantZone && (
+						<ZoneBadge
+							zone={dominantZone}
+							system="mann"
+							size="sm"
+							showDot
+						/>
+					)}
+					{showZoneIndicator && (
+						<ZoneIndicator system={zoneSystem} />
+					)}
+				</div>
+			)}
 			<svg width={width} height={height}>
 				<Group left={margin.left} top={margin.top}>
 					{repSummaries.map((rep, i) => {
 						const label = String(i + 1);
 						const barX = xScale(label) ?? 0;
 						const barWidth = xScale.bandwidth();
-						const zone = classifyVbtZone(rep.mean_velocity_mps);
+						const zone = classifyMannZone(rep.mean_velocity_mps);
 
 						const meanBarHeight =
 							innerHeight - (yScale(rep.mean_velocity_mps) ?? 0);
@@ -213,12 +240,12 @@ function VelocityProfileInner({
 				</Group>
 			</svg>
 
-			{/* Zone legend */}
+			{/* Zone legend - Dr. Mann zones */}
 			<div
 				className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-2"
 				style={{ height: legendHeight }}
 			>
-				{VBT_ZONES.map((z) => (
+				{MANN_ZONES.map((z) => (
 					<div key={z.zone} className="flex items-center gap-1.5 text-xs">
 						<span
 							className="inline-block h-2.5 w-2.5 rounded-sm"
@@ -228,8 +255,6 @@ function VelocityProfileInner({
 					</div>
 				))}
 			</div>
-
-			{tooltipOpen && tooltipData && (
 				<ChartTooltipContent
 					data={tooltipData}
 					top={tooltipTop ?? 0}
