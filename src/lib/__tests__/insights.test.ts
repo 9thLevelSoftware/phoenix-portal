@@ -24,15 +24,15 @@ describe("generateInsights", () => {
 	it("flags volume increase as success", () => {
 		const insights = generateInsights(baseInput);
 		const volumeInsight = insights.find((i) => i.title.includes("Volume"));
-		expect(volumeInsight).toBeDefined();
 		expect(volumeInsight?.type).toBe("success");
+		expect(volumeInsight?.message).toMatch(/volume/i);
 	});
 
 	it("flags muscle imbalance when ratio > 3x", () => {
 		const insights = generateInsights(baseInput);
 		const imbalance = insights.find((i) => i.title.includes("Leg"));
-		expect(imbalance).toBeDefined();
 		expect(imbalance?.type).toBe("warning");
+		expect(imbalance?.message).toMatch(/leg|imbalance/i);
 	});
 
 	it("includes PR achievements", () => {
@@ -46,7 +46,8 @@ describe("generateInsights", () => {
 	it("flags plateau exercises", () => {
 		const insights = generateInsights(baseInput);
 		const plateau = insights.find((i) => i.title.includes("Plateau"));
-		expect(plateau).toBeDefined();
+		expect(plateau?.type).toBe("warning");
+		expect(plateau?.message).toMatch(/overhead press|plateau/i);
 	});
 
 	it("returns empty array for empty input", () => {
@@ -70,7 +71,8 @@ describe("generateInsights", () => {
 		const volumeDown = insights.find(
 			(i) => i.title.includes("Volume") && i.type === "warning",
 		);
-		expect(volumeDown).toBeDefined();
+		expect(volumeDown?.title).toMatch(/volume|Volume/i);
+		expect(volumeDown?.type).toBe("warning");
 	});
 
 	it("flags low consistency", () => {
@@ -91,7 +93,8 @@ describe("generateInsights", () => {
 				i.type === "achievement" &&
 				(i.title.includes("Streak") || i.title.includes("streak")),
 		);
-		expect(streak).toBeDefined();
+		expect(streak?.title).toMatch(/streak|Streak/i);
+		expect(streak?.type).toBe("achievement");
 	});
 
 	it("flags high training load", () => {
@@ -100,7 +103,7 @@ describe("generateInsights", () => {
 		const load = insights.find(
 			(i) => i.title.includes("Load") || i.title.includes("load"),
 		);
-		expect(load).toBeDefined();
+		expect(load?.title).toMatch(/load|Load/i);
 		expect(load?.type).toBe("warning");
 	});
 });
