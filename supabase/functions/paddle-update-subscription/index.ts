@@ -8,6 +8,19 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+// Allowed price IDs for subscription updates (must match environment variables)
+const ALLOWED_PRICE_IDS = [
+  // Ember tier
+  Deno.env.get("VITE_PADDLE_EMBER_MONTHLY_PRICE_ID"),
+  Deno.env.get("VITE_PADDLE_EMBER_ANNUAL_PRICE_ID"),
+  // Flame tier
+  Deno.env.get("VITE_PADDLE_FLAME_MONTHLY_PRICE_ID"),
+  Deno.env.get("VITE_PADDLE_FLAME_ANNUAL_PRICE_ID"),
+  // Inferno tier
+  Deno.env.get("VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID"),
+  Deno.env.get("VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID"),
+].filter(Boolean); // Remove undefined values
+
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
 
@@ -64,6 +77,15 @@ Deno.serve(async (req) => {
     if (!newPriceId || typeof newPriceId !== "string" || newPriceId.length > 255) {
       return new Response(
         JSON.stringify({ error: "Missing or invalid price_id" }),
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Validate price_id against allowed set
+    if (!ALLOWED_PRICE_IDS.includes(newPriceId)) {
+      console.warn("Invalid price_id attempted:", newPriceId);
+      return new Response(
+        JSON.stringify({ error: "Invalid price_id" }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }

@@ -78,6 +78,11 @@ interface ExternalActivityDto {
   rawData?: string | null;
 }
 
+interface ExternalActivityAckDto {
+  externalId: string;
+  provider: string;
+}
+
 interface PushPayload {
   deviceId: string;
   platform: string;
@@ -367,8 +372,17 @@ Deno.serve(async (req) => {
     if (!gate.allowed) return gate.response;
 
     // =========================================================================
-    // 3. Parse request body
+    // 3. Parse request body with size validation
     // =========================================================================
+    // Validate payload size (max 10MB to prevent abuse)
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     let payload: PushPayload;
     try {
       payload = await req.json();
@@ -388,6 +402,33 @@ Deno.serve(async (req) => {
     if (!payload.platform || typeof payload.platform !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Missing or invalid platform' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate array sizes to prevent memory exhaustion
+    const MAX_ARRAY_SIZE = 10000;
+    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.cycles && payload.cycles.length > 1000) {
+      return new Response(
+        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -1063,6 +1104,8 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 14. External activities (mobile integrations — Hevy, Liftosaur, health)
     // =========================================================================
+    let externalActivityIds: string[] = [];
+    let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (payload.externalActivities && payload.externalActivities.length > 0) {
       const activityRows = payload.externalActivities.map((a) => ({
         user_id: userId,
@@ -1084,8 +1127,18 @@ Deno.serve(async (req) => {
       const { error: extErr } = await supabase
         .from('external_activities')
         .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
-      if (extErr) console.warn('external_activities upsert warning:', extErr.message);
-      else externalActivitiesUpserted = activityRows.length;
+      if (extErr) {
+        console.warn('external_activities upsert warning:', extErr.message);
+        externalActivityIds = [];
+        externalActivityKeys = [];
+      } else {
+        externalActivitiesUpserted = activityRows.length;
+        externalActivityIds = activityRows.map((r) => r.external_id);
+        externalActivityKeys = activityRows.map((r) => ({
+          externalId: r.external_id,
+          provider: r.provider,
+        }));
+      }
     }
 
     // =========================================================================
@@ -1131,6 +1184,8 @@ Deno.serve(async (req) => {
         exerciseSignaturesUpserted,
         assessmentsInserted,
         externalActivitiesUpserted,
+        externalActivityIds,
+        externalActivityKeys,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
