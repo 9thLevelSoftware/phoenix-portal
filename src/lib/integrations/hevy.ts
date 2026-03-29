@@ -1,4 +1,4 @@
-import { readString } from "react-papaparse";
+import Papa from "papaparse";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import type { NormalizedActivity } from "./types";
@@ -63,7 +63,7 @@ function groupBy<T>(
  * Distance values are converted from miles to meters.
  */
 export function parseHevyCSV(csvContent: string): NormalizedActivity[] {
-	const result = readString<HevyCSVRow>(csvContent, {
+	const result = Papa.parse<HevyCSVRow>(csvContent, {
 		header: true,
 		skipEmptyLines: true,
 	});
@@ -143,7 +143,7 @@ export function parseHevyExercises(
 	workoutTitle: string,
 	startTime: string,
 ): HevyExerciseDetail[] {
-	const result = readString<HevyCSVRow>(csvContent, {
+	const result = Papa.parse<HevyCSVRow>(csvContent, {
 		header: true,
 		skipEmptyLines: true,
 	});

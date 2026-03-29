@@ -35,11 +35,13 @@ test.describe("Public pages - render and content", () => {
 				page.getByText("Rise From the Ashes. Forge Your Strength.").first(),
 			).toBeVisible();
 
-			// Primary hero CTAs (hero + bottom CTA both have "Get Started", use first())
+			// Primary hero CTAs
 			await expect(
-				page.getByRole("button", { name: "Get Started" }).first(),
+				page.getByRole("button", { name: "Preview dashboard" }).first(),
 			).toBeVisible();
-			await expect(page.getByRole("button", { name: "View Plans" })).toBeVisible();
+			await expect(
+				page.getByRole("link", { name: "Get the mobile app" }).first(),
+			).toBeVisible();
 
 			// No console errors during page load
 			expect(errors).toHaveLength(0);
@@ -49,7 +51,7 @@ test.describe("Public pages - render and content", () => {
 			await gotoLanding(page);
 
 			// Scroll to pricing section
-			const pricingHeading = page.getByText("Choose Your Path").first();
+			const pricingHeading = page.getByRole("heading", { name: "Plans" });
 			await pricingHeading.scrollIntoViewIfNeeded();
 			await expect(pricingHeading).toBeVisible();
 
@@ -70,13 +72,15 @@ test.describe("Public pages - render and content", () => {
 			await expect(page.getByText("$25").first()).toBeVisible();
 		});
 
-		test("auth dialog opens when Get Started is clicked", async ({
+		test("auth dialog opens when Preview dashboard is clicked", async ({
 			page,
 		}) => {
 			await gotoLanding(page);
 
-			// Click the hero CTA (first of two "Get Started" buttons on page).
-			await page.getByRole("button", { name: "Get Started" }).first().click();
+			await page
+				.getByRole("button", { name: "Preview dashboard" })
+				.first()
+				.click();
 
 			// Dialog becomes visible (sr-only title: "Sign in to Phoenix Portal")
 			const dialog = page.getByRole("dialog");

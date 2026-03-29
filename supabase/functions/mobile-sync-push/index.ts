@@ -63,6 +63,26 @@ interface LocalProfileDto {
   colorIndex: number;
 }
 
+interface ExternalActivityDto {
+  externalId: string;
+  provider: string;
+  name: string;
+  activityType: string;
+  startedAt: string;
+  durationSeconds: number;
+  distanceMeters?: number | null;
+  calories?: number | null;
+  avgHeartRate?: number | null;
+  maxHeartRate?: number | null;
+  elevationGainMeters?: number | null;
+  rawData?: string | null;
+}
+
+interface ExternalActivityAckDto {
+  externalId: string;
+  provider: string;
+}
+
 interface PushPayload {
   deviceId: string;
   platform: string;
@@ -77,6 +97,7 @@ interface PushPayload {
   phaseStatistics: PhaseStatisticsDto[];
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
+  externalActivities?: ExternalActivityDto[] | null;
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -351,8 +372,17 @@ Deno.serve(async (req) => {
     if (!gate.allowed) return gate.response;
 
     // =========================================================================
-    // 3. Parse request body
+    // 3. Parse request body with size validation
     // =========================================================================
+    // Validate payload size (max 10MB to prevent abuse)
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     let payload: PushPayload;
     try {
       payload = await req.json();
@@ -372,6 +402,33 @@ Deno.serve(async (req) => {
     if (!payload.platform || typeof payload.platform !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Missing or invalid platform' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate array sizes to prevent memory exhaustion
+    const MAX_ARRAY_SIZE = 10000;
+    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.cycles && payload.cycles.length > 1000) {
+      return new Response(
+        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -447,6 +504,7 @@ Deno.serve(async (req) => {
     let phaseStatisticsInserted = 0;
     let exerciseSignaturesUpserted = 0;
     let assessmentsInserted = 0;
+    let externalActivitiesUpserted = 0;
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -1044,7 +1102,47 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 14. Return sync result
+    // 14. External activities (mobile integrations — Hevy, Liftosaur, health)
+    // =========================================================================
+    let externalActivityIds: string[] = [];
+    let externalActivityKeys: ExternalActivityAckDto[] = [];
+    if (payload.externalActivities && payload.externalActivities.length > 0) {
+      const activityRows = payload.externalActivities.map((a) => ({
+        user_id: userId,
+        external_id: a.externalId,
+        provider: a.provider,
+        name: a.name,
+        activity_type: a.activityType,
+        started_at: a.startedAt,
+        duration_seconds: a.durationSeconds > 0 ? a.durationSeconds : null,
+        distance_meters: a.distanceMeters ?? null,
+        calories: a.calories ?? null,
+        avg_heart_rate: a.avgHeartRate ?? null,
+        max_heart_rate: a.maxHeartRate ?? null,
+        elevation_gain_meters: a.elevationGainMeters ?? null,
+        raw_data: a.rawData ? safeJsonParse(a.rawData) : null,
+        synced_at: new Date().toISOString(),
+      }));
+
+      const { error: extErr } = await supabase
+        .from('external_activities')
+        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
+      if (extErr) {
+        console.warn('external_activities upsert warning:', extErr.message);
+        externalActivityIds = [];
+        externalActivityKeys = [];
+      } else {
+        externalActivitiesUpserted = activityRows.length;
+        externalActivityIds = activityRows.map((r) => r.external_id);
+        externalActivityKeys = activityRows.map((r) => ({
+          externalId: r.external_id,
+          provider: r.provider,
+        }));
+      }
+    }
+
+    // =========================================================================
+    // 15. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
     try {
@@ -1085,6 +1183,9 @@ Deno.serve(async (req) => {
         phaseStatisticsInserted,
         exerciseSignaturesUpserted,
         assessmentsInserted,
+        externalActivitiesUpserted,
+        externalActivityIds,
+        externalActivityKeys,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );

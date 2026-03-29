@@ -340,11 +340,7 @@ export function BiomechanicsContent({
 					<Tabs value={effectiveSetId} onValueChange={setSelectedSetId}>
 						<TabsList variant="panel">
 							{sets.map((s, i) => (
-								<TabsTrigger
-									key={s.id}
-									value={s.id}
-									className="text-xs px-3"
-								>
+								<TabsTrigger key={s.id} value={s.id} className="text-xs px-3">
 									Set {i + 1}
 								</TabsTrigger>
 							))}

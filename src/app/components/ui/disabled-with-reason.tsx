@@ -37,15 +37,9 @@ export function DisabledWithReason({
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				{/* Focusable wrapper: intercepts hover/focus that disabled children swallow.
-				    tabIndex={0} makes it keyboard-discoverable.
+				{/* Wrapper intercepts hover that disabled children swallow.
 				    cursor-not-allowed signals non-interactivity. */}
-				<span
-					className="inline-flex cursor-not-allowed"
-					tabIndex={0}
-					role="note"
-					aria-label={reason}
-				>
+				<span className="inline-flex cursor-not-allowed" title={reason}>
 					{/* pointer-events-none prevents clicks from reaching the disabled child,
 					    avoiding confusing "nothing happened" on click. */}
 					<span className="pointer-events-none">{children}</span>

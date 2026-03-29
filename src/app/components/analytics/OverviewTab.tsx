@@ -61,7 +61,9 @@ export default function OverviewTab({
 					<h3 className="text-xl text-white mb-4">Activity Sources</h3>
 					<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 						<div>
-							<p className="text-2xl font-bold text-primary font-data">{totalWorkouts}</p>
+							<p className="text-2xl font-bold text-primary font-data">
+								{totalWorkouts}
+							</p>
 							<p className="text-sm text-muted-foreground">Phoenix Workouts</p>
 						</div>
 						<div>
