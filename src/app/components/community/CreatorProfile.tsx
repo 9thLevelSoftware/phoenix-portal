@@ -232,7 +232,9 @@ export function CreatorProfile({
 										<p className="text-lg font-bold text-white leading-none">
 											{stats.featured_count}
 										</p>
-										<p className="text-[10px] text-muted-foreground">Featured</p>
+										<p className="text-[10px] text-muted-foreground">
+											Featured
+										</p>
 									</div>
 								</div>
 							</div>

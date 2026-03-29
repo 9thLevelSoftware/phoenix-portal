@@ -340,7 +340,9 @@ export function Profile() {
 									</>
 								) : (
 									<>
-										<h1 className="text-display-2 text-white mb-2">{displayName}</h1>
+										<h1 className="text-display-2 text-white mb-2">
+											{displayName}
+										</h1>
 										<p className="text-muted-foreground mb-4">
 											{memberSince ? `Member since ${memberSince}` : "Member"}
 										</p>
@@ -348,7 +350,9 @@ export function Profile() {
 								)}
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
 									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
-									<span className="text-white font-data">{streak} day streak</span>
+									<span className="text-white font-data">
+										{streak} day streak
+									</span>
 								</div>
 								<div className="flex flex-wrap gap-2 justify-center md:justify-start">
 									<TierBadge className="text-sm px-3 py-1" />
@@ -363,7 +367,9 @@ export function Profile() {
 										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-										<div className="text-2xl text-white mb-1 font-data">{stat.value}</div>
+										<div className="text-2xl text-white mb-1 font-data">
+											{stat.value}
+										</div>
 										<div className="text-xs text-muted-foreground">
 											{stat.label}
 										</div>
@@ -403,10 +409,7 @@ export function Profile() {
 							</div>
 							<div className="flex gap-2 flex-wrap items-center">
 								{tier === "FREE" ? (
-									<Button
-										asChild
-										variant="cta"
-									>
+									<Button asChild variant="cta">
 										<Link to="/pricing">Subscribe</Link>
 									</Button>
 								) : (
@@ -434,18 +437,10 @@ export function Profile() {
 				{/* Main Content */}
 				<Tabs defaultValue="stats" className="space-y-6">
 					<TabsList variant="panel">
-						<TabsTrigger value="stats">
-							Public Stats
-						</TabsTrigger>
-						<TabsTrigger value="badges">
-							Badges
-						</TabsTrigger>
-						<TabsTrigger value="integrations">
-							Integrations
-						</TabsTrigger>
-						<TabsTrigger value="settings">
-							Settings
-						</TabsTrigger>
+						<TabsTrigger value="stats">Public Stats</TabsTrigger>
+						<TabsTrigger value="badges">Badges</TabsTrigger>
+						<TabsTrigger value="integrations">Integrations</TabsTrigger>
+						<TabsTrigger value="settings">Settings</TabsTrigger>
 					</TabsList>
 
 					{/* Stats Tab */}
@@ -597,7 +592,9 @@ export function Profile() {
 											<div key={label as string}>
 												<div className="flex items-center justify-between text-sm mb-1">
 													<span className="text-muted-foreground">{label}</span>
-													<span className="text-white font-data">{value as number}</span>
+													<span className="text-white font-data">
+														{value as number}
+													</span>
 												</div>
 												<div className="h-2 rounded-full bg-background overflow-hidden">
 													<div
@@ -751,10 +748,7 @@ export function Profile() {
 									<p className="text-sm text-muted-foreground mb-4">
 										Connect your fitness apps to sync data
 									</p>
-									<Button
-										variant="cta"
-										asChild
-									>
+									<Button variant="cta" asChild>
 										<Link to="/integrations">Manage Integrations</Link>
 									</Button>
 								</div>

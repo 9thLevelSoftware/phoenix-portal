@@ -201,25 +201,25 @@ export function classifyMannZone(meanVelocityMps: number): MannZoneInfo {
  */
 export function getDominantMannZone(velocities: number[]): MannZoneInfo | null {
 	if (velocities.length === 0) return null;
-	
+
 	const zoneCounts = new Map<MannVbtZone, number>();
-	
+
 	for (const velocity of velocities) {
 		const zone = classifyMannZone(velocity);
 		zoneCounts.set(zone.zone, (zoneCounts.get(zone.zone) ?? 0) + 1);
 	}
-	
+
 	let maxCount = 0;
 	let dominantZoneId: MannVbtZone = MANN_ZONES[0].zone;
-	
+
 	for (const [zoneId, count] of zoneCounts) {
 		if (count > maxCount) {
 			maxCount = count;
 			dominantZoneId = zoneId;
 		}
 	}
-	
-	return MANN_ZONES.find(z => z.zone === dominantZoneId) ?? MANN_ZONES[0];
+
+	return MANN_ZONES.find((z) => z.zone === dominantZoneId) ?? MANN_ZONES[0];
 }
 
 /**

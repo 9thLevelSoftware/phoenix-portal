@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import type { Session, User } from "@supabase/supabase-js";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
-import type { Session, User } from "@supabase/supabase-js";
 
 // Mock the supabase client
 vi.mock("@/lib/supabase", () => ({
@@ -47,12 +47,14 @@ describe("AuthProvider", () => {
 
 	it("initializes with loading state", async () => {
 		// Never resolve getSession to keep loading state
-		mockSupabase.auth.getSession.mockImplementation(() => new Promise(() => {}));
+		mockSupabase.auth.getSession.mockImplementation(
+			() => new Promise(() => {}),
+		);
 
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		expect(screen.getByTestId("loading")).toHaveTextContent("loading");
@@ -73,7 +75,7 @@ describe("AuthProvider", () => {
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -90,7 +92,7 @@ describe("AuthProvider", () => {
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -110,7 +112,7 @@ describe("AuthProvider", () => {
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -128,24 +130,28 @@ describe("AuthProvider", () => {
 		const newSession = { user: newUser, access_token: "token-2" } as Session;
 
 		// Store the callback to trigger it later
-		let authStateCallback: ((event: string, session: Session | null) => void) | null = null;
+		let authStateCallback:
+			| ((event: string, session: Session | null) => void)
+			| null = null;
 
 		mockSupabase.auth.getSession.mockResolvedValue({
 			data: { session: mockSession },
 			error: null,
 		});
 
-		mockSupabase.auth.onAuthStateChange.mockImplementation((callback: (event: string, session: Session | null) => void) => {
-			authStateCallback = callback;
-			return {
-				data: { subscription: { unsubscribe: vi.fn() } },
-			};
-		});
+		mockSupabase.auth.onAuthStateChange.mockImplementation(
+			(callback: (event: string, session: Session | null) => void) => {
+				authStateCallback = callback;
+				return {
+					data: { subscription: { unsubscribe: vi.fn() } },
+				};
+			},
+		);
 
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -153,7 +159,9 @@ describe("AuthProvider", () => {
 		});
 
 		// Trigger auth state change
-		authStateCallback?.("SIGNED_IN", newSession);
+		await act(async () => {
+			authStateCallback?.("SIGNED_IN", newSession);
+		});
 
 		await waitFor(() => {
 			expect(screen.getByTestId("user")).toHaveTextContent("new-user-456");
@@ -177,7 +185,7 @@ describe("AuthProvider", () => {
 		const { unmount } = render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -193,24 +201,28 @@ describe("AuthProvider", () => {
 		const mockUser = { id: "test-user-123" } as User;
 		const mockSession = { user: mockUser, access_token: "token-1" } as Session;
 
-		let authStateCallback: ((event: string, session: Session | null) => void) | null = null;
+		let authStateCallback:
+			| ((event: string, session: Session | null) => void)
+			| null = null;
 
 		mockSupabase.auth.getSession.mockResolvedValue({
 			data: { session: mockSession },
 			error: null,
 		});
 
-		mockSupabase.auth.onAuthStateChange.mockImplementation((callback: (event: string, session: Session | null) => void) => {
-			authStateCallback = callback;
-			return {
-				data: { subscription: { unsubscribe: vi.fn() } },
-			};
-		});
+		mockSupabase.auth.onAuthStateChange.mockImplementation(
+			(callback: (event: string, session: Session | null) => void) => {
+				authStateCallback = callback;
+				return {
+					data: { subscription: { unsubscribe: vi.fn() } },
+				};
+			},
+		);
 
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {
@@ -218,7 +230,9 @@ describe("AuthProvider", () => {
 		});
 
 		// Simulate sign out
-		authStateCallback?.("SIGNED_OUT", null);
+		await act(async () => {
+			authStateCallback?.("SIGNED_OUT", null);
+		});
 
 		await waitFor(() => {
 			expect(screen.getByTestId("user")).toHaveTextContent("no-user");
@@ -238,7 +252,7 @@ describe("AuthProvider", () => {
 		render(
 			<AuthProvider>
 				<TestComponent />
-			</AuthProvider>
+			</AuthProvider>,
 		);
 
 		await waitFor(() => {

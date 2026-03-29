@@ -232,9 +232,7 @@ export function FAQ() {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<PhoenixLogo size="sm" animated={false} />
-							<span className="text-xl text-primary">
-								Project Phoenix
-							</span>
+							<span className="text-xl text-primary">Project Phoenix</span>
 						</div>
 						<Button
 							variant="outline"
@@ -260,9 +258,7 @@ export function FAQ() {
 					<div className="flex items-center gap-3 mb-2">
 						<HelpCircle className="w-8 h-8 text-primary" />
 						<h1 className="text-display-1">
-							<span className="text-primary">
-								Frequently Asked Questions
-							</span>
+							<span className="text-primary">Frequently Asked Questions</span>
 						</h1>
 					</div>
 					<p className="text-xl text-muted-foreground mb-12">
@@ -314,8 +310,8 @@ export function FAQ() {
 												<p className="font-medium text-white">GitHub Issues</p>
 												<p className="text-muted-foreground text-sm">
 													For bug reports, feature requests, and technical
-													support, open an issue on our GitHub repository. This is
-													the primary support channel.
+													support, open an issue on our GitHub repository. This
+													is the primary support channel.
 												</p>
 												<a
 													href="https://github.com/dasBlueworker/phoenix-portal/issues"
@@ -335,8 +331,9 @@ export function FAQ() {
 												<p className="font-medium text-white">Community</p>
 												<p className="text-muted-foreground text-sm">
 													For workout-related questions, training advice, and
-													routine sharing, check out the Community section inside
-													the app. Fellow Phoenix users are happy to help.
+													routine sharing, check out the Community section
+													inside the app. Fellow Phoenix users are happy to
+													help.
 												</p>
 											</div>
 										</div>
@@ -344,8 +341,8 @@ export function FAQ() {
 
 									<p className="text-xs text-muted-foreground pt-2 border-t border-border">
 										Phoenix Portal is a solo-developer community project. GitHub
-										issues are monitored regularly and are the fastest way to get
-										a response.
+										issues are monitored regularly and are the fastest way to
+										get a response.
 									</p>
 								</CardContent>
 							</Card>

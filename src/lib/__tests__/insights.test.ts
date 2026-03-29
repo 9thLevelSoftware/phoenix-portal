@@ -25,14 +25,14 @@ describe("generateInsights", () => {
 		const insights = generateInsights(baseInput);
 		const volumeInsight = insights.find((i) => i.title.includes("Volume"));
 		expect(volumeInsight?.type).toBe("success");
-		expect(volumeInsight?.message).toMatch(/volume/i);
+		expect(volumeInsight?.description).toMatch(/volume/i);
 	});
 
 	it("flags muscle imbalance when ratio > 3x", () => {
 		const insights = generateInsights(baseInput);
 		const imbalance = insights.find((i) => i.title.includes("Leg"));
 		expect(imbalance?.type).toBe("warning");
-		expect(imbalance?.message).toMatch(/leg|imbalance/i);
+		expect(imbalance?.description).toMatch(/leg|imbalance/i);
 	});
 
 	it("includes PR achievements", () => {
@@ -47,7 +47,7 @@ describe("generateInsights", () => {
 		const insights = generateInsights(baseInput);
 		const plateau = insights.find((i) => i.title.includes("Plateau"));
 		expect(plateau?.type).toBe("warning");
-		expect(plateau?.message).toMatch(/overhead press|plateau/i);
+		expect(plateau?.description).toMatch(/overhead press|plateau/i);
 	});
 
 	it("returns empty array for empty input", () => {
