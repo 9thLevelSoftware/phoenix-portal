@@ -9,6 +9,17 @@ export function createSupabaseMock() {
 	const mockData: Record<string, unknown> = {};
 	const mockErrors: Record<string, Error | null> = {};
 
+	function resolveResult(tableName: string) {
+		return Promise.resolve({
+			data: mockData[tableName] ?? null,
+			error: mockErrors[tableName] ?? null,
+		});
+	}
+
+	function createAwaitable<T extends object>(tableName: string, chain: T) {
+		return Object.assign(resolveResult(tableName), chain);
+	}
+
 	/**
 	 * Set the mock data/error for a specific table/query
 	 */
@@ -44,7 +55,7 @@ export function createSupabaseMock() {
 		};
 
 		function createChainable(tableName: string) {
-			return {
+			const chain = {
 				eq: vi.fn((column: string, value: unknown) => {
 					currentFilter = `${column}=${value}`;
 					return createChainable(tableName);
@@ -86,31 +97,12 @@ export function createSupabaseMock() {
 				range: vi.fn((from: number, to: number) => {
 					return createChainable(tableName);
 				}),
-				single: vi.fn(() =>
-					Promise.resolve({
-						data: mockData[tableName] ?? null,
-						error: mockErrors[tableName] ?? null,
-					}),
-				),
-				maybeSingle: vi.fn(() =>
-					Promise.resolve({
-						data: mockData[tableName] ?? null,
-						error: mockErrors[tableName] ?? null,
-					}),
-				),
-				returns: vi.fn(() =>
-					Promise.resolve({
-						data: mockData[tableName] ?? null,
-						error: mockErrors[tableName] ?? null,
-					}),
-				),
-				then: vi.fn((callback: (result: { data: unknown; error: Error | null }) => unknown) =>
-					Promise.resolve(callback({
-						data: mockData[tableName] ?? null,
-						error: mockErrors[tableName] ?? null,
-					}))
-				),
+				single: vi.fn(() => resolveResult(tableName)),
+				maybeSingle: vi.fn(() => resolveResult(tableName)),
+				returns: vi.fn(() => resolveResult(tableName)),
 			};
+
+			return createAwaitable(tableName, chain);
 		}
 
 		function createFilteredChainable(tableName: string, updateData: unknown) {
@@ -123,16 +115,9 @@ export function createSupabaseMock() {
 					currentFilter = `${column} IN (${values.join(",")})`;
 					return createFilteredChainable(tableName, updateData);
 				}),
-				select: vi.fn(() =>
-					Promise.resolve({
-						data: mockData[tableName] ?? null,
-						error: mockErrors[tableName] ?? null,
-					}),
-				),
+				select: vi.fn(() => resolveResult(tableName)),
 			};
 		}
-
-		return createChainable(table);
 	}
 
 	const mockSupabase = {
@@ -163,7 +148,9 @@ export function createSupabaseMock() {
 /**
  * Mock data factory for consistent test data generation
  */
-export function createMockWorkout(overrides?: Partial<WorkoutSession>): WorkoutSession {
+export function createMockWorkout(
+	overrides?: Partial<WorkoutSession>,
+): WorkoutSession {
 	return {
 		id: crypto.randomUUID(),
 		user_id: "test-user-id",

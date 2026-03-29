@@ -143,7 +143,9 @@ export function CommunityFeedCard({
 
 				{/* Timestamp + Comment count */}
 				<div className="flex items-center justify-between">
-					<p className="text-[11px] text-muted-foreground">Shared {sharedAgo}</p>
+					<p className="text-[11px] text-muted-foreground">
+						Shared {sharedAgo}
+					</p>
 					<div className="flex items-center gap-1 text-xs text-muted-foreground">
 						<MessageSquare className="w-3.5 h-3.5" />
 						<span>{item.comment_count ?? 0}</span>

@@ -215,7 +215,9 @@ function ChallengeCard({
 								<div className="text-xs text-muted-foreground mb-1">
 									Time Left
 								</div>
-								<div className="text-xl text-warning font-data">{daysLeft} days</div>
+								<div className="text-xl text-warning font-data">
+									{daysLeft} days
+								</div>
 							</div>
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Type</div>
@@ -730,12 +732,8 @@ export function Challenges() {
 
 					<Tabs defaultValue="active" className="space-y-6">
 						<TabsList variant="panel">
-							<TabsTrigger value="active">
-								Active Challenges
-							</TabsTrigger>
-							<TabsTrigger value="past">
-								Past Challenges
-							</TabsTrigger>
+							<TabsTrigger value="active">Active Challenges</TabsTrigger>
+							<TabsTrigger value="past">Past Challenges</TabsTrigger>
 						</TabsList>
 
 						{/* Desktop Active Challenges Tab */}

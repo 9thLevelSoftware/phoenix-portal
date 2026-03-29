@@ -27,10 +27,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 
 	if (isPending) {
 		return (
-			<Card
-				className="p-6 bg-surface-2 border-secondary"
-				data-print-hide
-			>
+			<Card className="p-6 bg-surface-2 border-secondary" data-print-hide>
 				<div className="flex items-center justify-between mb-4">
 					<Skeleton className="h-6 w-40" />
 					<Skeleton className="h-5 w-24" />
@@ -46,10 +43,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 
 	if (isError || !cycleDetail) {
 		return (
-			<Card
-				className="p-6 bg-surface-2 border-secondary"
-				data-print-hide
-			>
+			<Card className="p-6 bg-surface-2 border-secondary" data-print-hide>
 				<div className="flex items-center justify-between mb-4">
 					<h3 className="text-xl text-white">Today's Workout</h3>
 				</div>
@@ -73,10 +67,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 
 	if (!result) {
 		return (
-			<Card
-				className="p-6 bg-surface-2 border-secondary"
-				data-print-hide
-			>
+			<Card className="p-6 bg-surface-2 border-secondary" data-print-hide>
 				<div className="flex items-center justify-between mb-4">
 					<h3 className="text-xl text-white">Today's Workout</h3>
 					<Badge className="bg-secondary text-muted-foreground border-0">

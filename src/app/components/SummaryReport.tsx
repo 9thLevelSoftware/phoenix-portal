@@ -329,12 +329,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 			<div className="space-y-6">
 				<Tabs value={period}>
 					<TabsList variant="panel">
-						<TabsTrigger value="week">
-							This Week
-						</TabsTrigger>
-						<TabsTrigger value="month">
-							This Month
-						</TabsTrigger>
+						<TabsTrigger value="week">This Week</TabsTrigger>
+						<TabsTrigger value="month">This Month</TabsTrigger>
 					</TabsList>
 				</Tabs>
 				<SkeletonCards />
@@ -352,12 +348,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					onValueChange={(v) => setPeriod(v as "week" | "month")}
 				>
 					<TabsList variant="panel">
-						<TabsTrigger value="week">
-							This Week
-						</TabsTrigger>
-						<TabsTrigger value="month">
-							This Month
-						</TabsTrigger>
+						<TabsTrigger value="week">This Week</TabsTrigger>
+						<TabsTrigger value="month">This Month</TabsTrigger>
 					</TabsList>
 				</Tabs>
 				<div className="text-center py-12">
@@ -384,12 +376,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 				onValueChange={(v) => setPeriod(v as "week" | "month")}
 			>
 				<TabsList variant="panel">
-					<TabsTrigger value="week">
-						This Week
-					</TabsTrigger>
-					<TabsTrigger value="month">
-						This Month
-					</TabsTrigger>
+					<TabsTrigger value="week">This Week</TabsTrigger>
+					<TabsTrigger value="month">This Month</TabsTrigger>
 				</TabsList>
 			</Tabs>
 
@@ -542,7 +530,9 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								))}
 							</div>
 						) : (
-							<div className="text-xs text-muted-foreground">No new PRs this {period}</div>
+							<div className="text-xs text-muted-foreground">
+								No new PRs this {period}
+							</div>
 						)}
 					</Card>
 				</motion.div>

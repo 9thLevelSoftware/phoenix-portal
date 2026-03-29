@@ -207,12 +207,8 @@ export function SessionReplay() {
 							onValueChange={(v) => setActiveChart(v as "force" | "velocity")}
 						>
 							<TabsList className="w-full">
-								<TabsTrigger value="force">
-									Force
-								</TabsTrigger>
-								<TabsTrigger value="velocity">
-									Velocity
-								</TabsTrigger>
+								<TabsTrigger value="force">Force</TabsTrigger>
+								<TabsTrigger value="velocity">Velocity</TabsTrigger>
 							</TabsList>
 						</Tabs>
 

@@ -303,9 +303,7 @@ export function WorkoutHistory() {
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
-						<h1 className="text-display-2 mb-2 text-white">
-							Workout History
-						</h1>
+						<h1 className="text-display-2 mb-2 text-white">Workout History</h1>
 						<p className="text-muted-foreground">
 							Your training journey, documented
 						</p>
@@ -875,10 +873,7 @@ export function WorkoutHistory() {
 														: `${locked.length} older workout${locked.length === 1 ? " is" : "s are"} locked. `}
 													Upgrade to Phoenix for unlimited history.
 												</p>
-												<Button
-													asChild
-													variant="cta"
-												>
+												<Button asChild variant="cta">
 													<Link to="/pricing">View Plans</Link>
 												</Button>
 											</Card>
@@ -986,11 +981,15 @@ export function WorkoutHistory() {
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Duration</span>
-												<span className="font-data">{workout.duration_seconds} min</span>
+												<span className="font-data">
+													{workout.duration_seconds} min
+												</span>
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Volume</span>
-												<span className="font-data">{formatVolume(workout.total_volume, unit)}</span>
+												<span className="font-data">
+													{formatVolume(workout.total_volume, unit)}
+												</span>
 											</div>
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">

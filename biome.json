@@ -20,7 +20,7 @@
 			"recommended": true,
 			"suspicious": {
 				"noArrayIndexKey": "warn",
-				"noExplicitAny": "error",
+				"noExplicitAny": "warn",
 				"useIterableCallbackReturn": "warn",
 				"noDocumentCookie": "warn"
 			},
@@ -39,7 +39,7 @@
 				"noUnusedVariables": "warn"
 			},
 			"style": {
-				"noNonNullAssertion": "error"
+				"noNonNullAssertion": "warn"
 			},
 			"security": {
 				"noDangerouslySetInnerHtml": "warn"

@@ -333,12 +333,8 @@ export function LandingPage() {
 				) : (
 					<Tabs defaultValue="signin" className="w-full">
 						<TabsList className="w-full mb-4">
-							<TabsTrigger value="signin">
-								Sign In
-							</TabsTrigger>
-							<TabsTrigger value="signup">
-								Sign Up
-							</TabsTrigger>
+							<TabsTrigger value="signin">Sign In</TabsTrigger>
+							<TabsTrigger value="signup">Sign Up</TabsTrigger>
 						</TabsList>
 
 						<TabsContent value="signin">
@@ -626,7 +622,6 @@ export function LandingPage() {
 					<img
 						src="/phoenix-hero.png"
 						alt=""
-						role="presentation"
 						className="absolute inset-0 w-full h-full object-cover opacity-30"
 					/>
 					<div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
@@ -644,9 +639,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
 					>
-						<span className="block text-primary">
-							Your workouts, unlocked.
-						</span>
+						<span className="block text-primary">Your workouts, unlocked.</span>
 					</motion.h1>
 
 					<motion.p
@@ -679,7 +672,7 @@ export function LandingPage() {
 							size="lg"
 							onClick={openAuth}
 							variant="cta"
-					className="w-full sm:w-auto"
+							className="w-full sm:w-auto"
 						>
 							Preview dashboard
 						</Button>

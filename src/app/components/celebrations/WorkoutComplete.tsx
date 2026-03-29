@@ -276,7 +276,7 @@ export function WorkoutComplete({
 													onViewSummary();
 												}}
 												variant="cta"
-										className="flex-1"
+												className="flex-1"
 											>
 												View Summary
 											</Button>

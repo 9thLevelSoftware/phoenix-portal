@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-	classifyVbtZone,
 	classifyMannZone,
-	SIMPLIFIED_ZONES,
-	MANN_ZONES,
-	VBT_ZONES,
-	getSimplifiedZoneById,
+	classifyVbtZone,
 	getMannZoneById,
+	getSimplifiedZoneById,
+	MANN_ZONES,
+	SIMPLIFIED_ZONES,
+	VBT_ZONES,
 } from "../vbt";
 
 describe("VBT_ZONES", () => {

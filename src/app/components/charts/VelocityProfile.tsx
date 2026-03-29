@@ -4,8 +4,8 @@ import ParentSize from "@visx/responsive/lib/components/ParentSize";
 import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
-import { classifyMannZone, MANN_ZONES, getDominantMannZone } from "@/lib/vbt";
 import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
+import { classifyMannZone, getDominantMannZone, MANN_ZONES } from "@/lib/vbt";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
@@ -95,7 +95,9 @@ function VelocityProfileInner({
 	}
 
 	const legendHeight = 36;
-	const dominantZone = getDominantMannZone(repSummaries.map(r => r.mean_velocity_mps));
+	const dominantZone = getDominantMannZone(
+		repSummaries.map((r) => r.mean_velocity_mps),
+	);
 
 	return (
 		<div style={{ position: "relative" }}>
@@ -103,16 +105,9 @@ function VelocityProfileInner({
 			{(showZoneIndicator || showDominantZone) && (
 				<div className="flex items-center justify-between px-2 mb-2">
 					{showDominantZone && dominantZone && (
-						<ZoneBadge
-							zone={dominantZone}
-							system="mann"
-							size="sm"
-							showDot
-						/>
+						<ZoneBadge zone={dominantZone} system="mann" size="sm" showDot />
 					)}
-					{showZoneIndicator && (
-						<ZoneIndicator system={zoneSystem} />
-					)}
+					{showZoneIndicator && <ZoneIndicator system={zoneSystem} />}
 				</div>
 			)}
 			<svg width={width} height={height}>
@@ -255,6 +250,7 @@ function VelocityProfileInner({
 					</div>
 				))}
 			</div>
+			{tooltipOpen && tooltipData && (
 				<ChartTooltipContent
 					data={tooltipData}
 					top={tooltipTop ?? 0}

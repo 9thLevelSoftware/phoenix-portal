@@ -195,12 +195,8 @@ export function ShareContentDialog({
 								}}
 							>
 								<TabsList className="w-full">
-									<TabsTrigger value="routine">
-										Routine
-									</TabsTrigger>
-									<TabsTrigger value="cycle">
-										Cycle
-									</TabsTrigger>
+									<TabsTrigger value="routine">Routine</TabsTrigger>
+									<TabsTrigger value="cycle">Cycle</TabsTrigger>
 								</TabsList>
 							</Tabs>
 						</div>

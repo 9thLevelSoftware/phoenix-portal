@@ -153,7 +153,6 @@ export function ContentActionMenu({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-
-			</>
+		</>
 	);
 }
