@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Mobile Sync Pull — returns all portal data modified since the client's last sync.
@@ -518,27 +519,34 @@ Deno.serve(async (req) => {
 
     // =========================================================================
     // 11b. Fetch external activities (delta sync via synced_at)
+    //      Gated to paid subscribers (EMBER+) — FREE users get empty array.
     // =========================================================================
-    const { data: externalActivitiesRaw } = await supabase
-      .from('external_activities')
-      .select('*')
-      .eq('user_id', userId)
-      .gt('synced_at', lastSyncISO);
+    const subGate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    let externalActivityDtos: Record<string, unknown>[] = [];
 
-    const externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
-      externalId: a.external_id,
-      provider: a.provider,
-      name: a.name,
-      activityType: a.activity_type,
-      startedAt: a.started_at,
-      durationSeconds: a.duration_seconds,
-      distanceMeters: a.distance_meters,
-      calories: a.calories,
-      avgHeartRate: a.avg_heart_rate,
-      maxHeartRate: a.max_heart_rate,
-      elevationGainMeters: a.elevation_gain_meters,
-      rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
-    }));
+    if (subGate.allowed) {
+      const { data: externalActivitiesRaw } = await supabase
+        .from('external_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('synced_at', lastSyncISO);
+
+      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+        id: a.id,
+        externalId: a.external_id,
+        provider: a.provider,
+        name: a.name,
+        activityType: a.activity_type,
+        startedAt: a.started_at,
+        durationSeconds: a.duration_seconds,
+        distanceMeters: a.distance_meters,
+        calories: a.calories,
+        avgHeartRate: a.avg_heart_rate,
+        maxHeartRate: a.max_heart_rate,
+        elevationGainMeters: a.elevation_gain_meters,
+        rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+      }));
+    }
 
     // =========================================================================
     // 12. Return assembled response

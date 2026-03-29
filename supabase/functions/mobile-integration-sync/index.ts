@@ -5,10 +5,16 @@ import { getCorsHeaders } from '../_shared/cors.ts';
  * Mobile Integration Sync Edge Function
  *
  * Handles connect/sync/disconnect for API-key-based integrations (Hevy, Liftosaur)
- * initiated from the mobile app.
+ * initiated from the mobile app. These are providers with server-side APIs that
+ * require an API key for fetching workout data.
  *
- * Unlike portal sync functions, this does NOT gate on subscription tier.
- * Free users can sync; only paid users get activities persisted to Supabase.
+ * **Not used for:** Strong (file-based CSV import, handled locally on device),
+ * Apple Health/Google Health Connect (device-local APIs, no server round-trip),
+ * or OAuth providers (Strava, Fitbit, Garmin — handled by portal OAuth functions).
+ *
+ * Subscription gating: FREE users receive an empty activities array and
+ * `requiresUpgrade: true`. Paid users (EMBER+) get full activity data and
+ * Supabase persistence.
  *
  * POST /functions/v1/mobile-integration-sync
  * Authorization: Bearer <GoTrue JWT>
@@ -433,7 +439,11 @@ Deno.serve(async (req) => {
         .eq('provider', provider);
 
       return new Response(
-        JSON.stringify({ status: 'connected', activities }),
+        JSON.stringify({
+          status: 'connected',
+          activities: isPaid ? activities : [],
+          ...(isPaid ? {} : { requiresUpgrade: true }),
+        }),
         { headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -509,7 +519,11 @@ Deno.serve(async (req) => {
       .eq('provider', provider);
 
     return new Response(
-      JSON.stringify({ status: 'synced', activities }),
+      JSON.stringify({
+        status: 'synced',
+        activities: isPaid ? activities : [],
+        ...(isPaid ? {} : { requiresUpgrade: true }),
+      }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
