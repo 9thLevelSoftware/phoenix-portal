@@ -219,7 +219,9 @@ export function ChallengeWon({
 								</Button>
 							)}
 
-							<p className="text-sm text-muted-foreground">Tap anywhere to dismiss</p>
+							<p className="text-sm text-muted-foreground">
+								Tap anywhere to dismiss
+							</p>
 						</motion.div>
 					)}
 				</div>

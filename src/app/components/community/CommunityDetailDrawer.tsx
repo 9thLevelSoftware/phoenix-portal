@@ -144,7 +144,9 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 									key={i}
 									className="flex items-center gap-2 p-2 bg-surface-2 rounded-md text-sm"
 								>
-									<span className="text-muted-foreground w-5 text-right">{i + 1}</span>
+									<span className="text-muted-foreground w-5 text-right">
+										{i + 1}
+									</span>
 									<span className="text-white">
 										{typeof ex === "object" && ex?.name
 											? ex.name

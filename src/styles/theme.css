@@ -29,7 +29,7 @@
   --popover: #0e0e14;
   --popover-foreground: #e0e0e8;
   --primary: #FF6B35;
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #06060a;
   --secondary: #1a1a24;
   --secondary-foreground: #e0e0e8;
   --muted: #4a4a56;
@@ -63,7 +63,7 @@
   --sidebar: rgba(6, 6, 10, 0.95);
   --sidebar-foreground: #e0e0e8;
   --sidebar-primary: #FF6B35;
-  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-primary-foreground: #06060a;
   --sidebar-accent: rgba(255, 107, 53, 0.1);
   --sidebar-accent-foreground: #FF6B35;
   --sidebar-border: #1a1a24;
@@ -287,6 +287,13 @@
     color: var(--primary-foreground) !important;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
+    color: var(--primary-foreground) !important;
+  }
+
+  /* Keep filled primary controls above WCAG AA contrast thresholds. */
+  [data-slot="button"].bg-primary,
+  [data-slot="avatar-fallback"].bg-primary,
+  [data-slot="tabs-trigger"][data-state="active"] {
     color: var(--primary-foreground) !important;
   }
 

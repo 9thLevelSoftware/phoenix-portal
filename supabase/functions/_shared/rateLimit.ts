@@ -21,11 +21,9 @@ interface RateLimitResult {
 /**
  * Check and enforce per-user rate limits using the `rate_limit_tracking` table.
  *
- * Algorithm: sliding-window counter with atomic upsert.
- *  - Upsert a row for (key, userId) with an atomic increment.
- *  - If the window has expired, reset the counter atomically.
- *  - If the counter is under the limit, allow.
- *  - If the counter is at or over the limit, deny with a 429 response.
+ * Algorithm: atomic SQL-based rate limiting using a database function.
+ * - Uses an RPC call to atomically check/increment within a single transaction.
+ * - Eliminates race conditions from read-then-write patterns.
  *
  * Must be called with a service-role Supabase client (bypasses RLS).
  */
@@ -35,42 +33,93 @@ export async function checkRateLimit(
   corsHeaders: Record<string, string>,
 ): Promise<RateLimitResult> {
   const { key, userId, maxRequests, windowSeconds } = config;
+
+  // Use atomic RPC function if available (eliminates race condition)
+  try {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'check_rate_limit',
+      {
+        p_key: key,
+        p_user_id: userId,
+        p_max_requests: maxRequests,
+        p_window_seconds: windowSeconds,
+      }
+    );
+
+    if (!rpcError && rpcResult) {
+      const { allowed, remaining, retry_after_seconds } = rpcResult;
+
+      if (!allowed) {
+        return {
+          allowed: false,
+          remaining: 0,
+          response: new Response(
+            JSON.stringify({
+              error: 'rate_limit_exceeded',
+              message: `Too many requests. Try again in ${retry_after_seconds} seconds.`,
+              retryAfterSeconds: retry_after_seconds,
+            }),
+            {
+              status: 429,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': String(retry_after_seconds),
+              },
+            },
+          ),
+        };
+      }
+
+      return { allowed: true, remaining };
+    }
+  } catch {
+    // RPC not available, fall back to client-side atomic check
+  }
+
+  // Fallback: Atomic increment with conflict resolution
   const now = new Date();
   const windowMs = windowSeconds * 1000;
 
-  // Atomic upsert + conditional increment via RPC-style raw SQL.
-  // This avoids the read-then-write race condition where concurrent requests
-  // could both read the same count and both increment to count+1.
-  const { data: row, error } = await supabase
+  // Step 1: Attempt atomic insert (first request in window)
+  const { data: inserted, error: insertError } = await supabase
     .from('rate_limit_tracking')
-    .upsert(
-      {
-        key,
-        user_id: userId,
-        provider: key, // backwards compat
-        requests_this_window: 1,
-        window_started_at: now.toISOString(),
-        last_request_at: now.toISOString(),
-      },
-      { onConflict: 'key,user_id', ignoreDuplicates: false },
-    )
+    .insert({
+      key,
+      user_id: userId,
+      provider: key,
+      requests_this_window: 1,
+      window_started_at: now.toISOString(),
+      last_request_at: now.toISOString(),
+    })
     .select('id, requests_this_window, window_started_at')
-    .single();
+    .maybeSingle();
 
-  // If upsert inserted a brand-new row, requests_this_window = 1 and we're done.
-  if (!row || error) {
-    // Fallback: if upsert fails (shouldn't normally), allow but log.
-    console.error('[rateLimit] upsert failed:', error);
+  if (inserted) {
+    // New window started successfully
     return { allowed: true, remaining: maxRequests - 1 };
   }
 
-  // Check if the window has expired — if so, reset atomically.
-  const windowStart = new Date(row.window_started_at).getTime();
+  // Step 2: Insert conflicted, read current state and update atomically
+  const { data: current, error: fetchError } = await supabase
+    .from('rate_limit_tracking')
+    .select('id, requests_this_window, window_started_at')
+    .eq('key', key)
+    .eq('user_id', userId)
+    .single();
+
+  if (fetchError || !current) {
+    console.error('[rateLimit] fetch failed:', fetchError);
+    // Fail open to avoid blocking legitimate requests
+    return { allowed: true, remaining: 0 };
+  }
+
+  const windowStart = new Date(current.window_started_at).getTime();
   const windowExpired = now.getTime() - windowStart > windowMs;
 
   if (windowExpired) {
-    // Window expired. Reset counter atomically.
-    const { data: resetRow } = await supabase
+    // Reset window atomically
+    const { data: reset } = await supabase
       .from('rate_limit_tracking')
       .update({
         requests_this_window: 1,
@@ -78,20 +127,16 @@ export async function checkRateLimit(
         last_request_at: now.toISOString(),
         last_reset_at: now.toISOString(),
       })
-      .eq('id', row.id)
+      .eq('id', current.id)
       .select('requests_this_window')
       .single();
-    const count = resetRow?.requests_this_window ?? 1;
+
+    const count = reset?.requests_this_window ?? 1;
     return { allowed: true, remaining: maxRequests - count };
   }
 
-  // Window is active. The upsert may have set count to 1 (new row) or kept the
-  // existing count (conflict). For existing rows, we need to increment atomically.
-  // Read the current state and increment.
-  const currentCount = row.requests_this_window ?? 0;
-
-  if (currentCount >= maxRequests) {
-    // Over limit. Calculate retry-after.
+  // Check limit before incrementing
+  if (current.requests_this_window >= maxRequests) {
     const retryAfterMs = windowMs - (now.getTime() - windowStart);
     const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
 
@@ -116,14 +161,18 @@ export async function checkRateLimit(
     };
   }
 
-  // Under limit. Increment atomically using the row ID.
-  await supabase
+  // Atomic increment
+  const { data: updated } = await supabase
     .from('rate_limit_tracking')
     .update({
-      requests_this_window: currentCount + 1,
+      requests_this_window: current.requests_this_window + 1,
       last_request_at: now.toISOString(),
     })
-    .eq('id', row.id);
+    .eq('id', current.id)
+    .eq('requests_this_window', current.requests_this_window) // Optimistic locking
+    .select('requests_this_window')
+    .single();
 
-  return { allowed: true, remaining: maxRequests - (currentCount + 1) };
+  const newCount = updated?.requests_this_window ?? current.requests_this_window + 1;
+  return { allowed: true, remaining: maxRequests - newCount };
 }

@@ -65,10 +65,7 @@ export function FormErrorSummary({ className }: { className?: string }) {
 }
 
 /** Recursively extract error messages from react-hook-form error objects */
-function flattenErrors(
-	errors: Record<string, unknown>,
-	prefix = "",
-): string[] {
+function flattenErrors(errors: Record<string, unknown>, prefix = ""): string[] {
 	const messages: string[] = [];
 
 	for (const [key, value] of Object.entries(errors)) {

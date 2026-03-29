@@ -655,10 +655,7 @@ export function Dashboard() {
 									<p className="text-sm text-muted-foreground mb-4">
 										Create a training cycle to see your next workout here
 									</p>
-									<Button
-										variant="cta"
-										asChild
-									>
+									<Button variant="cta" asChild>
 										<Link to="/cycles">
 											<Calendar className="w-4 h-4 mr-2" />
 											Browse Training Cycles

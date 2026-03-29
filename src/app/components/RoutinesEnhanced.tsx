@@ -76,9 +76,7 @@ export function RoutinesEnhanced() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">
-									My Routines
-								</h1>
+								<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
 								<p className="text-muted-foreground">
 									Build your perfect workout
 								</p>
@@ -108,18 +106,13 @@ export function RoutinesEnhanced() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">
-								My Routines
-							</h1>
+							<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
 							<p className="text-muted-foreground">
 								Build your perfect workout
 							</p>
 						</div>
 
-						<Button
-							onClick={() => navigate("/routines/new")}
-							variant="cta"
-						>
+						<Button onClick={() => navigate("/routines/new")} variant="cta">
 							<Plus className="w-4 h-4 mr-2" />
 							Create Routine
 						</Button>
@@ -131,12 +124,8 @@ export function RoutinesEnhanced() {
 			<PageShell>
 				<Tabs defaultValue="my-routines" className="w-full">
 					<TabsList variant="panel" className="mb-6">
-						<TabsTrigger value="my-routines">
-							My Routines
-						</TabsTrigger>
-						<TabsTrigger value="favorites">
-							Favorites
-						</TabsTrigger>
+						<TabsTrigger value="my-routines">My Routines</TabsTrigger>
+						<TabsTrigger value="favorites">Favorites</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="my-routines">
