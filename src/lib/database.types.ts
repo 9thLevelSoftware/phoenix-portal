@@ -548,9 +548,11 @@ export type Database = {
       }
       gamification_stats: {
         Row: {
+          best_streak: number
           current_streak: number
           id: string
           longest_streak: number
+          pr_count: number
           total_reps: number
           total_time_seconds: number
           total_volume_kg: number
@@ -559,9 +561,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          best_streak?: number
           current_streak?: number
           id?: string
           longest_streak?: number
+          pr_count?: number
           total_reps?: number
           total_time_seconds?: number
           total_volume_kg?: number
@@ -570,9 +574,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          best_streak?: number
           current_streak?: number
           id?: string
           longest_streak?: number
+          pr_count?: number
           total_reps?: number
           total_time_seconds?: number
           total_volume_kg?: number
@@ -581,6 +587,44 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      goal_snapshots: {
+        Row: {
+          current_value: number
+          goal_id: string
+          id: string
+          predicted_completion: string | null
+          progress_pct: number
+          snapshotted_at: string
+          user_id: string
+        }
+        Insert: {
+          current_value?: number
+          goal_id: string
+          id?: string
+          predicted_completion?: string | null
+          progress_pct?: number
+          snapshotted_at?: string
+          user_id: string
+        }
+        Update: {
+          current_value?: number
+          goal_id?: string
+          id?: string
+          predicted_completion?: string | null
+          progress_pct?: number
+          snapshotted_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_snapshots_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "user_goals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       local_profiles: {
         Row: {
@@ -675,6 +719,45 @@ export type Database = {
         }
         Relationships: []
       }
+      overload_suggestions: {
+        Row: {
+          confidence: number
+          created_at: string
+          current_value: number
+          exercise_name: string
+          expires_at: string
+          id: string
+          rationale: string
+          suggested_value: number
+          suggestion_type: string
+          user_id: string
+        }
+        Insert: {
+          confidence: number
+          created_at?: string
+          current_value: number
+          exercise_name: string
+          expires_at?: string
+          id?: string
+          rationale: string
+          suggested_value: number
+          suggestion_type: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          current_value?: number
+          exercise_name?: string
+          expires_at?: string
+          id?: string
+          rationale?: string
+          suggested_value?: number
+          suggestion_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       personal_records: {
         Row: {
           achieved_at: string
@@ -733,8 +816,11 @@ export type Database = {
           avatar_url: string | null
           challenge_updates: boolean
           created_at: string | null
+          digest_frequency: string | null
+          digest_last_sent_at: string | null
           display_name: string | null
           email_digests: boolean
+          feature_flags: Json | null
           id: string
           leaderboard_participation: boolean
           profile_visible: boolean
@@ -749,8 +835,11 @@ export type Database = {
           avatar_url?: string | null
           challenge_updates?: boolean
           created_at?: string | null
+          digest_frequency?: string | null
+          digest_last_sent_at?: string | null
           display_name?: string | null
           email_digests?: boolean
+          feature_flags?: Json | null
           id: string
           leaderboard_participation?: boolean
           profile_visible?: boolean
@@ -765,8 +854,11 @@ export type Database = {
           avatar_url?: string | null
           challenge_updates?: boolean
           created_at?: string | null
+          digest_frequency?: string | null
+          digest_last_sent_at?: string | null
           display_name?: string | null
           email_digests?: boolean
+          feature_flags?: Json | null
           id?: string
           leaderboard_participation?: boolean
           profile_visible?: boolean
@@ -1182,7 +1274,7 @@ export type Database = {
           {
             foreignKeyName: "session_phase_statistics_session_id_fkey"
             columns: ["session_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "workout_sessions"
             referencedColumns: ["id"]
           },
@@ -1480,6 +1572,36 @@ export type Database = {
         }
         Relationships: []
       }
+      telemetry_analysis: {
+        Row: {
+          analysis_type: string
+          computed_at: string
+          id: string
+          result: Json
+          set_id: string
+          user_id: string
+          worker_version: string | null
+        }
+        Insert: {
+          analysis_type: string
+          computed_at?: string
+          id?: string
+          result: Json
+          set_id: string
+          user_id: string
+          worker_version?: string | null
+        }
+        Update: {
+          analysis_type?: string
+          computed_at?: string
+          id?: string
+          result?: Json
+          set_id?: string
+          user_id?: string
+          worker_version?: string | null
+        }
+        Relationships: []
+      }
       training_cycles: {
         Row: {
           current_week: number
@@ -1571,7 +1693,9 @@ export type Database = {
           exercise_name: string | null
           goal_type: string
           id: string
+          last_snapshot_at: string | null
           period: string
+          predicted_completion_date: string | null
           status: string
           target_unit: string
           target_value: number
@@ -1585,7 +1709,9 @@ export type Database = {
           exercise_name?: string | null
           goal_type: string
           id?: string
+          last_snapshot_at?: string | null
           period?: string
+          predicted_completion_date?: string | null
           status?: string
           target_unit: string
           target_value: number
@@ -1599,7 +1725,9 @@ export type Database = {
           exercise_name?: string | null
           goal_type?: string
           id?: string
+          last_snapshot_at?: string | null
           period?: string
+          predicted_completion_date?: string | null
           status?: string
           target_unit?: string
           target_value?: number
@@ -1752,6 +1880,63 @@ export type Database = {
         }
         Relationships: []
       }
+      wearable_daily_summaries: {
+        Row: {
+          awake_minutes: number | null
+          body_battery: number | null
+          created_at: string
+          deep_sleep_minutes: number | null
+          hr_zones: Json | null
+          hrv_ms: number | null
+          id: string
+          light_sleep_minutes: number | null
+          provider: string
+          rem_sleep_minutes: number | null
+          resting_hr: number | null
+          sleep_duration_minutes: number | null
+          sleep_score: number | null
+          stress_score: number | null
+          summary_date: string
+          user_id: string
+        }
+        Insert: {
+          awake_minutes?: number | null
+          body_battery?: number | null
+          created_at?: string
+          deep_sleep_minutes?: number | null
+          hr_zones?: Json | null
+          hrv_ms?: number | null
+          id?: string
+          light_sleep_minutes?: number | null
+          provider: string
+          rem_sleep_minutes?: number | null
+          resting_hr?: number | null
+          sleep_duration_minutes?: number | null
+          sleep_score?: number | null
+          stress_score?: number | null
+          summary_date: string
+          user_id: string
+        }
+        Update: {
+          awake_minutes?: number | null
+          body_battery?: number | null
+          created_at?: string
+          deep_sleep_minutes?: number | null
+          hr_zones?: Json | null
+          hrv_ms?: number | null
+          id?: string
+          light_sleep_minutes?: number | null
+          provider?: string
+          rem_sleep_minutes?: number | null
+          resting_hr?: number | null
+          sleep_duration_minutes?: number | null
+          sleep_score?: number | null
+          stress_score?: number | null
+          summary_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       workout_sessions: {
         Row: {
           avg_asymmetry_pct: number | null
@@ -1869,6 +2054,7 @@ export type Database = {
           avatar_url: string | null
           display_name: string | null
           featured_count: number | null
+          follower_count: number | null
           total_shares: number | null
           total_upvotes: number | null
           user_id: string | null
@@ -1883,6 +2069,7 @@ export type Database = {
           position_mm: number | null
           set_id: string | null
           timestamp_ms: number | null
+          user_id: string | null
           velocity_mps: number | null
         }
         Insert: {
@@ -1892,6 +2079,7 @@ export type Database = {
           position_mm?: number | null
           set_id?: string | null
           timestamp_ms?: number | null
+          user_id?: string | null
           velocity_mps?: number | null
         }
         Update: {
@@ -1901,6 +2089,7 @@ export type Database = {
           position_mm?: number | null
           set_id?: string | null
           timestamp_ms?: number | null
+          user_id?: string | null
           velocity_mps?: number | null
         }
         Relationships: [
@@ -1915,6 +2104,139 @@ export type Database = {
       }
     }
     Functions: {
+      detect_plateaus: {
+        Args: {
+          p_profile_id?: string
+          p_user_id: string
+          p_variance_threshold?: number
+          p_window_sessions?: number
+        }
+        Returns: {
+          coefficient_of_variation: number
+          exercise_name: string
+          is_plateau: boolean
+          recent_avg: number
+          recent_stddev: number
+          session_count: number
+        }[]
+      }
+      get_acwr: {
+        Args: {
+          p_acute_days?: number
+          p_chronic_days?: number
+          p_user_id: string
+        }
+        Returns: {
+          acute_load: number
+          acwr: number
+          calc_date: string
+          chronic_load: number
+          risk_zone: string
+        }[]
+      }
+      get_exercise_trend: {
+        Args: {
+          p_exercise_name: string
+          p_lookback_days?: number
+          p_profile_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          data_points: number
+          r_squared: number
+          trend_direction: string
+          trend_slope: number
+          weekly_gain: number
+        }[]
+      }
+      get_goal_progress_cached: {
+        Args: { p_user_id: string }
+        Returns: {
+          current_value: number
+          deadline: string
+          exercise_name: string
+          goal_id: string
+          goal_type: string
+          predicted_completion: string
+          progress_pct: number
+          snapshotted_at: string
+          status: string
+          target_unit: string
+          target_value: number
+        }[]
+      }
+      get_muscle_distribution: {
+        Args: { p_profile_id?: string; p_user_id: string }
+        Returns: {
+          name: string
+          value: number
+        }[]
+      }
+      get_percentile_rank: {
+        Args: {
+          p_metric_key?: string
+          p_metric_type: string
+          p_user_id: string
+        }
+        Returns: {
+          percentile: number
+          rank_description: string
+          user_value: number
+        }[]
+      }
+      get_profile_stats: {
+        Args: { p_user_id: string }
+        Returns: {
+          best_streak: number
+          current_streak: number
+          longest_streak: number
+          pr_count: number
+          total_volume_kg: number
+          total_workouts: number
+        }[]
+      }
+      get_volume_comparison: {
+        Args: { p_days?: number; p_profile_id?: string; p_user_id: string }
+        Returns: {
+          avg_volume: number
+          period: string
+          session_count: number
+          total_duration: number
+          total_sets: number
+          total_volume: number
+        }[]
+      }
+      get_volume_rolling_avg: {
+        Args: {
+          p_lookback_days?: number
+          p_profile_id?: string
+          p_user_id: string
+          p_window_days?: number
+        }
+        Returns: {
+          daily_volume: number
+          rolling_avg: number
+          workout_date: string
+        }[]
+      }
+      get_wearable_trends: {
+        Args: { p_lookback_days?: number; p_user_id: string }
+        Returns: {
+          hrv_7d_avg: number
+          hrv_ms: number
+          resting_hr: number
+          resting_hr_7d_avg: number
+          sleep_score: number
+          sleep_score_7d_avg: number
+          summary_date: string
+        }[]
+      }
+      get_workout_streak: {
+        Args: { p_profile_id?: string; p_user_id: string }
+        Returns: number
+      }
+      refresh_community_benchmarks: { Args: never; Returns: undefined }
+      refresh_hot_scores: { Args: never; Returns: undefined }
       user_subscription_tier: { Args: never; Returns: string }
     }
     Enums: {
