@@ -78,14 +78,6 @@ describe("workoutSessionSchema", () => {
 		expect(result.workout_mode).toBe("Pump");
 	});
 
-	it("maps POWER to 'Power'", () => {
-		const result = workoutSessionSchema.parse({
-			...validSession,
-			workout_mode: "POWER",
-		});
-		expect(result.workout_mode).toBe("Power");
-	});
-
 	it("passes through unknown workout mode as-is", () => {
 		const result = workoutSessionSchema.parse({
 			...validSession,

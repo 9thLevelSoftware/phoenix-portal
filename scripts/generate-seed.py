@@ -33,7 +33,7 @@ MODE_MAP = {
     "Program:TUT": "TUT",
     "Program:Endurance": "ENDURANCE",
     "Program:Strength": "STRENGTH",
-    "Program:Power": "POWER",
+    "Program:Power": "OLD_SCHOOL",  # Legacy alias, maps to OLD_SCHOOL
     "Old School": "OLD_SCHOOL",
     "Echo": "ECHO",
     "Pump": "PUMP",
@@ -195,7 +195,7 @@ print(f"Valid routines: {len(valid_routines)} / {len(raw_routines)}")
 # Assign variable names to routines
 routine_vars = {}
 for i, r in enumerate(valid_routines):
-    routine_vars[r["id"]] = f"r{i+1}"
+    routine_vars[r["id"]] = f"r{i + 1}"
 
 # ---------------------------------------------------------------------------
 # Build workout sessions spanning 4 weeks
@@ -204,15 +204,22 @@ for i, r in enumerate(valid_routines):
 # plus some cycle routines. Generate 24 sessions over 28 days.
 
 # Separate standalone routines (have actual non-zero weights) from cycle-generated ones
-standalone_routines = [r for r in valid_routines if not r["id"].startswith("cycle_routine_")]
+standalone_routines = [
+    r for r in valid_routines if not r["id"].startswith("cycle_routine_")
+]
 cycle_routines = [r for r in valid_routines if r["id"].startswith("cycle_routine_")]
 
 # For session generation, prefer standalone routines but also use some cycle routines
 session_pool = standalone_routines[:]
 # Add a few of the more interesting cycle routines (PPL variants)
-ppl_routines = [r for r in cycle_routines if any(
-    n in r["name"] for n in ["Push A", "Pull A", "Legs A", "Push B", "Pull B", "Legs B"]
-)]
+ppl_routines = [
+    r
+    for r in cycle_routines
+    if any(
+        n in r["name"]
+        for n in ["Push A", "Pull A", "Legs A", "Push B", "Pull B", "Legs B"]
+    )
+]
 if len(ppl_routines) >= 6:
     session_pool.extend(ppl_routines[:6])
 elif cycle_routines:
@@ -238,7 +245,7 @@ session_days = session_days[:NUM_SESSIONS]
 sessions = []
 # Track progressive overload per exercise
 exercise_base_weights = {}  # exercise_name -> base weight from routine
-exercise_progression = {}   # exercise_name -> current added weight (progressive overload)
+exercise_progression = {}  # exercise_name -> current added weight (progressive overload)
 
 for idx, day_num in enumerate(session_days):
     routine = session_pool[idx % len(session_pool)]
@@ -312,39 +319,47 @@ for idx, day_num in enumerate(session_days):
             total_volume += set_volume
             total_sets += 1
 
-            sets_data.append({
-                "set_number": s_idx + 1,
-                "target_reps": target_reps,
-                "actual_reps": actual_reps,
-                "weight_kg": set_weight,
-                "rpe": rpe,
-                "is_pr": is_pr,
-            })
+            sets_data.append(
+                {
+                    "set_number": s_idx + 1,
+                    "target_reps": target_reps,
+                    "actual_reps": actual_reps,
+                    "weight_kg": set_weight,
+                    "rpe": rpe,
+                    "is_pr": is_pr,
+                }
+            )
 
-        ex_data.append({
-            "name": ex_name,
-            "muscle_group": muscle,
-            "order_index": ex_idx,
-            "sets": sets_data,
-            "mode": mode,
-            "weight": current_weight,
-        })
+        ex_data.append(
+            {
+                "name": ex_name,
+                "muscle_group": muscle,
+                "order_index": ex_idx,
+                "sets": sets_data,
+                "mode": mode,
+                "weight": current_weight,
+            }
+        )
 
     # Duration: 35-75 minutes based on exercise count
     duration_seconds = random.randint(35, 75) * 60 + random.randint(0, 59)
 
-    sessions.append({
-        "var": f"s{idx+1}",
-        "routine_name": routine["name"],
-        "started_at": session_start,
-        "duration_seconds": duration_seconds,
-        "total_volume": round(total_volume, 2),
-        "set_count": total_sets,
-        "exercise_count": len(ex_data),
-        "pr_count": pr_count,
-        "workout_mode": map_mode(chosen_exs[0].get("mode", "Program:OldSchool")) if chosen_exs else "OLD_SCHOOL",
-        "exercises": ex_data,
-    })
+    sessions.append(
+        {
+            "var": f"s{idx + 1}",
+            "routine_name": routine["name"],
+            "started_at": session_start,
+            "duration_seconds": duration_seconds,
+            "total_volume": round(total_volume, 2),
+            "set_count": total_sets,
+            "exercise_count": len(ex_data),
+            "pr_count": pr_count,
+            "workout_mode": map_mode(chosen_exs[0].get("mode", "Program:OldSchool"))
+            if chosen_exs
+            else "OLD_SCHOOL",
+            "exercises": ex_data,
+        }
+    )
 
 print(f"Generated {len(sessions)} workout sessions")
 
@@ -387,16 +402,18 @@ for ex_name, sess_list in exercise_sessions.items():
         total_vol = sum(s["weight_kg"] * s["actual_reps"] for s in ex["sets"])
         max_reps = max(s["actual_reps"] for s in ex["sets"])
         est_1rm = estimated_1rm(max_w, max_reps)
-        progress_entries.append({
-            "exercise_name": ex_name,
-            "session_var": session["var"],
-            "recorded_at": session["started_at"],
-            "max_weight_kg": round(max_w, 2),
-            "total_volume_kg": round(total_vol, 2),
-            "estimated_1rm_kg": round(est_1rm, 2),
-            "max_reps": max_reps,
-            "set_count": len(ex["sets"]),
-        })
+        progress_entries.append(
+            {
+                "exercise_name": ex_name,
+                "session_var": session["var"],
+                "recorded_at": session["started_at"],
+                "max_weight_kg": round(max_w, 2),
+                "total_volume_kg": round(total_vol, 2),
+                "estimated_1rm_kg": round(est_1rm, 2),
+                "max_reps": max_reps,
+                "set_count": len(ex["sets"]),
+            }
+        )
 
 print(f"Exercise progress entries: {len(progress_entries)}")
 
@@ -425,16 +442,24 @@ L("    DELETE FROM rep_summaries WHERE set_id IN (")
 L("      SELECT s.id FROM sets s JOIN exercises e ON s.exercise_id = e.id")
 L("      JOIN workout_sessions ws ON e.session_id = ws.id WHERE ws.user_id = uid);")
 L("    DELETE FROM sets WHERE exercise_id IN (")
-L("      SELECT e.id FROM exercises e JOIN workout_sessions ws ON e.session_id = ws.id WHERE ws.user_id = uid);")
-L("    DELETE FROM exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = uid);")
+L(
+    "      SELECT e.id FROM exercises e JOIN workout_sessions ws ON e.session_id = ws.id WHERE ws.user_id = uid);"
+)
+L(
+    "    DELETE FROM exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = uid);"
+)
 L("    DELETE FROM workout_sessions WHERE user_id = uid;")
 L("    DELETE FROM personal_records WHERE user_id = uid;")
 L("    DELETE FROM challenge_participants WHERE user_id = uid;")
 L("    DELETE FROM shared_routines WHERE user_id = uid;")
 L("    DELETE FROM shared_cycles WHERE user_id = uid;")
-L("    DELETE FROM cycle_days WHERE cycle_id IN (SELECT id FROM training_cycles WHERE user_id = uid);")
+L(
+    "    DELETE FROM cycle_days WHERE cycle_id IN (SELECT id FROM training_cycles WHERE user_id = uid);"
+)
 L("    DELETE FROM training_cycles WHERE user_id = uid;")
-L("    DELETE FROM routine_exercises WHERE routine_id IN (SELECT id FROM routines WHERE user_id = uid);")
+L(
+    "    DELETE FROM routine_exercises WHERE routine_id IN (SELECT id FROM routines WHERE user_id = uid);"
+)
 L("    DELETE FROM routines WHERE user_id = uid;")
 L("    DELETE FROM user_goals WHERE user_id = uid;")
 L("    DELETE FROM user_onboarding WHERE user_id = uid;")
@@ -448,13 +473,13 @@ L("  uid uuid;")
 L("")
 L("  -- Session IDs (need references for exercises)")
 for i in range(len(sessions)):
-    L(f"  s{i+1} uuid := gen_random_uuid();")
+    L(f"  s{i + 1} uuid := gen_random_uuid();")
 L("")
 L("  -- Exercise IDs (need references for sets, progress)")
 # Count total exercises across all sessions
 total_exercises = sum(len(s["exercises"]) for s in sessions)
 for i in range(total_exercises):
-    L(f"  e{i+1} uuid;")
+    L(f"  e{i + 1} uuid;")
 L("")
 L("  -- Set IDs (for rep_summaries - only a subset)")
 L("  set1 uuid; set2 uuid; set3 uuid; set4 uuid; set5 uuid;")
@@ -510,7 +535,9 @@ L("")
 L("  -- ============================================================")
 L("  -- ONBOARDING")
 L("  -- ============================================================")
-L("  INSERT INTO user_onboarding (user_id, completed_at, version_seen, dismissed_whats_new)")
+L(
+    "  INSERT INTO user_onboarding (user_id, completed_at, version_seen, dismissed_whats_new)"
+)
 L(f"  VALUES (uid, '{sql_ts(NOW - timedelta(days=30))}', '1.2.0', true)")
 L("  ON CONFLICT (user_id) DO NOTHING;")
 L("")
@@ -569,13 +596,23 @@ for routine in valid_routines:
     elif "core" in name_lower:
         tags.append("core")
 
-    tags_sql = "ARRAY[" + ",".join(f"'{t}'" for t in tags) + "]::text[]" if tags else "ARRAY[]::text[]"
+    tags_sql = (
+        "ARRAY[" + ",".join(f"'{t}'" for t in tags) + "]::text[]"
+        if tags
+        else "ARRAY[]::text[]"
+    )
 
     is_fav = "true" if routine in standalone_routines else "false"
-    times_completed = max(use_count, random.randint(2, 8) if routine in standalone_routines else 0)
+    times_completed = max(
+        use_count, random.randint(2, 8) if routine in standalone_routines else 0
+    )
 
-    L(f"  INSERT INTO routines (id, user_id, name, description, exercise_count, estimated_duration, times_completed, last_used_at, tags, is_favorite)")
-    L(f"  VALUES ({var}, uid, '{name}', '{desc}', {ex_count}, {est_duration}, {times_completed}, {last_used}, {tags_sql}, {is_fav});")
+    L(
+        f"  INSERT INTO routines (id, user_id, name, description, exercise_count, estimated_duration, times_completed, last_used_at, tags, is_favorite)"
+    )
+    L(
+        f"  VALUES ({var}, uid, '{name}', '{desc}', {ex_count}, {est_duration}, {times_completed}, {last_used}, {tags_sql}, {is_fav});"
+    )
     L("")
 
 # Routine exercises
@@ -600,8 +637,12 @@ for routine in valid_routines:
         mode = map_mode(rex.get("mode", "Program:OldSchool"))
         order = rex.get("orderIndex", 0)
 
-        L(f"  INSERT INTO routine_exercises (routine_id, name, muscle_group, sets, reps, weight, rest_seconds, mode, order_index)")
-        L(f"  VALUES ({var}, '{name}', '{muscle}', {num_sets}, {reps}, {weight}, {rest}, '{mode}', {order});")
+        L(
+            f"  INSERT INTO routine_exercises (routine_id, name, muscle_group, sets, reps, weight, rest_seconds, mode, order_index)"
+        )
+        L(
+            f"  VALUES ({var}, '{name}', '{muscle}', {num_sets}, {reps}, {weight}, {rest}, '{mode}', {order});"
+        )
     L("")
 
 # ------------------------------------------------------------------
@@ -613,11 +654,17 @@ L("  -- ============================================================")
 
 cycle = raw_training_cycles[0]
 cycle_name = sql_escape(cycle["name"])
-cycle_desc = sql_escape(cycle.get("description") or "Full body weekly rotation with rest days")
+cycle_desc = sql_escape(
+    cycle.get("description") or "Full body weekly rotation with rest days"
+)
 cycle_started = NOW - timedelta(days=21)
 
-L(f"  INSERT INTO training_cycles (id, user_id, name, description, duration_weeks, current_week, status, workout_days, rest_days, started_at, last_used_at)")
-L(f"  VALUES (tc1, uid, '{cycle_name}', '{cycle_desc}', 4, 3, 'active', 5, 2, '{sql_ts(cycle_started)}', '{sql_ts(NOW - timedelta(days=1))}');")
+L(
+    f"  INSERT INTO training_cycles (id, user_id, name, description, duration_weeks, current_week, status, workout_days, rest_days, started_at, last_used_at)"
+)
+L(
+    f"  VALUES (tc1, uid, '{cycle_name}', '{cycle_desc}', 4, 3, 'active', 5, 2, '{sql_ts(cycle_started)}', '{sql_ts(NOW - timedelta(days=1))}');"
+)
 L("")
 
 L("  -- Cycle Days")
@@ -646,8 +693,12 @@ for cd in raw_cycle_days:
     rep_mod = 0
     notes = f"'{day_name}'" if not is_rest else "NULL"
 
-    L(f"  INSERT INTO cycle_days (cycle_id, day_number, day_type, routine_id, weight_adjustment, rep_modifier, rest_override, notes, rest_type)")
-    L(f"  VALUES (tc1, {day_num}, {day_type}, {routine_ref}, {weight_adj}, {rep_mod}, NULL, {notes}, {rest_type});")
+    L(
+        f"  INSERT INTO cycle_days (cycle_id, day_number, day_type, routine_id, weight_adjustment, rep_modifier, rest_override, notes, rest_type)"
+    )
+    L(
+        f"  VALUES (tc1, {day_num}, {day_type}, {routine_ref}, {weight_adj}, {rep_mod}, NULL, {notes}, {rest_type});"
+    )
 
 L("")
 
@@ -672,8 +723,12 @@ for session in sessions:
     rn = sql_escape(session["routine_name"])
     wm = session["workout_mode"]
 
-    L(f"  INSERT INTO workout_sessions (id, user_id, name, started_at, duration_seconds, total_volume, set_count, exercise_count, pr_count, routine_name, workout_mode)")
-    L(f"  VALUES ({svar}, uid, {name_sql}, '{started}', {dur}, {vol}, {sc}, {ec}, {pc}, '{rn}', '{wm}');")
+    L(
+        f"  INSERT INTO workout_sessions (id, user_id, name, started_at, duration_seconds, total_volume, set_count, exercise_count, pr_count, routine_name, workout_mode)"
+    )
+    L(
+        f"  VALUES ({svar}, uid, {name_sql}, '{started}', {dur}, {vol}, {sc}, {ec}, {pc}, '{rn}', '{wm}');"
+    )
     L("")
 
     # Exercises
@@ -698,7 +753,9 @@ for session in sessions:
             rpe = s["rpe"]
             ipr = "true" if s["is_pr"] else "false"
 
-            L(f"  INSERT INTO sets (exercise_id, set_number, target_reps, actual_reps, weight_kg, rpe, is_pr)")
+            L(
+                f"  INSERT INTO sets (exercise_id, set_number, target_reps, actual_reps, weight_kg, rpe, is_pr)"
+            )
             L(f"  VALUES ({evar}, {sn}, {tr}, {ar}, {wk}, {rpe}, {ipr});")
 
         L("")
@@ -718,7 +775,9 @@ rep_summary_sessions = sessions[-5:]
 
 for session in rep_summary_sessions:
     svar = session["var"]
-    L(f"  -- Rep summaries for {session['routine_name']} ({sql_ts(session['started_at'])})")
+    L(
+        f"  -- Rep summaries for {session['routine_name']} ({sql_ts(session['started_at'])})"
+    )
 
     # Pick 1-2 exercises per session for rep summaries
     summary_exs = session["exercises"][:2]
@@ -776,8 +835,12 @@ for session in rep_summary_sessions:
                 else:
                     zone = "Max Strength"
 
-                L(f"  INSERT INTO rep_summaries (set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, left_force_avg, right_force_avg, asymmetry_pct, vbt_zone)")
-                L(f"  VALUES ({set_var}, {rep_num}, {mean_vel}, {peak_vel}, {mean_force}, {peak_force}, {power}, {rom}, {tut}, {left_force}, {right_force}, {asymmetry}, '{zone}');")
+                L(
+                    f"  INSERT INTO rep_summaries (set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, left_force_avg, right_force_avg, asymmetry_pct, vbt_zone)"
+                )
+                L(
+                    f"  VALUES ({set_var}, {rep_num}, {mean_vel}, {peak_vel}, {mean_force}, {peak_force}, {power}, {rom}, {tut}, {left_force}, {right_force}, {asymmetry}, '{zone}');"
+                )
 
             L("")
 
@@ -801,12 +864,20 @@ for ex_name, pr in exercise_prs.items():
     e1rm = estimated_1rm(weight, pr["reps"])
 
     # MAX_WEIGHT record
-    L(f"  INSERT INTO personal_records (user_id, exercise_name, muscle_group, record_type, value, unit, achieved_at, previous_value)")
-    L(f"  VALUES (uid, '{ename}', '{muscle}', 'MAX_WEIGHT', {weight}, 'kg', '{achieved}', {prev_sql});")
+    L(
+        f"  INSERT INTO personal_records (user_id, exercise_name, muscle_group, record_type, value, unit, achieved_at, previous_value)"
+    )
+    L(
+        f"  VALUES (uid, '{ename}', '{muscle}', 'MAX_WEIGHT', {weight}, 'kg', '{achieved}', {prev_sql});"
+    )
 
     # Also add 1RM record
-    L(f"  INSERT INTO personal_records (user_id, exercise_name, muscle_group, record_type, value, unit, achieved_at, previous_value)")
-    L(f"  VALUES (uid, '{ename}', '{muscle}', '1RM', {e1rm}, 'kg', '{achieved}', NULL);")
+    L(
+        f"  INSERT INTO personal_records (user_id, exercise_name, muscle_group, record_type, value, unit, achieved_at, previous_value)"
+    )
+    L(
+        f"  VALUES (uid, '{ename}', '{muscle}', '1RM', {e1rm}, 'kg', '{achieved}', NULL);"
+    )
 
 L("")
 
@@ -818,14 +889,26 @@ L("  -- CHALLENGES (3 active)")
 L("  -- ============================================================")
 
 challenge_start = NOW - timedelta(days=5)
-L(f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)")
-L(f"  VALUES (ch1, 'February Volume Blitz', 'Accumulate 25,000 kg of total training volume by end of February. Push your limits!', 'volume', 25000, 'kg', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=25))}', 'medium', 'Volume King Badge', true);")
+L(
+    f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)"
+)
+L(
+    f"  VALUES (ch1, 'February Volume Blitz', 'Accumulate 25,000 kg of total training volume by end of February. Push your limits!', 'volume', 25000, 'kg', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=25))}', 'medium', 'Volume King Badge', true);"
+)
 L("")
-L(f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)")
-L(f"  VALUES (ch2, 'Consistency Streak', 'Train at least 5 days per week for 3 consecutive weeks. Show up and grind!', 'streak', 15, 'days', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=21))}', 'hard', 'Iron Will Badge', true);")
+L(
+    f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)"
+)
+L(
+    f"  VALUES (ch2, 'Consistency Streak', 'Train at least 5 days per week for 3 consecutive weeks. Show up and grind!', 'streak', 15, 'days', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=21))}', 'hard', 'Iron Will Badge', true);"
+)
 L("")
-L(f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)")
-L(f"  VALUES (ch3, 'PR Crusher', 'Set 3 new personal records this month across any exercises.', 'pr_count', 3, 'PRs', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=30))}', 'medium', 'PR Hunter Badge', true);")
+L(
+    f"  INSERT INTO challenges (id, name, description, challenge_type, target_value, target_unit, start_date, end_date, difficulty, prize, is_active)"
+)
+L(
+    f"  VALUES (ch3, 'PR Crusher', 'Set 3 new personal records this month across any exercises.', 'pr_count', 3, 'PRs', '{sql_ts(challenge_start)}', '{sql_ts(challenge_start + timedelta(days=30))}', 'medium', 'PR Hunter Badge', true);"
+)
 L("")
 
 # Join user to challenges
@@ -850,7 +933,7 @@ if len(share_candidates) < 2:
     share_candidates = standalone_routines[:2]
 
 for i, routine in enumerate(share_candidates[:2]):
-    sr_var = f"sr{i+1}"
+    sr_var = f"sr{i + 1}"
     r_var = routine_vars[routine["id"]]
     name = sql_escape(routine["name"])
     exs = exercises_by_routine[routine["id"]]
@@ -859,14 +942,16 @@ for i, routine in enumerate(share_candidates[:2]):
     snapshot = []
     for rex in exs:
         ex_name = rex["exerciseName"].strip()
-        snapshot.append({
-            "name": ex_name,
-            "muscle_group": map_muscle(rex.get("exerciseMuscleGroup", "General")),
-            "sets": len(parse_set_reps(rex.get("setReps", "10,10,10"))),
-            "reps": parse_set_reps(rex.get("setReps", "10,10,10"))[0] or 10,
-            "weight": get_exercise_weight(rex),
-            "mode": map_mode(rex.get("mode", "Program:OldSchool")),
-        })
+        snapshot.append(
+            {
+                "name": ex_name,
+                "muscle_group": map_muscle(rex.get("exerciseMuscleGroup", "General")),
+                "sets": len(parse_set_reps(rex.get("setReps", "10,10,10"))),
+                "reps": parse_set_reps(rex.get("setReps", "10,10,10"))[0] or 10,
+                "weight": get_exercise_weight(rex),
+                "mode": map_mode(rex.get("mode", "Program:OldSchool")),
+            }
+        )
 
     snapshot_json = sql_escape(json.dumps(snapshot))
     est_dur = len(exs) * 5
@@ -876,8 +961,12 @@ for i, routine in enumerate(share_candidates[:2]):
     tags_sql = "ARRAY[" + ",".join(f"'{t}'" for t in tags) + "]::text[]"
 
     desc = f"My {name.lower()} routine for the Vitruvian Trainer. Tested and refined over weeks of training."
-    L(f"  INSERT INTO shared_routines (id, user_id, routine_id, name, description, exercise_count, estimated_duration, exercises_snapshot, tags, difficulty, vote_count, save_count, hot_score, shared_at)")
-    L(f"  VALUES ({sr_var}, uid, {r_var}, '{name} - Phoenix Edition', '{sql_escape(desc)}', {len(exs)}, {est_dur}, '{snapshot_json}'::jsonb, {tags_sql}, '{difficulty}', {random.randint(3, 15)}, {random.randint(1, 8)}, {round(random.uniform(5, 25), 2)}, '{sql_ts(shared_at)}');")
+    L(
+        f"  INSERT INTO shared_routines (id, user_id, routine_id, name, description, exercise_count, estimated_duration, exercises_snapshot, tags, difficulty, vote_count, save_count, hot_score, shared_at)"
+    )
+    L(
+        f"  VALUES ({sr_var}, uid, {r_var}, '{name} - Phoenix Edition', '{sql_escape(desc)}', {len(exs)}, {est_dur}, '{snapshot_json}'::jsonb, {tags_sql}, '{difficulty}', {random.randint(3, 15)}, {random.randint(1, 8)}, {round(random.uniform(5, 25), 2)}, '{sql_ts(shared_at)}');"
+    )
     L("")
 
 # ------------------------------------------------------------------
@@ -887,8 +976,12 @@ L("  -- ============================================================")
 L("  -- SHARED CYCLE")
 L("  -- ============================================================")
 
-L(f"  INSERT INTO shared_cycles (id, user_id, cycle_id, name, description, duration_weeks, tags, difficulty, vote_count, save_count, hot_score, shared_at)")
-L(f"  VALUES (sc1, uid, tc1, '{cycle_name} Program', 'A full-body weekly rotation designed for the Vitruvian Trainer. Hits every muscle group with strategic rest days.', 4, ARRAY['full body', 'weekly', 'vitruvian']::text[], 'Intermediate', {random.randint(5, 20)}, {random.randint(2, 10)}, {round(random.uniform(10, 30), 2)}, '{sql_ts(NOW - timedelta(days=7))}');")
+L(
+    f"  INSERT INTO shared_cycles (id, user_id, cycle_id, name, description, duration_weeks, tags, difficulty, vote_count, save_count, hot_score, shared_at)"
+)
+L(
+    f"  VALUES (sc1, uid, tc1, '{cycle_name} Program', 'A full-body weekly rotation designed for the Vitruvian Trainer. Hits every muscle group with strategic rest days.', 4, ARRAY['full body', 'weekly', 'vitruvian']::text[], 'Intermediate', {random.randint(5, 20)}, {random.randint(2, 10)}, {round(random.uniform(10, 30), 2)}, '{sql_ts(NOW - timedelta(days=7))}');"
+)
 L("")
 
 # ------------------------------------------------------------------
@@ -899,18 +992,30 @@ L("  -- USER GOALS")
 L("  -- ============================================================")
 
 # Goal 1: Weekly workout frequency
-L(f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)")
-L(f"  VALUES (g1, uid, 'frequency', 5, 'workouts', NULL, 'weekly', 'active', '{sql_ts(NOW - timedelta(days=14))}');")
+L(
+    f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)"
+)
+L(
+    f"  VALUES (g1, uid, 'frequency', 5, 'workouts', NULL, 'weekly', 'active', '{sql_ts(NOW - timedelta(days=14))}');"
+)
 L("")
 
 # Goal 2: PR on bench press
-L(f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)")
-L(f"  VALUES (g2, uid, 'pr', 20, 'kg', 'Bench Press', 'monthly', 'active', '{sql_ts(NOW - timedelta(days=10))}');")
+L(
+    f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)"
+)
+L(
+    f"  VALUES (g2, uid, 'pr', 20, 'kg', 'Bench Press', 'monthly', 'active', '{sql_ts(NOW - timedelta(days=10))}');"
+)
 L("")
 
 # Goal 3: Volume target
-L(f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)")
-L(f"  VALUES (g3, uid, 'volume', 10000, 'kg', NULL, 'monthly', 'active', '{sql_ts(NOW - timedelta(days=7))}');")
+L(
+    f"  INSERT INTO user_goals (id, user_id, goal_type, target_value, target_unit, exercise_name, period, status, created_at)"
+)
+L(
+    f"  VALUES (g3, uid, 'volume', 10000, 'kg', NULL, 'monthly', 'active', '{sql_ts(NOW - timedelta(days=7))}');"
+)
 L("")
 
 # ------------------------------------------------------------------
@@ -930,8 +1035,12 @@ for entry in progress_entries:
     mr = entry["max_reps"]
     sc = entry["set_count"]
 
-    L(f"  INSERT INTO exercise_progress (user_id, exercise_name, session_id, recorded_at, max_weight_kg, total_volume_kg, estimated_1rm_kg, max_reps, set_count)")
-    L(f"  VALUES (uid, '{ename}', {svar}, '{recorded}', {mw}, {tv}, {e1rm}, {mr}, {sc});")
+    L(
+        f"  INSERT INTO exercise_progress (user_id, exercise_name, session_id, recorded_at, max_weight_kg, total_volume_kg, estimated_1rm_kg, max_reps, set_count)"
+    )
+    L(
+        f"  VALUES (uid, '{ename}', {svar}, '{recorded}', {mw}, {tv}, {e1rm}, {mr}, {sc});"
+    )
 
 L("")
 
@@ -954,9 +1063,13 @@ L("  SELECT COUNT(*) INTO cnt FROM personal_records WHERE user_id = uid;")
 L("  RAISE NOTICE 'Personal records: %', cnt;")
 L("  SELECT COUNT(*) INTO cnt FROM exercise_progress WHERE user_id = uid;")
 L("  RAISE NOTICE 'Exercise progress entries: %', cnt;")
-L("  SELECT COUNT(*) INTO cnt FROM sets WHERE exercise_id IN (SELECT id FROM exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = uid));")
+L(
+    "  SELECT COUNT(*) INTO cnt FROM sets WHERE exercise_id IN (SELECT id FROM exercises WHERE session_id IN (SELECT id FROM workout_sessions WHERE user_id = uid));"
+)
 L("  RAISE NOTICE 'Total sets: %', cnt;")
-L("  SELECT COUNT(*) INTO cnt FROM rep_summaries WHERE set_id IN (SELECT s.id FROM sets s JOIN exercises e ON s.exercise_id = e.id JOIN workout_sessions ws ON e.session_id = ws.id WHERE ws.user_id = uid);")
+L(
+    "  SELECT COUNT(*) INTO cnt FROM rep_summaries WHERE set_id IN (SELECT s.id FROM sets s JOIN exercises e ON s.exercise_id = e.id JOIN workout_sessions ws ON e.session_id = ws.id WHERE ws.user_id = uid);"
+)
 L("  RAISE NOTICE 'Rep summaries: %', cnt;")
 L("END $$;")
 
@@ -973,6 +1086,8 @@ print(f"Total lines: {len(lines)}")
 print(f"Routines: {len(valid_routines)}")
 print(f"Workout sessions: {len(sessions)}")
 print(f"Total exercises across sessions: {total_exercises}")
-print(f"Personal records: {len(exercise_prs)} exercises x 2 types = {len(exercise_prs) * 2}")
+print(
+    f"Personal records: {len(exercise_prs)} exercises x 2 types = {len(exercise_prs) * 2}"
+)
 print(f"Exercise progress entries: {len(progress_entries)}")
 print(f"Rep summary sets: {rep_summary_set_counter}")
