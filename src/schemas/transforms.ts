@@ -16,8 +16,7 @@ const workoutModeMap: Record<string, string> = {
 	TUT: "TUT",
 	TUT_BEAST: "TUT Beast",
 	ECCENTRIC_ONLY: "Eccentric Only",
-	POWER: "Power",
-	CLASSIC: "Old School", // Android alias
+	CLASSIC: "Old School", // Android legacy alias for OLD_SCHOOL
 };
 
 const workoutModeSchema = z
