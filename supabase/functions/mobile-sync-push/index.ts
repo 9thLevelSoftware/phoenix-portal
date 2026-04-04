@@ -57,6 +57,23 @@ interface AssessmentResultDto {
   createdAt: string;
 }
 
+interface ExternalActivitySyncDto {
+  id: string;
+  externalId: string;
+  provider: string;
+  name: string;
+  activityType: string;
+  startedAt: string;
+  durationSeconds: number;
+  distanceMeters: number | null;
+  calories: number | null;
+  avgHeartRate: number | null;
+  maxHeartRate: number | null;
+  elevationGainMeters: number | null;
+  rawData: string | null;
+  syncedAt: string;
+}
+
 interface LocalProfileDto {
   id: string;
   name: string;
@@ -77,6 +94,7 @@ interface PushPayload {
   phaseStatistics: PhaseStatisticsDto[];
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
+  externalActivities: ExternalActivitySyncDto[];
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -380,6 +398,7 @@ Deno.serve(async (req) => {
     // 3b. Sync local profiles
     // =========================================================================
     const localProfileId: string | null = payload.profileId ?? null;
+    const externalActivities: ExternalActivitySyncDto[] = payload.externalActivities ?? [];
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
@@ -447,6 +466,8 @@ Deno.serve(async (req) => {
     let phaseStatisticsInserted = 0;
     let exerciseSignaturesUpserted = 0;
     let assessmentsInserted = 0;
+    let externalActivitiesUpserted = 0;
+    const externalActivityKeys: Array<{ externalId: string; provider: string }> = [];
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -1044,7 +1065,47 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 14. Return sync result
+    // 14. External activities (integration imports from mobile)
+    // =========================================================================
+    if (externalActivities.length > 0) {
+      const activityRows = externalActivities.map((ea) => ({
+        id: ea.id,
+        user_id: userId,
+        external_id: ea.externalId,
+        provider: ea.provider,
+        name: ea.name,
+        activity_type: ea.activityType ?? null,
+        started_at: ea.startedAt,
+        duration_seconds: ea.durationSeconds ?? null,
+        distance_meters: ea.distanceMeters ?? null,
+        calories: ea.calories ?? null,
+        avg_heart_rate: ea.avgHeartRate ?? null,
+        max_heart_rate: ea.maxHeartRate ?? null,
+        elevation_gain_meters: ea.elevationGainMeters ?? null,
+        raw_data: ea.rawData ? safeJsonParse(ea.rawData) : null,
+        synced_at: ea.syncedAt ?? new Date().toISOString(),
+      }));
+
+      const { error: eaErr } = await supabase
+        .from('external_activities')
+        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
+
+      if (eaErr) {
+        console.warn('external_activities upsert warning:', eaErr.message);
+      } else {
+        externalActivitiesUpserted = activityRows.length;
+        // Build provider-scoped ack keys for mobile to mark as synced
+        activityRows.forEach((r) => {
+          externalActivityKeys.push({
+            externalId: r.external_id,
+            provider: r.provider,
+          });
+        });
+      }
+    }
+
+    // =========================================================================
+    // 15. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
     try {
@@ -1060,6 +1121,7 @@ Deno.serve(async (req) => {
           routinesUpserted,
           cyclesUpserted,
           badgesUpserted,
+          externalActivitiesUpserted,
         });
 
       if (!broadcastResult.success) {
@@ -1085,6 +1147,9 @@ Deno.serve(async (req) => {
         phaseStatisticsInserted,
         exerciseSignaturesUpserted,
         assessmentsInserted,
+        externalActivitiesUpserted,
+        externalActivityIds: externalActivityKeys.map((k) => k.externalId),
+        externalActivityKeys,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
