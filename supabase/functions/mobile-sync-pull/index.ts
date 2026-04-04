@@ -13,9 +13,10 @@ import { getCorsHeaders } from '../_shared/cors.ts';
  *               are filtered by local_profile_id
  *
  * Returns nested hierarchy:
- *   sessions → exercises → sets → repSummaries
- *   routines → exercises
- *   personalRecords, rpgAttributes, badges, gamificationStats, localProfiles
+ *   sessions -> exercises -> sets -> repSummaries
+ *   routines -> exercises
+ *   personalRecords, rpgAttributes, badges, gamificationStats, localProfiles,
+ *   externalActivities
  */
 
 interface PullRequest {
@@ -517,7 +518,37 @@ Deno.serve(async (req) => {
       .eq('user_id', userId);
 
     // =========================================================================
-    // 12. Return assembled response
+    // 12. Fetch external activities — delta sync via synced_at
+    // =========================================================================
+    const { data: externalActivities, error: eaError } = await supabase
+      .from('external_activities')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('synced_at', lastSyncISO);
+
+    if (eaError) {
+      console.error('Error fetching external activities:', eaError);
+    }
+
+    const externalActivityDtos = (externalActivities ?? []).map((ea: Record<string, unknown>) => ({
+      id: ea.id,
+      externalId: ea.external_id,
+      provider: ea.provider,
+      name: ea.name,
+      activityType: ea.activity_type ?? 'strength',
+      startedAt: ea.started_at,
+      durationSeconds: ea.duration_seconds ?? 0,
+      distanceMeters: ea.distance_meters ?? null,
+      calories: ea.calories ?? null,
+      avgHeartRate: ea.avg_heart_rate ?? null,
+      maxHeartRate: ea.max_heart_rate ?? null,
+      elevationGainMeters: ea.elevation_gain_meters ?? null,
+      rawData: ea.raw_data ? JSON.stringify(ea.raw_data) : null,
+      syncedAt: ea.synced_at ?? new Date().toISOString(),
+    }));
+
+    // =========================================================================
+    // 13. Return assembled response
     // =========================================================================
     const response = {
       syncTime,
@@ -529,6 +560,7 @@ Deno.serve(async (req) => {
       badges: badgeDtos,
       gamificationStats: gamificationDto,
       localProfiles: localProfiles ?? [],
+      externalActivities: externalActivityDtos,
     };
 
     return new Response(JSON.stringify(response), {
