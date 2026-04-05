@@ -1,4 +1,4 @@
-import { readString } from "react-papaparse";
+import Papa from "papaparse";
 import { supabase } from "@/lib/supabase";
 import type { NormalizedActivity } from "./types";
 
@@ -85,7 +85,7 @@ export function parseStrongCSV(
 	csvContent: string,
 	weightUnit: "kg" | "lbs" = "kg",
 ): NormalizedActivity[] {
-	const result = readString<StrongCSVRow>(csvContent, {
+	const result = Papa.parse<StrongCSVRow>(csvContent, {
 		header: true,
 		skipEmptyLines: true,
 	});
@@ -168,7 +168,7 @@ export function parseStrongExercises(
 	date: string,
 	weightUnit: "kg" | "lbs" = "kg",
 ): StrongExerciseDetail[] {
-	const result = readString<StrongCSVRow>(csvContent, {
+	const result = Papa.parse<StrongCSVRow>(csvContent, {
 		header: true,
 		skipEmptyLines: true,
 	});

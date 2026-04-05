@@ -1186,7 +1186,9 @@ function ProgressionRules({
 								<SelectItem value="cycle_complete">Cycle Complete</SelectItem>
 							</SelectContent>
 						</Select>
-						<p className="text-xs text-muted-foreground mt-1">When to advance weight</p>
+						<p className="text-xs text-muted-foreground mt-1">
+							When to advance weight
+						</p>
 					</div>
 				</div>
 

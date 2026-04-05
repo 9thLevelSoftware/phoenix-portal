@@ -85,8 +85,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
-		buttonClass:
-			"bg-primary hover:bg-primary/90 text-white border-0",
+		buttonClass: "bg-primary hover:bg-primary/90 text-white border-0",
 		popular: true,
 	},
 	INFERNO: {
@@ -94,8 +93,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBorder: "border-accent",
 		accentBg: "from-accent/10 to-[#B45309]/10",
 		accentText: "text-accent",
-		buttonClass:
-			"bg-accent hover:bg-accent/90 text-black border-0",
+		buttonClass: "bg-accent hover:bg-accent/90 text-black border-0",
 	},
 };
 
@@ -349,9 +347,7 @@ export function PricingPlans() {
 			<div className="max-w-5xl mx-auto">
 				{/* Header */}
 				<div className="text-center mb-10">
-					<h1 className="text-display-2 text-white mb-3">
-						Choose Your Plan
-					</h1>
+					<h1 className="text-display-2 text-white mb-3">Choose Your Plan</h1>
 					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 						Unlock premium features to get the most out of your training data
 					</p>

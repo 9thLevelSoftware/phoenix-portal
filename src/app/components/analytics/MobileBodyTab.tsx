@@ -1,11 +1,28 @@
 import { Activity } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { MobileChartCard } from "@/app/components/analytics/MobileChartCard";
 import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
-import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Card } from "@/app/components/ui/card";
+import type { Recommendation } from "@/lib/recommendations";
+import type { MuscleRecovery } from "@/lib/sra-recovery";
+import type { WeightUnit } from "@/lib/units";
+
+const VolumeLandmarks = lazy(() =>
+	import("./VolumeLandmarks").then((m) => ({ default: m.VolumeLandmarks })),
+);
+const SraRecoveryMatrix = lazy(() =>
+	import("./SraRecoveryMatrix").then((m) => ({
+		default: m.SraRecoveryMatrix,
+	})),
+);
+const RecommendationsPanel = lazy(() =>
+	import("./RecommendationsPanel").then((m) => ({
+		default: m.RecommendationsPanel,
+	})),
+);
 
 interface MuscleEntry {
 	name: string;
@@ -18,12 +35,28 @@ export interface MobileBodyTabProps {
 	muscleGroupData: Array<{ name: string; value: number; color: string }>;
 	muscleRadarData: Record<string, number>;
 	mobileMusclData: MuscleEntry[];
+	// New props
+	weeklyVolume: Record<string, number>;
+	totalSessions: number;
+	muscleRecoveries: MuscleRecovery[];
+	recommendations: Recommendation[];
+	exercisesByMuscle: Record<
+		string,
+		Array<{ name: string; sessionCount: number }>
+	>;
+	userId: string;
+	unit: WeightUnit;
+	profileId?: string | null;
 }
 
 export default function MobileBodyTab({
 	muscleGroupData,
 	muscleRadarData,
 	mobileMusclData,
+	weeklyVolume,
+	totalSessions,
+	muscleRecoveries,
+	recommendations,
 }: MobileBodyTabProps) {
 	if (muscleGroupData.length === 0) {
 		return (
@@ -76,15 +109,44 @@ export default function MobileBodyTab({
 				</div>
 			</MobileChartCard>
 
-			{/* Biomechanics -- gated for Inferno */}
-			<SubscriptionGate
-				requiredTier="INFERNO"
-				featureName="Biomechanics Analysis"
+			<Card className="p-4 border-secondary">
+				<BiomechanicsContent view="biomechanics" />
+			</Card>
+
+			{/* Volume Landmarks */}
+			<Suspense
+				fallback={
+					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
+				}
 			>
-				<Card className="p-4 border-secondary">
-					<BiomechanicsContent view="biomechanics" />
-				</Card>
-			</SubscriptionGate>
+				<VolumeLandmarks
+					weeklyVolume={weeklyVolume}
+					selectedMuscleGroup={null}
+					recommendations={recommendations}
+					totalSessions={totalSessions}
+				/>
+			</Suspense>
+
+			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
+			<Suspense
+				fallback={
+					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
+				}
+			>
+				<SraRecoveryMatrix
+					recoveries={muscleRecoveries}
+					recommendations={recommendations}
+				/>
+			</Suspense>
+
+			{/* Recommendations Panel (self-gates for INFERNO) */}
+			<Suspense
+				fallback={
+					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
+				}
+			>
+				<RecommendationsPanel recommendations={recommendations} />
+			</Suspense>
 		</>
 	);
 }

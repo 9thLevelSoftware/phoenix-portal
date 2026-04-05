@@ -36,9 +36,7 @@ export function PrivacyPolicy() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.5 }}
 				>
-					<h1 className="text-display-1 mb-4 text-white">
-						Privacy Policy
-					</h1>
+					<h1 className="text-display-1 mb-4 text-white">Privacy Policy</h1>
 					<p className="text-xl text-muted-foreground mb-2">
 						Project Phoenix - Vitruvian Trainer Companion App
 					</p>
@@ -802,10 +800,7 @@ export function PrivacyPolicy() {
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">
-						<Button
-							onClick={() => navigate(-1)}
-							variant="cta"
-						>
+						<Button onClick={() => navigate(-1)} variant="cta">
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to Home
 						</Button>

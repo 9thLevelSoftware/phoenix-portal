@@ -57,27 +57,32 @@ interface AssessmentResultDto {
   createdAt: string;
 }
 
-interface ExternalActivitySyncDto {
+interface LocalProfileDto {
   id: string;
+  name: string;
+  colorIndex: number;
+}
+
+interface ExternalActivityDto {
+  id?: string;
   externalId: string;
   provider: string;
   name: string;
   activityType: string;
   startedAt: string;
   durationSeconds: number;
-  distanceMeters: number | null;
-  calories: number | null;
-  avgHeartRate: number | null;
-  maxHeartRate: number | null;
-  elevationGainMeters: number | null;
-  rawData: string | null;
-  syncedAt: string;
+  distanceMeters?: number | null;
+  calories?: number | null;
+  avgHeartRate?: number | null;
+  maxHeartRate?: number | null;
+  elevationGainMeters?: number | null;
+  rawData?: string | null;
+  syncedAt?: string;
 }
 
-interface LocalProfileDto {
-  id: string;
-  name: string;
-  colorIndex: number;
+interface ExternalActivityAckDto {
+  externalId: string;
+  provider: string;
 }
 
 interface PushPayload {
@@ -94,7 +99,7 @@ interface PushPayload {
   phaseStatistics: PhaseStatisticsDto[];
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
-  externalActivities: ExternalActivitySyncDto[];
+  externalActivities?: ExternalActivityDto[] | null;
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -369,8 +374,17 @@ Deno.serve(async (req) => {
     if (!gate.allowed) return gate.response;
 
     // =========================================================================
-    // 3. Parse request body
+    // 3. Parse request body with size validation
     // =========================================================================
+    // Validate payload size (max 10MB to prevent abuse)
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     let payload: PushPayload;
     try {
       payload = await req.json();
@@ -394,11 +408,37 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate array sizes to prevent memory exhaustion
+    const MAX_ARRAY_SIZE = 10000;
+    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
+      return new Response(
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.cycles && payload.cycles.length > 1000) {
+      return new Response(
+        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // =========================================================================
     // 3b. Sync local profiles
     // =========================================================================
     const localProfileId: string | null = payload.profileId ?? null;
-    const externalActivities: ExternalActivitySyncDto[] = payload.externalActivities ?? [];
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
@@ -467,7 +507,6 @@ Deno.serve(async (req) => {
     let exerciseSignaturesUpserted = 0;
     let assessmentsInserted = 0;
     let externalActivitiesUpserted = 0;
-    const externalActivityKeys: Array<{ externalId: string; provider: string }> = [];
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -1065,42 +1104,43 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 14. External activities (integration imports from mobile)
+    // 14. External activities (mobile integrations — Hevy, Liftosaur, health)
     // =========================================================================
-    if (externalActivities.length > 0) {
-      const activityRows = externalActivities.map((ea) => ({
-        id: ea.id,
+    let externalActivityIds: string[] = [];
+    let externalActivityKeys: ExternalActivityAckDto[] = [];
+    if (payload.externalActivities && payload.externalActivities.length > 0) {
+      const activityRows = payload.externalActivities.map((a) => ({
+        ...(a.id ? { id: a.id } : {}),
         user_id: userId,
-        external_id: ea.externalId,
-        provider: ea.provider,
-        name: ea.name,
-        activity_type: ea.activityType ?? null,
-        started_at: ea.startedAt,
-        duration_seconds: ea.durationSeconds ?? null,
-        distance_meters: ea.distanceMeters ?? null,
-        calories: ea.calories ?? null,
-        avg_heart_rate: ea.avgHeartRate ?? null,
-        max_heart_rate: ea.maxHeartRate ?? null,
-        elevation_gain_meters: ea.elevationGainMeters ?? null,
-        raw_data: ea.rawData ? safeJsonParse(ea.rawData) : null,
-        synced_at: ea.syncedAt ?? new Date().toISOString(),
+        external_id: a.externalId,
+        provider: a.provider,
+        name: a.name,
+        activity_type: a.activityType,
+        started_at: a.startedAt,
+        duration_seconds: a.durationSeconds > 0 ? a.durationSeconds : null,
+        distance_meters: a.distanceMeters ?? null,
+        calories: a.calories ?? null,
+        avg_heart_rate: a.avgHeartRate ?? null,
+        max_heart_rate: a.maxHeartRate ?? null,
+        elevation_gain_meters: a.elevationGainMeters ?? null,
+        raw_data: a.rawData ? safeJsonParse(a.rawData) : null,
+        synced_at: a.syncedAt ?? new Date().toISOString(),
       }));
 
-      const { error: eaErr } = await supabase
+      const { error: extErr } = await supabase
         .from('external_activities')
         .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
-
-      if (eaErr) {
-        console.warn('external_activities upsert warning:', eaErr.message);
+      if (extErr) {
+        console.warn('external_activities upsert warning:', extErr.message);
+        externalActivityIds = [];
+        externalActivityKeys = [];
       } else {
         externalActivitiesUpserted = activityRows.length;
-        // Build provider-scoped ack keys for mobile to mark as synced
-        activityRows.forEach((r) => {
-          externalActivityKeys.push({
-            externalId: r.external_id,
-            provider: r.provider,
-          });
-        });
+        externalActivityIds = activityRows.map((r) => r.external_id);
+        externalActivityKeys = activityRows.map((r) => ({
+          externalId: r.external_id,
+          provider: r.provider,
+        }));
       }
     }
 
@@ -1121,7 +1161,6 @@ Deno.serve(async (req) => {
           routinesUpserted,
           cyclesUpserted,
           badgesUpserted,
-          externalActivitiesUpserted,
         });
 
       if (!broadcastResult.success) {
@@ -1148,7 +1187,7 @@ Deno.serve(async (req) => {
         exerciseSignaturesUpserted,
         assessmentsInserted,
         externalActivitiesUpserted,
-        externalActivityIds: externalActivityKeys.map((k) => k.externalId),
+        externalActivityIds,
         externalActivityKeys,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
