@@ -14,9 +14,7 @@ export function TermsOfService() {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<PhoenixLogo size="sm" animated={false} />
-							<span className="text-xl text-primary">
-								Project Phoenix
-							</span>
+							<span className="text-xl text-primary">Project Phoenix</span>
 						</div>
 						<Button
 							variant="outline"
@@ -39,9 +37,7 @@ export function TermsOfService() {
 					transition={{ duration: 0.5 }}
 				>
 					<h1 className="text-display-1 mb-4">
-						<span className="text-primary">
-							Terms of Service
-						</span>
+						<span className="text-primary">Terms of Service</span>
 					</h1>
 					<p className="text-xl text-muted-foreground mb-2">
 						Project Phoenix - Vitruvian Trainer Companion App
@@ -382,10 +378,7 @@ export function TermsOfService() {
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">
-						<Button
-							onClick={() => navigate(-1)}
-							variant="cta"
-						>
+						<Button onClick={() => navigate(-1)} variant="cta">
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to Home
 						</Button>

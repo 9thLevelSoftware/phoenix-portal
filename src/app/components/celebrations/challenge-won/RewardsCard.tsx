@@ -59,7 +59,9 @@ export function RewardsCard({ rewards }: RewardsCardProps) {
 							<div className="flex-shrink-0">{getRewardIcon(reward)}</div>
 							<div className="flex-1">
 								<p className="text-white font-medium">{reward.name}</p>
-								<p className="text-xs text-muted-foreground capitalize">{reward.type}</p>
+								<p className="text-xs text-muted-foreground capitalize">
+									{reward.type}
+								</p>
 							</div>
 						</motion.div>
 					))}

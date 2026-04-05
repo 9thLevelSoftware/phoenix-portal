@@ -271,9 +271,7 @@ export function Community() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-display-2 mb-2 text-white">
-							Community Hub
-						</h1>
+						<h1 className="text-display-2 mb-2 text-white">Community Hub</h1>
 						<p className="text-muted-foreground">
 							Discover, share, and connect with fellow athletes
 						</p>
@@ -286,12 +284,8 @@ export function Community() {
 						className="mb-6"
 					>
 						<TabsList variant="panel">
-							<TabsTrigger value="routines">
-								Routines
-							</TabsTrigger>
-							<TabsTrigger value="cycles">
-								Cycles
-							</TabsTrigger>
+							<TabsTrigger value="routines">Routines</TabsTrigger>
+							<TabsTrigger value="cycles">Cycles</TabsTrigger>
 						</TabsList>
 						<TabsContent value="routines" />
 						<TabsContent value="cycles" />

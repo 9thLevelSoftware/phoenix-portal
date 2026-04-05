@@ -96,7 +96,9 @@ function SessionSummaryCard({
 				</div>
 				<div>
 					<div className="text-muted-foreground">Duration</div>
-					<div className="text-white font-semibold font-data">{summary.duration}m</div>
+					<div className="text-white font-semibold font-data">
+						{summary.duration}m
+					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Exercises</div>
@@ -106,7 +108,9 @@ function SessionSummaryCard({
 				</div>
 				<div>
 					<div className="text-muted-foreground">Sets</div>
-					<div className="text-white font-semibold font-data">{summary.setCount}</div>
+					<div className="text-white font-semibold font-data">
+						{summary.setCount}
+					</div>
 				</div>
 			</div>
 		</Card>
@@ -238,10 +242,7 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 				Per-Exercise Breakdown
 			</h3>
 			{result.exerciseDeltas.map((ex) => (
-				<Card
-					key={ex.name}
-					className="bg-surface-2 border-secondary p-4"
-				>
+				<Card key={ex.name} className="bg-surface-2 border-secondary p-4">
 					<div className="font-medium text-white mb-3">{ex.name}</div>
 					{ex.onlyInA || ex.onlyInB ? (
 						<div className="text-sm text-muted-foreground">
@@ -333,10 +334,7 @@ export function ComparisonView() {
 						Workout comparison is available on Phoenix and Elite plans. Upgrade
 						to compare sessions side by side and track your progress.
 					</p>
-					<Button
-						onClick={() => navigate("/pricing")}
-						variant="cta"
-					>
+					<Button onClick={() => navigate("/pricing")} variant="cta">
 						View Plans
 					</Button>
 				</div>
@@ -567,12 +565,8 @@ export function ComparisonView() {
 					>
 						<Tabs defaultValue="a">
 							<TabsList className="w-full">
-								<TabsTrigger value="a">
-									Session A
-								</TabsTrigger>
-								<TabsTrigger value="b">
-									Session B
-								</TabsTrigger>
+								<TabsTrigger value="a">Session A</TabsTrigger>
+								<TabsTrigger value="b">Session B</TabsTrigger>
 							</TabsList>
 							<TabsContent value="a">
 								<SessionSummaryCard summary={summaryA} label="Session A" />

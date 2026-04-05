@@ -113,10 +113,7 @@ export function SessionDetail() {
 						</div>
 					</Card>
 					{[1, 2, 3].map((i) => (
-						<Card
-							key={i}
-							className="bg-surface-2 border-secondary p-4"
-						>
+						<Card key={i} className="bg-surface-2 border-secondary p-4">
 							<div className="flex items-center gap-3">
 								<Skeleton className="h-10 w-10 rounded-lg bg-surface-2" />
 								<div className="space-y-2">
@@ -233,9 +230,7 @@ export function SessionDetail() {
 							</SubscriptionGate>
 						</div>
 
-						<h1 className="text-display-2 mb-2 text-white">
-							{session.name}
-						</h1>
+						<h1 className="text-display-2 mb-2 text-white">{session.name}</h1>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 							<span>
 								{session.started_at.toLocaleDateString("en-US", {

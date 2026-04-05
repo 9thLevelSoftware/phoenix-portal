@@ -95,10 +95,7 @@ export function TrainingCycles() {
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
-							<Button
-								onClick={() => navigate("/cycles/new")}
-								variant="cta"
-							>
+							<Button onClick={() => navigate("/cycles/new")} variant="cta">
 								<Plus className="w-4 h-4 mr-2" />
 								Create Cycle
 							</Button>
@@ -135,10 +132,7 @@ export function TrainingCycles() {
 							<p className="text-muted-foreground">Periodize your progress</p>
 						</div>
 
-						<Button
-							onClick={() => navigate("/cycles/new")}
-							variant="cta"
-						>
+						<Button onClick={() => navigate("/cycles/new")} variant="cta">
 							<Plus className="w-4 h-4 mr-2" />
 							Create Cycle
 						</Button>
@@ -196,7 +190,9 @@ export function TrainingCycles() {
 								<div className="flex gap-6 text-sm text-muted-foreground">
 									<div className="flex items-center gap-2">
 										<Dumbbell className="w-4 h-4 text-primary" />
-										<span className="font-data">{activeCycle.workout_days} workout days/week</span>
+										<span className="font-data">
+											{activeCycle.workout_days} workout days/week
+										</span>
 									</div>
 									<div className="flex items-center gap-2">
 										<BedDouble className="w-4 h-4 text-muted-foreground" />

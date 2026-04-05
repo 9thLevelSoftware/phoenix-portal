@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Mobile Sync Pull — returns all portal data modified since the client's last sync.
@@ -13,10 +14,9 @@ import { getCorsHeaders } from '../_shared/cors.ts';
  *               are filtered by local_profile_id
  *
  * Returns nested hierarchy:
- *   sessions -> exercises -> sets -> repSummaries
- *   routines -> exercises
- *   personalRecords, rpgAttributes, badges, gamificationStats, localProfiles,
- *   externalActivities
+ *   sessions → exercises → sets → repSummaries
+ *   routines → exercises
+ *   personalRecords, rpgAttributes, badges, gamificationStats, localProfiles
  */
 
 interface PullRequest {
@@ -518,37 +518,38 @@ Deno.serve(async (req) => {
       .eq('user_id', userId);
 
     // =========================================================================
-    // 12. Fetch external activities — delta sync via synced_at
+    // 11b. Fetch external activities (delta sync via synced_at)
+    //      Gated to paid subscribers (EMBER+) — FREE users get empty array.
     // =========================================================================
-    const { data: externalActivities, error: eaError } = await supabase
-      .from('external_activities')
-      .select('*')
-      .eq('user_id', userId)
-      .gt('synced_at', lastSyncISO);
+    const subGate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    let externalActivityDtos: Record<string, unknown>[] = [];
 
-    if (eaError) {
-      console.error('Error fetching external activities:', eaError);
+    if (subGate.allowed) {
+      const { data: externalActivitiesRaw } = await supabase
+        .from('external_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('synced_at', lastSyncISO);
+
+      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+        id: a.id,
+        externalId: a.external_id,
+        provider: a.provider,
+        name: a.name,
+        activityType: a.activity_type,
+        startedAt: a.started_at,
+        durationSeconds: a.duration_seconds,
+        distanceMeters: a.distance_meters,
+        calories: a.calories,
+        avgHeartRate: a.avg_heart_rate,
+        maxHeartRate: a.max_heart_rate,
+        elevationGainMeters: a.elevation_gain_meters,
+        rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+      }));
     }
 
-    const externalActivityDtos = (externalActivities ?? []).map((ea: Record<string, unknown>) => ({
-      id: ea.id,
-      externalId: ea.external_id,
-      provider: ea.provider,
-      name: ea.name,
-      activityType: ea.activity_type ?? 'strength',
-      startedAt: ea.started_at,
-      durationSeconds: ea.duration_seconds ?? 0,
-      distanceMeters: ea.distance_meters ?? null,
-      calories: ea.calories ?? null,
-      avgHeartRate: ea.avg_heart_rate ?? null,
-      maxHeartRate: ea.max_heart_rate ?? null,
-      elevationGainMeters: ea.elevation_gain_meters ?? null,
-      rawData: ea.raw_data ? JSON.stringify(ea.raw_data) : null,
-      syncedAt: ea.synced_at ?? new Date().toISOString(),
-    }));
-
     // =========================================================================
-    // 13. Return assembled response
+    // 12. Return assembled response
     // =========================================================================
     const response = {
       syncTime,
