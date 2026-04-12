@@ -53,6 +53,19 @@ jobs:
         env:
           MOCK_EDGE_FUNCTIONS: 'true'
 
+      - name: Validate Supabase secrets for live mode
+        if: ${{ github.event.inputs.use_mocks == 'false' }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::Required Supabase secrets not configured for live tests. Configure SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in repository secrets."
+            exit 1
+          fi
+          echo "✅ All required Supabase secrets are configured"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Run sync tests (live mode)
         if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: npm run test:sync
