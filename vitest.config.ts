@@ -20,6 +20,10 @@ export default defineConfig({
     // Sync tests configuration
     testTimeout: 30000, // 30s timeout for Edge Function calls
     hookTimeout: 15000,
+    // Enable mock mode by default for all tests (no live Supabase required)
+    env: {
+      MOCK_EDGE_FUNCTIONS: 'true',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
