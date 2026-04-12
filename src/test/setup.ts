@@ -53,7 +53,7 @@ class MockResizeObserver {
 }
 window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
-// Mock canvas for EmberParticles and celebration components
+// Mock canvas for EmberParticles and other canvas-based components
 HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
 	clearRect: vi.fn(),
 	createRadialGradient: vi.fn().mockReturnValue({

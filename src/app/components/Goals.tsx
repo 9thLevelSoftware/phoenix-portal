@@ -58,7 +58,6 @@ import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
-import { GoalCelebration } from "./GoalCelebration";
 import { GoalProgressRing } from "./GoalProgressRing";
 
 // ---------- Progress computation hook (exported for Dashboard widget) ----------
@@ -285,17 +284,6 @@ export function Goals() {
 	const [editGoal, setEditGoal] = useState<Goal | null>(null);
 	const [showCompleted, setShowCompleted] = useState(false);
 	const [showArchived, setShowArchived] = useState(false);
-	const [celebration, setCelebration] = useState<{
-		isOpen: boolean;
-		goalType: "frequency" | "volume" | "pr";
-		description: string;
-		achievedValue: string;
-	}>({
-		isOpen: false,
-		goalType: "frequency",
-		description: "",
-		achievedValue: "",
-	});
 
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
@@ -328,16 +316,6 @@ export function Goals() {
 					completed_at: new Date().toISOString(),
 				},
 			});
-
-			setCelebration({
-				isOpen: true,
-				goalType: goal.goal_type,
-				description: getGoalDescription(goal),
-				achievedValue:
-					goal.goal_type === "pr"
-						? `${goal.target_value} kg`
-						: `${goal.target_value} ${goal.target_unit}`,
-			});
 		},
 		[updateGoal],
 	);
@@ -348,7 +326,7 @@ export function Goals() {
 			const progress = progressMap.get(goal.id) ?? 0;
 			if (progress >= 100) {
 				handleGoalComplete(goal);
-				break; // One celebration at a time
+				break; // Process one goal completion per render cycle
 			}
 		}
 	}, [activeGoals, progressMap, handleGoalComplete]);
@@ -682,17 +660,6 @@ export function Goals() {
 					}}
 				/>
 			)}
-
-			{/* Celebration Animation */}
-			<GoalCelebration
-				isOpen={celebration.isOpen}
-				onClose={() => setCelebration((prev) => ({ ...prev, isOpen: false }))}
-				goalData={{
-					goalType: celebration.goalType,
-					description: celebration.description,
-					achievedValue: celebration.achievedValue,
-				}}
-			/>
 		</div>
 	);
 }
