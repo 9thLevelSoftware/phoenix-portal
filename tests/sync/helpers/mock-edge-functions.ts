@@ -64,11 +64,19 @@ export function resetMockStore(): void {
  *
  * Validates the payload structure and stores data in memory.
  * Returns success/error responses matching the real endpoint behavior.
+ * Supports batch failure injection for testing transactional batch handling.
  */
 export function mockPushEndpoint(
   payload: PushPayload,
   authToken: string
 ): EdgeFunctionResult<{ success: boolean; syncTime?: number }> {
+  // Check for injected batch failure first (simulates server-side batch processing)
+  const sessionCount = payload.sessions?.length ?? 0;
+  const batchError = checkBatchFailure(sessionCount);
+  if (batchError) {
+    return batchError as EdgeFunctionResult<{ success: boolean; syncTime?: number }>;
+  }
+
   // Validate auth token
   if (!authToken || authToken === '') {
     return {
@@ -340,4 +348,105 @@ export function checkMockError(): EdgeFunctionResult<never> | null {
     default:
       return null;
   }
+}
+
+// ============================================================================
+// Batch Failure Injection (for testing transactional batch handling)
+// ============================================================================
+
+/**
+ * Configuration for batch failure injection.
+ * Allows simulating failures at specific batch numbers with specific error codes.
+ */
+interface BatchFailureConfig {
+  /** Which batch number (1-indexed) should fail. null = no batch failure */
+  failOnBatch: number | null;
+  /** HTTP status code to return on failure */
+  errorCode: number;
+  /** Error message to return */
+  errorMessage: string;
+  /** Number of times this batch has been called (for tracking) */
+  batchCallCount: number;
+  /** Total batches seen in current push sequence */
+  currentSequenceBatches: number;
+}
+
+const batchFailureConfig: BatchFailureConfig = {
+  failOnBatch: null,
+  errorCode: 500,
+  errorMessage: 'Internal server error',
+  batchCallCount: 0,
+  currentSequenceBatches: 0,
+};
+
+/**
+ * Configure batch failure injection for testing.
+ *
+ * @param batchNumber - Which batch (1-indexed) should fail, or null to disable
+ * @param errorCode - HTTP status code to return (default 500)
+ * @param errorMessage - Error message to return
+ */
+export function setBatchFailure(
+  batchNumber: number | null,
+  errorCode = 500,
+  errorMessage = 'Internal server error'
+): void {
+  batchFailureConfig.failOnBatch = batchNumber;
+  batchFailureConfig.errorCode = errorCode;
+  batchFailureConfig.errorMessage = errorMessage;
+  batchFailureConfig.batchCallCount = 0;
+  batchFailureConfig.currentSequenceBatches = 0;
+}
+
+/**
+ * Reset batch failure configuration
+ */
+export function resetBatchFailure(): void {
+  batchFailureConfig.failOnBatch = null;
+  batchFailureConfig.errorCode = 500;
+  batchFailureConfig.errorMessage = 'Internal server error';
+  batchFailureConfig.batchCallCount = 0;
+  batchFailureConfig.currentSequenceBatches = 0;
+}
+
+/**
+ * Get current batch failure configuration (for test assertions)
+ */
+export function getBatchFailureConfig(): Readonly<BatchFailureConfig> {
+  return { ...batchFailureConfig };
+}
+
+/**
+ * Track a batch push and check if it should fail.
+ * Returns an error result if this batch should fail, null otherwise.
+ */
+export function checkBatchFailure(
+  sessionCount: number
+): EdgeFunctionResult<never> | null {
+  batchFailureConfig.batchCallCount++;
+  batchFailureConfig.currentSequenceBatches++;
+
+  if (
+    batchFailureConfig.failOnBatch !== null &&
+    batchFailureConfig.batchCallCount === batchFailureConfig.failOnBatch
+  ) {
+    return {
+      success: false,
+      status: batchFailureConfig.errorCode,
+      error: {
+        message: `${batchFailureConfig.errorMessage} (batch ${batchFailureConfig.batchCallCount}, ${sessionCount} sessions)`,
+        code: batchFailureConfig.errorCode === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+      },
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Reset the batch call counter (call between test push sequences)
+ */
+export function resetBatchCallCount(): void {
+  batchFailureConfig.batchCallCount = 0;
+  batchFailureConfig.currentSequenceBatches = 0;
 }
