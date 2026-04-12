@@ -67,9 +67,8 @@ jobs:
         if: always()
         with:
           name: sync-test-results
-          path: |
-            coverage/
-            test-results/
+          path: coverage/
+          if-no-files-found: ignore
           retention-days: 7
 
   sync-tests-matrix:
