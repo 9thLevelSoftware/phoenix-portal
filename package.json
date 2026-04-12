@@ -11,6 +11,7 @@
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:sync": "vitest run tests/sync/",
     "optimize:logo": "node scripts/optimize-logo.mjs",
     "analyze": "cross-env ANALYZE=true vite build",
     "test:e2e": "playwright test",

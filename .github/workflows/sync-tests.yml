@@ -1,0 +1,100 @@
+name: Sync Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/mobile-sync-*/**'
+      - 'tests/sync/**'
+      - 'src/schemas/**'
+      - 'src/lib/database.types.ts'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/functions/mobile-sync-*/**'
+      - 'tests/sync/**'
+      - 'src/schemas/**'
+      - 'src/lib/database.types.ts'
+  workflow_dispatch:
+    inputs:
+      use_mocks:
+        description: 'Run with mock Edge Functions'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  sync-tests:
+    name: Sync Validation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sync tests (mock mode)
+        if: ${{ github.event.inputs.use_mocks == 'true' || github.event_name != 'workflow_dispatch' }}
+        run: npm run test:sync
+        env:
+          MOCK_EDGE_FUNCTIONS: 'true'
+
+      - name: Run sync tests (live mode)
+        if: ${{ github.event.inputs.use_mocks == 'false' }}
+        run: npm run test:sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MOCK_EDGE_FUNCTIONS: 'false'
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sync-test-results
+          path: |
+            coverage/
+            test-results/
+          retention-days: 7
+
+  sync-tests-matrix:
+    name: Sync Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sync tests
+        run: npm run test:sync
+        env:
+          MOCK_EDGE_FUNCTIONS: 'true'
