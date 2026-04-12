@@ -2311,120 +2311,717 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 
 ---
 
-## Task 17: Create Compute Rankings Edge Function (Stub)
+## Task 17: Create Compute Rankings Edge Function
 
 **Files:**
 - Create: `supabase/functions/compute-rankings/index.ts`
 
-- [ ] **Step 1: Create Edge Function stub**
+- [ ] **Step 1: Create Edge Function with full implementation**
 
 ```typescript
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+// =============================================================================
+// Types
+// =============================================================================
 
 interface RankingRequest {
-  type: "global" | "weekly" | "user";
+  type: 'global' | 'weekly' | 'user';
   userId?: string;
   weekStart?: string;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+interface LeaderboardEntry {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rank: number;
+  value: number;
+  percentile: number;
+}
+
+interface UserRanking {
+  metric: string;
+  rank: number;
+  value: number;
+  percentile: number;
+  totalUsers: number;
+}
+
+interface GlobalLeaderboard {
+  totalVolume: LeaderboardEntry[];
+  workoutCount: LeaderboardEntry[];
+  longestStreak: LeaderboardEntry[];
+  currentStreak: LeaderboardEntry[];
+  prCount: LeaderboardEntry[];
+  exerciseMastery: LeaderboardEntry[];
+}
+
+interface WeeklyCompetition {
+  id: string;
+  metric: string;
+  metricLabel: string;
+  startDate: string;
+  endDate: string;
+  entries: LeaderboardEntry[];
+  isSpecialEvent: boolean;
+  eventName?: string;
+}
+
+// Weekly metric rotation (cycles through based on week number)
+const WEEKLY_METRICS = [
+  { metric: 'volume', label: 'Total Volume' },
+  { metric: 'workouts', label: 'Workout Count' },
+  { metric: 'prs', label: 'PRs Set' },
+  { metric: 'streak', label: 'Consistency' },
+];
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+function getWeekNumber(date: Date): number {
+  const startOfYear = new Date(date.getFullYear(), 0, 1);
+  const diff = date.getTime() - startOfYear.getTime();
+  return Math.ceil((diff / (7 * 24 * 60 * 60 * 1000)) + 1);
+}
+
+function getWeekBounds(weekStart?: string): { start: Date; end: Date } {
+  let start: Date;
+  if (weekStart) {
+    start = new Date(weekStart);
+  } else {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    start = new Date(now.getFullYear(), now.getMonth(), diff);
+  }
+  start.setHours(0, 0, 0, 0);
+  
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  
+  return { start, end };
+}
+
+function computePercentile(rank: number, total: number): number {
+  if (total === 0) return 0;
+  return Math.round(((total - rank + 1) / total) * 100);
+}
+
+function toEntries(
+  rows: Array<{
+    user_id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    value: number;
+  }>,
+  limit = 50
+): LeaderboardEntry[] {
+  const total = rows.length;
+  return rows.slice(0, limit).map((row, i) => ({
+    userId: row.user_id,
+    displayName: row.display_name || 'Anonymous',
+    avatarUrl: row.avatar_url,
+    rank: i + 1,
+    value: row.value,
+    percentile: computePercentile(i + 1, total),
+  }));
+}
+
+// =============================================================================
+// Global Rankings Queries
+// =============================================================================
+
+async function getGlobalRankings(
+  supabase: ReturnType<typeof createClient>
+): Promise<GlobalLeaderboard> {
+  // Query gamification_stats joined with profiles for opted-in users
+  // Using raw SQL for efficient ranking queries
+  
+  // Total Volume ranking
+  const { data: volumeData } = await supabase
+    .from('gamification_stats')
+    .select(`
+      user_id,
+      total_volume_kg,
+      profiles!inner(display_name, avatar_url, leaderboard_participation)
+    `)
+    .eq('profiles.leaderboard_participation', true)
+    .order('total_volume_kg', { ascending: false })
+    .limit(100);
+
+  const totalVolume = toEntries(
+    (volumeData ?? []).map((r) => ({
+      user_id: r.user_id,
+      display_name: r.profiles?.display_name ?? null,
+      avatar_url: r.profiles?.avatar_url ?? null,
+      value: r.total_volume_kg,
+    }))
+  );
+
+  // Workout Count ranking
+  const { data: workoutData } = await supabase
+    .from('gamification_stats')
+    .select(`
+      user_id,
+      total_workouts,
+      profiles!inner(display_name, avatar_url, leaderboard_participation)
+    `)
+    .eq('profiles.leaderboard_participation', true)
+    .order('total_workouts', { ascending: false })
+    .limit(100);
+
+  const workoutCount = toEntries(
+    (workoutData ?? []).map((r) => ({
+      user_id: r.user_id,
+      display_name: r.profiles?.display_name ?? null,
+      avatar_url: r.profiles?.avatar_url ?? null,
+      value: r.total_workouts,
+    }))
+  );
+
+  // Longest Streak ranking
+  const { data: longestStreakData } = await supabase
+    .from('gamification_stats')
+    .select(`
+      user_id,
+      longest_streak,
+      profiles!inner(display_name, avatar_url, leaderboard_participation)
+    `)
+    .eq('profiles.leaderboard_participation', true)
+    .order('longest_streak', { ascending: false })
+    .limit(100);
+
+  const longestStreak = toEntries(
+    (longestStreakData ?? []).map((r) => ({
+      user_id: r.user_id,
+      display_name: r.profiles?.display_name ?? null,
+      avatar_url: r.profiles?.avatar_url ?? null,
+      value: r.longest_streak,
+    }))
+  );
+
+  // Current Streak ranking
+  const { data: currentStreakData } = await supabase
+    .from('gamification_stats')
+    .select(`
+      user_id,
+      current_streak,
+      profiles!inner(display_name, avatar_url, leaderboard_participation)
+    `)
+    .eq('profiles.leaderboard_participation', true)
+    .order('current_streak', { ascending: false })
+    .limit(100);
+
+  const currentStreak = toEntries(
+    (currentStreakData ?? []).map((r) => ({
+      user_id: r.user_id,
+      display_name: r.profiles?.display_name ?? null,
+      avatar_url: r.profiles?.avatar_url ?? null,
+      value: r.current_streak,
+    }))
+  );
+
+  // PR Count ranking - count from personal_records table
+  const { data: prCountData } = await supabase.rpc('get_pr_count_rankings', {
+    result_limit: 100,
+  });
+
+  const prCount = toEntries(
+    (prCountData ?? []).map((r: { user_id: string; display_name: string | null; avatar_url: string | null; pr_count: number }) => ({
+      user_id: r.user_id,
+      display_name: r.display_name,
+      avatar_url: r.avatar_url,
+      value: r.pr_count,
+    }))
+  );
+
+  // Exercise Mastery - count exercises with 10+ sessions
+  const { data: masteryData } = await supabase.rpc('get_exercise_mastery_rankings', {
+    result_limit: 100,
+  });
+
+  const exerciseMastery = toEntries(
+    (masteryData ?? []).map((r: { user_id: string; display_name: string | null; avatar_url: string | null; mastery_count: number }) => ({
+      user_id: r.user_id,
+      display_name: r.display_name,
+      avatar_url: r.avatar_url,
+      value: r.mastery_count,
+    }))
+  );
+
+  return {
+    totalVolume,
+    workoutCount,
+    longestStreak,
+    currentStreak,
+    prCount,
+    exerciseMastery,
+  };
+}
+
+// =============================================================================
+// Weekly Competition Query
+// =============================================================================
+
+async function getWeeklyCompetition(
+  supabase: ReturnType<typeof createClient>,
+  weekStart?: string
+): Promise<WeeklyCompetition> {
+  const { start, end } = getWeekBounds(weekStart);
+  const weekNum = getWeekNumber(start);
+  const metricConfig = WEEKLY_METRICS[weekNum % WEEKLY_METRICS.length];
+
+  // Check for special event override
+  const { data: specialEvent } = await supabase
+    .from('leaderboard_events')
+    .select('*')
+    .lte('start_date', end.toISOString())
+    .gte('end_date', start.toISOString())
+    .eq('is_active', true)
+    .single();
+
+  const isSpecialEvent = !!specialEvent;
+  const metric = specialEvent?.metric ?? metricConfig.metric;
+  const metricLabel = specialEvent?.name ?? metricConfig.label;
+
+  let entries: LeaderboardEntry[] = [];
+
+  // Query based on metric type
+  if (metric === 'volume') {
+    const { data } = await supabase
+      .from('workout_sessions')
+      .select(`
+        user_id,
+        total_volume,
+        profiles!inner(display_name, avatar_url, leaderboard_participation)
+      `)
+      .eq('profiles.leaderboard_participation', true)
+      .gte('started_at', start.toISOString())
+      .lte('started_at', end.toISOString());
+
+    // Aggregate by user
+    const byUser = new Map<string, { volume: number; display_name: string | null; avatar_url: string | null }>();
+    for (const row of data ?? []) {
+      const existing = byUser.get(row.user_id);
+      if (existing) {
+        existing.volume += row.total_volume;
+      } else {
+        byUser.set(row.user_id, {
+          volume: row.total_volume,
+          display_name: row.profiles?.display_name ?? null,
+          avatar_url: row.profiles?.avatar_url ?? null,
+        });
+      }
+    }
+
+    const sorted = Array.from(byUser.entries())
+      .map(([userId, data]) => ({
+        user_id: userId,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+        value: data.volume,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    entries = toEntries(sorted);
+  } else if (metric === 'workouts') {
+    const { data } = await supabase
+      .from('workout_sessions')
+      .select(`
+        user_id,
+        profiles!inner(display_name, avatar_url, leaderboard_participation)
+      `)
+      .eq('profiles.leaderboard_participation', true)
+      .gte('started_at', start.toISOString())
+      .lte('started_at', end.toISOString());
+
+    // Count by user
+    const byUser = new Map<string, { count: number; display_name: string | null; avatar_url: string | null }>();
+    for (const row of data ?? []) {
+      const existing = byUser.get(row.user_id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        byUser.set(row.user_id, {
+          count: 1,
+          display_name: row.profiles?.display_name ?? null,
+          avatar_url: row.profiles?.avatar_url ?? null,
+        });
+      }
+    }
+
+    const sorted = Array.from(byUser.entries())
+      .map(([userId, data]) => ({
+        user_id: userId,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+        value: data.count,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    entries = toEntries(sorted);
+  } else if (metric === 'prs') {
+    const { data } = await supabase
+      .from('personal_records')
+      .select(`
+        user_id,
+        profiles!inner(display_name, avatar_url, leaderboard_participation)
+      `)
+      .eq('profiles.leaderboard_participation', true)
+      .gte('achieved_at', start.toISOString())
+      .lte('achieved_at', end.toISOString());
+
+    // Count by user
+    const byUser = new Map<string, { count: number; display_name: string | null; avatar_url: string | null }>();
+    for (const row of data ?? []) {
+      const existing = byUser.get(row.user_id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        byUser.set(row.user_id, {
+          count: 1,
+          display_name: row.profiles?.display_name ?? null,
+          avatar_url: row.profiles?.avatar_url ?? null,
+        });
+      }
+    }
+
+    const sorted = Array.from(byUser.entries())
+      .map(([userId, data]) => ({
+        user_id: userId,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+        value: data.count,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    entries = toEntries(sorted);
+  }
+
+  return {
+    id: `week-${start.toISOString().split('T')[0]}`,
+    metric,
+    metricLabel,
+    startDate: start.toISOString().split('T')[0],
+    endDate: end.toISOString().split('T')[0],
+    entries,
+    isSpecialEvent,
+    eventName: specialEvent?.name,
+  };
+}
+
+// =============================================================================
+// User Rankings Query
+// =============================================================================
+
+async function getUserRankings(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<UserRanking[]> {
+  const rankings: UserRanking[] = [];
+
+  // Get user's stats
+  const { data: userStats } = await supabase
+    .from('gamification_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (!userStats) {
+    return rankings;
+  }
+
+  // Get total users who participate in leaderboard
+  const { count: totalUsers } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('leaderboard_participation', true);
+
+  const total = totalUsers ?? 0;
+
+  // Total Volume rank
+  const { count: volumeRank } = await supabase
+    .from('gamification_stats')
+    .select('*', { count: 'exact', head: true })
+    .gt('total_volume_kg', userStats.total_volume_kg);
+
+  rankings.push({
+    metric: 'totalVolume',
+    rank: (volumeRank ?? 0) + 1,
+    value: userStats.total_volume_kg,
+    percentile: computePercentile((volumeRank ?? 0) + 1, total),
+    totalUsers: total,
+  });
+
+  // Workout Count rank
+  const { count: workoutRank } = await supabase
+    .from('gamification_stats')
+    .select('*', { count: 'exact', head: true })
+    .gt('total_workouts', userStats.total_workouts);
+
+  rankings.push({
+    metric: 'workoutCount',
+    rank: (workoutRank ?? 0) + 1,
+    value: userStats.total_workouts,
+    percentile: computePercentile((workoutRank ?? 0) + 1, total),
+    totalUsers: total,
+  });
+
+  // Longest Streak rank
+  const { count: longestStreakRank } = await supabase
+    .from('gamification_stats')
+    .select('*', { count: 'exact', head: true })
+    .gt('longest_streak', userStats.longest_streak);
+
+  rankings.push({
+    metric: 'longestStreak',
+    rank: (longestStreakRank ?? 0) + 1,
+    value: userStats.longest_streak,
+    percentile: computePercentile((longestStreakRank ?? 0) + 1, total),
+    totalUsers: total,
+  });
+
+  // Current Streak rank
+  const { count: currentStreakRank } = await supabase
+    .from('gamification_stats')
+    .select('*', { count: 'exact', head: true })
+    .gt('current_streak', userStats.current_streak);
+
+  rankings.push({
+    metric: 'currentStreak',
+    rank: (currentStreakRank ?? 0) + 1,
+    value: userStats.current_streak,
+    percentile: computePercentile((currentStreakRank ?? 0) + 1, total),
+    totalUsers: total,
+  });
+
+  // PR Count rank
+  const { count: userPrCount } = await supabase
+    .from('personal_records')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  const { data: prRankData } = await supabase.rpc('get_user_pr_rank', {
+    target_user_id: userId,
+  });
+
+  rankings.push({
+    metric: 'prCount',
+    rank: prRankData?.rank ?? 0,
+    value: userPrCount ?? 0,
+    percentile: computePercentile(prRankData?.rank ?? 0, total),
+    totalUsers: total,
+  });
+
+  return rankings;
+}
+
+// =============================================================================
+// Main Handler
+// =============================================================================
+
+Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { type, userId, weekStart } = (await req.json()) as RankingRequest;
 
-    // TODO: Implement actual ranking computation
-    // For now, return mock data structure
-
-    if (type === "global") {
-      return new Response(
-        JSON.stringify({
-          totalVolume: [],
-          workoutCount: [],
-          longestStreak: [],
-          currentStreak: [],
-          prCount: [],
-          exerciseMastery: [],
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (type === 'global') {
+      const data = await getGlobalRankings(supabase);
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    if (type === "weekly") {
-      const now = new Date();
-      const weekEnd = new Date(now);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-
-      return new Response(
-        JSON.stringify({
-          id: "stub",
-          metric: "totalVolume",
-          metricLabel: "Total Volume",
-          startDate: weekStart ?? now.toISOString().split("T")[0],
-          endDate: weekEnd.toISOString().split("T")[0],
-          entries: [],
-          isSpecialEvent: false,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (type === 'weekly') {
+      const data = await getWeeklyCompetition(supabase, weekStart);
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    if (type === "user" && userId) {
-      return new Response(
-        JSON.stringify([
-          {
-            metric: "totalVolume",
-            rank: 0,
-            value: 0,
-            percentile: 0,
-            totalUsers: 0,
-          },
-        ]),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (type === 'user' && userId) {
+      const data = await getUserRankings(supabase, userId);
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    return new Response(JSON.stringify({ error: "Invalid request type" }), {
+    return new Response(JSON.stringify({ error: 'Invalid request type' }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error('[compute-rankings] Error:', error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   }
 });
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Create database functions for complex queries**
+
+Create SQL migration for helper functions:
+
+```sql
+-- migrations/20260412_leaderboard_functions.sql
+
+-- Get PR count rankings with profile info
+CREATE OR REPLACE FUNCTION get_pr_count_rankings(result_limit int DEFAULT 100)
+RETURNS TABLE (
+  user_id uuid,
+  display_name text,
+  avatar_url text,
+  pr_count bigint
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    pr.user_id,
+    p.display_name,
+    p.avatar_url,
+    COUNT(pr.id) as pr_count
+  FROM personal_records pr
+  JOIN profiles p ON pr.user_id = p.id
+  WHERE p.leaderboard_participation = true
+  GROUP BY pr.user_id, p.display_name, p.avatar_url
+  ORDER BY pr_count DESC
+  LIMIT result_limit;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Get exercise mastery rankings (exercises with 10+ sessions)
+CREATE OR REPLACE FUNCTION get_exercise_mastery_rankings(result_limit int DEFAULT 100)
+RETURNS TABLE (
+  user_id uuid,
+  display_name text,
+  avatar_url text,
+  mastery_count bigint
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    ex.user_id,
+    p.display_name,
+    p.avatar_url,
+    COUNT(DISTINCT ex.exercise_name) as mastery_count
+  FROM (
+    SELECT 
+      e.user_id,
+      e.name as exercise_name,
+      COUNT(*) as session_count
+    FROM workout_exercises e
+    JOIN workout_sessions ws ON e.session_id = ws.id
+    GROUP BY e.user_id, e.name
+    HAVING COUNT(*) >= 10
+  ) ex
+  JOIN profiles p ON ex.user_id = p.id
+  WHERE p.leaderboard_participation = true
+  GROUP BY ex.user_id, p.display_name, p.avatar_url
+  ORDER BY mastery_count DESC
+  LIMIT result_limit;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Get user's PR rank
+CREATE OR REPLACE FUNCTION get_user_pr_rank(target_user_id uuid)
+RETURNS TABLE (rank bigint) AS $$
+BEGIN
+  RETURN QUERY
+  WITH pr_counts AS (
+    SELECT 
+      pr.user_id,
+      COUNT(*) as pr_count
+    FROM personal_records pr
+    JOIN profiles p ON pr.user_id = p.id
+    WHERE p.leaderboard_participation = true
+    GROUP BY pr.user_id
+  ),
+  ranked AS (
+    SELECT 
+      user_id,
+      pr_count,
+      RANK() OVER (ORDER BY pr_count DESC) as rank
+    FROM pr_counts
+  )
+  SELECT ranked.rank
+  FROM ranked
+  WHERE ranked.user_id = target_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create leaderboard_events table for special events
+CREATE TABLE IF NOT EXISTS leaderboard_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  metric text NOT NULL,
+  start_date timestamptz NOT NULL,
+  end_date timestamptz NOT NULL,
+  is_active boolean DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+
+-- RLS for leaderboard_events (read-only for authenticated users)
+ALTER TABLE leaderboard_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can read active events"
+  ON leaderboard_events FOR SELECT
+  USING (is_active = true);
+
+CREATE POLICY "Admins can manage events"
+  ON leaderboard_events FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin');
+```
+
+- [ ] **Step 3: Run migration**
+
+```bash
+cd phoenix-portal
+npx supabase db push
+```
+
+Expected: Migration applies successfully.
+
+- [ ] **Step 4: Run typecheck on portal**
+
+```bash
+npm run typecheck
+```
+
+Expected: No errors (Edge Function is Deno, not checked by portal's tsc).
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/compute-rankings/index.ts
-git commit -m "feat: add compute-rankings Edge Function stub
+git add supabase/migrations/20260412_leaderboard_functions.sql
+git commit -m "feat: add compute-rankings Edge Function
 
-Returns empty/mock data. Full implementation to compute rankings
-from workout data will be added in follow-up work.
+Full implementation with:
+- Global rankings from gamification_stats (volume, workouts, streaks)
+- PR count and exercise mastery via database functions
+- Weekly competitions with rotating metrics
+- Special event support via leaderboard_events table
+- User-specific ranking queries
+- Leaderboard opt-out filtering via profiles.leaderboard_participation
 
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 ```
