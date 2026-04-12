@@ -2,6 +2,9 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
+// UUID validation regex for input sanitization
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Mobile Sync Pull — returns portal data modified since the client's last sync.
  *
@@ -95,6 +98,10 @@ function decodeCursor(cursor: string): DecodedCursor | null {
     ) {
       return null;
     }
+    // Validate cursor ID is a valid UUID to prevent injection
+    if (parsed.id && !UUID_REGEX.test(parsed.id)) {
+      return null;
+    }
     return parsed as DecodedCursor;
   } catch {
     return null;
@@ -151,6 +158,9 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2. Service-role client for DB queries (bypasses RLS)
     // =========================================================================
+    // SECURITY: Using service role key bypasses Row Level Security.
+    // ALL queries MUST include .eq('user_id', userId) for user isolation.
+    // Review any new query additions for this requirement.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -161,6 +171,15 @@ Deno.serve(async (req) => {
     // =========================================================================
     const body: PullRequest = await req.json();
     const profileId: string | null = body.profileId ?? null;
+
+    // Validate profileId format to prevent injection attacks
+    if (profileId && !UUID_REGEX.test(profileId)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid profileId format' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const lastSyncISO = new Date(body.lastSync ?? 0).toISOString();
     const syncTime = Date.now();
 
@@ -769,9 +788,9 @@ Deno.serve(async (req) => {
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error('Unexpected error in mobile-sync-pull:', err);
+    console.error('mobile-sync-pull error:', err);
     return new Response(
-      JSON.stringify({ error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
