@@ -111,6 +111,43 @@ src/
 - **Integrations (1):** disconnect-integration
 - **Analytics (1):** generate-insights
 
+### Mobile Sync Edge Function Patterns
+
+**mobile-sync-push** (`supabase/functions/mobile-sync-push/index.ts`):
+- Accepts batched workout sessions with nested exercises, sets, rep summaries
+- Uses `upsert` with `onConflict: 'id'` for all entities (last push wins on server)
+- Validates payload size (max 10MB), array sizes (max 10,000 items)
+- Rate limited: 10 requests per minute per user
+- Requires EMBER subscription tier or higher
+- Broadcasts `sync_complete` event for realtime portal updates
+
+**mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
+- Returns data modified since `lastSync` timestamp (delta sync)
+- Cursor-based pagination with 100 entities per page (max 500)
+- Entity order: sessions -> routines -> cycles -> badges -> stats
+- Uses composite cursor (updated_at, id) for stable ordering across pages
+- Child entities fetched based on parent presence, not their own timestamps
+
+### Sync Test Infrastructure
+
+**Test Modes:**
+- **Mock mode (default)**: `MOCK_EDGE_FUNCTIONS=true` in `vitest.config.ts`
+- **Live mode**: `MOCK_EDGE_FUNCTIONS=false` requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+
+**Running tests:**
+```bash
+npm test                                    # All tests with mocks
+npm test -- tests/sync/                     # Just sync tests
+MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
+```
+
+**Test files:**
+- `tests/sync/transforms.test.ts` — Weight ×2 transforms (39 tests)
+- `tests/sync/mode-transform.test.ts` — Workout mode round-trips (43 tests)
+- `tests/sync/multi-device.test.ts` — Concurrent device scenarios (12 tests)
+- `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)
+- `tests/sync/helpers/mock-edge-functions.ts` — Mock implementation
+
 ### Styling
 - Dark theme by default (background: #0D0D0D)
 - Phoenix color palette in `src/styles/theme.css`:
