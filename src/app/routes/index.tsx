@@ -112,11 +112,6 @@ const CycleBuilder = lazyWithReload(() =>
 		default: m.CycleBuilder,
 	})),
 );
-const CelebrationDemo = lazyWithReload(() =>
-	import("@/app/components/CelebrationDemo").then((m) => ({
-		default: m.CelebrationDemo,
-	})),
-);
 const Profile = lazyWithReload(() =>
 	import("@/app/components/Profile").then((m) => ({ default: m.Profile })),
 );
@@ -169,7 +164,6 @@ export function AppRoutes() {
 						{/* Ungated — accessible to all authenticated users */}
 						<Route path="/profile" element={<Profile />} />
 						<Route path="/pricing" element={<PricingPlans />} />
-						<Route path="/celebrations" element={<CelebrationDemo />} />
 
 						{/* EMBER tier — cloud backup, history, dashboard */}
 						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
