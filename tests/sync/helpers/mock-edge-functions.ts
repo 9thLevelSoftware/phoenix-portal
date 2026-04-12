@@ -14,6 +14,7 @@ import type {
   SessionResponseDto,
   RoutineResponseDto,
   CycleResponseDto,
+  BadgeResponseDto,
 } from './edge-function-harness';
 
 /**
@@ -35,6 +36,7 @@ interface MockStore {
   sessions: Map<string, SessionResponseDto>;
   routines: Map<string, RoutineResponseDto>;
   cycles: Map<string, CycleResponseDto>;
+  badges: Map<string, BadgeResponseDto>; // keyed by `userId:badgeId` for union merge
   lastPushTime: number;
 }
 
@@ -42,6 +44,7 @@ const mockStore: MockStore = {
   sessions: new Map(),
   routines: new Map(),
   cycles: new Map(),
+  badges: new Map(),
   lastPushTime: 0,
 };
 
@@ -52,6 +55,7 @@ export function resetMockStore(): void {
   mockStore.sessions.clear();
   mockStore.routines.clear();
   mockStore.cycles.clear();
+  mockStore.badges.clear();
   mockStore.lastPushTime = 0;
 }
 
@@ -144,6 +148,20 @@ export function mockPushEndpoint(
     }
   }
 
+  // Store badges (union merge: keyed by userId:badgeId to prevent duplicates)
+  if (payload.badges) {
+    for (const badge of payload.badges) {
+      // Extract userId from auth token context or use a placeholder
+      // In mock, we'll use badgeId as the key part that matters for union
+      const badgeKey = `mock-user:${badge.badgeId}`;
+      const responseBadge: BadgeResponseDto = {
+        ...badge,
+        userId: 'mock-user', // In real impl, this comes from JWT
+      };
+      mockStore.badges.set(badgeKey, responseBadge);
+    }
+  }
+
   const syncTime = Date.now();
   mockStore.lastPushTime = syncTime;
 
@@ -204,6 +222,13 @@ export function mockPullEndpoint(
       ? Array.from(mockStore.cycles.values())
       : [];
 
+  // Return all badges (union merge means all unique badges are returned)
+  const badges = lastSync === 0
+    ? Array.from(mockStore.badges.values())
+    : mockStore.lastPushTime > lastSync
+      ? Array.from(mockStore.badges.values())
+      : [];
+
   const response: PullResponse = {
     syncTime,
     sessions,
@@ -211,7 +236,7 @@ export function mockPullEndpoint(
     cycles,
     personalRecords: [],
     rpgAttributes: null,
-    badges: [],
+    badges,
     gamificationStats: null,
     localProfiles: [],
     externalActivities: [],
