@@ -29,6 +29,7 @@ import {
 } from '../helpers/edge-function-harness';
 import { resetMockStore } from '../helpers/mock-edge-functions';
 import { WORKOUT_MODES, type WorkoutMode } from '../fixtures';
+import { workoutSessionSchema } from '@/schemas/transforms';
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -314,6 +315,81 @@ describe('Workout Mode Transform Tests', () => {
       expect(workoutModeMap[uppercaseMode]).toBe('Old School');
       expect(workoutModeMap[lowercaseMode]).toBeUndefined();
     });
+
+    it('should handle mixed case modes by falling back to raw value', () => {
+      // Mixed case should not match and should pass through raw
+      const mixedCaseModes = ['Old_School', 'OLD_school', 'Tut', 'tut_BEAST'];
+
+      for (const mode of mixedCaseModes) {
+        const displayValue = workoutModeMap[mode] ?? mode;
+        // Should return raw value since no match
+        expect(displayValue).toBe(mode);
+      }
+    });
+  });
+
+  describe('Edge Case Mode Handling', () => {
+    it('should handle empty string mode gracefully', async () => {
+      // Empty string mode should not crash the system
+      const sessionId = generateTestId();
+      const session: SessionDto = createTestSession(testUser.id, {
+        id: sessionId,
+        workoutMode: '',
+        exercises: [],
+      });
+
+      const payload = createMinimalPushPayload(testUser.id, { sessions: [session] });
+      const pushResult = await callPushEndpoint(payload, testUser.accessToken);
+
+      // Push should succeed (empty string is valid data)
+      expect(pushResult.success).toBe(true);
+
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Pull should succeed and return the empty string
+      const pulledSession = pullResult.data!.sessions[0];
+      expect(pulledSession.workoutMode).toBe('');
+    });
+
+    it('should transform empty string mode to empty string display value', () => {
+      // Empty string should not match any mode in the map
+      const emptyMode = '';
+      const displayValue = emptyMode ? (workoutModeMap[emptyMode] ?? emptyMode) : null;
+
+      // Empty string is falsy, so with our null-check pattern it becomes null
+      expect(displayValue).toBeNull();
+    });
+
+    it('should handle whitespace-padded modes by passing through raw', () => {
+      // Whitespace-padded modes should not match and pass through
+      const paddedModes = [' OLD_SCHOOL', 'OLD_SCHOOL ', ' OLD_SCHOOL '];
+
+      for (const mode of paddedModes) {
+        const displayValue = workoutModeMap[mode] ?? mode;
+        // Should return raw value since no exact match
+        expect(displayValue).toBe(mode);
+        expect(displayValue).not.toBe('Old School');
+      }
+    });
+
+    it('should handle special characters in mode gracefully', () => {
+      // Special characters should pass through without crashing
+      const specialModes = ['OLD-SCHOOL', 'OLD.SCHOOL', 'OLD@SCHOOL', 'OLD#SCHOOL'];
+
+      for (const mode of specialModes) {
+        const displayValue = workoutModeMap[mode] ?? mode;
+        // Should return raw value
+        expect(displayValue).toBe(mode);
+      }
+    });
+
+    it('should handle very long mode strings without crashing', () => {
+      // Very long strings should pass through
+      const longMode = 'A'.repeat(1000);
+      const displayValue = workoutModeMap[longMode] ?? longMode;
+
+      expect(displayValue).toBe(longMode);
+    });
   });
 
   describe('Mode Transform Integration', () => {
@@ -367,6 +443,88 @@ describe('Workout Mode Transform Tests', () => {
         expect(found).toBeDefined();
         expect(found!.workoutMode).toBe(mode);
       }
+    });
+  });
+
+  describe('Zod Schema Mode Transform (Production Code Path)', () => {
+    /**
+     * These tests exercise the actual workoutSessionSchema from transforms.ts,
+     * verifying the Zod transform that converts DB mode strings to display names.
+     */
+
+    // Helper to create a minimal valid DB session row
+    // Uses valid UUID v4 format (version 4 at position 13, variant 8-b at position 17)
+    const createDbSessionRow = (workoutMode: string | null) => ({
+      id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
+      user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-f1a2b3c4d5e6',
+      name: 'Test Session',
+      started_at: '2024-01-01T12:00:00Z',
+      duration_seconds: 3600,
+      total_volume: 5000,
+      set_count: 10,
+      exercise_count: 3,
+      pr_count: 1,
+      routine_name: null,
+      workout_mode: workoutMode,
+      notes: null,
+    });
+
+    it.each([
+      ['OLD_SCHOOL', 'Old School'],
+      ['ECHO', 'Echo'],
+      ['PUMP', 'Pump'],
+      ['TUT', 'TUT'],
+      ['TUT_BEAST', 'TUT Beast'],
+      ['ECCENTRIC_ONLY', 'Eccentric Only'],
+      ['CLASSIC', 'Old School'],
+    ])('should transform %s to "%s" via Zod schema', (dbMode, expectedDisplay) => {
+      const dbRow = createDbSessionRow(dbMode);
+      const parsed = workoutSessionSchema.parse(dbRow);
+
+      expect(parsed.workout_mode).toBe(expectedDisplay);
+    });
+
+    it('should transform null mode to null via Zod schema', () => {
+      const dbRow = createDbSessionRow(null);
+      const parsed = workoutSessionSchema.parse(dbRow);
+
+      expect(parsed.workout_mode).toBeNull();
+    });
+
+    it('should pass through unknown modes unchanged via Zod schema', () => {
+      const dbRow = createDbSessionRow('FUTURE_MODE');
+      const parsed = workoutSessionSchema.parse(dbRow);
+
+      // Unknown modes should pass through as-is (not crash, not be undefined)
+      expect(parsed.workout_mode).toBe('FUTURE_MODE');
+    });
+
+    it('should pass through lowercase modes unchanged (no auto-uppercase)', () => {
+      const dbRow = createDbSessionRow('old_school');
+      const parsed = workoutSessionSchema.parse(dbRow);
+
+      // Lowercase should pass through, not be auto-mapped to Old School
+      expect(parsed.workout_mode).toBe('old_school');
+    });
+
+    it('should handle empty string mode via Zod schema', () => {
+      const dbRow = createDbSessionRow('');
+      const parsed = workoutSessionSchema.parse(dbRow);
+
+      // Empty string should be transformed to null by the schema
+      expect(parsed.workout_mode).toBeNull();
+    });
+
+    it('should parse all 6 primary modes in a batch', () => {
+      const primaryModes = ['OLD_SCHOOL', 'ECHO', 'PUMP', 'TUT', 'TUT_BEAST', 'ECCENTRIC_ONLY'];
+      const expectedDisplays = ['Old School', 'Echo', 'Pump', 'TUT', 'TUT Beast', 'Eccentric Only'];
+
+      const dbRows = primaryModes.map(mode => createDbSessionRow(mode));
+      const parsed = dbRows.map(row => workoutSessionSchema.parse(row));
+
+      parsed.forEach((session, i) => {
+        expect(session.workout_mode).toBe(expectedDisplays[i]);
+      });
     });
   });
 });
