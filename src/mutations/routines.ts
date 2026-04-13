@@ -236,15 +236,7 @@ export function useDeleteRoutine() {
 		mutationFn: async (routineId: string) => {
 			if (!user) throw new Error("Must be logged in to delete routines");
 
-			// Delete routine_exercises first (FK constraint)
-			const { error: exError } = await supabase
-				.from("routine_exercises")
-				.delete()
-				.eq("routine_id", routineId);
-
-			if (exError) throw exError;
-
-			// Delete the routine
+			// Delete the routine (CASCADE handles routine_exercises)
 			const { error: routineError } = await supabase
 				.from("routines")
 				.delete()
