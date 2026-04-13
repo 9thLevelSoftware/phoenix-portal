@@ -135,7 +135,7 @@ export function CalendarWidgetMobile({
               key={day}
               onClick={() => !locked && onDateSelect(date)}
               disabled={locked}
-              aria-selected={selected}
+              aria-pressed={selected}
               aria-current={today ? "date" : undefined}
               className={cn(
                 // 44px minimum height for WCAG 2.5.5 touch target

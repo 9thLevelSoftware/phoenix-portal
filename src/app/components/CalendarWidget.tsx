@@ -155,7 +155,7 @@ export function CalendarWidget({
               key={day}
               onClick={() => !locked && onDateSelect(date)}
               disabled={locked}
-              aria-selected={selected}
+              aria-pressed={selected}
               aria-current={today ? "date" : undefined}
               className={cn(
                 "h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
