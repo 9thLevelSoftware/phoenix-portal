@@ -76,7 +76,7 @@ const navGroups: NavGroup[] = [
 		items: [
 			{ path: "/community", label: "Community", icon: Users },
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
-			{ path: "/records", label: "Leaderboard", icon: Award },
+			{ path: "/leaderboard", label: "Leaderboard", icon: Award },
 		],
 	},
 	{

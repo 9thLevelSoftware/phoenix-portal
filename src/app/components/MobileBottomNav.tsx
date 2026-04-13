@@ -45,7 +45,7 @@ const moreGroups = [
 		label: "Social",
 		items: [
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
-			{ path: "/records", label: "Leaderboard", icon: Award },
+			{ path: "/leaderboard", label: "Leaderboard", icon: Award },
 		],
 	},
 	{
