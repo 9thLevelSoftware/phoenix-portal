@@ -173,7 +173,8 @@ Deno.serve(async (req) => {
     const profileId: string | null = body.profileId ?? null;
 
     // Validate profileId format to prevent injection attacks
-    if (profileId && !UUID_REGEX.test(profileId)) {
+    // Allow "default" as a special case for legacy mobile clients without multi-profile
+    if (profileId && profileId !== 'default' && !UUID_REGEX.test(profileId)) {
       return new Response(
         JSON.stringify({ error: 'Invalid profileId format' }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
@@ -735,7 +736,12 @@ Deno.serve(async (req) => {
         .from('local_profiles')
         .select('id, name, color_index, device_id, created_at, updated_at')
         .eq('user_id', userId);
-      localProfiles = profilesData ?? [];
+      // Transform to camelCase for mobile DTO compatibility
+      localProfiles = (profilesData ?? []).map((p: Record<string, unknown>) => ({
+        id: p.id,
+        name: p.name,
+        colorIndex: p.color_index,
+      }));
 
       // External activities (paid users only, final page)
       const subGate = await requireSubscription(supabase, userId, 'EMBER', cors);

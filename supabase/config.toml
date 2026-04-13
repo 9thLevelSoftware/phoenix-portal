@@ -20,3 +20,11 @@ verify_jwt = false
 
 [functions.garmin-webhook]
 verify_jwt = false
+
+# Mobile sync functions use ES256-signed JWTs which Supabase edge runtime
+# doesn't verify by default. Functions handle their own auth via getUser().
+[functions.mobile-sync-push]
+verify_jwt = false
+
+[functions.mobile-sync-pull]
+verify_jwt = false
