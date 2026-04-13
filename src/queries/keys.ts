@@ -202,6 +202,14 @@ export const queryKeys = {
 		distribution: (metricType: string, metricKey?: string) =>
 			[...queryKeys.benchmarks.all, metricType, metricKey] as const,
 	},
+	leaderboard: {
+		all: ["leaderboard"] as const,
+		global: () => [...queryKeys.leaderboard.all, "global"] as const,
+		weekly: (week: string) =>
+			[...queryKeys.leaderboard.all, "weekly", week] as const,
+		userRank: (userId: string) =>
+			[...queryKeys.leaderboard.all, "user", userId] as const,
+	},
 	localProfiles: {
 		all: ["localProfiles"] as const,
 		byUser: (userId: string) =>
