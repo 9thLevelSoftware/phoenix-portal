@@ -56,16 +56,17 @@ export const globalLeaderboardOptions = () =>
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-export const weeklyCompetitionOptions = (weekStart?: string) =>
-  queryOptions({
-    queryKey: queryKeys.leaderboard.weekly(
-      weekStart ?? getCurrentWeekStart()
-    ),
+export const weeklyCompetitionOptions = (weekStart?: string) => {
+  // Normalize to ensure query key and request body use same value
+  const normalizedWeekStart = weekStart ?? getCurrentWeekStart();
+
+  return queryOptions({
+    queryKey: queryKeys.leaderboard.weekly(normalizedWeekStart),
     queryFn: async (): Promise<WeeklyCompetition> => {
       const { data, error } = await supabase.functions.invoke(
         "compute-rankings",
         {
-          body: { type: "weekly", weekStart },
+          body: { type: "weekly", weekStart: normalizedWeekStart },
         }
       );
 
@@ -74,6 +75,7 @@ export const weeklyCompetitionOptions = (weekStart?: string) =>
     },
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
+};
 
 export const userRankingOptions = (userId: string) =>
   queryOptions({
