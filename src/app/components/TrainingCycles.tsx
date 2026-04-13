@@ -8,10 +8,12 @@ import {
 	MoreVertical,
 	Plus,
 	Share2,
+	Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -26,6 +28,7 @@ import {
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useDeleteCycle } from "@/mutations/cycles";
 import { cycleListOptions } from "@/queries/cycles";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
@@ -38,7 +41,38 @@ export function TrainingCycles() {
 	);
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [cycleToDelete, setCycleToDelete] = useState<{
+		id: string;
+		name: string;
+		isActive: boolean;
+	} | null>(null);
+	const deleteCycleMutation = useDeleteCycle();
 	const allCycles = cycles ?? [];
+
+	const handleDeleteClick = (cycle: {
+		id: string;
+		name: string;
+		status: string;
+	}) => {
+		setCycleToDelete({
+			id: cycle.id,
+			name: cycle.name,
+			isActive: cycle.status === "active",
+		});
+		setDeleteDialogOpen(true);
+	};
+
+	const handleConfirmDelete = () => {
+		if (cycleToDelete) {
+			deleteCycleMutation.mutate(cycleToDelete.id, {
+				onSuccess: () => {
+					setDeleteDialogOpen(false);
+					setCycleToDelete(null);
+				},
+			});
+		}
+	};
 	const activeCycle = allCycles.find((c) => c.status === "active");
 
 	if (isPending) {
@@ -241,6 +275,19 @@ export function TrainingCycles() {
 														<Share2 className="w-4 h-4 mr-2" />
 														Share to Community
 													</DropdownMenuItem>
+													<DropdownMenuItem
+														className="text-red-400 hover:bg-red-900/20 cursor-pointer"
+														onClick={() =>
+															handleDeleteClick({
+																id: cycle.id,
+																name: cycle.name,
+																status: cycle.status,
+															})
+														}
+													>
+														<Trash2 className="w-4 h-4 mr-2" />
+														Delete
+													</DropdownMenuItem>
 												</DropdownMenuContent>
 											</DropdownMenu>
 										</div>
@@ -298,6 +345,19 @@ export function TrainingCycles() {
 					</div>
 				</div>
 			</PageShell>
+
+			{cycleToDelete && (
+				<DeleteConfirmDialog
+					open={deleteDialogOpen}
+					onOpenChange={setDeleteDialogOpen}
+					title={`Delete "${cycleToDelete.name}"?`}
+					itemName={cycleToDelete.name}
+					itemType="cycle"
+					isActive={cycleToDelete.isActive}
+					isDeleting={deleteCycleMutation.isPending}
+					onConfirm={handleConfirmDelete}
+				/>
+			)}
 
 			<ShareContentDialog
 				open={shareDialogOpen}
