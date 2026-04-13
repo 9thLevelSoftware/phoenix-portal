@@ -1,9 +1,12 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo } from "react";
 import { CalendarWidgetMobile } from "@/app/components/CalendarWidgetMobile";
 import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/components/ui/utils";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import {
+  createDayStateHelpers,
+  useCalendarState,
+} from "@/app/hooks/useCalendarState";
 
 interface CalendarWidgetProps {
   currentMonth: Date;
@@ -30,19 +33,9 @@ export function CalendarWidget({
 }: CalendarWidgetProps) {
   const isMobile = useIsMobile();
 
-  // useMemo must be called unconditionally (Rules of Hooks) before any early return
-  const { daysInMonth, startingDayOfWeek, year, month } = useMemo(() => {
-    const y = currentMonth.getFullYear();
-    const m = currentMonth.getMonth();
-    const firstDay = new Date(y, m, 1);
-    const lastDay = new Date(y, m + 1, 0);
-    return {
-      daysInMonth: lastDay.getDate(),
-      startingDayOfWeek: firstDay.getDay(),
-      year: y,
-      month: m,
-    };
-  }, [currentMonth]);
+  // useCalendarState must be called unconditionally (Rules of Hooks) before any early return
+  const { daysInMonth, startingDayOfWeek, year, month } =
+    useCalendarState(currentMonth);
 
   if (isMobile) {
     return (
@@ -68,28 +61,12 @@ export function CalendarWidget({
     onMonthChange(newDate);
   };
 
-  const isToday = (day: number) => {
-    const today = new Date();
-    return (
-      today.getFullYear() === year &&
-      today.getMonth() === month &&
-      today.getDate() === day
-    );
-  };
-
-  const hasWorkout = (day: number) => {
-    const key = `${year}-${month}-${day}`;
-    return workoutDates.has(key);
-  };
-
-  const isSelected = (day: number) => {
-    if (!selectedDate) return false;
-    return (
-      selectedDate.getFullYear() === year &&
-      selectedDate.getMonth() === month &&
-      selectedDate.getDate() === day
-    );
-  };
+  const { hasWorkout, isSelected, isToday } = createDayStateHelpers(
+    selectedDate,
+    workoutDates,
+    year,
+    month,
+  );
 
   const monthLabel = currentMonth.toLocaleDateString("en-US", {
     month: "long",
