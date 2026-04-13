@@ -559,7 +559,11 @@ async function computeUserRankings(
   });
 
   const masteryValues = (allMasteryData ?? []).map(m => m.mastered_count);
-  const masteryRank = masteredCount > 0 ? calculateRank(masteredCount, masteryValues) : totalUsers;
+  // Users with 0 mastery rank after all users with positive mastery
+  const usersWithMastery = masteryValues.length;
+  const masteryRank = masteredCount > 0
+    ? calculateRank(masteredCount, masteryValues)
+    : usersWithMastery + 1;
 
   rankings.push({
     metric: 'exerciseMastery',
