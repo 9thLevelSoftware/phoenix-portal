@@ -1,3 +1,20 @@
+# Auth configuration for multi-client session handling
+# Both the mobile app and web portal share this Supabase auth backend.
+# These settings prevent token refresh conflicts between clients.
+[auth]
+# JWT access tokens expire after 1 hour (default)
+jwt_expiry = 3600
+
+# Enable refresh token rotation for security (rotates on each refresh)
+enable_refresh_token_rotation = true
+
+# CRITICAL: Allow old refresh tokens to remain valid for 60 seconds after rotation.
+# This prevents multi-client conflicts where:
+# 1. Portal refreshes token -> mobile's old refresh token is rotated out
+# 2. Mobile tries to refresh within 60s -> old token still works
+# Default is 10s which is too short for independent client refresh cycles.
+refresh_token_reuse_interval = 60
+
 [functions.paddle-webhooks]
 verify_jwt = false
 
