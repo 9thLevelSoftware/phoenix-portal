@@ -214,14 +214,12 @@ interface GlobalRankingsProps {
 	data: GlobalLeaderboard | undefined;
 	isLoading: boolean;
 	currentUserId: string | undefined;
-	userRankings: UserRanking[] | undefined;
 }
 
 function GlobalRankings({
 	data,
 	isLoading,
 	currentUserId,
-	userRankings,
 }: GlobalRankingsProps) {
 	if (isLoading) {
 		return (
@@ -606,7 +604,6 @@ export function Leaderboard() {
 							data={globalData}
 							isLoading={globalLoading}
 							currentUserId={user?.id}
-							userRankings={userRankings}
 						/>
 					</TabsContent>
 
