@@ -227,3 +227,43 @@ export function useUpdateRoutine() {
 		},
 	});
 }
+
+export function useDeleteRoutine() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async (routineId: string) => {
+			if (!user) throw new Error("Must be logged in to delete routines");
+
+			// Delete routine_exercises first (FK constraint)
+			const { error: exError } = await supabase
+				.from("routine_exercises")
+				.delete()
+				.eq("routine_id", routineId);
+
+			if (exError) throw exError;
+
+			// Delete the routine
+			const { error: routineError } = await supabase
+				.from("routines")
+				.delete()
+				.eq("id", routineId)
+				.eq("user_id", user.id);
+
+			if (routineError) throw routineError;
+
+			return { id: routineId };
+		},
+
+		onSuccess: () => {
+			toast.success("Routine deleted");
+			queryClient.invalidateQueries({ queryKey: queryKeys.routines.all });
+		},
+
+		onError: (error: Error) => {
+			console.error("[useDeleteRoutine] failed:", error);
+			toast.error("Failed to delete routine. Please try again.");
+		},
+	});
+}
