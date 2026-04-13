@@ -332,11 +332,14 @@ describe("useDeleteCycle", () => {
 	it("shows user-friendly error on database error", async () => {
 		const { useDeleteCycle } = await import("../cycles");
 
-		const eqSecond = vi.fn(() =>
+		const maybeSingle = vi.fn(() =>
 			Promise.resolve({
+				data: null,
 				error: { message: "permission denied for table", code: "42501" },
 			}),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqSecond = vi.fn(() => ({ select }));
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
 		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
 
