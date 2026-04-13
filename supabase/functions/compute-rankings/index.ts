@@ -635,14 +635,28 @@ function buildRankings(
   entries.sort((a, b) => b.value - a.value);
 
   const total = entries.length;
-  return entries.slice(0, limit).map((entry, index) => ({
-    userId: entry.userId,
-    displayName: entry.profile?.display_name ?? 'Anonymous',
-    avatarUrl: entry.profile?.avatar_url ?? null,
-    rank: index + 1,
-    value: entry.value,
-    percentile: calculatePercentile(index + 1, total),
-  }));
+  const limitedEntries = entries.slice(0, limit);
+
+  // Calculate ranks with tie handling (like SQL RANK())
+  let currentRank = 1;
+  let previousValue: number | null = null;
+
+  return limitedEntries.map((entry, index) => {
+    // If this value differs from the previous, update rank to current position + 1
+    if (previousValue !== null && entry.value !== previousValue) {
+      currentRank = index + 1;
+    }
+    previousValue = entry.value;
+
+    return {
+      userId: entry.userId,
+      displayName: entry.profile?.display_name ?? 'Anonymous',
+      avatarUrl: entry.profile?.avatar_url ?? null,
+      rank: currentRank,
+      value: entry.value,
+      percentile: calculatePercentile(currentRank, total),
+    };
+  });
 }
 
 function buildRankingsFromRpc(
