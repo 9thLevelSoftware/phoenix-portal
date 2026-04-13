@@ -154,10 +154,14 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // =========================================================================
     // 3. Handle each request type
