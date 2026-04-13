@@ -5,7 +5,6 @@ import {
 	Dumbbell,
 	Edit,
 	Eye,
-	Flame,
 	MoreVertical,
 	Plus,
 	Share2,
@@ -25,7 +24,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import { EmptyState } from "@/app/components/ui/empty-state";
-import { Progress } from "@/app/components/ui/progress";
 import { CardSkeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { cycleListOptions } from "@/queries/cycles";
@@ -40,16 +38,7 @@ export function TrainingCycles() {
 	);
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
-	const allCycles = (cycles ?? []).map((c) => {
-		// Compute current_week from started_at instead of using the hardcoded DB value
-		let currentWeek = c.current_week;
-		if (c.status === "active" && c.started_at) {
-			const elapsed = Date.now() - c.started_at.getTime();
-			const weeksElapsed = Math.floor(elapsed / (7 * 24 * 60 * 60 * 1000));
-			currentWeek = Math.min(Math.max(weeksElapsed + 1, 1), c.duration_weeks);
-		}
-		return { ...c, current_week: currentWeek };
-	});
+	const allCycles = cycles ?? [];
 	const activeCycle = allCycles.find((c) => c.status === "active");
 
 	if (isPending) {
@@ -142,7 +131,7 @@ export function TrainingCycles() {
 
 			{/* Content */}
 			<PageShell>
-				{/* Active Cycle Card */}
+				{/* Active Cycle Card - Read Only */}
 				{activeCycle && (
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -150,40 +139,18 @@ export function TrainingCycles() {
 					>
 						<Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-chart-2/10 border-2 border-primary/50 relative overflow-hidden">
 							<div className="absolute top-4 right-4">
-								<Badge className="bg-primary text-white border-0">
-									<Flame className="w-3 h-3 mr-1" />
-									ACTIVE CYCLE
+								<Badge className="bg-primary/80 text-white border-0">
+									Active on mobile
 								</Badge>
 							</div>
 
-							<div className="mb-6">
+							<div className="mb-4">
 								<h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
 									{activeCycle.name}
 								</h2>
-								<div className="flex items-center gap-2 text-sm text-muted-foreground">
-									<span className="font-data">
-										Week {activeCycle.current_week} of{" "}
-										{activeCycle.duration_weeks}
-									</span>
-									<span>-</span>
-									<span>
-										{Math.round(
-											(activeCycle.current_week / activeCycle.duration_weeks) *
-												100,
-										)}
-										% complete
-									</span>
-								</div>
-							</div>
-
-							<div className="mb-6">
-								<Progress
-									value={
-										(activeCycle.current_week / activeCycle.duration_weeks) *
-										100
-									}
-									className="h-3 bg-surface-2"
-								/>
+								<p className="text-sm text-muted-foreground">
+									This cycle is currently active on your mobile app
+								</p>
 							</div>
 
 							<div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -199,16 +166,14 @@ export function TrainingCycles() {
 										<span>{activeCycle.rest_days} rest days/week</span>
 									</div>
 								</div>
-								<div className="flex gap-3 w-full sm:w-auto">
-									<Button
-										variant="outline"
-										onClick={() => navigate(`/cycles/${activeCycle.id}`)}
-										className="border-primary text-primary hover:bg-primary/10"
-									>
-										<Eye className="w-4 h-4 mr-2" />
-										View Full Cycle
-									</Button>
-								</div>
+								<Button
+									variant="outline"
+									onClick={() => navigate(`/cycles/${activeCycle.id}`)}
+									className="border-primary text-primary hover:bg-primary/10"
+								>
+									<Eye className="w-4 h-4 mr-2" />
+									View Full Cycle
+								</Button>
 							</div>
 						</Card>
 					</motion.div>
@@ -242,13 +207,17 @@ export function TrainingCycles() {
 												<Badge
 													className={
 														cycle.status === "active"
-															? "bg-success text-white border-0"
+															? "bg-primary/80 text-white border-0"
 															: cycle.status === "completed"
 																? "bg-muted text-white border-0"
 																: "bg-accent text-white border-0"
 													}
 												>
-													{cycle.status.toUpperCase()}
+													{cycle.status === "active"
+														? "Active on mobile"
+														: cycle.status === "completed"
+															? "COMPLETED"
+															: "DRAFT"}
 												</Badge>
 											</div>
 											<DropdownMenu>
@@ -310,17 +279,6 @@ export function TrainingCycles() {
 												</div>
 											)}
 										</div>
-
-										{cycle.status === "active" && (
-											<div className="mb-4">
-												<Progress
-													value={
-														(cycle.current_week / cycle.duration_weeks) * 100
-													}
-													className="h-2 bg-background"
-												/>
-											</div>
-										)}
 
 										<div className="flex gap-2">
 											<Button
