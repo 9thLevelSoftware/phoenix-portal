@@ -877,26 +877,13 @@ Deno.serve(async (req) => {
       externalActivities: externalActivityDtos,
     };
 
-    // DIAGNOSTIC: Log response summary
-    console.log('[PULL DIAG] Response summary:', {
+    console.log('[PULL] Response:', {
       sessions: sessionDtos.length,
       routines: routineDtos.length,
       cycles: cycleDtos.length,
       badges: badgeDtos.length,
-      personalRecords: personalRecordDtos.length,
-      localProfiles: localProfiles.length,
-      externalActivities: externalActivityDtos.length,
-      hasRpg: rpgDto !== null,
-      hasGamification: gamificationDto !== null,
       hasMore,
-      syncTime,
     });
-    if (routineDtos.length > 0) {
-      console.log('[PULL DIAG] Routines:', routineDtos.map((r: Record<string, unknown>) => ({ id: r.id, name: r.name })));
-    }
-    if (cycleDtos.length > 0) {
-      console.log('[PULL DIAG] Cycles:', cycleDtos.map((c: Record<string, unknown>) => ({ id: c.id, name: c.name })));
-    }
 
     return new Response(JSON.stringify(response), {
       headers: { ...cors, 'Content-Type': 'application/json' },
