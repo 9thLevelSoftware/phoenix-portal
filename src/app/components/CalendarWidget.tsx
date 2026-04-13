@@ -140,7 +140,7 @@ export function CalendarWidget({
               aria-selected={selected}
               aria-current={today ? "date" : undefined}
               className={cn(
-                "h-8 w-full rounded text-xs font-medium transition-colors relative",
+                "h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
                 "hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-primary",
                 selected && "bg-primary text-white",
                 today && !selected && "ring-1 ring-primary/50",
