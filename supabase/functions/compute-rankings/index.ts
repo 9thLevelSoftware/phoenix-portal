@@ -213,10 +213,15 @@ async function computeGlobalRankings(supabase: ReturnType<typeof createClient>):
   const LIMIT = 100;
 
   // Get eligible users (leaderboard_participation = true)
-  const { data: eligibleProfiles } = await supabase
+  const { data: eligibleProfiles, error: profilesError } = await supabase
     .from('profiles')
     .select('id, display_name, avatar_url, user_id')
     .eq('leaderboard_participation', true);
+
+  if (profilesError) {
+    console.error('Failed to fetch profiles:', profilesError);
+    throw new Error('Failed to fetch leaderboard profiles');
+  }
 
   const eligibleUserIds = (eligibleProfiles ?? []).map(p => p.user_id).filter(Boolean) as string[];
   const profilesByUserId = new Map(
@@ -235,22 +240,37 @@ async function computeGlobalRankings(supabase: ReturnType<typeof createClient>):
   }
 
   // Query gamification_stats for volume, workouts, streaks
-  const { data: stats } = await supabase
+  const { data: stats, error: statsError } = await supabase
     .from('gamification_stats')
     .select('user_id, total_volume_kg, total_workouts, longest_streak, current_streak')
     .in('user_id', eligibleUserIds);
 
+  if (statsError) {
+    console.error('Failed to fetch gamification stats:', statsError);
+    throw new Error('Failed to fetch leaderboard stats');
+  }
+
   const statsMap = new Map((stats ?? []).map(s => [s.user_id, s]));
 
   // Query PR counts via database function
-  const { data: prRankings } = await supabase.rpc('get_pr_count_rankings', {
+  const { data: prRankings, error: prError } = await supabase.rpc('get_pr_count_rankings', {
     result_limit: LIMIT,
   });
 
+  if (prError) {
+    console.error('Failed to fetch PR rankings:', prError);
+    throw new Error('Failed to compute PR rankings');
+  }
+
   // Query exercise mastery via database function
-  const { data: masteryRankings } = await supabase.rpc('get_exercise_mastery_rankings', {
+  const { data: masteryRankings, error: masteryError } = await supabase.rpc('get_exercise_mastery_rankings', {
     result_limit: LIMIT,
   });
+
+  if (masteryError) {
+    console.error('Failed to fetch mastery rankings:', masteryError);
+    throw new Error('Failed to compute mastery rankings');
+  }
 
   // Build total volume rankings
   const volumeRanked = buildRankings(
