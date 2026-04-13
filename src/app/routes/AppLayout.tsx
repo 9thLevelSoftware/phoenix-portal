@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useLocation, useOutlet } from "react-router";
 import { AppSidebar } from "@/app/components/AppSidebar";
-import { CelebrationOverlay } from "@/app/components/CelebrationOverlay";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
 import { MobileBottomNav } from "@/app/components/MobileBottomNav";
 import { OfflineBanner } from "@/app/components/OfflineBanner";
@@ -13,7 +12,6 @@ import { SkipToContent } from "@/app/components/SkipToContent";
 import { SidebarInset, SidebarProvider } from "@/app/components/ui/sidebar";
 import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
-import { useCelebrationTriggers } from "@/hooks/useCelebrationTriggers";
 import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
@@ -39,7 +37,6 @@ export function AppLayout() {
 	useRealtimeSync();
 	useNotificationSync();
 	useStreakSync();
-	useCelebrationTriggers();
 	const outlet = useOutlet();
 	const location = useLocation();
 	const {
@@ -90,7 +87,6 @@ export function AppLayout() {
 						</div>
 					</SidebarInset>
 
-					<CelebrationOverlay />
 					<Toaster />
 				</div>
 			</MotionConfig>

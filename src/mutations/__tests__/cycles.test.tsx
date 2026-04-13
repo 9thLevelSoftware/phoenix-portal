@@ -241,3 +241,117 @@ describe("useUpdateCycle", () => {
 		);
 	});
 });
+
+describe("useDeleteCycle", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("deletes cycle successfully when cycle exists", async () => {
+		const { useDeleteCycle } = await import("../cycles");
+
+		const eqSecond = vi.fn(() => ({
+			select: vi.fn(() => ({
+				maybeSingle: vi
+					.fn()
+					.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
+			})),
+		}));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
+
+		result.current.mutate("cycle-1");
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(from).toHaveBeenCalledWith("training_cycles");
+		expect(mockToast.success).toHaveBeenCalledWith("Training cycle deleted");
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.cycles.all,
+		});
+	});
+
+	it("throws error when cycle does not exist (no-op delete)", async () => {
+		const { useDeleteCycle } = await import("../cycles");
+
+		const eqSecond = vi.fn(() => ({
+			select: vi.fn(() => ({
+				maybeSingle: vi
+					.fn()
+					.mockResolvedValue({ data: null, error: null }),
+			})),
+		}));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
+
+		result.current.mutate("nonexistent-cycle");
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to delete training cycle. Please try again.",
+		);
+		expect(result.current.error?.message).toContain(
+			"Cycle not found or you don't have permission",
+		);
+	});
+
+	it("throws error when user lacks permission to delete cycle", async () => {
+		const { useDeleteCycle } = await import("../cycles");
+
+		const eqSecond = vi.fn(() => ({
+			select: vi.fn(() => ({
+				maybeSingle: vi
+					.fn()
+					.mockResolvedValue({ data: null, error: null }),
+			})),
+		}));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
+
+		result.current.mutate("other-users-cycle");
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to delete training cycle. Please try again.",
+		);
+	});
+
+	it("shows user-friendly error on database error", async () => {
+		const { useDeleteCycle } = await import("../cycles");
+
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({
+				data: null,
+				error: { message: "permission denied for table", code: "42501" },
+			}),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqSecond = vi.fn(() => ({ select }));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
+
+		result.current.mutate("cycle-1");
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to delete training cycle. Please try again.",
+		);
+	});
+});

@@ -50,7 +50,7 @@ Copy `.env.example` to `.env.local` and fill in values:
 `@` maps to `./src` (configured in vite.config.ts and tsconfig.json)
 
 ### State Management
-- **Client state:** Zustand 5 stores (celebration, community, replay, UI) in `src/stores/`
+- **Client state:** Zustand 5 stores (community, profileFilter, replay, UI) in `src/stores/`
 - **Server state:** TanStack Query with Supabase client, query hooks in `src/queries/`, mutation hooks in `src/mutations/`
 - **Auth state:** AuthProvider context with Supabase Auth
 
@@ -62,7 +62,6 @@ src/
 │   │   ├── [Feature].tsx          # Feature pages (Dashboard, Analytics, etc.)
 │   │   ├── [Feature]Mobile.tsx    # Mobile variants
 │   │   ├── ui/                    # shadcn/ui primitives (50+)
-│   │   ├── celebrations/          # Achievement animations
 │   │   ├── routine-builder/       # Routine creation subcomponents
 │   │   ├── cycle-builder/         # Training cycle subcomponents
 │   │   ├── session-replay/        # Session replay components

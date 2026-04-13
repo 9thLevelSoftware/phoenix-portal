@@ -9,10 +9,12 @@ import {
 	MoreVertical,
 	Plus,
 	Share2,
+	Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -38,7 +40,7 @@ import {
 	TooltipTrigger,
 } from "@/app/components/ui/tooltip";
 import { useAuth } from "@/app/hooks/useAuth";
-import { useToggleFavorite } from "@/mutations/routines";
+import { useDeleteRoutine, useToggleFavorite } from "@/mutations/routines";
 import { routineListOptions } from "@/queries/routines";
 import type { Routine } from "@/schemas/transforms";
 
@@ -52,7 +54,13 @@ export function RoutinesEnhanced() {
 	});
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [routineToDelete, setRoutineToDelete] = useState<{
+		id: string;
+		name: string;
+	} | null>(null);
 	const toggleFavoriteMutation = useToggleFavorite();
+	const deleteRoutineMutation = useDeleteRoutine();
 
 	const allRoutines = routines ?? [];
 	const favoriteRoutines = allRoutines.filter((r) => r.is_favorite);
@@ -63,6 +71,22 @@ export function RoutinesEnhanced() {
 			toggleFavoriteMutation.mutate({
 				routineId: id,
 				isFavorite: !routine.is_favorite,
+			});
+		}
+	};
+
+	const handleDeleteClick = (routine: { id: string; name: string }) => {
+		setRoutineToDelete(routine);
+		setDeleteDialogOpen(true);
+	};
+
+	const handleConfirmDelete = () => {
+		if (routineToDelete) {
+			deleteRoutineMutation.mutate(routineToDelete.id, {
+				onSuccess: () => {
+					setDeleteDialogOpen(false);
+					setRoutineToDelete(null);
+				},
 			});
 		}
 	};
@@ -145,6 +169,7 @@ export function RoutinesEnhanced() {
 								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
+								onDelete={handleDeleteClick}
 							/>
 						)}
 					</TabsContent>
@@ -163,6 +188,7 @@ export function RoutinesEnhanced() {
 								onToggleFavorite={handleToggleFavorite}
 								isFavorite={isFavorite}
 								onShare={() => setShareDialogOpen(true)}
+								onDelete={handleDeleteClick}
 							/>
 						)}
 					</TabsContent>
@@ -179,6 +205,18 @@ export function RoutinesEnhanced() {
 					estimated_duration: r.estimated_duration,
 				}))}
 			/>
+
+			{routineToDelete && (
+				<DeleteConfirmDialog
+					open={deleteDialogOpen}
+					onOpenChange={setDeleteDialogOpen}
+					title={`Delete "${routineToDelete.name}"?`}
+					itemName={routineToDelete.name}
+					itemType="routine"
+					isDeleting={deleteRoutineMutation.isPending}
+					onConfirm={handleConfirmDelete}
+				/>
+			)}
 		</div>
 	);
 }
@@ -190,6 +228,7 @@ function RoutineGrid({
 	onToggleFavorite,
 	isFavorite,
 	onShare,
+	onDelete,
 }: {
 	routines: Routine[];
 	onEdit: (id: string) => void;
@@ -197,6 +236,7 @@ function RoutineGrid({
 	onToggleFavorite: (id: string) => void;
 	isFavorite: (routine: Routine) => boolean;
 	onShare: () => void;
+	onDelete: (routine: { id: string; name: string }) => void;
 }) {
 	return (
 		<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -265,6 +305,13 @@ function RoutineGrid({
 											>
 												<Share2 className="w-4 h-4 mr-2" />
 												Share
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												className="text-red-400 hover:bg-red-900/20 cursor-pointer"
+												onClick={() => onDelete({ id: routine.id, name: routine.name })}
+											>
+												<Trash2 className="w-4 h-4 mr-2" />
+												Delete
 											</DropdownMenuItem>
 										</DropdownMenuContent>
 									</DropdownMenu>
