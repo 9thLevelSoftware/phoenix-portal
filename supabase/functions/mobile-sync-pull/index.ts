@@ -91,6 +91,15 @@ function isParityMode(body: PullRequest): boolean {
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 500;
 
+/**
+ * Maximum number of entity IDs to accept for parity-based filtering.
+ * PostgREST has limits on query parameter length; exceeding ~500 IDs in a
+ * NOT IN clause can cause query failures. If the client sends more IDs than
+ * this threshold, we skip parity filtering for that entity type (assuming
+ * the client is already up-to-date).
+ */
+const MAX_PARITY_IDS = 500;
+
 // Entity types in pagination order
 type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats';
 const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats'];
@@ -286,7 +295,12 @@ Deno.serve(async (req) => {
 
       // Parity mode: exclude sessions client already has
       const knownSessionIds = body.knownEntityIds?.sessionIds ?? [];
-      if (knownSessionIds.length > 0) {
+      if (knownSessionIds.length > MAX_PARITY_IDS) {
+        // Too many IDs for NOT IN clause — skip sessions (client is likely up-to-date)
+        console.log(`[PULL] Skipping sessions parity filter: ${knownSessionIds.length} IDs exceeds limit of ${MAX_PARITY_IDS}`);
+        // Return empty result by adding impossible condition
+        sessionsQuery = sessionsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+      } else if (knownSessionIds.length > 0) {
         // Filter: return sessions NOT in the known list
         sessionsQuery = sessionsQuery.not('id', 'in', `(${knownSessionIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
@@ -485,7 +499,10 @@ Deno.serve(async (req) => {
 
       // Parity mode: exclude routines client already has
       const knownRoutineIds = body.knownEntityIds?.routineIds ?? [];
-      if (knownRoutineIds.length > 0) {
+      if (knownRoutineIds.length > MAX_PARITY_IDS) {
+        console.log(`[PULL] Skipping routines parity filter: ${knownRoutineIds.length} IDs exceeds limit`);
+        routinesQuery = routinesQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+      } else if (knownRoutineIds.length > 0) {
         routinesQuery = routinesQuery.not('id', 'in', `(${knownRoutineIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         routinesQuery = routinesQuery.gt('updated_at', lastSyncISO);
@@ -594,7 +611,10 @@ Deno.serve(async (req) => {
 
       // Parity mode: exclude cycles client already has
       const knownCycleIds = body.knownEntityIds?.cycleIds ?? [];
-      if (knownCycleIds.length > 0) {
+      if (knownCycleIds.length > MAX_PARITY_IDS) {
+        console.log(`[PULL] Skipping cycles parity filter: ${knownCycleIds.length} IDs exceeds limit`);
+        cyclesQuery = cyclesQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+      } else if (knownCycleIds.length > 0) {
         cyclesQuery = cyclesQuery.not('id', 'in', `(${knownCycleIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         cyclesQuery = cyclesQuery.gt('updated_at', lastSyncISO);
@@ -694,7 +714,10 @@ Deno.serve(async (req) => {
 
       // Parity mode: exclude badges client already has
       const knownBadgeIds = body.knownEntityIds?.badgeIds ?? [];
-      if (knownBadgeIds.length > 0) {
+      if (knownBadgeIds.length > MAX_PARITY_IDS) {
+        console.log(`[PULL] Skipping badges parity filter: ${knownBadgeIds.length} IDs exceeds limit`);
+        badgesQuery = badgesQuery.eq('id', -1); // Badges use integer IDs
+      } else if (knownBadgeIds.length > 0) {
         badgesQuery = badgesQuery.not('id', 'in', `(${knownBadgeIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         badgesQuery = badgesQuery.gt('earned_at', lastSyncISO);
@@ -788,7 +811,10 @@ Deno.serve(async (req) => {
 
       // Parity mode: exclude personal records client already has
       const knownPRIds = body.knownEntityIds?.personalRecordIds ?? [];
-      if (knownPRIds.length > 0) {
+      if (knownPRIds.length > MAX_PARITY_IDS) {
+        console.log(`[PULL] Skipping PRs parity filter: ${knownPRIds.length} IDs exceeds limit`);
+        personalRecordsQuery = personalRecordsQuery.eq('id', -1); // PRs use integer IDs
+      } else if (knownPRIds.length > 0) {
         personalRecordsQuery = personalRecordsQuery.not('id', 'in', `(${knownPRIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         personalRecordsQuery = personalRecordsQuery.gt('updated_at', lastSyncISO);
