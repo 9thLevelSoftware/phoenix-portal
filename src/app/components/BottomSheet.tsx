@@ -53,7 +53,7 @@ export function BottomSheet({
 		};
 	}, [isOpen]);
 
-	const handleDragEnd = (_: any, info: PanInfo) => {
+	const handleDragEnd = (_: unknown, info: PanInfo) => {
 		const velocity = info.velocity.y;
 		const currentY = y.get();
 

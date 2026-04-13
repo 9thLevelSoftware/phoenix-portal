@@ -36,12 +36,12 @@ export function createSupabaseMock() {
 	 * Create a query builder for a specific table with proper chain validation
 	 */
 	function createQueryBuilder(table: string) {
-		let currentFilter: string | null = null;
-		let selectFields = "*";
+		let _currentFilter: string | null = null;
+		let _selectFields = "*";
 
 		return {
 			select: vi.fn((fields = "*") => {
-				selectFields = fields;
+				_selectFields = fields;
 				return createChainable(table);
 			}),
 			insert: vi.fn((data: unknown) => ({
@@ -57,44 +57,44 @@ export function createSupabaseMock() {
 		function createChainable(tableName: string) {
 			const chain = {
 				eq: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}=${value}`;
+					_currentFilter = `${column}=${value}`;
 					return createChainable(tableName);
 				}),
 				neq: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}!=${value}`;
+					_currentFilter = `${column}!=${value}`;
 					return createChainable(tableName);
 				}),
 				in: vi.fn((column: string, values: unknown[]) => {
-					currentFilter = `${column} IN (${values.join(",")})`;
+					_currentFilter = `${column} IN (${values.join(",")})`;
 					return createChainable(tableName);
 				}),
 				gt: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}>${value}`;
+					_currentFilter = `${column}>${value}`;
 					return createChainable(tableName);
 				}),
 				gte: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}>=${value}`;
+					_currentFilter = `${column}>=${value}`;
 					return createChainable(tableName);
 				}),
 				lt: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}<${value}`;
+					_currentFilter = `${column}<${value}`;
 					return createChainable(tableName);
 				}),
 				lte: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}<=${value}`;
+					_currentFilter = `${column}<=${value}`;
 					return createChainable(tableName);
 				}),
 				not: vi.fn((column: string, operator: string, value: unknown) => {
-					currentFilter = `${column} ${operator} ${value}`;
+					_currentFilter = `${column} ${operator} ${value}`;
 					return createChainable(tableName);
 				}),
-				order: vi.fn((column: string, options?: { ascending?: boolean }) => {
+				order: vi.fn((_column: string, _options?: { ascending?: boolean }) => {
 					return createChainable(tableName);
 				}),
-				limit: vi.fn((count: number) => {
+				limit: vi.fn((_count: number) => {
 					return createChainable(tableName);
 				}),
-				range: vi.fn((from: number, to: number) => {
+				range: vi.fn((_from: number, _to: number) => {
 					return createChainable(tableName);
 				}),
 				single: vi.fn(() => resolveResult(tableName)),
@@ -108,11 +108,11 @@ export function createSupabaseMock() {
 		function createFilteredChainable(tableName: string, updateData: unknown) {
 			return {
 				eq: vi.fn((column: string, value: unknown) => {
-					currentFilter = `${column}=${value}`;
+					_currentFilter = `${column}=${value}`;
 					return createFilteredChainable(tableName, updateData);
 				}),
 				in: vi.fn((column: string, values: unknown[]) => {
-					currentFilter = `${column} IN (${values.join(",")})`;
+					_currentFilter = `${column} IN (${values.join(",")})`;
 					return createFilteredChainable(tableName, updateData);
 				}),
 				select: vi.fn(() => resolveResult(tableName)),

@@ -337,11 +337,27 @@ Deno.serve(async (req) => {
 
     const {
       data: { user },
+      error: authError,
     } = await supabaseAuth.auth.getUser();
 
-    if (!user) {
+    // TEMP DIAGNOSTIC: Log auth failure details
+    if (authError || !user) {
+      console.error('[AUTH DEBUG] getUser failed:', {
+        error: authError?.message ?? 'No error message',
+        errorCode: authError?.code ?? 'N/A',
+        errorStatus: authError?.status ?? 'N/A',
+        hasUser: !!user,
+        authHeaderPrefix: authHeader?.substring(0, 30) ?? 'missing',
+      });
       return new Response(
-        JSON.stringify({ error: 'Not authenticated' }),
+        JSON.stringify({
+          error: 'Not authenticated',
+          // TEMP: Include debug info in response
+          debug: {
+            authError: authError?.message ?? 'user is null',
+            authErrorCode: authError?.code ?? 'N/A',
+          }
+        }),
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
