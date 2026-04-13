@@ -40,7 +40,12 @@ export function CalendarWidget({
   }, [currentMonth]);
 
   const navigateMonth = (direction: "prev" | "next") => {
-    const newDate = new Date(currentMonth);
+    // Set day to 1 first to avoid month overflow (e.g., Jan 31 + 1 month = Mar 3)
+    const newDate = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      1
+    );
     newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
     onMonthChange(newDate);
   };
