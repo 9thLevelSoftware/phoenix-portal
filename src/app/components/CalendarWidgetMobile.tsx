@@ -1,11 +1,8 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo } from "react";
-import { CalendarWidgetMobile } from "@/app/components/CalendarWidgetMobile";
-import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/components/ui/utils";
-import { useIsMobile } from "@/app/hooks/useIsMobile";
 
-interface CalendarWidgetProps {
+interface CalendarWidgetMobileProps {
   currentMonth: Date;
   onMonthChange: (date: Date) => void;
   /**
@@ -20,17 +17,14 @@ interface CalendarWidgetProps {
 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-export function CalendarWidget({
+export function CalendarWidgetMobile({
   currentMonth,
   onMonthChange,
   workoutDates,
   selectedDate,
   onDateSelect,
   isDateLocked,
-}: CalendarWidgetProps) {
-  const isMobile = useIsMobile();
-
-  // useMemo must be called unconditionally (Rules of Hooks) before any early return
+}: CalendarWidgetMobileProps) {
   const { daysInMonth, startingDayOfWeek, year, month } = useMemo(() => {
     const y = currentMonth.getFullYear();
     const m = currentMonth.getMonth();
@@ -44,25 +38,12 @@ export function CalendarWidget({
     };
   }, [currentMonth]);
 
-  if (isMobile) {
-    return (
-      <CalendarWidgetMobile
-        currentMonth={currentMonth}
-        onMonthChange={onMonthChange}
-        workoutDates={workoutDates}
-        selectedDate={selectedDate}
-        onDateSelect={onDateSelect}
-        isDateLocked={isDateLocked}
-      />
-    );
-  }
-
   const navigateMonth = (direction: "prev" | "next") => {
     // Set day to 1 first to avoid month overflow (e.g., Jan 31 + 1 month = Mar 3)
     const newDate = new Date(
       currentMonth.getFullYear(),
       currentMonth.getMonth(),
-      1
+      1,
     );
     newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
     onMonthChange(newDate);
@@ -98,46 +79,45 @@ export function CalendarWidget({
 
   return (
     <div className="bg-surface-2 rounded-lg border border-secondary p-4">
-      {/* Header */}
+      {/* Header — tall touch targets for prev/next */}
       <div className="flex items-center justify-between mb-4">
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
+          type="button"
           onClick={() => navigateMonth("prev")}
-          className="h-8 w-8"
           aria-label="Previous month"
+          className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-white hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
         >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="text-sm font-medium text-white">{monthLabel}</span>
-        <Button
-          variant="ghost"
-          size="icon"
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <span className="text-base font-semibold text-white">{monthLabel}</span>
+        <button
+          type="button"
           onClick={() => navigateMonth("next")}
-          className="h-8 w-8"
           aria-label="Next month"
+          className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-white hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
         >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+          <ChevronRight className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Day headers */}
+      {/* Day-of-week headers */}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {DAYS.map((day) => (
           <div
             key={day}
-            className="text-center text-xs text-muted-foreground font-medium"
+            className="text-center text-xs text-muted-foreground font-medium py-1"
           >
             {day}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
+      {/* Calendar grid — 44px minimum tap targets */}
       <div className="grid grid-cols-7 gap-1">
         {/* Empty cells for days before month start */}
         {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-          <div key={`empty-${i}`} className="h-8" />
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable positional placeholders
+          <div key={`empty-${i}`} className="h-11" />
         ))}
 
         {/* Day cells */}
@@ -158,19 +138,21 @@ export function CalendarWidget({
               aria-selected={selected}
               aria-current={today ? "date" : undefined}
               className={cn(
-                "h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
-                "hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-primary",
+                // 44px minimum height for WCAG 2.5.5 touch target
+                "h-11 w-full rounded-lg text-sm font-medium transition-colors motion-reduce:transition-none relative",
+                "active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary",
+                !selected && !today && "hover:bg-secondary text-white",
                 selected && "bg-primary text-white",
-                today && !selected && "ring-1 ring-primary/50",
-                locked && "opacity-40 cursor-not-allowed"
+                today && !selected && "ring-2 ring-primary/50 text-white",
+                locked && "opacity-40 cursor-not-allowed",
               )}
             >
               {day}
               {workout && (
                 <span
                   className={cn(
-                    "absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full",
-                    selected ? "bg-white" : "bg-primary"
+                    "absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full",
+                    selected ? "bg-white" : "bg-primary",
                   )}
                 />
               )}
