@@ -339,14 +339,20 @@ async function computeWeeklyRankings(
   const LIMIT = 100;
   const { start, end } = getWeekBounds(weekStart);
 
-  // Check for special events
-  const { data: events } = await supabase
+  // Check for special events (prefer most recently started if overlapping)
+  const { data: events, error: eventsError } = await supabase
     .from('leaderboard_events')
     .select('id, name, metric, metric_label, start_date, end_date')
     .lte('start_date', end)
     .gte('end_date', start)
     .eq('is_active', true)
+    .order('start_date', { ascending: false })
     .limit(1);
+
+  if (eventsError) {
+    console.error('Failed to fetch leaderboard events:', eventsError);
+    // Non-fatal: fall back to normal metric rotation
+  }
 
   const event = events?.[0];
   const isSpecialEvent = !!event;
