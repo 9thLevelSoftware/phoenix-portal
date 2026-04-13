@@ -51,6 +51,7 @@ export const globalLeaderboardOptions = () =>
       );
 
       if (error) throw error;
+      if (!data) throw new Error("No data returned from compute-rankings");
       return data as GlobalLeaderboard;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -71,6 +72,7 @@ export const weeklyCompetitionOptions = (weekStart?: string) => {
       );
 
       if (error) throw error;
+      if (!data) throw new Error("No data returned from compute-rankings");
       return data as WeeklyCompetition;
     },
     staleTime: 2 * 60 * 1000, // 2 minutes
@@ -89,6 +91,7 @@ export const userRankingOptions = (userId: string) =>
       );
 
       if (error) throw error;
+      if (!data) throw new Error("No data returned from compute-rankings");
       return data as UserRanking[];
     },
     staleTime: 5 * 60 * 1000,
