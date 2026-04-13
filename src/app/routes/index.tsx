@@ -71,9 +71,9 @@ const SessionDetail = lazyWithReload(() =>
 		default: m.SessionDetail,
 	})),
 );
-const PersonalRecords = lazyWithReload(() =>
-	import("@/app/components/PersonalRecords").then((m) => ({
-		default: m.PersonalRecords,
+const Leaderboard = lazyWithReload(() =>
+	import("@/app/components/Leaderboard").then((m) => ({
+		default: m.Leaderboard,
 	})),
 );
 const Analytics = lazyWithReload(() =>
@@ -170,7 +170,6 @@ export function AppRoutes() {
 							<Route path="/dashboard" element={<Dashboard />} />
 							<Route path="/history" element={<WorkoutHistory />} />
 							<Route path="/history/:sessionId" element={<SessionDetail />} />
-							<Route path="/records" element={<PersonalRecords />} />
 							<Route path="/goals" element={<Goals />} />
 							<Route path="/recovery" element={<Recovery />} />
 						</Route>
@@ -180,6 +179,7 @@ export function AppRoutes() {
 							<Route path="/challenges" element={<Challenges />} />
 							<Route path="/analytics" element={<Analytics />} />
 							<Route path="/community" element={<Community />} />
+							<Route path="/leaderboard" element={<Leaderboard />} />
 							<Route path="/routines" element={<RoutinesEnhanced />} />
 							<Route path="/routines/new" element={<RoutineBuilder />} />
 							<Route
