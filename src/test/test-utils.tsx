@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type RenderOptions, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -31,7 +32,7 @@ export function renderWithProviders(
 }
 
 // Mock user for tests that need auth
-export const mockUser = {
+export const mockUser: User = {
 	id: "test-user-id",
 	email: "test@example.com",
 	aud: "authenticated",
@@ -39,7 +40,18 @@ export const mockUser = {
 	app_metadata: {},
 	user_metadata: {},
 	created_at: new Date().toISOString(),
-} as any;
+	// Required fields with test values
+	phone: "",
+	confirmation_sent_at: undefined,
+	confirmed_at: undefined,
+	email_confirmed_at: new Date().toISOString(),
+	phone_confirmed_at: undefined,
+	last_sign_in_at: new Date().toISOString(),
+	updated_at: new Date().toISOString(),
+	identities: [],
+	is_anonymous: false,
+	factors: [],
+};
 
 // Mock auth return value
 export const mockAuthReturn = {

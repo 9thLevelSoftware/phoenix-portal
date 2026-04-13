@@ -82,9 +82,7 @@ const BodyTab = lazy(() => import("@/app/components/analytics/BodyTab"));
 const PerformanceTab = lazy(
 	() => import("@/app/components/analytics/PerformanceTab"),
 );
-const RecordsTab = lazy(
-	() => import("@/app/components/analytics/RecordsTab"),
-);
+const RecordsTab = lazy(() => import("@/app/components/analytics/RecordsTab"));
 
 // Lazy-loaded tab components for code splitting (mobile)
 const MobileOverviewTab = lazy(
@@ -1049,7 +1047,8 @@ export function Analytics() {
 					</div>
 					<div className="flex overflow-x-auto gap-3 px-4 py-4">
 						{Array.from({ length: 5 }).map((_, i) => (
-							<div key={i} className="min-w-[120px]">
+							// biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders
+							<div key={`skeleton-mobile-${i}`} className="min-w-[120px]">
 								<StatCardSkeleton />
 							</div>
 						))}
@@ -1065,7 +1064,8 @@ export function Analytics() {
 						<Skeleton className="h-4 w-64 mb-8" />
 						<div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
 							{Array.from({ length: 5 }).map((_, i) => (
-								<StatCardSkeleton key={i} />
+								// biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders
+								<StatCardSkeleton key={`skeleton-desktop-${i}`} />
 							))}
 						</div>
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1104,6 +1104,7 @@ export function Analytics() {
 								</SelectContent>
 							</Select>
 							<button
+								type="button"
 								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
 								onClick={() => {
 									const rows = mobileVolumeData.map((d) =>
@@ -1188,6 +1189,7 @@ export function Analytics() {
 							{ value: "records", label: "Records" },
 						].map((tab) => (
 							<button
+								type="button"
 								key={tab.value}
 								onClick={() => setActiveTab(tab.value)}
 								className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
