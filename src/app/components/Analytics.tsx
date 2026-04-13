@@ -82,6 +82,9 @@ const BodyTab = lazy(() => import("@/app/components/analytics/BodyTab"));
 const PerformanceTab = lazy(
 	() => import("@/app/components/analytics/PerformanceTab"),
 );
+const RecordsTab = lazy(
+	() => import("@/app/components/analytics/RecordsTab"),
+);
 
 // Lazy-loaded tab components for code splitting (mobile)
 const MobileOverviewTab = lazy(
@@ -129,7 +132,7 @@ const TAB_MIGRATION: Record<string, string> = {
 	performance: "performance",
 };
 
-const VALID_TABS = ["overview", "progress", "body", "performance"];
+const VALID_TABS = ["overview", "progress", "body", "performance", "records"];
 
 // Time period to query period mapping
 function periodToDays(timePeriod: string): string {
@@ -1174,7 +1177,7 @@ export function Analytics() {
 					))}
 				</div>
 
-				{/* Scrollable Tabs -- 4 tabs */}
+				{/* Scrollable Tabs -- 5 tabs */}
 				<div className="overflow-x-auto scrollbar-hide border-b border-secondary">
 					<div className="flex px-4 gap-1">
 						{[
@@ -1182,6 +1185,7 @@ export function Analytics() {
 							{ value: "progress", label: "Progress" },
 							{ value: "body", label: "Body" },
 							{ value: "performance", label: "Performance" },
+							{ value: "records", label: "Records" },
 						].map((tab) => (
 							<button
 								key={tab.value}
@@ -1253,6 +1257,12 @@ export function Analytics() {
 							{activeTab === "performance" && (
 								<Suspense fallback={<AnalyticsTabSkeleton />}>
 									<MobilePerformanceTab />
+								</Suspense>
+							)}
+
+							{activeTab === "records" && (
+								<Suspense fallback={<AnalyticsTabSkeleton />}>
+									<RecordsTab unit={unit} />
 								</Suspense>
 							)}
 						</>
@@ -1415,6 +1425,7 @@ export function Analytics() {
 									<TabsTrigger value="progress">Progress</TabsTrigger>
 									<TabsTrigger value="body">Body</TabsTrigger>
 									<TabsTrigger value="performance">Performance</TabsTrigger>
+									<TabsTrigger value="records">Records</TabsTrigger>
 								</TabsList>
 
 								{/* ====== TAB 1: OVERVIEW ====== */}
@@ -1477,6 +1488,13 @@ export function Analytics() {
 											volumeComparison={volumeComparison}
 											unit={unit}
 										/>
+									</Suspense>
+								</TabsContent>
+
+								{/* ====== TAB 5: RECORDS ====== */}
+								<TabsContent value="records" className="space-y-6">
+									<Suspense fallback={<AnalyticsTabSkeleton />}>
+										<RecordsTab unit={unit} />
 									</Suspense>
 								</TabsContent>
 							</Tabs>
