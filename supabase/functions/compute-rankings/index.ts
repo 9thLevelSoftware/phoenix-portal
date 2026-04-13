@@ -523,11 +523,19 @@ async function computeUserRankings(
       totalUsers,
     });
   } else {
+    // User has 0 PRs. Get count of users with >0 PRs from RPC (already called for global rankings)
+    const { data: allPrUsers } = await supabase.rpc('get_pr_count_rankings', {
+      result_limit: totalUsers,
+    });
+    // All 0-PR users are tied at rank = (users with PRs) + 1
+    const usersWithPRs = (allPrUsers ?? []).length;
+    const zeroRank = usersWithPRs + 1;
+
     rankings.push({
       metric: 'prCount',
-      rank: totalUsers,
+      rank: zeroRank,
       value: 0,
-      percentile: 0,
+      percentile: calculatePercentile(zeroRank, totalUsers),
       totalUsers,
     });
   }
