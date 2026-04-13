@@ -79,7 +79,7 @@ function getWeeklyMetric(weekStart: string): { metric: string; label: string } {
   const startOfYear = new Date(date.getFullYear(), 0, 1);
   const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
   const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
-  const metricIndex = weekNumber % WEEKLY_METRICS.length;
+  const metricIndex = (weekNumber - 1) % WEEKLY_METRICS.length;
   return WEEKLY_METRICS[metricIndex];
 }
 
