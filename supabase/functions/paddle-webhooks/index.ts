@@ -162,6 +162,8 @@ Deno.serve(async (req) => {
     // Parse the event after signature verification
     const event = JSON.parse(rawBody);
 
+    console.log(`[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${event.data?.customer_id}`);
+
     if (!event.event_id || !event.event_type || !event.data) {
       return new Response(
         JSON.stringify({ error: "Invalid event payload" }),
@@ -245,12 +247,14 @@ Deno.serve(async (req) => {
       .upsert(upsertData, { onConflict: "user_id" });
 
     if (error) {
-      console.error(`Error upserting subscription for ${event.event_type}:`, error);
+      console.error(`[BILLING_ALERT] Error upserting subscription for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: responseHeaders }
       );
     }
+
+    console.log(`[Paddle] Successfully processed ${event.event_type} for user ${userId}, paddle_customer_id: ${event.data.customer_id}`);
 
     return new Response(
       JSON.stringify({ received: true }),
