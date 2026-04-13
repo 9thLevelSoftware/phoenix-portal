@@ -237,13 +237,16 @@ export function useDeleteRoutine() {
 			if (!user) throw new Error("Must be logged in to delete routines");
 
 			// Delete the routine (CASCADE handles routine_exercises)
-			const { error: routineError } = await supabase
+			const { data: deleted, error: routineError } = await supabase
 				.from("routines")
 				.delete()
 				.eq("id", routineId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 
 			if (routineError) throw routineError;
+			if (!deleted) throw new Error("Routine not found or you don't have permission to delete it");
 
 			return { id: routineId };
 		},
