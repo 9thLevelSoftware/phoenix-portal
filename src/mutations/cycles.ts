@@ -184,3 +184,43 @@ export function useUpdateCycle() {
 		},
 	});
 }
+
+export function useDeleteCycle() {
+	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: async (cycleId: string) => {
+			if (!user) throw new Error("Must be logged in to delete cycles");
+
+			// Delete cycle_days first (FK constraint)
+			const { error: daysError } = await supabase
+				.from("cycle_days")
+				.delete()
+				.eq("cycle_id", cycleId);
+
+			if (daysError) throw daysError;
+
+			// Delete the cycle
+			const { error: cycleError } = await supabase
+				.from("training_cycles")
+				.delete()
+				.eq("id", cycleId)
+				.eq("user_id", user.id);
+
+			if (cycleError) throw cycleError;
+
+			return { id: cycleId };
+		},
+
+		onSuccess: () => {
+			toast.success("Training cycle deleted");
+			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+		},
+
+		onError: (error: Error) => {
+			console.error("[useDeleteCycle] failed:", error);
+			toast.error("Failed to delete training cycle. Please try again.");
+		},
+	});
+}
