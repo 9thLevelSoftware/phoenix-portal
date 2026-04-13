@@ -568,16 +568,25 @@ async function computeUserRankings(
 
   // Exercise Mastery ranking
   // Count distinct exercises with 10+ sessions for the user
-  const { data: masteryData } = await supabase
+  // Must match RPC logic: COUNT(DISTINCT session_id) >= 10
+  const { data: masteryData, error: masteryQueryError } = await supabase
     .from('exercises')
-    .select('name')
+    .select('name, session_id')
     .eq('user_id', targetUserId);
 
-  const exerciseCounts = new Map<string, number>();
-  for (const ex of masteryData ?? []) {
-    exerciseCounts.set(ex.name, (exerciseCounts.get(ex.name) ?? 0) + 1);
+  if (masteryQueryError) {
+    console.error('Failed to fetch user exercise data:', masteryQueryError);
   }
-  const masteredCount = [...exerciseCounts.values()].filter(c => c >= 10).length;
+
+  // Group by exercise name, count distinct sessions
+  const exerciseSessionMap = new Map<string, Set<string>>();
+  for (const ex of masteryData ?? []) {
+    if (!exerciseSessionMap.has(ex.name)) {
+      exerciseSessionMap.set(ex.name, new Set());
+    }
+    exerciseSessionMap.get(ex.name)!.add(ex.session_id);
+  }
+  const masteredCount = [...exerciseSessionMap.values()].filter(sessions => sessions.size >= 10).length;
 
   // Get all users' mastery for ranking
   const { data: allMasteryData } = await supabase.rpc('get_exercise_mastery_rankings', {
