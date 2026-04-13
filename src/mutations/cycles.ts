@@ -193,15 +193,7 @@ export function useDeleteCycle() {
 		mutationFn: async (cycleId: string) => {
 			if (!user) throw new Error("Must be logged in to delete cycles");
 
-			// Delete cycle_days first (FK constraint)
-			const { error: daysError } = await supabase
-				.from("cycle_days")
-				.delete()
-				.eq("cycle_id", cycleId);
-
-			if (daysError) throw daysError;
-
-			// Delete the cycle
+			// Delete the cycle (CASCADE handles cycle_days)
 			const { error: cycleError } = await supabase
 				.from("training_cycles")
 				.delete()
