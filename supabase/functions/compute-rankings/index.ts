@@ -607,22 +607,24 @@ function buildRankings(
 }
 
 function buildRankingsFromRpc(
-  rpcResults: Array<{ user_id: string; [key: string]: unknown }>,
+  rpcResults: Array<{ user_id: string; rank?: number; [key: string]: unknown }>,
   profilesMap: Map<string, { id: string; display_name: string | null; avatar_url: string | null; user_id: string | null }>,
   totalEligible: number
 ): LeaderboardEntry[] {
   // RPC results are already ordered and limited
   // Get the value field (pr_count or mastered_count)
-  return rpcResults.map((result, index) => {
+  return rpcResults.map((result) => {
     const profile = profilesMap.get(result.user_id);
     const value = (result.pr_count ?? result.mastered_count ?? 0) as number;
+    // Use SQL RANK() from RPC, preserving ties
+    const rank = (result.rank as number) ?? 1;
     return {
       userId: result.user_id,
       displayName: profile?.display_name ?? 'Anonymous',
       avatarUrl: profile?.avatar_url ?? null,
-      rank: index + 1,
+      rank,
       value,
-      percentile: calculatePercentile(index + 1, totalEligible),
+      percentile: calculatePercentile(rank, totalEligible),
     };
   });
 }
