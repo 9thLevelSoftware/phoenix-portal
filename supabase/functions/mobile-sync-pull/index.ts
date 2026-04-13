@@ -12,11 +12,23 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Authorization: Bearer <GoTrue JWT>
  * Body: {
  *   deviceId: string,
- *   lastSync: number,
+ *   lastSync?: number,
  *   profileId?: string,
- *   cursor?: string,     // Optional: pagination cursor from previous response
- *   pageSize?: number    // Optional: entities per page (default 100, max 500)
+ *   cursor?: string,          // Optional: pagination cursor from previous response
+ *   pageSize?: number,        // Optional: entities per page (default 100, max 500)
+ *   knownEntityIds?: {        // Optional: parity-based sync (new)
+ *     sessionIds?: string[],
+ *     routineIds?: string[],
+ *     cycleIds?: string[],
+ *     badgeIds?: string[],
+ *     personalRecordIds?: string[]
+ *   }
  * }
+ *
+ * Sync Modes:
+ *   - Parity mode (new): client sends knownEntityIds → server returns entities NOT in those lists
+ *   - Timestamp mode (legacy): client sends lastSync → server returns entities modified since
+ *   - Full sync: neither provided → server returns all entities
  *
  * Pagination:
  *   - When cursor is absent, starts from the beginning
@@ -28,6 +40,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Backward Compatibility:
  *   - cursor and pageSize are optional with sensible defaults
  *   - Existing clients without pagination continue to work
+ *   - lastSync still supported for timestamp-based filtering
  *
  * Returns:
  *   {
@@ -48,12 +61,29 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 interface PullRequest {
   deviceId: string;
-  lastSync: number;
+  /** @deprecated Use knownEntityIds for parity-based sync */
+  lastSync?: number;
   profileId?: string;
   /** Optional cursor for pagination. If absent, starts from beginning. */
   cursor?: string;
   /** Optional page size. Defaults to 100. */
   pageSize?: number;
+  /** Entity IDs client already has. Server returns entities NOT in these lists. */
+  knownEntityIds?: {
+    sessionIds?: string[];
+    routineIds?: string[];
+    cycleIds?: string[];
+    badgeIds?: string[];
+    personalRecordIds?: string[];
+  };
+}
+
+/**
+ * Determines if the request uses parity-based sync (new) or timestamp-based (legacy).
+ * Parity mode is used when knownEntityIds is provided.
+ */
+function isParityMode(body: PullRequest): boolean {
+  return !!body.knownEntityIds;
 }
 
 // ─── Pagination Configuration ───────────────────────────────────────
@@ -184,6 +214,20 @@ Deno.serve(async (req) => {
     const lastSyncISO = new Date(body.lastSync ?? 0).toISOString();
     const syncTime = Date.now();
 
+    // DIAGNOSTIC: Log incoming request parameters
+    console.log('[PULL] Request:', {
+      userId,
+      parityMode: isParityMode(body),
+      knownSessions: body.knownEntityIds?.sessionIds?.length ?? 0,
+      knownRoutines: body.knownEntityIds?.routineIds?.length ?? 0,
+      knownCycles: body.knownEntityIds?.cycleIds?.length ?? 0,
+      knownBadges: body.knownEntityIds?.badgeIds?.length ?? 0,
+      knownPersonalRecords: body.knownEntityIds?.personalRecordIds?.length ?? 0,
+      lastSync: body.lastSync, // Legacy
+      profileId,
+      cursor: body.cursor,
+    });
+
     // Pagination: parse cursor and pageSize with defaults
     const pageSize = Math.min(body.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const cursor = body.cursor ? decodeCursor(body.cursor) : null;
@@ -236,10 +280,20 @@ Deno.serve(async (req) => {
         .from('workout_sessions')
         .select('*')
         .eq('user_id', userId)
-        .or(`updated_at.gt.${lastSyncISO},started_at.gt.${lastSyncISO}`)
         .order('updated_at', { ascending: true })
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1); // +1 to detect hasMore
+
+      // Parity mode: exclude sessions client already has
+      const knownSessionIds = body.knownEntityIds?.sessionIds ?? [];
+      if (knownSessionIds.length > 0) {
+        // Filter: return sessions NOT in the known list
+        sessionsQuery = sessionsQuery.not('id', 'in', `(${knownSessionIds.join(',')})`);
+      } else if (body.lastSync && body.lastSync > 0) {
+        // Legacy timestamp-based mode (backward compatibility)
+        sessionsQuery = sessionsQuery.or(`updated_at.gt.${lastSyncISO},started_at.gt.${lastSyncISO}`);
+      }
+      // If neither knownEntityIds nor lastSync provided, return all sessions (full sync)
 
       if (profileId) {
         sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
@@ -425,10 +479,18 @@ Deno.serve(async (req) => {
         .from('routines')
         .select('*')
         .eq('user_id', userId)
-        .gt('updated_at', lastSyncISO)
         .order('updated_at', { ascending: true })
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
+
+      // Parity mode: exclude routines client already has
+      const knownRoutineIds = body.knownEntityIds?.routineIds ?? [];
+      if (knownRoutineIds.length > 0) {
+        routinesQuery = routinesQuery.not('id', 'in', `(${knownRoutineIds.join(',')})`);
+      } else if (body.lastSync && body.lastSync > 0) {
+        routinesQuery = routinesQuery.gt('updated_at', lastSyncISO);
+      }
+      // If neither provided, return all routines (full sync)
 
       if (profileId) {
         routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
@@ -526,10 +588,18 @@ Deno.serve(async (req) => {
         .from('training_cycles')
         .select('*')
         .eq('user_id', userId)
-        .gt('updated_at', lastSyncISO)
         .order('updated_at', { ascending: true })
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
+
+      // Parity mode: exclude cycles client already has
+      const knownCycleIds = body.knownEntityIds?.cycleIds ?? [];
+      if (knownCycleIds.length > 0) {
+        cyclesQuery = cyclesQuery.not('id', 'in', `(${knownCycleIds.join(',')})`);
+      } else if (body.lastSync && body.lastSync > 0) {
+        cyclesQuery = cyclesQuery.gt('updated_at', lastSyncISO);
+      }
+      // If neither provided, return all cycles (full sync)
 
       if (profileId) {
         cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
@@ -618,10 +688,18 @@ Deno.serve(async (req) => {
         .from('earned_badges')
         .select('*')
         .eq('user_id', userId)
-        .gt('earned_at', lastSyncISO)
         .order('earned_at', { ascending: true })
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
+
+      // Parity mode: exclude badges client already has
+      const knownBadgeIds = body.knownEntityIds?.badgeIds ?? [];
+      if (knownBadgeIds.length > 0) {
+        badgesQuery = badgesQuery.not('id', 'in', `(${knownBadgeIds.join(',')})`);
+      } else if (body.lastSync && body.lastSync > 0) {
+        badgesQuery = badgesQuery.gt('earned_at', lastSyncISO);
+      }
+      // If neither provided, return all badges (full sync)
 
       if (cursorUpdatedAt && cursorId) {
         badgesQuery = badgesQuery.or(
@@ -706,8 +784,17 @@ Deno.serve(async (req) => {
       let personalRecordsQuery = supabase
         .from('personal_records')
         .select('*')
-        .eq('user_id', userId)
-        .gt('updated_at', lastSyncISO);
+        .eq('user_id', userId);
+
+      // Parity mode: exclude personal records client already has
+      const knownPRIds = body.knownEntityIds?.personalRecordIds ?? [];
+      if (knownPRIds.length > 0) {
+        personalRecordsQuery = personalRecordsQuery.not('id', 'in', `(${knownPRIds.join(',')})`);
+      } else if (body.lastSync && body.lastSync > 0) {
+        personalRecordsQuery = personalRecordsQuery.gt('updated_at', lastSyncISO);
+      }
+      // If neither provided, return all personal records (full sync)
+
       if (profileId) {
         personalRecordsQuery = personalRecordsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
       }
@@ -789,6 +876,27 @@ Deno.serve(async (req) => {
       localProfiles: localProfiles,
       externalActivities: externalActivityDtos,
     };
+
+    // DIAGNOSTIC: Log response summary
+    console.log('[PULL DIAG] Response summary:', {
+      sessions: sessionDtos.length,
+      routines: routineDtos.length,
+      cycles: cycleDtos.length,
+      badges: badgeDtos.length,
+      personalRecords: personalRecordDtos.length,
+      localProfiles: localProfiles.length,
+      externalActivities: externalActivityDtos.length,
+      hasRpg: rpgDto !== null,
+      hasGamification: gamificationDto !== null,
+      hasMore,
+      syncTime,
+    });
+    if (routineDtos.length > 0) {
+      console.log('[PULL DIAG] Routines:', routineDtos.map((r: Record<string, unknown>) => ({ id: r.id, name: r.name })));
+    }
+    if (cycleDtos.length > 0) {
+      console.log('[PULL DIAG] Cycles:', cycleDtos.map((c: Record<string, unknown>) => ({ id: c.id, name: c.name })));
+    }
 
     return new Response(JSON.stringify(response), {
       headers: { ...cors, 'Content-Type': 'application/json' },
