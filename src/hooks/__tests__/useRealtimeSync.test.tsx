@@ -2,6 +2,8 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useRealtimeSync } from "../useRealtimeSync";
 
+const TARGETED_INVALIDATIONS = 9;
+
 const mocks = vi.hoisted(() => {
 	let broadcastHandler: ((payload: unknown) => void) | undefined;
 	let subscribeHandler: ((status: string) => void) | undefined;
@@ -66,7 +68,8 @@ function TestComponent() {
 }
 
 describe("useRealtimeSync", () => {
-	it("invalidates the full query cache on sync_complete", () => {
+	it("invalidates targeted query keys on sync_complete", async () => {
+		vi.useFakeTimers();
 		const { unmount } = render(<TestComponent />);
 
 		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
@@ -75,12 +78,13 @@ describe("useRealtimeSync", () => {
 		expect(mocks.subscribeHandler).toBeTypeOf("function");
 
 		mocks.broadcastHandler?.({});
+		await vi.advanceTimersByTimeAsync(400);
 
-		expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
-		expect(mocks.invalidateQueries.mock.calls[0]).toHaveLength(0);
+		expect(mocks.invalidateQueries).toHaveBeenCalledTimes(TARGETED_INVALIDATIONS);
 
 		unmount();
 
 		expect(mocks.removeChannel).toHaveBeenCalledWith(mocks.mockChannel);
+		vi.useRealTimers();
 	});
 });

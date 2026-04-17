@@ -223,6 +223,37 @@ export function getDominantMannZone(velocities: number[]): MannZoneInfo | null {
 }
 
 /**
+ * Dominant simplified zone (matches mobile VBT classification).
+ */
+export function getDominantSimplifiedZone(
+	velocities: number[],
+): SimplifiedZoneInfo | null {
+	if (velocities.length === 0) return null;
+
+	const zoneCounts = new Map<SimplifiedVbtZone, number>();
+
+	for (const velocity of velocities) {
+		const zone = classifyVbtZone(velocity);
+		zoneCounts.set(zone.zone, (zoneCounts.get(zone.zone) ?? 0) + 1);
+	}
+
+	let maxCount = 0;
+	let dominantZoneId: SimplifiedVbtZone = SIMPLIFIED_ZONES[0].zone;
+
+	for (const [zoneId, count] of zoneCounts) {
+		if (count > maxCount) {
+			maxCount = count;
+			dominantZoneId = zoneId;
+		}
+	}
+
+	return (
+		SIMPLIFIED_ZONES.find((z) => z.zone === dominantZoneId) ??
+		SIMPLIFIED_ZONES[0]
+	);
+}
+
+/**
  * Get zone info by zone ID for the simplified system.
  * @param zoneId - The zone identifier
  * @returns Zone information or undefined if not found

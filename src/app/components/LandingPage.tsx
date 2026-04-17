@@ -74,6 +74,7 @@ export function LandingPage() {
 	const [authLoading, setAuthLoading] = useState(false);
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
+	const [authAlertMessage, setAuthAlertMessage] = useState<string | null>(null);
 	const [scrolled, setScrolled] = useState(false);
 
 	// Redirect authenticated users to dashboard
@@ -108,11 +109,13 @@ export function LandingPage() {
 			return;
 		}
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
 				redirectTo: `${window.location.origin}/auth/reset-password`,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			} else {
 				toast.success("Password reset link sent. Check your email.");
@@ -138,16 +141,20 @@ export function LandingPage() {
 
 	const handleSignIn = async (data: SignInFormData) => {
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signInWithPassword({
 				email: data.email,
 				password: data.password,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
@@ -155,12 +162,14 @@ export function LandingPage() {
 
 	const handleSignUp = async (data: SignUpFormData) => {
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signUp({
 				email: data.email,
 				password: data.password,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			} else {
 				toast.success(
@@ -168,7 +177,9 @@ export function LandingPage() {
 				);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
@@ -176,16 +187,20 @@ export function LandingPage() {
 
 	const handleOAuthSignIn = async (provider: "google" | "apple") => {
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signInWithOAuth({
 				provider,
 				options: { redirectTo: window.location.origin },
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
@@ -264,6 +279,7 @@ export function LandingPage() {
 					setAuthLoading(false);
 					setShowForgotPassword(false);
 					setResetEmail("");
+					setAuthAlertMessage(null);
 				}
 			}}
 		>
@@ -337,6 +353,15 @@ export function LandingPage() {
 							<TabsTrigger value="signup">Sign Up</TabsTrigger>
 						</TabsList>
 
+						{authAlertMessage ? (
+							<div
+								role="alert"
+								className="mb-4 rounded border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-300"
+							>
+								{authAlertMessage}
+							</div>
+						) : null}
+
 						<TabsContent value="signin">
 							<form
 								onSubmit={signInForm.handleSubmit(handleSignIn)}
@@ -357,7 +382,7 @@ export function LandingPage() {
 										{...signInForm.register("email")}
 									/>
 									{signInForm.formState.errors.email && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signInForm.formState.errors.email.message}
 										</p>
 									)}
@@ -377,7 +402,7 @@ export function LandingPage() {
 										{...signInForm.register("password")}
 									/>
 									{signInForm.formState.errors.password && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signInForm.formState.errors.password.message}
 										</p>
 									)}
@@ -427,7 +452,7 @@ export function LandingPage() {
 										{...signUpForm.register("email")}
 									/>
 									{signUpForm.formState.errors.email && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.email.message}
 										</p>
 									)}
@@ -447,7 +472,7 @@ export function LandingPage() {
 										{...signUpForm.register("password")}
 									/>
 									{signUpForm.formState.errors.password && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.password.message}
 										</p>
 									)}
@@ -467,7 +492,7 @@ export function LandingPage() {
 										{...signUpForm.register("confirmPassword")}
 									/>
 									{signUpForm.formState.errors.confirmPassword && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.confirmPassword.message}
 										</p>
 									)}

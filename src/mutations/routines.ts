@@ -5,6 +5,25 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+
+function estimatedRoutineDurationSeconds(exercises: RoutineExerciseInput[]): number {
+	const minutes = exercises.reduce(
+		(sum, ex) => sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest_seconds) / 60,
+		0,
+	);
+	return Math.round(minutes * 60);
+}
+
+function normalizePerSetWeights(per: unknown): Json | null {
+	if (per == null) return null;
+	if (Array.isArray(per)) {
+		return per.map((x) =>
+			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
+		) as Json;
+	}
+	return per as Json;
+}
 
 interface RoutineExerciseInput {
 	name: string;
@@ -44,7 +63,7 @@ function toRoutineExerciseRows(
 		muscle_group: ex.muscle_group,
 		sets: ex.sets,
 		reps: ex.reps,
-		weight: ex.weight,
+		weight: ex.weight / WEIGHT_MULTIPLIER,
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
 		mode: ex.mode,
@@ -52,7 +71,7 @@ function toRoutineExerciseRows(
 		superset_id: ex.superset_id ?? null,
 		superset_color: ex.superset_color ?? null,
 		superset_order: ex.superset_order ?? null,
-		per_set_weights: (ex.per_set_weights ?? null) as Json,
+		per_set_weights: normalizePerSetWeights(ex.per_set_weights),
 		per_set_rest: (ex.per_set_rest ?? null) as Json,
 		is_amrap: ex.is_amrap ?? false,
 		is_bodyweight: ex.is_bodyweight ?? false,
@@ -92,13 +111,7 @@ export function useSaveRoutine() {
 					name: input.name,
 					description: input.description ?? "",
 					exercise_count: input.exercises.length,
-					estimated_duration: Math.round(
-						input.exercises.reduce(
-							(sum, ex) =>
-								sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest_seconds) / 60,
-							0,
-						),
-					),
+					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
 					times_completed: 0,
 					is_favorite: false,
 					tags: [],
@@ -179,13 +192,7 @@ export function useUpdateRoutine() {
 					name: input.name,
 					description: input.description ?? "",
 					exercise_count: input.exercises.length,
-					estimated_duration: Math.round(
-						input.exercises.reduce(
-							(sum, ex) =>
-								sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest_seconds) / 60,
-							0,
-						),
-					),
+					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
 				})
 				.eq("id", input.routineId);
 

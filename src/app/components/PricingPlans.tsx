@@ -159,7 +159,21 @@ export function PricingPlans() {
 			userEmail: user.email ?? "",
 			onSuccess: () => {
 				toast.success("Subscription activated!");
-				queryClient.invalidateQueries({
+				queryClient.setQueryData(
+					queryKeys.subscription.byUser(user.id),
+					(prev) => ({
+						...(prev ?? {
+							tier: "FREE" as SubscriptionTier,
+							status: "none" as const,
+							currentPeriodEnd: null,
+							cancelAtPeriodEnd: false,
+						}),
+						tier,
+						status: "active" as const,
+						cancelAtPeriodEnd: false,
+					}),
+				);
+				void queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
 			},

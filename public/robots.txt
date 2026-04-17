@@ -1,0 +1,19 @@
+# Public marketing and legal pages only (auth-gated app routes are not listed)
+User-agent: *
+Allow: /
+Allow: /privacy
+Allow: /terms
+Allow: /faq
+Disallow: /dashboard
+Disallow: /history
+Disallow: /profile
+Disallow: /analytics
+Disallow: /challenges
+Disallow: /community
+Disallow: /integrations
+Disallow: /goals
+Disallow: /recovery
+Disallow: /pricing
+Disallow: /auth/
+
+Sitemap: https://portal.phoenixproject.app/sitemap.xml

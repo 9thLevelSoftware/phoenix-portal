@@ -3,6 +3,31 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Prevent cross-user takeover when upserting by primary key only. */
+async function assertRowsOwnedByUser(
+  supabase: ReturnType<typeof createClient>,
+  table: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: rows } = await supabase.from(table).select('id').in('id', chunk).neq('user_id', userId);
+    if (rows && rows.length > 0) {
+      return new Response(
+        JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
+
 // =============================================================================
 // TypeScript interfaces matching mobile DTO wire format (camelCase)
 // =============================================================================
@@ -212,6 +237,7 @@ interface RoutineExerciseDto {
   perSetWeights: string | null;
   perSetRest: string | null;
   isAmrap: boolean;
+  isBodyweight: boolean;
   prPercentage: number | null;
   repCountTiming: string | null;
   stopAtPosition: string | null;
@@ -442,6 +468,14 @@ Deno.serve(async (req) => {
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
+      for (const p of allProfiles) {
+        if (!UUID_REGEX.test(p.id)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid local profile id' }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+          );
+        }
+      }
       // Upsert all profiles from the device
       const profileRows = allProfiles.map((p) => ({
         user_id: userId,
@@ -467,7 +501,11 @@ Deno.serve(async (req) => {
         .delete()
         .eq('user_id', userId)
         .eq('device_id', payload.deviceId)
-        .not('id', 'in', `(${activeIds.join(',')})`);
+        .not(
+          'id',
+          'in',
+          `(${activeIds.map((id) => `"${id}"`).join(',')})`,
+        );
 
       if (deleteError) {
         console.warn('Failed to clean stale profiles:', deleteError.message);
@@ -803,7 +841,7 @@ Deno.serve(async (req) => {
         name: r.name,
         description: r.description,
         exercise_count: r.exerciseCount,
-        estimated_duration: Math.round(r.estimatedDuration / 60),
+        estimated_duration: Math.round(r.estimatedDuration),
         times_completed: r.timesCompleted,
         is_favorite: r.isFavorite,
       }));
@@ -834,6 +872,7 @@ Deno.serve(async (req) => {
           per_set_weights: safeJsonParse(e.perSetWeights),
           per_set_rest: safeJsonParse(e.perSetRest),
           is_amrap: e.isAmrap,
+          is_bodyweight: e.isBodyweight,
           pr_percentage: e.prPercentage,
           rep_count_timing: e.repCountTiming,
           stop_at_position: e.stopAtPosition,
@@ -1149,9 +1188,11 @@ Deno.serve(async (req) => {
     // =========================================================================
     const syncTime = new Date().toISOString();
     try {
-      const broadcastResult = await supabase
-        .channel(`sync:${userId}`)
-        .httpSend('sync_complete', {
+      const channel = supabase.channel(`sync:${userId}`);
+      const { error: broadcastError } = await channel.send({
+        type: 'broadcast',
+        event: 'sync_complete',
+        payload: {
           syncTime,
           deviceId: payload.deviceId,
           platform: payload.platform,
@@ -1161,10 +1202,10 @@ Deno.serve(async (req) => {
           routinesUpserted,
           cyclesUpserted,
           badgesUpserted,
-        });
-
-      if (!broadcastResult.success) {
-        console.warn('mobile-sync-push broadcast warning:', broadcastResult);
+        },
+      });
+      if (broadcastError) {
+        console.warn('mobile-sync-push broadcast warning:', broadcastError);
       }
     } catch (broadcastErr) {
       console.warn('mobile-sync-push broadcast failed:', broadcastErr);

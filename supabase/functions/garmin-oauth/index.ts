@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 
 const GARMIN_CONSUMER_KEY = Deno.env.get('GARMIN_CONSUMER_KEY')!;
 const GARMIN_CONSUMER_SECRET = Deno.env.get('GARMIN_CONSUMER_SECRET')!;
@@ -273,8 +274,8 @@ Deno.serve(async (req) => {
         {
           user_id: userId,
           provider: 'garmin',
-          access_token: accessToken,
-          refresh_token: accessTokenSecret, // OAuth 1.0a token secret
+          access_token: await encryptOAuthSecret(accessToken),
+          refresh_token: await encryptOAuthSecret(accessTokenSecret), // OAuth 1.0a token secret
           token_expires_at: null, // OAuth 1.0a tokens don't expire
           updated_at: new Date().toISOString(),
         },
