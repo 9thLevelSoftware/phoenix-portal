@@ -71,10 +71,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Note: Subscription cancellation is handled by Paddle.
-    // The subscription record is deleted with the user's data below.
-    // Paddle will stop billing when the subscription period ends.
-
     // =========================================================================
     // Step 1: Delete storage objects (avatars)
     // =========================================================================
@@ -91,6 +87,61 @@ Deno.serve(async (req) => {
     } catch (storageErr) {
       // Log but continue — avatar cleanup is not critical
       console.error('Storage cleanup error (continuing with deletion):', storageErr);
+    }
+
+    // =========================================================================
+    // Step 1b: Cancel Paddle subscription before auth user delete (stops billing)
+    // =========================================================================
+    const { data: subscriptionRow } = await supabaseAdmin
+      .from('subscriptions')
+      .select('paddle_subscription_id, status')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (
+      subscriptionRow?.paddle_subscription_id &&
+      ['active', 'trialing', 'past_due'].includes(subscriptionRow.status ?? '')
+    ) {
+      const paddleEnv = Deno.env.get('PADDLE_ENVIRONMENT') ?? 'production';
+      const baseUrl = paddleEnv === 'sandbox'
+        ? 'https://sandbox-api.paddle.com'
+        : 'https://api.paddle.com';
+      const apiKey = Deno.env.get('PADDLE_API_KEY');
+      if (!apiKey) {
+        console.error('[DELETE_ACCOUNT] PADDLE_API_KEY is not set');
+        return new Response(
+          JSON.stringify({ error: 'Billing service not configured. Account deletion aborted.' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const paddleRes = await fetch(
+        `${baseUrl}/subscriptions/${subscriptionRow.paddle_subscription_id}/cancel`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ effective_from: 'immediately' }),
+        },
+      );
+
+      if (!paddleRes.ok) {
+        const detail = await paddleRes.text();
+        console.error(
+          '[DELETE_ACCOUNT] Paddle cancel failed:',
+          subscriptionRow.paddle_subscription_id,
+          paddleRes.status,
+          detail,
+        );
+        return new Response(
+          JSON.stringify({
+            error: 'Could not cancel subscription with billing provider. Please try again or contact support.',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // =========================================================================

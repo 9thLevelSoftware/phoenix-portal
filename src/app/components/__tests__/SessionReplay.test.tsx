@@ -144,8 +144,14 @@ describe("SessionReplay", () => {
 	});
 
 	// ---------------------------------------------------------------
-	// Smoke - INFERNO users
+	// Smoke - FLAME+ users
 	// ---------------------------------------------------------------
+	it("renders without crashing for FLAME users", () => {
+		setupSubscription("FLAME");
+		renderWithProviders(<SessionReplay />);
+		expect(screen.getByText("Session Replay")).toBeInTheDocument();
+	});
+
 	it("renders without crashing for INFERNO users", () => {
 		setupSubscription("INFERNO");
 		renderWithProviders(<SessionReplay />);
@@ -153,7 +159,7 @@ describe("SessionReplay", () => {
 	});
 
 	// ---------------------------------------------------------------
-	// Subscription gate blocks non-INFERNO users
+	// Subscription gate blocks below FLAME
 	// ---------------------------------------------------------------
 	it("shows upgrade prompt for FREE users", () => {
 		setupSubscription("FREE");
@@ -167,17 +173,17 @@ describe("SessionReplay", () => {
 		expect(screen.getByTestId("upgrade-prompt")).toBeInTheDocument();
 	});
 
-	it("shows upgrade prompt for FLAME users", () => {
+	it("does not show upgrade prompt for FLAME users", () => {
 		setupSubscription("FLAME");
 		renderWithProviders(<SessionReplay />);
-		expect(screen.getByTestId("upgrade-prompt")).toBeInTheDocument();
+		expect(screen.queryByTestId("upgrade-prompt")).not.toBeInTheDocument();
 	});
 
 	// ---------------------------------------------------------------
 	// No session ID
 	// ---------------------------------------------------------------
 	it("shows error message when no session ID is provided", () => {
-		setupSubscription("INFERNO");
+		setupSubscription("FLAME");
 		mockParams.current = {};
 		renderWithProviders(<SessionReplay />);
 		expect(screen.getByText(/no session id provided/i)).toBeInTheDocument();
@@ -187,7 +193,7 @@ describe("SessionReplay", () => {
 	// Loading state
 	// ---------------------------------------------------------------
 	it("shows loading skeletons while data loads", () => {
-		setupSubscription("INFERNO");
+		setupSubscription("FLAME");
 		const { container } = renderWithProviders(<SessionReplay />);
 		// Skeleton uses bg-[#1a1a1a] class from custom Skeleton component
 		const skeletons = container.querySelectorAll(
@@ -200,7 +206,7 @@ describe("SessionReplay", () => {
 	// Go back button
 	// ---------------------------------------------------------------
 	it("renders go back button", () => {
-		setupSubscription("INFERNO");
+		setupSubscription("FLAME");
 		renderWithProviders(<SessionReplay />);
 		expect(
 			screen.getByRole("button", { name: /go back/i }),
@@ -211,7 +217,7 @@ describe("SessionReplay", () => {
 	// Reset on mount
 	// ---------------------------------------------------------------
 	it("resets playback state on mount", () => {
-		setupSubscription("INFERNO");
+		setupSubscription("FLAME");
 		renderWithProviders(<SessionReplay />);
 		expect(mockReplayStore.reset).toHaveBeenCalled();
 	});

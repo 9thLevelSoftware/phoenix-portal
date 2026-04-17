@@ -1,9 +1,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 // UUID validation regex for input sanitization
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POSITIVE_INT_STRING = /^\d+$/;
 
 /**
  * Mobile Sync Pull — returns portal data modified since the client's last sync.
@@ -15,7 +17,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *   lastSync?: number,
  *   profileId?: string,
  *   cursor?: string,          // Optional: pagination cursor from previous response
- *   pageSize?: number,        // Optional: entities per page (default 100, max 500)
+ *   pageSize?: number,        // Optional: entities per page (default 75, max 300)
  *   knownEntityIds?: {        // Optional: parity-based sync (new)
  *     sessionIds?: string[],
  *     routineIds?: string[],
@@ -66,16 +68,78 @@ interface PullRequest {
   profileId?: string;
   /** Optional cursor for pagination. If absent, starts from beginning. */
   cursor?: string;
-  /** Optional page size. Defaults to 100. */
+  /** Optional page size. Defaults to 75. */
   pageSize?: number;
   /** Entity IDs client already has. Server returns entities NOT in these lists. */
   knownEntityIds?: {
     sessionIds?: string[];
     routineIds?: string[];
     cycleIds?: string[];
-    badgeIds?: string[];
-    personalRecordIds?: string[];
+    /** Integer PKs (JSON may send numbers or numeric strings) */
+    badgeIds?: (string | number)[];
+    personalRecordIds?: (string | number)[];
   };
+}
+
+/** Reject malformed knownEntityIds before they reach NOT IN filters. */
+function validateKnownEntityIds(
+  body: PullRequest,
+  cors: Record<string, string>,
+): Response | null {
+  const k = body.knownEntityIds;
+  if (!k) return null;
+
+  for (const id of k.sessionIds ?? []) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+      return new Response(JSON.stringify({ error: 'Invalid knownEntityIds.sessionIds entry' }), {
+        status: 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  for (const id of k.routineIds ?? []) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+      return new Response(JSON.stringify({ error: 'Invalid knownEntityIds.routineIds entry' }), {
+        status: 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  for (const id of k.cycleIds ?? []) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+      return new Response(JSON.stringify({ error: 'Invalid knownEntityIds.cycleIds entry' }), {
+        status: 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  for (const id of k.badgeIds ?? []) {
+    const n = typeof id === 'number'
+      ? id
+      : typeof id === 'string' && POSITIVE_INT_STRING.test(id)
+      ? parseInt(id, 10)
+      : NaN;
+    if (!Number.isInteger(n) || n <= 0) {
+      return new Response(JSON.stringify({ error: 'Invalid knownEntityIds.badgeIds entry' }), {
+        status: 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  for (const id of k.personalRecordIds ?? []) {
+    const n = typeof id === 'number'
+      ? id
+      : typeof id === 'string' && POSITIVE_INT_STRING.test(id)
+      ? parseInt(id, 10)
+      : NaN;
+    if (!Number.isInteger(n) || n <= 0) {
+      return new Response(JSON.stringify({ error: 'Invalid knownEntityIds.personalRecordIds entry' }), {
+        status: 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  return null;
 }
 
 /**
@@ -88,8 +152,8 @@ function isParityMode(body: PullRequest): boolean {
 
 // ─── Pagination Configuration ───────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 100;
-const MAX_PAGE_SIZE = 500;
+const DEFAULT_PAGE_SIZE = 75;
+const MAX_PAGE_SIZE = 300;
 
 /**
  * Maximum number of entity IDs to accept for parity-based filtering.
@@ -137,9 +201,15 @@ function decodeCursor(cursor: string): DecodedCursor | null {
     ) {
       return null;
     }
-    // Validate cursor ID is a valid UUID to prevent injection
-    if (parsed.id && !UUID_REGEX.test(parsed.id)) {
-      return null;
+    // Validate cursor id: UUID for sessions/routines/cycles; positive integer string for badges
+    if (parsed.type === 'badges') {
+      if (typeof parsed.id !== 'string' || !POSITIVE_INT_STRING.test(parsed.id)) {
+        return null;
+      }
+    } else {
+      if (!UUID_REGEX.test(parsed.id)) {
+        return null;
+      }
     }
     return parsed as DecodedCursor;
   } catch {
@@ -219,6 +289,20 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+
+    const knownEntityInvalid = validateKnownEntityIds(body, cors);
+    if (knownEntityInvalid) return knownEntityInvalid;
+
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-pull',
+      userId,
+      maxRequests: 20,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    const emberGate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    if (!emberGate.allowed) return emberGate.response!;
 
     const lastSyncISO = new Date(body.lastSync ?? 0).toISOString();
     const syncTime = Date.now();
@@ -310,7 +394,11 @@ Deno.serve(async (req) => {
       // If neither knownEntityIds nor lastSync provided, return all sessions (full sync)
 
       if (profileId) {
-        sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        if (profileId === 'default') {
+          sessionsQuery = sessionsQuery.is('local_profile_id', null);
+        } else {
+          sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        }
       }
 
       // Apply cursor condition if resuming within sessions
@@ -510,7 +598,11 @@ Deno.serve(async (req) => {
       // If neither provided, return all routines (full sync)
 
       if (profileId) {
-        routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        if (profileId === 'default') {
+          routinesQuery = routinesQuery.is('local_profile_id', null);
+        } else {
+          routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        }
       }
 
       if (cursorUpdatedAt && cursorId) {
@@ -582,6 +674,7 @@ Deno.serve(async (req) => {
             perSetWeights: re.per_set_weights != null ? JSON.stringify(re.per_set_weights) : null,
             perSetRest: re.per_set_rest != null ? JSON.stringify(re.per_set_rest) : null,
             isAmrap: re.is_amrap,
+            isBodyweight: re.is_bodyweight ?? false,
             prPercentage: re.pr_percentage,
             repCountTiming: re.rep_count_timing,
             stopAtPosition: re.stop_at_position,
@@ -622,7 +715,11 @@ Deno.serve(async (req) => {
       // If neither provided, return all cycles (full sync)
 
       if (profileId) {
-        cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        if (profileId === 'default') {
+          cyclesQuery = cyclesQuery.is('local_profile_id', null);
+        } else {
+          cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        }
       }
 
       if (cursorUpdatedAt && cursorId) {
@@ -712,8 +809,10 @@ Deno.serve(async (req) => {
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
 
-      // Parity mode: exclude badges client already has
-      const knownBadgeIds = body.knownEntityIds?.badgeIds ?? [];
+      // Parity mode: exclude badges client already has (integer PKs)
+      const knownBadgeIds = (body.knownEntityIds?.badgeIds ?? []).map((x) =>
+        typeof x === 'number' ? x : parseInt(String(x), 10)
+      );
       if (knownBadgeIds.length > MAX_PARITY_IDS) {
         console.log(`[PULL] Skipping badges parity filter: ${knownBadgeIds.length} IDs exceeds limit`);
         badgesQuery = badgesQuery.eq('id', -1); // Badges use integer IDs
@@ -737,7 +836,7 @@ Deno.serve(async (req) => {
         hasMore = true;
         const lastBadge = badgesData[remainingPageSize - 1];
         const earnedAtMs = new Date(lastBadge.earned_at as string).getTime();
-        nextCursor = encodeCursor('badges', earnedAtMs, lastBadge.id as string);
+        nextCursor = encodeCursor('badges', earnedAtMs, String(lastBadge.id));
         badgesData.splice(remainingPageSize);
       }
 
@@ -809,8 +908,10 @@ Deno.serve(async (req) => {
         .select('*')
         .eq('user_id', userId);
 
-      // Parity mode: exclude personal records client already has
-      const knownPRIds = body.knownEntityIds?.personalRecordIds ?? [];
+      // Parity mode: exclude personal records client already has (integer PKs)
+      const knownPRIds = (body.knownEntityIds?.personalRecordIds ?? []).map((x) =>
+        typeof x === 'number' ? x : parseInt(String(x), 10)
+      );
       if (knownPRIds.length > MAX_PARITY_IDS) {
         console.log(`[PULL] Skipping PRs parity filter: ${knownPRIds.length} IDs exceeds limit`);
         personalRecordsQuery = personalRecordsQuery.eq('id', -1); // PRs use integer IDs
@@ -822,7 +923,13 @@ Deno.serve(async (req) => {
       // If neither provided, return all personal records (full sync)
 
       if (profileId) {
-        personalRecordsQuery = personalRecordsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        if (profileId === 'default') {
+          personalRecordsQuery = personalRecordsQuery.is('local_profile_id', null);
+        } else {
+          personalRecordsQuery = personalRecordsQuery.or(
+            `local_profile_id.eq.${profileId},local_profile_id.is.null`,
+          );
+        }
       }
       const { data: personalRecords, error: personalRecordsError } = await personalRecordsQuery;
       if (personalRecordsError) {
@@ -856,31 +963,28 @@ Deno.serve(async (req) => {
         colorIndex: p.color_index,
       }));
 
-      // External activities (paid users only, final page)
-      const subGate = await requireSubscription(supabase, userId, 'EMBER', cors);
-      if (subGate.allowed) {
-        const { data: externalActivitiesRaw } = await supabase
-          .from('external_activities')
-          .select('*')
-          .eq('user_id', userId)
-          .gt('synced_at', lastSyncISO);
+      // External activities (EMBER+ enforced at handler start)
+      const { data: externalActivitiesRaw } = await supabase
+        .from('external_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('synced_at', lastSyncISO);
 
-        externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
-          id: a.id,
-          externalId: a.external_id,
-          provider: a.provider,
-          name: a.name,
-          activityType: a.activity_type,
-          startedAt: a.started_at,
-          durationSeconds: a.duration_seconds,
-          distanceMeters: a.distance_meters,
-          calories: a.calories,
-          avgHeartRate: a.avg_heart_rate,
-          maxHeartRate: a.max_heart_rate,
-          elevationGainMeters: a.elevation_gain_meters,
-          rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
-        }));
-      }
+      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+        id: a.id,
+        externalId: a.external_id,
+        provider: a.provider,
+        name: a.name,
+        activityType: a.activity_type,
+        startedAt: a.started_at,
+        durationSeconds: a.duration_seconds,
+        distanceMeters: a.distance_meters,
+        calories: a.calories,
+        avgHeartRate: a.avg_heart_rate,
+        maxHeartRate: a.max_heart_rate,
+        elevationGainMeters: a.elevation_gain_meters,
+        rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+      }));
     }
 
     // =========================================================================

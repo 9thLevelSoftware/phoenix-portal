@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
@@ -101,8 +102,8 @@ Deno.serve(async (req) => {
       {
         user_id: userId,
         provider: 'fitbit',
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        access_token: await encryptOAuthSecret(tokens.access_token),
+        refresh_token: await encryptOAuthSecret(tokens.refresh_token),
         token_expires_at: tokenExpiresAt,
         updated_at: new Date().toISOString(),
       },

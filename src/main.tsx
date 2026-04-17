@@ -28,11 +28,11 @@ const root = createRoot(document.getElementById("root")!, {
 
 root.render(
 	<BrowserRouter>
-		<AuthProvider>
-			<QueryProvider>
+		<QueryProvider>
+			<AuthProvider>
 				<App />
-			</QueryProvider>
-		</AuthProvider>
+			</AuthProvider>
+		</QueryProvider>
 		<CookieConsentBanner />
 	</BrowserRouter>,
 );

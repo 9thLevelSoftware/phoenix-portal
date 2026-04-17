@@ -35,7 +35,7 @@ interface RawSet {
 	exercise_id: string;
 	set_number: number;
 	actual_reps: number;
-	weight: number; // per-cable kg in DB
+	weight_kg: number; // per-cable kg in DB
 	rpe: number | null;
 	notes: string | null;
 }
@@ -151,7 +151,7 @@ export async function exportWorkoutsAsCSV(
 			const batch = exerciseIds.slice(i, i + BATCH_SIZE);
 			const { data: sets, error: setError } = await supabase
 				.from("sets")
-				.select("exercise_id, set_number, actual_reps, weight, rpe, notes")
+				.select("exercise_id, set_number, actual_reps, weight_kg, rpe, notes")
 				.in("exercise_id", batch)
 				.order("set_number", { ascending: true });
 			if (setError) throw setError;
@@ -189,7 +189,7 @@ export async function exportWorkoutsAsCSV(
 
 			for (const set of exerciseSets) {
 				// Convert per-cable weight to total, then optionally to lbs
-				let weight = set.weight * WEIGHT_MULTIPLIER;
+				let weight = set.weight_kg * WEIGHT_MULTIPLIER;
 				if (weightUnit === "lbs") {
 					weight = Math.round(weight * KG_TO_LBS * 100) / 100;
 				} else {

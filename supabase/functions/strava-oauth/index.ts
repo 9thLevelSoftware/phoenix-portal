@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 
 /**
  * Strava OAuth Callback Edge Function
@@ -119,8 +120,8 @@ Deno.serve(async (req) => {
         {
           user_id: userId,
           provider: 'strava',
-          access_token: accessToken,
-          refresh_token: refreshToken,
+          access_token: await encryptOAuthSecret(accessToken),
+          refresh_token: await encryptOAuthSecret(refreshToken),
           token_expires_at: tokenExpiresAt,
           updated_at: new Date().toISOString(),
         },

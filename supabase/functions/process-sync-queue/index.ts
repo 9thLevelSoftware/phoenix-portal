@@ -22,11 +22,29 @@ const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   hevy: { requests: 40, windowMs: 60 * 60 * 1000 },
 };
 
+function timingSafeEqualString(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a);
+  const eb = new TextEncoder().encode(b);
+  if (ea.length !== eb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
+  }
+
+  const expectedSecret = Deno.env.get('CRON_SYNC_QUEUE_SECRET');
+  const provided = req.headers.get('x-cron-secret') ?? '';
+  if (!expectedSecret || !timingSafeEqualString(expectedSecret, provided)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 
   const supabase = createClient(

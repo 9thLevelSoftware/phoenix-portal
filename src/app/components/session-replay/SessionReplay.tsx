@@ -25,13 +25,13 @@ import { TimelineBar } from "./TimelineBar";
  * Session Replay page component.
  * Provides full playback visualization of a workout set with force/velocity charts,
  * rep quality badges, and fatigue detection.
- * Gated behind ELITE subscription tier.
+ * Gated behind FLAME+ subscription tier.
  */
 export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
-	const { isInferno } = useSubscription();
+	const { isFlame } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -50,7 +50,7 @@ export function SessionReplay() {
 	// Fetch session structure
 	const sessionQuery = useQuery({
 		...replaySessionOptions(sessionId ?? ""),
-		enabled: isInferno && !!sessionId,
+		enabled: isFlame && !!sessionId,
 	});
 
 	// Derive all sets from session exercises
@@ -71,7 +71,7 @@ export function SessionReplay() {
 	// Fetch telemetry for current set
 	const telemetryQuery = useQuery({
 		...replayTelemetryOptions(currentSet?.setId ?? ""),
-		enabled: isInferno && !!currentSet?.setId,
+		enabled: isFlame && !!currentSet?.setId,
 	});
 
 	// Process telemetry data
@@ -157,7 +157,7 @@ export function SessionReplay() {
 	}
 
 	return (
-		<SubscriptionGate requiredTier="INFERNO">
+		<SubscriptionGate requiredTier="FLAME">
 			<div className="min-h-screen p-4 space-y-4">
 				{/* Header */}
 				<div className="flex items-center gap-3">
