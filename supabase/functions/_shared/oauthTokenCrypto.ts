@@ -76,8 +76,10 @@ export async function decryptOAuthSecret(
   if (!stored.startsWith(PREFIX)) return stored;
   const key = await getAesKey();
   if (!key) {
-    console.warn('[oauthTokenCrypto] Encrypted token in DB but OAUTH_TOKEN_ENCRYPTION_KEY not set');
-    return stored;
+    // Never return ciphertext to callers — they would pass it as an access/refresh
+    // token and produce confusing downstream 401s. Surface a clear config error.
+    console.error('[oauthTokenCrypto] Encrypted token in DB but OAUTH_TOKEN_ENCRYPTION_KEY not set');
+    throw new Error('oauth_token_encryption_key_missing');
   }
   try {
     const combined = base64ToBytes(stored.slice(PREFIX.length));

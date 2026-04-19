@@ -1,4 +1,5 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { hmacSha256Hex } from "../_shared/hmac.ts";
 import {
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
@@ -204,6 +205,48 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Missing user_id in custom_data" }),
         { status: 500, headers: responseHeaders },
       );
+    }
+
+    // Verify the signed user_id handed out by paddle-checkout-custom-data so
+    // a client can't forge another user's user_id in custom_data (P1-10).
+    // Only enforce when the signing secret is configured — lets envs that
+    // haven't rolled out the signed-checkout flow keep working.
+    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
+    if (customDataSecret?.trim()) {
+      const providedSig = event.data.custom_data?.cd_sig;
+      if (!providedSig || typeof providedSig !== "string") {
+        console.error(
+          "[BILLING_ALERT] Missing cd_sig in custom_data (user_id spoofing attempt?):",
+          event.event_id,
+          "user_id:",
+          userId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Missing cd_sig in custom_data" }),
+          { status: 401, headers: responseHeaders },
+        );
+      }
+
+      const expectedSig = await hmacSha256Hex(customDataSecret.trim(), userId);
+      const a = new TextEncoder().encode(providedSig);
+      const b = new TextEncoder().encode(expectedSig);
+      let sigMismatch = a.length !== b.length ? 1 : 0;
+      const cmpLen = Math.min(a.length, b.length);
+      for (let i = 0; i < cmpLen; i++) {
+        sigMismatch |= a[i]! ^ b[i]!;
+      }
+      if (sigMismatch !== 0) {
+        console.error(
+          "[BILLING_ALERT] Invalid cd_sig in custom_data (user_id spoofing attempt?):",
+          event.event_id,
+          "user_id:",
+          userId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Invalid cd_sig" }),
+          { status: 401, headers: responseHeaders },
+        );
+      }
     }
 
     // Idempotency check — skip if this event was already processed
