@@ -12,26 +12,70 @@
 - ⚠️ **28 SOFT DRIFT** — Coercible type differences
 - 🔀 **5 SEMANTIC DRIFT** — Meaning differs, needs doc
 - ❌ **8 HARD DRIFT** — Critical incompatibilities
-  - ✅ 6 RESOLVED (#3, #4, #5, #6, #7, #8, #10)
-  - ⚠️ 1 PARTIAL — wire resolved, mobile persistence deferred (#2)
-  - ⏳ 1 IN PROGRESS — LWW merge plan scheduled (#1)
+  - ✅ 7 RESOLVED (#2, #3, #4, #5, #6, #7, #8, #9, #10)
+  - ⏳ 1 SCAFFOLDED — server-side LWW shipped behind `SYNC_LWW_ENABLED`
+    flag (default OFF); mobile-side LWW pull merge (Phase 3.3) and prod
+    rollout (Phase 3.4) remain (#1)
 
-**Remediation status:** Beta audit hardening + DTO drift Phase 1, 2, and 4.1
-shipped across portal + mobile on 2026-04-19. See commits on
-`cursor/beta-audit-2026-04-17` (portal) and `cursor/beta-audit-ios-android-ble-sync`
-(mobile). Remaining work in plan file
-`C:\Users\dasbl\.claude\plans\zany-discovering-umbrella.md` Phases 3, 3.5,
-and 4.2.
+**Remediation status (2026-04-19):** All hard drift items resolved or
+scaffolded across portal + mobile. Specifically:
+
+- Phase 1 (additive fixes #2 wire, #3, #4, #6, #8) — shipped
+- Phase 2 (#5, #10 — external activity round-trip) — shipped
+- Phase 3.1 — LWW Postgres RPCs migration shipped (additive)
+- Phase 3.2 — Portal push handler routes through LWW RPCs behind
+  `SYNC_LWW_ENABLED=false` flag (zero-behavior-change until flipped)
+- Phase 3.5 — Mobile SessionNotes side-table + persistence shipped
+  (closes the persistence gap from Phase 1.1 of #2)
+- Phase 4.1 (#7) — Server 413 + mobile parity cap shipped
+- Phase 4.2 (#9) — Mobile self-cap + sliding-window rate limiter shipped
+- **Phase 3.3 — Mobile SQLDelight LWW pull merge for the 10 shared-edit
+  entities. Required for #1 to be fully resolved; scoped to a follow-up
+  session because it touches `VitruvianDatabase.sq` (10 new
+  `mergeXxxLww` queries) and `SqlDelightSyncRepository.mergeAllPullData`
+  (call-site swap for each entity, keep INSERT OR IGNORE for
+  rep_telemetry / personal_records / earned_badges).**
+- **Phase 3.4 — Staging soak + prod rollout of `SYNC_LWW_ENABLED`. By
+  design out of session scope (1-week soak, 72h prod monitor, then flag
+  retirement after ≥70% mobile rollout).**
+
+Commits live on `cursor/beta-audit-2026-04-17` (portal) and
+`cursor/beta-audit-ios-android-ble-sync` (mobile). Full remediation plan
+at `C:\Users\dasbl\.claude\plans\zany-discovering-umbrella.md`.
 
 ---
 
 ## CRITICAL HARD DRIFT FINDINGS
 
-### 1. Session/Set Conflict-Resolution Asymmetry (CRITICAL) — ⏳ IN PROGRESS
+### 1. Session/Set Conflict-Resolution Asymmetry (CRITICAL) — ⏳ SCAFFOLDED
 
 Portal uses `upsert onConflict=id` (server-authoritative). Mobile uses `INSERT OR IGNORE` on pull (local-authoritative).
 
 **Impact:** ASYMMETRIC MERGE. User edits on web → portal overwrites mobile. Mobile pulls → ignores server. Multi-device changes silently lost.
+
+**Status (2026-04-19):**
+
+- ✅ Phase 3.1 shipped: 6 LWW Postgres RPCs (`upsert_<entity>_lww`) added
+  via migration `20260419120000_lww_upsert_functions.sql`, plus
+  `external_activities.updated_at` schema prerequisite. Functions are
+  unused until the flag is flipped, so applying the migration alone is a
+  zero-behavior-change operation.
+- ✅ Phase 3.2 shipped: portal push handler routes each shared-edit entity
+  through the corresponding LWW RPC behind `SYNC_LWW_ENABLED` (default
+  false). Response body extended with `rejections` per entity. Mobile
+  push DTOs (PortalWorkoutSessionDto, PortalRoutineSyncDto,
+  PortalTrainingCycleSyncDto) carry `updatedAt` so the LWW gate sees real
+  timestamps.
+- ⏳ **Phase 3.3 — mobile SQLDelight LWW pull merge.** Add per-entity
+  `mergeXxxLww` queries in `VitruvianDatabase.sq` (conditional upsert
+  on `excluded.updatedAt >= <table>.updatedAt`) for sessions, exercises,
+  sets, rep_summaries, routines, training_cycles, cycle_days,
+  external_activities, rpg_attributes, gamification_stats. Swap call
+  sites in `SqlDelightSyncRepository.mergeAllPullData`. Keep existing
+  INSERT OR IGNORE for rep_telemetry / personal_records / earned_badges
+  (append-only).
+- ⏳ **Phase 3.4 — staging soak (1 week) → prod enable → 72h prod monitor →
+  flag retirement after ≥70% mobile rollout.** Out of session scope.
 
 **Resolution plan (Phase 3 of DTO drift remediation plan, deferred to
 follow-up session):** Introduce monotonic LWW on `updated_at` for shared-edit
