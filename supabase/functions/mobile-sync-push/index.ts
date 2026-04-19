@@ -585,6 +585,15 @@ Deno.serve(async (req) => {
         working_reps: s.workingReps ?? null,
       }));
 
+      const sessionOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'workout_sessions',
+        sessionRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (sessionOwnershipResp) return sessionOwnershipResp;
+
       const { error: sessErr } = await supabase
         .from('workout_sessions')
         .upsert(sessionRows, { onConflict: 'id' });
@@ -604,6 +613,15 @@ Deno.serve(async (req) => {
       );
 
       if (exerciseRows.length > 0) {
+        const exerciseOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'exercises',
+          exerciseRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (exerciseOwnershipResp) return exerciseOwnershipResp;
+
         const { error: exErr } = await supabase
           .from('exercises')
           .upsert(exerciseRows, { onConflict: 'id' });
@@ -631,6 +649,15 @@ Deno.serve(async (req) => {
       );
 
       if (setRows.length > 0) {
+        const setOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'sets',
+          setRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (setOwnershipResp) return setOwnershipResp;
+
         const { error: setErr } = await supabase
           .from('sets')
           .upsert(setRows, { onConflict: 'id' });
@@ -664,6 +691,15 @@ Deno.serve(async (req) => {
       );
 
       if (repRows.length > 0) {
+        const repOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'rep_summaries',
+          repRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (repOwnershipResp) return repOwnershipResp;
+
         const { error: repErr } = await supabase
           .from('rep_summaries')
           .upsert(repRows, { onConflict: 'id' });
@@ -673,6 +709,15 @@ Deno.serve(async (req) => {
 
       // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
       if (payload.telemetry && payload.telemetry.length > 0) {
+        const telemetryOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'rep_telemetry',
+          payload.telemetry.map((t) => t.id),
+          userId,
+          cors,
+        );
+        if (telemetryOwnershipResp) return telemetryOwnershipResp;
+
         // Insert in batches of 500 to avoid payload limits
         const TELEMETRY_BATCH = 500;
         for (let i = 0; i < payload.telemetry.length; i += TELEMETRY_BATCH) {
@@ -846,6 +891,15 @@ Deno.serve(async (req) => {
         is_favorite: r.isFavorite,
       }));
 
+      const routineOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'routines',
+        routineRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (routineOwnershipResp) return routineOwnershipResp;
+
       const { error: routErr } = await supabase
         .from('routines')
         .upsert(routineRows, { onConflict: 'id' });
@@ -941,6 +995,15 @@ Deno.serve(async (req) => {
         progression_settings: safeJsonParse(c.progressionSettings),
         deload_settings: safeJsonParse(c.deloadSettings),
       }));
+
+      const cycleOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'training_cycles',
+        cycleRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (cycleOwnershipResp) return cycleOwnershipResp;
 
       const { error: cycErr } = await supabase
         .from('training_cycles')
@@ -1187,8 +1250,29 @@ Deno.serve(async (req) => {
     // 15. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
+    // Use HTTP broadcast so the edge function doesn't need an active WebSocket
+    // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
+    const channel = supabase.channel(`sync:${userId}`, {
+      config: { broadcast: { self: false } },
+    });
     try {
-      const channel = supabase.channel(`sync:${userId}`);
+      await new Promise<void>((resolve) => {
+        const subscription = channel.subscribe((status) => {
+          if (
+            status === 'SUBSCRIBED' ||
+            status === 'CHANNEL_ERROR' ||
+            status === 'TIMED_OUT' ||
+            status === 'CLOSED'
+          ) {
+            resolve();
+            // Avoid unused-binding warning on `subscription`.
+            void subscription;
+          }
+        });
+        // Safety timeout — don't block the response waiting for realtime.
+        setTimeout(resolve, 1500);
+      });
+
       const { error: broadcastError } = await channel.send({
         type: 'broadcast',
         event: 'sync_complete',
@@ -1209,6 +1293,12 @@ Deno.serve(async (req) => {
       }
     } catch (broadcastErr) {
       console.warn('mobile-sync-push broadcast failed:', broadcastErr);
+    } finally {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (cleanupErr) {
+        console.warn('mobile-sync-push channel cleanup warning:', cleanupErr);
+      }
     }
 
     return new Response(

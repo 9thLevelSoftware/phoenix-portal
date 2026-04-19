@@ -17,6 +17,7 @@ const TARGETED_INVALIDATIONS = [
 	queryKeys.profile.all,
 	queryKeys.challenges.all,
 	queryKeys.integrations.external(USER_ID),
+	queryKeys.localProfiles.byUser(USER_ID),
 ];
 
 const mocks = vi.hoisted(() => {
@@ -87,9 +88,7 @@ describe("useRealtimeSync", () => {
 		vi.useFakeTimers();
 		const { unmount } = render(<TestComponent />);
 
-		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-			`sync:${USER_ID}`,
-		);
+		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(`sync:${USER_ID}`);
 		expect(mocks.subscribeHandler).toBeTypeOf("function");
 
 		mocks.broadcastHandler?.({});

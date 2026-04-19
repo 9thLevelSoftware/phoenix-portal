@@ -17,6 +17,15 @@ function estimatedRoutineDurationSeconds(exercises: RoutineExerciseInput[]): num
 
 function normalizePerSetWeights(per: unknown): Json | null {
 	if (per == null) return null;
+	// UI collects per_set_weights in the same "total weight" units as the
+	// single `weight` field (which is divided by WEIGHT_MULTIPLIER before
+	// storage). Divide array entries by the same multiplier so the stored
+	// per-cable representation stays consistent.
+	if (Array.isArray(per)) {
+		return per.map((x) =>
+			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
+		) as Json;
+	}
 	return per as Json;
 }
 

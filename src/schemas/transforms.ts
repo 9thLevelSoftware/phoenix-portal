@@ -217,7 +217,17 @@ export const routineExerciseSchema = z.object({
 	superset_id: z.string().nullable().optional(),
 	superset_color: z.string().nullable().optional(),
 	superset_order: z.number().nullable().optional(),
-	per_set_weights: z.any().nullable().optional(),
+	// Stored per-cable to match the single `weight` column; multiply back to
+	// display totals so the UI keeps round-trip symmetry with `weight`.
+	per_set_weights: z
+		.any()
+		.nullable()
+		.optional()
+		.transform((v) =>
+			Array.isArray(v)
+				? v.map((x) => (typeof x === "number" ? x * WEIGHT_MULTIPLIER : x))
+				: v,
+		),
 	per_set_rest: z.any().nullable().optional(),
 	is_amrap: z.boolean().optional().default(false),
 	is_bodyweight: z.boolean().optional().default(false),
