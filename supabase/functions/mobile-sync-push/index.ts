@@ -177,9 +177,21 @@ interface ExternalActivityDto {
   syncedAt?: string;
 }
 
+/**
+ * Acknowledgement returned to mobile after an external_activity upsert so the
+ * client can reconcile server-assigned metadata (e.g. updated_at) back onto
+ * its local row. `localId` and `serverId` are both the same mobile-minted
+ * UUID in steady state; they are kept as separate fields to allow for any
+ * future server-side id remapping without another wire break.
+ *
+ * Resolves audit items #5 and #10 (2026-04-19).
+ */
 interface ExternalActivityAckDto {
+  localId: string;
+  serverId: string;
   externalId: string;
   provider: string;
+  updatedAt: string;
 }
 
 interface PushPayload {
@@ -1423,8 +1435,23 @@ Deno.serve(async (req) => {
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (payload.externalActivities && payload.externalActivities.length > 0) {
+      // fix(audit #5): require client-minted id. Mobile already mints via
+      // ExternalActivity.id = generateUUID() default, so any payload missing
+      // it indicates a buggy producer. Rejecting up-front prevents the server
+      // from generating a UUID the client will never learn about.
+      for (const a of payload.externalActivities) {
+        if (!a.id) {
+          return new Response(
+            JSON.stringify({
+              error: 'external_activity.id is required (mobile must mint UUID before send)',
+            }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       const activityRows = payload.externalActivities.map((a) => ({
-        ...(a.id ? { id: a.id } : {}),
+        id: a.id,
         user_id: userId,
         external_id: a.externalId,
         provider: a.provider,
@@ -1441,20 +1468,28 @@ Deno.serve(async (req) => {
         synced_at: a.syncedAt ?? new Date().toISOString(),
       }));
 
-      const { error: extErr } = await supabase
+      // fix(audit #10): .select() after upsert so we can return the
+      // server-canonical row metadata (including updated_at) to the client.
+      // Without this the client cannot seed its LWW timestamp correctly.
+      const { data: extData, error: extErr } = await supabase
         .from('external_activities')
-        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
+        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' })
+        .select('id, external_id, provider, updated_at');
       if (extErr) {
         console.warn('external_activities upsert warning:', extErr.message);
         externalActivityIds = [];
         externalActivityKeys = [];
       } else {
         externalActivitiesUpserted = activityRows.length;
-        externalActivityIds = activityRows.map((r) => r.external_id);
-        externalActivityKeys = activityRows.map((r) => ({
-          externalId: r.external_id,
-          provider: r.provider,
+        externalActivityKeys = (extData ?? []).map((r: Record<string, unknown>) => ({
+          localId: String(r.id),
+          serverId: String(r.id),
+          externalId: String(r.external_id),
+          provider: String(r.provider),
+          updatedAt: String(r.updated_at),
         }));
+        // Backward-compat alias for clients that read externalActivityIds only.
+        externalActivityIds = externalActivityKeys.map((k) => k.externalId);
       }
     }
 
