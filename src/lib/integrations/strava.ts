@@ -1,10 +1,5 @@
 import { z } from "zod";
-
-// =============================================================================
-// Re-export the normalizer from normalize.ts for convenience
-// =============================================================================
-
-export { normalizeStravaActivity } from "./normalize";
+import type { NormalizedActivity } from "./types";
 
 // =============================================================================
 // Strava Activity Zod Schema (v3 API response validation)
@@ -25,6 +20,53 @@ export const StravaActivitySchema = z.object({
 });
 
 export type StravaActivity = z.infer<typeof StravaActivitySchema>;
+
+/**
+ * Map Strava sport_type to a generic activity type.
+ */
+function mapStravaWireType(sportType: string): string {
+	const mapping: Record<string, string> = {
+		Run: "running",
+		TrailRun: "running",
+		VirtualRun: "running",
+		Ride: "cycling",
+		MountainBikeRide: "cycling",
+		GravelRide: "cycling",
+		VirtualRide: "cycling",
+		Swim: "swimming",
+		Walk: "walking",
+		Hike: "hiking",
+		WeightTraining: "strength",
+		Crossfit: "strength",
+		Yoga: "flexibility",
+		Rowing: "rowing",
+		Elliptical: "cardio",
+		StairStepper: "cardio",
+	};
+	return mapping[sportType] ?? "other";
+}
+
+/**
+ * Normalize a Strava API activity response into our unified format.
+ */
+export function normalizeStravaActivity(raw: unknown): NormalizedActivity {
+	const activity = StravaActivitySchema.parse(raw);
+	return {
+		external_id: String(activity.id),
+		provider: "strava",
+		name: activity.name,
+		activity_type: mapStravaWireType(activity.sport_type),
+		started_at: activity.start_date,
+		duration_seconds: activity.elapsed_time,
+		distance_meters: activity.distance,
+		calories: activity.kilojoules
+			? Math.round(activity.kilojoules * 0.239)
+			: null,
+		avg_heart_rate: activity.average_heartrate ?? null,
+		max_heart_rate: activity.max_heartrate ?? null,
+		elevation_gain_meters: activity.total_elevation_gain,
+	};
+}
 
 // =============================================================================
 // Strava OAuth Flow

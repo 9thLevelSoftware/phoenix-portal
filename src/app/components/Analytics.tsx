@@ -19,6 +19,7 @@ import {
 	CHART_COLORS,
 	ECHARTS_GRID,
 } from "@/app/components/charts/shared/EChartsTheme";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import type { InsightItem } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -186,7 +187,7 @@ function bucketByWeek(
 			day: "numeric",
 		});
 		const existing = weeks.get(key) ?? { volume: 0, workouts: 0 };
-		existing.volume += item.total_volume;
+		existing.volume += item.total_volume * WEIGHT_MULTIPLIER;
 		existing.workouts += 1;
 		weeks.set(key, existing);
 	}
@@ -384,7 +385,10 @@ function bucketByWeekMobile(
 		const weekStart = new Date(date);
 		weekStart.setDate(diff);
 		const weekKey = weekStart.toISOString().slice(0, 10);
-		weeks.set(weekKey, (weeks.get(weekKey) ?? 0) + item.total_volume);
+		weeks.set(
+			weekKey,
+			(weeks.get(weekKey) ?? 0) + item.total_volume * WEIGHT_MULTIPLIER,
+		);
 	}
 	let i = 1;
 	return Array.from(weeks.entries()).map(([, volume]) => ({
@@ -678,11 +682,11 @@ export function Analytics() {
 	const heroDeltas = useMemo(() => {
 		if (!volumeComparison) return { volume: null, workouts: null };
 		const currentVol = volumeComparison.current.reduce(
-			(s, r) => s + (r.total_volume ?? 0),
+			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			0,
 		);
 		const previousVol = volumeComparison.previous.reduce(
-			(s, r) => s + (r.total_volume ?? 0),
+			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			0,
 		);
 		return {
@@ -697,7 +701,7 @@ export function Analytics() {
 	// --- Training Load from session data ---
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
-			totalVolume: s.total_volume ?? 0,
+			totalVolume: (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));

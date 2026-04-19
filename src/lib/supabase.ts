@@ -13,28 +13,51 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /**
+ * Mutable ref so the custom `fetch` can call `refreshSession` without a circular
+ * initialization dependency on `supabase`.
+ */
+const supabaseRef: {
+	current: ReturnType<typeof createClient<Database>> | null;
+} = { current: null };
+
+/**
+ * One-shot retry on 401 after `refreshSession()` so idle sessions recover when
+ * a stale JWT reaches PostgREST before the client-side auto-refresh runs.
+ * The retry must re-inject the freshly refreshed access token into the
+ * Authorization header — reusing `init.headers` would send the stale JWT again.
+ */
+const fetchWithAuthRetry: typeof fetch = async (input, init) => {
+	const response = await fetch(input, init);
+	if (response.status !== 401 || !supabaseRef.current) {
+		return response;
+	}
+
+	const { data, error } = await supabaseRef.current.auth.refreshSession();
+	if (error || !data.session) {
+		return response;
+	}
+
+	const headers = new Headers(
+		init?.headers ?? (input instanceof Request ? input.headers : undefined),
+	);
+	headers.set("Authorization", `Bearer ${data.session.access_token}`);
+
+	return fetch(input, { ...init, headers });
+};
+
+/**
  * Supabase client configuration.
  *
- * autoRefreshToken is DISABLED to prevent refresh token rotation conflicts
- * with the mobile app. Both clients share the same Supabase auth backend —
- * when one client auto-refreshes, Supabase rotates the refresh token,
- * invalidating the other client's token.
- *
- * With autoRefreshToken disabled:
- * - The portal handles token refresh on-demand when receiving 401 errors
- * - The mobile app's tokens remain valid between its own refresh cycles
- * - Users can use both portal and mobile simultaneously
- *
- * See: https://supabase.com/docs/reference/javascript/initializing#with-additional-parameters
+ * Background token refresh is enabled so JWTs renew before expiry. Multi-client
+ * refresh is mitigated by `refresh_token_reuse_interval` in `supabase/config.toml`.
  */
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+	global: { fetch: fetchWithAuthRetry },
 	auth: {
-		// Disable automatic background token refresh to prevent refresh token
-		// rotation from invalidating the mobile app's tokens
-		autoRefreshToken: false,
-		// Keep session persistence — user stays logged in across tabs/refreshes
+		autoRefreshToken: true,
 		persistSession: true,
-		// Detect OAuth redirects in URL
 		detectSessionInUrl: true,
 	},
 });
+
+supabaseRef.current = supabase;

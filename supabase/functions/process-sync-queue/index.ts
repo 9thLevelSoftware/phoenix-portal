@@ -22,11 +22,47 @@ const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   hevy: { requests: 40, windowMs: 60 * 60 * 1000 },
 };
 
+function timingSafeEqualString(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a);
+  const eb = new TextEncoder().encode(b);
+  if (ea.length !== eb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
+  return diff === 0;
+}
+
+function isServiceRoleRequest(req: Request): boolean {
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceRoleKey) return false;
+  const authHeader = req.headers.get('Authorization') ?? '';
+  return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
+}
+
+function hasValidCronSecret(req: Request): boolean {
+  const readSecret = (key: string): string | undefined => {
+    const value = Deno.env.get(key)?.trim();
+    return value ? value : undefined;
+  };
+  const expectedSecret =
+    readSecret('PROCESS_SYNC_QUEUE_SECRET') ??
+    readSecret('CRON_SYNC_QUEUE_SECRET');
+  if (!expectedSecret) return false;
+  const provided = req.headers.get('x-cron-secret') ?? '';
+  return timingSafeEqualString(expectedSecret, provided);
+}
+
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
+  }
+
+  if (!isServiceRoleRequest(req) && !hasValidCronSecret(req)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 
   const supabase = createClient(

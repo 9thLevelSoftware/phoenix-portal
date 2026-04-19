@@ -3,7 +3,6 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import {
 	ArrowRight,
 	Award,
-	Bell,
 	Calendar,
 	ChevronRight,
 	Dumbbell,
@@ -23,7 +22,6 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-import { toast } from "sonner";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -568,13 +566,6 @@ export function Dashboard() {
 							<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
 							<p className="text-sm text-muted-foreground">Let's crush today</p>
 						</div>
-						<button
-							className="relative p-2 hover:bg-surface-2 rounded-full transition-colors"
-							onClick={() => toast("Notifications coming in a future update")}
-						>
-							<Bell className="w-6 h-6 text-secondary-foreground" />
-							<span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-signal-pulse" />
-						</button>
 					</div>
 				</div>
 

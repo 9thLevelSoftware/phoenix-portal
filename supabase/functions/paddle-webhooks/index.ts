@@ -1,8 +1,13 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { hmacSha256Hex } from "../_shared/hmac.ts";
+import {
+  mapPriceIdToTier,
+  paddlePriceIdsConfigured,
+} from "../_shared/paddlePriceIds.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
 const responseHeaders = {
@@ -20,7 +25,7 @@ const responseHeaders = {
 async function verifyPaddleSignature(
   rawBody: string,
   signatureHeader: string,
-  secret: string
+  secret: string,
 ): Promise<boolean> {
   const parts = signatureHeader.split(";");
   const tsEntry = parts.find((p) => p.startsWith("ts="));
@@ -46,21 +51,20 @@ async function verifyPaddleSignature(
     encoder.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
 
   const payload = `${ts}:${rawBody}`;
   const signatureBuffer = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(payload)
+    encoder.encode(payload),
   );
 
   const computedHex = Array.from(new Uint8Array(signatureBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  // Timing-safe comparison
   if (computedHex.length !== expectedHex.length) return false;
 
   const a = encoder.encode(computedHex);
@@ -68,39 +72,9 @@ async function verifyPaddleSignature(
 
   let mismatch = 0;
   for (let i = 0; i < a.length; i++) {
-    mismatch |= a[i] ^ b[i];
+    mismatch |= a[i]! ^ b[i]!;
   }
   return mismatch === 0;
-}
-
-// ─── Price → Tier Mapping ───────────────────────────────────────────────────
-
-/**
- * Maps a Paddle price ID to a Phoenix Portal subscription tier.
- * Price IDs are configured via environment variables.
- */
-function mapPriceIdToTier(priceId: string): string {
-  const infernoPriceIds = (Deno.env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-  const flamePriceIds = (Deno.env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-  const emberPriceIds = (Deno.env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  if (infernoPriceIds.includes(priceId)) return "INFERNO";
-  if (flamePriceIds.includes(priceId)) return "FLAME";
-  if (emberPriceIds.includes(priceId)) return "EMBER";
-
-  if (priceId) {
-    console.warn("[BILLING_ALERT] Unknown price ID mapped to FREE tier:", priceId, "— check PADDLE_*_PRICE_IDS env vars");
-  }
-  return "FREE";
 }
 
 // ─── Status Mapping ─────────────────────────────────────────────────────────
@@ -132,11 +106,21 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: responseHeaders }
+      { status: 405, headers: responseHeaders },
     );
   }
 
   try {
+    if (!paddlePriceIdsConfigured(Deno.env)) {
+      console.error(
+        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration incomplete" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
+
     // Read raw body BEFORE parsing — needed for signature verification
     const rawBody = await req.text();
 
@@ -147,7 +131,7 @@ Deno.serve(async (req) => {
     if (!webhookSecret || !signatureHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: responseHeaders }
+        { status: 401, headers: responseHeaders },
       );
     }
 
@@ -155,23 +139,24 @@ Deno.serve(async (req) => {
     if (!isValid) {
       return new Response(
         JSON.stringify({ error: "Invalid signature" }),
-        { status: 401, headers: responseHeaders }
+        { status: 401, headers: responseHeaders },
       );
     }
 
     // Parse the event after signature verification
     const event = JSON.parse(rawBody);
 
-    console.log(`[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${event.data?.customer_id}`);
+    console.log(
+      `[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${event.data?.customer_id}`,
+    );
 
     if (!event.event_id || !event.event_type || !event.data) {
       return new Response(
         JSON.stringify({ error: "Invalid event payload" }),
-        { status: 400, headers: responseHeaders }
+        { status: 400, headers: responseHeaders },
       );
     }
 
-    // Only handle subscription events
     const handledEvents = [
       "subscription.created",
       "subscription.updated",
@@ -179,25 +164,89 @@ Deno.serve(async (req) => {
       "subscription.paused",
       "subscription.resumed",
       "subscription.activated",
+      "subscription.past_due",
+      "subscription.trialing",
+      "transaction.completed",
+      "transaction.payment_failed",
     ];
 
     if (!handledEvents.includes(event.event_type)) {
-      // Return 200 for unknown events — don't trigger Paddle retries
-      console.log(`Unhandled event type: ${event.event_type}`);
+      console.warn(`[Paddle] Unhandled event type: ${event.event_type}`);
       return new Response(
         JSON.stringify({ received: true }),
-        { status: 200, headers: responseHeaders }
+        { status: 200, headers: responseHeaders },
+      );
+    }
+
+    // Transaction-only events: acknowledge (extend with billing_events table later)
+    if (
+      event.event_type === "transaction.completed" ||
+      event.event_type === "transaction.payment_failed"
+    ) {
+      console.log(
+        `[Paddle] Acknowledged ${event.event_type} event_id=${event.event_id}`,
+      );
+      return new Response(
+        JSON.stringify({ received: true }),
+        { status: 200, headers: responseHeaders },
       );
     }
 
     // Extract user_id from custom_data
     const userId = event.data.custom_data?.user_id;
     if (!userId) {
-      console.error("[BILLING_ALERT] Missing custom_data.user_id in Paddle event:", event.event_id, "event_type:", event.event_type);
+      console.error(
+        "[BILLING_ALERT] Missing custom_data.user_id in Paddle event:",
+        event.event_id,
+        "event_type:",
+        event.event_type,
+      );
       return new Response(
         JSON.stringify({ error: "Missing user_id in custom_data" }),
-        { status: 500, headers: responseHeaders }
+        { status: 500, headers: responseHeaders },
       );
+    }
+
+    // Verify the signed user_id handed out by paddle-checkout-custom-data so
+    // a client can't forge another user's user_id in custom_data (P1-10).
+    // Only enforce when the signing secret is configured — lets envs that
+    // haven't rolled out the signed-checkout flow keep working.
+    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
+    if (customDataSecret?.trim()) {
+      const providedSig = event.data.custom_data?.cd_sig;
+      if (!providedSig || typeof providedSig !== "string") {
+        console.error(
+          "[BILLING_ALERT] Missing cd_sig in custom_data (user_id spoofing attempt?):",
+          event.event_id,
+          "user_id:",
+          userId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Missing cd_sig in custom_data" }),
+          { status: 401, headers: responseHeaders },
+        );
+      }
+
+      const expectedSig = await hmacSha256Hex(customDataSecret.trim(), userId);
+      const a = new TextEncoder().encode(providedSig);
+      const b = new TextEncoder().encode(expectedSig);
+      let sigMismatch = a.length !== b.length ? 1 : 0;
+      const cmpLen = Math.min(a.length, b.length);
+      for (let i = 0; i < cmpLen; i++) {
+        sigMismatch |= a[i]! ^ b[i]!;
+      }
+      if (sigMismatch !== 0) {
+        console.error(
+          "[BILLING_ALERT] Invalid cd_sig in custom_data (user_id spoofing attempt?):",
+          event.event_id,
+          "user_id:",
+          userId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Invalid cd_sig" }),
+          { status: 401, headers: responseHeaders },
+        );
+      }
     }
 
     // Idempotency check — skip if this event was already processed
@@ -210,14 +259,42 @@ Deno.serve(async (req) => {
     if (existing?.last_event_id === event.event_id) {
       return new Response(
         JSON.stringify({ received: true, duplicate: true }),
-        { status: 200, headers: responseHeaders }
+        { status: 200, headers: responseHeaders },
       );
     }
 
     // Map status and tier
     const status = mapPaddleStatusToSubscriptionStatus(event.data.status);
     const priceId = event.data.items?.[0]?.price?.id ?? "";
-    const tier = mapPriceIdToTier(priceId);
+    let tier = mapPriceIdToTier(priceId, Deno.env);
+
+    if (priceId && tier === "FREE") {
+      const { data: subRow } = await supabase
+        .from("subscriptions")
+        .select("tier")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const existingTier = subRow?.tier as string | undefined;
+      if (
+        existingTier &&
+        existingTier !== "FREE" &&
+        existingTier !== "free"
+      ) {
+        console.warn(
+          `[BILLING_ALERT] Unknown price ID ${priceId} — preserving existing tier ${existingTier}`,
+        );
+        tier = existingTier as typeof tier;
+      } else {
+        console.error(
+          "[BILLING_ALERT] Unknown price ID — no existing tier to preserve (check PADDLE_* price envs):",
+          priceId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Unknown price_id — configuration error" }),
+          { status: 500, headers: responseHeaders },
+        );
+      }
+    }
 
     // Detect cancel/pause scheduling
     const isCanceled =
@@ -250,21 +327,23 @@ Deno.serve(async (req) => {
       console.error(`[BILLING_ALERT] Error upserting subscription for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
-        { status: 500, headers: responseHeaders }
+        { status: 500, headers: responseHeaders },
       );
     }
 
-    console.log(`[Paddle] Successfully processed ${event.event_type} for user ${userId}, paddle_customer_id: ${event.data.customer_id}`);
+    console.log(
+      `[Paddle] Successfully processed ${event.event_type} for user ${userId}, paddle_customer_id: ${event.data.customer_id}`,
+    );
 
     return new Response(
       JSON.stringify({ received: true }),
-      { status: 200, headers: responseHeaders }
+      { status: 200, headers: responseHeaders },
     );
   } catch (err) {
     console.error("Paddle webhook handler error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: responseHeaders }
+      { status: 500, headers: responseHeaders },
     );
   }
 });

@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -140,7 +141,7 @@ Deno.serve(async (req) => {
 					{
 						user_id: userId,
 						provider: "liftosaur",
-						api_key,
+						api_key: await encryptOAuthSecret(api_key),
 						updated_at: new Date().toISOString(),
 					},
 					{ onConflict: "user_id,provider" }
@@ -180,7 +181,7 @@ Deno.serve(async (req) => {
 			.eq("provider", "liftosaur")
 			.single();
 
-		const storedApiKey = tokenData?.api_key;
+		const storedApiKey = (await decryptOAuthSecret(tokenData?.api_key)) ?? "";
 
 		if (!storedApiKey) {
 			return new Response(

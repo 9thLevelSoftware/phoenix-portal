@@ -3,7 +3,7 @@ import { z } from "zod";
 // Per-cable to total weight conversion
 // Vitruvian has dual cables; DB stores per-cable, portal shows total
 // Change to 1 if DB convention changes to store total
-const WEIGHT_MULTIPLIER = 2;
+export const WEIGHT_MULTIPLIER = 2;
 const weightTransform = z
 	.number()
 	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
@@ -140,7 +140,8 @@ export const routineSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	exercise_count: z.number(),
-	estimated_duration: z.number(),
+	/** Stored as seconds in DB; exposed to portal UI as minutes */
+	estimated_duration: z.number().transform((sec) => Math.round(sec / 60)),
 	times_completed: z.number(),
 	last_used_at: z
 		.string()
@@ -208,7 +209,7 @@ export const routineExerciseSchema = z.object({
 	muscle_group: z.string(),
 	sets: z.number(),
 	reps: z.number(),
-	weight: z.number(),
+	weight: weightTransform,
 	rest_seconds: z.number(),
 	duration_seconds: z.number().nullable().optional(),
 	mode: z.string(),
@@ -216,7 +217,17 @@ export const routineExerciseSchema = z.object({
 	superset_id: z.string().nullable().optional(),
 	superset_color: z.string().nullable().optional(),
 	superset_order: z.number().nullable().optional(),
-	per_set_weights: z.any().nullable().optional(),
+	// Stored per-cable to match the single `weight` column; multiply back to
+	// display totals so the UI keeps round-trip symmetry with `weight`.
+	per_set_weights: z
+		.any()
+		.nullable()
+		.optional()
+		.transform((v) =>
+			Array.isArray(v)
+				? v.map((x) => (typeof x === "number" ? x * WEIGHT_MULTIPLIER : x))
+				: v,
+		),
 	per_set_rest: z.any().nullable().optional(),
 	is_amrap: z.boolean().optional().default(false),
 	is_bodyweight: z.boolean().optional().default(false),

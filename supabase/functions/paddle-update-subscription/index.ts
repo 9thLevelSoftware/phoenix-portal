@@ -1,25 +1,16 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import {
+  getAllAllowedPriceIds,
+  paddlePriceIdsConfigured,
+} from "../_shared/paddlePriceIds.ts";
 
 // Service-role client for DB queries (bypasses RLS)
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
-
-// Allowed price IDs for subscription updates (must match environment variables)
-const ALLOWED_PRICE_IDS = [
-  // Ember tier
-  Deno.env.get("VITE_PADDLE_EMBER_MONTHLY_PRICE_ID"),
-  Deno.env.get("VITE_PADDLE_EMBER_ANNUAL_PRICE_ID"),
-  // Flame tier
-  Deno.env.get("VITE_PADDLE_FLAME_MONTHLY_PRICE_ID"),
-  Deno.env.get("VITE_PADDLE_FLAME_ANNUAL_PRICE_ID"),
-  // Inferno tier
-  Deno.env.get("VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID"),
-  Deno.env.get("VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID"),
-].filter(Boolean); // Remove undefined values
 
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
@@ -37,8 +28,26 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!paddlePriceIdsConfigured(Deno.env)) {
+      console.error(
+        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration incomplete" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const ALLOWED_PRICE_IDS = getAllAllowedPriceIds(Deno.env);
+
     // Authenticate the user via their JWT
-    const authHeader = req.headers.get("Authorization")!;
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Not authenticated" }),
+        { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -81,8 +90,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate price_id against allowed set
-    if (!ALLOWED_PRICE_IDS.includes(newPriceId)) {
+    // Validate price_id against allowed set (PADDLE_*_PRICE_IDS)
+    if (!ALLOWED_PRICE_IDS.has(newPriceId)) {
       console.warn("Invalid price_id attempted:", newPriceId);
       return new Response(
         JSON.stringify({ error: "Invalid price_id" }),
