@@ -47,6 +47,10 @@ const TARGETED_INVALIDATIONS = [
 		queryKey: queryKeys.integrations.external(USER_ID),
 		label: "integrations.external",
 	},
+	{
+		queryKey: queryKeys.localProfiles.byUser(USER_ID),
+		label: "localProfiles.byUser",
+	},
 ] as const;
 
 const mocks = vi.hoisted(() => {
