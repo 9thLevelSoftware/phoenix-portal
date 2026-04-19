@@ -5,7 +5,13 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Prevent cross-user takeover when upserting by primary key only. */
+/**
+ * Prevent cross-user takeover when upserting by primary key only.
+ *
+ * For tables with a direct `user_id` column, this checks that any existing
+ * rows with the supplied ids are either absent or owned by `userId`.
+ * Returns a 400 Response on violation, or null when safe to proceed.
+ */
 async function assertRowsOwnedByUser(
   supabase: ReturnType<typeof createClient>,
   table: string,
@@ -17,10 +23,76 @@ async function assertRowsOwnedByUser(
   const chunkSize = 100;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);
-    const { data: rows } = await supabase.from(table).select('id').in('id', chunk).neq('user_id', userId);
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('id')
+      .in('id', chunk)
+      .neq('user_id', userId);
+    if (error) {
+      // Fail closed — if the ownership probe itself errors (e.g. missing
+      // column), we must not proceed with an upsert that could overwrite a
+      // victim row. Surface as 500 so the caller retries / we notice.
+      throw new Error(`Ownership check on ${table} failed: ${error.message}`);
+    }
     if (rows && rows.length > 0) {
       return new Response(
         JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Prevent cross-user takeover for child tables whose ownership flows through
+ * a parent FK (the child has no direct `user_id` column). Resolves the parent
+ * ids for any existing child rows and checks ownership against the parent
+ * table's `user_id` column.
+ */
+async function assertChildRowsOwnedViaParent(
+  supabase: ReturnType<typeof createClient>,
+  childTable: string,
+  childFkColumn: string,
+  parentTable: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return null;
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: childRows, error: childErr } = await supabase
+      .from(childTable)
+      .select(`id, ${childFkColumn}`)
+      .in('id', chunk);
+    if (childErr) {
+      throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
+    }
+    if (!childRows || childRows.length === 0) continue;
+    const parentIds = [
+      ...new Set(
+        childRows
+          .map((r) => (r as Record<string, unknown>)[childFkColumn])
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    ];
+    if (parentIds.length === 0) continue;
+    const { data: foreignParents, error: parentErr } = await supabase
+      .from(parentTable)
+      .select('id')
+      .in('id', parentIds)
+      .neq('user_id', userId);
+    if (parentErr) {
+      throw new Error(`Ownership check on ${parentTable} failed: ${parentErr.message}`);
+    }
+    if (foreignParents && foreignParents.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: `Refused: existing ${childTable} row belongs to another user`,
+        }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
@@ -454,9 +526,11 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.cycles && payload.cycles.length > 1000) {
+    // fix(audit #6): align cycles cap with sessions/routines/telemetry (10000).
+    // Prior 1000 cap was a silent cliff for users with large cycle histories.
+    if (payload.cycles && payload.cycles.length > MAX_ARRAY_SIZE) {
       return new Response(
-        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
+        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ARRAY_SIZE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -547,6 +621,193 @@ Deno.serve(async (req) => {
     let externalActivitiesUpserted = 0;
 
     // =========================================================================
+    // 3c. Cross-user takeover protection
+    //
+    // The service-role client used below bypasses RLS, so we must verify
+    // up-front that every client-supplied primary key either doesn't exist
+    // yet or is already owned by the authenticated user. Also enforce that
+    // child rows reference parents from this same payload — otherwise an
+    // attacker could attach their rows to a victim's parent row.
+    // =========================================================================
+    const allSessionIds = (payload.sessions ?? []).map((s) => s.id);
+    const allExerciseIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.map((e) => e.id),
+    );
+    const allSetIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.map((st) => st.id)),
+    );
+    const allRepSummaryIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.flatMap((st) => st.repSummaries.map((r) => r.id))),
+    );
+    const allTelemetryIds = (payload.telemetry ?? []).map((t) => t.id);
+    const allRoutineIds = (payload.routines ?? []).map((r) => r.id);
+    const allRoutineExerciseIds = (payload.routines ?? []).flatMap((r) =>
+      r.exercises.map((e) => e.id),
+    );
+    const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
+    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
+    const sessionIdSet = new Set(allSessionIds);
+    const exerciseIdSet = new Set(allExerciseIds);
+    const setIdSet = new Set(allSetIds);
+    const routineIdSet = new Set(allRoutineIds);
+    const cycleIdSet = new Set(allCycleIds);
+
+    const fkMismatchResponse = (msg: string): Response =>
+      new Response(
+        JSON.stringify({ error: `FK mismatch in payload: ${msg}` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    for (const s of payload.sessions ?? []) {
+      for (const e of s.exercises) {
+        if (e.sessionId !== s.id) {
+          return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
+        }
+        for (const st of e.sets) {
+          if (st.exerciseId !== e.id) {
+            return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
+          }
+          for (const r of st.repSummaries) {
+            if (r.setId !== st.id) {
+              return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
+            }
+          }
+        }
+      }
+    }
+    for (const r of payload.routines ?? []) {
+      for (const e of r.exercises) {
+        if (e.routineId !== r.id) {
+          return fkMismatchResponse(
+            `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
+          );
+        }
+      }
+    }
+    for (const c of payload.cycles ?? []) {
+      for (const d of c.days) {
+        if (d.cycleId !== c.id) {
+          return fkMismatchResponse(
+            `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
+          );
+        }
+      }
+    }
+
+    // Direct-id ownership checks against tables with a user_id column
+    const directOwnerChecks: Array<[string, string[]]> = [
+      ['workout_sessions', allSessionIds],
+      ['exercises', allExerciseIds],
+      ['sets', allSetIds],
+      ['rep_summaries', allRepSummaryIds],
+      ['rep_telemetry', allTelemetryIds],
+      ['routines', allRoutineIds],
+      ['training_cycles', allCycleIds],
+    ];
+    for (const [table, ids] of directOwnerChecks) {
+      const blocked = await assertRowsOwnedByUser(supabase, table, ids, userId, cors);
+      if (blocked) return blocked;
+    }
+
+    // Parent-FK ownership checks for tables without a user_id column
+    const reBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'routine_exercises',
+      'routine_id',
+      'routines',
+      allRoutineExerciseIds,
+      userId,
+      cors,
+    );
+    if (reBlocked) return reBlocked;
+
+    const cdBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'cycle_days',
+      'cycle_id',
+      'training_cycles',
+      allCycleDayIds,
+      userId,
+      cors,
+    );
+    if (cdBlocked) return cdBlocked;
+
+    // Telemetry, phase stats, signatures and assessments may reference parent
+    // rows from previous pushes, not this payload. Validate those cross-payload
+    // parent references against the authoritative user_id column on each parent.
+    const telemetrySetIdsToVerify = (payload.telemetry ?? [])
+      .map((t) => t.setId)
+      .filter((sid) => !setIdSet.has(sid));
+    const telParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'sets',
+      telemetrySetIdsToVerify,
+      userId,
+      cors,
+    );
+    if (telParentBlocked) return telParentBlocked;
+
+    const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
+      .map((p) => p.sessionId)
+      .filter((sid) => !sessionIdSet.has(sid));
+    const phaseParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'workout_sessions',
+      phaseSessionIdsToVerify,
+      userId,
+      cors,
+    );
+    if (phaseParentBlocked) return phaseParentBlocked;
+
+    const sigExerciseIdsToVerify = (payload.exerciseSignatures ?? [])
+      .map((es) => es.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const sigParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      sigExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sigParentBlocked) return sigParentBlocked;
+
+    const assessExerciseIdsToVerify = (payload.assessments ?? [])
+      .map((a) => a.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const assessParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      assessExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (assessParentBlocked) return assessParentBlocked;
+
+    const dayRoutineIdsToVerify = (payload.cycles ?? [])
+      .flatMap((c) => c.days.map((d) => d.routineId))
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const dayRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      dayRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (dayRoutineBlocked) return dayRoutineBlocked;
+
+    const sessionRoutineIdsToVerify = (payload.sessions ?? [])
+      .map((s) => s.routineSessionId)
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const sessionRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      sessionRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sessionRoutineBlocked) return sessionRoutineBlocked;
+
+    // =========================================================================
     // 4. Insert workout hierarchy in FK order
     // =========================================================================
     if (payload.sessions && payload.sessions.length > 0) {
@@ -612,6 +873,11 @@ Deno.serve(async (req) => {
       }
 
       // --- 4c. Batch upsert sets ---
+      // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
+      // projection. They are send-only derivation hints consumed by the
+      // personal_records insert path below; the `sets` table has no columns
+      // for them. See PortalSetDto doc comment in mobile for the contract.
+      // Resolves audit item #3 (2026-04-19).
       const setRows = payload.sessions.flatMap((s) =>
         s.exercises.flatMap((e) =>
           e.sets.map((st) => ({
@@ -684,6 +950,9 @@ Deno.serve(async (req) => {
             force_n: t.forceN,
             velocity_mps: t.velocityMps,
             position_mm: t.positionMm,
+            // cable stored canonically as "A" | "B" from BLE. Do not translate
+            // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
+            // when a human-readable label is needed. Audit item #4 (2026-04-19).
             cable: t.cable,
           }));
 
@@ -990,19 +1259,25 @@ Deno.serve(async (req) => {
     // =========================================================================
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
+      // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
+      // Int per the Kotlin DTO, but any buggy producer (e.g. analytics pipeline)
+      // that feeds a float here would break the round-trip on pull. See
+      // _shared/rpgSchema.ts.
+      const rpgInt = (v: unknown, fallback: number) =>
+        Number.isFinite(Number(v)) ? Math.round(Number(v)) : fallback;
       const { error: rpgErr } = await supabase
         .from('rpg_attributes')
         .upsert(
           {
             user_id: userId,
-            strength: rpg.strength,
-            power: rpg.power,
-            stamina: rpg.stamina,
-            consistency: rpg.consistency,
-            mastery: rpg.mastery,
+            strength: rpgInt(rpg.strength, 0),
+            power: rpgInt(rpg.power, 0),
+            stamina: rpgInt(rpg.stamina, 0),
+            consistency: rpgInt(rpg.consistency, 0),
+            mastery: rpgInt(rpg.mastery, 0),
             character_class: rpg.characterClass,
-            level: rpg.level,
-            experience_points: rpg.experiencePoints,
+            level: rpgInt(rpg.level, 1),
+            experience_points: rpgInt(rpg.experiencePoints, 0),
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'user_id' }

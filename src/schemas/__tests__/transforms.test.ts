@@ -348,10 +348,13 @@ describe("routineExerciseSchema", () => {
 		created_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("does NOT transform weight (routines store per-cable for mobile)", () => {
+	it("doubles weight on read (DB stores per-cable; portal displays total)", () => {
 		const result = routineExerciseSchema.parse(validRoutineExercise);
-		// Routine weights are NOT transformed - stored as per-cable for mobile execution
-		expect(result.weight).toBe(50);
+		// DB column stores per-cable for mobile cable programming, but the portal
+		// UI consistently renders total weight (matches setSchema.weight_kg and
+		// personalRecordSchema.value). Write-path in src/mutations/routines.ts
+		// divides back by WEIGHT_MULTIPLIER, keeping DB per-cable.
+		expect(result.weight).toBe(50 * WEIGHT_MULTIPLIER);
 	});
 
 	it("preserves per_set_weights as-is (no transform)", () => {

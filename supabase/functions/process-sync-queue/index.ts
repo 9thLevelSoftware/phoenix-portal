@@ -20,6 +20,11 @@ const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   fitbit: { requests: 120, windowMs: 60 * 60 * 1000 },
   garmin: { requests: 40, windowMs: 60 * 60 * 1000 },
   hevy: { requests: 40, windowMs: 60 * 60 * 1000 },
+  // fix(audit): H — liftosaur is in PROVIDERS but was missing here, so its
+  // tasks ran with no per-provider rate cap. Liftosaur's public API doesn't
+  // publish a hard rate limit, so we use a conservative ceiling in line with
+  // the other lightweight clients.
+  liftosaur: { requests: 40, windowMs: 60 * 60 * 1000 },
 };
 
 function timingSafeEqualString(a: string, b: string): boolean {

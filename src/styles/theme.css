@@ -33,7 +33,10 @@
   --secondary: #1a1a24;
   --secondary-foreground: #e0e0e8;
   --muted: #4a4a56;
-  --muted-foreground: #888894;
+  --muted-foreground: #a0a0ac;
+  --muted-hover: #5a5a66;
+  --hover-surface: #1a1a24;
+  --disabled-foreground: #5a5a66;
   --accent: #F59E0B;
   --accent-foreground: #06060a;
   --destructive: #ff5252;
@@ -44,7 +47,7 @@
   --warning-foreground: #06060a;
   --border: #1a1a24;
   --input: rgba(26, 26, 36, 0.5);
-  --input-background: rgba(26, 26, 36, 0.3);
+  --input-background: rgba(26, 26, 36, 0.5);
   --switch-background: #1a1a24;
   --ring: #FF6B35;
 
@@ -112,6 +115,9 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-muted-hover: var(--muted-hover);
+  --color-hover-surface: var(--hover-surface);
+  --color-disabled-foreground: var(--disabled-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -269,25 +275,25 @@
     border-right: 1px solid var(--border);
   }
 
-  /* Phoenix sidebar active state — ember gradient */
+  /* Phoenix sidebar active state — ember gradient (0.12 for visible tint, AA foreground) */
   [data-sidebar="menu-button"][data-active="true"] {
-    background: rgba(255, 107, 53, 0.06) !important;
-    color: var(--primary) !important;
+    background: rgba(255, 107, 53, 0.12) !important;
+    color: var(--sidebar-accent-foreground) !important;
   }
   [data-sidebar="menu-button"][data-active="true"] svg {
-    color: var(--primary);
+    color: var(--sidebar-accent-foreground);
   }
 
-  /* Phoenix sidebar hover — soft ember glow (non-active items only) */
+  /* Phoenix sidebar hover — matching ember tint, readable primary text (non-active items only) */
   [data-sidebar="menu-button"] {
     transition: background 150ms ease, color 150ms ease;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
-    background: rgba(255, 107, 53, 0.06) !important;
-    color: var(--primary-foreground) !important;
+    background: rgba(255, 107, 53, 0.12) !important;
+    color: var(--primary) !important;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
-    color: var(--primary-foreground) !important;
+    color: var(--primary) !important;
   }
 
   /* Keep filled primary controls above WCAG AA contrast thresholds. */

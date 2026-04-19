@@ -516,6 +516,7 @@ Deno.serve(async (req) => {
           routineName: ws.routine_name,
           workoutMode: ws.workout_mode,
           routineSessionId: ws.routine_session_id,
+          notes: ws.notes ?? null,
           avgVelocityMps: ws.avg_velocity_mps,
           avgAsymmetryPct: ws.avg_asymmetry_pct,
           velocityLossPct: ws.velocity_loss_pct,
@@ -868,14 +869,17 @@ Deno.serve(async (req) => {
         ? {
             id: rpgAttributes.id,
             userId: rpgAttributes.user_id,
-            strength: rpgAttributes.strength,
-            power: rpgAttributes.power,
-            stamina: rpgAttributes.stamina,
-            consistency: rpgAttributes.consistency,
-            mastery: rpgAttributes.mastery,
+            // fix(audit #8): defensively round integer fields before wire send
+            // so kotlinx.serialization on mobile cannot see a float in an Int
+            // slot. See _shared/rpgSchema.ts for the contract.
+            strength: Math.round(Number(rpgAttributes.strength ?? 0)),
+            power: Math.round(Number(rpgAttributes.power ?? 0)),
+            stamina: Math.round(Number(rpgAttributes.stamina ?? 0)),
+            consistency: Math.round(Number(rpgAttributes.consistency ?? 0)),
+            mastery: Math.round(Number(rpgAttributes.mastery ?? 0)),
             characterClass: rpgAttributes.character_class,
-            level: rpgAttributes.level,
-            experiencePoints: rpgAttributes.experience_points,
+            level: Math.round(Number(rpgAttributes.level ?? 1)),
+            experiencePoints: Math.round(Number(rpgAttributes.experience_points ?? 0)),
             updatedAt: rpgAttributes.updated_at,
           }
         : null;

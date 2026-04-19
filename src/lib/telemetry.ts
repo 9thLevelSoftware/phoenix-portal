@@ -5,7 +5,13 @@ export interface TelemetryPoint {
 	force_n: number;
 	velocity_mps: number;
 	position_mm: number;
-	cable: "left" | "right";
+	/**
+	 * Canonical cable identifier from BLE (A = left actuator, B = right).
+	 * Mobile is authoritative for BLE-captured data per monorepo CLAUDE.md.
+	 * For UI display use `cableDisplayName()` from `src/lib/telemetry-display.ts`.
+	 * Resolves audit item #4 (2026-04-19).
+	 */
+	cable: "A" | "B";
 }
 
 // Typed LTTB downsamplers for different metrics
