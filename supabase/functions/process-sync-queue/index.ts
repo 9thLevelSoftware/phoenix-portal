@@ -31,6 +31,22 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function isServiceRoleRequest(req: Request): boolean {
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceRoleKey) return false;
+  const authHeader = req.headers.get('Authorization') ?? '';
+  return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
+}
+
+function hasValidCronSecret(req: Request): boolean {
+  const expectedSecret =
+    Deno.env.get('CRON_SYNC_QUEUE_SECRET') ??
+    Deno.env.get('PROCESS_SYNC_QUEUE_SECRET');
+  if (!expectedSecret) return false;
+  const provided = req.headers.get('x-cron-secret') ?? '';
+  return timingSafeEqualString(expectedSecret, provided);
+}
+
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
 
@@ -38,9 +54,7 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: cors });
   }
 
-  const expectedSecret = Deno.env.get('CRON_SYNC_QUEUE_SECRET');
-  const provided = req.headers.get('x-cron-secret') ?? '';
-  if (!expectedSecret || !timingSafeEqualString(expectedSecret, provided)) {
+  if (!isServiceRoleRequest(req) && !hasValidCronSecret(req)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
