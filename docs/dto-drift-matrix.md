@@ -246,4 +246,8 @@ Mobile sends metadata. Portal doesn't store; computes on push. **Not round-tripp
 
 ---
 
-**Report Path:** C:/Users/dasbl/AndroidStudioProjects/Phoenix App Monorepo/.planning/audit/06-dto-drift-matrix.md
+**Report Path:** `phoenix-portal/docs/dto-drift-matrix.md`
+(relocated 2026-04-19 from monorepo-root `.planning/audit/` into the portal
+repo alongside existing `edge-functions-security-audit.md` and
+`weight-field-audit.md`; portal is canonical home for sync-contract audits
+since wire + Edge Function + DB schema live here).
