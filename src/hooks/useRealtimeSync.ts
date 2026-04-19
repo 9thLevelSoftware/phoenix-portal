@@ -72,9 +72,8 @@ export function useRealtimeSync() {
 				}, INVALIDATION_DEBOUNCE_MS);
 			})
 			.subscribe((status) => {
-				if (status === "SUBSCRIBED") {
-					console.log("[Phoenix] Realtime sync channel active");
-				}
+				// fix(audit): H — drop info-level console.log in production.
+				// Keep console.error so real channel failures remain visible.
 				if (status === "CHANNEL_ERROR") {
 					console.error("[Phoenix] Realtime sync channel error");
 				}

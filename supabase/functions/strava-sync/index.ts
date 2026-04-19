@@ -215,13 +215,17 @@ Deno.serve(async (req) => {
       const refreshed = await refreshAccessToken(refreshToken);
 
       accessToken = refreshed.access_token;
+      // Strava rotates refresh tokens on every refresh call; keep the in-memory
+      // copy in sync with what we persist so any subsequent refresh in this
+      // invocation uses the rotated value, not the now-revoked original.
+      refreshToken = refreshed.refresh_token ?? refreshToken;
 
       // Persist new tokens in oauth_tokens (server-only table)
       await supabase
         .from('oauth_tokens')
         .update({
           access_token: await encryptOAuthSecret(refreshed.access_token),
-          refresh_token: await encryptOAuthSecret(refreshed.refresh_token),
+          refresh_token: await encryptOAuthSecret(refreshToken),
           token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })

@@ -22,11 +22,11 @@ function Tabs({
 /* ── TabsList ── */
 
 const tabsListVariants = cva(
-	"text-muted-foreground flex items-center justify-center",
+	"text-foreground flex items-center justify-center",
 	{
 		variants: {
 			variant: {
-				default: "bg-muted/40 h-9 w-fit rounded-lg p-[3px]",
+				default: "bg-hover-surface h-9 w-fit rounded-lg p-[3px]",
 				panel: "bg-surface-2 border border-secondary p-1 rounded-lg",
 				underline:
 					"bg-transparent gap-1 rounded-none p-0 h-auto border-b border-secondary",
@@ -56,7 +56,7 @@ function TabsList({
 /* ── TabsTrigger ── */
 
 const tabsTriggerVariants = cva(
-	"inline-flex items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-ring focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	"inline-flex items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-ring focus-visible:outline-1 disabled:pointer-events-none disabled:bg-muted disabled:text-disabled-foreground disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 	{
 		variants: {
 			variant: {

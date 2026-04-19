@@ -181,6 +181,7 @@ Deno.serve(async (req) => {
 
     let processed = 0;
     let errors = 0;
+    let persistenceFailure = false; // fix(audit): C5 — track unrecoverable DB errors
 
     for (const activity of activities) {
       try {
@@ -193,9 +194,21 @@ Deno.serve(async (req) => {
           .eq('status', 'connected')
           .single();
 
-        if (lookupError || !integration) {
+        if (lookupError) {
+          // fix(audit): C5 — DB lookup failure is transient; signal retry to Garmin
+          console.error(
+            `[GARMIN_WEBHOOK] DB lookup failed for Garmin userId ${activity.userId}:`,
+            lookupError,
+          );
+          persistenceFailure = true;
+          errors++;
+          continue;
+        }
+        if (!integration) {
+          // Not an error on our side — Garmin user is no longer connected.
+          // Log and ack (no retry needed).
           console.warn(
-            `Garmin webhook: no connected user found for Garmin userId ${activity.userId}`,
+            `[GARMIN_WEBHOOK] no connected user for Garmin userId ${activity.userId}`,
           );
           errors++;
           continue;
@@ -204,7 +217,7 @@ Deno.serve(async (req) => {
         // Subscription gate — FLAME or higher for integrations
         const gate = await requireSubscription(supabase, integration.user_id, 'FLAME', cors);
         if (!gate.allowed) {
-          console.warn(`Garmin webhook: user ${integration.user_id} does not have FLAME subscription`);
+          console.warn(`[GARMIN_WEBHOOK] user ${integration.user_id} does not have FLAME subscription`);
           errors++;
           continue;
         }
@@ -224,7 +237,9 @@ Deno.serve(async (req) => {
           );
 
         if (upsertError) {
-          console.error('Garmin webhook: failed to upsert activity:', upsertError);
+          // fix(audit): C5 — upsert failure is transient; signal retry to Garmin
+          console.error('[GARMIN_WEBHOOK] failed to upsert activity:', upsertError);
+          persistenceFailure = true;
           errors++;
           continue;
         }
@@ -238,23 +253,41 @@ Deno.serve(async (req) => {
 
         processed++;
       } catch (activityError) {
-        console.error('Garmin webhook: error processing activity:', activityError);
+        // fix(audit): C5 — unexpected error per activity; treat as transient
+        console.error('[GARMIN_WEBHOOK] error processing activity:', activityError);
+        persistenceFailure = true;
         errors++;
       }
     }
 
-    // Always return 200 to acknowledge receipt (Garmin may retry on non-200)
+    // fix(audit): C5 — return 5xx when any persistence failure occurred so Garmin
+    // retries per their webhook contract. Only return 200 on fully successful
+    // (or deterministically non-retryable) processing.
+    if (persistenceFailure) {
+      return new Response(
+        JSON.stringify({
+          received: true,
+          processed,
+          errors,
+          error: 'Transient failure — please retry',
+        }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
     return new Response(
       JSON.stringify({ received: true, processed, errors }),
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
-    console.error('Garmin webhook error:', err);
-    // Return 200 even on error to prevent Garmin from retrying endlessly
-    // Log the error for debugging
+    // fix(audit): C5 — stop swallowing errors. Propagate 5xx so Garmin retries.
+    console.error('[GARMIN_WEBHOOK] unhandled error:', err);
     return new Response(
-      JSON.stringify({ received: true, error: 'Processing error' }),
-      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
+      JSON.stringify({
+        received: false,
+        error: err instanceof Error ? err.message : 'Processing error',
+      }),
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 });
