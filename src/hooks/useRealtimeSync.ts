@@ -11,8 +11,8 @@ const INVALIDATION_DEBOUNCE_MS = 400;
 /**
  * Realtime sync bridge — listens for Supabase Broadcast events from the mobile app.
  * On `sync_complete`, invalidates only query families that mobile sync can change
- * (workouts, records, routines, cycles, analytics, profile, challenges, and
- * external activities).
+ * (workouts, records, routines, cycles, analytics, profile, challenges, external
+ * activities, and local profiles).
  *
  * Only subscribes for EMBER+ users. Free users skip the broadcast channel
  * to avoid unnecessary WebSocket connections.
@@ -47,15 +47,26 @@ export function useRealtimeSync() {
 						queryClient.invalidateQueries({ queryKey: queryKeys.records.all }),
 						queryClient.invalidateQueries({ queryKey: queryKeys.routines.all }),
 						queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all }),
-						queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all }),
-						queryClient.invalidateQueries({ queryKey: queryKeys.telemetry.all }),
-						queryClient.invalidateQueries({ queryKey: queryKeys.biomechanics.all }),
+						queryClient.invalidateQueries({
+							queryKey: queryKeys.analytics.all,
+						}),
+						queryClient.invalidateQueries({
+							queryKey: queryKeys.telemetry.all,
+						}),
+						queryClient.invalidateQueries({
+							queryKey: queryKeys.biomechanics.all,
+						}),
 						queryClient.invalidateQueries({ queryKey: queryKeys.progress.all }),
 						queryClient.invalidateQueries({ queryKey: queryKeys.replay.all }),
 						queryClient.invalidateQueries({ queryKey: queryKeys.profile.all }),
-						queryClient.invalidateQueries({ queryKey: queryKeys.challenges.all }),
+						queryClient.invalidateQueries({
+							queryKey: queryKeys.challenges.all,
+						}),
 						queryClient.invalidateQueries({
 							queryKey: queryKeys.integrations.external(user.id),
+						}),
+						queryClient.invalidateQueries({
+							queryKey: queryKeys.localProfiles.byUser(user.id),
 						}),
 					]);
 				}, INVALIDATION_DEBOUNCE_MS);

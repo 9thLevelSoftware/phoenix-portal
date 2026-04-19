@@ -72,10 +72,14 @@ export function mapPriceIdToTier(
   return "FREE";
 }
 
-/** True if all three tier list env vars are non-empty (after trim). */
+/**
+ * True when at least one purchasable paid tier is configured.
+ * Inferno is optional in some environments, so billing should not hard-fail
+ * when only Ember/Flame IDs are present.
+ */
 export function paddlePriceIdsConfigured(env: {
   get(key: string): string | undefined;
 }): boolean {
   const { ember, flame, inferno } = getPaddlePriceIdSets(env);
-  return ember.size > 0 && flame.size > 0 && inferno.size > 0;
+  return ember.size + flame.size + inferno.size > 0;
 }

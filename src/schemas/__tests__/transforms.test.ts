@@ -348,23 +348,20 @@ describe("routineExerciseSchema", () => {
 		created_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("doubles weight on read (DB stores per-cable; portal displays total)", () => {
+	it("doubles weight (per-cable to total) to match set/PR schemas", () => {
 		const result = routineExerciseSchema.parse(validRoutineExercise);
-		// DB column stores per-cable for mobile cable programming, but the portal
-		// UI consistently renders total weight (matches setSchema.weight_kg and
-		// personalRecordSchema.value). Write-path in src/mutations/routines.ts
-		// divides back by WEIGHT_MULTIPLIER, keeping DB per-cable.
-		expect(result.weight).toBe(50 * WEIGHT_MULTIPLIER);
+		// Routine weights are stored per-cable and displayed as total (×2).
+		expect(result.weight).toBe(100);
 	});
 
-	it("preserves per_set_weights as-is (no transform)", () => {
-		const perSetWeights = [50, 55, 60, 55]; // Pyramid scheme
+	it("doubles per_set_weights (per-cable to total) for display consistency", () => {
+		const perSetWeights = [50, 55, 60, 55]; // Pyramid scheme stored per-cable
 		const result = routineExerciseSchema.parse({
 			...validRoutineExercise,
 			per_set_weights: perSetWeights,
 		});
-		// Per-set weights are NOT transformed
-		expect(result.per_set_weights).toEqual(perSetWeights);
+		// Per-set weights follow the same per-cable → total rule as `weight`.
+		expect(result.per_set_weights).toEqual([100, 110, 120, 110]);
 	});
 
 	it("handles null per_set_weights", () => {

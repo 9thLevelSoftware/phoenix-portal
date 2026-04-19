@@ -44,9 +44,13 @@ function isServiceRoleRequest(req: Request): boolean {
 }
 
 function hasValidCronSecret(req: Request): boolean {
+  const readSecret = (key: string): string | undefined => {
+    const value = Deno.env.get(key)?.trim();
+    return value ? value : undefined;
+  };
   const expectedSecret =
-    Deno.env.get('CRON_SYNC_QUEUE_SECRET') ??
-    Deno.env.get('PROCESS_SYNC_QUEUE_SECRET');
+    readSecret('PROCESS_SYNC_QUEUE_SECRET') ??
+    readSecret('CRON_SYNC_QUEUE_SECRET');
   if (!expectedSecret) return false;
   const provided = req.headers.get('x-cron-secret') ?? '';
   return timingSafeEqualString(expectedSecret, provided);

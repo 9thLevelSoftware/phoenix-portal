@@ -11,8 +11,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_training_cycles_one_active
   WHERE status = 'active';
 
 -- C13: personal_records fields expected by mobile sync pull DTO
+-- Use NUMERIC for weight to match sets.weight_kg / exercise_progress.max_weight_kg;
+-- REAL (single-precision float) introduces rounding drift when comparing PRs.
 ALTER TABLE public.personal_records
-  ADD COLUMN IF NOT EXISTS weight_kg REAL;
+  ADD COLUMN IF NOT EXISTS weight_kg NUMERIC;
+-- Force-promote to NUMERIC on preview branches that already ran an earlier
+-- version of this migration with REAL.
+ALTER TABLE public.personal_records
+  ALTER COLUMN weight_kg TYPE NUMERIC USING weight_kg::NUMERIC;
 ALTER TABLE public.personal_records
   ADD COLUMN IF NOT EXISTS reps INTEGER;
 ALTER TABLE public.personal_records
