@@ -564,6 +564,11 @@ Deno.serve(async (req) => {
           workoutMode: ws.workout_mode,
           routineSessionId: ws.routine_session_id,
           notes: ws.notes ?? null,
+          // Phase 3.3 (audit item #1): server-canonical updatedAt for the
+          // mobile-side LWW pull merge gate. Mobile parses this via
+          // kotlin.time.Instant in PortalPullAdapter and feeds it to
+          // SyncRepository.mergeSessionsLww as the per-session timestamp.
+          updatedAt: ws.updated_at ?? null,
           avgVelocityMps: ws.avg_velocity_mps,
           avgAsymmetryPct: ws.avg_asymmetry_pct,
           velocityLossPct: ws.velocity_loss_pct,
