@@ -143,6 +143,41 @@ function validateKnownEntityIds(
 }
 
 /**
+ * Enforce MAX_PARITY_IDS on each parity list and reject with HTTP 413 if any
+ * exceeds the cap. Resolves audit item #7 (2026-04-19). Client must chunk
+ * long parity lists into <=MAX_PARITY_IDS batches.
+ */
+function enforceParityCaps(
+  body: PullRequest,
+  cors: Record<string, string>,
+): Response | null {
+  const k = body.knownEntityIds;
+  if (!k) return null;
+  const lists: Array<[string, unknown[] | undefined]> = [
+    ['sessionIds', k.sessionIds],
+    ['routineIds', k.routineIds],
+    ['cycleIds', k.cycleIds],
+    ['badgeIds', k.badgeIds],
+    ['personalRecordIds', k.personalRecordIds],
+  ];
+  for (const [field, list] of lists) {
+    if (list && list.length > MAX_PARITY_IDS) {
+      return new Response(
+        JSON.stringify({
+          error: 'parity_ids_exceeds_max',
+          message: `knownEntityIds.${field} contains ${list.length} entries; maximum is ${MAX_PARITY_IDS} per request. Chunk the list client-side and issue multiple pull requests.`,
+          field,
+          maxBatch: MAX_PARITY_IDS,
+          received: list.length,
+        }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * Determines if the request uses parity-based sync (new) or timestamp-based (legacy).
  * Parity mode is used when knownEntityIds is provided.
  */
@@ -156,11 +191,14 @@ const DEFAULT_PAGE_SIZE = 75;
 const MAX_PAGE_SIZE = 300;
 
 /**
- * Maximum number of entity IDs to accept for parity-based filtering.
- * PostgREST has limits on query parameter length; exceeding ~500 IDs in a
- * NOT IN clause can cause query failures. If the client sends more IDs than
- * this threshold, we skip parity filtering for that entity type (assuming
- * the client is already up-to-date).
+ * Maximum number of entity IDs the client may include in a single parity-based
+ * pull request. PostgREST has limits on query parameter length; exceeding
+ * ~500 IDs in a NOT IN clause can cause query failures.
+ *
+ * Prior behavior silently skipped the parity filter when over cap, which
+ * masked data-loss scenarios for power users. Audit item #7 (2026-04-19):
+ * we now respond with HTTP 413 and a machine-readable `maxBatch` so the
+ * client can chunk its parityIds deterministically.
  */
 const MAX_PARITY_IDS = 500;
 
@@ -293,6 +331,12 @@ Deno.serve(async (req) => {
     const knownEntityInvalid = validateKnownEntityIds(body, cors);
     if (knownEntityInvalid) return knownEntityInvalid;
 
+    // fix(audit #7): reject oversize parity lists with HTTP 413 so the client
+    // can chunk. Prior behavior silently returned empty via an impossible-id
+    // filter, which looked like a parity match and masked data-loss cases.
+    const parityCapExceeded = enforceParityCaps(body, cors);
+    if (parityCapExceeded) return parityCapExceeded;
+
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-sync-pull',
       userId,
@@ -377,14 +421,17 @@ Deno.serve(async (req) => {
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1); // +1 to detect hasMore
 
-      // Parity mode: exclude sessions client already has
+      // Parity mode: exclude sessions client already has.
+      // Invariant: enforceParityCaps (upstream) rejects lists > MAX_PARITY_IDS
+      // with HTTP 413. Guard defensively in case the upstream check is ever
+      // accidentally bypassed. Audit item #7 (2026-04-19).
       const knownSessionIds = body.knownEntityIds?.sessionIds ?? [];
       if (knownSessionIds.length > MAX_PARITY_IDS) {
-        // Too many IDs for NOT IN clause — skip sessions (client is likely up-to-date)
-        console.log(`[PULL] Skipping sessions parity filter: ${knownSessionIds.length} IDs exceeds limit of ${MAX_PARITY_IDS}`);
-        // Return empty result by adding impossible condition
-        sessionsQuery = sessionsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
-      } else if (knownSessionIds.length > 0) {
+        throw new Error(
+          `Invariant violated: sessionIds.length=${knownSessionIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}; enforceParityCaps should have rejected this.`,
+        );
+      }
+      if (knownSessionIds.length > 0) {
         // Filter: return sessions NOT in the known list
         sessionsQuery = sessionsQuery.not('id', 'in', `(${knownSessionIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
@@ -586,12 +633,15 @@ Deno.serve(async (req) => {
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
 
-      // Parity mode: exclude routines client already has
+      // Parity mode: exclude routines client already has.
+      // See sessions block for cap invariant. Audit item #7.
       const knownRoutineIds = body.knownEntityIds?.routineIds ?? [];
       if (knownRoutineIds.length > MAX_PARITY_IDS) {
-        console.log(`[PULL] Skipping routines parity filter: ${knownRoutineIds.length} IDs exceeds limit`);
-        routinesQuery = routinesQuery.eq('id', '00000000-0000-0000-0000-000000000000');
-      } else if (knownRoutineIds.length > 0) {
+        throw new Error(
+          `Invariant violated: routineIds.length=${knownRoutineIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
+        );
+      }
+      if (knownRoutineIds.length > 0) {
         routinesQuery = routinesQuery.not('id', 'in', `(${knownRoutineIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         routinesQuery = routinesQuery.gt('updated_at', lastSyncISO);
@@ -703,12 +753,15 @@ Deno.serve(async (req) => {
         .order('id', { ascending: true })
         .limit(remainingPageSize + 1);
 
-      // Parity mode: exclude cycles client already has
+      // Parity mode: exclude cycles client already has.
+      // See sessions block for cap invariant. Audit item #7.
       const knownCycleIds = body.knownEntityIds?.cycleIds ?? [];
       if (knownCycleIds.length > MAX_PARITY_IDS) {
-        console.log(`[PULL] Skipping cycles parity filter: ${knownCycleIds.length} IDs exceeds limit`);
-        cyclesQuery = cyclesQuery.eq('id', '00000000-0000-0000-0000-000000000000');
-      } else if (knownCycleIds.length > 0) {
+        throw new Error(
+          `Invariant violated: cycleIds.length=${knownCycleIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
+        );
+      }
+      if (knownCycleIds.length > 0) {
         cyclesQuery = cyclesQuery.not('id', 'in', `(${knownCycleIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         cyclesQuery = cyclesQuery.gt('updated_at', lastSyncISO);
@@ -814,10 +867,13 @@ Deno.serve(async (req) => {
       const knownBadgeIds = (body.knownEntityIds?.badgeIds ?? []).map((x) =>
         typeof x === 'number' ? x : parseInt(String(x), 10)
       );
+      // Cap invariant enforced upstream by enforceParityCaps. Audit item #7.
       if (knownBadgeIds.length > MAX_PARITY_IDS) {
-        console.log(`[PULL] Skipping badges parity filter: ${knownBadgeIds.length} IDs exceeds limit`);
-        badgesQuery = badgesQuery.eq('id', -1); // Badges use integer IDs
-      } else if (knownBadgeIds.length > 0) {
+        throw new Error(
+          `Invariant violated: badgeIds.length=${knownBadgeIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
+        );
+      }
+      if (knownBadgeIds.length > 0) {
         badgesQuery = badgesQuery.not('id', 'in', `(${knownBadgeIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         badgesQuery = badgesQuery.gt('earned_at', lastSyncISO);
@@ -916,10 +972,13 @@ Deno.serve(async (req) => {
       const knownPRIds = (body.knownEntityIds?.personalRecordIds ?? []).map((x) =>
         typeof x === 'number' ? x : parseInt(String(x), 10)
       );
+      // Cap invariant enforced upstream by enforceParityCaps. Audit item #7.
       if (knownPRIds.length > MAX_PARITY_IDS) {
-        console.log(`[PULL] Skipping PRs parity filter: ${knownPRIds.length} IDs exceeds limit`);
-        personalRecordsQuery = personalRecordsQuery.eq('id', -1); // PRs use integer IDs
-      } else if (knownPRIds.length > 0) {
+        throw new Error(
+          `Invariant violated: personalRecordIds.length=${knownPRIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
+        );
+      }
+      if (knownPRIds.length > 0) {
         personalRecordsQuery = personalRecordsQuery.not('id', 'in', `(${knownPRIds.join(',')})`);
       } else if (body.lastSync && body.lastSync > 0) {
         personalRecordsQuery = personalRecordsQuery.gt('updated_at', lastSyncISO);
