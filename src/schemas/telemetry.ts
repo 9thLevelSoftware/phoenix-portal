@@ -8,12 +8,16 @@ const weightTransform = z
 
 // --- Telemetry Point ---
 
+// Cable canonical wire format: "A" | "B" (BLE convention, mobile authoritative).
+// Cable A = left actuator, Cable B = right actuator. Use cableDisplayName()
+// from src/lib/telemetry-display.ts for UI presentation.
+// Resolves audit item #4 (2026-04-19).
 export const telemetryPointSchema = z.object({
 	timestamp_ms: z.number(),
 	force_n: z.number(),
 	velocity_mps: z.number(),
 	position_mm: z.number(),
-	cable: z.enum(["left", "right"]),
+	cable: z.enum(["A", "B"]),
 });
 
 export type TelemetryPointRow = z.infer<typeof telemetryPointSchema>;

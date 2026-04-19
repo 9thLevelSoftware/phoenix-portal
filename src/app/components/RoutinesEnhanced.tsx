@@ -326,13 +326,7 @@ function RoutineGrid({
 								</div>
 								<div className="flex items-center gap-1 text-muted-foreground">
 									<Clock className="w-4 h-4" />
-									<span>
-										~
-										{routine.estimated_duration > 300
-											? Math.round(routine.estimated_duration / 60)
-											: routine.estimated_duration}{" "}
-										min
-									</span>
+									<span>~{routine.estimated_duration} min</span>
 								</div>
 							</div>
 

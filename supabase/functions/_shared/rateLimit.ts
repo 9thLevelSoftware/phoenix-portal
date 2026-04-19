@@ -34,7 +34,11 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const { key, userId, maxRequests, windowSeconds } = config;
 
-  // Use atomic RPC function if available (eliminates race condition)
+  // Use atomic RPC function if available (eliminates race condition).
+  // fix(audit): C7 — Distinguish "RPC not deployed" (fall through to fallback)
+  // from "RPC failed unexpectedly" (fail closed with 503). Never allow the
+  // request purely because the rate-limit check errored.
+  let rpcMissing = false;
   try {
     const { data: rpcResult, error: rpcError } = await supabase.rpc(
       'check_rate_limit',
@@ -46,7 +50,42 @@ export async function checkRateLimit(
       }
     );
 
-    if (!rpcError && rpcResult) {
+    if (rpcError) {
+      // Postgres returns code 42883 for "function does not exist" and PGRST202
+      // from PostgREST when a schema refresh hasn't picked up the function yet.
+      // Treat those as "RPC not deployed" and fall back. Any other error is
+      // treated as an infrastructure failure and we fail closed.
+      const code = (rpcError as { code?: string }).code;
+      const message = rpcError.message ?? '';
+      const looksMissing =
+        code === '42883' ||
+        code === 'PGRST202' ||
+        /function\s+.*does\s+not\s+exist/i.test(message) ||
+        /could\s+not\s+find\s+the\s+function/i.test(message);
+      if (looksMissing) {
+        rpcMissing = true;
+      } else {
+        console.error('[rateLimit] RPC check_rate_limit failed:', rpcError);
+        return {
+          allowed: false,
+          remaining: 0,
+          response: new Response(
+            JSON.stringify({
+              error: 'rate_limit_unavailable',
+              message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+            }),
+            {
+              status: 503,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': '30',
+              },
+            },
+          ),
+        };
+      }
+    } else if (rpcResult) {
       const { allowed, remaining, retry_after_seconds } = rpcResult;
 
       if (!allowed) {
@@ -73,8 +112,54 @@ export async function checkRateLimit(
 
       return { allowed: true, remaining };
     }
-  } catch {
-    // RPC not available, fall back to client-side atomic check
+    // rpcResult is null/undefined with no error — defensively fall through to
+    // the atomic fallback rather than silently allowing traffic.
+  } catch (e) {
+    // fix(audit): C7 — unexpected exception (network / client bug). Fail
+    // closed so an outage doesn't disable rate limiting entirely.
+    console.error('[rateLimit] unexpected error calling check_rate_limit:', e);
+    return {
+      allowed: false,
+      remaining: 0,
+      response: new Response(
+        JSON.stringify({
+          error: 'rate_limit_unavailable',
+          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '30',
+          },
+        },
+      ),
+    };
+  }
+
+  if (!rpcMissing) {
+    // We neither got a result nor a "function missing" signal — don't let the
+    // fallback implicitly allow traffic.
+    console.error('[rateLimit] check_rate_limit returned no result and no error');
+    return {
+      allowed: false,
+      remaining: 0,
+      response: new Response(
+        JSON.stringify({
+          error: 'rate_limit_unavailable',
+          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '30',
+          },
+        },
+      ),
+    };
   }
 
   // Fallback: Atomic increment with conflict resolution
@@ -100,6 +185,31 @@ export async function checkRateLimit(
     return { allowed: true, remaining: maxRequests - 1 };
   }
 
+  // fix(audit): C7 — an insert error that isn't a unique-violation is an
+  // infrastructure failure (missing table, RLS misconfig, network). Fail
+  // closed instead of falling through to the update path with stale data.
+  if (insertError && (insertError as { code?: string }).code !== '23505') {
+    console.error('[rateLimit] insert failed:', insertError);
+    return {
+      allowed: false,
+      remaining: 0,
+      response: new Response(
+        JSON.stringify({
+          error: 'rate_limit_unavailable',
+          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '30',
+          },
+        },
+      ),
+    };
+  }
+
   // Step 2: Insert conflicted, read current state and update atomically
   const { data: current, error: fetchError } = await supabase
     .from('rate_limit_tracking')
@@ -109,9 +219,28 @@ export async function checkRateLimit(
     .single();
 
   if (fetchError || !current) {
+    // fix(audit): C7 — fail closed. If we can't read the tracking row after
+    // an insert conflict, something is wrong with the DB; allowing unlimited
+    // traffic until it's fixed would let abuse through.
     console.error('[rateLimit] fetch failed:', fetchError);
-    // Fail open to avoid blocking legitimate requests
-    return { allowed: true, remaining: 0 };
+    return {
+      allowed: false,
+      remaining: 0,
+      response: new Response(
+        JSON.stringify({
+          error: 'rate_limit_unavailable',
+          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '30',
+          },
+        },
+      ),
+    };
   }
 
   const windowStart = new Date(current.window_started_at).getTime();

@@ -508,6 +508,7 @@ export type Database = {
           raw_data: Json | null
           started_at: string
           synced_at: string | null
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -525,6 +526,7 @@ export type Database = {
           raw_data?: Json | null
           started_at: string
           synced_at?: string | null
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -542,6 +544,7 @@ export type Database = {
           raw_data?: Json | null
           started_at?: string
           synced_at?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -809,10 +812,13 @@ export type Database = {
           muscle_group: string
           previous_value: number | null
           record_type: string
+          reps: number | null
+          session_id: string | null
           unit: string
           updated_at: string
           user_id: string
           value: number
+          weight_kg: number | null
           workout_phase: string | null
         }
         Insert: {
@@ -823,10 +829,13 @@ export type Database = {
           muscle_group?: string
           previous_value?: number | null
           record_type?: string
+          reps?: number | null
+          session_id?: string | null
           unit?: string
           updated_at?: string
           user_id: string
           value: number
+          weight_kg?: number | null
           workout_phase?: string | null
         }
         Update: {
@@ -837,10 +846,13 @@ export type Database = {
           muscle_group?: string
           previous_value?: number | null
           record_type?: string
+          reps?: number | null
+          session_id?: string | null
           unit?: string
           updated_at?: string
           user_id?: string
           value?: number
+          weight_kg?: number | null
           workout_phase?: string | null
         }
         Relationships: [
@@ -850,6 +862,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "local_profiles"
             referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "personal_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2303,6 +2322,54 @@ export type Database = {
       }
       refresh_community_benchmarks: { Args: never; Returns: undefined }
       refresh_hot_scores: { Args: never; Returns: undefined }
+      upsert_external_activity_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
+      upsert_gamification_stats_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
+      upsert_routine_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
+      upsert_rpg_attributes_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
+      upsert_training_cycle_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
+      upsert_workout_session_lww: {
+        Args: { p_rows: Json }
+        Returns: {
+          accepted: boolean
+          id: string
+          server_updated_at: string
+        }[]
+      }
       user_subscription_tier: { Args: never; Returns: string }
     }
     Enums: {

@@ -2,10 +2,35 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
+
+/**
+ * Per-row rejection record returned to the mobile client when an LWW RPC
+ * declines an incoming row because the server already has a newer copy.
+ * Mobile logs these and repairs convergence on the next pull. See audit
+ * item #1 resolution in phoenix-portal/docs/dto-drift-matrix.md.
+ */
+interface EntityRejection {
+  id: string;
+  serverUpdatedAt: string | null;
+}
+
+/** Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1). */
+interface LwwUpsertRow {
+  id: string;
+  accepted: boolean;
+  server_updated_at: string | null;
+}
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Prevent cross-user takeover when upserting by primary key only. */
+/**
+ * Prevent cross-user takeover when upserting by primary key only.
+ *
+ * For tables with a direct `user_id` column, this checks that any existing
+ * rows with the supplied ids are either absent or owned by `userId`.
+ * Returns a 400 Response on violation, or null when safe to proceed.
+ */
 async function assertRowsOwnedByUser(
   supabase: ReturnType<typeof createClient>,
   table: string,
@@ -17,10 +42,76 @@ async function assertRowsOwnedByUser(
   const chunkSize = 100;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);
-    const { data: rows } = await supabase.from(table).select('id').in('id', chunk).neq('user_id', userId);
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('id')
+      .in('id', chunk)
+      .neq('user_id', userId);
+    if (error) {
+      // Fail closed — if the ownership probe itself errors (e.g. missing
+      // column), we must not proceed with an upsert that could overwrite a
+      // victim row. Surface as 500 so the caller retries / we notice.
+      throw new Error(`Ownership check on ${table} failed: ${error.message}`);
+    }
     if (rows && rows.length > 0) {
       return new Response(
         JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Prevent cross-user takeover for child tables whose ownership flows through
+ * a parent FK (the child has no direct `user_id` column). Resolves the parent
+ * ids for any existing child rows and checks ownership against the parent
+ * table's `user_id` column.
+ */
+async function assertChildRowsOwnedViaParent(
+  supabase: ReturnType<typeof createClient>,
+  childTable: string,
+  childFkColumn: string,
+  parentTable: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return null;
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: childRows, error: childErr } = await supabase
+      .from(childTable)
+      .select(`id, ${childFkColumn}`)
+      .in('id', chunk);
+    if (childErr) {
+      throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
+    }
+    if (!childRows || childRows.length === 0) continue;
+    const parentIds = [
+      ...new Set(
+        childRows
+          .map((r) => (r as Record<string, unknown>)[childFkColumn])
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    ];
+    if (parentIds.length === 0) continue;
+    const { data: foreignParents, error: parentErr } = await supabase
+      .from(parentTable)
+      .select('id')
+      .in('id', parentIds)
+      .neq('user_id', userId);
+    if (parentErr) {
+      throw new Error(`Ownership check on ${parentTable} failed: ${parentErr.message}`);
+    }
+    if (foreignParents && foreignParents.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: `Refused: existing ${childTable} row belongs to another user`,
+        }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
@@ -105,9 +196,21 @@ interface ExternalActivityDto {
   syncedAt?: string;
 }
 
+/**
+ * Acknowledgement returned to mobile after an external_activity upsert so the
+ * client can reconcile server-assigned metadata (e.g. updated_at) back onto
+ * its local row. `localId` and `serverId` are both the same mobile-minted
+ * UUID in steady state; they are kept as separate fields to allow for any
+ * future server-side id remapping without another wire break.
+ *
+ * Resolves audit items #5 and #10 (2026-04-19).
+ */
 interface ExternalActivityAckDto {
+  localId: string;
+  serverId: string;
   externalId: string;
   provider: string;
+  updatedAt: string;
 }
 
 interface PushPayload {
@@ -135,6 +238,13 @@ interface SessionDto {
   userId: string;
   name: string | null;
   startedAt: string;
+  /**
+   * Client-canonical last-write timestamp (ISO 8601). Consumed by the LWW
+   * RPC when SYNC_LWW_ENABLED=true. Optional for backward compat with
+   * pre-LWW mobile builds — server falls back to NOW() when missing.
+   * Resolves audit item #1.
+   */
+  updatedAt?: string | null;
   durationSeconds: number;
   totalVolume: number;
   setCount: number;
@@ -216,6 +326,8 @@ interface RoutineDto {
   estimatedDuration: number;
   timesCompleted: number;
   isFavorite: boolean;
+  /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
+  updatedAt?: string | null;
   exercises: RoutineExerciseDto[];
 }
 
@@ -281,6 +393,8 @@ interface CycleDto {
   status: string;
   startedAt: string | null;
   lastUsedAt: string | null;
+  /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
+  updatedAt?: string | null;
   progressionSettings: string | null;
   deloadSettings: string | null;
   days: CycleDayDto[];
@@ -454,9 +568,11 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.cycles && payload.cycles.length > 1000) {
+    // fix(audit #6): align cycles cap with sessions/routines/telemetry (10000).
+    // Prior 1000 cap was a silent cliff for users with large cycle histories.
+    if (payload.cycles && payload.cycles.length > MAX_ARRAY_SIZE) {
       return new Response(
-        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
+        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ARRAY_SIZE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -547,6 +663,217 @@ Deno.serve(async (req) => {
     let externalActivitiesUpserted = 0;
 
     // =========================================================================
+    // 3c. Cross-user takeover protection
+    //
+    // The service-role client used below bypasses RLS, so we must verify
+    // up-front that every client-supplied primary key either doesn't exist
+    // yet or is already owned by the authenticated user. Also enforce that
+    // child rows reference parents from this same payload — otherwise an
+    // attacker could attach their rows to a victim's parent row.
+    // =========================================================================
+    const allSessionIds = (payload.sessions ?? []).map((s) => s.id);
+    const allExerciseIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.map((e) => e.id),
+    );
+    const allSetIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.map((st) => st.id)),
+    );
+    const allRepSummaryIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.flatMap((st) => st.repSummaries.map((r) => r.id))),
+    );
+    const allTelemetryIds = (payload.telemetry ?? []).map((t) => t.id);
+    const allRoutineIds = (payload.routines ?? []).map((r) => r.id);
+    const allRoutineExerciseIds = (payload.routines ?? []).flatMap((r) =>
+      r.exercises.map((e) => e.id),
+    );
+    const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
+    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
+    const sessionIdSet = new Set(allSessionIds);
+    const exerciseIdSet = new Set(allExerciseIds);
+    const setIdSet = new Set(allSetIds);
+    const routineIdSet = new Set(allRoutineIds);
+    const cycleIdSet = new Set(allCycleIds);
+
+    const fkMismatchResponse = (msg: string): Response =>
+      new Response(
+        JSON.stringify({ error: `FK mismatch in payload: ${msg}` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    for (const s of payload.sessions ?? []) {
+      for (const e of s.exercises) {
+        if (e.sessionId !== s.id) {
+          return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
+        }
+        for (const st of e.sets) {
+          if (st.exerciseId !== e.id) {
+            return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
+          }
+          for (const r of st.repSummaries) {
+            if (r.setId !== st.id) {
+              return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
+            }
+          }
+        }
+      }
+    }
+    for (const r of payload.routines ?? []) {
+      for (const e of r.exercises) {
+        if (e.routineId !== r.id) {
+          return fkMismatchResponse(
+            `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
+          );
+        }
+      }
+    }
+    for (const c of payload.cycles ?? []) {
+      for (const d of c.days) {
+        if (d.cycleId !== c.id) {
+          return fkMismatchResponse(
+            `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
+          );
+        }
+      }
+    }
+
+    // Direct-id ownership checks against tables with a user_id column
+    const directOwnerChecks: Array<[string, string[]]> = [
+      ['workout_sessions', allSessionIds],
+      ['exercises', allExerciseIds],
+      ['sets', allSetIds],
+      ['rep_summaries', allRepSummaryIds],
+      ['rep_telemetry', allTelemetryIds],
+      ['routines', allRoutineIds],
+      ['training_cycles', allCycleIds],
+    ];
+    for (const [table, ids] of directOwnerChecks) {
+      const blocked = await assertRowsOwnedByUser(supabase, table, ids, userId, cors);
+      if (blocked) return blocked;
+    }
+
+    // Parent-FK ownership checks for tables without a user_id column
+    const reBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'routine_exercises',
+      'routine_id',
+      'routines',
+      allRoutineExerciseIds,
+      userId,
+      cors,
+    );
+    if (reBlocked) return reBlocked;
+
+    const cdBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'cycle_days',
+      'cycle_id',
+      'training_cycles',
+      allCycleDayIds,
+      userId,
+      cors,
+    );
+    if (cdBlocked) return cdBlocked;
+
+    // Telemetry, phase stats, signatures and assessments may reference parent
+    // rows from previous pushes, not this payload. Validate those cross-payload
+    // parent references against the authoritative user_id column on each parent.
+    const telemetrySetIdsToVerify = (payload.telemetry ?? [])
+      .map((t) => t.setId)
+      .filter((sid) => !setIdSet.has(sid));
+    const telParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'sets',
+      telemetrySetIdsToVerify,
+      userId,
+      cors,
+    );
+    if (telParentBlocked) return telParentBlocked;
+
+    const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
+      .map((p) => p.sessionId)
+      .filter((sid) => !sessionIdSet.has(sid));
+    const phaseParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'workout_sessions',
+      phaseSessionIdsToVerify,
+      userId,
+      cors,
+    );
+    if (phaseParentBlocked) return phaseParentBlocked;
+
+    const sigExerciseIdsToVerify = (payload.exerciseSignatures ?? [])
+      .map((es) => es.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const sigParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      sigExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sigParentBlocked) return sigParentBlocked;
+
+    const assessExerciseIdsToVerify = (payload.assessments ?? [])
+      .map((a) => a.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const assessParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      assessExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (assessParentBlocked) return assessParentBlocked;
+
+    const dayRoutineIdsToVerify = (payload.cycles ?? [])
+      .flatMap((c) => c.days.map((d) => d.routineId))
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const dayRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      dayRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (dayRoutineBlocked) return dayRoutineBlocked;
+
+    const sessionRoutineIdsToVerify = (payload.sessions ?? [])
+      .map((s) => s.routineSessionId)
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const sessionRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      sessionRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sessionRoutineBlocked) return sessionRoutineBlocked;
+
+    // =========================================================================
+    // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
+    // and no filtering is applied. When true, the push handler routes each
+    // shared-edit entity upsert through its `upsert_<entity>_lww` RPC and
+    // uses the accepted-id sets to filter child-table upserts so orphan child
+    // rows are not created under rejected parents.
+    // =========================================================================
+    const rejections = {
+      sessions: [] as EntityRejection[],
+      routines: [] as EntityRejection[],
+      cycles: [] as EntityRejection[],
+      externalActivities: [] as EntityRejection[],
+      rpgAttributes: [] as EntityRejection[],
+      gamificationStats: [] as EntityRejection[],
+    };
+    // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
+    // cleared the LWW gate).
+    let acceptedSessionIds: Set<string> | null = null;
+    let acceptedRoutineIds: Set<string> | null = null;
+    let acceptedCycleIds: Set<string> | null = null;
+
+    const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
+      parentSet === null || parentSet.has(parentId);
+
+    // =========================================================================
     // 4. Insert workout hierarchy in FK order
     // =========================================================================
     if (payload.sessions && payload.sessions.length > 0) {
@@ -583,8 +910,12 @@ Deno.serve(async (req) => {
         echo_level: s.echoLevel ?? null,
         warmup_reps: s.warmupReps ?? null,
         working_reps: s.workingReps ?? null,
+        updated_at: s.updatedAt ?? null,
       }));
 
+      // Cross-user takeover defense (from main beta audit hardening): always
+      // verify every primary key is either absent or owned by the caller
+      // before the service-role upsert touches it.
       const sessionOwnershipResp = await assertRowsOwnedByUser(
         supabase,
         'workout_sessions',
@@ -594,23 +925,51 @@ Deno.serve(async (req) => {
       );
       if (sessionOwnershipResp) return sessionOwnershipResp;
 
-      const { error: sessErr } = await supabase
-        .from('workout_sessions')
-        .upsert(sessionRows, { onConflict: 'id' });
-      if (sessErr) throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
-      sessionsInserted = sessionRows.length;
+      if (SYNC_LWW_ENABLED) {
+        // Phase 3.2: route through the LWW RPC so the server rejects stale
+        // rows instead of overwriting with older data. Accepted ids are used
+        // to filter the exercises/sets/rep_summaries child upserts below.
+        // Fallback to NOW() when the client DTO omits updated_at (older
+        // mobile builds pre-Phase-3.2).
+        const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_workout_session_lww',
+          { p_rows: sessionRowsWithUpdatedAt },
+        );
+        if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
+        acceptedSessionIds = new Set<string>();
+        for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (r.accepted) acceptedSessionIds.add(r.id);
+          else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
+        }
+        sessionsInserted = acceptedSessionIds.size;
+      } else {
+        const { error: sessErr } = await supabase
+          .from('workout_sessions')
+          .upsert(sessionRows, { onConflict: 'id' });
+        if (sessErr) throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
+        sessionsInserted = sessionRows.length;
+      }
 
       // --- 4b. Batch upsert exercises ---
-      const exerciseRows = payload.sessions.flatMap((s) =>
-        s.exercises.map((e) => ({
-          id: e.id,
-          session_id: e.sessionId,
-          user_id: userId,
-          name: e.name,
-          muscle_group: e.muscleGroup,
-          order_index: e.orderIndex,
-        }))
-      );
+      // When LWW is enabled, only accept exercises whose parent session was
+      // accepted by the LWW gate. Rejecting the parent but inserting the
+      // children would leave orphan rows referencing a stale session.
+      const exerciseRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.map((e) => ({
+            id: e.id,
+            session_id: e.sessionId,
+            user_id: userId,
+            name: e.name,
+            muscle_group: e.muscleGroup,
+            order_index: e.orderIndex,
+          }))
+        );
 
       if (exerciseRows.length > 0) {
         const exerciseOwnershipResp = await assertRowsOwnedByUser(
@@ -630,23 +989,30 @@ Deno.serve(async (req) => {
       }
 
       // --- 4c. Batch upsert sets ---
-      const setRows = payload.sessions.flatMap((s) =>
-        s.exercises.flatMap((e) =>
-          e.sets.map((st) => ({
-            id: st.id,
-            exercise_id: st.exerciseId,
-            user_id: userId,
-            set_number: st.setNumber,
-            target_reps: st.targetReps,
-            actual_reps: st.actualReps,
-            weight_kg: st.weightKg,
-            rpe: st.rpe,
-            is_pr: st.isPr,
-            notes: st.notes,
-            workout_mode: st.workoutMode,
-          }))
-        )
-      );
+      // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
+      // projection. They are send-only derivation hints consumed by the
+      // personal_records insert path below; the `sets` table has no columns
+      // for them. See PortalSetDto doc comment in mobile for the contract.
+      // Resolves audit item #3 (2026-04-19).
+      const setRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.flatMap((e) =>
+            e.sets.map((st) => ({
+              id: st.id,
+              exercise_id: st.exerciseId,
+              user_id: userId,
+              set_number: st.setNumber,
+              target_reps: st.targetReps,
+              actual_reps: st.actualReps,
+              weight_kg: st.weightKg,
+              rpe: st.rpe,
+              is_pr: st.isPr,
+              notes: st.notes,
+              workout_mode: st.workoutMode,
+            }))
+          )
+        );
 
       if (setRows.length > 0) {
         const setOwnershipResp = await assertRowsOwnedByUser(
@@ -666,29 +1032,31 @@ Deno.serve(async (req) => {
       }
 
       // --- 4d. Batch upsert rep_summaries ---
-      const repRows = payload.sessions.flatMap((s) =>
-        s.exercises.flatMap((e) =>
-          e.sets.flatMap((st) =>
-            st.repSummaries.map((r) => ({
-              id: r.id,
-              set_id: r.setId,
-              user_id: userId,
-              rep_number: r.repNumber,
-              mean_velocity_mps: r.meanVelocityMps,
-              peak_velocity_mps: r.peakVelocityMps,
-              mean_force_n: r.meanForceN,
-              peak_force_n: r.peakForceN,
-              power_watts: r.powerWatts,
-              rom_mm: r.romMm,
-              tut_ms: r.tutMs,
-              left_force_avg: r.leftForceAvg,
-              right_force_avg: r.rightForceAvg,
-              asymmetry_pct: r.asymmetryPct,
-              vbt_zone: r.vbtZone,
-            }))
+      const repRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.flatMap((e) =>
+            e.sets.flatMap((st) =>
+              st.repSummaries.map((r) => ({
+                id: r.id,
+                set_id: r.setId,
+                user_id: userId,
+                rep_number: r.repNumber,
+                mean_velocity_mps: r.meanVelocityMps,
+                peak_velocity_mps: r.peakVelocityMps,
+                mean_force_n: r.meanForceN,
+                peak_force_n: r.peakForceN,
+                power_watts: r.powerWatts,
+                rom_mm: r.romMm,
+                tut_ms: r.tutMs,
+                left_force_avg: r.leftForceAvg,
+                right_force_avg: r.rightForceAvg,
+                asymmetry_pct: r.asymmetryPct,
+                vbt_zone: r.vbtZone,
+              }))
+            )
           )
-        )
-      );
+        );
 
       if (repRows.length > 0) {
         const repOwnershipResp = await assertRowsOwnedByUser(
@@ -729,6 +1097,9 @@ Deno.serve(async (req) => {
             force_n: t.forceN,
             velocity_mps: t.velocityMps,
             position_mm: t.positionMm,
+            // cable stored canonically as "A" | "B" from BLE. Do not translate
+            // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
+            // when a human-readable label is needed. Audit item #4 (2026-04-19).
             cable: t.cable,
           }));
 
@@ -889,8 +1260,34 @@ Deno.serve(async (req) => {
         estimated_duration: Math.round(r.estimatedDuration),
         times_completed: r.timesCompleted,
         is_favorite: r.isFavorite,
+        updated_at: r.updatedAt ?? null,
       }));
 
+<<<<<<< HEAD
+      if (SYNC_LWW_ENABLED) {
+        const rows = routineRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_routine_lww',
+          { p_rows: rows },
+        );
+        if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
+        acceptedRoutineIds = new Set<string>();
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (rr.accepted) acceptedRoutineIds.add(rr.id);
+          else rejections.routines.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+        routinesUpserted = acceptedRoutineIds.size;
+      } else {
+        const { error: routErr } = await supabase
+          .from('routines')
+          .upsert(routineRows, { onConflict: 'id' });
+        if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
+        routinesUpserted = routineRows.length;
+      }
+=======
       const routineOwnershipResp = await assertRowsOwnedByUser(
         supabase,
         'routines',
@@ -905,10 +1302,15 @@ Deno.serve(async (req) => {
         .upsert(routineRows, { onConflict: 'id' });
       if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
       routinesUpserted = routineRows.length;
+>>>>>>> origin/main
 
       // Upsert exercises by primary key (id). Each exercise has a stable UUID
       // generated on mobile, so onConflict: 'id' safely updates existing rows.
-      const reRows = payload.routines.flatMap((r) =>
+      // When LWW is enabled, skip children of routines whose parent was
+      // rejected to avoid orphan FK rows.
+      const reRows = payload.routines
+        .filter((r) => childAllowed(acceptedRoutineIds, r.id))
+        .flatMap((r) =>
         r.exercises.map((e) => ({
           id: e.id,
           routine_id: e.routineId,
@@ -994,8 +1396,34 @@ Deno.serve(async (req) => {
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
         deload_settings: safeJsonParse(c.deloadSettings),
+        updated_at: c.updatedAt ?? null,
       }));
 
+<<<<<<< HEAD
+      if (SYNC_LWW_ENABLED) {
+        const rows = cycleRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_training_cycle_lww',
+          { p_rows: rows },
+        );
+        if (lwwErr) throw new Error(`training_cycles LWW RPC failed: ${lwwErr.message}`);
+        acceptedCycleIds = new Set<string>();
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (rr.accepted) acceptedCycleIds.add(rr.id);
+          else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+        cyclesUpserted = acceptedCycleIds.size;
+      } else {
+        const { error: cycErr } = await supabase
+          .from('training_cycles')
+          .upsert(cycleRows, { onConflict: 'id' });
+        if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
+        cyclesUpserted = cycleRows.length;
+      }
+=======
       const cycleOwnershipResp = await assertRowsOwnedByUser(
         supabase,
         'training_cycles',
@@ -1010,9 +1438,13 @@ Deno.serve(async (req) => {
         .upsert(cycleRows, { onConflict: 'id' });
       if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
       cyclesUpserted = cycleRows.length;
+>>>>>>> origin/main
 
       // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
-      const dayRows = payload.cycles.flatMap((c) =>
+      // When LWW is enabled, skip days whose parent cycle was rejected.
+      const dayRows = payload.cycles
+        .filter((c) => childAllowed(acceptedCycleIds, c.id))
+        .flatMap((c) =>
         c.days.map((d) => ({
           id: d.id,
           cycle_id: d.cycleId,
@@ -1053,24 +1485,40 @@ Deno.serve(async (req) => {
     // =========================================================================
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
-      const { error: rpgErr } = await supabase
-        .from('rpg_attributes')
-        .upsert(
-          {
-            user_id: userId,
-            strength: rpg.strength,
-            power: rpg.power,
-            stamina: rpg.stamina,
-            consistency: rpg.consistency,
-            mastery: rpg.mastery,
-            character_class: rpg.characterClass,
-            level: rpg.level,
-            experience_points: rpg.experiencePoints,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
+      // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
+      // Int per the Kotlin DTO, but any buggy producer (e.g. analytics pipeline)
+      // that feeds a float here would break the round-trip on pull. See
+      // _shared/rpgSchema.ts.
+      const rpgInt = (v: unknown, fallback: number) =>
+        Number.isFinite(Number(v)) ? Math.round(Number(v)) : fallback;
+      const rpgRow = {
+        user_id: userId,
+        strength: rpgInt(rpg.strength, 0),
+        power: rpgInt(rpg.power, 0),
+        stamina: rpgInt(rpg.stamina, 0),
+        consistency: rpgInt(rpg.consistency, 0),
+        mastery: rpgInt(rpg.mastery, 0),
+        character_class: rpg.characterClass,
+        level: rpgInt(rpg.level, 1),
+        experience_points: rpgInt(rpg.experiencePoints, 0),
+        updated_at: new Date().toISOString(),
+      };
+
+      if (SYNC_LWW_ENABLED) {
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_rpg_attributes_lww',
+          { p_rows: [rpgRow] },
         );
-      if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+        if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+      } else {
+        const { error: rpgErr } = await supabase
+          .from('rpg_attributes')
+          .upsert(rpgRow, { onConflict: 'user_id' });
+        if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+      }
     }
 
     // =========================================================================
@@ -1098,22 +1546,32 @@ Deno.serve(async (req) => {
     // =========================================================================
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
-      const { error: gsErr } = await supabase
-        .from('gamification_stats')
-        .upsert(
-          {
-            user_id: userId,
-            total_workouts: gs.totalWorkouts,
-            total_reps: gs.totalReps,
-            total_volume_kg: gs.totalVolumeKg,
-            longest_streak: gs.longestStreak,
-            current_streak: gs.currentStreak,
-            total_time_seconds: gs.totalTimeSeconds,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
+      const gsRow = {
+        user_id: userId,
+        total_workouts: gs.totalWorkouts,
+        total_reps: gs.totalReps,
+        total_volume_kg: gs.totalVolumeKg,
+        longest_streak: gs.longestStreak,
+        current_streak: gs.currentStreak,
+        total_time_seconds: gs.totalTimeSeconds,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (SYNC_LWW_ENABLED) {
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_gamification_stats_lww',
+          { p_rows: [gsRow] },
         );
-      if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+        if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+      } else {
+        const { error: gsErr } = await supabase
+          .from('gamification_stats')
+          .upsert(gsRow, { onConflict: 'user_id' });
+        if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+      }
     }
 
     // =========================================================================
@@ -1211,8 +1669,23 @@ Deno.serve(async (req) => {
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (payload.externalActivities && payload.externalActivities.length > 0) {
+      // fix(audit #5): require client-minted id. Mobile already mints via
+      // ExternalActivity.id = generateUUID() default, so any payload missing
+      // it indicates a buggy producer. Rejecting up-front prevents the server
+      // from generating a UUID the client will never learn about.
+      for (const a of payload.externalActivities) {
+        if (!a.id) {
+          return new Response(
+            JSON.stringify({
+              error: 'external_activity.id is required (mobile must mint UUID before send)',
+            }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       const activityRows = payload.externalActivities.map((a) => ({
-        ...(a.id ? { id: a.id } : {}),
+        id: a.id,
         user_id: userId,
         external_id: a.externalId,
         provider: a.provider,
@@ -1227,22 +1700,74 @@ Deno.serve(async (req) => {
         elevation_gain_meters: a.elevationGainMeters ?? null,
         raw_data: a.rawData ? safeJsonParse(a.rawData) : null,
         synced_at: a.syncedAt ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }));
 
-      const { error: extErr } = await supabase
-        .from('external_activities')
-        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
-      if (extErr) {
-        console.warn('external_activities upsert warning:', extErr.message);
-        externalActivityIds = [];
-        externalActivityKeys = [];
+      if (SYNC_LWW_ENABLED) {
+        // Phase 3.2: route through LWW RPC so a stale webhook push does not
+        // overwrite a newer mobile-captured row (or vice versa). The RPC
+        // returns the canonical server id which we surface in the ack list.
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_external_activity_lww',
+          { p_rows: activityRows },
+        );
+        if (lwwErr) {
+          console.warn('external_activities LWW RPC warning:', lwwErr.message);
+          externalActivityIds = [];
+          externalActivityKeys = [];
+        } else {
+          const acceptedRows = (lwwData ?? []) as LwwUpsertRow[];
+          // Preserve compound-key metadata by matching back against activityRows.
+          const byIdx = new Map<string, { externalId: string; provider: string }>();
+          for (const r of activityRows) {
+            byIdx.set(r.id, { externalId: r.external_id, provider: r.provider });
+          }
+          externalActivityKeys = acceptedRows
+            .filter((r) => r.accepted)
+            .map((r) => {
+              const meta = byIdx.get(r.id) ?? { externalId: '', provider: '' };
+              return {
+                localId: r.id,
+                serverId: r.id,
+                externalId: meta.externalId,
+                provider: meta.provider,
+                updatedAt: r.server_updated_at ?? new Date().toISOString(),
+              };
+            });
+          for (const r of acceptedRows) {
+            if (!r.accepted) {
+              rejections.externalActivities.push({
+                id: r.id,
+                serverUpdatedAt: r.server_updated_at,
+              });
+            }
+          }
+          externalActivityIds = externalActivityKeys.map((k) => k.externalId);
+          externalActivitiesUpserted = externalActivityKeys.length;
+        }
       } else {
-        externalActivitiesUpserted = activityRows.length;
-        externalActivityIds = activityRows.map((r) => r.external_id);
-        externalActivityKeys = activityRows.map((r) => ({
-          externalId: r.external_id,
-          provider: r.provider,
-        }));
+        // fix(audit #10): .select() after upsert so we can return the
+        // server-canonical row metadata (including updated_at) to the client.
+        const { data: extData, error: extErr } = await supabase
+          .from('external_activities')
+          .upsert(activityRows, { onConflict: 'user_id,provider,external_id' })
+          .select('id, external_id, provider, updated_at');
+        if (extErr) {
+          console.warn('external_activities upsert warning:', extErr.message);
+          externalActivityIds = [];
+          externalActivityKeys = [];
+        } else {
+          externalActivitiesUpserted = activityRows.length;
+          externalActivityKeys = (extData ?? []).map((r: Record<string, unknown>) => ({
+            localId: String(r.id),
+            serverId: String(r.id),
+            externalId: String(r.external_id),
+            provider: String(r.provider),
+            updatedAt: String(r.updated_at),
+          }));
+          // Backward-compat alias for clients that read externalActivityIds only.
+          externalActivityIds = externalActivityKeys.map((k) => k.externalId);
+        }
       }
     }
 
@@ -1320,6 +1845,10 @@ Deno.serve(async (req) => {
         externalActivitiesUpserted,
         externalActivityIds,
         externalActivityKeys,
+        // Phase 3.2: per-entity LWW rejection lists. Empty when SYNC_LWW_ENABLED
+        // is false or when every incoming row cleared the LWW gate. Mobile
+        // logs these and repairs convergence via the next pull.
+        rejections,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
