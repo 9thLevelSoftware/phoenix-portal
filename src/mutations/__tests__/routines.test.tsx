@@ -273,7 +273,9 @@ describe("useUpdateRoutine", () => {
 
 		expect(insertedExerciseRows).toHaveLength(1);
 		expect(insertedExerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
-		expect(insertedExerciseRows[0]?.per_set_weights).toEqual([50, 55, 60]);
+		// per_set_weights must follow the same per-cable halving as `weight` so
+		// the stored and displayed values round-trip consistently.
+		expect(insertedExerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
 	});
 
 	it("shows user-friendly error on update failure", async () => {
