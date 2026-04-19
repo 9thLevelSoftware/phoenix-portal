@@ -17,11 +17,6 @@ function estimatedRoutineDurationSeconds(exercises: RoutineExerciseInput[]): num
 
 function normalizePerSetWeights(per: unknown): Json | null {
 	if (per == null) return null;
-	if (Array.isArray(per)) {
-		return per.map((x) =>
-			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
-		) as Json;
-	}
 	return per as Json;
 }
 

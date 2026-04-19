@@ -240,6 +240,42 @@ describe("useUpdateRoutine", () => {
 		});
 	});
 
+	it("preserves per-set weights when updating an existing routine", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		let insertedExerciseRows: Array<Record<string, unknown>> = [];
+
+		mockChain.update.mockImplementation(() => ({
+			eq: vi.fn(() => Promise.resolve({ error: null })),
+		}));
+		mockChain.delete.mockImplementation(() => ({
+			eq: vi.fn(() => Promise.resolve({ error: null })),
+		}));
+		mockChain.insert.mockImplementation((rows: unknown) => {
+			insertedExerciseRows = rows as Array<Record<string, unknown>>;
+			return Promise.resolve({ error: null });
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [
+				{
+					...baseExercise,
+					per_set_weights: [50, 55, 60],
+				},
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(insertedExerciseRows).toHaveLength(1);
+		expect(insertedExerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
+		expect(insertedExerciseRows[0]?.per_set_weights).toEqual([50, 55, 60]);
+	});
+
 	it("shows user-friendly error on update failure", async () => {
 		const { useUpdateRoutine } = await import("../routines");
 

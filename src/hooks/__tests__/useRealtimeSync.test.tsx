@@ -1,8 +1,23 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { queryKeys } from "@/queries/keys";
 import { useRealtimeSync } from "../useRealtimeSync";
 
-const TARGETED_INVALIDATIONS = 9;
+const USER_ID = "00000000-0000-4000-8000-000000000001";
+const TARGETED_INVALIDATIONS = [
+	queryKeys.workouts.all,
+	queryKeys.records.all,
+	queryKeys.routines.all,
+	queryKeys.cycles.all,
+	queryKeys.analytics.all,
+	queryKeys.telemetry.all,
+	queryKeys.biomechanics.all,
+	queryKeys.progress.all,
+	queryKeys.replay.all,
+	queryKeys.profile.all,
+	queryKeys.challenges.all,
+	queryKeys.integrations.external(USER_ID),
+];
 
 const mocks = vi.hoisted(() => {
 	let broadcastHandler: ((payload: unknown) => void) | undefined;
@@ -73,14 +88,19 @@ describe("useRealtimeSync", () => {
 		const { unmount } = render(<TestComponent />);
 
 		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-			"sync:00000000-0000-4000-8000-000000000001",
+			`sync:${USER_ID}`,
 		);
 		expect(mocks.subscribeHandler).toBeTypeOf("function");
 
 		mocks.broadcastHandler?.({});
 		await vi.advanceTimersByTimeAsync(400);
 
-		expect(mocks.invalidateQueries).toHaveBeenCalledTimes(TARGETED_INVALIDATIONS);
+		expect(mocks.invalidateQueries).toHaveBeenCalledTimes(
+			TARGETED_INVALIDATIONS.length,
+		);
+		expect(mocks.invalidateQueries.mock.calls).toEqual(
+			TARGETED_INVALIDATIONS.map((queryKey) => [{ queryKey }]),
+		);
 
 		unmount();
 
