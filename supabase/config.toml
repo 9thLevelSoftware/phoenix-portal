@@ -28,3 +28,9 @@ verify_jwt = false
 
 [functions.mobile-sync-pull]
 verify_jwt = false
+
+[functions.process-sync-queue]
+verify_jwt = false
+
+[functions.compute-rankings]
+verify_jwt = false

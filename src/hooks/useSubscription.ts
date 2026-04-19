@@ -1,8 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+
+const subscriptionTierSchema = z.enum(["FREE", "EMBER", "FLAME", "INFERNO"]);
+const subscriptionStatusSchema = z.enum([
+	"active",
+	"past_due",
+	"canceled",
+	"trialing",
+	"incomplete",
+	"none",
+]);
 
 export type SubscriptionTier = "FREE" | "EMBER" | "FLAME" | "INFERNO";
 export type SubscriptionStatus =
@@ -53,9 +64,21 @@ async function fetchSubscription(userId: string) {
 		};
 	}
 
+	const tierRaw =
+		typeof data.tier === "string" ? data.tier.toUpperCase() : data.tier;
+	const tierParsed = subscriptionTierSchema.safeParse(tierRaw);
+	const tier: SubscriptionTier = tierParsed.success ? tierParsed.data : "FREE";
+
+	const statusRaw =
+		typeof data.status === "string" ? data.status : String(data.status ?? "");
+	const statusParsed = subscriptionStatusSchema.safeParse(statusRaw);
+	const status: SubscriptionStatus = statusParsed.success
+		? statusParsed.data
+		: "none";
+
 	return {
-		tier: data.tier,
-		status: data.status,
+		tier,
+		status,
 		currentPeriodEnd: data.current_period_end,
 		cancelAtPeriodEnd: data.cancel_at_period_end,
 	};

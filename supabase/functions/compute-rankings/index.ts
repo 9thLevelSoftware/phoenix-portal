@@ -152,16 +152,58 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 2. Service-role client for DB operations (bypasses RLS)
+    // 2. JWT required for all ranking requests
     // =========================================================================
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      throw new Error('Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_ANON_KEY');
     }
 
+    const authHeader = req.headers.get('Authorization');
+    const jwt = authHeader?.replace(/^Bearer\s+/i, '');
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const authClient = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: userData, error: authError } = await authClient.auth.getUser(jwt);
+    if (authError || !userData.user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    const viewerId = userData.user.id;
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    if (body.type === 'user') {
+      if (!body.userId) {
+        return new Response(
+          JSON.stringify({ error: 'userId is required for user rankings' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (body.userId !== viewerId) {
+        const { data: targetProfile } = await supabase
+          .from('profiles')
+          .select('leaderboard_participation')
+          .eq('user_id', body.userId)
+          .maybeSingle();
+        if (!targetProfile?.leaderboard_participation) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+    }
 
     // =========================================================================
     // 3. Handle each request type
@@ -183,12 +225,6 @@ Deno.serve(async (req) => {
     }
 
     if (body.type === 'user') {
-      if (!body.userId) {
-        return new Response(
-          JSON.stringify({ error: 'userId is required for user rankings' }),
-          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
       const result = await computeUserRankings(supabase, body.userId);
       return new Response(
         JSON.stringify(result),

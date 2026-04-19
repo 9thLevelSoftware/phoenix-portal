@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
@@ -65,8 +66,8 @@ async function refreshTokenIfNeeded(
   await supabase
     .from('oauth_tokens')
     .update({
-      access_token: refreshed.access_token,
-      refresh_token: refreshed.refresh_token,
+      access_token: await encryptOAuthSecret(refreshed.access_token),
+      refresh_token: await encryptOAuthSecret(refreshed.refresh_token),
       token_expires_at: newTokenExpiresAt,
       updated_at: new Date().toISOString(),
     })
@@ -132,6 +133,31 @@ function mapFitbitActivityType(typeId: number): string {
     1160:  'rowing',      // Rowing Machine
   };
   return mapping[typeId] ?? 'other';
+}
+
+/** Global provider row uses key + user_id IS NULL (see rate_limit_tracking migration). */
+async function upsertFitbitRateLimitRow(
+  supabase: ReturnType<typeof createClient>,
+  fields: Record<string, unknown>,
+) {
+  const { data: existing } = await supabase
+    .from('rate_limit_tracking')
+    .select('id')
+    .eq('key', 'fitbit')
+    .is('user_id', null)
+    .maybeSingle();
+  if (!existing) {
+    await supabase.from('rate_limit_tracking').insert({
+      key: 'fitbit',
+      provider: 'fitbit',
+      user_id: null,
+      requests_this_window: 0,
+      window_started_at: new Date().toISOString(),
+      ...fields,
+    });
+  } else {
+    await supabase.from('rate_limit_tracking').update(fields).eq('id', existing.id);
+  }
 }
 
 /**
@@ -224,8 +250,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    const rawTok = tokenData as FitbitTokens;
+    const decrypted: FitbitTokens = {
+      access_token: (await decryptOAuthSecret(rawTok.access_token)) ?? '',
+      refresh_token: (await decryptOAuthSecret(rawTok.refresh_token)) ?? '',
+      token_expires_at: rawTok.token_expires_at,
+    };
+
     // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, userId, tokenData as FitbitTokens);
+    const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted);
 
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
@@ -258,16 +291,11 @@ Deno.serve(async (req) => {
 
         // Handle rate limiting
         if (activitiesResponse.status === 429) {
-          // Update rate limit tracking
-          await supabase.from('rate_limit_tracking').upsert(
-            {
-              provider: 'fitbit',
-              requests_this_window: 150, // Mark as exhausted
-              window_started_at: new Date().toISOString(),
-              last_request_at: new Date().toISOString(),
-            },
-            { onConflict: 'provider' },
-          );
+          await upsertFitbitRateLimitRow(supabase, {
+            requests_this_window: 150,
+            window_started_at: new Date().toISOString(),
+            last_request_at: new Date().toISOString(),
+          });
 
           return new Response(
             JSON.stringify({ error: 'Rate limited', synced: totalSynced }),
@@ -323,14 +351,9 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'fitbit');
 
-    // Update rate limit tracking
-    await supabase.from('rate_limit_tracking').upsert(
-      {
-        provider: 'fitbit',
-        last_request_at: new Date().toISOString(),
-      },
-      { onConflict: 'provider' },
-    );
+    await upsertFitbitRateLimitRow(supabase, {
+      last_request_at: new Date().toISOString(),
+    });
 
     await supabase
       .from('sync_queue')

@@ -1,5 +1,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 
 /**
  * Mobile Integration Sync Edge Function
@@ -290,6 +292,14 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-integration-sync',
+      userId,
+      maxRequests: 5,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     // =========================================================================
     // 3. Parse and validate request body
     // =========================================================================
@@ -364,7 +374,7 @@ Deno.serve(async (req) => {
           {
             user_id: userId,
             provider,
-            api_key: apiKey,
+            api_key: await encryptOAuthSecret(apiKey),
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'user_id,provider' }
@@ -461,7 +471,7 @@ Deno.serve(async (req) => {
       .eq('provider', provider)
       .single();
 
-    const storedApiKey = tokenData?.api_key;
+    const storedApiKey = (await decryptOAuthSecret(tokenData?.api_key)) ?? '';
 
     if (!storedApiKey) {
       return new Response(

@@ -198,8 +198,8 @@ export function AppRoutes() {
 							/>
 						</Route>
 
-						{/* INFERNO tier — session replay */}
-						<Route element={<SubscribedRoute requiredTier="INFERNO" />}>
+						{/* FLAME tier — session replay (INFERNO not yet purchasable) */}
+						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
 							<Route path="/replay/:sessionId" element={<SessionReplay />} />
 						</Route>
 
