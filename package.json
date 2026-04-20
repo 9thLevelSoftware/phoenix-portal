@@ -9,6 +9,7 @@
   "scripts": {
     "auth:social:check": "node scripts/sync-social-auth.mjs check",
     "auth:social:push": "node scripts/sync-social-auth.mjs push",
+    "auth:apple:rotate": "node scripts/generate-apple-client-secret.mjs --write-env",
     "build": "vite build",
     "dev": "vite",
     "test": "vitest run",
