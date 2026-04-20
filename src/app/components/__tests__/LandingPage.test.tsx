@@ -19,9 +19,8 @@ vi.mock("@/providers/AuthProvider", () => mockAuth);
 const mockSignInWithOAuth = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase", async () => {
-	const actual = await vi.importActual<typeof import("@/lib/supabase")>(
-		"@/lib/supabase",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/lib/supabase")>("@/lib/supabase");
 
 	return {
 		...actual,
@@ -168,7 +167,9 @@ describe("LandingPage", () => {
 		await renderLandingPage({ apple: false, google: true });
 
 		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
-		await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+		await user.click(
+			screen.getByRole("button", { name: /sign in with google/i }),
+		);
 
 		expect(mockSignInWithOAuth).toHaveBeenCalledWith({
 			provider: "google",
@@ -184,7 +185,9 @@ describe("LandingPage", () => {
 		await renderLandingPage({ apple: true, google: false });
 
 		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
-		await user.click(screen.getByRole("button", { name: /sign in with apple/i }));
+		await user.click(
+			screen.getByRole("button", { name: /sign in with apple/i }),
+		);
 
 		expect(mockSignInWithOAuth).toHaveBeenCalledWith({
 			provider: "apple",
@@ -192,5 +195,41 @@ describe("LandingPage", () => {
 				redirectTo: `${window.location.origin}/auth/callback?provider=apple`,
 			},
 		});
+	});
+
+	it("blocks Google OAuth and shows guidance when opened in an in-app browser", async () => {
+		const REDDIT_UA =
+			"Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 Reddit/Version 2024.40.1/Build 1";
+		const originalUA = Object.getOwnPropertyDescriptor(
+			window.navigator,
+			"userAgent",
+		);
+		Object.defineProperty(window.navigator, "userAgent", {
+			value: REDDIT_UA,
+			configurable: true,
+		});
+
+		try {
+			const user = userEvent.setup();
+			await renderLandingPage({ apple: false, google: true });
+
+			await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+			expect(
+				await screen.findByText(/block sign-in from in-app browsers/i),
+			).toBeInTheDocument();
+			expect(
+				screen.getByRole("link", { name: /open in chrome/i }),
+			).toBeInTheDocument();
+
+			await user.click(
+				screen.getByRole("button", { name: /sign in with google/i }),
+			);
+			expect(mockSignInWithOAuth).not.toHaveBeenCalled();
+		} finally {
+			if (originalUA) {
+				Object.defineProperty(window.navigator, "userAgent", originalUA);
+			}
+		}
 	});
 });
