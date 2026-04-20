@@ -767,6 +767,85 @@ WHERE requests_this_window > 0;
 
 ---
 
+## 8. Social Auth Setup And Verification
+
+### When to use
+
+Use this when:
+
+- Google or Apple sign-in buttons are missing on the landing page.
+- `/auth/v1/settings` reports `google: false` or `apple: false`.
+- `GET /auth/v1/authorize?provider=<google|apple>` returns `400` with
+  `Unsupported provider: provider is not enabled`.
+
+### Required local environment variables
+
+Add these to your local `.env` before pushing auth config:
+
+```bash
+SUPABASE_AUTH_SITE_URL=https://your-portal-domain.com
+SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=...
+SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=...
+SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID=...
+SUPABASE_AUTH_EXTERNAL_APPLE_SECRET=...
+```
+
+Optional:
+
+```bash
+# Override project ref if it cannot be inferred from VITE_SUPABASE_URL
+SUPABASE_PROJECT_REF=ilzlswmatadlnsuxatcv
+
+# Additional exact redirect URLs, comma-separated
+SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
+```
+
+### Push hosted Supabase auth config
+
+The repo now provides an env-driven command that:
+
+1. Generates the Google/Apple auth block in a temporary `supabase/config.toml`
+2. Runs `supabase config push` against the linked hosted project
+3. Verifies the public auth settings endpoint afterward
+
+```bash
+npx supabase login
+npm run auth:social:push
+```
+
+To verify current provider state without pushing:
+
+```bash
+npm run auth:social:check
+```
+
+### Provider console values
+
+The helper command prints the exact values again, but the critical ones are:
+
+- Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
+- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`
+  and your production `/auth/callback`
+- Google web app:
+  - Authorized JavaScript origins: `http://localhost:5173` and your portal
+    origin
+  - Authorized redirect URI: the Supabase callback URL above
+- Apple Services ID:
+  - Domain / Website URL: `https://<project-ref>.supabase.co`
+  - Return URL: the Supabase callback URL above
+
+### Apple rotation requirement
+
+Apple web OAuth requires a generated client secret that expires every 6 months.
+If Apple sign-in suddenly starts failing after previously working, rotate the
+Apple client secret first and rerun:
+
+```bash
+npm run auth:social:push
+```
+
+---
+
 ## Related Runbooks
 
 - [Billing Incident Response](billing-incident-response.md) -- manual fixes,

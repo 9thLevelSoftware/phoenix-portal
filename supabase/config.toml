@@ -2,6 +2,8 @@
 # Both the mobile app and web portal share this Supabase auth backend.
 # These settings prevent token refresh conflicts between clients.
 [auth]
+# `npm run auth:social:push` replaces the managed block below in a temporary
+# config before pushing hosted Google/Apple settings via `supabase config push`.
 # JWT access tokens expire after 1 hour (default)
 jwt_expiry = 3600
 
@@ -14,6 +16,10 @@ enable_refresh_token_rotation = true
 # 2. Mobile tries to refresh within 60s -> old token still works
 # Default is 10s which is too short for independent client refresh cycles.
 refresh_token_reuse_interval = 60
+
+# BEGIN_MANAGED_SOCIAL_AUTH
+# Generated only in a temporary config by scripts/sync-social-auth.mjs.
+# END_MANAGED_SOCIAL_AUTH
 
 [functions.paddle-webhooks]
 verify_jwt = false
