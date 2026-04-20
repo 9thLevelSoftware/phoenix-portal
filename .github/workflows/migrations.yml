@@ -37,6 +37,18 @@ jobs:
         with:
           version: latest
 
+      # Neutralize seed.sql for the clean-apply check. This job only verifies
+      # that every migration applies cleanly from an empty DB; it should NOT
+      # execute production seed data. The checkout is ephemeral so this
+      # overwrite never touches the committed file.
+      #
+      # Context: the committed seed.sql raises
+      #   'No user found in auth.users. Sign up first!'
+      # when run against a fresh DB with no users — which is exactly what this
+      # CI job has. Seeding is orthogonal to drift detection.
+      - name: Disable seed.sql for clean-apply check
+        run: echo "-- seed disabled for migrations CI; see .github/workflows/migrations.yml" > supabase/seed.sql
+
       - name: Start local Supabase stack
         run: supabase start --ignore-health-check
 

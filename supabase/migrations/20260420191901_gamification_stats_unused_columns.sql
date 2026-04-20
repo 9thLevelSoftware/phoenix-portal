@@ -24,6 +24,16 @@
 --
 -- Column drop is NOT performed here. Safer in a follow-up once we've
 -- verified 30+ days of no external readers.
+--
+-- 2026-04-20 follow-up: pr_count + best_streak existed in prod (added via
+-- dashboard) but had no corresponding migration. COMMENT statements below
+-- failed against a clean `supabase db reset`. Idempotent ADD COLUMNs below
+-- re-import the columns into the migration history so fresh applies match
+-- prod. On prod (where the columns already exist) these are no-ops.
+
+ALTER TABLE public.gamification_stats
+  ADD COLUMN IF NOT EXISTS pr_count    INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS best_streak INTEGER NOT NULL DEFAULT 0;
 
 COMMENT ON COLUMN public.gamification_stats.pr_count IS
   'LEGACY / UNUSED. Portal computes PR count from personal_records; mobile '

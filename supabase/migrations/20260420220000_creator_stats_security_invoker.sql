@@ -33,8 +33,28 @@ EXCEPTION WHEN OTHERS THEN
   NULL;
 END $$;
 
--- 2. Drop the materialized view + its indexes.
-DROP MATERIALIZED VIEW IF EXISTS public.creator_stats CASCADE;
+-- 2. Drop whichever flavor of creator_stats currently exists.
+--    Prod has it as a MATERIALIZED view (relkind='m') — this migration was
+--    written to convert it. A fresh `supabase db reset` has it as a regular
+--    VIEW (relkind='v'), created earlier by migration 20260221. We branch
+--    on relkind because `DROP MATERIALIZED VIEW IF EXISTS` raises when the
+--    relation exists but is the wrong flavor (and vice versa for DROP VIEW).
+DO $$
+DECLARE
+  v_kind "char";
+BEGIN
+  SELECT c.relkind INTO v_kind
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relname = 'creator_stats';
+
+  IF v_kind = 'm' THEN
+    EXECUTE 'DROP MATERIALIZED VIEW public.creator_stats CASCADE';
+  ELSIF v_kind = 'v' THEN
+    EXECUTE 'DROP VIEW public.creator_stats CASCADE';
+  END IF;
+  -- v_kind NULL = no relation named creator_stats; nothing to drop.
+END $$;
 
 -- 3. Recreate as a regular view with security_invoker.
 CREATE VIEW public.creator_stats
