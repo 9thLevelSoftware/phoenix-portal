@@ -1,4 +1,5 @@
 import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { normalizeRateLimitRpcResult } from './rateLimitRpc.ts';
 
 interface RateLimitConfig {
   /** Unique key for this rate limit (e.g., 'delete-account', 'mobile-sync-push') */
@@ -86,7 +87,31 @@ export async function checkRateLimit(
         };
       }
     } else if (rpcResult) {
-      const { allowed, remaining, retry_after_seconds } = rpcResult;
+      const normalized = normalizeRateLimitRpcResult(rpcResult);
+      if (!normalized) {
+        console.error('[rateLimit] check_rate_limit returned unexpected shape:', rpcResult);
+        return {
+          allowed: false,
+          remaining: 0,
+          response: new Response(
+            JSON.stringify({
+              error: 'rate_limit_unavailable',
+              message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+            }),
+            {
+              status: 503,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': '30',
+              },
+            },
+          ),
+        };
+      }
+
+      const { allowed, remaining, retry_after_seconds } = normalized;
+      const retryAfterSeconds = retry_after_seconds ?? 30;
 
       if (!allowed) {
         return {
@@ -95,15 +120,15 @@ export async function checkRateLimit(
           response: new Response(
             JSON.stringify({
               error: 'rate_limit_exceeded',
-              message: `Too many requests. Try again in ${retry_after_seconds} seconds.`,
-              retryAfterSeconds: retry_after_seconds,
+              message: `Too many requests. Try again in ${retryAfterSeconds} seconds.`,
+              retryAfterSeconds,
             }),
             {
               status: 429,
               headers: {
                 ...corsHeaders,
                 'Content-Type': 'application/json',
-                'Retry-After': String(retry_after_seconds),
+                'Retry-After': String(retryAfterSeconds),
               },
             },
           ),

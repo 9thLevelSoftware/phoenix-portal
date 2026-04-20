@@ -3,6 +3,12 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
+import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
+import { buildPersonalRecordRows } from '../_shared/personalRecordRow.ts';
+import {
+  formatPushPayloadError,
+  pushPayloadSchema,
+} from '../_shared/pushPayloadSchema.ts';
 
 /**
  * Per-row rejection record returned to the mobile client when an LWW RPC
@@ -525,9 +531,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    let payload: PushPayload;
+    // Parse + normalize the payload through a single Zod schema.
+    // This replaces the previous chain of ad-hoc helpers (shape normalizer,
+    // platform normalizer, profile-id validator, inline scalar guards).
+    // On failure, we return a 400 with a precise list of {path, message}
+    // issues so mobile debugging doesn't require reading edge function logs.
+    let rawPayload: unknown;
     try {
-      payload = await req.json();
+      rawPayload = await req.json();
     } catch {
       return new Response(
         JSON.stringify({ error: 'Invalid JSON body' }),
@@ -535,16 +546,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!payload.deviceId || typeof payload.deviceId !== 'string') {
+    // Capture the raw platform value BEFORE the schema transforms it, so the
+    // diagnostic log (when normalized === "unknown") can still tell us what
+    // the mobile client actually sent.
+    const rawPlatformInput =
+      typeof rawPayload === 'object' && rawPayload !== null
+        ? (rawPayload as Record<string, unknown>).platform
+        : undefined;
+
+    const parseResult = pushPayloadSchema.safeParse(rawPayload);
+    if (!parseResult.success) {
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid deviceId' }),
+        JSON.stringify(formatPushPayloadError(parseResult.error)),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (!payload.platform || typeof payload.platform !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Missing or invalid platform' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+    const payload = parseResult.data;
+    const normalizedPlatform = payload.platform;
+    if (normalizedPlatform === 'unknown') {
+      console.warn(
+        'mobile-sync-push received missing/invalid platform; defaulting to unknown',
+        describeSyncPlatformInput(rawPlatformInput),
       );
     }
 
@@ -584,14 +606,8 @@ Deno.serve(async (req) => {
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
-      for (const p of allProfiles) {
-        if (!UUID_REGEX.test(p.id)) {
-          return new Response(
-            JSON.stringify({ error: 'Invalid local profile id' }),
-            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
-          );
-        }
-      }
+      // Schema already validated each allProfiles[].id is "default" or a UUID
+      // (see pushPayloadSchema.ts → localProfileSchema). No per-row recheck here.
       // Upsert all profiles from the device
       const profileRows = allProfiles.map((p) => ({
         user_id: userId,
@@ -883,12 +899,15 @@ Deno.serve(async (req) => {
         user_id: userId,
         local_profile_id: localProfileId,
         name: s.name,
-        started_at: s.startedAt,
-        duration_seconds: s.durationSeconds,
-        total_volume: s.totalVolume,
-        set_count: s.setCount,
-        exercise_count: s.exerciseCount,
-        pr_count: s.prCount,
+        // NOT NULL DEFAULT columns: coerce client-supplied nulls/undefined to
+        // the DB default. Postgres only applies DEFAULT when a column is
+        // OMITTED from the INSERT column list — an explicit NULL bypasses it.
+        started_at: s.startedAt ?? new Date().toISOString(),
+        duration_seconds: s.durationSeconds ?? 0,
+        total_volume: s.totalVolume ?? 0,
+        set_count: s.setCount ?? 0,
+        exercise_count: s.exerciseCount ?? 0,
+        pr_count: s.prCount ?? 0,
         routine_name: s.routineName,
         workout_mode: s.workoutMode,
         routine_session_id: s.routineSessionId,
@@ -966,8 +985,8 @@ Deno.serve(async (req) => {
             session_id: e.sessionId,
             user_id: userId,
             name: e.name,
-            muscle_group: e.muscleGroup,
-            order_index: e.orderIndex,
+            muscle_group: e.muscleGroup ?? 'General',
+            order_index: e.orderIndex ?? 0,
           }))
         );
 
@@ -1004,10 +1023,10 @@ Deno.serve(async (req) => {
               user_id: userId,
               set_number: st.setNumber,
               target_reps: st.targetReps,
-              actual_reps: st.actualReps,
-              weight_kg: st.weightKg,
+              actual_reps: st.actualReps ?? 0,
+              weight_kg: st.weightKg ?? 0,
               rpe: st.rpe,
-              is_pr: st.isPr,
+              is_pr: st.isPr ?? false,
               notes: st.notes,
               workout_mode: st.workoutMode,
             }))
@@ -1183,33 +1202,16 @@ Deno.serve(async (req) => {
 
       // =====================================================================
       // 6. Extract personal_records from is_pr sets
+      //
+      // Row construction delegated to _shared/personalRecordRow.ts so the
+      // NOT-NULL-DEFAULT guards (record_type, muscle_group, unit,
+      // workout_phase) are unit-testable in isolation.
       // =====================================================================
-      const prRows: Record<string, unknown>[] = [];
-
-      for (const session of payload.sessions) {
-        for (const exercise of session.exercises) {
-          for (const set of exercise.sets) {
-            if (set.isPr) {
-              // GAP 2 fix: Use actual PR type/phase from mobile instead of hardcoded '1RM'
-              const recordType = set.prType ?? '1RM';
-              const value = recordType === 'MAX_VOLUME'
-                ? (set.prVolume ?? set.weightKg * set.actualReps)
-                : set.weightKg;
-              prRows.push({
-                user_id: userId,
-                local_profile_id: localProfileId,
-                exercise_name: exercise.name,
-                muscle_group: exercise.muscleGroup ?? 'General',
-                record_type: recordType,
-                value,
-                unit: recordType === 'MAX_VOLUME' ? 'kg×reps' : 'kg',
-                achieved_at: session.startedAt,
-                workout_phase: set.prPhase ?? 'COMBINED',
-              });
-            }
-          }
-        }
-      }
+      const prRows = buildPersonalRecordRows(
+        payload.sessions,
+        userId,
+        localProfileId,
+      );
 
       if (prRows.length > 0) {
         const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
@@ -1255,15 +1257,23 @@ Deno.serve(async (req) => {
         user_id: userId,
         local_profile_id: localProfileId,
         name: r.name,
-        description: r.description,
-        exercise_count: r.exerciseCount,
-        estimated_duration: Math.round(r.estimatedDuration),
-        times_completed: r.timesCompleted,
-        is_favorite: r.isFavorite,
+        description: r.description ?? '',
+        exercise_count: r.exerciseCount ?? 0,
+        estimated_duration: Math.round(r.estimatedDuration ?? 0),
+        times_completed: r.timesCompleted ?? 0,
+        is_favorite: r.isFavorite ?? false,
         updated_at: r.updatedAt ?? null,
       }));
 
-<<<<<<< HEAD
+      const routineOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'routines',
+        routineRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (routineOwnershipResp) return routineOwnershipResp;
+
       if (SYNC_LWW_ENABLED) {
         const rows = routineRows.map((r) => ({
           ...r,
@@ -1287,22 +1297,6 @@ Deno.serve(async (req) => {
         if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
         routinesUpserted = routineRows.length;
       }
-=======
-      const routineOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'routines',
-        routineRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (routineOwnershipResp) return routineOwnershipResp;
-
-      const { error: routErr } = await supabase
-        .from('routines')
-        .upsert(routineRows, { onConflict: 'id' });
-      if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
-      routinesUpserted = routineRows.length;
->>>>>>> origin/main
 
       // Upsert exercises by primary key (id). Each exercise has a stable UUID
       // generated on mobile, so onConflict: 'id' safely updates existing rows.
@@ -1315,13 +1309,13 @@ Deno.serve(async (req) => {
           id: e.id,
           routine_id: e.routineId,
           name: e.name,
-          muscle_group: e.muscleGroup,
-          sets: e.sets,
-          reps: e.reps,
-          weight: e.weight,
-          rest_seconds: e.restSeconds,
-          mode: e.mode,
-          order_index: e.orderIndex,
+          muscle_group: e.muscleGroup ?? 'General',
+          sets: e.sets ?? 3,
+          reps: e.reps ?? 10,
+          weight: e.weight ?? 0,
+          rest_seconds: e.restSeconds ?? 90,
+          mode: e.mode ?? 'OLD_SCHOOL',
+          order_index: e.orderIndex ?? 0,
           superset_id: e.supersetId,
           superset_color: e.supersetColor,
           superset_order: e.supersetOrder,
@@ -1387,11 +1381,11 @@ Deno.serve(async (req) => {
         local_profile_id: localProfileId,
         name: c.name,
         description: c.description ?? '',
-        duration_weeks: c.durationWeeks,
-        workout_days: c.workoutDays,
-        rest_days: c.restDays,
-        current_week: c.currentWeek,
-        status: c.status,
+        duration_weeks: c.durationWeeks ?? 4,
+        workout_days: c.workoutDays ?? 0,
+        rest_days: c.restDays ?? 0,
+        current_week: c.currentWeek ?? 1,
+        status: c.status ?? 'draft',
         started_at: c.startedAt,
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
@@ -1399,7 +1393,15 @@ Deno.serve(async (req) => {
         updated_at: c.updatedAt ?? null,
       }));
 
-<<<<<<< HEAD
+      const cycleOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'training_cycles',
+        cycleRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (cycleOwnershipResp) return cycleOwnershipResp;
+
       if (SYNC_LWW_ENABLED) {
         const rows = cycleRows.map((r) => ({
           ...r,
@@ -1423,22 +1425,6 @@ Deno.serve(async (req) => {
         if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
         cyclesUpserted = cycleRows.length;
       }
-=======
-      const cycleOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'training_cycles',
-        cycleRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (cycleOwnershipResp) return cycleOwnershipResp;
-
-      const { error: cycErr } = await supabase
-        .from('training_cycles')
-        .upsert(cycleRows, { onConflict: 'id' });
-      if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
-      cyclesUpserted = cycleRows.length;
->>>>>>> origin/main
 
       // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
       // When LWW is enabled, skip days whose parent cycle was rejected.
@@ -1449,10 +1435,10 @@ Deno.serve(async (req) => {
           id: d.id,
           cycle_id: d.cycleId,
           day_number: d.dayNumber,
-          day_type: d.dayType,
+          day_type: d.dayType ?? 'workout',
           routine_id: d.routineId,
-          weight_adjustment: d.weightAdjustment,
-          rep_modifier: d.repModifier,
+          weight_adjustment: d.weightAdjustment ?? 0,
+          rep_modifier: d.repModifier ?? 0,
           rest_override: d.restOverride,
           rest_type: d.restType,
           notes: d.notes,
@@ -1530,8 +1516,8 @@ Deno.serve(async (req) => {
         badge_id: b.badgeId,
         badge_name: b.badgeName,
         badge_description: b.badgeDescription,
-        badge_tier: b.badgeTier,
-        earned_at: b.earnedAt,
+        badge_tier: b.badgeTier ?? 'bronze',
+        earned_at: b.earnedAt ?? new Date().toISOString(),
       }));
 
       const { error: badgeErr } = await supabase
@@ -1548,12 +1534,12 @@ Deno.serve(async (req) => {
       const gs = payload.gamificationStats;
       const gsRow = {
         user_id: userId,
-        total_workouts: gs.totalWorkouts,
-        total_reps: gs.totalReps,
-        total_volume_kg: gs.totalVolumeKg,
-        longest_streak: gs.longestStreak,
-        current_streak: gs.currentStreak,
-        total_time_seconds: gs.totalTimeSeconds,
+        total_workouts: gs.totalWorkouts ?? 0,
+        total_reps: gs.totalReps ?? 0,
+        total_volume_kg: gs.totalVolumeKg ?? 0,
+        longest_streak: gs.longestStreak ?? 0,
+        current_streak: gs.currentStreak ?? 0,
+        total_time_seconds: gs.totalTimeSeconds ?? 0,
         updated_at: new Date().toISOString(),
       };
 
@@ -1804,7 +1790,7 @@ Deno.serve(async (req) => {
         payload: {
           syncTime,
           deviceId: payload.deviceId,
-          platform: payload.platform,
+          platform: normalizedPlatform,
           profileId: localProfileId,
           profileName: payload.profileName ?? null,
           sessionsInserted,
@@ -1853,7 +1839,13 @@ Deno.serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    console.error('mobile-sync-push error:', err);
+    // Emit full error + stack to function logs so the next regression is
+    // debuggable from Supabase without guessing at the call site.
+    if (err instanceof Error) {
+      console.error('mobile-sync-push error:', err.message, err.stack);
+    } else {
+      console.error('mobile-sync-push error (non-Error):', err);
+    }
     const message = err instanceof Error ? err.message : 'Internal server error';
     const status = message.includes('upsert failed') || message.includes('insert failed')
       ? 400

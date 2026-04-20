@@ -1,0 +1,64 @@
+name: Migrations
+
+# Catches the "repair-without-apply" footgun that caused 2026-04-20 drift.
+# Boots a fresh Supabase stack, applies every migration file in order,
+# and fails if any statement errors. A clean apply proves the migrations
+# folder is self-consistent and can regenerate prod schema from scratch.
+#
+# Out of scope: diff vs live prod. That gate requires prod credentials
+# in CI and is tracked as a follow-up. See CLAUDE.md -> "Migration
+# Workflow Discipline".
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/seed.sql"
+      - "supabase/config.toml"
+      - ".github/workflows/migrations.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-apply:
+    name: Clean apply from empty DB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase stack
+        run: supabase start --ignore-health-check
+
+      - name: Reset DB and apply all migrations
+        run: supabase db reset --no-seed
+
+      - name: List applied migrations
+        run: supabase migration list --local
+
+      - name: Fail on file-vs-applied count mismatch
+        shell: bash
+        run: |
+          # Any migration file not tracked as applied by the local CLI
+          # after db reset indicates a rejection or silent skip.
+          file_count=$(ls -1 supabase/migrations/*.sql 2>/dev/null | wc -l)
+          applied_count=$(supabase migration list --local 2>/dev/null | grep -E '^\s*[0-9]+' | wc -l)
+          echo "files=$file_count applied=$applied_count"
+          if [ "$file_count" -ne "$applied_count" ]; then
+            echo "::error::Migration file count ($file_count) != applied count ($applied_count). Drift between supabase/migrations and schema_migrations."
+            exit 1
+          fi
+
+      - name: Stop stack
+        if: always()
+        run: supabase stop --no-backup || true
