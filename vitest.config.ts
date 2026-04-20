@@ -7,6 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Edge functions import Zod via the Deno npm specifier. Remap to the
+      // installed node_modules package so Vitest can resolve the same source
+      // file when running edge-function helpers under Node.
+      'npm:zod@4.3.6': 'zod',
+      'npm:zod@^4.3.6': 'zod',
+      'npm:zod': 'zod',
     },
   },
   test: {
