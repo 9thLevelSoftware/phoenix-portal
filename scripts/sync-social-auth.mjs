@@ -222,10 +222,19 @@ async function pushHostedConfig(projectRef, managedConfig) {
 
 		const { stdout, stderr } = await execFile(
 			npxCommand,
-			["supabase", "config", "push", "--project-ref", projectRef],
+			[
+				"supabase",
+				"config",
+				"push",
+				"--project-ref",
+				projectRef,
+				"--yes",
+			],
 			{
 				cwd: tempWorkdir,
 				env: process.env,
+				// Windows requires shell: true to spawn .cmd shims (Node 20+ security).
+				shell: process.platform === "win32",
 			},
 		);
 
