@@ -32,15 +32,21 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import {
+	buildAndroidChromeIntentUrl,
+	detectInAppBrowser,
+	getInAppBrowserLabel,
+	type InAppBrowserDetection,
+} from "@/lib/in-app-browser";
 import { TIER_PRICING } from "@/lib/pricing";
 import {
 	buildSocialAuthRedirectUrl,
 	DEFAULT_SOCIAL_AUTH_AVAILABILITY,
-	getSocialAuthAvailability,
 	GOOGLE_OAUTH_SCOPES,
-	supabase,
+	getSocialAuthAvailability,
 	type SocialAuthAvailability,
 	type SocialAuthProvider,
+	supabase,
 } from "@/lib/supabase";
 import { ForceCurveDemo } from "./landing/ForceCurveDemo";
 import { ProductShowcase } from "./landing/ProductShowcase";
@@ -86,6 +92,11 @@ export function LandingPage() {
 	const [scrolled, setScrolled] = useState(false);
 	const [socialAuthAvailability, setSocialAuthAvailability] =
 		useState<SocialAuthAvailability>(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
+		isInAppBrowser: false,
+		browser: null,
+		platform: "other",
+	});
 
 	const hasSocialAuthOptions =
 		socialAuthAvailability.google || socialAuthAvailability.apple;
@@ -114,6 +125,10 @@ export function LandingPage() {
 		const handleScroll = () => setScrolled(window.scrollY > 20);
 		window.addEventListener("scroll", handleScroll, { passive: true });
 		return () => window.removeEventListener("scroll", handleScroll);
+	}, []);
+
+	useEffect(() => {
+		setInAppBrowser(detectInAppBrowser());
 	}, []);
 
 	useEffect(() => {
@@ -227,6 +242,17 @@ export function LandingPage() {
 			return;
 		}
 
+		if (inAppBrowser.isInAppBrowser) {
+			const providerLabel = provider === "apple" ? "Apple" : "Google";
+			const hostLabel = inAppBrowser.browser
+				? getInAppBrowserLabel(inAppBrowser.browser)
+				: "this app";
+			const msg = `${providerLabel} blocks sign-in from ${hostLabel}'s in-app browser. Open phoenix-portal.com in your device browser (Chrome/Safari) and try again.`;
+			setAuthAlertMessage(msg);
+			toast.error(msg);
+			return;
+		}
+
 		setAuthLoading(true);
 		setAuthAlertMessage(null);
 		try {
@@ -234,9 +260,7 @@ export function LandingPage() {
 				provider,
 				options: {
 					redirectTo: buildSocialAuthRedirectUrl(provider),
-					...(provider === "google"
-						? { scopes: GOOGLE_OAUTH_SCOPES }
-						: {}),
+					...(provider === "google" ? { scopes: GOOGLE_OAUTH_SCOPES } : {}),
 				},
 			});
 			if (error) {
@@ -572,6 +596,35 @@ export function LandingPage() {
 										</span>
 									</div>
 								</div>
+
+								{inAppBrowser.isInAppBrowser ? (
+									<div
+										role="alert"
+										className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200"
+									>
+										<p className="font-medium">
+											Google and Apple block sign-in from in-app browsers.
+										</p>
+										<p className="mt-1 text-amber-200/90">
+											{inAppBrowser.platform === "ios"
+												? "Tap the ••• menu above and choose \u201COpen in Safari\u201D, then try again. Or use email and password below."
+												: inAppBrowser.platform === "android"
+													? "Tap the ••• menu above and choose \u201COpen in browser\u201D, then try again."
+													: "Open phoenix-portal.com in Chrome or Safari, then try again."}
+										</p>
+										{inAppBrowser.platform === "android" ? (
+											<a
+												href={
+													buildAndroidChromeIntentUrl() ??
+													"https://phoenix-portal.com"
+												}
+												className="mt-2 inline-flex items-center text-amber-100 underline underline-offset-2 hover:text-white"
+											>
+												Open in Chrome
+											</a>
+										) : null}
+									</div>
+								) : null}
 
 								{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
 								<div className="flex flex-col gap-3">
