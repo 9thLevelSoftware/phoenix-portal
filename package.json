@@ -7,6 +7,8 @@
     "node": ">=20.19.0"
   },
   "scripts": {
+    "auth:social:check": "node scripts/sync-social-auth.mjs check",
+    "auth:social:push": "node scripts/sync-social-auth.mjs push",
     "build": "vite build",
     "dev": "vite",
     "test": "vitest run",
