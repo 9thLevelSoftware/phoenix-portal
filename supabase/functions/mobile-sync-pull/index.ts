@@ -195,15 +195,16 @@ const MAX_PAGE_SIZE = 300;
 
 /**
  * Maximum number of entity IDs the client may include in a single parity-based
- * pull request. PostgREST has limits on query parameter length; exceeding
- * ~500 IDs in a NOT IN clause can cause query failures.
+ * pull request.
  *
- * Prior behavior silently skipped the parity filter when over cap, which
- * masked data-loss scenarios for power users. Audit item #7 (2026-04-19):
- * we now respond with HTTP 413 and a machine-readable `maxBatch` so the
- * client can chunk its parityIds deterministically.
+ * UPDATE 2026-04-20: Now using RPC functions (get_sessions_excluding_ids, etc.)
+ * which accept IDs in POST body instead of URL params. No more URL length limit.
+ * Raised cap to 10,000 for power users with years of workout history.
+ *
+ * The RPC functions use PostgreSQL array parameters, which handle large arrays
+ * efficiently via `id != ALL(p_known_ids)`.
  */
-const MAX_PARITY_IDS = 500;
+const MAX_PARITY_IDS = 10_000;
 
 // Entity types in pagination order
 type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats';
@@ -413,64 +414,72 @@ Deno.serve(async (req) => {
     }
 
     // ─── SESSIONS ───────────────────────────────────────────────────────────
+    // Using RPC function to bypass URL length limits for large parity ID lists.
+    // RPC uses POST body, so no limit on number of IDs (unlike .not().in() which uses GET).
     if (startTypeIndex <= ENTITY_ORDER.indexOf('sessions') && remainingPageSize > 0) {
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'sessions');
-
-      // Build base query with stable ordering
-      let sessionsQuery = supabase
-        .from('workout_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: true })
-        .order('id', { ascending: true })
-        .limit(remainingPageSize + 1); // +1 to detect hasMore
-
-      // Parity mode: exclude sessions client already has.
-      // Invariant: enforceParityCaps (upstream) rejects lists > MAX_PARITY_IDS
-      // with HTTP 413. Guard defensively in case the upstream check is ever
-      // accidentally bypassed. Audit item #7 (2026-04-19).
       const knownSessionIds = body.knownEntityIds?.sessionIds ?? [];
-      if (knownSessionIds.length > MAX_PARITY_IDS) {
-        throw new Error(
-          `Invariant violated: sessionIds.length=${knownSessionIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}; enforceParityCaps should have rejected this.`,
-        );
-      }
-      if (knownSessionIds.length > 0) {
-        // Filter: return sessions NOT in the known list
-        sessionsQuery = sessionsQuery.not('id', 'in', `(${knownSessionIds.join(',')})`);
-      } else if (body.lastSync && body.lastSync > 0) {
+
+      // Use RPC for parity mode OR full sync. Legacy timestamp mode still uses direct query.
+      const useRpc = knownSessionIds.length > 0 || !body.lastSync || body.lastSync === 0;
+
+      let sessionsRaw: Record<string, unknown>[] = [];
+      let sessionsError: { code?: string; message?: string; hint?: string } | null = null;
+
+      if (useRpc) {
+        // RPC function handles: NOT IN filter, profile filter, cursor, ordering, limit
+        const { data, error } = await supabase.rpc('get_sessions_excluding_ids', {
+          p_user_id: userId,
+          p_known_ids: knownSessionIds,
+          p_profile_id: profileId,
+          p_cursor_updated_at: cursorUpdatedAt,
+          p_cursor_id: cursorId,
+          p_limit: remainingPageSize + 1, // +1 to detect hasMore
+        });
+        sessionsRaw = (data as Record<string, unknown>[]) ?? [];
+        sessionsError = error;
+      } else {
         // Legacy timestamp-based mode (backward compatibility)
-        sessionsQuery = sessionsQuery.or(`updated_at.gt.${lastSyncISO},started_at.gt.${lastSyncISO}`);
-      }
-      // If neither knownEntityIds nor lastSync provided, return all sessions (full sync)
+        let sessionsQuery = supabase
+          .from('workout_sessions')
+          .select('*')
+          .eq('user_id', userId)
+          .or(`updated_at.gt.${lastSyncISO},started_at.gt.${lastSyncISO}`)
+          .order('updated_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
 
-      if (profileId) {
-        if (profileId === 'default') {
-          sessionsQuery = sessionsQuery.is('local_profile_id', null);
-        } else {
-          sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+        if (profileId) {
+          if (profileId === 'default') {
+            sessionsQuery = sessionsQuery.is('local_profile_id', null);
+          } else {
+            sessionsQuery = sessionsQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+          }
         }
-      }
 
-      // Apply cursor condition if resuming within sessions
-      if (cursorUpdatedAt && cursorId) {
-        // Composite cursor: (updated_at, id) > (cursorUpdatedAt, cursorId)
-        sessionsQuery = sessionsQuery.or(
-          `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-        );
-      }
+        if (cursorUpdatedAt && cursorId) {
+          sessionsQuery = sessionsQuery.or(
+            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
 
-      const { data: sessions, error: sessionsError } = await sessionsQuery;
+        const { data, error } = await sessionsQuery;
+        sessionsRaw = (data as Record<string, unknown>[]) ?? [];
+        sessionsError = error;
+      }
 
       if (sessionsError) {
         console.error('Error fetching sessions:', sessionsError);
         return new Response(
-          JSON.stringify({ error: 'Failed to fetch workout sessions' }),
+          JSON.stringify({
+            error: 'Failed to fetch workout sessions',
+            code: sessionsError.code ?? 'UNKNOWN',
+            details: sessionsError.message ?? sessionsError.hint ?? null,
+            parityIdCount: knownSessionIds.length,
+          }),
           { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
-
-      const sessionsRaw = sessions ?? [];
 
       // Check if there are more sessions
       if (sessionsRaw.length > remainingPageSize) {
@@ -631,52 +640,55 @@ Deno.serve(async (req) => {
     }
 
     // ─── ROUTINES ───────────────────────────────────────────────────────────
+    // Using RPC function to bypass URL length limits for large parity ID lists.
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('routines') && remainingPageSize > 0) {
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'routines');
-
-      let routinesQuery = supabase
-        .from('routines')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: true })
-        .order('id', { ascending: true })
-        .limit(remainingPageSize + 1);
-
-      // Parity mode: exclude routines client already has.
-      // See sessions block for cap invariant. Audit item #7.
       const knownRoutineIds = body.knownEntityIds?.routineIds ?? [];
-      if (knownRoutineIds.length > MAX_PARITY_IDS) {
-        throw new Error(
-          `Invariant violated: routineIds.length=${knownRoutineIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
-        );
-      }
-      if (knownRoutineIds.length > 0) {
-        routinesQuery = routinesQuery.not('id', 'in', `(${knownRoutineIds.join(',')})`);
-      } else if (body.lastSync && body.lastSync > 0) {
-        routinesQuery = routinesQuery.gt('updated_at', lastSyncISO);
-      }
-      // If neither provided, return all routines (full sync)
 
-      if (profileId) {
-        if (profileId === 'default') {
-          routinesQuery = routinesQuery.is('local_profile_id', null);
-        } else {
-          routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+      const useRpc = knownRoutineIds.length > 0 || !body.lastSync || body.lastSync === 0;
+
+      let routinesData: Record<string, unknown>[] = [];
+
+      if (useRpc) {
+        const { data, error } = await supabase.rpc('get_routines_excluding_ids', {
+          p_user_id: userId,
+          p_known_ids: knownRoutineIds,
+          p_profile_id: profileId,
+          p_cursor_updated_at: cursorUpdatedAt,
+          p_cursor_id: cursorId,
+          p_limit: remainingPageSize + 1,
+        });
+        if (error) console.error('Error fetching routines:', error);
+        routinesData = (data as Record<string, unknown>[]) ?? [];
+      } else {
+        // Legacy timestamp-based mode
+        let routinesQuery = supabase
+          .from('routines')
+          .select('*')
+          .eq('user_id', userId)
+          .gt('updated_at', lastSyncISO)
+          .order('updated_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
+
+        if (profileId) {
+          if (profileId === 'default') {
+            routinesQuery = routinesQuery.is('local_profile_id', null);
+          } else {
+            routinesQuery = routinesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+          }
         }
-      }
 
-      if (cursorUpdatedAt && cursorId) {
-        routinesQuery = routinesQuery.or(
-          `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-        );
-      }
+        if (cursorUpdatedAt && cursorId) {
+          routinesQuery = routinesQuery.or(
+            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
 
-      const { data: routinesRaw, error: routinesError } = await routinesQuery;
-      if (routinesError) {
-        console.error('Error fetching routines:', routinesError);
+        const { data, error } = await routinesQuery;
+        if (error) console.error('Error fetching routines:', error);
+        routinesData = (data as Record<string, unknown>[]) ?? [];
       }
-
-      const routinesData = routinesRaw ?? [];
 
       if (routinesData.length > remainingPageSize) {
         hasMore = true;
@@ -751,52 +763,55 @@ Deno.serve(async (req) => {
     }
 
     // ─── CYCLES ─────────────────────────────────────────────────────────────
+    // Using RPC function to bypass URL length limits for large parity ID lists.
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('cycles') && remainingPageSize > 0) {
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'cycles');
-
-      let cyclesQuery = supabase
-        .from('training_cycles')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: true })
-        .order('id', { ascending: true })
-        .limit(remainingPageSize + 1);
-
-      // Parity mode: exclude cycles client already has.
-      // See sessions block for cap invariant. Audit item #7.
       const knownCycleIds = body.knownEntityIds?.cycleIds ?? [];
-      if (knownCycleIds.length > MAX_PARITY_IDS) {
-        throw new Error(
-          `Invariant violated: cycleIds.length=${knownCycleIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
-        );
-      }
-      if (knownCycleIds.length > 0) {
-        cyclesQuery = cyclesQuery.not('id', 'in', `(${knownCycleIds.join(',')})`);
-      } else if (body.lastSync && body.lastSync > 0) {
-        cyclesQuery = cyclesQuery.gt('updated_at', lastSyncISO);
-      }
-      // If neither provided, return all cycles (full sync)
 
-      if (profileId) {
-        if (profileId === 'default') {
-          cyclesQuery = cyclesQuery.is('local_profile_id', null);
-        } else {
-          cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+      const useRpc = knownCycleIds.length > 0 || !body.lastSync || body.lastSync === 0;
+
+      let cyclesData: Record<string, unknown>[] = [];
+
+      if (useRpc) {
+        const { data, error } = await supabase.rpc('get_cycles_excluding_ids', {
+          p_user_id: userId,
+          p_known_ids: knownCycleIds,
+          p_profile_id: profileId,
+          p_cursor_updated_at: cursorUpdatedAt,
+          p_cursor_id: cursorId,
+          p_limit: remainingPageSize + 1,
+        });
+        if (error) console.error('Error fetching cycles:', error);
+        cyclesData = (data as Record<string, unknown>[]) ?? [];
+      } else {
+        // Legacy timestamp-based mode
+        let cyclesQuery = supabase
+          .from('training_cycles')
+          .select('*')
+          .eq('user_id', userId)
+          .gt('updated_at', lastSyncISO)
+          .order('updated_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
+
+        if (profileId) {
+          if (profileId === 'default') {
+            cyclesQuery = cyclesQuery.is('local_profile_id', null);
+          } else {
+            cyclesQuery = cyclesQuery.or(`local_profile_id.eq.${profileId},local_profile_id.is.null`);
+          }
         }
-      }
 
-      if (cursorUpdatedAt && cursorId) {
-        cyclesQuery = cyclesQuery.or(
-          `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-        );
-      }
+        if (cursorUpdatedAt && cursorId) {
+          cyclesQuery = cyclesQuery.or(
+            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
 
-      const { data: cyclesRaw, error: cyclesError } = await cyclesQuery;
-      if (cyclesError) {
-        console.error('Error fetching cycles:', cyclesError);
+        const { data, error } = await cyclesQuery;
+        if (error) console.error('Error fetching cycles:', error);
+        cyclesData = (data as Record<string, unknown>[]) ?? [];
       }
-
-      const cyclesData = cyclesRaw ?? [];
 
       if (cyclesData.length > remainingPageSize) {
         hasMore = true;
@@ -861,42 +876,48 @@ Deno.serve(async (req) => {
     }
 
     // ─── BADGES ─────────────────────────────────────────────────────────────
+    // Using RPC function to bypass URL length limits for large parity ID lists.
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('badges') && remainingPageSize > 0) {
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'badges');
-
-      let badgesQuery = supabase
-        .from('earned_badges')
-        .select('*')
-        .eq('user_id', userId)
-        .order('earned_at', { ascending: true })
-        .order('id', { ascending: true })
-        .limit(remainingPageSize + 1);
-
-      // Parity mode: exclude badges client already has (integer PKs)
       const knownBadgeIds = (body.knownEntityIds?.badgeIds ?? []).map((x) =>
         typeof x === 'number' ? x : parseInt(String(x), 10)
       );
-      // Cap invariant enforced upstream by enforceParityCaps. Audit item #7.
-      if (knownBadgeIds.length > MAX_PARITY_IDS) {
-        throw new Error(
-          `Invariant violated: badgeIds.length=${knownBadgeIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
-        );
-      }
-      if (knownBadgeIds.length > 0) {
-        badgesQuery = badgesQuery.not('id', 'in', `(${knownBadgeIds.join(',')})`);
-      } else if (body.lastSync && body.lastSync > 0) {
-        badgesQuery = badgesQuery.gt('earned_at', lastSyncISO);
-      }
-      // If neither provided, return all badges (full sync)
 
-      if (cursorUpdatedAt && cursorId) {
-        badgesQuery = badgesQuery.or(
-          `earned_at.gt.${cursorUpdatedAt},and(earned_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-        );
-      }
+      const useRpc = knownBadgeIds.length > 0 || !body.lastSync || body.lastSync === 0;
 
-      const { data: badges } = await badgesQuery;
-      const badgesData = badges ?? [];
+      let badgesData: Record<string, unknown>[] = [];
+
+      if (useRpc) {
+        const { data, error } = await supabase.rpc('get_badges_excluding_ids', {
+          p_user_id: userId,
+          p_known_ids: knownBadgeIds,
+          p_cursor_earned_at: cursorUpdatedAt,
+          p_cursor_id: cursorId ? parseInt(cursorId, 10) : null,
+          p_limit: remainingPageSize + 1,
+        });
+        if (error) console.error('Error fetching badges:', error);
+        badgesData = (data as Record<string, unknown>[]) ?? [];
+      } else {
+        // Legacy timestamp-based mode
+        let badgesQuery = supabase
+          .from('earned_badges')
+          .select('*')
+          .eq('user_id', userId)
+          .gt('earned_at', lastSyncISO)
+          .order('earned_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
+
+        if (cursorUpdatedAt && cursorId) {
+          badgesQuery = badgesQuery.or(
+            `earned_at.gt.${cursorUpdatedAt},and(earned_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
+
+        const { data, error } = await badgesQuery;
+        if (error) console.error('Error fetching badges:', error);
+        badgesData = (data as Record<string, unknown>[]) ?? [];
+      }
 
       if (badgesData.length > remainingPageSize) {
         hasMore = true;
@@ -972,43 +993,47 @@ Deno.serve(async (req) => {
         : null;
 
       // Personal records (always fetched on final page)
-      let personalRecordsQuery = supabase
-        .from('personal_records')
-        .select('*')
-        .eq('user_id', userId);
-
-      // Parity mode: exclude personal records client already has (integer PKs)
+      // Using RPC function to bypass URL length limits for large parity ID lists.
       const knownPRIds = (body.knownEntityIds?.personalRecordIds ?? []).map((x) =>
         typeof x === 'number' ? x : parseInt(String(x), 10)
       );
-      // Cap invariant enforced upstream by enforceParityCaps. Audit item #7.
-      if (knownPRIds.length > MAX_PARITY_IDS) {
-        throw new Error(
-          `Invariant violated: personalRecordIds.length=${knownPRIds.length} exceeds MAX_PARITY_IDS=${MAX_PARITY_IDS}.`,
-        );
-      }
-      if (knownPRIds.length > 0) {
-        personalRecordsQuery = personalRecordsQuery.not('id', 'in', `(${knownPRIds.join(',')})`);
-      } else if (body.lastSync && body.lastSync > 0) {
-        personalRecordsQuery = personalRecordsQuery.gt('updated_at', lastSyncISO);
-      }
-      // If neither provided, return all personal records (full sync)
 
-      if (profileId) {
-        if (profileId === 'default') {
-          personalRecordsQuery = personalRecordsQuery.is('local_profile_id', null);
-        } else {
-          personalRecordsQuery = personalRecordsQuery.or(
-            `local_profile_id.eq.${profileId},local_profile_id.is.null`,
-          );
+      const useRpcPR = knownPRIds.length > 0 || !body.lastSync || body.lastSync === 0;
+
+      let personalRecordsData: Record<string, unknown>[] = [];
+
+      if (useRpcPR) {
+        const { data, error } = await supabase.rpc('get_personal_records_excluding_ids', {
+          p_user_id: userId,
+          p_known_ids: knownPRIds,
+          p_profile_id: profileId,
+        });
+        if (error) console.error('Error fetching personal records:', error);
+        personalRecordsData = (data as Record<string, unknown>[]) ?? [];
+      } else {
+        // Legacy timestamp-based mode
+        let personalRecordsQuery = supabase
+          .from('personal_records')
+          .select('*')
+          .eq('user_id', userId)
+          .gt('updated_at', lastSyncISO);
+
+        if (profileId) {
+          if (profileId === 'default') {
+            personalRecordsQuery = personalRecordsQuery.is('local_profile_id', null);
+          } else {
+            personalRecordsQuery = personalRecordsQuery.or(
+              `local_profile_id.eq.${profileId},local_profile_id.is.null`,
+            );
+          }
         }
-      }
-      const { data: personalRecords, error: personalRecordsError } = await personalRecordsQuery;
-      if (personalRecordsError) {
-        console.error('Error fetching personal records:', personalRecordsError);
+
+        const { data, error } = await personalRecordsQuery;
+        if (error) console.error('Error fetching personal records:', error);
+        personalRecordsData = (data as Record<string, unknown>[]) ?? [];
       }
 
-      personalRecordDtos = (personalRecords ?? []).map((pr: Record<string, unknown>) => ({
+      personalRecordDtos = personalRecordsData.map((pr: Record<string, unknown>) => ({
         id: pr.id,
         userId: pr.user_id,
         exerciseName: pr.exercise_name,

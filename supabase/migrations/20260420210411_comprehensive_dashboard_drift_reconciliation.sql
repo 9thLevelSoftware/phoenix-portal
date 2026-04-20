@@ -1,0 +1,3 @@
+-- Applied remotely. Creates goal_snapshots, overload_suggestions, telemetry_analysis,
+-- wearable_daily_summaries tables. Adds columns to profiles, user_goals, user_integrations.
+-- Stub file for migration tracking.
