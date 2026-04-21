@@ -570,31 +570,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate array sizes to prevent memory exhaustion
-    const MAX_ARRAY_SIZE = 10000;
-    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+    // Validate array sizes to prevent memory exhaustion. Telemetry has its
+    // own (higher) cap because it scales with BLE sample rate per rep, not
+    // with user activity volume.
+    // See https://github.com/9thLevelSoftware/Project-Phoenix-MP/issues/381
+    const MAX_ENTITIES_PER_TYPE = 10_000;
+    const MAX_TELEMETRY_POINTS = 50_000;
+    if (payload.sessions && payload.sessions.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
+    if (payload.telemetry && payload.telemetry.length > MAX_TELEMETRY_POINTS) {
       return new Response(
-        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_TELEMETRY_POINTS}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
+    if (payload.routines && payload.routines.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    // fix(audit #6): align cycles cap with sessions/routines/telemetry (10000).
+    // fix(audit #6): align cycles cap with sessions/routines (10000).
     // Prior 1000 cap was a silent cliff for users with large cycle histories.
-    if (payload.cycles && payload.cycles.length > MAX_ARRAY_SIZE) {
+    if (payload.cycles && payload.cycles.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
