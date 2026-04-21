@@ -601,8 +601,15 @@ Deno.serve(async (req) => {
 
     // =========================================================================
     // 3b. Sync local profiles
+    //
+    // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
+    // composite FK → local_profiles(user_id, id).  The profile row MUST exist
+    // before any session insert, otherwise the FK fires.  If the upsert fails
+    // for any reason we null out localProfileId so downstream inserts store
+    // rows as profile-unscoped (NULL) rather than crashing with a FK violation.
     // =========================================================================
-    const localProfileId: string | null = payload.profileId ?? null;
+    // Use `let` so we can clear it to null if the profile upsert fails.
+    let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
@@ -623,34 +630,46 @@ Deno.serve(async (req) => {
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
       if (upsertError) {
+        // Null out localProfileId so subsequent session/routine/cycle inserts
+        // store rows as profile-unscoped (NULL) instead of hitting the FK.
         console.warn('Failed to upsert local profiles:', upsertError.message);
-      }
+        if (localProfileId) {
+          console.warn('Clearing localProfileId to avoid FK violation on session insert');
+          localProfileId = null;
+        }
+      } else {
+        // Delete profiles that no longer exist on the device (from this device only)
+        const activeIds = allProfiles.map((p) => p.id);
+        const { error: deleteError } = await supabase
+          .from('local_profiles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('device_id', payload.deviceId)
+          .not(
+            'id',
+            'in',
+            `(${activeIds.map((id) => `"${id}"`).join(',')})`,
+          );
 
-      // Delete profiles that no longer exist on the device (from this device only)
-      const activeIds = allProfiles.map((p) => p.id);
-      const { error: deleteError } = await supabase
-        .from('local_profiles')
-        .delete()
-        .eq('user_id', userId)
-        .eq('device_id', payload.deviceId)
-        .not(
-          'id',
-          'in',
-          `(${activeIds.map((id) => `"${id}"`).join(',')})`,
-        );
-
-      if (deleteError) {
-        console.warn('Failed to clean stale profiles:', deleteError.message);
+        if (deleteError) {
+          console.warn('Failed to clean stale profiles:', deleteError.message);
+        }
       }
-    } else if (localProfileId && payload.profileName) {
-      // Fallback for older clients: upsert just the active profile
+    } else if (localProfileId) {
+      // Upsert the active profile. Uses profileName when present; falls back to
+      // a safe placeholder for clients that send profileId without profileName
+      // (older builds pre-allProfiles field, or missing optional field).
+      // Without this branch those clients hit a FK violation on session insert
+      // because the local_profiles row doesn't exist yet (issue #376).
+      const profileName =
+        payload.profileName ?? (localProfileId === 'default' ? 'Default' : 'Profile');
       const { error: profileError } = await supabase
         .from('local_profiles')
         .upsert(
           {
             user_id: userId,
             id: localProfileId,
-            name: payload.profileName,
+            name: profileName,
             device_id: payload.deviceId,
             updated_at: new Date().toISOString(),
           },
@@ -658,7 +677,10 @@ Deno.serve(async (req) => {
         );
 
       if (profileError) {
+        // Null out so sessions are stored unscoped rather than failing the FK.
         console.warn('Failed to upsert local profile:', profileError.message);
+        console.warn('Clearing localProfileId to avoid FK violation on session insert');
+        localProfileId = null;
       }
     }
 
