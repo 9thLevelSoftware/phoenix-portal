@@ -1121,16 +1121,12 @@ Deno.serve(async (req) => {
       }
 
       // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
+      // NOTE: ownership for rep_telemetry.id is already verified in the
+      // directOwnerChecks loop above (see `allTelemetryIds`). Re-checking
+      // here would double the serial SELECTs on a chunked probe — at
+      // MAX_TELEMETRY_POINTS=50_000 that's an extra ~500 roundtrips before
+      // any insert. Keep the single upstream check and proceed directly.
       if (payload.telemetry && payload.telemetry.length > 0) {
-        const telemetryOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'rep_telemetry',
-          payload.telemetry.map((t) => t.id),
-          userId,
-          cors,
-        );
-        if (telemetryOwnershipResp) return telemetryOwnershipResp;
-
         // Insert in batches of 500 to avoid payload limits
         const TELEMETRY_BATCH = 500;
         for (let i = 0; i < payload.telemetry.length; i += TELEMETRY_BATCH) {

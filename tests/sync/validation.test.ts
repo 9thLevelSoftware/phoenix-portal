@@ -79,11 +79,16 @@ function buildRoutines(userId: string, count: number): RoutineDto[] {
 /**
  * Build N minimal telemetry points all pointing at a single fake set ID.
  * Shape matches RepTelemetryDto; values are irrelevant for cap-guard tests.
+ *
+ * Uses `crypto.randomUUID()` because pushPayloadSchema enforces strict UUIDs
+ * on `id` / `setId` — the generic `generateTestId()` helper produces a
+ * timestamp-based string that would fail Zod validation before the array
+ * cap guard runs, making the live-mode telemetry-cap test ineffective.
  */
 function buildTelemetry(count: number): RepTelemetryDto[] {
-  const setId = generateTestId();
+  const setId = crypto.randomUUID();
   return Array.from({ length: count }, (_, i) => ({
-    id: generateTestId(),
+    id: crypto.randomUUID(),
     setId,
     timestampMs: i,
     forceN: 0,
@@ -219,11 +224,13 @@ describe('Server-Side Validation Invariants', () => {
       expect(result.status).toBe(200);
     });
 
-    it('accepts telemetry.length of 10_000 (was previous cap, well under new cap)', async () => {
-      // Regression guard: locks in that the old 10k ceiling is no longer
-      // rejected. Mock harness does not enforce the server's cap check so
-      // this runs under MOCK_EDGE_FUNCTIONS=true and continues to pass once
-      // the live Edge Function is deployed with the raised cap.
+    it('accepts telemetry.length of 10_000 in the harness as a large-payload positive control', async () => {
+      // Positive control only: verifies the harness/mock can process a
+      // telemetry payload at the previous (10k) cap without choking on
+      // size. The mock does NOT enforce the live Edge Function's
+      // server-side cap check, so this does not prove that a deployed
+      // function accepts 10_000 telemetry items — the paired `.skip`
+      // rejection test at 50_001 is the live-mode regression guard.
       const telemetry = buildTelemetry(10_000);
       const payload = createMinimalPushPayload(testUser.id, { telemetry });
       const result = await callPushEndpoint(payload, testUser.accessToken);
