@@ -5,10 +5,9 @@
  * suite previously left untested:
  *   - Payload > 10 MB → 413
  *   - sessions.length > 10_000 → 400
- *   - telemetry.length > 10_000 → 400
+ *   - telemetry.length > 50_000 → 400 (raised from 10_000; see issue #381)
  *   - routines.length > 10_000 → 400
- *   - cycles.length > 1_000 → 400 (note: different cap than other arrays —
- *     audit 01 flags this asymmetry as an open question)
+ *   - cycles.length > 10_000 → 400 (aligned with other entities; audit #6)
  *   - Rate limit: 11th request inside the 60s window returns 429
  *   - Subscription gating: non-EMBER tier → 402/403 on push (and pull)
  *   - Missing Authorization header → 401
@@ -41,6 +40,7 @@ import {
   type SessionDto,
   type RoutineDto,
   type CycleDto,
+  type RepTelemetryDto,
   type TestUser,
 } from './helpers/edge-function-harness';
 import { resetMockStore } from './helpers/mock-edge-functions';
@@ -73,6 +73,28 @@ function buildRoutines(userId: string, count: number): RoutineDto[] {
     timesCompleted: 0,
     isFavorite: false,
     exercises: [],
+  }));
+}
+
+/**
+ * Build N minimal telemetry points all pointing at a single fake set ID.
+ * Shape matches RepTelemetryDto; values are irrelevant for cap-guard tests.
+ *
+ * Uses `crypto.randomUUID()` because pushPayloadSchema enforces strict UUIDs
+ * on `id` / `setId` — the generic `generateTestId()` helper produces a
+ * timestamp-based string that would fail Zod validation before the array
+ * cap guard runs, making the live-mode telemetry-cap test ineffective.
+ */
+function buildTelemetry(count: number): RepTelemetryDto[] {
+  const setId = crypto.randomUUID();
+  return Array.from({ length: count }, (_, i) => ({
+    id: crypto.randomUUID(),
+    setId,
+    timestampMs: i,
+    forceN: 0,
+    velocityMps: 0,
+    positionMm: 0,
+    cable: 'A',
   }));
 }
 
@@ -151,9 +173,24 @@ describe('Server-Side Validation Invariants', () => {
     );
 
     it.skip(
+      'rejects telemetry.length > 50_000 with 400 — requires live Edge Function',
+      async () => {
+        // Enforced in mobile-sync-push/index.ts against MAX_TELEMETRY_POINTS.
+        // Cap raised from 10_000 to 50_000 to give server-side headroom for
+        // dense BLE sample-rate sessions; see issue #381.
+        const telemetry = buildTelemetry(50_001);
+        const payload = createMinimalPushPayload(testUser.id, { telemetry });
+        const result = await callPushEndpoint(payload, testUser.accessToken);
+        expect(result.status).toBe(400);
+        expect(result.error?.message).toMatch(/Too many telemetry/i);
+        expect(result.error?.message).toMatch(/50000/);
+      },
+    );
+
+    it.skip(
       'rejects routines.length > 10_000 with 400 — requires live Edge Function',
       async () => {
-        // Enforced in mobile-sync-push/index.ts lines 523-528.
+        // Enforced in mobile-sync-push/index.ts against MAX_ENTITIES_PER_TYPE.
         const routines = buildRoutines(testUser.id, 10_001);
         const payload = createMinimalPushPayload(testUser.id, { routines });
         const result = await callPushEndpoint(payload, testUser.accessToken);
@@ -163,18 +200,17 @@ describe('Server-Side Validation Invariants', () => {
     );
 
     it.skip(
-      'rejects cycles.length > 1_000 with 400 — requires live Edge Function',
+      'rejects cycles.length > 10_000 with 400 — requires live Edge Function',
       async () => {
-        // Enforced in mobile-sync-push/index.ts lines 529-534. Note: cycles
-        // cap is 1_000, not 10_000 like other arrays. Audit 01-portal-wire-
-        // contract.md flags this asymmetry as an open question for mobile.
-        const cycles = buildCycles(testUser.id, 1_001);
+        // Enforced in mobile-sync-push/index.ts against MAX_ENTITIES_PER_TYPE.
+        // Was 1_000 historically; audit #6 aligned it with the other entity
+        // caps so large cycle histories no longer silently fail.
+        const cycles = buildCycles(testUser.id, 10_001);
         const payload = createMinimalPushPayload(testUser.id, { cycles });
         const result = await callPushEndpoint(payload, testUser.accessToken);
         expect(result.status).toBe(400);
         expect(result.error?.message).toMatch(/Too many cycles/i);
-        // Document: cap is 1_000, not 10_000
-        expect(result.error?.message).toMatch(/1000/);
+        expect(result.error?.message).toMatch(/10000/);
       },
     );
 
@@ -183,6 +219,20 @@ describe('Server-Side Validation Invariants', () => {
       // so the skipped limit assertions above remain the only suspicious case.
       const sessions = buildSessions(testUser.id, 100);
       const payload = createMinimalPushPayload(testUser.id, { sessions });
+      const result = await callPushEndpoint(payload, testUser.accessToken);
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+    });
+
+    it('accepts telemetry.length of 10_000 in the harness as a large-payload positive control', async () => {
+      // Positive control only: verifies the harness/mock can process a
+      // telemetry payload at the previous (10k) cap without choking on
+      // size. The mock does NOT enforce the live Edge Function's
+      // server-side cap check, so this does not prove that a deployed
+      // function accepts 10_000 telemetry items — the paired `.skip`
+      // rejection test at 50_001 is the live-mode regression guard.
+      const telemetry = buildTelemetry(10_000);
+      const payload = createMinimalPushPayload(testUser.id, { telemetry });
       const result = await callPushEndpoint(payload, testUser.accessToken);
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
