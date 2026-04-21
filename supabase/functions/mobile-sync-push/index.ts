@@ -570,31 +570,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate array sizes to prevent memory exhaustion
-    const MAX_ARRAY_SIZE = 10000;
-    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+    // Validate array sizes to prevent memory exhaustion. Telemetry has its
+    // own (higher) cap because it scales with BLE sample rate per rep, not
+    // with user activity volume.
+    // See https://github.com/9thLevelSoftware/Project-Phoenix-MP/issues/381
+    const MAX_ENTITIES_PER_TYPE = 10_000;
+    const MAX_TELEMETRY_POINTS = 50_000;
+    if (payload.sessions && payload.sessions.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
+    if (payload.telemetry && payload.telemetry.length > MAX_TELEMETRY_POINTS) {
       return new Response(
-        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_TELEMETRY_POINTS}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
+    if (payload.routines && payload.routines.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    // fix(audit #6): align cycles cap with sessions/routines/telemetry (10000).
+    // fix(audit #6): align cycles cap with sessions/routines (10000).
     // Prior 1000 cap was a silent cliff for users with large cycle histories.
-    if (payload.cycles && payload.cycles.length > MAX_ARRAY_SIZE) {
+    if (payload.cycles && payload.cycles.length > MAX_ENTITIES_PER_TYPE) {
       return new Response(
-        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -1117,16 +1121,12 @@ Deno.serve(async (req) => {
       }
 
       // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
+      // NOTE: ownership for rep_telemetry.id is already verified in the
+      // directOwnerChecks loop above (see `allTelemetryIds`). Re-checking
+      // here would double the serial SELECTs on a chunked probe — at
+      // MAX_TELEMETRY_POINTS=50_000 that's an extra ~500 roundtrips before
+      // any insert. Keep the single upstream check and proceed directly.
       if (payload.telemetry && payload.telemetry.length > 0) {
-        const telemetryOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'rep_telemetry',
-          payload.telemetry.map((t) => t.id),
-          userId,
-          cors,
-        );
-        if (telemetryOwnershipResp) return telemetryOwnershipResp;
-
         // Insert in batches of 500 to avoid payload limits
         const TELEMETRY_BATCH = 500;
         for (let i = 0; i < payload.telemetry.length; i += TELEMETRY_BATCH) {
