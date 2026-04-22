@@ -26,9 +26,8 @@ function baseSession(overrides: Overrides = {}) {
 	// `in` check preserves explicit-null overrides (used by the "DB defaults"
 	// test); `??` would collapse null back to the fallback and defeat the
 	// test intent.
-	const muscleGroup = "muscleGroup" in overrides
-		? overrides.muscleGroup
-		: "Legs";
+	const muscleGroup =
+		"muscleGroup" in overrides ? overrides.muscleGroup : "Legs";
 	const prType = "prType" in overrides ? overrides.prType : undefined;
 	const prPhase = "prPhase" in overrides ? overrides.prPhase : undefined;
 	const prVolume = "prVolume" in overrides ? overrides.prVolume : undefined;
@@ -125,20 +124,12 @@ describe("buildPersonalRecordRows", () => {
 	});
 
 	it("passes through achieved_at from session.startedAt unchanged", () => {
-		const out = buildPersonalRecordRows(
-			[baseSession()],
-			USER_ID,
-			PROFILE_ID,
-		);
+		const out = buildPersonalRecordRows([baseSession()], USER_ID, PROFILE_ID);
 		expect(out[0]!.achieved_at).toBe("2026-04-20T12:00:00.000Z");
 	});
 
 	it("accepts null localProfileId (pre-multi-profile clients)", () => {
-		const out = buildPersonalRecordRows(
-			[baseSession()],
-			USER_ID,
-			null,
-		);
+		const out = buildPersonalRecordRows([baseSession()], USER_ID, null);
 		expect(out[0]!.local_profile_id).toBeNull();
 	});
 

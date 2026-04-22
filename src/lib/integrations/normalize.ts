@@ -1,8 +1,8 @@
-import type { IntegrationProvider, NormalizedActivity } from "./types";
 import { normalizeFitbitActivity } from "./fitbit";
 import { normalizeGarminActivity } from "./garmin";
 import { normalizeHevyActivity } from "./hevy";
 import { normalizeStravaActivity } from "./strava";
+import type { IntegrationProvider, NormalizedActivity } from "./types";
 
 export {
 	normalizeFitbitActivity,

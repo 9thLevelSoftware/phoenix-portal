@@ -126,7 +126,7 @@ describe("pushPayloadSchema", () => {
 				deviceId: "d1",
 				platform: "android",
 				profileId: "bogus",
-			})
+			}),
 		).toThrow();
 	});
 
@@ -161,7 +161,8 @@ describe("pushPayloadSchema", () => {
 
 	it("leaves allProfiles distinct: undefined vs null vs array", () => {
 		expect(
-			pushPayloadSchema.parse({ deviceId: "d1", platform: "android" }).allProfiles,
+			pushPayloadSchema.parse({ deviceId: "d1", platform: "android" })
+				.allProfiles,
 		).toBeUndefined();
 		expect(
 			pushPayloadSchema.parse({
@@ -186,8 +187,7 @@ describe("pushPayloadSchema", () => {
 				.platform,
 		).toBe("android");
 		expect(
-			pushPayloadSchema.parse({ deviceId: "d1", platform: undefined })
-				.platform,
+			pushPayloadSchema.parse({ deviceId: "d1", platform: undefined }).platform,
 		).toBe("unknown");
 	});
 });

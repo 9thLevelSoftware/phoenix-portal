@@ -58,8 +58,7 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 
 			const totalWorkouts = sessions?.length ?? 0;
 			const totalVolume = (sessions ?? []).reduce(
-				(sum, s) =>
-					sum + (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+				(sum, s) => sum + (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 				0,
 			);
 

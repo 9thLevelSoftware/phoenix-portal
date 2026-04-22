@@ -203,7 +203,10 @@ export function useDeleteCycle() {
 				.maybeSingle();
 
 			if (cycleError) throw cycleError;
-			if (!deleted) throw new Error("Cycle not found or you don't have permission to delete it");
+			if (!deleted)
+				throw new Error(
+					"Cycle not found or you don't have permission to delete it",
+				);
 
 			return { id: cycleId };
 		},

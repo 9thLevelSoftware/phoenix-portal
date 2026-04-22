@@ -281,9 +281,7 @@ describe("useDeleteCycle", () => {
 
 		const eqSecond = vi.fn(() => ({
 			select: vi.fn(() => ({
-				maybeSingle: vi
-					.fn()
-					.mockResolvedValue({ data: null, error: null }),
+				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
 			})),
 		}));
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
@@ -309,9 +307,7 @@ describe("useDeleteCycle", () => {
 
 		const eqSecond = vi.fn(() => ({
 			select: vi.fn(() => ({
-				maybeSingle: vi
-					.fn()
-					.mockResolvedValue({ data: null, error: null }),
+				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
 			})),
 		}));
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));

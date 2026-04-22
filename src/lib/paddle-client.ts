@@ -211,9 +211,10 @@ export async function openCheckout({
 	}
 
 	let customData: PaddleCheckoutCustomData = { user_id: userId };
-	const { data: signedPayload, error: signError } = await supabase.functions.invoke<{
-		custom_data: PaddleCheckoutCustomData;
-	}>("paddle-checkout-custom-data", { method: "POST" });
+	const { data: signedPayload, error: signError } =
+		await supabase.functions.invoke<{
+			custom_data: PaddleCheckoutCustomData;
+		}>("paddle-checkout-custom-data", { method: "POST" });
 	if (!signError && signedPayload?.custom_data) {
 		customData = signedPayload.custom_data;
 	} else if (signError) {

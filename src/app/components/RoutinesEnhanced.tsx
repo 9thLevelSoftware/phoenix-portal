@@ -14,8 +14,8 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
+import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -308,7 +308,9 @@ function RoutineGrid({
 											</DropdownMenuItem>
 											<DropdownMenuItem
 												className="text-red-400 hover:bg-red-900/20 cursor-pointer"
-												onClick={() => onDelete({ id: routine.id, name: routine.name })}
+												onClick={() =>
+													onDelete({ id: routine.id, name: routine.name })
+												}
 											>
 												<Trash2 className="w-4 h-4 mr-2" />
 												Delete

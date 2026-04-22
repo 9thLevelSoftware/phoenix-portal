@@ -74,6 +74,10 @@ async function openDashboard(page: Page) {
 	).toBeVisible({ timeout: 10000 });
 }
 
+function workoutHeading(page: Page, name: string) {
+	return page.getByRole("heading", { name, exact: true });
+}
+
 test.describe("Cross-tab realtime sync", () => {
 	test.skip(
 		"real Supabase broadcast drives cross-tab invalidation — requires live Realtime",
@@ -116,10 +120,10 @@ test.describe("Cross-tab realtime sync", () => {
 			await openDashboard(pageB);
 
 			// Step 1: verify tab B sees the initial list (two sessions, no new one)
-			await expect(pageB.getByText("Pull Day").first()).toBeVisible({
+			await expect(workoutHeading(pageB, "Pull Day")).toBeVisible({
 				timeout: 10000,
 			});
-			await expect(pageB.getByText("Push Day").first()).toBeVisible();
+			await expect(workoutHeading(pageB, "Push Day")).toBeVisible();
 
 			// Step 2: inject a new session into tab B's mock dataset. Next time
 			// the Dashboard's workout query refetches, it will see the row.
@@ -154,34 +158,21 @@ test.describe("Cross-tab realtime sync", () => {
 				},
 			);
 
-			// Step 3: simulate the broadcast that useRealtimeSync listens for.
-			// We can't fire a real Supabase Broadcast here (no WebSocket
-			// backend), but we can invoke the same invalidation that the
-			// listener would trigger. Evaluate in the page context:
+			// Step 3: simulate the invalidation path that useRealtimeSync
+			// listens for. The mocked E2E harness has no live Realtime
+			// socket, so the app exposes a development-only custom event
+			// that triggers the same query invalidation logic.
 			await pageB.evaluate((userId) => {
-				// Read window.__TANSTACK_QUERY_CLIENT__ if exposed; otherwise
-				// dispatch a custom invalidation event the listener uses.
-				// The portal does NOT expose the QueryClient on window, so we
-				// fall back to a hard reload of the workouts query by firing a
-				// storage event — which won't work either. Simplest reliable
-				// mechanism: navigate within the same SPA, which TanStack
-				// treats as a soft refetch on focus/remount.
-				//
-				// This is the best reproduction available without live
-				// realtime. The assertion below times out fast if the mock
-				// wasn't wired correctly.
-				window.history.pushState({}, "", `/dashboard?t=${Date.now()}`);
-				window.dispatchEvent(new PopStateEvent("popstate"));
+				window.dispatchEvent(
+					new CustomEvent("phoenix:e2e-sync-complete", {
+						detail: { userId },
+					}),
+				);
 			}, USER_ID);
-
-			// Give React a tick then refetch — TanStack's default
-			// refetchOnWindowFocus will pull fresh data. Force focus to
-			// trigger it.
-			await pageB.evaluate(() => window.dispatchEvent(new Event("focus")));
 
 			// Step 4: assert tab B now shows "Leg Day" within 5s. If the
 			// invalidation didn't propagate we'd time out here.
-			await expect(pageB.getByText("Leg Day").first()).toBeVisible({
+			await expect(workoutHeading(pageB, "Leg Day")).toBeVisible({
 				timeout: 5000,
 			});
 		} finally {

@@ -63,8 +63,7 @@ export function challengeProgressOptions(
 						.lte("started_at", endDate);
 					if (error) throw error;
 					current = (data ?? []).reduce(
-						(sum, w) =>
-							sum + (w.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+						(sum, w) => sum + (w.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 						0,
 					);
 					break;

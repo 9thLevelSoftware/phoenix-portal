@@ -15,7 +15,9 @@ describe("mapPriceIdToTierFromEnv", () => {
 	}
 
 	it("returns FREE for unknown price IDs (env vars not set in test)", () => {
-		expect(mapPriceIdToTierFromEnv("pri_unknown_123", makeEnv({}))).toBe("FREE");
+		expect(mapPriceIdToTierFromEnv("pri_unknown_123", makeEnv({}))).toBe(
+			"FREE",
+		);
 	});
 
 	it("returns FREE for empty string", () => {

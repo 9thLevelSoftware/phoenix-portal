@@ -1,12 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-	Award,
-	Crown,
-	Medal,
-	Shield,
-	TrendingUp,
-	Trophy,
-} from "lucide-react";
+import { Award, Crown, Medal, Shield, TrendingUp, Trophy } from "lucide-react";
 import { motion } from "motion/react";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -26,11 +19,11 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import {
 	type GlobalLeaderboard,
+	globalLeaderboardOptions,
 	type LeaderboardEntry,
 	type UserRanking,
-	type WeeklyCompetition,
-	globalLeaderboardOptions,
 	userRankingOptions,
+	type WeeklyCompetition,
 	weeklyCompetitionOptions,
 } from "@/queries/leaderboard";
 
@@ -59,9 +52,7 @@ function getRankBg(rank: number): string {
 
 function formatValue(value: number, metric: string): string {
 	if (metric.toLowerCase().includes("volume")) {
-		return value >= 1000
-			? `${(value / 1000).toFixed(1)}k kg`
-			: `${value} kg`;
+		return value >= 1000 ? `${(value / 1000).toFixed(1)}k kg` : `${value} kg`;
 	}
 	if (
 		metric.toLowerCase().includes("streak") ||
@@ -110,9 +101,7 @@ function EntryRow({ entry, metric, isCurrentUser }: EntryRowProps) {
 						<span className="ml-1.5 text-xs text-muted-foreground">(you)</span>
 					)}
 				</p>
-				<p className="text-xs text-muted-foreground">
-					Top {entry.percentile}%
-				</p>
+				<p className="text-xs text-muted-foreground">Top {entry.percentile}%</p>
 			</div>
 
 			<span className="shrink-0 text-sm font-semibold text-foreground">
@@ -143,10 +132,8 @@ function RankingCard({
 }: RankingCardProps) {
 	const top3 = entries.slice(0, 3);
 	const userInTop3 =
-		currentUserId != null &&
-		top3.some((e) => e.userId === currentUserId);
-	const showUserEntry =
-		!userInTop3 && userEntry != null && userEntry.rank > 3;
+		currentUserId != null && top3.some((e) => e.userId === currentUserId);
+	const showUserEntry = !userInTop3 && userEntry != null && userEntry.rank > 3;
 
 	return (
 		<Card className="border-border flex flex-col gap-0 overflow-hidden p-0">
@@ -179,11 +166,7 @@ function RankingCard({
 							<span className="text-xs text-muted-foreground">your rank</span>
 							<div className="h-px flex-1 bg-border" />
 						</div>
-						<EntryRow
-							entry={userEntry}
-							metric={metric}
-							isCurrentUser
-						/>
+						<EntryRow entry={userEntry} metric={metric} isCurrentUser />
 					</>
 				)}
 			</CardContent>
@@ -527,8 +510,7 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 											Top {ranking.percentile}%
 										</p>
 										<p className="text-xs text-muted-foreground">
-											{ranking.value.toLocaleString()}{" "}
-											{meta?.unit ?? ""}
+											{ranking.value.toLocaleString()} {meta?.unit ?? ""}
 										</p>
 									</div>
 								</div>
@@ -546,20 +528,17 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 export function Leaderboard() {
 	const { user } = useAuth();
 
-	const {
-		data: globalData,
-		isLoading: globalLoading,
-	} = useQuery(globalLeaderboardOptions());
+	const { data: globalData, isLoading: globalLoading } = useQuery(
+		globalLeaderboardOptions(),
+	);
 
-	const {
-		data: weeklyData,
-		isLoading: weeklyLoading,
-	} = useQuery(weeklyCompetitionOptions());
+	const { data: weeklyData, isLoading: weeklyLoading } = useQuery(
+		weeklyCompetitionOptions(),
+	);
 
-	const {
-		data: userRankings,
-		isLoading: userRankingsLoading,
-	} = useQuery(userRankingOptions(user?.id ?? ""));
+	const { data: userRankings, isLoading: userRankingsLoading } = useQuery(
+		userRankingOptions(user?.id ?? ""),
+	);
 
 	return (
 		<PageShell>

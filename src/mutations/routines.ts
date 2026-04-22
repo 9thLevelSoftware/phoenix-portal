@@ -4,10 +4,12 @@ import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
-function estimatedRoutineDurationSeconds(exercises: RoutineExerciseInput[]): number {
+function estimatedRoutineDurationSeconds(
+	exercises: RoutineExerciseInput[],
+): number {
 	const minutes = exercises.reduce(
 		(sum, ex) => sum + ex.sets * 2.5 + ((ex.sets - 1) * ex.rest_seconds) / 60,
 		0,
@@ -257,7 +259,10 @@ export function useDeleteRoutine() {
 				.maybeSingle();
 
 			if (routineError) throw routineError;
-			if (!deleted) throw new Error("Routine not found or you don't have permission to delete it");
+			if (!deleted)
+				throw new Error(
+					"Routine not found or you don't have permission to delete it",
+				);
 
 			return { id: routineId };
 		},
