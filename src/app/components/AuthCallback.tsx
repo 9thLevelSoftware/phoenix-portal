@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
-import { supabase, type SocialAuthProvider } from "@/lib/supabase";
+import { type SocialAuthProvider, supabase } from "@/lib/supabase";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 type CallbackParams = {
@@ -38,8 +38,7 @@ function parseCallbackParams(search: string, hash: string): CallbackParams {
 		errorDescription:
 			hashParams.get("error_description") ??
 			searchParams.get("error_description"),
-		provider:
-			provider === "apple" || provider === "google" ? provider : null,
+		provider: provider === "apple" || provider === "google" ? provider : null,
 	};
 }
 
@@ -144,7 +143,12 @@ export function AuthCallback() {
 				</h1>
 				<p className="text-sm text-red-300 mb-6">{errorMessage}</p>
 
-				<Button type="button" variant="cta" className="w-full" onClick={() => navigate("/", { replace: true })}>
+				<Button
+					type="button"
+					variant="cta"
+					className="w-full"
+					onClick={() => navigate("/", { replace: true })}
+				>
 					Back to sign in
 				</Button>
 			</Card>

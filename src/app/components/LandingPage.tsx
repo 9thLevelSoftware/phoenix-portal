@@ -434,6 +434,7 @@ export function LandingPage() {
 
 						<TabsContent value="signin">
 							<form
+								noValidate
 								onSubmit={signInForm.handleSubmit(handleSignIn)}
 								className="space-y-4"
 							>
@@ -504,6 +505,7 @@ export function LandingPage() {
 
 						<TabsContent value="signup">
 							<form
+								noValidate
 								onSubmit={signUpForm.handleSubmit(handleSignUp)}
 								className="space-y-4"
 							>

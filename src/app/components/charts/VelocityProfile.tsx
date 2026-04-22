@@ -11,8 +11,8 @@ import {
 	getDominantMannZone,
 	getDominantSimplifiedZone,
 	MANN_ZONES,
-	SIMPLIFIED_ZONES,
 	type MannZoneInfo,
+	SIMPLIFIED_ZONES,
 	type SimplifiedZoneInfo,
 } from "@/lib/vbt";
 import type { RepSummary } from "@/schemas/telemetry";

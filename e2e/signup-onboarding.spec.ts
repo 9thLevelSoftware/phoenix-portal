@@ -1,4 +1,4 @@
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Route } from "@playwright/test";
 import {
 	E2E_SUPABASE_ANON_KEY,
 	E2E_SUPABASE_STORAGE_KEY,
@@ -23,6 +23,7 @@ import {
  * Auth dialog markup reference: src/app/components/LandingPage.tsx
  *   - Tabs: "signin" | "signup"
  *   - Inputs: #signup-email, #signup-password, #signup-confirm
+ *   - Submit CTA: "Create Account"
  *   - Validation messages rendered with role="alert"
  */
 
@@ -117,6 +118,10 @@ async function openSignUpTab(page: import("@playwright/test").Page) {
 	return dialog;
 }
 
+function getCreateAccountButton(dialog: Locator) {
+	return dialog.getByRole("button", { name: /Create Account/i });
+}
+
 test.describe("Signup flow", () => {
 	test("valid credentials sign up and redirect to dashboard", async ({ page }) => {
 		await installAuthMock(page);
@@ -138,7 +143,7 @@ test.describe("Signup flow", () => {
 			},
 		);
 
-		await dialog.getByRole("button", { name: /Sign Up/i }).last().click();
+		await getCreateAccountButton(dialog).click();
 
 		// The landing page auto-navigates authenticated users to /dashboard
 		// (LandingPage.tsx lines 80-85). Wait up to 10s for AuthProvider to
@@ -154,7 +159,7 @@ test.describe("Signup flow", () => {
 		await dialog.locator("#signup-email").fill("not-an-email");
 		await dialog.locator("#signup-password").fill(TEST_PASSWORD);
 		await dialog.locator("#signup-confirm").fill(TEST_PASSWORD);
-		await dialog.getByRole("button", { name: /Sign Up/i }).last().click();
+		await getCreateAccountButton(dialog).click();
 
 		// The form schema (signUpSchema in LandingPage.tsx line 47) surfaces
 		// "Invalid email address" via role="alert".
@@ -172,7 +177,7 @@ test.describe("Signup flow", () => {
 		await dialog.locator("#signup-email").fill(TEST_EMAIL);
 		await dialog.locator("#signup-password").fill("abc");
 		await dialog.locator("#signup-confirm").fill("abc");
-		await dialog.getByRole("button", { name: /Sign Up/i }).last().click();
+		await getCreateAccountButton(dialog).click();
 
 		// signUpSchema line 53: min(6, "Password must be at least 6 characters")
 		await expect(
@@ -190,7 +195,7 @@ test.describe("Signup flow", () => {
 		await dialog.locator("#signup-email").fill(TEST_EMAIL);
 		await dialog.locator("#signup-password").fill(TEST_PASSWORD);
 		await dialog.locator("#signup-confirm").fill(`${TEST_PASSWORD}-different`);
-		await dialog.getByRole("button", { name: /Sign Up/i }).last().click();
+		await getCreateAccountButton(dialog).click();
 
 		// signUpSchema.refine line 57: "Passwords do not match"
 		await expect(

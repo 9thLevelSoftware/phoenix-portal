@@ -439,67 +439,78 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														PR Progression
 													</div>
 													<div className="h-28 flex items-end justify-between gap-1.5">
-														{[...exercise.history].reverse().map((entry, idx) => {
-															const maxVal = Math.max(
-																...exercise.history.map((h) => h.value),
-															);
-															const height =
-																maxVal > 0 ? (entry.value / maxVal) * 100 : 0;
-															const barKey = `${exercise.exercise}-${idx}`;
-															const isHovered = hoveredBarIndex === barKey;
-															return (
-																<div
-																	key={barKey}
-																	role="group"
-																	aria-label={`${entry.value} ${entry.unit} on ${entry.achieved_at.toLocaleDateString()}`}
-																	className="flex-1 flex flex-col items-center gap-1 relative"
-																	onMouseEnter={() => setHoveredBarIndex(barKey)}
-																	onMouseLeave={() => setHoveredBarIndex(null)}
-																>
-																	{isHovered && (
-																		<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
-																			<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
-																				<div className="text-sm font-semibold text-white font-data">
-																					{formatRecordMeasurement(
-																						entry.value,
-																						entry.unit,
-																						unit,
-																					)}
-																				</div>
-																				<div className="text-xs text-muted-foreground">
-																					{formatRecordTypeLabel(entry.record_type)}
-																				</div>
-																				<div className="text-xs text-muted-foreground">
-																					{entry.achieved_at.toLocaleDateString(
-																						"en-US",
-																						{
-																							month: "short",
-																							day: "numeric",
-																							year: "numeric",
-																						},
-																					)}
+														{[...exercise.history]
+															.reverse()
+															.map((entry, idx) => {
+																const maxVal = Math.max(
+																	...exercise.history.map((h) => h.value),
+																);
+																const height =
+																	maxVal > 0 ? (entry.value / maxVal) * 100 : 0;
+																const barKey = `${exercise.exercise}-${idx}`;
+																const isHovered = hoveredBarIndex === barKey;
+																return (
+																	<div
+																		key={barKey}
+																		role="group"
+																		aria-label={`${entry.value} ${entry.unit} on ${entry.achieved_at.toLocaleDateString()}`}
+																		className="flex-1 flex flex-col items-center gap-1 relative"
+																		onMouseEnter={() =>
+																			setHoveredBarIndex(barKey)
+																		}
+																		onMouseLeave={() =>
+																			setHoveredBarIndex(null)
+																		}
+																	>
+																		{isHovered && (
+																			<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
+																				<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
+																					<div className="text-sm font-semibold text-white font-data">
+																						{formatRecordMeasurement(
+																							entry.value,
+																							entry.unit,
+																							unit,
+																						)}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						{formatRecordTypeLabel(
+																							entry.record_type,
+																						)}
+																					</div>
+																					<div className="text-xs text-muted-foreground">
+																						{entry.achieved_at.toLocaleDateString(
+																							"en-US",
+																							{
+																								month: "short",
+																								day: "numeric",
+																								year: "numeric",
+																							},
+																						)}
+																					</div>
 																				</div>
 																			</div>
+																		)}
+																		<div
+																			className={`text-xs font-semibold text-primary transition-opacity font-data ${isHovered ? "opacity-100" : "opacity-0"}`}
+																		>
+																			{entry.value}
 																		</div>
-																	)}
-																	<div
-																		className={`text-xs font-semibold text-primary transition-opacity font-data ${isHovered ? "opacity-100" : "opacity-0"}`}
-																	>
-																		{entry.value}
+																		<div
+																			className={`w-full bg-gradient-to-t from-primary to-accent rounded-t transition-all cursor-pointer ${isHovered ? "opacity-100 scale-x-110" : "hover:opacity-80"}`}
+																			style={{ height: `${height}%` }}
+																		/>
+																		<div className="text-xs text-muted-foreground">
+																			{entry.achieved_at.toLocaleDateString(
+																				"en-US",
+																				{
+																					month: "short",
+																					day: "numeric",
+																				},
+																			)}
+																		</div>
 																	</div>
-																	<div
-																		className={`w-full bg-gradient-to-t from-primary to-accent rounded-t transition-all cursor-pointer ${isHovered ? "opacity-100 scale-x-110" : "hover:opacity-80"}`}
-																		style={{ height: `${height}%` }}
-																	/>
-																	<div className="text-xs text-muted-foreground">
-																		{entry.achieved_at.toLocaleDateString("en-US", {
-																			month: "short",
-																			day: "numeric",
-																		})}
-																	</div>
-																</div>
-															);
-														})}
+																);
+															})}
 													</div>
 												</div>
 
@@ -529,11 +540,14 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																	className="border-b border-secondary/50"
 																>
 																	<td className="py-2.5 text-secondary-foreground">
-																		{entry.achieved_at.toLocaleDateString("en-US", {
-																			month: "short",
-																			day: "numeric",
-																			year: "numeric",
-																		})}
+																		{entry.achieved_at.toLocaleDateString(
+																			"en-US",
+																			{
+																				month: "short",
+																				day: "numeric",
+																				year: "numeric",
+																			},
+																		)}
 																	</td>
 																	<td className="py-2.5 text-white font-semibold font-data">
 																		{formatRecordMeasurement(
@@ -636,14 +650,15 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														>
 															{pr.muscle_group}
 														</Badge>
-														{pr.workout_phase && pr.workout_phase !== "Combined" && (
-															<Badge
-																variant="outline"
-																className="border-accent/40 text-accent text-xs flex-shrink-0"
-															>
-																{pr.workout_phase}
-															</Badge>
-														)}
+														{pr.workout_phase &&
+															pr.workout_phase !== "Combined" && (
+																<Badge
+																	variant="outline"
+																	className="border-accent/40 text-accent text-xs flex-shrink-0"
+																>
+																	{pr.workout_phase}
+																</Badge>
+															)}
 													</div>
 													<p className="text-xl font-bold text-primary font-data">
 														{formatRecordMeasurement(pr.value, pr.unit, unit)}

@@ -303,10 +303,7 @@ export async function exportAllUserData(
 			await addTable(
 				"cycle_days",
 				"cycle-days",
-				supabase
-					.from("cycle_days")
-					.select("*")
-					.in("cycle_id", cycleIds),
+				supabase.from("cycle_days").select("*").in("cycle_id", cycleIds),
 			);
 		} else {
 			progress("Skipping cycle days (no training cycles)...");

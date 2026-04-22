@@ -19,7 +19,6 @@ import {
 	CHART_COLORS,
 	ECHARTS_GRID,
 } from "@/app/components/charts/shared/EChartsTheme";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import type { InsightItem } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -70,6 +69,7 @@ import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
 import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // Lazy-loaded tab components for code splitting (desktop)

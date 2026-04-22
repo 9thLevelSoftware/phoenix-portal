@@ -74,7 +74,9 @@ describe("AuthCallback", () => {
 			"/auth/callback?provider=apple#error=access_denied&error_description=The+user+canceled+the+sign-in",
 		);
 
-		expect(await screen.findByText(/apple sign-in failed/i)).toBeInTheDocument();
+		expect(
+			await screen.findByText(/apple sign-in failed/i),
+		).toBeInTheDocument();
 		expect(
 			screen.getByText(/the user canceled the sign-in/i),
 		).toBeInTheDocument();
