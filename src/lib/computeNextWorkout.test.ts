@@ -40,9 +40,9 @@ describe("computeNextWorkout", () => {
 		const days = makeWeek();
 		const result = computeNextWorkout(days, startDate, 4, startDate);
 		expect(result).not.toBeNull();
-		expect(result!.dayNumber).toBe(1);
-		expect(result!.dayType).toBe("workout");
-		expect(result!.isRestDay).toBe(false);
+		expect(result?.dayNumber).toBe(1);
+		expect(result?.dayType).toBe("workout");
+		expect(result?.isRestDay).toBe(false);
 	});
 
 	it("returns correct day mid-cycle", () => {
@@ -51,7 +51,7 @@ describe("computeNextWorkout", () => {
 		const today = new Date(2026, 0, 8);
 		const result = computeNextWorkout(days, startDate, 4, today);
 		expect(result).not.toBeNull();
-		expect(result!.dayNumber).toBe(4);
+		expect(result?.dayNumber).toBe(4);
 	});
 
 	it("handles rest days", () => {
@@ -60,9 +60,9 @@ describe("computeNextWorkout", () => {
 		const today = new Date(2026, 0, 7);
 		const result = computeNextWorkout(days, startDate, 4, today);
 		expect(result).not.toBeNull();
-		expect(result!.isRestDay).toBe(true);
-		expect(result!.routineId).toBeNull();
-		expect(result!.dayType).toBe("rest");
+		expect(result?.isRestDay).toBe(true);
+		expect(result?.routineId).toBeNull();
+		expect(result?.dayType).toBe("rest");
 	});
 
 	it("wraps around when days exceed cycleDays.length", () => {
@@ -71,7 +71,7 @@ describe("computeNextWorkout", () => {
 		const today = new Date(2026, 0, 13);
 		const result = computeNextWorkout(days, startDate, 4, today);
 		expect(result).not.toBeNull();
-		expect(result!.dayNumber).toBe(2);
+		expect(result?.dayNumber).toBe(2);
 	});
 
 	it("returns null when cycle has ended", () => {
@@ -95,18 +95,18 @@ describe("computeNextWorkout", () => {
 
 		// Day 1 (index 0) = week 1
 		const day1 = computeNextWorkout(days, startDate, 4, startDate);
-		expect(day1!.cycleWeek).toBe(1);
+		expect(day1?.cycleWeek).toBe(1);
 
 		// Day 8 (index 7, daysSinceStart=7) = week 2
 		const day8 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 12));
-		expect(day8!.cycleWeek).toBe(2);
+		expect(day8?.cycleWeek).toBe(2);
 
 		// Day 14 (daysSinceStart=13) = week 2
 		const day14 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 18));
-		expect(day14!.cycleWeek).toBe(2);
+		expect(day14?.cycleWeek).toBe(2);
 
 		// Day 15 (daysSinceStart=14) = week 3
 		const day15 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 19));
-		expect(day15!.cycleWeek).toBe(3);
+		expect(day15?.cycleWeek).toBe(3);
 	});
 });

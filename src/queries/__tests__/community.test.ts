@@ -72,7 +72,7 @@ describe("communityFeedOptions", () => {
 			sort: "hot",
 		});
 
-		const result = await options.queryFn!({ pageParam: 0 } as never);
+		const result = await options.queryFn?.({ pageParam: 0 } as never);
 
 		expect(from).toHaveBeenCalledWith("shared_routines");
 		expect(feedQuery.select).toHaveBeenCalledWith("*");

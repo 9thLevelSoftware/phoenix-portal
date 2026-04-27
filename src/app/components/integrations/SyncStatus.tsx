@@ -38,7 +38,8 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			// Only poll when there's pending or processing work
 			const items = query.state.data ?? [];
 			const hasPending = items.some(
-				(q: any) => q.status === "pending" || q.status === "processing",
+				(q: { status: string }) =>
+					q.status === "pending" || q.status === "processing",
 			);
 			return hasPending ? 15_000 : false;
 		},

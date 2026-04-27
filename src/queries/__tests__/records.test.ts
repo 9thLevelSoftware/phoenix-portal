@@ -54,7 +54,7 @@ describe("personalRecordsOptions", () => {
 		chain = buildChain({ data: [recordRow], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		// value should be doubled (80 * 2 = 160)
@@ -73,7 +73,7 @@ describe("personalRecordsOptions", () => {
 		});
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result[0].previous_value).toBeNull();
 	});
 
@@ -84,7 +84,7 @@ describe("personalRecordsOptions", () => {
 		});
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "records table error" }),
 		);
 	});
@@ -93,7 +93,7 @@ describe("personalRecordsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -101,7 +101,7 @@ describe("personalRecordsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
-		await opts.queryFn!({} as never);
+		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("personal_records");
 	});
 });

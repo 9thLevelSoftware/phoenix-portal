@@ -36,7 +36,10 @@ export function LocalProfileFilter({ userId }: LocalProfileFilterProps) {
 
 	return (
 		<div className="px-3 py-2">
-			<label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+			<label
+				htmlFor="profile-filter-select"
+				className="text-xs font-medium text-muted-foreground mb-1.5 block"
+			>
 				Profile
 			</label>
 			<Select

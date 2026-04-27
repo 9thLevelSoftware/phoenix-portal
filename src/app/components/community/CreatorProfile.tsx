@@ -256,6 +256,7 @@ export function CreatorProfile({
 				<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
 					{Array.from({ length: 3 }).map((_, i) => (
 						<Card
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							key={i}
 							className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
 						/>

@@ -69,6 +69,7 @@ describe("buildPersonalRecordRows", () => {
 			PROFILE_ID,
 		);
 		expect(out).toHaveLength(1);
+		// biome-ignore lint/style/noNonNullAssertion: length asserted above
 		const row = out[0]!;
 		expect(row.record_type).toBe("1RM");
 		expect(row.workout_phase).toBe("COMBINED");
@@ -89,6 +90,7 @@ describe("buildPersonalRecordRows", () => {
 			USER_ID,
 			PROFILE_ID,
 		);
+		// biome-ignore lint/style/noNonNullAssertion: single-element array access in test
 		const row = out[0]!;
 		expect(row.record_type).toBe("MAX_VOLUME");
 		expect(row.workout_phase).toBe("CONCENTRIC");
@@ -110,7 +112,7 @@ describe("buildPersonalRecordRows", () => {
 			USER_ID,
 			PROFILE_ID,
 		);
-		expect(out[0]!.value).toBe(500);
+		expect(out[0]?.value).toBe(500);
 	});
 
 	it("uses weightKg as value for non-MAX_VOLUME record types", () => {
@@ -119,18 +121,18 @@ describe("buildPersonalRecordRows", () => {
 			USER_ID,
 			PROFILE_ID,
 		);
-		expect(out[0]!.value).toBe(120);
-		expect(out[0]!.unit).toBe("kg");
+		expect(out[0]?.value).toBe(120);
+		expect(out[0]?.unit).toBe("kg");
 	});
 
 	it("passes through achieved_at from session.startedAt unchanged", () => {
 		const out = buildPersonalRecordRows([baseSession()], USER_ID, PROFILE_ID);
-		expect(out[0]!.achieved_at).toBe("2026-04-20T12:00:00.000Z");
+		expect(out[0]?.achieved_at).toBe("2026-04-20T12:00:00.000Z");
 	});
 
 	it("accepts null localProfileId (pre-multi-profile clients)", () => {
 		const out = buildPersonalRecordRows([baseSession()], USER_ID, null);
-		expect(out[0]!.local_profile_id).toBeNull();
+		expect(out[0]?.local_profile_id).toBeNull();
 	});
 
 	it("flattens multiple sessions × exercises × sets", () => {

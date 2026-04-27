@@ -76,6 +76,7 @@ export function RoutinePickerModal({
 									<div className="space-y-2">
 										{recent.map((routine) => (
 											<button
+												type="button"
 												key={routine.id}
 												onClick={() => onSelect(routine.id)}
 												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
@@ -115,6 +116,7 @@ export function RoutinePickerModal({
 									<div className="space-y-2">
 										{all.map((routine) => (
 											<button
+												type="button"
 												key={routine.id}
 												onClick={() => onSelect(routine.id)}
 												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"

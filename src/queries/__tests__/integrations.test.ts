@@ -71,7 +71,7 @@ describe("integrationsOptions", () => {
 		chain = buildChain({ data: [integrationRow], error: null });
 		const { integrationsOptions } = await import("../integrations");
 		const opts = integrationsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].provider).toBe("strava");
@@ -86,7 +86,7 @@ describe("integrationsOptions", () => {
 		});
 		const { integrationsOptions } = await import("../integrations");
 		const opts = integrationsOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "auth required" }),
 		);
 	});
@@ -95,7 +95,7 @@ describe("integrationsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { integrationsOptions } = await import("../integrations");
 		const opts = integrationsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -103,7 +103,7 @@ describe("integrationsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { integrationsOptions } = await import("../integrations");
 		const opts = integrationsOptions("user-1");
-		await opts.queryFn!({} as never);
+		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("user_integrations");
 	});
 });
@@ -137,7 +137,7 @@ describe("externalActivitiesOptions", () => {
 		});
 		const { externalActivitiesOptions } = await import("../integrations");
 		const opts = externalActivitiesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].name).toBe("Morning Run");
@@ -152,7 +152,7 @@ describe("externalActivitiesOptions", () => {
 		});
 		const { externalActivitiesOptions } = await import("../integrations");
 		const opts = externalActivitiesOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "table missing" }),
 		);
 	});
@@ -161,7 +161,7 @@ describe("externalActivitiesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { externalActivitiesOptions } = await import("../integrations");
 		const opts = externalActivitiesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });

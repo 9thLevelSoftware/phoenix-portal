@@ -21,6 +21,7 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 		<Popover>
 			<PopoverTrigger asChild>
 				<button
+					type="button"
 					className={`
             flex flex-col items-center justify-center
             w-14 h-14 rounded-lg

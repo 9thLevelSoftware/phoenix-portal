@@ -30,7 +30,8 @@ function isIOSSafari(): boolean {
 		/iPad|iPhone|iPod/.test(ua) ||
 		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 	const isStandalone =
-		"standalone" in navigator && (navigator as any).standalone;
+		"standalone" in navigator &&
+		(navigator as unknown as { standalone: boolean }).standalone;
 	return isIOS && !isStandalone;
 }
 

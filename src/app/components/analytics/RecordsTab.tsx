@@ -213,11 +213,13 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 			<div className="space-y-4">
 				<div className="flex gap-2">
 					{Array.from({ length: 4 }).map((_, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 						<Skeleton key={i} className="h-8 w-20" />
 					))}
 				</div>
 				<div className="space-y-3">
 					{Array.from({ length: 5 }).map((_, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 						<CardSkeleton key={i} />
 					))}
 				</div>
@@ -450,6 +452,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																const barKey = `${exercise.exercise}-${idx}`;
 																const isHovered = hoveredBarIndex === barKey;
 																return (
+																	// biome-ignore lint/a11y/useSemanticElements: chart bar group needs role for a11y
 																	<div
 																		key={barKey}
 																		role="group"
@@ -534,9 +537,9 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 															</tr>
 														</thead>
 														<tbody>
-															{exercise.history.map((entry, idx) => (
+															{exercise.history.map((entry) => (
 																<tr
-																	key={`${entry.id}-${idx}`}
+																	key={entry.id}
 																	className="border-b border-secondary/50"
 																>
 																	<td className="py-2.5 text-secondary-foreground">

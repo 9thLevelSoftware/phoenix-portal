@@ -40,7 +40,7 @@ describe("describeSyncPlatformInput", () => {
 		// sample must be truncated to <=40 chars after the quote
 		const sampleMatch = out.match(/sample="([^"]*)"/);
 		expect(sampleMatch).not.toBeNull();
-		expect(sampleMatch![1]!.length).toBeLessThanOrEqual(40);
+		expect(sampleMatch?.[1]?.length).toBeLessThanOrEqual(40);
 	});
 
 	it("reports numeric/boolean/bigint values", () => {

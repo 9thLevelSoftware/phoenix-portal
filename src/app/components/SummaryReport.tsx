@@ -252,7 +252,13 @@ function ConsistencyRing({ score }: { score: number }) {
 				: PHOENIX.flameRed;
 
 	return (
-		<svg width="68" height="68" viewBox="0 0 68 68">
+		<svg
+			width="68"
+			height="68"
+			viewBox="0 0 68 68"
+			role="img"
+			aria-label="Summary report chart"
+		>
 			<circle
 				cx="34"
 				cy="34"
@@ -291,6 +297,7 @@ function SkeletonCards() {
 	return (
 		<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 			{Array.from({ length: 4 }).map((_, i) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 				<Card key={i} className="p-5 bg-surface-2 border-secondary">
 					<Skeleton className="h-4 w-20 mb-3" />
 					<Skeleton className="h-8 w-24 mb-2" />

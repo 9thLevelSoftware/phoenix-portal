@@ -276,6 +276,7 @@ describe("getSimplifiedZoneById", () => {
 	});
 
 	it("returns undefined for invalid zone", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: intentionally passing invalid type to test runtime guard
 		const zone = getSimplifiedZoneById("INVALID" as any);
 		expect(zone).toBeUndefined();
 	});
@@ -295,6 +296,7 @@ describe("getMannZoneById", () => {
 	});
 
 	it("returns undefined for invalid zone", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: intentionally passing invalid type to test runtime guard
 		const zone = getMannZoneById("invalid" as any);
 		expect(zone).toBeUndefined();
 	});

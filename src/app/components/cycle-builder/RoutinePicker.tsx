@@ -206,6 +206,7 @@ function RoutineItem({
 
 	return (
 		<button
+			type="button"
 			onClick={onSelect}
 			className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
 		>

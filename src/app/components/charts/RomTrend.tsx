@@ -89,7 +89,12 @@ function RomChart({
 
 	return (
 		<>
-			<svg width={width} height={height}>
+			<svg
+				width={width}
+				height={height}
+				role="img"
+				aria-label="Range of motion trend chart"
+			>
 				<LinearGradient
 					id={GRADIENT_ID}
 					from={LINE_COLOR}
@@ -145,8 +150,11 @@ function RomChart({
 
 					{/* Data point circles + invisible hit areas */}
 					{data.map((d) => (
+						// biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: SVG circle needs role="img" for screen readers while also supporting hover tooltips
 						<circle
 							key={d.rep}
+							role="img"
+							aria-label={`Rep ${d.rep}: ${d.rom}mm range of motion`}
 							cx={getX(d)}
 							cy={getY(d)}
 							r={4}

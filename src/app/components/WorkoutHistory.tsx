@@ -252,6 +252,7 @@ export function WorkoutHistory() {
 			const page = await queryClient.fetchQuery({
 				...opts,
 				queryKey: opts.queryKey,
+				// biome-ignore lint/style/noNonNullAssertion: queryFn always defined in workoutListPageOptions
 				queryFn: opts.queryFn!,
 			});
 			setExtraWorkouts((prev) => [...prev, ...page]);
@@ -326,6 +327,7 @@ export function WorkoutHistory() {
 				</div>
 				<PageShell>
 					{Array.from({ length: 5 }).map((_, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 						<WorkoutCardSkeleton key={i} />
 					))}
 				</PageShell>

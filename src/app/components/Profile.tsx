@@ -453,6 +453,7 @@ export function Profile() {
 									<div className="space-y-4">
 										{Array.from({ length: 5 }).map((_, i) => (
 											<div
+												// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 												key={i}
 												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
 											>
@@ -671,6 +672,7 @@ export function Profile() {
 								<div className="space-y-3">
 									{Array.from({ length: 4 }).map((_, i) => (
 										<div
+											// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 											key={i}
 											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 										>
@@ -725,6 +727,7 @@ export function Profile() {
 								<div className="space-y-4">
 									{Array.from({ length: 3 }).map((_, i) => (
 										<div
+											// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 											key={i}
 											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 										>

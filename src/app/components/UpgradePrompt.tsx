@@ -18,6 +18,7 @@ const TIER_ICONS: Record<PaidTier, (typeof Flame)[]> = {
 const TIER_BENEFITS: Record<PaidTier, { icon: typeof Flame; label: string }[]> =
 	Object.fromEntries(
 		(["EMBER", "FLAME", "INFERNO"] as const).map((tier) => {
+			// biome-ignore lint/style/noNonNullAssertion: TIER_PRICING always contains all paid tiers
 			const pricing = TIER_PRICING.find((t) => t.tier === tier)!;
 			const icons = TIER_ICONS[tier];
 			// Skip "Everything in X" entries, take up to 3 features

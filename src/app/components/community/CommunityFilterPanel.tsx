@@ -106,7 +106,10 @@ export function CommunityFilterPanel() {
 					<div className="flex flex-col gap-6 px-4 py-6">
 						{/* Muscle Group */}
 						<div className="space-y-2">
-							<label className="text-sm text-muted-foreground">
+							<label
+								htmlFor="muscle-group-filter"
+								className="text-sm text-muted-foreground"
+							>
 								Muscle Group
 							</label>
 							<Select value={localMuscle} onValueChange={setLocalMuscle}>
@@ -125,7 +128,10 @@ export function CommunityFilterPanel() {
 
 						{/* Difficulty */}
 						<div className="space-y-2">
-							<label className="text-sm text-muted-foreground">
+							<label
+								htmlFor="difficulty-filter"
+								className="text-sm text-muted-foreground"
+							>
 								Difficulty
 							</label>
 							<Select

@@ -111,6 +111,7 @@ export function RoutinesEnhanced() {
 				<PageShell>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<RoutineCardSkeleton key={i} />
 						))}
 					</div>
@@ -271,6 +272,7 @@ function RoutineGrid({
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<button
+												type="button"
 												onClick={() => onToggleFavorite(routine.id)}
 												aria-label={
 													favorite
@@ -290,7 +292,10 @@ function RoutineGrid({
 									</Tooltip>
 									<DropdownMenu>
 										<DropdownMenuTrigger asChild>
-											<button className="text-muted-foreground hover:text-white transition-colors">
+											<button
+												type="button"
+												className="text-muted-foreground hover:text-white transition-colors"
+											>
 												<MoreVertical className="w-5 h-5" />
 											</button>
 										</DropdownMenuTrigger>

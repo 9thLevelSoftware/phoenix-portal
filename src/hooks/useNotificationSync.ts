@@ -27,7 +27,7 @@ export function useNotificationSync(): void {
 			const { count, error } = await supabase
 				.from("challenge_participants")
 				.select("*", { count: "exact", head: true })
-				.eq("user_id", user!.id)
+				.eq("user_id", user?.id)
 				.is("completed_at", null);
 			if (error) throw error;
 			return count ?? 0;
@@ -48,13 +48,13 @@ export function useNotificationSync(): void {
 			const { data: routines } = await supabase
 				.from("shared_routines")
 				.select("id")
-				.eq("user_id", user!.id);
+				.eq("user_id", user?.id);
 
 			// Get IDs of user's shared cycles
 			const { data: cycles } = await supabase
 				.from("shared_cycles")
 				.select("id")
-				.eq("user_id", user!.id);
+				.eq("user_id", user?.id);
 
 			const itemIds = [
 				...(routines ?? []).map((r) => r.id),
@@ -68,7 +68,7 @@ export function useNotificationSync(): void {
 				.from("community_comments")
 				.select("*", { count: "exact", head: true })
 				.in("item_id", itemIds)
-				.neq("user_id", user!.id)
+				.neq("user_id", user?.id)
 				.gte("created_at", sevenDaysAgo)
 				.is("deleted_at", null);
 

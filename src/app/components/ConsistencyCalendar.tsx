@@ -173,10 +173,13 @@ export function ConsistencyCalendar({
 					height={svgHeight}
 					className="min-w-full"
 					style={{ minWidth: svgWidth }}
+					role="img"
+					aria-label="Workout consistency calendar heatmap"
 				>
 					{/* Month labels */}
 					{monthLabels.map((ml, i) => (
 						<text
+							// biome-ignore lint/suspicious/noArrayIndexKey: static month labels never reorder
 							key={i}
 							x={DAY_LABELS_WIDTH + ml.col * STEP}
 							y={12}
@@ -191,6 +194,7 @@ export function ConsistencyCalendar({
 					{/* Day labels */}
 					{["", "M", "", "W", "", "F", ""].map((label, row) => (
 						<text
+							// biome-ignore lint/suspicious/noArrayIndexKey: static day-of-week labels never reorder
 							key={row}
 							x={16}
 							y={TOP_LABEL_HEIGHT + row * STEP + CELL_SIZE - 1}
@@ -211,8 +215,11 @@ export function ConsistencyCalendar({
 							const y = TOP_LABEL_HEIGHT + row * STEP;
 
 							return (
+								// biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: SVG rect needs role="img" for screen readers while also supporting hover tooltips
 								<rect
 									key={cell.date.toISOString()}
+									role="img"
+									aria-label={`${cell.date.toLocaleDateString()}: ${cell.count} workout${cell.count !== 1 ? "s" : ""}`}
 									x={x}
 									y={y}
 									width={CELL_SIZE}
@@ -287,6 +294,7 @@ export function ConsistencyCalendar({
 				<span>Less</span>
 				{[BG_EMPTY, `${EMBER}66`, `${EMBER}B3`, EMBER].map((color, i) => (
 					<div
+						// biome-ignore lint/suspicious/noArrayIndexKey: static legend color list never reorders
 						key={i}
 						className="rounded-sm"
 						style={{ width: 10, height: 10, backgroundColor: color }}

@@ -18,7 +18,7 @@ interface StravaConnectProps {
  * After authorization, the user is redirected back to /integrations?connected=strava.
  */
 export function StravaConnect({
-	userId,
+	userId: _userId,
 	isConnected,
 	onDisconnect,
 }: StravaConnectProps) {

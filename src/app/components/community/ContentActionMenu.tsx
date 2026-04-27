@@ -53,6 +53,7 @@ export function ContentActionMenu({
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<button
+						type="button"
 						onClick={(e) => e.stopPropagation()}
 						className="p-1 rounded-md text-muted-foreground hover:text-white hover:bg-[#1a1a2e] transition-colors"
 						aria-label="Content actions"

@@ -55,7 +55,7 @@ describe("volumeTrendOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toHaveLength(2);
 		expect(result[0].total_volume).toBe(500);
 	});
@@ -67,7 +67,7 @@ describe("volumeTrendOptions", () => {
 		});
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query failed" }),
 		);
 	});
@@ -76,7 +76,7 @@ describe("volumeTrendOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -119,7 +119,7 @@ describe("muscleGroupOptions", () => {
 
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toEqual(
 			expect.arrayContaining([
@@ -134,7 +134,7 @@ describe("muscleGroupOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -165,7 +165,7 @@ describe("strengthProgressOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toHaveLength(1);
 		expect(result[0].exercise_name).toBe("Bench Press");
 	});
@@ -177,7 +177,7 @@ describe("strengthProgressOptions", () => {
 		});
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query error" }),
 		);
 	});
@@ -228,7 +228,7 @@ describe("volumeComparisonOptions", () => {
 
 		const { volumeComparisonOptions } = await import("../analytics");
 		const opts = volumeComparisonOptions("user-1", "4w");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.current).toHaveLength(1);
 		expect(result.previous).toHaveLength(1);
