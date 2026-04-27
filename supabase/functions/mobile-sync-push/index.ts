@@ -354,6 +354,7 @@ interface RoutineExerciseDto {
   supersetOrder: number | null;
   perSetWeights: string | null;
   perSetRest: string | null;
+  perSetReps: string | null;
   isAmrap: boolean;
   isBodyweight: boolean;
   prPercentage: number | null;
@@ -999,6 +1000,24 @@ Deno.serve(async (req) => {
         sessionsInserted = sessionRows.length;
       }
 
+      // --- 4b-pre. Clean stale exercises before re-inserting (issue #33) ---
+      // Mobile generates new random exercise/set UUIDs each sync push,
+      // so upsert-by-id never matches the old rows — duplicates pile up.
+      // Delete existing exercises for affected sessions first; CASCADE
+      // removes their sets, rep_summaries, and rep_telemetry automatically.
+      const affectedSessionIds = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .map((s) => s.id);
+
+      if (affectedSessionIds.length > 0) {
+        const { error: cleanupErr } = await supabase
+          .from('exercises')
+          .delete()
+          .in('session_id', affectedSessionIds)
+          .eq('user_id', userId);
+        if (cleanupErr) throw new Error(`exercises pre-cleanup failed: ${cleanupErr.message}`);
+      }
+
       // --- 4b. Batch upsert exercises ---
       // When LWW is enabled, only accept exercises whose parent session was
       // accepted by the LWW gate. Rejecting the parent but inserting the
@@ -1343,6 +1362,7 @@ Deno.serve(async (req) => {
           superset_order: e.supersetOrder,
           per_set_weights: safeJsonParse(e.perSetWeights),
           per_set_rest: safeJsonParse(e.perSetRest),
+          per_set_reps: safeJsonParse(e.perSetReps),
           is_amrap: e.isAmrap,
           is_bodyweight: e.isBodyweight,
           pr_percentage: e.prPercentage,

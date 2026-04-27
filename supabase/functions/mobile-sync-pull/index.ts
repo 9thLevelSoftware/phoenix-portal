@@ -501,7 +501,8 @@ Deno.serve(async (req) => {
         const { data: exercises } = await supabase
           .from('exercises')
           .select('*')
-          .in('session_id', sessionIds);
+          .in('session_id', sessionIds)
+          .order('order_index', { ascending: true });
         exercisesRaw = exercises ?? [];
 
         const exerciseIds = exercisesRaw.map((e) => e.id as string);
@@ -745,6 +746,7 @@ Deno.serve(async (req) => {
             supersetOrder: re.superset_order,
             perSetWeights: re.per_set_weights != null ? JSON.stringify(re.per_set_weights) : null,
             perSetRest: re.per_set_rest != null ? JSON.stringify(re.per_set_rest) : null,
+            perSetReps: re.per_set_reps != null ? JSON.stringify(re.per_set_reps) : null,
             isAmrap: re.is_amrap,
             isBodyweight: re.is_bodyweight ?? false,
             prPercentage: re.pr_percentage,

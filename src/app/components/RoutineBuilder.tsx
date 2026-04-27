@@ -69,6 +69,7 @@ interface Exercise {
 	supersetOrder: number | null;
 	perSetWeights: unknown;
 	perSetRest: unknown;
+	perSetReps: unknown;
 	isAmrap: boolean;
 	isBodyweight: boolean;
 	prPercentage: number | null;
@@ -214,6 +215,7 @@ export function RoutineBuilder() {
 					supersetOrder: ex.superset_order ?? null,
 					perSetWeights: ex.per_set_weights ?? null,
 					perSetRest: ex.per_set_rest ?? null,
+					perSetReps: ex.per_set_reps ?? null,
 					isAmrap: ex.is_amrap ?? false,
 					isBodyweight: ex.is_bodyweight ?? false,
 					prPercentage: ex.pr_percentage ?? null,
@@ -321,6 +323,7 @@ export function RoutineBuilder() {
 			superset_order: ex.supersetOrder,
 			per_set_weights: ex.perSetWeights,
 			per_set_rest: ex.perSetRest,
+			per_set_reps: ex.perSetReps,
 			is_amrap: ex.isAmrap,
 			is_bodyweight: ex.isBodyweight,
 			pr_percentage: ex.prPercentage,
@@ -624,6 +627,7 @@ export function RoutineBuilder() {
 								supersetOrder: null,
 								perSetWeights: null,
 								perSetRest: null,
+								perSetReps: null,
 								isAmrap: false,
 								isBodyweight: false,
 								prPercentage: null,
@@ -863,11 +867,25 @@ function ExerciseDetailPanel({
 		exercise.sets,
 		exercise.weight,
 	);
+	const repsValues = getPerSetValues(
+		exercise.perSetReps,
+		exercise.sets,
+		exercise.reps,
+	);
 	const restValues = getPerSetValues(
 		exercise.perSetRest,
 		exercise.sets,
 		exercise.rest,
 	);
+
+	const updatePerSetReps = (index: number, value: string) => {
+		const nextReps = [...repsValues];
+		nextReps[index] = parseInt(value, 10) || 0;
+		onUpdate({
+			reps: nextReps[0] ?? 0,
+			perSetReps: nextReps,
+		});
+	};
 
 	const updatePerSetWeight = (index: number, value: string) => {
 		const nextWeights = [...weightValues];
@@ -1037,7 +1055,7 @@ function ExerciseDetailPanel({
 												value={
 													isDurationBased
 														? (exercise.durationSeconds ?? 0)
-														: exercise.reps
+														: (repsValues[i] ?? exercise.reps)
 												}
 												onChange={(e) =>
 													isDurationBased
@@ -1045,9 +1063,7 @@ function ExerciseDetailPanel({
 																durationSeconds:
 																	parseInt(e.target.value, 10) || 0,
 															})
-														: onUpdate({
-																reps: parseInt(e.target.value, 10) || 0,
-															})
+														: updatePerSetReps(i, e.target.value)
 												}
 												className="bg-background border-secondary text-white"
 												placeholder={isDurationBased ? "30" : "10"}

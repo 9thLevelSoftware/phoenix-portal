@@ -46,6 +46,7 @@ interface RoutineExerciseInput {
 	superset_order?: number | null;
 	per_set_weights?: unknown;
 	per_set_rest?: unknown;
+	per_set_reps?: unknown;
 	is_amrap?: boolean;
 	is_bodyweight?: boolean;
 	pr_percentage?: number | null;
@@ -79,6 +80,7 @@ function toRoutineExerciseRows(
 		superset_order: ex.superset_order ?? null,
 		per_set_weights: normalizePerSetWeights(ex.per_set_weights),
 		per_set_rest: (ex.per_set_rest ?? null) as Json,
+		per_set_reps: (ex.per_set_reps ?? null) as Json,
 		is_amrap: ex.is_amrap ?? false,
 		is_bodyweight: ex.is_bodyweight ?? false,
 		pr_percentage: ex.pr_percentage ?? null,
