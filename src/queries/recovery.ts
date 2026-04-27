@@ -42,7 +42,7 @@ export function wearableRecoveryOptions(userId: string) {
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("external_activities")
-				.select("provider, raw_data, synced_at")
+				.select("id, provider, raw_data, synced_at")
 				.eq("user_id", userId)
 				.in("provider", ["garmin", "fitbit"])
 				.order("synced_at", { ascending: false })

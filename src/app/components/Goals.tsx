@@ -110,7 +110,7 @@ export function useGoalProgress(
 				// PR values are already Zod-transformed (doubled)
 				const exercisePRs = records.filter(
 					(r) =>
-						r.exercise_name.toLowerCase() === goal.exercise_name!.toLowerCase(),
+						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase(),
 				);
 				if (exercisePRs.length > 0) {
 					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
@@ -404,6 +404,7 @@ export function Goals() {
 				{isPending ? (
 					<div className="space-y-4">
 						{Array.from({ length: 2 }).map((_, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
 								<div className="h-20" />
 							</Card>
@@ -490,6 +491,7 @@ export function Goals() {
 						transition={{ delay: 0.3 }}
 					>
 						<button
+							type="button"
 							onClick={() => setShowCompleted(!showCompleted)}
 							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
 						>
@@ -540,6 +542,7 @@ export function Goals() {
 						className="mt-4"
 					>
 						<button
+							type="button"
 							onClick={() => setShowArchived(!showArchived)}
 							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
 						>
@@ -745,7 +748,7 @@ function GoalFormDialog({
 
 	const handleSubmit = () => {
 		const value = parseFloat(targetValue);
-		if (isNaN(value) || value <= 0) return;
+		if (Number.isNaN(value) || value <= 0) return;
 		if (goalType === "pr" && !exerciseName.trim()) return;
 
 		onSubmit({

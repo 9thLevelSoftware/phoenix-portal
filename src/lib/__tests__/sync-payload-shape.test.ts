@@ -41,8 +41,11 @@ describe("normalizePushPayloadShape", () => {
 				},
 			],
 		});
+		// biome-ignore lint/suspicious/noExplicitAny: test assertions on dynamic shape
 		expect((out.sessions as any)[0].exercises).toEqual([]);
+		// biome-ignore lint/suspicious/noExplicitAny: test assertions on dynamic shape
 		expect((out.sessions as any)[1].exercises[0].sets).toEqual([]);
+		// biome-ignore lint/suspicious/noExplicitAny: test assertions on dynamic shape
 		expect((out.sessions as any)[2].exercises[0].sets[0].repSummaries).toEqual(
 			[],
 		);
@@ -53,7 +56,9 @@ describe("normalizePushPayloadShape", () => {
 			routines: [{ id: "r1" }],
 			cycles: [{ id: "c1" }],
 		});
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses dynamic shape returned by normalizer
 		expect((out.routines as any)[0].exercises).toEqual([]);
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses dynamic shape returned by normalizer
 		expect((out.cycles as any)[0].days).toEqual([]);
 	});
 
@@ -85,19 +90,23 @@ describe("normalizePushPayloadShape", () => {
 		expect(out.assessments).toEqual([]);
 		expect(out.externalActivities).toEqual([]);
 		// Non-list scalar fields preserved
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses pass-through field not in normalized type
 		expect((out as any).deviceId).toBe("d1");
 	});
 
 	it("leaves allProfiles nullable (fallback path depends on null vs array)", () => {
 		const missing = normalizePushPayloadShape({});
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses nullable field not in normalized type
 		expect((missing as any).allProfiles).toBeUndefined();
 
 		const nulled = normalizePushPayloadShape({ allProfiles: null });
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses nullable field not in normalized type
 		expect((nulled as any).allProfiles).toBeNull();
 
 		const populated = normalizePushPayloadShape({
 			allProfiles: [{ id: "default" }],
 		});
+		// biome-ignore lint/suspicious/noExplicitAny: test accesses nullable field not in normalized type
 		expect((populated as any).allProfiles).toEqual([{ id: "default" }]);
 	});
 });

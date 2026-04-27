@@ -77,6 +77,7 @@ export function ComparisonSessionPicker({
 					{isPending ? (
 						<div className="space-y-2">
 							{Array.from({ length: 5 }).map((_, i) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 								<Skeleton key={i} className="h-20 bg-surface-2 rounded-lg" />
 							))}
 						</div>

@@ -235,6 +235,7 @@ function TransitionIndicator({
 					</div>
 				) : (
 					<button
+						type="button"
 						onClick={() => setIsEditing(true)}
 						className="hover:text-muted-foreground transition-colors"
 					>

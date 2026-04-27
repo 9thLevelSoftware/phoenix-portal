@@ -39,6 +39,7 @@ export function ProgressionRules({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<button
+				type="button"
 				onClick={() => setIsExpanded(!isExpanded)}
 				className="w-full flex items-center justify-between mb-6 group"
 			>
@@ -499,6 +500,7 @@ function ProgressionTypeCard({
 }) {
 	return (
 		<button
+			type="button"
 			onClick={onClick}
 			className={`p-4 rounded-lg border-2 transition-all ${
 				isSelected

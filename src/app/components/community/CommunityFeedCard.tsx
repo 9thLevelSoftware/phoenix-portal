@@ -55,6 +55,7 @@ export function CommunityFeedCard({
 							{authorName.charAt(0).toUpperCase()}
 						</div>
 						<button
+							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								if (!isDeletedUser && item.user_id) {
@@ -77,6 +78,7 @@ export function CommunityFeedCard({
 							/>
 						)}
 						<button
+							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								onVote(item.id);

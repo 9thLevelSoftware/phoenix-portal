@@ -204,6 +204,7 @@ export function RecommendationsPanel({
 
 			{/* INFERNO gate overlay */}
 			{!isInferno && (
+				// biome-ignore lint/a11y/useSemanticElements: overlay gate needs role="region" for accessibility context
 				<div
 					className="absolute inset-0 backdrop-blur-[8px] bg-surface-2/60 flex items-center justify-center rounded-lg z-10"
 					role="region"

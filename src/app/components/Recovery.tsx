@@ -21,7 +21,6 @@ import { Progress } from "@/app/components/ui/progress";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
 import { useSubscription } from "@/hooks/useSubscription";
-import { PHOENIX } from "@/lib/colors";
 import {
 	ACWR_SWEET_SPOT,
 	CLAMPING_THRESHOLD_DAYS,
@@ -464,7 +463,7 @@ export function Recovery() {
 
 								{wearable && wearable.length > 0 ? (
 									<div className="space-y-3">
-										{wearable.map((w, i) => {
+										{wearable.map((w) => {
 											const rawData =
 												typeof w.raw_data === "object" && w.raw_data !== null
 													? w.raw_data
@@ -476,7 +475,7 @@ export function Recovery() {
 
 											return (
 												<div
-													key={i}
+													key={w.id}
 													className="p-3 bg-background/50 rounded-lg border border-secondary"
 												>
 													<div className="flex items-center justify-between mb-2">

@@ -56,6 +56,7 @@ export function FormErrorSummary({ className }: { className?: string }) {
 			{errorMessages.length <= 5 && (
 				<ul className="mt-2 ml-6 list-disc text-sm text-destructive/70 space-y-0.5">
 					{errorMessages.map((msg, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: error messages may duplicate, index is the only stable key
 						<li key={i}>{msg}</li>
 					))}
 				</ul>

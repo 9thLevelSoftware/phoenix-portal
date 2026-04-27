@@ -114,7 +114,12 @@ function PerRepChart({
 
 	return (
 		<>
-			<svg width={width} height={height}>
+			<svg
+				width={width}
+				height={height}
+				role="img"
+				aria-label="Cable asymmetry gauge"
+			>
 				<Group left={margin.left} top={margin.top}>
 					{/* Header labels */}
 					<Text
@@ -170,7 +175,7 @@ function PerRepChart({
 						const barHeight = yScale.bandwidth();
 
 						return (
-							<g key={i}>
+							<g key={rep.id}>
 								<Bar
 									x={barX}
 									y={barY}
@@ -390,7 +395,7 @@ export function AsymmetryGauge({
 					</thead>
 					<tbody>
 						{repSummaries.map((rep, i) => (
-							<tr key={i}>
+							<tr key={rep.id}>
 								<td>Rep {rep.rep_number ?? i + 1}</td>
 								<td>{rep.left_force_avg.toFixed(1)}</td>
 								<td>{rep.right_force_avg.toFixed(1)}</td>
@@ -433,7 +438,7 @@ export function AsymmetryGauge({
 				</thead>
 				<tbody>
 					{repSummaries.map((rep, i) => (
-						<tr key={i}>
+						<tr key={rep.id}>
 							<td>Rep {rep.rep_number ?? i + 1}</td>
 							<td>{rep.left_force_avg.toFixed(1)}</td>
 							<td>{rep.right_force_avg.toFixed(1)}</td>

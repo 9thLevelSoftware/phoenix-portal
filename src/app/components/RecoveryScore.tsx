@@ -43,7 +43,13 @@ export function RecoveryScore({ result, size = "lg" }: RecoveryScoreProps) {
 		>
 			{/* Circular gauge */}
 			<div className="relative">
-				<svg width={svgSize} height={svgSize} className="-rotate-90">
+				<svg
+					width={svgSize}
+					height={svgSize}
+					className="-rotate-90"
+					role="img"
+					aria-label="Recovery score gauge"
+				>
 					{/* Background track */}
 					<circle
 						cx={svgSize / 2}

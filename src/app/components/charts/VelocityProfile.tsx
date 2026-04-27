@@ -131,7 +131,12 @@ function VelocityProfileInner({
 					{showZoneIndicator && <ZoneIndicator system={zoneSystem} />}
 				</div>
 			)}
-			<svg width={width} height={height}>
+			<svg
+				width={width}
+				height={height}
+				role="img"
+				aria-label="Velocity profile chart"
+			>
 				<Group left={margin.left} top={margin.top}>
 					{repSummaries.map((rep, i) => {
 						const label = String(i + 1);

@@ -242,7 +242,16 @@ export function RoutineBuilder() {
 
 	const handleDragEnd = (event: { canceled: boolean }) => {
 		if (!event.canceled) {
-			setExercises((items) => move(items, event as any));
+			setExercises((items) =>
+				move(
+					items,
+					event as {
+						canceled: boolean;
+						active: { id: string };
+						over: { id: string } | null;
+					},
+				),
+			);
 			setHasUnsavedChanges(true);
 		}
 	};
@@ -579,6 +588,7 @@ export function RoutineBuilder() {
 						<AnimatePresence mode="wait">
 							{selectedExercise ? (
 								<ExerciseDetailPanel
+									// biome-ignore lint/style/noNonNullAssertion: guarded by selectedExercise truthiness check above
 									exercise={exercises.find((ex) => ex.id === selectedExercise)!}
 									onUpdate={(updated) => {
 										setExercises(
@@ -776,6 +786,7 @@ function SortableExerciseItem({
 						</div>
 					) : (
 						<button
+							type="button"
 							ref={handleRef}
 							className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-muted-foreground"
 						>
@@ -1032,6 +1043,7 @@ function ExerciseDetailPanel({
 						<div className="space-y-2">
 							{Array.from({ length: exercise.sets }).map((_, i) => (
 								<div
+									// biome-ignore lint/suspicious/noArrayIndexKey: set indices are positional and never reorder independently
 									key={i}
 									className={`grid gap-3 text-sm ${
 										exercise.isBodyweight ? "grid-cols-2" : "grid-cols-3"
@@ -1406,6 +1418,7 @@ function ExercisePickerModal({
 						<div className="space-y-2">
 							{filteredExercises.map((exercise) => (
 								<button
+									type="button"
 									key={exercise.name}
 									onClick={() => onSelect(exercise)}
 									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"

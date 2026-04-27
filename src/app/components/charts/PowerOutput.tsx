@@ -110,7 +110,12 @@ function PowerOutputInner({
 
 	return (
 		<div style={{ position: "relative" }}>
-			<svg width={width} height={height}>
+			<svg
+				width={width}
+				height={height}
+				role="img"
+				aria-label="Power output chart"
+			>
 				<Group left={margin.left} top={margin.top}>
 					{powerData.map((d, i) => {
 						const label = String(d.repNumber);
@@ -126,6 +131,7 @@ function PowerOutputInner({
 						const barOpacity = highlightPeak && !isPeak ? 0.6 : 1;
 
 						return (
+							// biome-ignore lint/suspicious/noArrayIndexKey: derived sequential chart data with no unique ID
 							<Group key={i}>
 								<Bar
 									x={barX}
@@ -256,7 +262,7 @@ export function PowerOutput(props: PowerOutputProps) {
 								? rep.power_watts
 								: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
 						return (
-							<tr key={i}>
+							<tr key={rep.id}>
 								<td>Rep {i + 1}</td>
 								<td>{watts}</td>
 							</tr>

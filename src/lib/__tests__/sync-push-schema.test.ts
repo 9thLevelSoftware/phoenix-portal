@@ -69,15 +69,18 @@ describe("pushPayloadSchema", () => {
 				},
 			],
 		});
+		// biome-ignore lint/style/noNonNullAssertion: test accesses known element in parsed array
 		const session = parsed.sessions[0]!;
 		expect(session.durationSeconds).toBe(0);
 		expect(session.totalVolume).toBe(0);
 		expect(session.setCount).toBe(0);
 		expect(session.exerciseCount).toBe(0);
 		expect(session.prCount).toBe(0);
+		// biome-ignore lint/style/noNonNullAssertion: test accesses known element in parsed array
 		const exercise = session.exercises[0]!;
 		expect(exercise.muscleGroup).toBe("General");
 		expect(exercise.orderIndex).toBe(0);
+		// biome-ignore lint/style/noNonNullAssertion: test accesses known element in parsed array
 		const set = exercise.sets[0]!;
 		expect(set.actualReps).toBe(0);
 		expect(set.weightKg).toBe(0);
@@ -155,7 +158,7 @@ describe("pushPayloadSchema", () => {
 		});
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error.issues[0]!.path).toContain("deviceId");
+			expect(result.error.issues[0]?.path).toContain("deviceId");
 		}
 	});
 
@@ -209,8 +212,8 @@ describe("formatPushPayloadError", () => {
 		const formatted = formatPushPayloadError(result.error);
 		expect(formatted.error).toBe("Invalid push payload");
 		expect(formatted.issues.length).toBeGreaterThan(0);
-		expect(formatted.issues[0]!.path).toBe("sessions.0.id");
-		expect(typeof formatted.issues[0]!.message).toBe("string");
+		expect(formatted.issues[0]?.path).toBe("sessions.0.id");
+		expect(typeof formatted.issues[0]?.message).toBe("string");
 	});
 
 	it("caps issues at 25 to keep response bodies small", () => {

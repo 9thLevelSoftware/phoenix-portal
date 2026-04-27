@@ -47,6 +47,7 @@ export function DayCard({
 					</div>
 
 					<button
+						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
 							onSetRest();
@@ -59,6 +60,7 @@ export function DayCard({
 
 				{onRemove && day.dayNumber > 1 && (
 					<button
+						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
 							onRemove();
@@ -120,6 +122,7 @@ export function DayCard({
 
 				{onRemove && day.dayNumber > 1 && (
 					<button
+						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
 							onRemove();
@@ -161,6 +164,7 @@ export function DayCard({
 				</div>
 
 				<button
+					type="button"
 					onClick={(e) => {
 						e.stopPropagation();
 						onClick();
@@ -173,6 +177,7 @@ export function DayCard({
 
 			{onRemove && day.dayNumber > 1 && (
 				<button
+					type="button"
 					onClick={(e) => {
 						e.stopPropagation();
 						onRemove();

@@ -83,7 +83,7 @@ describe("routineListOptions", () => {
 		chain = buildChain({ data: [routineRow], error: null });
 		const { routineListOptions } = await import("../routines");
 		const opts = routineListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].name).toBe("Push Day");
@@ -99,7 +99,7 @@ describe("routineListOptions", () => {
 		});
 		const { routineListOptions } = await import("../routines");
 		const opts = routineListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result[0].last_used_at).toBeNull();
 	});
 
@@ -110,7 +110,7 @@ describe("routineListOptions", () => {
 		});
 		const { routineListOptions } = await import("../routines");
 		const opts = routineListOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "fetch failed" }),
 		);
 	});
@@ -119,7 +119,7 @@ describe("routineListOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { routineListOptions } = await import("../routines");
 		const opts = routineListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -143,7 +143,7 @@ describe("routineDetailOptions", () => {
 		chain = buildChain({ data: detailRow, error: null });
 		const { routineDetailOptions } = await import("../routines");
 		const opts = routineDetailOptions("11111111-1111-4111-8111-111111111111");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.name).toBe("Push Day");
 		expect(result.routine_exercises).toHaveLength(1);
@@ -158,7 +158,7 @@ describe("routineDetailOptions", () => {
 		});
 		const { routineDetailOptions } = await import("../routines");
 		const opts = routineDetailOptions("missing");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "not found" }),
 		);
 	});

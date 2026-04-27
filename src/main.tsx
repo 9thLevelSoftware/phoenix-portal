@@ -20,6 +20,7 @@ const errorProxy = (error: unknown, errorInfo: unknown) => {
 	sentryHandler?.(error, errorInfo);
 };
 
+// biome-ignore lint/style/noNonNullAssertion: root element always exists in index.html
 const root = createRoot(document.getElementById("root")!, {
 	onUncaughtError: errorProxy,
 	onCaughtError: errorProxy,

@@ -8,7 +8,7 @@ import { queryKeys } from "@/queries/keys";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockInsertResult = vi.fn();
+const _mockInsertResult = vi.fn();
 const mockUpdateResult = vi.fn();
 const mockDeleteResult = vi.fn();
 const mockSelectSingle = vi.fn();
@@ -18,7 +18,7 @@ const mockChain = {
 		select: vi.fn(() => ({ single: mockSelectSingle })),
 	})),
 	update: vi.fn(() => ({
-		eq: vi.fn((key: string, val: string) => {
+		eq: vi.fn((key: string, _val: string) => {
 			// For useToggleFavorite, there's a second .eq() call
 			if (key === "id") {
 				return { eq: vi.fn(() => mockUpdateResult()) };

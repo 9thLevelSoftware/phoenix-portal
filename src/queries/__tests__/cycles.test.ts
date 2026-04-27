@@ -69,7 +69,7 @@ describe("cycleListOptions", () => {
 		chain = buildChain({ data: [cycleRow], error: null });
 		const { cycleListOptions } = await import("../cycles");
 		const opts = cycleListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].name).toBe("Strength Block");
@@ -86,7 +86,7 @@ describe("cycleListOptions", () => {
 		});
 		const { cycleListOptions } = await import("../cycles");
 		const opts = cycleListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result[0].started_at).toBeNull();
 		expect(result[0].last_used_at).toBeNull();
 	});
@@ -98,7 +98,7 @@ describe("cycleListOptions", () => {
 		});
 		const { cycleListOptions } = await import("../cycles");
 		const opts = cycleListOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "permission denied" }),
 		);
 	});
@@ -107,7 +107,7 @@ describe("cycleListOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { cycleListOptions } = await import("../cycles");
 		const opts = cycleListOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -133,7 +133,7 @@ describe("cycleDetailOptions", () => {
 		chain = buildChain({ data: detailRow, error: null });
 		const { cycleDetailOptions } = await import("../cycles");
 		const opts = cycleDetailOptions("11111111-1111-4111-8111-111111111111");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.name).toBe("Strength Block");
 		expect(result.cycle_days).toHaveLength(1);
@@ -154,7 +154,7 @@ describe("cycleDetailOptions", () => {
 		});
 		const { cycleDetailOptions } = await import("../cycles");
 		const opts = cycleDetailOptions("cycle-1");
-		await expect(opts.queryFn!({} as never)).rejects.toThrow();
+		await expect(opts.queryFn?.({} as never)).rejects.toThrow();
 	});
 
 	it("throws on Supabase error", async () => {
@@ -164,7 +164,7 @@ describe("cycleDetailOptions", () => {
 		});
 		const { cycleDetailOptions } = await import("../cycles");
 		const opts = cycleDetailOptions("cycle-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "not found" }),
 		);
 	});

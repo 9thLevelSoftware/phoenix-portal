@@ -8,7 +8,7 @@ import { queryKeys } from "@/queries/keys";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockSelectSingle = vi.fn();
+const _mockSelectSingle = vi.fn();
 
 const mockChain = {
 	insert: vi.fn(),
@@ -194,9 +194,9 @@ describe("useCreateGoal", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(capturedPayload).not.toBeNull();
-		expect(capturedPayload!.exercise_name).toBe("Squat");
-		expect(capturedPayload!.deadline).toBe("2026-06-01");
-		expect(capturedPayload!.period).toBe("monthly");
+		expect(capturedPayload?.exercise_name).toBe("Squat");
+		expect(capturedPayload?.deadline).toBe("2026-06-01");
+		expect(capturedPayload?.period).toBe("monthly");
 	});
 });
 

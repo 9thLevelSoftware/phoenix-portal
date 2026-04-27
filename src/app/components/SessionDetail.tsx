@@ -574,6 +574,7 @@ export function SessionDetail() {
 								<Card className="exercise-card bg-surface-2 border-secondary overflow-hidden">
 									{/* Exercise Header */}
 									<button
+										type="button"
 										onClick={() => toggleExercise(exercise.id)}
 										className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
 									>

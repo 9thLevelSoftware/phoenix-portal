@@ -117,7 +117,9 @@ export function renderForceCurve(
 
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, plotArea.y + plotArea.height);
-	points.forEach((p) => ctx.lineTo(p.x, p.y));
+	points.forEach((p) => {
+		ctx.lineTo(p.x, p.y);
+	});
 	ctx.lineTo(points[points.length - 1].x, plotArea.y + plotArea.height);
 	ctx.closePath();
 	ctx.fillStyle = gradient;
@@ -126,7 +128,9 @@ export function renderForceCurve(
 	// Draw stroke line
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
-	points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+	points.slice(1).forEach((p) => {
+		ctx.lineTo(p.x, p.y);
+	});
 	ctx.strokeStyle = EMBER_COLOR;
 	ctx.lineWidth = 2;
 	ctx.stroke();
@@ -186,7 +190,9 @@ export function renderVelocityBars(
 
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, plotArea.y + plotArea.height);
-	points.forEach((p) => ctx.lineTo(p.x, p.y));
+	points.forEach((p) => {
+		ctx.lineTo(p.x, p.y);
+	});
 	ctx.lineTo(points[points.length - 1].x, plotArea.y + plotArea.height);
 	ctx.closePath();
 	ctx.fillStyle = gradient;
@@ -195,7 +201,9 @@ export function renderVelocityBars(
 	// Draw stroke line at 2px width
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
-	points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+	points.slice(1).forEach((p) => {
+		ctx.lineTo(p.x, p.y);
+	});
 	ctx.strokeStyle = EMBER_COLOR;
 	ctx.lineWidth = 2;
 	ctx.stroke();

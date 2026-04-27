@@ -141,6 +141,7 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 							.slice(0, 6)
 							.map((ex, i) => (
 								<div
+									// biome-ignore lint/suspicious/noArrayIndexKey: snapshot array with no unique IDs, never reorders
 									key={i}
 									className="flex items-center gap-2 p-2 bg-surface-2 rounded-md text-sm"
 								>

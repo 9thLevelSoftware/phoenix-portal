@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	type ExerciseProfile,
 	getExerciseProfile,
 	normalizeExerciseName,
 } from "@/lib/exercise-muscles";

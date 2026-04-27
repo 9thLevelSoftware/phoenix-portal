@@ -167,6 +167,7 @@ function CommentItem({
 					<div className="flex items-center gap-2 mt-1">
 						{canEdit && (
 							<button
+								type="button"
 								onClick={() => setIsEditing(true)}
 								className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors"
 							>
@@ -177,7 +178,10 @@ function CommentItem({
 
 						<AlertDialog>
 							<AlertDialogTrigger asChild>
-								<button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors">
+								<button
+									type="button"
+									className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+								>
 									<Trash2 className="w-3 h-3" />
 									Delete
 								</button>

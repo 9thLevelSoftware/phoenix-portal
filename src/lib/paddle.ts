@@ -227,6 +227,7 @@ export async function verifyPaddleSignature(
 
 	let mismatch = 0;
 	for (let i = 0; i < a.length; i++) {
+		// biome-ignore lint/style/noNonNullAssertion: index is within bounds (loop guard ensures i < a.length === b.length)
 		mismatch |= a[i]! ^ b[i]!;
 	}
 	return mismatch === 0;
