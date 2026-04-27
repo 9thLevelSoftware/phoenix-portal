@@ -68,7 +68,9 @@ function deriveWeeklyVolume(
 ): { day: string; volume: number }[] {
 	const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 	const volumeByDay: Record<string, number> = {};
-	days.forEach((d) => (volumeByDay[d] = 0));
+	days.forEach((d) => {
+		volumeByDay[d] = 0;
+	});
 
 	if (stats) {
 		for (const row of stats) {
@@ -212,9 +214,9 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 	if (isPending) {
 		return (
 			<div className="space-y-3">
-				{Array.from({ length: 2 }).map((_, index) => (
+				{["sk-a", "sk-b"].map((k) => (
 					<div
-						key={index}
+						key={k}
 						className="rounded-lg border border-secondary bg-background p-4"
 					>
 						<Skeleton className="mb-3 h-5 w-32" />
@@ -668,9 +670,9 @@ export function Dashboard() {
 						</h2>
 						{workoutsLoading ? (
 							<div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
-								{Array.from({ length: 4 }).map((_, i) => (
+								{["sk-a", "sk-b", "sk-c", "sk-d"].map((k) => (
 									<Card
-										key={i}
+										key={k}
 										className="p-4 signal-panel min-w-[120px] flex-shrink-0"
 									>
 										<Skeleton className="w-10 h-10 rounded-lg mb-3" />
@@ -762,22 +764,26 @@ export function Dashboard() {
 								</div>
 
 								<div className="flex items-end justify-between h-32 gap-2">
-									{barHeights.map((height, i) => (
-										<div
-											key={i}
-											className="flex-1 flex flex-col items-center gap-2"
-										>
-											<motion.div
-												className="w-full bg-gradient-to-t from-primary to-accent rounded-t"
-												initial={{ height: 0 }}
-												animate={{ height: `${Math.max(height, 2)}%` }}
-												transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
-											/>
-											<span className="text-xs text-muted-foreground">
-												{["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"][i]}
-											</span>
-										</div>
-									))}
+									{(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const).map(
+										(day, i) => (
+											<div
+												key={day}
+												className="flex-1 flex flex-col items-center gap-2"
+											>
+												<motion.div
+													className="w-full bg-gradient-to-t from-primary to-accent rounded-t"
+													initial={{ height: 0 }}
+													animate={{
+														height: `${Math.max(barHeights[i] ?? 0, 2)}%`,
+													}}
+													transition={{ delay: 0.5 + i * 0.1, duration: 0.5 }}
+												/>
+												<span className="text-xs text-muted-foreground">
+													{day}
+												</span>
+											</div>
+										),
+									)}
 								</div>
 							</Card>
 						)}
@@ -820,8 +826,8 @@ export function Dashboard() {
 
 						{workoutsLoading ? (
 							<div className="space-y-3">
-								{Array.from({ length: 3 }).map((_, i) => (
-									<WorkoutCardSkeleton key={i} />
+								{["sk-a", "sk-b", "sk-c"].map((k) => (
+									<WorkoutCardSkeleton key={k} />
 								))}
 							</div>
 						) : recentWorkouts.length === 0 ? (
@@ -944,8 +950,8 @@ export function Dashboard() {
 								</h3>
 								{workoutsLoading ? (
 									<div className="grid grid-cols-2 gap-y-6 gap-x-4">
-										{Array.from({ length: 4 }).map((_, i) => (
-											<div key={i} className="flex items-center gap-4">
+										{["sk-a", "sk-b", "sk-c", "sk-d"].map((k) => (
+											<div key={k} className="flex items-center gap-4">
 												<Skeleton className="w-12 h-12 rounded-xl" />
 												<div>
 													<Skeleton className="h-3 w-20 mb-2" />
@@ -1072,16 +1078,18 @@ export function Dashboard() {
 									) : (
 										<>
 											<div className="flex-1 flex items-end justify-between gap-2 mb-2 min-h-[128px]">
-												{barHeights.map((height, i) => (
+												{(
+													["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const
+												).map((day, i) => (
 													<div
-														key={i}
+														key={day}
 														className="flex-1 flex flex-col items-center gap-0 h-full justify-end"
 													>
 														<motion.div
 															className="w-full bg-primary rounded-t-sm"
 															initial={{ height: 0 }}
 															animate={{
-																height: `${Math.max(height, 2)}%`,
+																height: `${Math.max(barHeights[i] ?? 0, 2)}%`,
 															}}
 															transition={{
 																delay: 0.5 + i * 0.1,
@@ -1152,8 +1160,8 @@ export function Dashboard() {
 									</div>
 									{workoutsLoading ? (
 										<div className="space-y-3">
-											{Array.from({ length: 3 }).map((_, i) => (
-												<WorkoutCardSkeleton key={i} />
+											{["sk-a", "sk-b", "sk-c"].map((k) => (
+												<WorkoutCardSkeleton key={k} />
 											))}
 										</div>
 									) : recentWorkouts.length === 0 ? (
@@ -1296,9 +1304,9 @@ export function Dashboard() {
 									</h3>
 									{prsLoading ? (
 										<div className="space-y-3">
-											{Array.from({ length: 3 }).map((_, i) => (
+											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
-													key={i}
+													key={k}
 													className="p-3 rounded-lg border border-white/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
@@ -1355,9 +1363,9 @@ export function Dashboard() {
 									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
-											{Array.from({ length: 3 }).map((_, i) => (
+											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
-													key={i}
+													key={k}
 													className="p-3 rounded-lg border border-white/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />

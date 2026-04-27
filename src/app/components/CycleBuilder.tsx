@@ -37,6 +37,7 @@ import { Switch } from "@/app/components/ui/switch";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useAuth } from "@/app/hooks/useAuth";
+import type { Json } from "@/lib/database.types";
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
@@ -148,7 +149,10 @@ export function CycleBuilder() {
 				);
 			}
 			if (existingCycle.progression_settings) {
-				const ps = existingCycle.progression_settings as any;
+				const ps = existingCycle.progression_settings as Record<
+					string,
+					Json | undefined
+				>;
 				if (ps.type) setProgressionType(ps.type);
 				if (ps.amount) setProgressionAmount(ps.amount);
 				if (ps.frequency) setProgressionFrequency(ps.frequency);
@@ -157,7 +161,10 @@ export function CycleBuilder() {
 				if (ps.lowerIncrement) setLowerBodyIncrement(ps.lowerIncrement);
 			}
 			if (existingCycle.deload_settings) {
-				const ds = existingCycle.deload_settings as any;
+				const ds = existingCycle.deload_settings as Record<
+					string,
+					Json | undefined
+				>;
 				setIncludeDeload(true);
 				if (ds.frequency) setDeloadFrequency(ds.frequency);
 				if (ds.intensity) setDeloadIntensity(ds.intensity);
@@ -805,6 +812,7 @@ function DayCard({
 				)}
 
 				<button
+					type="button"
 					onClick={(e) => {
 						e.stopPropagation();
 						onRemove();
@@ -1004,7 +1012,9 @@ function DayEditorPanel({
 						<Label className="text-secondary-foreground mb-2">Rest Type</Label>
 						<Select
 							value={day.restType || "complete"}
-							onValueChange={(value: any) => onUpdate({ restType: value })}
+							onValueChange={(value: "complete" | "active" | "mobility") =>
+								onUpdate({ restType: value })
+							}
 						>
 							<SelectTrigger className="bg-background border-secondary">
 								<SelectValue />
