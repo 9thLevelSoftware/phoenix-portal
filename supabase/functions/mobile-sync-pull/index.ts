@@ -731,6 +731,7 @@ Deno.serve(async (req) => {
           estimatedDuration: r.estimated_duration,
           timesCompleted: r.times_completed,
           isFavorite: r.is_favorite,
+          updatedAt: r.updated_at ? new Date(r.updated_at as string).getTime() : null,
           exercises: rExercises.map((re) => ({
             id: re.id,
             routineId: re.routine_id,
