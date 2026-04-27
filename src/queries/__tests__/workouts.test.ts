@@ -74,7 +74,7 @@ describe("workoutListOptions", () => {
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].total_volume).toBe(1000); // doubled
+		expect(result[0].total_volume).toBe(500); // Phase 40 fix: no longer doubled (already total)
 		expect(result[0].duration_seconds).toBe(60); // minutes
 		expect(result[0].started_at).toBeInstanceOf(Date);
 		expect(result[0].workout_mode).toBe("Echo");

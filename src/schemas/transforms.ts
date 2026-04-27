@@ -35,7 +35,7 @@ export const workoutSessionSchema = z.object({
 		.transform((name) => name?.trim() || "Untitled Workout"),
 	started_at: z.string().transform((s) => new Date(s)),
 	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
-	total_volume: weightTransform,
+	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform that was incorrectly doubling volume.
 	set_count: z.number(),
 	exercise_count: z.number(),
 	pr_count: z.number(),
@@ -191,7 +191,7 @@ export const analyticsSummarySchema = z.object({
 	user_id: z.string().uuid(),
 	period: z.string(),
 	total_workouts: z.number(),
-	total_volume: weightTransform,
+	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform.
 	total_duration: z.number(),
 	avg_session_duration: z.number(),
 	streak_days: z.number(),

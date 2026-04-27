@@ -46,10 +46,11 @@ describe("workoutSessionSchema", () => {
 		expect(result.name).toBe("Morning Workout");
 	});
 
-	it("doubles total_volume (per-cable to total)", () => {
+	it("passes total_volume through without doubling (Phase 40 fix)", () => {
 		const result = workoutSessionSchema.parse(validSession);
-		// Input 100 -> output 200 (WEIGHT_MULTIPLIER = 2)
-		expect(result.total_volume).toBe(200);
+		// total_volume is already total (not per-cable), so no transform applied.
+		// Phase 40 fix: bodyweight volume was being incorrectly doubled.
+		expect(result.total_volume).toBe(100);
 	});
 
 	it("converts duration_seconds to minutes", () => {
@@ -141,7 +142,7 @@ describe("workoutSessionSchema", () => {
 			...validSession,
 			total_volume: 0,
 		});
-		// 0 * 2 = 0
+		// No transform: 0 stays 0
 		expect(result.total_volume).toBe(0);
 	});
 
@@ -150,8 +151,8 @@ describe("workoutSessionSchema", () => {
 			...validSession,
 			total_volume: 55.5,
 		});
-		// 55.5 * 2 = 111
-		expect(result.total_volume).toBe(111);
+		// No transform: passes through as-is
+		expect(result.total_volume).toBe(55.5);
 	});
 
 	it("handles max per-cable weight (110kg) correctly", () => {
@@ -388,10 +389,10 @@ describe("analyticsSummarySchema", () => {
 		computed_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("doubles total_volume (per-cable to total)", () => {
+	it("passes total_volume through without doubling (Phase 40 fix)", () => {
 		const result = analyticsSummarySchema.parse(validSummary);
-		// Input 10000 -> output 20000
-		expect(result.total_volume).toBe(20000);
+		// total_volume is already total (not per-cable), so no transform applied.
+		expect(result.total_volume).toBe(10000);
 	});
 
 	it("handles zero total_volume correctly", () => {
