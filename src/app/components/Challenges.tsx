@@ -500,8 +500,8 @@ export function Challenges() {
 						<Skeleton className="h-8 w-32" />
 					</header>
 					<div className="px-4 py-4 space-y-4">
-						{Array.from({ length: 3 }).map((_, i) => (
-							<Skeleton key={i} className="h-32 w-full" />
+						{["sk-a", "sk-b", "sk-c"].map((k) => (
+							<Skeleton key={k} className="h-32 w-full" />
 						))}
 					</div>
 				</div>
@@ -511,8 +511,8 @@ export function Challenges() {
 						<Skeleton className="h-10 w-48 mb-2" />
 						<Skeleton className="h-5 w-64 mb-8" />
 						<div className="space-y-4">
-							{Array.from({ length: 3 }).map((_, i) => (
-								<Skeleton key={i} className="h-48 w-full" />
+							{["sk-a", "sk-b", "sk-c"].map((k) => (
+								<Skeleton key={k} className="h-48 w-full" />
 							))}
 						</div>
 					</PageShell>
@@ -700,6 +700,7 @@ export function Challenges() {
 												{challenge.difficulty} | {challenge.challenge_type}
 											</span>
 											<button
+												type="button"
 												onClick={() => joinMutation.mutate(challenge.id)}
 												disabled={joinMutation.isPending}
 												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-white"
