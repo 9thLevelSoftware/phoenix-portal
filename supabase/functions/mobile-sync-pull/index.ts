@@ -658,6 +658,7 @@ Deno.serve(async (req) => {
           p_cursor_updated_at: cursorUpdatedAt,
           p_cursor_id: cursorId,
           p_limit: remainingPageSize + 1,
+          p_last_sync_at: lastSyncISO,
         });
         if (error) console.error('Error fetching routines:', error);
         routinesData = (data as Record<string, unknown>[]) ?? [];
@@ -782,6 +783,7 @@ Deno.serve(async (req) => {
           p_cursor_updated_at: cursorUpdatedAt,
           p_cursor_id: cursorId,
           p_limit: remainingPageSize + 1,
+          p_last_sync_at: lastSyncISO,
         });
         if (error) console.error('Error fetching cycles:', error);
         cyclesData = (data as Record<string, unknown>[]) ?? [];
