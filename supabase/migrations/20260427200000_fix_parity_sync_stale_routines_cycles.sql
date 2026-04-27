@@ -13,10 +13,17 @@
 -- Sessions and badges are NOT affected — sessions are mobile-authoritative
 -- (portal never edits them) and badges are mobile-computed.
 
+-- Drop ALL existing overloads first to avoid ambiguous function errors.
+-- The 7-param version may exist from a partial prior apply.
+DROP FUNCTION IF EXISTS get_routines_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT);
+DROP FUNCTION IF EXISTS get_routines_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ);
+DROP FUNCTION IF EXISTS get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT);
+DROP FUNCTION IF EXISTS get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ);
+
 -- ============================================================================
 -- get_routines_excluding_ids: Now also returns known routines updated since last sync
 -- ============================================================================
-CREATE OR REPLACE FUNCTION get_routines_excluding_ids(
+CREATE FUNCTION get_routines_excluding_ids(
     p_user_id UUID,
     p_known_ids UUID[] DEFAULT '{}',
     p_profile_id TEXT DEFAULT NULL,
@@ -78,14 +85,14 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION get_routines_excluding_ids IS
+COMMENT ON FUNCTION get_routines_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) IS
 'Fetches routines not in the provided ID list OR updated since last sync. Uses POST body via RPC to bypass URL length limits.';
 
 
 -- ============================================================================
 -- get_cycles_excluding_ids: Now also returns known cycles updated since last sync
 -- ============================================================================
-CREATE OR REPLACE FUNCTION get_cycles_excluding_ids(
+CREATE FUNCTION get_cycles_excluding_ids(
     p_user_id UUID,
     p_known_ids UUID[] DEFAULT '{}',
     p_profile_id TEXT DEFAULT NULL,
@@ -157,5 +164,5 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION get_cycles_excluding_ids IS
+COMMENT ON FUNCTION get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) IS
 'Fetches training cycles not in the provided ID list OR updated since last sync. Uses POST body via RPC to bypass URL length limits.';
