@@ -229,6 +229,7 @@ export const routineExerciseSchema = z.object({
 				: v,
 		),
 	per_set_rest: z.any().nullable().optional(),
+	per_set_reps: z.any().nullable().optional(),
 	is_amrap: z.boolean().optional().default(false),
 	is_bodyweight: z.boolean().optional().default(false),
 	pr_percentage: z.number().nullable().optional(),
