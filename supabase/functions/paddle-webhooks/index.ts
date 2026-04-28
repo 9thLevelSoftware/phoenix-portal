@@ -414,7 +414,7 @@ Deno.serve(async (req) => {
 		}
 		let tier = mapPriceIdToTier(priceId, Deno.env);
 
-		if (priceId && tier === "FREE") {
+		if (tier === "FREE") {
 			const { data: subRow } = await supabase
 				.from("subscriptions")
 				.select("tier")

@@ -330,6 +330,7 @@ Deno.serve(async (req) => {
 
 		const lastSyncISO = new Date(body.lastSync ?? 0).toISOString();
 		const syncTime = Date.now();
+		const parityMode = isParityMode(body);
 
 		// DIAGNOSTIC: Log incoming request parameters
 		console.log("[PULL] Request:", {
@@ -409,7 +410,7 @@ Deno.serve(async (req) => {
 
 			// Use RPC for parity mode OR full sync. Legacy timestamp mode still uses direct query.
 			const useRpc =
-				knownSessionIds.length > 0 || !body.lastSync || body.lastSync === 0;
+				parityMode || body.lastSync === undefined || body.lastSync === 0;
 
 			let sessionsRaw: Record<string, unknown>[] = [];
 			let sessionsError: {
@@ -673,7 +674,7 @@ Deno.serve(async (req) => {
 			const knownRoutineIds = body.knownEntityIds?.routineIds ?? [];
 
 			const useRpc =
-				knownRoutineIds.length > 0 || !body.lastSync || body.lastSync === 0;
+				parityMode || body.lastSync === undefined || body.lastSync === 0;
 
 			let routinesData: Record<string, unknown>[] = [];
 
@@ -834,7 +835,7 @@ Deno.serve(async (req) => {
 			const knownCycleIds = body.knownEntityIds?.cycleIds ?? [];
 
 			const useRpc =
-				knownCycleIds.length > 0 || !body.lastSync || body.lastSync === 0;
+				parityMode || body.lastSync === undefined || body.lastSync === 0;
 
 			let cyclesData: Record<string, unknown>[] = [];
 
@@ -975,7 +976,7 @@ Deno.serve(async (req) => {
 			);
 
 			const useRpc =
-				knownBadgeIds.length > 0 || !body.lastSync || body.lastSync === 0;
+				parityMode || body.lastSync === undefined || body.lastSync === 0;
 
 			let badgesData: Record<string, unknown>[] = [];
 
@@ -1108,7 +1109,7 @@ Deno.serve(async (req) => {
 			);
 
 			const useRpcPR =
-				knownPRIds.length > 0 || !body.lastSync || body.lastSync === 0;
+				parityMode || body.lastSync === undefined || body.lastSync === 0;
 
 			let personalRecordsData: Record<string, unknown>[] = [];
 

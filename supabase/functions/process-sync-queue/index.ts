@@ -1,6 +1,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { backOff } from "npm:exponential-backoff@3.1.1";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -285,7 +286,7 @@ async function callSyncFunction(provider: string, userId: string) {
 	}
 
 	const functionName = `${provider}-sync`;
-	const response = await fetch(
+	const response = await fetchWithTimeout(
 		`${Deno.env.get("SUPABASE_URL")}/functions/v1/${functionName}`,
 		{
 			method: "POST",
@@ -295,6 +296,7 @@ async function callSyncFunction(provider: string, userId: string) {
 			},
 			body: JSON.stringify({ user_id: userId }),
 		},
+		30_000,
 	);
 
 	if (!response.ok) {
