@@ -1,10 +1,8 @@
 import { Badge } from "@/app/components/ui/badge";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { cn } from "@/app/components/ui/utils";
-import {
-	type SubscriptionTier,
-	useSubscription,
-} from "@/hooks/useSubscription";
+import { useSubscription } from "@/hooks/useSubscription";
+import type { SubscriptionTier } from "@/schemas/subscription";
 
 const TIER_STYLES: Record<SubscriptionTier, string> = {
 	FREE: "border-zinc-700 bg-zinc-800 text-zinc-400",

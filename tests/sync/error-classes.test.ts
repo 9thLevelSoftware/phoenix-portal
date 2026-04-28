@@ -56,7 +56,7 @@ describe("Sync wire-level error class signals", () => {
 			// Leaving this as a wire-contract reminder.
 		});
 
-		it("mock server-error mode returns status 500 (transient wire signal)", async () => {
+		it("mock server-error mode is currently a no-op for push", async () => {
 			setMockErrorMode("server");
 			// The mock's `checkMockError` returns a 500 at every call (see
 			// mock-edge-functions.ts lines 364-372). Even though the default
@@ -130,7 +130,7 @@ describe("Sync wire-level error class signals", () => {
 			// Live-mode trigger: firewall the Supabase URL while the test runs.
 		});
 
-		it("mock network-error mode exposes NETWORK_ERROR code on affected paths", async () => {
+		it("mock network-error mode setter is currently a no-op for push/pull", async () => {
 			// Mirrors the TRANSIENT mock-wiring gap above. setMockErrorMode is
 			// honoured only by functions that call checkMockError. We assert the
 			// setter doesn't throw and document the gap so classifier-dependent

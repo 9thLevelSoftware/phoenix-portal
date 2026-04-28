@@ -10,11 +10,6 @@ import {
 	subscriptionTierSchema,
 } from "@/schemas/subscription";
 
-export type {
-	SubscriptionStatus,
-	SubscriptionTier,
-} from "@/schemas/subscription";
-
 /** Statuses that grant access to the user's paid tier. */
 const ACTIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
 	"active",

@@ -354,7 +354,13 @@ describe("Conflict Resolution Integration Tests", () => {
 			// FIRST_WORKOUT, WEEK_WARRIOR, PR_KING
 			// The mock may return all pushed badges; we verify the pattern
 			expect(pullResult.success).toBe(true);
-			// At minimum, we should have badges from both devices
+			const badgeIds = (pullResult.data?.badges ?? []).map(
+				(badge) => badge.badgeId,
+			);
+			expect(badgeIds).toEqual(
+				expect.arrayContaining(["FIRST_WORKOUT", "WEEK_WARRIOR", "PR_KING"]),
+			);
+			expect(new Set(badgeIds).size).toBeGreaterThanOrEqual(3);
 		});
 	});
 
@@ -483,13 +489,14 @@ describe("Conflict Resolution Integration Tests", () => {
 			// Pull and verify only one is active
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const _activeCycles = pullResult.data?.cycles.filter(
+			const activeCycles = (pullResult.data?.cycles ?? []).filter(
 				(c) => c.status === "active",
 			);
 			// In a proper implementation, only the last-activated cycle should be active
 			// The mock may not enforce this, but the test validates the expected pattern
 			expect(pullResult.success).toBe(true);
 			expect(pullResult.data?.cycles.length).toBeGreaterThanOrEqual(1);
+			expect(activeCycles.length).toBeLessThanOrEqual(1);
 		});
 	});
 });

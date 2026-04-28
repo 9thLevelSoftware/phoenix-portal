@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 
 const GARMIN_CONSUMER_KEY = Deno.env.get("GARMIN_CONSUMER_KEY")!;
@@ -174,12 +175,16 @@ Deno.serve(async (req) => {
 
 			oauthParams.oauth_signature = signature;
 
-			const requestTokenResponse = await fetch(requestTokenUrl, {
-				method: "POST",
-				headers: {
-					Authorization: buildAuthHeader(oauthParams),
+			const requestTokenResponse = await fetchWithTimeout(
+				requestTokenUrl,
+				{
+					method: "POST",
+					headers: {
+						Authorization: buildAuthHeader(oauthParams),
+					},
 				},
-			});
+				10_000,
+			);
 
 			if (!requestTokenResponse.ok) {
 				console.error(
@@ -193,8 +198,14 @@ Deno.serve(async (req) => {
 
 			const responseText = await requestTokenResponse.text();
 			const responseParams = new URLSearchParams(responseText);
-			const requestToken = responseParams.get("oauth_token")!;
-			const requestTokenSecret = responseParams.get("oauth_token_secret")!;
+			const requestToken = responseParams.get("oauth_token");
+			const requestTokenSecret = responseParams.get("oauth_token_secret");
+			if (!requestToken || !requestTokenSecret) {
+				console.error("Garmin request token response missing token fields");
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_invalid_token_payload`,
+				);
+			}
 
 			// Store request token temporarily in oauth_tokens (server-only)
 			await supabase.from("oauth_tokens").upsert(
@@ -244,7 +255,13 @@ Deno.serve(async (req) => {
 				);
 			}
 
-			const requestTokenSecret = pendingToken.refresh_token!;
+			const requestTokenSecret = pendingToken.refresh_token;
+			if (typeof requestTokenSecret !== "string" || !requestTokenSecret) {
+				console.error("Garmin pending token secret is missing");
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_state_lost`,
+				);
+			}
 			const userId = pendingToken.user_id;
 
 			const accessTokenUrl =
@@ -272,12 +289,16 @@ Deno.serve(async (req) => {
 
 			oauthParams.oauth_signature = signature;
 
-			const accessTokenResponse = await fetch(accessTokenUrl, {
-				method: "POST",
-				headers: {
-					Authorization: buildAuthHeader(oauthParams),
+			const accessTokenResponse = await fetchWithTimeout(
+				accessTokenUrl,
+				{
+					method: "POST",
+					headers: {
+						Authorization: buildAuthHeader(oauthParams),
+					},
 				},
-			});
+				10_000,
+			);
 
 			if (!accessTokenResponse.ok) {
 				console.error(
@@ -291,8 +312,14 @@ Deno.serve(async (req) => {
 
 			const responseText = await accessTokenResponse.text();
 			const responseParams = new URLSearchParams(responseText);
-			const accessToken = responseParams.get("oauth_token")!;
-			const accessTokenSecret = responseParams.get("oauth_token_secret")!;
+			const accessToken = responseParams.get("oauth_token");
+			const accessTokenSecret = responseParams.get("oauth_token_secret");
+			if (!accessToken || !accessTokenSecret) {
+				console.error("Garmin access token response missing token fields");
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_invalid_token_payload`,
+				);
+			}
 
 			// Store the permanent access token in oauth_tokens (server-only)
 			// OAuth 1.0a tokens don't expire (no refresh_token concept)

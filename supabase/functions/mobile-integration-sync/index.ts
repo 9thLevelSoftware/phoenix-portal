@@ -5,6 +5,7 @@ import {
 	encryptOAuthSecret,
 } from "../_shared/oauthTokenCrypto.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { readJsonObject } from "../_shared/requestValidation.ts";
 
 /**
  * Mobile Integration Sync Edge Function
@@ -327,20 +328,17 @@ Deno.serve(async (req) => {
 		// =========================================================================
 		// 3. Parse and validate request body
 		// =========================================================================
-		let body: MobileIntegrationRequest;
-		try {
-			body = await req.json();
-		} catch {
-			return new Response(
-				JSON.stringify({ status: "error", error: "Invalid JSON body" }),
-				{
-					status: 400,
-					headers: { ...cors, "Content-Type": "application/json" },
-				},
-			);
-		}
+		const parsedBody = await readJsonObject(req, cors, {
+			status: "error",
+			error: "Invalid JSON body",
+		});
+		if (!parsedBody.ok) return parsedBody.response;
 
-		const { provider, action, apiKey } = body;
+		const body = parsedBody.data as MobileIntegrationRequest;
+		const provider =
+			typeof body.provider === "string" ? body.provider : undefined;
+		const action = typeof body.action === "string" ? body.action : undefined;
+		const apiKey = typeof body.apiKey === "string" ? body.apiKey : undefined;
 
 		if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
 			return new Response(
@@ -618,8 +616,11 @@ async function checkUserIsPaid(
 		.maybeSingle();
 
 	if (!subscription) return false;
-	const tier = (subscription.tier as string) ?? "FREE";
-	return tier !== "FREE";
+	const tier =
+		typeof subscription.tier === "string"
+			? subscription.tier.toUpperCase()
+			: "FREE";
+	return ["EMBER", "FLAME", "INFERNO"].includes(tier);
 }
 
 /**

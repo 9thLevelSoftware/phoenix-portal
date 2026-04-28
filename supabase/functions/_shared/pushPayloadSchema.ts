@@ -592,6 +592,9 @@ export const pushPayloadSchema = z.object({
 	platform: platformSchema,
 	lastSync: z
 		.number()
+		.int()
+		.min(0)
+		.max(Number.MAX_SAFE_INTEGER)
 		.nullish()
 		.transform((v) => v ?? 0),
 	sessions: arrayOf(sessionSchema).default([]),

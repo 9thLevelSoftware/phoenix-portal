@@ -1,9 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import {
 	decryptOAuthSecret,
 	encryptOAuthSecret,
 } from "../_shared/oauthTokenCrypto.ts";
+import { isJsonObject, readJsonObject } from "../_shared/requestValidation.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 const FITBIT_CLIENT_ID = Deno.env.get("FITBIT_CLIENT_ID")!;
@@ -13,6 +15,23 @@ interface FitbitTokens {
 	access_token: string;
 	refresh_token: string;
 	token_expires_at: string;
+}
+
+interface FitbitRefreshPayload {
+	access_token: string;
+	refresh_token: string;
+	expires_in: number;
+}
+
+function isFitbitRefreshPayload(value: unknown): value is FitbitRefreshPayload {
+	return (
+		isJsonObject(value) &&
+		typeof value.access_token === "string" &&
+		typeof value.refresh_token === "string" &&
+		typeof value.expires_in === "number" &&
+		Number.isFinite(value.expires_in) &&
+		value.expires_in > 0
+	);
 }
 
 /**
@@ -36,17 +55,21 @@ async function refreshTokenIfNeeded(
 
 	const basicAuth = btoa(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`);
 
-	const response = await fetch("https://api.fitbit.com/oauth2/token", {
-		method: "POST",
-		headers: {
-			Authorization: `Basic ${basicAuth}`,
-			"Content-Type": "application/x-www-form-urlencoded",
+	const response = await fetchWithTimeout(
+		"https://api.fitbit.com/oauth2/token",
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Basic ${basicAuth}`,
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: tokens.refresh_token,
+			}),
 		},
-		body: new URLSearchParams({
-			grant_type: "refresh_token",
-			refresh_token: tokens.refresh_token,
-		}),
-	});
+		10_000,
+	);
 
 	if (!response.ok) {
 		const errorBody = await response.text();
@@ -65,13 +88,16 @@ async function refreshTokenIfNeeded(
 		throw new Error(`Fitbit token refresh failed: ${response.status}`);
 	}
 
-	const refreshed = await response.json();
+	const refreshed: unknown = await response.json();
+	if (!isFitbitRefreshPayload(refreshed)) {
+		throw new Error("Fitbit token refresh returned invalid payload");
+	}
 	const newTokenExpiresAt = new Date(
 		Date.now() + refreshed.expires_in * 1000,
 	).toISOString();
 
 	// Update stored tokens in oauth_tokens (server-only table)
-	await supabase
+	const { error: persistTokenError } = await supabase
 		.from("oauth_tokens")
 		.update({
 			access_token: await encryptOAuthSecret(refreshed.access_token),
@@ -81,6 +107,12 @@ async function refreshTokenIfNeeded(
 		})
 		.eq("user_id", userId)
 		.eq("provider", "fitbit");
+
+	if (persistTokenError) {
+		throw new Error(
+			`Failed to persist Fitbit token: ${persistTokenError.message}`,
+		);
+	}
 
 	return {
 		access_token: refreshed.access_token,
@@ -190,7 +222,9 @@ Deno.serve(async (req) => {
 
 	try {
 		// Parse request body first (needed for both auth paths)
-		const body = await req.json();
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+		const body = parsedBody.data;
 
 		// ---- Auth: Dual-path (browser JWT or service-role key) ----
 		const authHeader = req.headers.get("Authorization");
@@ -223,7 +257,7 @@ Deno.serve(async (req) => {
 			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
-			if (!isServiceRole || !body.user_id) {
+			if (!isServiceRole || typeof body.user_id !== "string") {
 				return new Response(JSON.stringify({ error: "Not authenticated" }), {
 					status: 401,
 					headers: { ...cors, "Content-Type": "application/json" },
@@ -232,7 +266,14 @@ Deno.serve(async (req) => {
 			userId = body.user_id;
 		}
 
-		const { sync_type } = body;
+		const sync_type =
+			typeof body.sync_type === "string" ? body.sync_type : "incremental";
+		if (!["initial", "manual", "incremental"].includes(sync_type)) {
+			return new Response(JSON.stringify({ error: "Invalid sync_type" }), {
+				status: 400,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
+		}
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
@@ -302,11 +343,15 @@ Deno.serve(async (req) => {
 			activitiesUrl.searchParams.set("offset", String(offset));
 			activitiesUrl.searchParams.set("limit", String(limit));
 
-			const activitiesResponse = await fetch(activitiesUrl.toString(), {
-				headers: {
-					Authorization: `Bearer ${tokens.access_token}`,
+			const activitiesResponse = await fetchWithTimeout(
+				activitiesUrl.toString(),
+				{
+					headers: {
+						Authorization: `Bearer ${tokens.access_token}`,
+					},
 				},
-			});
+				10_000,
+			);
 
 			if (!activitiesResponse.ok) {
 				const errorBody = await activitiesResponse.text();
@@ -336,8 +381,11 @@ Deno.serve(async (req) => {
 				throw new Error(`Fitbit API error: ${activitiesResponse.status}`);
 			}
 
-			const data = await activitiesResponse.json();
-			const activities = data.activities ?? [];
+			const data: unknown = await activitiesResponse.json();
+			if (!isJsonObject(data) || !Array.isArray(data.activities)) {
+				throw new Error("Fitbit activities response returned invalid payload");
+			}
+			const activities = data.activities;
 
 			if (activities.length === 0) {
 				hasMore = false;

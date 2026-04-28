@@ -9,8 +9,13 @@ export const E2E_SUPABASE_URL =
 	process.env.VITE_SUPABASE_URL ?? DEFAULT_SUPABASE_URL;
 export const E2E_SUPABASE_ANON_KEY =
 	process.env.VITE_SUPABASE_ANON_KEY ?? DEFAULT_SUPABASE_ANON_KEY;
-export const E2E_SUPABASE_PROJECT_REF =
-	new URL(E2E_SUPABASE_URL).hostname.split(".")[0] ?? "test-project";
+export const E2E_SUPABASE_PROJECT_REF = (() => {
+	try {
+		return new URL(E2E_SUPABASE_URL).hostname.split(".")[0] ?? "test-project";
+	} catch {
+		return "test-project";
+	}
+})();
 export const E2E_SUPABASE_STORAGE_KEY = `sb-${E2E_SUPABASE_PROJECT_REF}-auth-token`;
 
 interface SessionUser {

@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 
 // Service-role client for admin operations (bypasses RLS)
@@ -23,7 +24,7 @@ async function cancelPaddleSubscription(
 	subscriptionId: string,
 	apiKey: string,
 ) {
-	const paddleRes = await fetch(
+	const paddleRes = await fetchWithTimeout(
 		`${getPaddleBaseUrl()}/subscriptions/${subscriptionId}/cancel`,
 		{
 			method: "POST",
@@ -33,6 +34,7 @@ async function cancelPaddleSubscription(
 			},
 			body: JSON.stringify({ effective_from: "immediately" }),
 		},
+		10_000,
 	);
 
 	if (paddleRes.ok) {
@@ -56,7 +58,13 @@ Deno.serve(async (req) => {
 
 	try {
 		// Authenticate the user via their JWT
-		const authHeader = req.headers.get("Authorization")!;
+		const authHeader = req.headers.get("Authorization");
+		if (!authHeader) {
+			return new Response(JSON.stringify({ error: "Missing authorization" }), {
+				status: 401,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
+		}
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
 			Deno.env.get("SUPABASE_ANON_KEY")!,

@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { readJsonObject } from "../_shared/requestValidation.ts";
 
 /**
  * Initiate OAuth Edge Function
@@ -53,15 +54,9 @@ Deno.serve(async (req) => {
 			});
 		}
 
-		let body: Record<string, unknown>;
-		try {
-			body = await req.json();
-		} catch {
-			return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-				status: 400,
-				headers: { ...cors, "Content-Type": "application/json" },
-			});
-		}
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+		const body = parsedBody.data;
 		const provider = body.provider;
 		if (
 			!provider ||
@@ -89,12 +84,25 @@ Deno.serve(async (req) => {
 		const stateToken = crypto.randomUUID();
 		const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-		await supabase.from("oauth_states").insert({
-			state_token: stateToken,
-			user_id: user.id,
-			provider,
-			expires_at: expiresAt,
-		});
+		const { error: stateInsertError } = await supabase
+			.from("oauth_states")
+			.insert({
+				state_token: stateToken,
+				user_id: user.id,
+				provider,
+				expires_at: expiresAt,
+			});
+
+		if (stateInsertError) {
+			console.error("Failed to store OAuth state:", stateInsertError);
+			return new Response(
+				JSON.stringify({ error: "Failed to initiate OAuth" }),
+				{
+					status: 500,
+					headers: { ...cors, "Content-Type": "application/json" },
+				},
+			);
+		}
 
 		// Build provider-specific auth URL
 		let authUrl: string;

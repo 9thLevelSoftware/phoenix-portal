@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 
 // Service-role client for DB queries (bypasses RLS)
@@ -25,7 +26,13 @@ Deno.serve(async (req) => {
 
 	try {
 		// Authenticate the user via their JWT
-		const authHeader = req.headers.get("Authorization")!;
+		const authHeader = req.headers.get("Authorization");
+		if (!authHeader) {
+			return new Response(JSON.stringify({ error: "Missing authorization" }), {
+				status: 401,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
+		}
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
 			Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -112,7 +119,7 @@ Deno.serve(async (req) => {
 			);
 		}
 
-		const paddleResponse = await fetch(
+		const paddleResponse = await fetchWithTimeout(
 			`${baseUrl}/subscriptions/${sub.paddle_subscription_id}/cancel`,
 			{
 				method: "POST",
@@ -122,6 +129,7 @@ Deno.serve(async (req) => {
 				},
 				body: JSON.stringify({ effective_from: "next_billing_period" }),
 			},
+			10_000,
 		);
 
 		if (!paddleResponse.ok) {

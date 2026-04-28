@@ -1,10 +1,31 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
+import { isJsonObject } from "../_shared/requestValidation.ts";
 
 const FITBIT_CLIENT_ID = Deno.env.get("FITBIT_CLIENT_ID")!;
 const FITBIT_CLIENT_SECRET = Deno.env.get("FITBIT_CLIENT_SECRET")!;
 const APP_URL = Deno.env.get("APP_URL") ?? "http://localhost:5173";
+
+interface FitbitTokenPayload {
+	access_token: string;
+	refresh_token: string;
+	user_id: string;
+	expires_in: number;
+}
+
+function isFitbitTokenPayload(value: unknown): value is FitbitTokenPayload {
+	return (
+		isJsonObject(value) &&
+		typeof value.access_token === "string" &&
+		typeof value.refresh_token === "string" &&
+		typeof value.user_id === "string" &&
+		typeof value.expires_in === "number" &&
+		Number.isFinite(value.expires_in) &&
+		value.expires_in > 0
+	);
+}
 
 /**
  * Fitbit OAuth 2.0 callback handler.
@@ -75,18 +96,22 @@ Deno.serve(async (req) => {
 		const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/fitbit-oauth`;
 
 		// Exchange authorization code for tokens
-		const tokenResponse = await fetch("https://api.fitbit.com/oauth2/token", {
-			method: "POST",
-			headers: {
-				Authorization: `Basic ${basicAuth}`,
-				"Content-Type": "application/x-www-form-urlencoded",
+		const tokenResponse = await fetchWithTimeout(
+			"https://api.fitbit.com/oauth2/token",
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Basic ${basicAuth}`,
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+				body: new URLSearchParams({
+					grant_type: "authorization_code",
+					code,
+					redirect_uri: redirectUri,
+				}),
 			},
-			body: new URLSearchParams({
-				grant_type: "authorization_code",
-				code,
-				redirect_uri: redirectUri,
-			}),
-		});
+			10_000,
+		);
 
 		if (!tokenResponse.ok) {
 			console.error(
@@ -98,7 +123,13 @@ Deno.serve(async (req) => {
 			);
 		}
 
-		const tokens = await tokenResponse.json();
+		const tokens: unknown = await tokenResponse.json();
+		if (!isFitbitTokenPayload(tokens)) {
+			console.error("Fitbit token exchange returned invalid payload");
+			return Response.redirect(
+				`${APP_URL}/integrations?error=invalid_token_payload`,
+			);
+		}
 		// Fitbit response: { access_token, refresh_token, user_id, expires_in, scope, token_type }
 
 		// Calculate token expiry from expires_in (seconds from now)
@@ -145,12 +176,17 @@ Deno.serve(async (req) => {
 		}
 
 		// Queue initial sync
-		await supabase.from("sync_queue").insert({
+		const { error: queueError } = await supabase.from("sync_queue").insert({
 			user_id: userId,
 			provider: "fitbit",
 			sync_type: "initial",
 			status: "pending",
 		});
+
+		if (queueError) {
+			console.error("Failed to queue Fitbit initial sync:", queueError);
+			return Response.redirect(`${APP_URL}/integrations?error=queue_failed`);
+		}
 
 		return Response.redirect(`${APP_URL}/integrations?connected=fitbit`);
 	} catch (err) {

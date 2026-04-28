@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
 import { UpgradePrompt } from "@/app/components/UpgradePrompt";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import {
-	type SubscriptionTier,
-	useSubscription,
-} from "@/hooks/useSubscription";
+import { useSubscription } from "@/hooks/useSubscription";
+import type { SubscriptionTier } from "@/schemas/subscription";
 
 const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	FREE: 0,

@@ -1,7 +1,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { isValidLocalProfileId } from "../_shared/localProfileId.ts";
+import { validatePullRequestShape } from "../_shared/mobileSyncPullRequest.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { readJsonObject } from "../_shared/requestValidation.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 // UUID validation regex for entity ids (sessions, routines, cycles, badges, PRs).
@@ -47,22 +49,6 @@ const POSITIVE_INT_STRING = /^\d+$/;
  *   - cursor and pageSize are optional with sensible defaults
  *   - Existing clients without pagination continue to work
  *   - lastSync still supported for timestamp-based filtering
- *
- * Returns:
- *   {
- *     syncTime: number,
- *     nextCursor?: string,  // Present if hasMore is true
- *     hasMore: boolean,     // True if more pages remain
- *     sessions: [...],      // Nested: exercises → sets → repSummaries
- *     routines: [...],      // Nested: exercises
- *     cycles: [...],        // Nested: days
- *     personalRecords: [...],
- *     rpgAttributes: {...} | null,
- *     badges: [...],
- *     gamificationStats: {...} | null,
- *     localProfiles: [...],
- *     externalActivities: [...]
- *   }
  */
 
 interface PullRequest {
@@ -268,6 +254,7 @@ function decodeCursor(cursor: string): DecodedCursor | null {
 			typeof parsed.type !== "string" ||
 			!ENTITY_ORDER.includes(parsed.type as EntityType) ||
 			typeof parsed.updatedAt !== "number" ||
+			!Number.isFinite(parsed.updatedAt) ||
 			typeof parsed.id !== "string"
 		) {
 			return null;
@@ -355,7 +342,12 @@ Deno.serve(async (req) => {
 		// =========================================================================
 		// 3. Parse request body with pagination parameters
 		// =========================================================================
-		const body: PullRequest = await req.json();
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+		const body = parsedBody.data as PullRequest;
+
+		const invalidRequest = validatePullRequestShape(parsedBody.data, cors);
+		if (invalidRequest) return invalidRequest;
 		const profileId: string | null = body.profileId ?? null;
 
 		// Validate profileId format to prevent injection attacks.

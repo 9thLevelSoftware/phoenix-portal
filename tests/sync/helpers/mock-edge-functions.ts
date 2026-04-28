@@ -148,6 +148,21 @@ export function mockPushEndpoint(
 	// Store cycles
 	if (payload.cycles) {
 		for (const cycle of payload.cycles) {
+			if (cycle.status === "active") {
+				for (const [cycleId, existingCycle] of mockStore.cycles.entries()) {
+					if (
+						existingCycle.userId === cycle.userId &&
+						existingCycle.status === "active" &&
+						cycleId !== cycle.id
+					) {
+						mockStore.cycles.set(cycleId, {
+							...existingCycle,
+							status: "inactive",
+							lastUsedAt: cycle.startedAt ?? new Date().toISOString(),
+						});
+					}
+				}
+			}
 			mockStore.cycles.set(cycle.id, cycle as CycleResponseDto);
 		}
 	}

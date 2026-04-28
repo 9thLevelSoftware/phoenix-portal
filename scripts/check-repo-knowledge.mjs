@@ -75,7 +75,13 @@ function assertTrackedAgentEntryPoint() {
 
 	let ignored = "";
 	try {
-		ignored = runGit(["check-ignore", "-v", "AGENTS.md"]).trim();
+		ignored = runGit([
+			"check-ignore",
+			"--no-index",
+			"-v",
+			"--",
+			"AGENTS.md",
+		]).trim();
 	} catch {
 		ignored = "";
 	}

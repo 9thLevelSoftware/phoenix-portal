@@ -14,14 +14,18 @@ const sizes = [64, 96, 192, 512];
 async function optimize() {
 	// Generate WebP at each size
 	for (const size of sizes) {
-		await sharp(sourcePng)
-			.resize(size, size, {
-				fit: "contain",
-				background: { r: 0, g: 0, b: 0, alpha: 0 },
-			})
-			.webp({ quality: 85 })
-			.toFile(path.join(srcDir, `phoenix-logo-${size}.webp`));
-		console.log(`Created phoenix-logo-${size}.webp`);
+		try {
+			await sharp(sourcePng)
+				.resize(size, size, {
+					fit: "contain",
+					background: { r: 0, g: 0, b: 0, alpha: 0 },
+				})
+				.webp({ quality: 85 })
+				.toFile(path.join(srcDir, `phoenix-logo-${size}.webp`));
+			console.log(`Created phoenix-logo-${size}.webp`);
+		} catch (err) {
+			console.error(`Failed creating phoenix-logo-${size}.webp:`, err);
+		}
 	}
 
 	// Generate small PNG fallback (192px for reasonable fallback quality)

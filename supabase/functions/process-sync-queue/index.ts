@@ -1,6 +1,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { backOff } from "npm:exponential-backoff@3.1.1";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -122,16 +123,35 @@ Deno.serve(async (req) => {
 				continue;
 			}
 
-			// Mark as processing
-			await supabase
+			// Atomically claim the task so parallel workers cannot process it twice.
+			const { data: claimedTask, error: claimError } = await supabase
 				.from("sync_queue")
 				.update({ status: "processing", started_at: new Date().toISOString() })
-				.eq("id", task.id);
+				.eq("id", task.id)
+				.eq("status", "pending")
+				.select("*")
+				.maybeSingle();
+
+			if (claimError) {
+				console.error(
+					`[SYNC_QUEUE] Failed to claim task ${task.id}:`,
+					claimError,
+				);
+				results.failed++;
+				continue;
+			}
+
+			if (!claimedTask) {
+				results.skipped++;
+				continue;
+			}
+
+			const processingTask = claimedTask as typeof task;
 
 			// Check subscription before calling sync function
 			const gate = await requireSubscription(
 				supabase,
-				task.user_id,
+				processingTask.user_id,
 				"FLAME",
 				cors,
 			);
@@ -143,21 +163,25 @@ Deno.serve(async (req) => {
 						error_message: `Subscription required: ${gate.tier} does not meet FLAME minimum`,
 						completed_at: new Date().toISOString(),
 					})
-					.eq("id", task.id);
+					.eq("id", processingTask.id);
 				results.failed++;
 				continue;
 			}
 
 			try {
 				// Call provider-specific sync function with exponential backoff on transient errors
-				await backOff(() => callSyncFunction(task.provider, task.user_id), {
-					numOfAttempts: 3,
-					startingDelay: 1000,
-					timeMultiple: 2,
-					// SQ-03: Retry on 429 AND transient server errors (502, 503, 504)
-					retry: (e: Error & { status?: number }) =>
-						e.status !== undefined && RETRYABLE_STATUSES.includes(e.status),
-				});
+				await backOff(
+					() =>
+						callSyncFunction(processingTask.provider, processingTask.user_id),
+					{
+						numOfAttempts: 3,
+						startingDelay: 1000,
+						timeMultiple: 2,
+						// SQ-03: Retry on 429 AND transient server errors (502, 503, 504)
+						retry: (e: Error & { status?: number }) =>
+							e.status !== undefined && RETRYABLE_STATUSES.includes(e.status),
+					},
+				);
 
 				// Mark completed
 				await supabase
@@ -166,15 +190,15 @@ Deno.serve(async (req) => {
 						status: "completed",
 						completed_at: new Date().toISOString(),
 					})
-					.eq("id", task.id);
+					.eq("id", processingTask.id);
 
 				// Increment rate limit counter
-				await incrementRateLimit(supabase, task.provider);
+				await incrementRateLimit(supabase, processingTask.provider);
 
 				results.processed++;
 			} catch (error) {
 				const err = error as Error & { status?: number };
-				const nextRetryCount = (task.retry_count ?? 0) + 1;
+				const nextRetryCount = (processingTask.retry_count ?? 0) + 1;
 
 				// SQ-03: Re-queue on retryable statuses (429, 502, 503, 504), mark failed otherwise
 				// SQ-04: If retries exhausted, mark permanently_failed regardless of status code
@@ -189,7 +213,7 @@ Deno.serve(async (req) => {
 						nextStatus = "permanently_failed";
 						errorMessage = `Max retries (${MAX_RETRIES}) exceeded. Last error: ${err.message}`;
 						console.warn(
-							`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`,
+							`[SYNC_QUEUE] Task ${processingTask.id} permanently failed after ${MAX_RETRIES} retries`,
 						);
 					} else {
 						nextStatus = "pending";
@@ -208,7 +232,7 @@ Deno.serve(async (req) => {
 							completed_at: new Date().toISOString(),
 						}),
 					})
-					.eq("id", task.id);
+					.eq("id", processingTask.id);
 
 				results.failed++;
 			}
@@ -233,7 +257,7 @@ async function callSyncFunction(provider: string, userId: string) {
 	}
 
 	const functionName = `${provider}-sync`;
-	const response = await fetch(
+	const response = await fetchWithTimeout(
 		`${Deno.env.get("SUPABASE_URL")}/functions/v1/${functionName}`,
 		{
 			method: "POST",
@@ -243,6 +267,7 @@ async function callSyncFunction(provider: string, userId: string) {
 			},
 			body: JSON.stringify({ user_id: userId }),
 		},
+		15_000,
 	);
 
 	if (!response.ok) {

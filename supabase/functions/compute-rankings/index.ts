@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { jsonResponse, readJsonObject } from "../_shared/requestValidation.ts";
 
 // =============================================================================
 // Response Types (matching src/queries/leaderboard.ts)
@@ -103,6 +104,51 @@ function getMonday(date: Date): Date {
 	return new Date(date.setDate(diff));
 }
 
+function isValidDateString(value: string): boolean {
+	const parsed = new Date(value);
+	return Number.isFinite(parsed.getTime());
+}
+
+function parseRankingRequest(
+	raw: Record<string, unknown>,
+	cors: Record<string, string>,
+): RankingRequest | Response {
+	const { type } = raw;
+
+	if (type !== "global" && type !== "weekly" && type !== "user") {
+		return jsonResponse(
+			{ error: 'Invalid request type. Must be "global", "weekly", or "user".' },
+			400,
+			cors,
+		);
+	}
+
+	if (type === "global") {
+		return { type };
+	}
+
+	if (type === "weekly") {
+		const { weekStart } = raw;
+		if (
+			weekStart !== undefined &&
+			(typeof weekStart !== "string" || !isValidDateString(weekStart))
+		) {
+			return jsonResponse({ error: "Invalid weekStart date" }, 400, cors);
+		}
+		return weekStart === undefined ? { type } : { type, weekStart };
+	}
+
+	if (typeof raw.userId !== "string" || raw.userId.length === 0) {
+		return jsonResponse(
+			{ error: "userId is required for user rankings" },
+			400,
+			cors,
+		);
+	}
+
+	return { type, userId: raw.userId };
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -136,27 +182,12 @@ Deno.serve(async (req) => {
 		// =========================================================================
 		// 1. Parse request body
 		// =========================================================================
-		let body: RankingRequest;
-		try {
-			body = await req.json();
-		} catch {
-			return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-				status: 400,
-				headers: { ...cors, "Content-Type": "application/json" },
-			});
-		}
+		const parsedJson = await readJsonObject(req, cors);
+		if (!parsedJson.ok) return parsedJson.response;
 
-		if (!body.type || !["global", "weekly", "user"].includes(body.type)) {
-			return new Response(
-				JSON.stringify({
-					error: 'Invalid request type. Must be "global", "weekly", or "user".',
-				}),
-				{
-					status: 400,
-					headers: { ...cors, "Content-Type": "application/json" },
-				},
-			);
-		}
+		const parsedRequest = parseRankingRequest(parsedJson.data, cors);
+		if (parsedRequest instanceof Response) return parsedRequest;
+		const body = parsedRequest;
 
 		// =========================================================================
 		// 2. JWT required for all ranking requests
@@ -194,21 +225,26 @@ Deno.serve(async (req) => {
 		const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 		if (body.type === "user") {
-			if (!body.userId) {
-				return new Response(
-					JSON.stringify({ error: "userId is required for user rankings" }),
-					{
-						status: 400,
-						headers: { ...cors, "Content-Type": "application/json" },
-					},
-				);
-			}
 			if (body.userId !== viewerId) {
-				const { data: targetProfile } = await supabase
-					.from("profiles")
-					.select("leaderboard_participation")
-					.eq("user_id", body.userId)
-					.maybeSingle();
+				const { data: targetProfile, error: targetProfileError } =
+					await supabase
+						.from("profiles")
+						.select("leaderboard_participation")
+						.eq("user_id", body.userId)
+						.maybeSingle();
+				if (targetProfileError) {
+					console.error(
+						"Failed to load target leaderboard profile:",
+						targetProfileError,
+					);
+					return new Response(
+						JSON.stringify({ error: "Failed to check leaderboard access" }),
+						{
+							status: 500,
+							headers: { ...cors, "Content-Type": "application/json" },
+						},
+					);
+				}
 				if (!targetProfile?.leaderboard_participation) {
 					return new Response(JSON.stringify({ error: "Forbidden" }), {
 						status: 403,

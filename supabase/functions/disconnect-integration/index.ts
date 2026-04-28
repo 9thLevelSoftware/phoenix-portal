@@ -1,6 +1,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { readJsonObject } from "../_shared/requestValidation.ts";
 
 // Service-role client for DB operations (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -63,16 +64,13 @@ Deno.serve(async (req) => {
 		);
 		if (!rateCheck.allowed) return rateCheck.response!;
 
-		let body: Record<string, unknown>;
-		try {
-			body = await req.json();
-		} catch {
-			return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-				status: 400,
-				headers: { ...cors, "Content-Type": "application/json" },
-			});
-		}
-		const provider = typeof body.provider === "string" ? body.provider : "";
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+
+		const provider =
+			typeof parsedBody.data.provider === "string"
+				? parsedBody.data.provider
+				: "";
 		if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
 			return new Response(
 				JSON.stringify({ error: "Unsupported integration provider" }),

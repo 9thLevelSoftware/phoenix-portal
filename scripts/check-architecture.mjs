@@ -165,6 +165,19 @@ function importDeclarations(sourceFile, sourceText) {
 			});
 		}
 
+		if (
+			ts.isCallExpression(node) &&
+			node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+			node.arguments.length === 1 &&
+			ts.isStringLiteral(node.arguments[0])
+		) {
+			const position = ast.getLineAndCharacterOfPosition(node.getStart(ast));
+			imports.push({
+				line: position.line + 1,
+				specifier: node.arguments[0].text,
+			});
+		}
+
 		ts.forEachChild(node, visit);
 	}
 
@@ -189,6 +202,18 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 
 	if (!targetPath) {
 		return null;
+	}
+
+	if (
+		sourceLayer !== "edge-function" &&
+		targetPath.startsWith("supabase/functions/")
+	) {
+		return makeViolation(
+			"import-boundary",
+			filePath,
+			`Portal source cannot import Edge Function code; imported ${targetPath}.`,
+			importInfo,
+		);
 	}
 
 	if (sourceLayer === "schemas") {

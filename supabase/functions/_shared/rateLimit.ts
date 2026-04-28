@@ -338,7 +338,37 @@ export async function checkRateLimit(
 		.select("requests_this_window")
 		.single();
 
-	const newCount =
-		updated?.requests_this_window ?? current.requests_this_window + 1;
+	if (!updated) {
+		console.error(
+			"[rateLimit] optimistic update did not apply; failing closed",
+			{
+				key,
+				userId,
+				current: current.requests_this_window,
+				maxRequests,
+			},
+		);
+		return {
+			allowed: false,
+			remaining: 0,
+			response: new Response(
+				JSON.stringify({
+					error: "rate_limit_unavailable",
+					message:
+						"Rate limit check temporarily unavailable. Please retry shortly.",
+				}),
+				{
+					status: 503,
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+						"Retry-After": "30",
+					},
+				},
+			),
+		};
+	}
+
+	const newCount = updated.requests_this_window;
 	return { allowed: true, remaining: maxRequests - newCount };
 }

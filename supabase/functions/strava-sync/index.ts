@@ -1,9 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import {
 	decryptOAuthSecret,
 	encryptOAuthSecret,
 } from "../_shared/oauthTokenCrypto.ts";
+import { isJsonObject, readJsonObject } from "../_shared/requestValidation.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -74,6 +76,40 @@ interface NormalizedActivity {
 	elevation_gain_meters: number | null;
 }
 
+type SyncType = "initial" | "manual" | "incremental";
+
+function isSyncType(value: unknown): value is SyncType {
+	return value === "initial" || value === "manual" || value === "incremental";
+}
+
+function isStravaActivityRaw(value: unknown): value is StravaActivityRaw {
+	return (
+		isJsonObject(value) &&
+		typeof value.id === "number" &&
+		Number.isFinite(value.id) &&
+		typeof value.name === "string" &&
+		typeof value.sport_type === "string" &&
+		typeof value.start_date === "string" &&
+		typeof value.elapsed_time === "number" &&
+		Number.isFinite(value.elapsed_time)
+	);
+}
+
+function isStravaRefreshPayload(value: unknown): value is {
+	access_token: string;
+	refresh_token?: string;
+	expires_at: number;
+} {
+	return (
+		isJsonObject(value) &&
+		typeof value.access_token === "string" &&
+		(value.refresh_token === undefined ||
+			typeof value.refresh_token === "string") &&
+		typeof value.expires_at === "number" &&
+		Number.isFinite(value.expires_at)
+	);
+}
+
 function normalizeStravaActivity(raw: StravaActivityRaw): NormalizedActivity {
 	return {
 		external_id: String(raw.id),
@@ -83,7 +119,8 @@ function normalizeStravaActivity(raw: StravaActivityRaw): NormalizedActivity {
 		started_at: raw.start_date,
 		duration_seconds: raw.elapsed_time,
 		distance_meters: raw.distance ?? null,
-		calories: raw.kilojoules ? Math.round(raw.kilojoules * 0.239) : null,
+		calories:
+			raw.kilojoules != null ? Math.round(raw.kilojoules * 0.239) : null,
 		avg_heart_rate: raw.average_heartrate ?? null,
 		max_heart_rate: raw.max_heartrate ?? null,
 		elevation_gain_meters: raw.total_elevation_gain ?? null,
@@ -99,16 +136,20 @@ async function refreshAccessToken(refreshToken: string): Promise<{
 	refresh_token: string;
 	expires_at: number;
 }> {
-	const response = await fetch("https://www.strava.com/oauth/token", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			client_id: Deno.env.get("STRAVA_CLIENT_ID"),
-			client_secret: Deno.env.get("STRAVA_CLIENT_SECRET"),
-			grant_type: "refresh_token",
-			refresh_token: refreshToken,
-		}),
-	});
+	const response = await fetchWithTimeout(
+		"https://www.strava.com/oauth/token",
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				client_id: Deno.env.get("STRAVA_CLIENT_ID"),
+				client_secret: Deno.env.get("STRAVA_CLIENT_SECRET"),
+				grant_type: "refresh_token",
+				refresh_token: refreshToken,
+			}),
+		},
+		10_000,
+	);
 
 	if (!response.ok) {
 		throw new Error(
@@ -116,7 +157,11 @@ async function refreshAccessToken(refreshToken: string): Promise<{
 		);
 	}
 
-	return response.json();
+	const payload: unknown = await response.json();
+	if (!isStravaRefreshPayload(payload)) {
+		throw new Error("Token refresh returned invalid payload");
+	}
+	return payload;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +178,9 @@ Deno.serve(async (req) => {
 
 	try {
 		// Parse request body first (needed for both auth paths)
-		const body = await req.json();
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+		const body = parsedBody.data;
 
 		// ---- Auth: Dual-path (browser JWT or service-role key) ----
 		const authHeader = req.headers.get("Authorization");
@@ -166,7 +213,7 @@ Deno.serve(async (req) => {
 			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
-			if (!isServiceRole || !body.user_id) {
+			if (!isServiceRole || typeof body.user_id !== "string") {
 				return new Response(JSON.stringify({ error: "Not authenticated" }), {
 					status: 401,
 					headers: { ...cors, "Content-Type": "application/json" },
@@ -176,6 +223,12 @@ Deno.serve(async (req) => {
 		}
 
 		const sync_type = body.sync_type ?? "incremental";
+		if (!isSyncType(sync_type)) {
+			return new Response(JSON.stringify({ error: "Invalid sync_type" }), {
+				status: 400,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
+		}
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
@@ -237,7 +290,7 @@ Deno.serve(async (req) => {
 			refreshToken = refreshed.refresh_token ?? refreshToken;
 
 			// Persist new tokens in oauth_tokens (server-only table)
-			await supabase
+			const { error: persistTokenError } = await supabase
 				.from("oauth_tokens")
 				.update({
 					access_token: await encryptOAuthSecret(refreshed.access_token),
@@ -247,6 +300,20 @@ Deno.serve(async (req) => {
 				})
 				.eq("user_id", userId)
 				.eq("provider", "strava");
+
+			if (persistTokenError) {
+				console.error(
+					"Failed to persist refreshed Strava token:",
+					persistTokenError,
+				);
+				return new Response(
+					JSON.stringify({ error: "Failed to persist Strava token" }),
+					{
+						status: 502,
+						headers: { ...cors, "Content-Type": "application/json" },
+					},
+				);
+			}
 		}
 
 		// ---------------------------------------------------------------
@@ -271,11 +338,12 @@ Deno.serve(async (req) => {
 			const params = new URLSearchParams(baseParams);
 			params.set("page", String(page));
 
-			const activitiesResponse = await fetch(
+			const activitiesResponse = await fetchWithTimeout(
 				`https://www.strava.com/api/v3/athlete/activities?${params}`,
 				{
 					headers: { Authorization: `Bearer ${accessToken}` },
 				},
+				10_000,
 			);
 
 			if (!activitiesResponse.ok) {
@@ -309,8 +377,20 @@ Deno.serve(async (req) => {
 				);
 			}
 
-			const pageActivities: StravaActivityRaw[] =
-				await activitiesResponse.json();
+			const pagePayload: unknown = await activitiesResponse.json();
+			if (
+				!Array.isArray(pagePayload) ||
+				!pagePayload.every(isStravaActivityRaw)
+			) {
+				return new Response(
+					JSON.stringify({ error: "Invalid Strava activities payload" }),
+					{
+						status: 502,
+						headers: { ...cors, "Content-Type": "application/json" },
+					},
+				);
+			}
+			const pageActivities = pagePayload;
 			rawActivities.push(...pageActivities);
 
 			if (pageActivities.length < 200) {

@@ -34,9 +34,9 @@ async function verifyPaddleSignature(
 	if (!tsEntry || !h1Entry) return false;
 
 	const ts = tsEntry.slice(3);
-	const expectedHex = h1Entry.slice(3);
+	const expectedHex = h1Entry.slice(3).toLowerCase();
 
-	if (!ts || !expectedHex) return false;
+	if (!ts || !expectedHex || !/^[0-9a-f]+$/.test(expectedHex)) return false;
 
 	// Reject signatures older than 5 minutes to prevent replay attacks
 	const signatureAge = Math.abs(Date.now() / 1000 - parseInt(ts, 10));

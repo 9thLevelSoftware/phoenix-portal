@@ -1,5 +1,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
+import { isJsonObject } from "../_shared/requestValidation.ts";
 
 /**
  * Strava OAuth Callback Edge Function
@@ -23,6 +25,26 @@ import { encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
  */
 
 const APP_URL = () => Deno.env.get("APP_URL") ?? "http://localhost:5173";
+
+interface StravaTokenPayload {
+	access_token: string;
+	refresh_token: string;
+	expires_at: number;
+	athlete: { id: number | string };
+}
+
+function isStravaTokenPayload(value: unknown): value is StravaTokenPayload {
+	return (
+		isJsonObject(value) &&
+		typeof value.access_token === "string" &&
+		typeof value.refresh_token === "string" &&
+		typeof value.expires_at === "number" &&
+		Number.isFinite(value.expires_at) &&
+		isJsonObject(value.athlete) &&
+		(typeof value.athlete.id === "number" ||
+			typeof value.athlete.id === "string")
+	);
+}
 
 Deno.serve(async (req) => {
 	const url = new URL(req.url);
@@ -93,16 +115,20 @@ Deno.serve(async (req) => {
 		// ----------------------------------------------------------------
 		// Exchange authorization code for tokens
 		// ----------------------------------------------------------------
-		const tokenResponse = await fetch("https://www.strava.com/oauth/token", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				client_id: Deno.env.get("STRAVA_CLIENT_ID"),
-				client_secret: Deno.env.get("STRAVA_CLIENT_SECRET"),
-				code,
-				grant_type: "authorization_code",
-			}),
-		});
+		const tokenResponse = await fetchWithTimeout(
+			"https://www.strava.com/oauth/token",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					client_id: Deno.env.get("STRAVA_CLIENT_ID"),
+					client_secret: Deno.env.get("STRAVA_CLIENT_SECRET"),
+					code,
+					grant_type: "authorization_code",
+				}),
+			},
+			10_000,
+		);
 
 		if (!tokenResponse.ok) {
 			console.error(
@@ -115,7 +141,14 @@ Deno.serve(async (req) => {
 			);
 		}
 
-		const tokens = await tokenResponse.json();
+		const tokens: unknown = await tokenResponse.json();
+		if (!isStravaTokenPayload(tokens)) {
+			console.error("Strava token exchange returned invalid payload");
+			return Response.redirect(
+				`${APP_URL()}/integrations?error=invalid_token_payload`,
+				302,
+			);
+		}
 
 		// tokens shape: { token_type, expires_at, expires_in, refresh_token, access_token, athlete: { id, ... } }
 		const providerUserId = String(tokens.athlete.id);

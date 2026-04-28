@@ -1,9 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import {
 	decryptOAuthSecret,
 	encryptOAuthSecret,
 } from "../_shared/oauthTokenCrypto.ts";
+import { isJsonObject, readJsonObject } from "../_shared/requestValidation.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -38,6 +40,17 @@ interface HevyWorkout {
 	}>;
 }
 
+function isHevyWorkout(value: unknown): value is HevyWorkout {
+	return (
+		isJsonObject(value) &&
+		typeof value.id === "string" &&
+		typeof value.title === "string" &&
+		typeof value.start_time === "string" &&
+		typeof value.end_time === "string" &&
+		Array.isArray(value.exercises)
+	);
+}
+
 Deno.serve(async (req) => {
 	const cors = getCorsHeaders(req);
 
@@ -48,7 +61,9 @@ Deno.serve(async (req) => {
 
 	try {
 		// Parse request body first (needed for both auth paths)
-		const body = await req.json();
+		const parsedBody = await readJsonObject(req, cors);
+		if (!parsedBody.ok) return parsedBody.response;
+		const body = parsedBody.data;
 
 		// ---- Auth: Dual-path (browser JWT or service-role key) ----
 		const authHeader = req.headers.get("Authorization");
@@ -81,7 +96,7 @@ Deno.serve(async (req) => {
 			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
-			if (!isServiceRole || !body.user_id) {
+			if (!isServiceRole || typeof body.user_id !== "string") {
 				return new Response(JSON.stringify({ error: "Not authenticated" }), {
 					status: 401,
 					headers: { ...cors, "Content-Type": "application/json" },
@@ -90,7 +105,9 @@ Deno.serve(async (req) => {
 			userId = body.user_id;
 		}
 
-		const { api_key, sync_type } = body;
+		const api_key = typeof body.api_key === "string" ? body.api_key : undefined;
+		const sync_type =
+			typeof body.sync_type === "string" ? body.sync_type : undefined;
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
@@ -164,12 +181,16 @@ Deno.serve(async (req) => {
 		// Attempt to fetch workouts from Hevy API
 		let workouts: HevyWorkout[] = [];
 		try {
-			const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-				headers: {
-					"api-key": storedApiKey,
-					"Content-Type": "application/json",
+			const response = await fetchWithTimeout(
+				`${HEVY_API_BASE}/workouts`,
+				{
+					headers: {
+						"api-key": storedApiKey,
+						"Content-Type": "application/json",
+					},
 				},
-			});
+				10_000,
+			);
 
 			if (response.status === 401 || response.status === 403) {
 				// API key invalid or Hevy PRO required
@@ -199,8 +220,15 @@ Deno.serve(async (req) => {
 				throw new Error(`Hevy API returned ${response.status}`);
 			}
 
-			const data = await response.json();
-			workouts = data.workouts ?? data ?? [];
+			const data: unknown = await response.json();
+			const rawWorkouts =
+				isJsonObject(data) && Array.isArray(data.workouts)
+					? data.workouts
+					: data;
+			if (!Array.isArray(rawWorkouts) || !rawWorkouts.every(isHevyWorkout)) {
+				throw new Error("Hevy API returned invalid workout payload");
+			}
+			workouts = rawWorkouts;
 		} catch (fetchError) {
 			console.error("Hevy API fetch error:", fetchError);
 

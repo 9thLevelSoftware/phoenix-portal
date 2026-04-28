@@ -31,14 +31,12 @@ import {
 } from "@/app/components/ui/card";
 import { Switch } from "@/app/components/ui/switch";
 import { useAuth } from "@/app/hooks/useAuth";
-import {
-	type SubscriptionTier,
-	useSubscription,
-} from "@/hooks/useSubscription";
+import { useSubscription } from "@/hooks/useSubscription";
 import { openCheckout } from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
+import type { SubscriptionTier } from "@/schemas/subscription";
 
 interface TierFeature {
 	label: string;

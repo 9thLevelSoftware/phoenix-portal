@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { isJsonObject, readJsonObject } from "../_shared/requestValidation.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -40,6 +41,25 @@ interface GarminActivitySummary {
 	maxHeartRateInBeatsPerMinute?: number;
 	elevationGainInMeters?: number;
 	summary?: Record<string, unknown>;
+}
+
+function isGarminActivitySummary(
+	value: unknown,
+): value is GarminActivitySummary {
+	return (
+		isJsonObject(value) &&
+		typeof value.userId === "string" &&
+		typeof value.activityId === "number" &&
+		Number.isFinite(value.activityId) &&
+		typeof value.activityName === "string" &&
+		typeof value.activityType === "string" &&
+		typeof value.startTimeInSeconds === "number" &&
+		Number.isFinite(value.startTimeInSeconds) &&
+		(typeof value.startTimeOffsetInSeconds === "number" ||
+			value.startTimeOffsetInSeconds === undefined) &&
+		typeof value.durationInSeconds === "number" &&
+		Number.isFinite(value.durationInSeconds)
+	);
 }
 
 /**
@@ -165,8 +185,27 @@ Deno.serve(async (req) => {
 			});
 		}
 
-		const payload: GarminWebhookPayload = await req.json();
-		const activities = payload.activities ?? payload.activityDetails ?? [];
+		const parsedPayload = await readJsonObject(req, cors);
+		if (!parsedPayload.ok) return parsedPayload.response;
+
+		const payload: GarminWebhookPayload = parsedPayload.data;
+		const rawActivities = payload.activities ?? payload.activityDetails ?? [];
+		if (!Array.isArray(rawActivities)) {
+			return new Response(JSON.stringify({ error: "Invalid Garmin payload" }), {
+				status: 400,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
+		}
+		if (!rawActivities.every(isGarminActivitySummary)) {
+			return new Response(
+				JSON.stringify({ error: "Invalid Garmin activity" }),
+				{
+					status: 400,
+					headers: { ...cors, "Content-Type": "application/json" },
+				},
+			);
+		}
+		const activities = rawActivities;
 
 		if (activities.length === 0) {
 			// Acknowledge receipt even if no activities (could be a ping or other event)
@@ -194,7 +233,7 @@ Deno.serve(async (req) => {
 					.eq("provider", "garmin")
 					.eq("provider_user_id", activity.userId)
 					.eq("status", "connected")
-					.single();
+					.maybeSingle();
 
 				if (lookupError) {
 					// fix(audit): C5 — DB lookup failure is transient; signal retry to Garmin
