@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+> Legacy note: this file is Claude-specific project guidance. Codex and
+> Symphony workspaces should use `AGENTS.md` and `WORKFLOW.md` as the current
+> operating contract, with this file treated as supplemental historical context.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview

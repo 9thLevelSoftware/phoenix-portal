@@ -12,6 +12,7 @@
     "auth:apple:rotate": "node scripts/generate-apple-client-secret.mjs --write-env",
     "build": "vite build",
     "dev": "vite",
+    "lint": "biome check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:sync": "cross-env MOCK_EDGE_FUNCTIONS=true vitest run tests/sync/",
@@ -21,6 +22,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "verify:full": "npm run verify && npm run test:e2e",
     "gen:types": "npx supabase gen types typescript --project-id ilzlswmatadlnsuxatcv --schema public > src/lib/database.types.ts"
   },
   "dependencies": {
