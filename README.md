@@ -106,6 +106,15 @@ npm run test:e2e
 npm run gen:types
 ```
 
+### Symphony Orchestration
+
+This repo includes `WORKFLOW.md` for [OpenAI Symphony](https://github.com/openai/symphony),
+which can poll Linear and launch isolated Codex implementation runs for active
+issues. Before running it, set `LINEAR_API_KEY` and fill in
+`tracker.project_slug` in `WORKFLOW.md`. See
+[`docs/runbooks/symphony.md`](docs/runbooks/symphony.md) for the full setup and
+operating checklist.
+
 ### Environment Variables
 
 Copy `.env.example` to `.env.local`:

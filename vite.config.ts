@@ -82,6 +82,7 @@ export default defineConfig({
 	},
 	build: {
 		sourcemap: "hidden",
+		chunkSizeWarningLimit: 700,
 		rollupOptions: {
 			output: {
 				manualChunks: {
@@ -91,11 +92,6 @@ export default defineConfig({
 						"react-dom/client",
 						"react-router",
 						"react-is",
-					],
-					"vendor-motion": ["motion"],
-					"vendor-supabase": ["@supabase/supabase-js"],
-					"vendor-query": ["@tanstack/react-query"],
-					"vendor-radix": [
 						"@radix-ui/react-dialog",
 						"@radix-ui/react-dropdown-menu",
 						"@radix-ui/react-select",
@@ -123,6 +119,9 @@ export default defineConfig({
 						"@radix-ui/react-menubar",
 						"@radix-ui/react-navigation-menu",
 					],
+					"vendor-motion": ["motion"],
+					"vendor-supabase": ["@supabase/supabase-js"],
+					"vendor-query": ["@tanstack/react-query"],
 					"vendor-ui": [
 						"class-variance-authority",
 						"clsx",
