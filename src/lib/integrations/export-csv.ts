@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
 // =============================================================================
 // Export Phoenix workouts as Strong-compatible CSV
@@ -9,9 +10,6 @@ import { supabase } from "@/lib/supabase";
 //   Date, Workout Name, Duration, Exercise Name, Set Order,
 //   Weight, Reps, Distance, Seconds, Notes, Workout Notes
 // =============================================================================
-
-/** Per-cable to total weight multiplier (must match WEIGHT_MULTIPLIER in transforms.ts) */
-const WEIGHT_MULTIPLIER = 2;
 
 /** Kilograms to pounds conversion factor */
 const KG_TO_LBS = 2.20462;
