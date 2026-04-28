@@ -192,7 +192,8 @@ function decodeCursor(cursor: string): DecodedCursor | null {
 			!ENTITY_ORDER.includes(parsed.type as EntityType) ||
 			typeof parsed.updatedAt !== "number" ||
 			!Number.isFinite(parsed.updatedAt) ||
-			Number.isNaN(new Date(parsed.updatedAt).getTime()) ||
+			parsed.updatedAt < 0 ||
+			parsed.updatedAt > Date.now() + 86_400_000 ||
 			typeof parsed.id !== "string"
 		) {
 			return null;

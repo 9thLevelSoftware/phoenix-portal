@@ -67,8 +67,8 @@ function hasValidOptionalNumbers(
 function isGarminActivitySummary(
 	value: unknown,
 ): value is GarminActivitySummary {
+	if (!isJsonObject(value)) return false;
 	return (
-		isJsonObject(value) &&
 		typeof value.userId === "string" &&
 		typeof value.activityId === "number" &&
 		Number.isFinite(value.activityId) &&

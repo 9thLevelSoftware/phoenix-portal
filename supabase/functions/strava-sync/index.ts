@@ -96,8 +96,8 @@ function hasOptionalFiniteNumber(
 }
 
 function isStravaActivityRaw(value: unknown): value is StravaActivityRaw {
+	if (!isJsonObject(value)) return false;
 	return (
-		isJsonObject(value) &&
 		typeof value.id === "number" &&
 		Number.isFinite(value.id) &&
 		typeof value.name === "string" &&
