@@ -55,6 +55,7 @@ import {
 	workoutListOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
@@ -76,7 +77,7 @@ function deriveWeeklyVolume(
 		for (const row of stats) {
 			const dayName = days[new Date(row.started_at).getDay()];
 			// total_volume is per-cable in DB; multiply by 2 for display
-			volumeByDay[dayName] += row.total_volume * 2;
+			volumeByDay[dayName] += row.total_volume * WEIGHT_MULTIPLIER;
 		}
 	}
 
