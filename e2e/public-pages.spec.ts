@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Helper: navigate and wait for DOM content (not networkidle, which hangs without Supabase)
 async function gotoPublic(page: Page, path: string) {
@@ -91,12 +91,8 @@ test.describe("Public pages - render and content", () => {
 			await expect(dialog.locator('input[type="password"]')).toBeVisible();
 
 			// Sign In and Sign Up tab triggers
-			await expect(
-				dialog.getByRole("tab", { name: /Sign In/i }),
-			).toBeVisible();
-			await expect(
-				dialog.getByRole("tab", { name: /Sign Up/i }),
-			).toBeVisible();
+			await expect(dialog.getByRole("tab", { name: /Sign In/i })).toBeVisible();
+			await expect(dialog.getByRole("tab", { name: /Sign Up/i })).toBeVisible();
 		});
 	});
 

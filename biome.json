@@ -7,7 +7,28 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+		"includes": [
+			"*.json",
+			"*.ts",
+			"*.mjs",
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"tests/**/*.ts",
+			"tests/**/*.tsx",
+			"e2e/**/*.ts",
+			"e2e/**/*.tsx",
+			"scripts/**/*.mjs",
+			"supabase/functions/**/*.ts",
+			"!package-lock.json",
+			"!tsconfig.tsbuildinfo",
+			"!src/lib/database.types.ts",
+			"!docs/archive",
+			"!docs/superpowers",
+			"!dist",
+			"!node_modules",
+			"!playwright-report",
+			"!test-results"
+		]
 	},
 	"formatter": {
 		"enabled": true,

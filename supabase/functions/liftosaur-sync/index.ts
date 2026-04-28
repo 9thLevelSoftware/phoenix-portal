@@ -1,6 +1,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
+import {
+	decryptOAuthSecret,
+	encryptOAuthSecret,
+} from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -45,7 +48,7 @@ function parseLiftoscriptMetadata(text: string): {
 } {
 	// Extract timestamp (ISO 8601 at the start)
 	const tsMatch = text.match(
-		/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/
+		/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/,
 	);
 	const timestamp = tsMatch?.[1] ?? null;
 
@@ -80,13 +83,10 @@ Deno.serve(async (req) => {
 		const authHeader = req.headers.get("Authorization");
 
 		if (!authHeader) {
-			return new Response(
-				JSON.stringify({ error: "Missing authorization" }),
-				{
-					status: 401,
-					headers: { ...cors, "Content-Type": "application/json" },
-				}
-			);
+			return new Response(JSON.stringify({ error: "Missing authorization" }), {
+				status: 401,
+				headers: { ...cors, "Content-Type": "application/json" },
+			});
 		}
 
 		let userId: string;
@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
 		const supabaseAuth = createClient(
 			Deno.env.get("SUPABASE_URL")!,
 			Deno.env.get("SUPABASE_ANON_KEY")!,
-			{ global: { headers: { Authorization: authHeader } } }
+			{ global: { headers: { Authorization: authHeader } } },
 		);
 		const {
 			data: { user: jwtUser },
@@ -111,13 +111,10 @@ Deno.serve(async (req) => {
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
 			if (!isServiceRole || !body.user_id) {
-				return new Response(
-					JSON.stringify({ error: "Not authenticated" }),
-					{
-						status: 401,
-						headers: { ...cors, "Content-Type": "application/json" },
-					}
-				);
+				return new Response(JSON.stringify({ error: "Not authenticated" }), {
+					status: 401,
+					headers: { ...cors, "Content-Type": "application/json" },
+				});
 			}
 			userId = body.user_id;
 		}
@@ -126,7 +123,7 @@ Deno.serve(async (req) => {
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 		);
 
 		// Subscription gate — FLAME or higher required for integrations
@@ -144,20 +141,17 @@ Deno.serve(async (req) => {
 						api_key: await encryptOAuthSecret(api_key),
 						updated_at: new Date().toISOString(),
 					},
-					{ onConflict: "user_id,provider" }
+					{ onConflict: "user_id,provider" },
 				);
 
 			if (tokenUpsertError) {
-				console.error(
-					"Failed to store Liftosaur API key:",
-					tokenUpsertError
-				);
+				console.error("Failed to store Liftosaur API key:", tokenUpsertError);
 				return new Response(
 					JSON.stringify({ error: "Failed to store API key" }),
 					{
 						status: 500,
 						headers: { ...cors, "Content-Type": "application/json" },
-					}
+					},
 				);
 			}
 
@@ -169,7 +163,7 @@ Deno.serve(async (req) => {
 					status: "connected",
 					connected_at: new Date().toISOString(),
 				},
-				{ onConflict: "user_id,provider" }
+				{ onConflict: "user_id,provider" },
 			);
 		}
 
@@ -186,13 +180,14 @@ Deno.serve(async (req) => {
 		if (!storedApiKey) {
 			return new Response(
 				JSON.stringify({
-					error: "No Liftosaur API key found. Enter your API key from Liftosaur Settings.",
+					error:
+						"No Liftosaur API key found. Enter your API key from Liftosaur Settings.",
 					requires_premium: true,
 				}),
 				{
 					status: 400,
 					headers: { ...cors, "Content-Type": "application/json" },
-				}
+				},
 			);
 		}
 
@@ -217,7 +212,7 @@ Deno.serve(async (req) => {
 							Authorization: `Bearer ${storedApiKey}`,
 							"Content-Type": "application/json",
 						},
-					}
+					},
 				);
 
 				if (response.status === 401 || response.status === 403) {
@@ -225,15 +220,15 @@ Deno.serve(async (req) => {
 						.from("user_integrations")
 						.update({
 							status: "error",
-							error_message:
-								"API key invalid or Liftosaur Premium required",
+							error_message: "API key invalid or Liftosaur Premium required",
 						})
 						.eq("user_id", userId)
 						.eq("provider", "liftosaur");
 
 					return new Response(
 						JSON.stringify({
-							error: "Liftosaur API access denied. Verify your API key and Premium subscription.",
+							error:
+								"Liftosaur API access denied. Verify your API key and Premium subscription.",
 							requires_premium: true,
 						}),
 						{
@@ -242,7 +237,7 @@ Deno.serve(async (req) => {
 								...cors,
 								"Content-Type": "application/json",
 							},
-						}
+						},
 					);
 				}
 
@@ -275,7 +270,7 @@ Deno.serve(async (req) => {
 				{
 					status: 502,
 					headers: { ...cors, "Content-Type": "application/json" },
-				}
+				},
 			);
 		}
 
@@ -289,7 +284,7 @@ Deno.serve(async (req) => {
 				? meta.program
 					? `${meta.program} — ${meta.dayName}`
 					: meta.dayName
-				: meta.program ?? `Workout #${record.id}`;
+				: (meta.program ?? `Workout #${record.id}`);
 
 			const startedAt = meta.timestamp
 				? new Date(meta.timestamp).toISOString()
@@ -309,7 +304,7 @@ Deno.serve(async (req) => {
 						calories: null,
 						raw_data: { id: record.id, text: record.text },
 					},
-					{ onConflict: "user_id,provider,external_id" }
+					{ onConflict: "user_id,provider,external_id" },
 				);
 
 			if (!activityError) {
@@ -349,7 +344,7 @@ Deno.serve(async (req) => {
 			}),
 			{
 				headers: { ...cors, "Content-Type": "application/json" },
-			}
+			},
 		);
 	} catch (err) {
 		console.error("Liftosaur sync error:", err);

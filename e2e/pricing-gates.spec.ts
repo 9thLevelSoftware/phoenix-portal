@@ -18,7 +18,9 @@ test.describe("Pricing and gates", () => {
 
 		await page.goto("/integrations");
 		await expect(page.getByText("Upgrade to FLAME")).toBeVisible();
-		await expect(page.getByRole("link", { name: "Compare Plans" })).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Compare Plans" }),
+		).toBeVisible();
 	});
 
 	test("ember users see Ember as the current plan", async ({ page }) => {
@@ -33,9 +35,7 @@ test.describe("Pricing and gates", () => {
 		).toBeVisible();
 	});
 
-	test("flame users see lower tiers as included", async ({
-		page,
-	}) => {
+	test("flame users see lower tiers as included", async ({ page }) => {
 		await mockAuthenticatedApp(page, { tier: "FLAME" });
 
 		await page.goto("/pricing");

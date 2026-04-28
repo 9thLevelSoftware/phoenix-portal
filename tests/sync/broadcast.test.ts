@@ -21,129 +21,129 @@
  * without live Supabase credentials.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  callPushEndpoint,
-  createTestUser,
-  createMinimalPushPayload,
-  type TestUser,
-} from './helpers/edge-function-harness';
-import { resetMockStore } from './helpers/mock-edge-functions';
+	callPushEndpoint,
+	createMinimalPushPayload,
+	createTestUser,
+	type TestUser,
+} from "./helpers/edge-function-harness";
 import {
-  getBroadcastsByEvent,
-  resetBroadcasts,
-  setBroadcastShouldThrow,
-} from './helpers/mock-broadcast';
+	getBroadcastsByEvent,
+	resetBroadcasts,
+	setBroadcastShouldThrow,
+} from "./helpers/mock-broadcast";
+import { resetMockStore } from "./helpers/mock-edge-functions";
 
 vi.setConfig({ testTimeout: 30000 });
 
-describe('mobile-sync-push → Supabase Broadcast', () => {
-  let testUser: TestUser;
+describe("mobile-sync-push → Supabase Broadcast", () => {
+	let testUser: TestUser;
 
-  beforeEach(async () => {
-    resetMockStore();
-    resetBroadcasts();
-    testUser = await createTestUser();
-  });
+	beforeEach(async () => {
+		resetMockStore();
+		resetBroadcasts();
+		testUser = await createTestUser();
+	});
 
-  it('emits sync_complete on successful push with documented payload shape', async () => {
-    const payload = createMinimalPushPayload(testUser.id, {
-      deviceId: 'device-broadcast-1',
-      platform: 'android',
-      profileId: null,
-      profileName: null,
-    });
+	it("emits sync_complete on successful push with documented payload shape", async () => {
+		const payload = createMinimalPushPayload(testUser.id, {
+			deviceId: "device-broadcast-1",
+			platform: "android",
+			profileId: null,
+			profileName: null,
+		});
 
-    const pushResult = await callPushEndpoint(payload, testUser.accessToken);
-    expect(pushResult.success).toBe(true);
+		const pushResult = await callPushEndpoint(payload, testUser.accessToken);
+		expect(pushResult.success).toBe(true);
 
-    const events = getBroadcastsByEvent('sync_complete');
-    expect(events).toHaveLength(1);
+		const events = getBroadcastsByEvent("sync_complete");
+		expect(events).toHaveLength(1);
 
-    const [evt] = events;
-    // Channel is `sync:{userId}` — the mock derives userId from the
-    // sessions payload (or falls back to 'mock-user'). Accept either form.
-    expect(evt.channel).toMatch(/^sync:/);
-    expect(evt.event).toBe('sync_complete');
+		const [evt] = events;
+		// Channel is `sync:{userId}` — the mock derives userId from the
+		// sessions payload (or falls back to 'mock-user'). Accept either form.
+		expect(evt.channel).toMatch(/^sync:/);
+		expect(evt.event).toBe("sync_complete");
 
-    // Payload shape matches Edge Function (index.ts lines 1454-1464)
-    expect(evt.payload).toMatchObject({
-      deviceId: 'device-broadcast-1',
-      platform: 'android',
-      profileId: null,
-      profileName: null,
-      sessionsInserted: expect.any(Number),
-      routinesUpserted: expect.any(Number),
-      cyclesUpserted: expect.any(Number),
-      badgesUpserted: expect.any(Number),
-    });
-    expect(evt.payload.syncTime).toBeDefined();
-  });
+		// Payload shape matches Edge Function (index.ts lines 1454-1464)
+		expect(evt.payload).toMatchObject({
+			deviceId: "device-broadcast-1",
+			platform: "android",
+			profileId: null,
+			profileName: null,
+			sessionsInserted: expect.any(Number),
+			routinesUpserted: expect.any(Number),
+			cyclesUpserted: expect.any(Number),
+			badgesUpserted: expect.any(Number),
+		});
+		expect(evt.payload.syncTime).toBeDefined();
+	});
 
-  it('does NOT broadcast when push fails (missing Authorization)', async () => {
-    const payload = createMinimalPushPayload(testUser.id);
-    const failed = await callPushEndpoint(payload, '');
-    expect(failed.success).toBe(false);
-    expect(failed.status).toBe(401);
+	it("does NOT broadcast when push fails (missing Authorization)", async () => {
+		const payload = createMinimalPushPayload(testUser.id);
+		const failed = await callPushEndpoint(payload, "");
+		expect(failed.success).toBe(false);
+		expect(failed.status).toBe(401);
 
-    // Broadcast must never fire on the failure path — the real Edge
-    // Function returns the 401 before reaching the channel.send() call.
-    expect(getBroadcastsByEvent('sync_complete')).toHaveLength(0);
-  });
+		// Broadcast must never fire on the failure path — the real Edge
+		// Function returns the 401 before reaching the channel.send() call.
+		expect(getBroadcastsByEvent("sync_complete")).toHaveLength(0);
+	});
 
-  it('does NOT broadcast when payload validation fails (missing deviceId)', async () => {
-    // Force a pre-broadcast validation failure. Even though the mock's
-    // validation is light, missing deviceId is explicitly rejected
-    // (mock-edge-functions.ts lines 97-106).
-    const payload = createMinimalPushPayload(testUser.id, { deviceId: '' });
-    const failed = await callPushEndpoint(payload, testUser.accessToken);
-    expect(failed.success).toBe(false);
-    expect(failed.status).toBe(400);
-    expect(getBroadcastsByEvent('sync_complete')).toHaveLength(0);
-  });
+	it("does NOT broadcast when payload validation fails (missing deviceId)", async () => {
+		// Force a pre-broadcast validation failure. Even though the mock's
+		// validation is light, missing deviceId is explicitly rejected
+		// (mock-edge-functions.ts lines 97-106).
+		const payload = createMinimalPushPayload(testUser.id, { deviceId: "" });
+		const failed = await callPushEndpoint(payload, testUser.accessToken);
+		expect(failed.success).toBe(false);
+		expect(failed.status).toBe(400);
+		expect(getBroadcastsByEvent("sync_complete")).toHaveLength(0);
+	});
 
-  it('push returns 200 even if broadcast throws (fire-and-forget)', async () => {
-    // Simulates a Supabase channel outage. Real Edge Function wraps
-    // channel.send in try/catch at lines 1469-1471 so the HTTP response
-    // is unaffected.
-    setBroadcastShouldThrow(true);
+	it("push returns 200 even if broadcast throws (fire-and-forget)", async () => {
+		// Simulates a Supabase channel outage. Real Edge Function wraps
+		// channel.send in try/catch at lines 1469-1471 so the HTTP response
+		// is unaffected.
+		setBroadcastShouldThrow(true);
 
-    const payload = createMinimalPushPayload(testUser.id);
-    const result = await callPushEndpoint(payload, testUser.accessToken);
-    expect(result.success).toBe(true);
-    expect(result.status).toBe(200);
+		const payload = createMinimalPushPayload(testUser.id);
+		const result = await callPushEndpoint(payload, testUser.accessToken);
+		expect(result.success).toBe(true);
+		expect(result.status).toBe(200);
 
-    // No event captured because the mock broadcast swallowed the error
-    expect(getBroadcastsByEvent('sync_complete')).toHaveLength(0);
-  });
+		// No event captured because the mock broadcast swallowed the error
+		expect(getBroadcastsByEvent("sync_complete")).toHaveLength(0);
+	});
 
-  it('channel name encodes userId (sync:{userId})', async () => {
-    // Use a distinctive userId via a session's userId field so the mock
-    // can derive it. This asserts the channel-naming invariant that
-    // useRealtimeSync relies on: `supabase.channel(`sync:${user.id}`)`.
-    const payload = createMinimalPushPayload(testUser.id);
-    payload.sessions = [
-      {
-        id: 'fixed-session-for-channel-test',
-        userId: testUser.id,
-        name: null,
-        startedAt: new Date().toISOString(),
-        durationSeconds: 0,
-        totalVolume: 0,
-        setCount: 0,
-        exerciseCount: 0,
-        prCount: 0,
-        routineName: null,
-        workoutMode: null,
-        routineSessionId: null,
-        exercises: [],
-      },
-    ];
+	it("channel name encodes userId (sync:{userId})", async () => {
+		// Use a distinctive userId via a session's userId field so the mock
+		// can derive it. This asserts the channel-naming invariant that
+		// useRealtimeSync relies on: `supabase.channel(`sync:${user.id}`)`.
+		const payload = createMinimalPushPayload(testUser.id);
+		payload.sessions = [
+			{
+				id: "fixed-session-for-channel-test",
+				userId: testUser.id,
+				name: null,
+				startedAt: new Date().toISOString(),
+				durationSeconds: 0,
+				totalVolume: 0,
+				setCount: 0,
+				exerciseCount: 0,
+				prCount: 0,
+				routineName: null,
+				workoutMode: null,
+				routineSessionId: null,
+				exercises: [],
+			},
+		];
 
-    await callPushEndpoint(payload, testUser.accessToken);
+		await callPushEndpoint(payload, testUser.accessToken);
 
-    const events = getBroadcastsByEvent('sync_complete');
-    expect(events).toHaveLength(1);
-    expect(events[0].channel).toBe(`sync:${testUser.id}`);
-  });
+		const events = getBroadcastsByEvent("sync_complete");
+		expect(events).toHaveLength(1);
+		expect(events[0].channel).toBe(`sync:${testUser.id}`);
+	});
 });

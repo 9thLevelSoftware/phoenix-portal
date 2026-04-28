@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { useAuth } from "@/app/hooks/useAuth";
+import { useAuth } from "@/providers/AuthProvider";
 import { workoutListOptions } from "@/queries/workouts";
 import { useUIStore } from "@/stores/useUIStore";
 import { useStreak } from "./useStreak";

@@ -14,7 +14,8 @@
  *
  * Accept both. Reject anything else to block injection.
  */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_PROFILE_ID = "default";
 
 export function isValidLocalProfileId(value: unknown): value is string {

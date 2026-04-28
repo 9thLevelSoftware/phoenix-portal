@@ -1,7 +1,7 @@
 // SINGLE SOURCE OF TRUTH for tier pricing. Do NOT hardcode prices elsewhere.
 // All components displaying prices should import from this module.
 
-import type { SubscriptionTier } from "@/hooks/useSubscription";
+import type { SubscriptionTier } from "@/schemas/subscription";
 
 export interface TierPricing {
 	name: string;

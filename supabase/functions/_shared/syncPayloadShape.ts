@@ -73,7 +73,9 @@ function normalizeCycle(raw: UnknownRecord): UnknownRecord {
  * Coerce every list field (top-level + nested) that the push handler
  * dereferences to an array. Returns a new object; does not mutate input.
  */
-export function normalizePushPayloadShape<T extends UnknownRecord>(payload: T): T {
+export function normalizePushPayloadShape<T extends UnknownRecord>(
+	payload: T,
+): T {
 	return {
 		...payload,
 		sessions: toArr(payload.sessions).map(normalizeSession),

@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 
 /** Coalesce rapid mobile broadcasts into a single invalidation burst. */

@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -23,9 +23,7 @@ const authedPages = [
 
 test.describe("WCAG Accessibility Audit - Public Pages", () => {
 	for (const { name, path } of publicPages) {
-		test(`${name} has no critical WCAG violations`, async ({
-			page,
-		}) => {
+		test(`${name} has no critical WCAG violations`, async ({ page }) => {
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
 			// Wait for Framer Motion entrance animations to complete
@@ -51,8 +49,7 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 
 			// Filter to critical/serious only for the pass/fail gate
 			const critical = results.violations.filter(
-				(v) =>
-					v.impact === "critical" || v.impact === "serious",
+				(v) => v.impact === "critical" || v.impact === "serious",
 			);
 			expect(
 				critical,
@@ -91,8 +88,7 @@ test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 			}
 
 			const critical = results.violations.filter(
-				(v) =>
-					v.impact === "critical" || v.impact === "serious",
+				(v) => v.impact === "critical" || v.impact === "serious",
 			);
 			expect(
 				critical,

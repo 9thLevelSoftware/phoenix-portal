@@ -66,7 +66,7 @@ vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
 }));
 
-vi.mock("@/app/hooks/useAuth", () => ({
+vi.mock("@/providers/AuthProvider", () => ({
 	useAuth: () => mocks.authState,
 }));
 

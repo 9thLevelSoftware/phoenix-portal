@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 import { E2E_SUPABASE_URL } from "./support/supabase";
 
@@ -69,9 +69,9 @@ function seedWorkouts(extra?: Record<string, unknown>[]) {
 
 async function openDashboard(page: Page) {
 	await page.goto("/dashboard");
-	await expect(
-		page.getByText(/Dashboard|Welcome/i).first(),
-	).toBeVisible({ timeout: 10000 });
+	await expect(page.getByText(/Dashboard|Welcome/i).first()).toBeVisible({
+		timeout: 10000,
+	});
 }
 
 function workoutHeading(page: Page, name: string) {
@@ -79,19 +79,16 @@ function workoutHeading(page: Page, name: string) {
 }
 
 test.describe("Cross-tab realtime sync", () => {
-	test.skip(
-		"real Supabase broadcast drives cross-tab invalidation — requires live Realtime",
-		async () => {
-			// Would require VITE_SUPABASE_URL pointing to a real project that
-			// authorises WebSocket connections. Our E2E harness only has a
-			// mocked REST surface. Flag as a regression marker and document
-			// the manual validation path:
-			//   1. Log in as the same user in two tabs.
-			//   2. From tab A, complete a mobile workout (or simulate via
-			//      supabase.channel(`sync:<userId>`).send(sync_complete)).
-			//   3. Observe tab B's dashboard workout list refreshes within 1s.
-		},
-	);
+	test.skip("real Supabase broadcast drives cross-tab invalidation — requires live Realtime", async () => {
+		// Would require VITE_SUPABASE_URL pointing to a real project that
+		// authorises WebSocket connections. Our E2E harness only has a
+		// mocked REST surface. Flag as a regression marker and document
+		// the manual validation path:
+		//   1. Log in as the same user in two tabs.
+		//   2. From tab A, complete a mobile workout (or simulate via
+		//      supabase.channel(`sync:<userId>`).send(sync_complete)).
+		//   3. Observe tab B's dashboard workout list refreshes within 1s.
+	});
 
 	test("mocked broadcast: tab B reloads workout list after simulated sync", async ({
 		browser,

@@ -1,7 +1,7 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test as base, type Page } from "@playwright/test";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
 import {
 	E2E_SUPABASE_ANON_KEY,
 	E2E_SUPABASE_STORAGE_KEY,
@@ -69,7 +69,7 @@ async function getSession(): Promise<Record<string, unknown> | null> {
 			},
 		);
 
-			if (response.ok) {
+		if (response.ok) {
 			const data = await response.json();
 			const session = {
 				access_token: data.access_token,
@@ -95,7 +95,9 @@ async function getSession(): Promise<Record<string, unknown> | null> {
 
 		const body = await response.text();
 		if (attempt === 2) {
-			throw new Error(`Supabase auth failed after 3 attempts (${response.status}): ${body}`);
+			throw new Error(
+				`Supabase auth failed after 3 attempts (${response.status}): ${body}`,
+			);
 		}
 	}
 

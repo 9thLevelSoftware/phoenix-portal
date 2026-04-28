@@ -25,12 +25,14 @@ test.describe("Routine Builder", () => {
 		await page.goto("/routines/new");
 
 		// Header controls present
-		await expect(
-			page.getByRole("button", { name: /cancel/i }),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole("button", { name: /cancel/i })).toBeVisible({
+			timeout: 10000,
+		});
 
 		// Routine name input is editable
-		const nameInput = page.locator('input[placeholder*="routine" i], input[placeholder*="name" i]').first();
+		const nameInput = page
+			.locator('input[placeholder*="routine" i], input[placeholder*="name" i]')
+			.first();
 		if (await nameInput.isVisible()) {
 			await nameInput.fill("Test Upper Body Routine");
 			await expect(nameInput).toHaveValue("Test Upper Body Routine");
@@ -54,9 +56,9 @@ test.describe("Cycle Builder", () => {
 		await page.goto("/cycles/new");
 
 		// Header controls present
-		await expect(
-			page.getByRole("button", { name: /cancel/i }),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole("button", { name: /cancel/i })).toBeVisible({
+			timeout: 10000,
+		});
 
 		// Cycle Details section visible
 		await expect(
@@ -79,17 +81,15 @@ test.describe("Subscription Gate Behavior", () => {
 		await page.goto("/integrations");
 
 		// Should see upgrade prompt, NOT integration management UI
-		await expect(
-			page.getByText(/upgrade to flame/i),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText(/upgrade to flame/i)).toBeVisible({
+			timeout: 10000,
+		});
 		await expect(
 			page.getByRole("link", { name: /compare plans/i }),
 		).toBeVisible();
 	});
 
-	test("FLAME users can access integrations page fully", async ({
-		page,
-	}) => {
+	test("FLAME users can access integrations page fully", async ({ page }) => {
 		await mockAuthenticatedApp(page, { tier: "FLAME" });
 
 		await page.goto("/integrations");
@@ -215,9 +215,9 @@ test.describe("Session Detail with Full Data", () => {
 		await page.goto(`/history/${SEEDED_SESSION_ID}`);
 
 		// Session name visible
-		await expect(
-			page.getByRole("heading", { name: /Pull Day/i }),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole("heading", { name: /Pull Day/i })).toBeVisible({
+			timeout: 10000,
+		});
 
 		// Both exercises visible
 		await expect(page.getByText("Deadlift")).toBeVisible();
@@ -232,8 +232,6 @@ test.describe("Session Detail with Full Data", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		// PR indicator visible for at least one set
-		await expect(
-			page.getByText(/PR|personal record/i).first(),
-		).toBeVisible();
+		await expect(page.getByText(/PR|personal record/i).first()).toBeVisible();
 	});
 });

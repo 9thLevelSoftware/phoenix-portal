@@ -1,28 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import {
+	type SubscriptionStatus,
+	type SubscriptionTier,
+	subscriptionStatusSchema,
+	subscriptionTierSchema,
+} from "@/schemas/subscription";
 
-const subscriptionTierSchema = z.enum(["FREE", "EMBER", "FLAME", "INFERNO"]);
-const subscriptionStatusSchema = z.enum([
-	"active",
-	"past_due",
-	"canceled",
-	"trialing",
-	"incomplete",
-	"none",
-]);
-
-export type SubscriptionTier = "FREE" | "EMBER" | "FLAME" | "INFERNO";
-export type SubscriptionStatus =
-	| "active"
-	| "past_due"
-	| "canceled"
-	| "trialing"
-	| "incomplete"
-	| "none";
+export type {
+	SubscriptionStatus,
+	SubscriptionTier,
+} from "@/schemas/subscription";
 
 /** Statuses that grant access to the user's paid tier. */
 const ACTIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([

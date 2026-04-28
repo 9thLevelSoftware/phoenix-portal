@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -153,9 +153,11 @@ function getPushInputs() {
 	}
 
 	const siteUrl = process.env.SUPABASE_AUTH_SITE_URL.trim();
-	const googleClientId = process.env.SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID.trim();
+	const googleClientId =
+		process.env.SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID.trim();
 	const googleSecret = process.env.SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET.trim();
-	const appleClientId = process.env.SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID.trim();
+	const appleClientId =
+		process.env.SUPABASE_AUTH_EXTERNAL_APPLE_CLIENT_ID.trim();
 	const appleSecret = process.env.SUPABASE_AUTH_EXTERNAL_APPLE_SECRET.trim();
 
 	return {
@@ -204,14 +206,18 @@ function printSetupChecklist({ projectRef, siteUrl, allowedRedirectUrls }) {
 
 	console.log("Social auth provider console values:");
 	console.log(`  Supabase callback URL: ${callbackUrl}`);
-	console.log(`  Google JavaScript origins: ${siteOrigin}, ${DEFAULT_LOCAL_SITE_URL}`);
+	console.log(
+		`  Google JavaScript origins: ${siteOrigin}, ${DEFAULT_LOCAL_SITE_URL}`,
+	);
 	console.log(`  Apple website URL: https://${projectRef}.supabase.co`);
 	console.log("  Allowed portal redirect URLs:");
 	console.log(toDisplayList(allowedRedirectUrls));
 }
 
 async function pushHostedConfig(projectRef, managedConfig) {
-	const tempRoot = await mkdtemp(path.join(tmpdir(), "phoenix-portal-social-auth-"));
+	const tempRoot = await mkdtemp(
+		path.join(tmpdir(), "phoenix-portal-social-auth-"),
+	);
 	const tempWorkdir = path.join(tempRoot, "workdir");
 	const tempSupabaseDir = path.join(tempWorkdir, "supabase");
 	const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -222,14 +228,7 @@ async function pushHostedConfig(projectRef, managedConfig) {
 
 		const { stdout, stderr } = await execFile(
 			npxCommand,
-			[
-				"supabase",
-				"config",
-				"push",
-				"--project-ref",
-				projectRef,
-				"--yes",
-			],
+			["supabase", "config", "push", "--project-ref", projectRef, "--yes"],
 			{
 				cwd: tempWorkdir,
 				env: process.env,
@@ -256,8 +255,12 @@ async function runCheck() {
 
 	console.log(`Supabase project: ${projectRef}`);
 	console.log("Current public auth provider state:");
-	console.log(`  Google: ${settings.external?.google === true ? "enabled" : "disabled"}`);
-	console.log(`  Apple: ${settings.external?.apple === true ? "enabled" : "disabled"}`);
+	console.log(
+		`  Google: ${settings.external?.google === true ? "enabled" : "disabled"}`,
+	);
+	console.log(
+		`  Apple: ${settings.external?.apple === true ? "enabled" : "disabled"}`,
+	);
 }
 
 async function runPush() {

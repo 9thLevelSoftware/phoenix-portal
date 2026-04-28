@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Helper: navigate to landing and wait for framer-motion entrance animations
 async function gotoLanding(page: Page) {
@@ -24,9 +24,7 @@ test.describe("Navigation and cross-page links", () => {
 		).toBeVisible();
 	});
 
-	test("footer Terms of Service link navigates correctly", async ({
-		page,
-	}) => {
+	test("footer Terms of Service link navigates correctly", async ({ page }) => {
 		await gotoLanding(page);
 
 		// Footer terms link

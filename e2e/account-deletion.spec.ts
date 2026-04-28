@@ -1,9 +1,6 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
-import {
-	E2E_SUPABASE_STORAGE_KEY,
-	E2E_SUPABASE_URL,
-} from "./support/supabase";
+import { E2E_SUPABASE_STORAGE_KEY, E2E_SUPABASE_URL } from "./support/supabase";
 
 /**
  * Account deletion E2E — covers audit 05 priority gap #16.
@@ -149,9 +146,9 @@ async function installDeletionMock(
 
 async function openDangerZone(page: Page) {
 	await page.goto("/profile");
-	await expect(
-		page.getByRole("heading", { name: /^e2e$/i }),
-	).toBeVisible({ timeout: 10000 });
+	await expect(page.getByRole("heading", { name: /^e2e$/i })).toBeVisible({
+		timeout: 10000,
+	});
 
 	// Profile page has tabs: Public Stats, Badges, Integrations, Settings.
 	// DangerZone lives in the Settings tab. See src/app/components/Profile.tsx

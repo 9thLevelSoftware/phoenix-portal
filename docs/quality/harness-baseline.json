@@ -1,0 +1,67 @@
+{
+	"version": 1,
+	"description": "Baseline for pre-existing Harness architecture debt. CI fails when these files grow, new violations appear, or entries become stale.",
+	"maxFileLines": [
+		{
+			"path": "src/app/components/Analytics.tsx",
+			"limit": 1000,
+			"lines": 1514,
+			"reason": "Pre-existing large analytics page; split into feature tabs during related analytics work."
+		},
+		{
+			"path": "src/app/components/CycleBuilder.tsx",
+			"limit": 1000,
+			"lines": 1472,
+			"reason": "Pre-existing large cycle builder; split orchestration from editor panels during related cycle work."
+		},
+		{
+			"path": "src/app/components/RoutineBuilder.tsx",
+			"limit": 1000,
+			"lines": 1445,
+			"reason": "Pre-existing large routine builder; extract state orchestration and form panels during related routine work."
+		},
+		{
+			"path": "src/app/components/Dashboard.tsx",
+			"limit": 1000,
+			"lines": 1424,
+			"reason": "Pre-existing large dashboard; split data sections and visual panels during related dashboard work."
+		},
+		{
+			"path": "src/app/components/LandingPage.tsx",
+			"limit": 1000,
+			"lines": 1239,
+			"reason": "Pre-existing large landing page; split sections during related public-site work."
+		},
+		{
+			"path": "src/app/components/Profile.tsx",
+			"limit": 1000,
+			"lines": 1097,
+			"reason": "Pre-existing large profile page; extract account, export, and subscription panels during related profile work."
+		},
+		{
+			"path": "supabase/functions/mobile-sync-push/index.ts",
+			"limit": 1000,
+			"lines": 2068,
+			"reason": "Pre-existing large sync Edge Function; extract validation, persistence, and broadcast helpers during related sync work."
+		},
+		{
+			"path": "supabase/functions/mobile-sync-pull/index.ts",
+			"limit": 1000,
+			"lines": 1285,
+			"reason": "Pre-existing large sync Edge Function; extract cursor and entity fetch helpers during related sync work."
+		},
+		{
+			"path": "tests/sync/hierarchy.test.ts",
+			"limit": 1000,
+			"lines": 1339,
+			"reason": "Pre-existing large sync hierarchy contract test; split nested entity scenarios during related sync-test work."
+		},
+		{
+			"path": "tests/sync/multi-device.test.ts",
+			"limit": 1000,
+			"lines": 1016,
+			"reason": "Pre-existing large sync multi-device contract test; split concurrent device scenarios during related sync-test work."
+		}
+	],
+	"importBoundaries": []
+}

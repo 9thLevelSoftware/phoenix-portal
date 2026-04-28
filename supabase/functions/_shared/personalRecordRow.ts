@@ -64,9 +64,10 @@ export function buildPersonalRecordRows(
 				if (!set.isPr) continue;
 
 				const recordType = set.prType ?? "1RM";
-				const value = recordType === "MAX_VOLUME"
-					? (set.prVolume ?? set.weightKg * set.actualReps)
-					: set.weightKg;
+				const value =
+					recordType === "MAX_VOLUME"
+						? (set.prVolume ?? set.weightKg * set.actualReps)
+						: set.weightKg;
 
 				rows.push({
 					user_id: userId,

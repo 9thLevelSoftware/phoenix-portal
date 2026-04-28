@@ -38,9 +38,7 @@ const UUID_REGEX =
 /**
  * Strict UUID (used for entity ids that mobile mints via generateUUID).
  */
-const uuid = z
-	.string()
-	.regex(UUID_REGEX, "expected UUID v1–v5 hex string");
+const uuid = z.string().regex(UUID_REGEX, "expected UUID v1–v5 hex string");
 
 /**
  * Local profile id: either the mobile-seeded "default" sentinel or a UUID.
@@ -108,10 +106,20 @@ const setSchema = z.object({
 	targetReps: nullableField(z.number().int()),
 	// DB defaults below — nullish coerces to the default so an explicit NULL
 	// in the payload doesn't bypass DEFAULT on INSERT.
-	actualReps: z.number().int().nullish().transform((v) => v ?? 0),
-	weightKg: z.number().nullish().transform((v) => v ?? 0),
+	actualReps: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	weightKg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
 	rpe: nullableField(z.number().int()),
-	isPr: z.boolean().nullish().transform((v) => v ?? false),
+	isPr: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
 	// Send-only PR derivation hints (see PortalSetDto Kotlin doc).
 	prType: nullableField(z.string()),
 	prPhase: nullableField(z.string()),
@@ -125,8 +133,15 @@ const exerciseSchema = z.object({
 	id: uuid,
 	sessionId: uuid,
 	name: z.string(),
-	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
-	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	muscleGroup: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "General"),
+	orderIndex: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	sets: arrayOf(setSchema).default([]),
 });
 
@@ -140,11 +155,30 @@ const sessionSchema = z.object({
 		.transform((v) => v ?? new Date().toISOString()),
 	updatedAt: nullableField(z.string()),
 	// DB NOT-NULL-DEFAULT numeric columns: coerce nullish → 0.
-	durationSeconds: z.number().int().nullish().transform((v) => v ?? 0),
-	totalVolume: z.number().nullish().transform((v) => v ?? 0),
-	setCount: z.number().int().nullish().transform((v) => v ?? 0),
-	exerciseCount: z.number().int().nullish().transform((v) => v ?? 0),
-	prCount: z.number().int().nullish().transform((v) => v ?? 0),
+	durationSeconds: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	totalVolume: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	setCount: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	exerciseCount: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	prCount: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	routineName: nullableField(z.string()),
 	workoutMode: nullableField(z.string()),
 	routineSessionId: nullableField(z.string()),
@@ -183,24 +217,58 @@ const routineExerciseSchema = z.object({
 	id: uuid,
 	routineId: uuid,
 	name: z.string(),
-	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
-	sets: z.number().int().nullish().transform((v) => v ?? 3),
-	reps: z.number().int().nullish().transform((v) => v ?? 10),
-	weight: z.number().nullish().transform((v) => v ?? 0),
-	restSeconds: z.number().int().nullish().transform((v) => v ?? 90),
-	mode: z.string().nullish().transform((v) => v ?? "OLD_SCHOOL"),
-	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	muscleGroup: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "General"),
+	sets: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 3),
+	reps: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 10),
+	weight: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	restSeconds: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 90),
+	mode: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "OLD_SCHOOL"),
+	orderIndex: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	supersetId: nullableField(z.string()),
 	supersetColor: nullableField(z.string()),
 	supersetOrder: nullableField(z.number().int()),
 	perSetWeights: nullableField(z.string()),
 	perSetRest: nullableField(z.string()),
-	isAmrap: z.boolean().nullish().transform((v) => v ?? false),
-	isBodyweight: z.boolean().nullish().transform((v) => v ?? false),
+	isAmrap: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
+	isBodyweight: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
 	prPercentage: nullableField(z.number()),
 	repCountTiming: nullableField(z.string()),
 	stopAtPosition: nullableField(z.string()),
-	stallDetection: z.boolean().nullish().transform((v) => v ?? false),
+	stallDetection: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
 	eccentricLoad: nullableField(z.string()),
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
@@ -211,11 +279,28 @@ const routineSchema = z.object({
 	id: uuid,
 	userId: z.string(),
 	name: z.string(),
-	description: z.string().nullish().transform((v) => v ?? ""),
-	exerciseCount: z.number().int().nullish().transform((v) => v ?? 0),
-	estimatedDuration: z.number().nullish().transform((v) => v ?? 0),
-	timesCompleted: z.number().int().nullish().transform((v) => v ?? 0),
-	isFavorite: z.boolean().nullish().transform((v) => v ?? false),
+	description: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? ""),
+	exerciseCount: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	estimatedDuration: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	timesCompleted: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	isFavorite: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
 	updatedAt: nullableField(z.string()),
 	exercises: arrayOf(routineExerciseSchema).default([]),
 });
@@ -224,10 +309,20 @@ const cycleDaySchema = z.object({
 	id: uuid,
 	cycleId: uuid,
 	dayNumber: z.number().int(),
-	dayType: z.string().nullish().transform((v) => v ?? "workout"),
+	dayType: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "workout"),
 	routineId: nullableField(z.string()),
-	weightAdjustment: z.number().nullish().transform((v) => v ?? 0),
-	repModifier: z.number().int().nullish().transform((v) => v ?? 0),
+	weightAdjustment: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	repModifier: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	restOverride: nullableField(z.number().int()),
 	restType: nullableField(z.string()),
 	notes: nullableField(z.string()),
@@ -238,11 +333,30 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: z.number().int().nullish().transform((v) => v ?? 4),
-	workoutDays: z.number().int().nullish().transform((v) => v ?? 0),
-	restDays: z.number().int().nullish().transform((v) => v ?? 0),
-	currentWeek: z.number().int().nullish().transform((v) => v ?? 1),
-	status: z.string().nullish().transform((v) => v ?? "draft"),
+	durationWeeks: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 4),
+	workoutDays: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	restDays: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	currentWeek: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 1),
+	status: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "draft"),
 	startedAt: nullableField(z.string()),
 	lastUsedAt: nullableField(z.string()),
 	updatedAt: nullableField(z.string()),
@@ -253,14 +367,42 @@ const cycleSchema = z.object({
 
 const rpgAttributesSchema = z.object({
 	userId: z.string(),
-	strength: z.number().int().nullish().transform((v) => v ?? 0),
-	power: z.number().int().nullish().transform((v) => v ?? 0),
-	stamina: z.number().int().nullish().transform((v) => v ?? 0),
-	consistency: z.number().int().nullish().transform((v) => v ?? 0),
-	mastery: z.number().int().nullish().transform((v) => v ?? 0),
+	strength: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	power: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	stamina: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	consistency: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	mastery: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	characterClass: nullableField(z.string()),
-	level: z.number().int().nullish().transform((v) => v ?? 1),
-	experiencePoints: z.number().int().nullish().transform((v) => v ?? 0),
+	level: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 1),
+	experiencePoints: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 });
 
 const badgeSchema = z.object({
@@ -268,7 +410,10 @@ const badgeSchema = z.object({
 	badgeId: z.string(),
 	badgeName: z.string(),
 	badgeDescription: nullableField(z.string()),
-	badgeTier: z.string().nullish().transform((v) => v ?? "bronze"),
+	badgeTier: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "bronze"),
 	earnedAt: z
 		.string()
 		.nullish()
@@ -277,41 +422,122 @@ const badgeSchema = z.object({
 
 const gamificationStatsSchema = z.object({
 	userId: z.string(),
-	totalWorkouts: z.number().int().nullish().transform((v) => v ?? 0),
-	totalReps: z.number().int().nullish().transform((v) => v ?? 0),
-	totalVolumeKg: z.number().nullish().transform((v) => v ?? 0),
-	longestStreak: z.number().int().nullish().transform((v) => v ?? 0),
-	currentStreak: z.number().int().nullish().transform((v) => v ?? 0),
-	totalTimeSeconds: z.number().int().nullish().transform((v) => v ?? 0),
+	totalWorkouts: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	totalReps: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	totalVolumeKg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	longestStreak: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	currentStreak: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
+	totalTimeSeconds: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 });
 
 const phaseStatisticsSchema = z.object({
 	id: uuid,
 	sessionId: uuid,
-	concentricKgAvg: z.number().nullish().transform((v) => v ?? 0),
-	concentricKgMax: z.number().nullish().transform((v) => v ?? 0),
-	concentricVelAvg: z.number().nullish().transform((v) => v ?? 0),
-	concentricVelMax: z.number().nullish().transform((v) => v ?? 0),
-	concentricWattAvg: z.number().nullish().transform((v) => v ?? 0),
-	concentricWattMax: z.number().nullish().transform((v) => v ?? 0),
-	eccentricKgAvg: z.number().nullish().transform((v) => v ?? 0),
-	eccentricKgMax: z.number().nullish().transform((v) => v ?? 0),
-	eccentricVelAvg: z.number().nullish().transform((v) => v ?? 0),
-	eccentricVelMax: z.number().nullish().transform((v) => v ?? 0),
-	eccentricWattAvg: z.number().nullish().transform((v) => v ?? 0),
-	eccentricWattMax: z.number().nullish().transform((v) => v ?? 0),
+	concentricKgAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	concentricKgMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	concentricVelAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	concentricVelMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	concentricWattAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	concentricWattMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricKgAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricKgMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricVelAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricVelMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricWattAvg: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	eccentricWattMax: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
 });
 
 const exerciseSignatureSchema = z.object({
 	id: uuid,
 	exerciseId: z.string(),
-	romMm: z.number().nullish().transform((v) => v ?? 0),
-	durationMs: z.number().nullish().transform((v) => v ?? 0),
-	symmetryRatio: z.number().nullish().transform((v) => v ?? 0.5),
-	velocityProfile: z.string().nullish().transform((v) => v ?? "LINEAR"),
-	cableConfig: z.string().nullish().transform((v) => v ?? "DUAL_SYMMETRIC"),
-	sampleCount: z.number().int().nullish().transform((v) => v ?? 1),
-	confidence: z.number().nullish().transform((v) => v ?? 0),
+	romMm: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	durationMs: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
+	symmetryRatio: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0.5),
+	velocityProfile: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "LINEAR"),
+	cableConfig: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "DUAL_SYMMETRIC"),
+	sampleCount: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 1),
+	confidence: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
 	updatedAt: nullableField(z.string()),
 });
 
@@ -328,7 +554,11 @@ const assessmentResultSchema = z.object({
 const localProfileSchema = z.object({
 	id: localProfileIdSchema,
 	name: z.string(),
-	colorIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	colorIndex: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 });
 
 const externalActivitySchema = z.object({
@@ -336,9 +566,16 @@ const externalActivitySchema = z.object({
 	externalId: z.string(),
 	provider: z.string(),
 	name: z.string(),
-	activityType: z.string().nullish().transform((v) => v ?? "strength"),
+	activityType: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "strength"),
 	startedAt: z.string(),
-	durationSeconds: z.number().int().nullish().transform((v) => v ?? 0),
+	durationSeconds: z
+		.number()
+		.int()
+		.nullish()
+		.transform((v) => v ?? 0),
 	distanceMeters: nullableField(z.number()),
 	calories: nullableField(z.number().int()),
 	avgHeartRate: nullableField(z.number().int()),
@@ -353,7 +590,10 @@ const externalActivitySchema = z.object({
 export const pushPayloadSchema = z.object({
 	deviceId: z.string().min(1, "deviceId is required"),
 	platform: platformSchema,
-	lastSync: z.number().nullish().transform((v) => v ?? 0),
+	lastSync: z
+		.number()
+		.nullish()
+		.transform((v) => v ?? 0),
 	sessions: arrayOf(sessionSchema).default([]),
 	telemetry: arrayOf(repTelemetrySchema).default([]),
 	routines: arrayOf(routineSchema).default([]),

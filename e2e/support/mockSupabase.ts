@@ -1,7 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
-	E2E_SUPABASE_URL,
 	createStoredSession,
+	E2E_SUPABASE_URL,
 	seedStoredSession,
 } from "./supabase";
 
@@ -166,7 +166,12 @@ export async function installMockSupabase(
 	) =>
 		rows.filter((row) => {
 			for (const [key, value] of url.searchParams.entries()) {
-				if (key === "select" || key === "order" || key === "limit" || key === "offset") {
+				if (
+					key === "select" ||
+					key === "order" ||
+					key === "limit" ||
+					key === "offset"
+				) {
 					continue;
 				}
 
@@ -192,7 +197,9 @@ export async function installMockSupabase(
 		rows: TRow[],
 		acceptHeader?: string,
 	) => {
-		const wantsObject = acceptHeader?.includes("application/vnd.pgrst.object+json");
+		const wantsObject = acceptHeader?.includes(
+			"application/vnd.pgrst.object+json",
+		);
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
@@ -211,7 +218,9 @@ export async function installMockSupabase(
 			syncItem.completed_at = new Date().toISOString();
 		}
 
-		const integration = state.integrations.find((item) => item.provider === provider);
+		const integration = state.integrations.find(
+			(item) => item.provider === provider,
+		);
 		if (integration) {
 			integration.status = "connected";
 			integration.error_message = null;
@@ -249,7 +258,8 @@ export async function installMockSupabase(
 						: integration,
 				);
 				state.syncQueue = state.syncQueue.map((item) =>
-					item.provider === provider && ["pending", "processing"].includes(item.status)
+					item.provider === provider &&
+					["pending", "processing"].includes(item.status)
 						? {
 								...item,
 								status: "failed",
@@ -267,7 +277,9 @@ export async function installMockSupabase(
 			}
 
 			if (functionName === "strava-sync" || functionName === "fitbit-sync") {
-				completeLatestSync(functionName.replace("-sync", "") as IntegrationProvider);
+				completeLatestSync(
+					functionName.replace("-sync", "") as IntegrationProvider,
+				);
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -436,10 +448,11 @@ export async function installMockSupabase(
 					await route.fulfill({
 						status: 201,
 						contentType: "application/json",
-						body:
-							request.headers().accept?.includes("application/vnd.pgrst.object+json")
-								? JSON.stringify({ id: row.id })
-								: JSON.stringify([row]),
+						body: request
+							.headers()
+							.accept?.includes("application/vnd.pgrst.object+json")
+							? JSON.stringify({ id: row.id })
+							: JSON.stringify([row]),
 					});
 					return;
 				}

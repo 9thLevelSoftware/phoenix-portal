@@ -1,11 +1,11 @@
 const ALLOWED_ORIGINS: string[] = (() => {
-  const appUrl = Deno.env.get('APP_URL');
-  const origins: string[] = appUrl ? [appUrl] : [];
-  // Always allow localhost in non-production
-  if (Deno.env.get('ENVIRONMENT') !== 'production') {
-    origins.push('http://localhost:5173', 'http://localhost:3000');
-  }
-  return origins;
+	const appUrl = Deno.env.get("APP_URL");
+	const origins: string[] = appUrl ? [appUrl] : [];
+	// Always allow localhost in non-production
+	if (Deno.env.get("ENVIRONMENT") !== "production") {
+		origins.push("http://localhost:5173", "http://localhost:3000");
+	}
+	return origins;
 })();
 
 /**
@@ -25,25 +25,26 @@ const ALLOWED_ORIGINS: string[] = (() => {
  * Pass the Request object so the origin header can be validated.
  */
 export function getCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('origin') ?? '';
-  const isAllowed = ALLOWED_ORIGINS.includes(origin);
+	const origin = req.headers.get("origin") ?? "";
+	const isAllowed = ALLOWED_ORIGINS.includes(origin);
 
-  return {
-    ...(isAllowed ? { 'Access-Control-Allow-Origin': origin } : {}),
-    'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-    'Vary': 'Origin',
-    // Security headers
-    'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    // HSTS only in production
-    ...(Deno.env.get('ENVIRONMENT') === 'production'
-      ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
-      : {}),
-  };
+	return {
+		...(isAllowed ? { "Access-Control-Allow-Origin": origin } : {}),
+		"Access-Control-Allow-Headers":
+			"authorization, x-client-info, apikey, content-type",
+		"Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
+		Vary: "Origin",
+		// Security headers
+		"X-Frame-Options": "DENY",
+		"Content-Security-Policy":
+			"default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy": "strict-origin-when-cross-origin",
+		// HSTS only in production
+		...(Deno.env.get("ENVIRONMENT") === "production"
+			? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" }
+			: {}),
+	};
 }
 
 /**
@@ -52,10 +53,11 @@ export function getCorsHeaders(req: Request): Record<string, string> {
  * Includes basic security headers for webhook endpoints.
  */
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('APP_URL') ?? 'http://localhost:5173',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'X-Frame-Options': 'DENY',
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
+	"Access-Control-Allow-Origin":
+		Deno.env.get("APP_URL") ?? "http://localhost:5173",
+	"Access-Control-Allow-Headers":
+		"authorization, x-client-info, apikey, content-type",
+	"X-Frame-Options": "DENY",
+	"X-Content-Type-Options": "nosniff",
+	"Referrer-Policy": "strict-origin-when-cross-origin",
 };
