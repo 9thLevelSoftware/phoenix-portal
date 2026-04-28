@@ -106,12 +106,22 @@ Deno.serve(async (req) => {
 		// Check this provider's rate limit before fetching tasks
 		const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
 		if (limit) {
-			const { data: rateLimit } = await supabase
+			const { data: rateLimit, error: rateLimitError } = await supabase
 				.from("rate_limit_tracking")
 				.select("*")
+				.eq("key", provider)
 				.eq("provider", provider)
 				.is("user_id", null)
 				.maybeSingle();
+
+			if (rateLimitError) {
+				console.error(
+					`[SYNC_QUEUE] Failed to read rate limit row for ${provider}; skipping provider:`,
+					rateLimitError,
+				);
+				results.skipped++;
+				continue;
+			}
 
 			if (isRateLimited(rateLimit, limit)) {
 				continue;
@@ -309,37 +319,61 @@ async function incrementRateLimit(
 	const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
 	if (!limit) return;
 
-	const { data: existing, error: lookupError } = await supabase
+	const { error: insertError } = await supabase
 		.from("rate_limit_tracking")
-		.select("*")
-		.eq("provider", provider)
-		.maybeSingle();
-
-	if (lookupError) {
-		console.error(
-			`[SYNC_QUEUE] Failed to load rate limit row for ${provider}:`,
-			lookupError,
-		);
-		return;
-	}
-
-	if (!existing) {
-		await supabase.from("rate_limit_tracking").insert({
+		.insert({
+			key: provider,
 			provider,
+			user_id: null,
 			requests_this_window: 1,
 			window_started_at: now.toISOString(),
 			last_request_at: now.toISOString(),
 		});
-	} else {
-		const windowStart = new Date(existing.window_started_at).getTime();
-		const windowExpired = now.getTime() - windowStart >= limit.windowMs;
 
-		await supabase
+	if (!insertError) {
+		return;
+	}
+
+	if ((insertError as { code?: string }).code !== "23505") {
+		console.error(
+			`[SYNC_QUEUE] Failed to initialize rate limit row for ${provider}:`,
+			insertError,
+		);
+		return;
+	}
+
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const { data: existing, error: lookupError } = await supabase
+			.from("rate_limit_tracking")
+			.select("id, requests_this_window, window_started_at, last_reset_at")
+			.eq("key", provider)
+			.eq("provider", provider)
+			.is("user_id", null)
+			.maybeSingle();
+
+		if (lookupError || !existing) {
+			console.error(
+				`[SYNC_QUEUE] Failed to load rate limit row for ${provider}:`,
+				lookupError,
+			);
+			return;
+		}
+
+		const currentCount =
+			typeof existing.requests_this_window === "number"
+				? existing.requests_this_window
+				: 0;
+		const windowStart = existing.window_started_at
+			? new Date(existing.window_started_at).getTime()
+			: Number.NaN;
+		const windowExpired =
+			!Number.isFinite(windowStart) ||
+			now.getTime() - windowStart >= limit.windowMs;
+
+		let updateQuery = supabase
 			.from("rate_limit_tracking")
 			.update({
-				requests_this_window: windowExpired
-					? 1
-					: existing.requests_this_window + 1,
+				requests_this_window: windowExpired ? 1 : currentCount + 1,
 				window_started_at: windowExpired
 					? now.toISOString()
 					: existing.window_started_at,
@@ -348,19 +382,55 @@ async function incrementRateLimit(
 					? now.toISOString()
 					: existing.last_reset_at,
 			})
-			.eq("provider", provider);
+			.eq("id", existing.id);
+
+		updateQuery =
+			existing.requests_this_window === null
+				? updateQuery.is("requests_this_window", null)
+				: updateQuery.eq("requests_this_window", existing.requests_this_window);
+		updateQuery =
+			existing.window_started_at === null
+				? updateQuery.is("window_started_at", null)
+				: updateQuery.eq("window_started_at", existing.window_started_at);
+
+		const { data: updated, error: updateError } = await updateQuery
+			.select("id")
+			.maybeSingle();
+		if (updateError) {
+			console.error(
+				`[SYNC_QUEUE] Failed to update rate limit row for ${provider}:`,
+				updateError,
+			);
+			return;
+		}
+		if (updated) return;
 	}
+
+	console.error(
+		`[SYNC_QUEUE] Failed to update rate limit row for ${provider} after concurrent writes`,
+	);
 }
 
 /**
  * Check if a provider is currently rate-limited based on tracking data.
  */
 function isRateLimited(
-	tracking: { requests_this_window: number; window_started_at: string } | null,
+	tracking: {
+		requests_this_window: number | null;
+		window_started_at: string | null;
+	} | null,
 	limit: { requests: number; windowMs: number },
 ): boolean {
 	if (!tracking) return false;
+	if (
+		typeof tracking.requests_this_window !== "number" ||
+		!Number.isFinite(tracking.requests_this_window) ||
+		!tracking.window_started_at
+	) {
+		return true;
+	}
 	const windowStart = new Date(tracking.window_started_at).getTime();
+	if (!Number.isFinite(windowStart)) return true;
 	const now = Date.now();
 	if (now - windowStart >= limit.windowMs) return false;
 	return tracking.requests_this_window >= limit.requests;

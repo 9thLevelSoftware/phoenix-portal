@@ -82,6 +82,19 @@ function isSyncType(value: unknown): value is SyncType {
 	return value === "initial" || value === "manual" || value === "incremental";
 }
 
+function hasOptionalFiniteNumber(
+	value: Record<string, unknown>,
+	field: string,
+	allowNull = false,
+): boolean {
+	const fieldValue = value[field];
+	return (
+		fieldValue === undefined ||
+		(allowNull && fieldValue === null) ||
+		(typeof fieldValue === "number" && Number.isFinite(fieldValue))
+	);
+}
+
 function isStravaActivityRaw(value: unknown): value is StravaActivityRaw {
 	return (
 		isJsonObject(value) &&
@@ -91,7 +104,12 @@ function isStravaActivityRaw(value: unknown): value is StravaActivityRaw {
 		typeof value.sport_type === "string" &&
 		typeof value.start_date === "string" &&
 		typeof value.elapsed_time === "number" &&
-		Number.isFinite(value.elapsed_time)
+		Number.isFinite(value.elapsed_time) &&
+		hasOptionalFiniteNumber(value, "distance") &&
+		hasOptionalFiniteNumber(value, "kilojoules", true) &&
+		hasOptionalFiniteNumber(value, "average_heartrate", true) &&
+		hasOptionalFiniteNumber(value, "max_heartrate", true) &&
+		hasOptionalFiniteNumber(value, "total_elevation_gain")
 	);
 }
 
@@ -247,16 +265,32 @@ Deno.serve(async (req) => {
 			.select("access_token, refresh_token, token_expires_at")
 			.eq("user_id", userId)
 			.eq("provider", "strava")
-			.single();
+			.maybeSingle();
 
-		const { data: integration } = await supabase
+		const { data: integration, error: integrationError } = await supabase
 			.from("user_integrations")
 			.select("last_sync_at, status")
 			.eq("user_id", userId)
 			.eq("provider", "strava")
-			.single();
+			.maybeSingle();
 
-		if (tokenError || !tokens || integration?.status !== "connected") {
+		if (tokenError || integrationError) {
+			console.error("[STRAVA_SYNC] Failed to load integration state:", {
+				tokenError,
+				integrationError,
+			});
+			return new Response(
+				JSON.stringify({
+					error: "Unable to load Strava integration state",
+				}),
+				{
+					status: 503,
+					headers: { ...cors, "Content-Type": "application/json" },
+				},
+			);
+		}
+
+		if (!tokens || !integration || integration.status !== "connected") {
 			return new Response(
 				JSON.stringify({
 					error: "Strava integration not found or not connected",

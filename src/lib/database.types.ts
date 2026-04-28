@@ -1567,6 +1567,7 @@ export type Database = {
 					environment: string | null;
 					id: string;
 					last_event_id: string | null;
+					last_event_occurred_at: string | null;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
 					price_id: string | null;
@@ -1583,6 +1584,7 @@ export type Database = {
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
@@ -1599,6 +1601,7 @@ export type Database = {
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;

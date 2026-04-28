@@ -43,6 +43,27 @@ interface GarminActivitySummary {
 	summary?: Record<string, unknown>;
 }
 
+const OPTIONAL_NUMERIC_ACTIVITY_FIELDS = [
+	"distanceInMeters",
+	"activeKilocalories",
+	"averageHeartRateInBeatsPerMinute",
+	"maxHeartRateInBeatsPerMinute",
+	"elevationGainInMeters",
+] as const;
+
+function hasValidOptionalNumbers(
+	value: Record<string, unknown>,
+	fields: readonly string[],
+): boolean {
+	return fields.every((field) => {
+		const fieldValue = value[field];
+		return (
+			fieldValue === undefined ||
+			(typeof fieldValue === "number" && Number.isFinite(fieldValue))
+		);
+	});
+}
+
 function isGarminActivitySummary(
 	value: unknown,
 ): value is GarminActivitySummary {
@@ -58,7 +79,8 @@ function isGarminActivitySummary(
 		typeof value.startTimeOffsetInSeconds === "number" &&
 		Number.isFinite(value.startTimeOffsetInSeconds) &&
 		typeof value.durationInSeconds === "number" &&
-		Number.isFinite(value.durationInSeconds)
+		Number.isFinite(value.durationInSeconds) &&
+		hasValidOptionalNumbers(value, OPTIONAL_NUMERIC_ACTIVITY_FIELDS)
 	);
 }
 

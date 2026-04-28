@@ -117,8 +117,7 @@ function entityFetchErrorResponse(
 	return new Response(
 		JSON.stringify({
 			error: `Failed to fetch ${entity}`,
-			code: error.code ?? "UNKNOWN",
-			details: error.message ?? error.hint ?? null,
+			code: "ENTITY_FETCH_FAILED",
 		}),
 		{
 			status: 500,
@@ -193,6 +192,7 @@ function decodeCursor(cursor: string): DecodedCursor | null {
 			!ENTITY_ORDER.includes(parsed.type as EntityType) ||
 			typeof parsed.updatedAt !== "number" ||
 			!Number.isFinite(parsed.updatedAt) ||
+			Number.isNaN(new Date(parsed.updatedAt).getTime()) ||
 			typeof parsed.id !== "string"
 		) {
 			return null;
@@ -465,18 +465,10 @@ Deno.serve(async (req) => {
 			}
 
 			if (sessionsError) {
-				console.error("Error fetching sessions:", sessionsError);
-				return new Response(
-					JSON.stringify({
-						error: "Failed to fetch workout sessions",
-						code: sessionsError.code ?? "UNKNOWN",
-						details: sessionsError.message ?? sessionsError.hint ?? null,
-						parityIdCount: knownSessionIds.length,
-					}),
-					{
-						status: 500,
-						headers: { ...cors, "Content-Type": "application/json" },
-					},
+				return entityFetchErrorResponse(
+					"workout sessions",
+					sessionsError,
+					cors,
 				);
 			}
 
@@ -505,29 +497,46 @@ Deno.serve(async (req) => {
 			let repSummariesRaw: Record<string, unknown>[] = [];
 
 			if (sessionIds.length > 0) {
-				const { data: exercises } = await supabase
+				const { data: exercises, error: exercisesError } = await supabase
 					.from("exercises")
 					.select("*")
 					.in("session_id", sessionIds)
 					.order("order_index", { ascending: true });
+				if (exercisesError) {
+					return entityFetchErrorResponse(
+						"session exercises",
+						exercisesError,
+						cors,
+					);
+				}
 				exercisesRaw = exercises ?? [];
 
 				const exerciseIds = exercisesRaw.map((e) => e.id as string);
 
 				if (exerciseIds.length > 0) {
-					const { data: sets } = await supabase
+					const { data: sets, error: setsError } = await supabase
 						.from("sets")
 						.select("*")
 						.in("exercise_id", exerciseIds);
+					if (setsError) {
+						return entityFetchErrorResponse("session sets", setsError, cors);
+					}
 					setsRaw = sets ?? [];
 
 					const setIds = setsRaw.map((s) => s.id as string);
 
 					if (setIds.length > 0) {
-						const { data: repSums } = await supabase
+						const { data: repSums, error: repSummariesError } = await supabase
 							.from("rep_summaries")
 							.select("*")
 							.in("set_id", setIds);
+						if (repSummariesError) {
+							return entityFetchErrorResponse(
+								"rep summaries",
+								repSummariesError,
+								cors,
+							);
+						}
 						repSummariesRaw = repSums ?? [];
 					}
 				}

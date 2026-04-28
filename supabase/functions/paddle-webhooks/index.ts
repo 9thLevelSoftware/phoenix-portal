@@ -88,11 +88,16 @@ async function verifyPaddleSignature(
 interface PaddleWebhookEvent {
 	event_id: string;
 	event_type: string;
+	occurred_at: string;
 	data: Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidDateString(value: string): boolean {
+	return Number.isFinite(new Date(value).getTime());
 }
 
 function parsePaddleWebhookEvent(
@@ -104,6 +109,8 @@ function parsePaddleWebhookEvent(
 			!isRecord(payload) ||
 			typeof payload.event_id !== "string" ||
 			typeof payload.event_type !== "string" ||
+			typeof payload.occurred_at !== "string" ||
+			!isValidDateString(payload.occurred_at) ||
 			!isRecord(payload.data)
 		) {
 			return { ok: false };
@@ -114,6 +121,7 @@ function parsePaddleWebhookEvent(
 			data: {
 				event_id: payload.event_id,
 				event_type: payload.event_type,
+				occurred_at: payload.occurred_at,
 				data: payload.data,
 			},
 		};
@@ -325,15 +333,48 @@ Deno.serve(async (req) => {
 			}
 		}
 
-		// Idempotency check — skip if this event was already processed
-		const { data: existing } = await supabase
+		// Idempotency and ordering check — skip duplicate or stale events.
+		const eventOccurredAtMs = new Date(event.occurred_at).getTime();
+		const { data: existing, error: existingError } = await supabase
 			.from("subscriptions")
-			.select("last_event_id")
+			.select("last_event_id, last_event_occurred_at")
 			.eq("user_id", userId)
 			.maybeSingle();
 
+		if (existingError) {
+			console.error(
+				"[BILLING_ALERT] Failed to load subscription webhook state:",
+				existingError,
+			);
+			return new Response(JSON.stringify({ error: "Database lookup failed" }), {
+				status: 500,
+				headers: responseHeaders,
+			});
+		}
+
 		if (existing?.last_event_id === event.event_id) {
 			return new Response(JSON.stringify({ received: true, duplicate: true }), {
+				status: 200,
+				headers: responseHeaders,
+			});
+		}
+
+		const existingOccurredAt =
+			typeof existing?.last_event_occurred_at === "string"
+				? new Date(existing.last_event_occurred_at).getTime()
+				: Number.NaN;
+		if (
+			Number.isFinite(existingOccurredAt) &&
+			eventOccurredAtMs < existingOccurredAt
+		) {
+			console.warn("[Paddle] Ignoring stale subscription event:", {
+				event_id: event.event_id,
+				event_type: event.event_type,
+				occurred_at: event.occurred_at,
+				last_event_id: existing?.last_event_id,
+				last_event_occurred_at: existing?.last_event_occurred_at,
+			});
+			return new Response(JSON.stringify({ received: true, stale: true }), {
 				status: 200,
 				headers: responseHeaders,
 			});
@@ -428,6 +469,7 @@ Deno.serve(async (req) => {
 					: null,
 			cancel_at_period_end: isCanceled || isPaused,
 			last_event_id: event.event_id,
+			last_event_occurred_at: event.occurred_at,
 			updated_at: new Date().toISOString(),
 		};
 
