@@ -421,7 +421,7 @@ Deno.serve(async (req) => {
 		}
 
 		// Update last_sync_at
-		await supabase
+		const { error: integrationUpdateError } = await supabase
 			.from("user_integrations")
 			.update({
 				last_sync_at: new Date().toISOString(),
@@ -430,12 +430,17 @@ Deno.serve(async (req) => {
 			})
 			.eq("user_id", userId)
 			.eq("provider", "fitbit");
+		if (integrationUpdateError) {
+			throw new Error(
+				`Failed to update Fitbit integration state: ${integrationUpdateError.message}`,
+			);
+		}
 
 		await upsertFitbitRateLimitRow(supabase, {
 			last_request_at: new Date().toISOString(),
 		});
 
-		await supabase
+		const { error: queueUpdateError } = await supabase
 			.from("sync_queue")
 			.update({
 				status: "completed",
@@ -445,6 +450,11 @@ Deno.serve(async (req) => {
 			.eq("user_id", userId)
 			.eq("provider", "fitbit")
 			.in("status", ["pending", "processing"]);
+		if (queueUpdateError) {
+			throw new Error(
+				`Failed to mark Fitbit sync queue rows completed: ${queueUpdateError.message}`,
+			);
+		}
 
 		return new Response(
 			JSON.stringify({ success: true, synced: totalSynced }),

@@ -189,7 +189,10 @@ Deno.serve(async (req) => {
 		if (!parsedPayload.ok) return parsedPayload.response;
 
 		const payload: GarminWebhookPayload = parsedPayload.data;
-		const rawActivities = payload.activities ?? payload.activityDetails ?? [];
+		const rawActivities =
+			Array.isArray(payload.activities) && payload.activities.length > 0
+				? payload.activities
+				: (payload.activityDetails ?? []);
 		if (!Array.isArray(rawActivities)) {
 			return new Response(JSON.stringify({ error: "Invalid Garmin payload" }), {
 				status: 400,

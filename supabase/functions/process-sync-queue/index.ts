@@ -1,7 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { backOff } from "npm:exponential-backoff@3.1.1";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
 /**
@@ -11,7 +10,6 @@ import { requireSubscription } from "../_shared/requireSubscription.ts";
  */
 
 const MAX_RETRIES = 10;
-
 const PROVIDERS = ["strava", "fitbit", "garmin", "hevy", "liftosaur"] as const;
 
 const RETRYABLE_STATUSES = [429, 502, 503, 504];
@@ -55,6 +53,30 @@ function hasValidCronSecret(req: Request): boolean {
 	if (!expectedSecret) return false;
 	const provided = req.headers.get("x-cron-secret") ?? "";
 	return timingSafeEqualString(expectedSecret, provided);
+}
+
+function isRetryableError(error: unknown): boolean {
+	const err = error as {
+		status?: number;
+		name?: string;
+		message?: string;
+		code?: string;
+	};
+	if (err.status !== undefined && RETRYABLE_STATUSES.includes(err.status)) {
+		return true;
+	}
+
+	const name = err.name?.toLowerCase() ?? "";
+	const message = err.message?.toLowerCase() ?? "";
+	const code = err.code?.toUpperCase() ?? "";
+	return (
+		name === "aborterror" ||
+		name === "timeouterror" ||
+		code === "ETIMEDOUT" ||
+		message.includes("timeout") ||
+		message.includes("timed out") ||
+		message.includes("aborted")
+	);
 }
 
 Deno.serve(async (req) => {
@@ -177,9 +199,8 @@ Deno.serve(async (req) => {
 						numOfAttempts: 3,
 						startingDelay: 1000,
 						timeMultiple: 2,
-						// SQ-03: Retry on 429 AND transient server errors (502, 503, 504)
-						retry: (e: Error & { status?: number }) =>
-							e.status !== undefined && RETRYABLE_STATUSES.includes(e.status),
+						// SQ-03: Retry on transient HTTP and provider-call timeout errors.
+						retry: isRetryableError,
 					},
 				);
 
@@ -205,10 +226,7 @@ Deno.serve(async (req) => {
 				let nextStatus: string;
 				let errorMessage = err.message;
 
-				if (
-					err.status !== undefined &&
-					RETRYABLE_STATUSES.includes(err.status)
-				) {
+				if (isRetryableError(err)) {
 					if (nextRetryCount >= MAX_RETRIES) {
 						nextStatus = "permanently_failed";
 						errorMessage = `Max retries (${MAX_RETRIES}) exceeded. Last error: ${err.message}`;
@@ -257,7 +275,7 @@ async function callSyncFunction(provider: string, userId: string) {
 	}
 
 	const functionName = `${provider}-sync`;
-	const response = await fetchWithTimeout(
+	const response = await fetch(
 		`${Deno.env.get("SUPABASE_URL")}/functions/v1/${functionName}`,
 		{
 			method: "POST",
@@ -267,7 +285,6 @@ async function callSyncFunction(provider: string, userId: string) {
 			},
 			body: JSON.stringify({ user_id: userId }),
 		},
-		15_000,
 	);
 
 	if (!response.ok) {

@@ -27,7 +27,7 @@ async function verifyPaddleSignature(
 	signatureHeader: string,
 	secret: string,
 ): Promise<boolean> {
-	const parts = signatureHeader.split(";");
+	const parts = signatureHeader.split(";").map((part) => part.trim());
 	const tsEntry = parts.find((p) => p.startsWith("ts="));
 	const h1Entry = parts.find((p) => p.startsWith("h1="));
 
@@ -79,6 +79,43 @@ async function verifyPaddleSignature(
 		mismatch |= a[i]! ^ b[i]!;
 	}
 	return mismatch === 0;
+}
+
+interface PaddleWebhookEvent {
+	event_id: string;
+	event_type: string;
+	data: Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePaddleWebhookEvent(
+	rawBody: string,
+): { ok: true; data: PaddleWebhookEvent } | { ok: false } {
+	try {
+		const payload: unknown = JSON.parse(rawBody);
+		if (
+			!isRecord(payload) ||
+			typeof payload.event_id !== "string" ||
+			typeof payload.event_type !== "string" ||
+			!isRecord(payload.data)
+		) {
+			return { ok: false };
+		}
+
+		return {
+			ok: true,
+			data: {
+				event_id: payload.event_id,
+				event_type: payload.event_type,
+				data: payload.data,
+			},
+		};
+	} catch {
+		return { ok: false };
+	}
 }
 
 // ─── Status Mapping ─────────────────────────────────────────────────────────
@@ -152,18 +189,18 @@ Deno.serve(async (req) => {
 		}
 
 		// Parse the event after signature verification
-		const event = JSON.parse(rawBody);
-
-		console.log(
-			`[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${event.data?.customer_id}`,
-		);
-
-		if (!event.event_id || !event.event_type || !event.data) {
+		const parsedEvent = parsePaddleWebhookEvent(rawBody);
+		if (!parsedEvent.ok) {
 			return new Response(JSON.stringify({ error: "Invalid event payload" }), {
 				status: 400,
 				headers: responseHeaders,
 			});
 		}
+		const event = parsedEvent.data;
+
+		console.log(
+			`[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${String(event.data.customer_id ?? "")}`,
+		);
 
 		const handledEvents = [
 			"subscription.created",
@@ -201,8 +238,12 @@ Deno.serve(async (req) => {
 		}
 
 		// Extract user_id from custom_data
-		const userId = event.data.custom_data?.user_id;
-		if (!userId) {
+		const customData = event.data.custom_data;
+		if (
+			!isRecord(customData) ||
+			typeof customData.user_id !== "string" ||
+			customData.user_id.length === 0
+		) {
 			console.error(
 				"[BILLING_ALERT] Missing custom_data.user_id in Paddle event:",
 				event.event_id,
@@ -211,7 +252,28 @@ Deno.serve(async (req) => {
 			);
 			return new Response(
 				JSON.stringify({ error: "Missing user_id in custom_data" }),
-				{ status: 500, headers: responseHeaders },
+				{ status: 400, headers: responseHeaders },
+			);
+		}
+		const userId = customData.user_id;
+		const customerId =
+			typeof event.data.customer_id === "string"
+				? event.data.customer_id
+				: null;
+		const subscriptionId =
+			typeof event.data.id === "string" ? event.data.id : null;
+		const paddleStatus =
+			typeof event.data.status === "string" ? event.data.status : null;
+		if (!customerId || !subscriptionId || !paddleStatus) {
+			console.error(
+				"[BILLING_ALERT] Invalid Paddle subscription payload:",
+				event.event_id,
+				"event_type:",
+				event.event_type,
+			);
+			return new Response(
+				JSON.stringify({ error: "Invalid subscription payload" }),
+				{ status: 400, headers: responseHeaders },
 			);
 		}
 
@@ -221,7 +283,7 @@ Deno.serve(async (req) => {
 		// haven't rolled out the signed-checkout flow keep working.
 		const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
 		if (customDataSecret?.trim()) {
-			const providedSig = event.data.custom_data?.cd_sig;
+			const providedSig = customData.cd_sig;
 			if (!providedSig || typeof providedSig !== "string") {
 				console.error(
 					"[BILLING_ALERT] Missing cd_sig in custom_data (user_id spoofing attempt?):",
@@ -272,8 +334,13 @@ Deno.serve(async (req) => {
 		}
 
 		// Map status and tier
-		const status = mapPaddleStatusToSubscriptionStatus(event.data.status);
-		const priceId = event.data.items?.[0]?.price?.id ?? "";
+		const status = mapPaddleStatusToSubscriptionStatus(paddleStatus);
+		const firstItem = Array.isArray(event.data.items)
+			? event.data.items[0]
+			: null;
+		const price =
+			isRecord(firstItem) && isRecord(firstItem.price) ? firstItem.price : null;
+		const priceId = typeof price?.id === "string" ? price.id : "";
 		let tier = mapPriceIdToTier(priceId, Deno.env);
 
 		if (priceId && tier === "FREE") {
@@ -303,22 +370,32 @@ Deno.serve(async (req) => {
 		// Detect cancel/pause scheduling
 		const isCanceled =
 			event.event_type === "subscription.canceled" ||
-			event.data.scheduled_change?.action === "cancel";
+			(isRecord(event.data.scheduled_change) &&
+				event.data.scheduled_change.action === "cancel");
 		const isPaused =
 			event.event_type === "subscription.paused" ||
-			event.data.scheduled_change?.action === "pause";
+			(isRecord(event.data.scheduled_change) &&
+				event.data.scheduled_change.action === "pause");
+		const billingPeriod = isRecord(event.data.current_billing_period)
+			? event.data.current_billing_period
+			: null;
 
 		// Build upsert payload (uses legacy Stripe column names)
 		const upsertData: Record<string, unknown> = {
 			user_id: userId,
-			paddle_customer_id: event.data.customer_id,
-			paddle_subscription_id: event.data.id,
+			paddle_customer_id: customerId,
+			paddle_subscription_id: subscriptionId,
 			tier,
 			status,
 			price_id: priceId || null,
 			current_period_start:
-				event.data.current_billing_period?.starts_at ?? null,
-			current_period_end: event.data.current_billing_period?.ends_at ?? null,
+				typeof billingPeriod?.starts_at === "string"
+					? billingPeriod.starts_at
+					: null,
+			current_period_end:
+				typeof billingPeriod?.ends_at === "string"
+					? billingPeriod.ends_at
+					: null,
 			cancel_at_period_end: isCanceled || isPaused,
 			last_event_id: event.event_id,
 			updated_at: new Date().toISOString(),

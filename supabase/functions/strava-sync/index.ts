@@ -435,24 +435,41 @@ Deno.serve(async (req) => {
 		// ---------------------------------------------------------------
 		// Update last_sync_at
 		// ---------------------------------------------------------------
-		await supabase
+		const syncFinishedAt = new Date().toISOString();
+		const integrationUpdate =
+			errors.length === 0
+				? { last_sync_at: syncFinishedAt, error_message: null }
+				: { error_message: errors.slice(0, 10).join("; ") };
+		const { error: integrationUpdateError } = await supabase
 			.from("user_integrations")
-			.update({ last_sync_at: new Date().toISOString(), error_message: null })
+			.update(integrationUpdate)
 			.eq("user_id", userId)
 			.eq("provider", "strava");
+		if (integrationUpdateError) {
+			throw new Error(
+				`Failed to update Strava integration state: ${integrationUpdateError.message}`,
+			);
+		}
 
 		// Update sync_queue entry if one exists
-		await supabase
+		const { error: queueUpdateError } = await supabase
 			.from("sync_queue")
 			.update({
 				status: errors.length > 0 ? "completed_with_errors" : "completed",
-				completed_at: new Date().toISOString(),
+				completed_at: syncFinishedAt,
+				error_message:
+					errors.length > 0 ? errors.slice(0, 10).join("; ") : null,
 			})
 			.eq("user_id", userId)
 			.eq("provider", "strava")
-			.eq("status", "pending")
+			.in("status", ["pending", "processing"])
 			.order("created_at", { ascending: false })
 			.limit(1);
+		if (queueUpdateError) {
+			throw new Error(
+				`Failed to update Strava sync queue state: ${queueUpdateError.message}`,
+			);
+		}
 
 		return new Response(JSON.stringify({ synced_count: syncedCount, errors }), {
 			headers: { ...cors, "Content-Type": "application/json" },

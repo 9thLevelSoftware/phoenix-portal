@@ -208,27 +208,49 @@ Deno.serve(async (req) => {
 			}
 
 			// Store request token temporarily in oauth_tokens (server-only)
-			await supabase.from("oauth_tokens").upsert(
-				{
-					user_id: userId,
-					provider: "garmin",
-					access_token: requestToken, // Temporarily store request token
-					refresh_token: requestTokenSecret, // Temporarily store request token secret
-					updated_at: new Date().toISOString(),
-				},
-				{ onConflict: "user_id,provider" },
-			);
+			const { error: pendingTokenError } = await supabase
+				.from("oauth_tokens")
+				.upsert(
+					{
+						user_id: userId,
+						provider: "garmin",
+						access_token: requestToken, // Temporarily store request token
+						refresh_token: requestTokenSecret, // Temporarily store request token secret
+						updated_at: new Date().toISOString(),
+					},
+					{ onConflict: "user_id,provider" },
+				);
+			if (pendingTokenError) {
+				console.error(
+					"Failed to store Garmin pending token:",
+					pendingTokenError,
+				);
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_token_store_failed`,
+				);
+			}
 
 			// Update user_integrations with non-sensitive status
-			await supabase.from("user_integrations").upsert(
-				{
-					user_id: userId,
-					provider: "garmin",
-					status: "disconnected", // Not yet connected
-					connected_at: new Date().toISOString(),
-				},
-				{ onConflict: "user_id,provider" },
-			);
+			const { error: pendingIntegrationError } = await supabase
+				.from("user_integrations")
+				.upsert(
+					{
+						user_id: userId,
+						provider: "garmin",
+						status: "disconnected", // Not yet connected
+						connected_at: new Date().toISOString(),
+					},
+					{ onConflict: "user_id,provider" },
+				);
+			if (pendingIntegrationError) {
+				console.error(
+					"Failed to store Garmin pending integration state:",
+					pendingIntegrationError,
+				);
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_integration_store_failed`,
+				);
+			}
 
 			// Redirect user to Garmin authorization page
 			const authUrl = `https://connect.garmin.com/oauthConfirm?oauth_token=${requestToken}`;
@@ -323,29 +345,48 @@ Deno.serve(async (req) => {
 
 			// Store the permanent access token in oauth_tokens (server-only)
 			// OAuth 1.0a tokens don't expire (no refresh_token concept)
-			await supabase.from("oauth_tokens").upsert(
-				{
-					user_id: userId,
-					provider: "garmin",
-					access_token: await encryptOAuthSecret(accessToken),
-					refresh_token: await encryptOAuthSecret(accessTokenSecret), // OAuth 1.0a token secret
-					token_expires_at: null, // OAuth 1.0a tokens don't expire
-					updated_at: new Date().toISOString(),
-				},
-				{ onConflict: "user_id,provider" },
-			);
+			const { error: tokenStoreError } = await supabase
+				.from("oauth_tokens")
+				.upsert(
+					{
+						user_id: userId,
+						provider: "garmin",
+						access_token: await encryptOAuthSecret(accessToken),
+						refresh_token: await encryptOAuthSecret(accessTokenSecret), // OAuth 1.0a token secret
+						token_expires_at: null, // OAuth 1.0a tokens don't expire
+						updated_at: new Date().toISOString(),
+					},
+					{ onConflict: "user_id,provider" },
+				);
+			if (tokenStoreError) {
+				console.error("Failed to store Garmin access token:", tokenStoreError);
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_token_store_failed`,
+				);
+			}
 
 			// Update user_integrations with non-sensitive data only
-			await supabase.from("user_integrations").upsert(
-				{
-					user_id: userId,
-					provider: "garmin",
-					connected_at: new Date().toISOString(),
-					status: "connected",
-					error_message: null,
-				},
-				{ onConflict: "user_id,provider" },
-			);
+			const { error: integrationStoreError } = await supabase
+				.from("user_integrations")
+				.upsert(
+					{
+						user_id: userId,
+						provider: "garmin",
+						connected_at: new Date().toISOString(),
+						status: "connected",
+						error_message: null,
+					},
+					{ onConflict: "user_id,provider" },
+				);
+			if (integrationStoreError) {
+				console.error(
+					"Failed to store Garmin connected integration state:",
+					integrationStoreError,
+				);
+				return Response.redirect(
+					`${APP_URL}/integrations?error=garmin_integration_store_failed`,
+				);
+			}
 
 			// No initial sync queue for Garmin -- relies on webhook push notifications
 			// for real-time activity updates. User can trigger manual sync if needed.

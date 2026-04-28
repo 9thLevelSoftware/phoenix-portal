@@ -462,10 +462,18 @@ async function computeWeeklyRankings(
 		: getWeeklyMetric(start);
 
 	// Get eligible users
-	const { data: eligibleProfiles } = await supabase
-		.from("profiles")
-		.select("id, display_name, avatar_url, user_id")
-		.eq("leaderboard_participation", true);
+	const { data: eligibleProfiles, error: eligibleProfilesError } =
+		await supabase
+			.from("profiles")
+			.select("id, display_name, avatar_url, user_id")
+			.eq("leaderboard_participation", true);
+	if (eligibleProfilesError) {
+		console.error(
+			"Failed to fetch weekly leaderboard profiles:",
+			eligibleProfilesError,
+		);
+		throw new Error("Failed to fetch weekly leaderboard profiles");
+	}
 
 	const eligibleUserIds = (eligibleProfiles ?? [])
 		.map((p) => p.user_id)
@@ -495,12 +503,19 @@ async function computeWeeklyRankings(
 		metricConfig.metric === "total_workouts"
 	) {
 		// Aggregate from workout_sessions within the week
-		const { data: sessions } = await supabase
+		const { data: sessions, error: sessionsError } = await supabase
 			.from("workout_sessions")
 			.select("user_id, total_volume, started_at")
 			.in("user_id", eligibleUserIds)
 			.gte("started_at", `${start}T00:00:00Z`)
 			.lte("started_at", `${end}T23:59:59Z`);
+		if (sessionsError) {
+			console.error(
+				`Failed to fetch weekly sessions for ${metricConfig.metric}:`,
+				sessionsError,
+			);
+			throw new Error("Failed to fetch weekly sessions");
+		}
 
 		const weeklyStats = new Map<string, { volume: number; count: number }>();
 		for (const session of sessions ?? []) {
@@ -527,12 +542,16 @@ async function computeWeeklyRankings(
 		);
 	} else if (metricConfig.metric === "pr_count") {
 		// Count PRs achieved during the week
-		const { data: prs } = await supabase
+		const { data: prs, error: prsError } = await supabase
 			.from("personal_records")
 			.select("user_id")
 			.in("user_id", eligibleUserIds)
 			.gte("achieved_at", `${start}T00:00:00Z`)
 			.lte("achieved_at", `${end}T23:59:59Z`);
+		if (prsError) {
+			console.error("Failed to fetch weekly personal records:", prsError);
+			throw new Error("Failed to fetch weekly personal records");
+		}
 
 		const prCounts = new Map<string, number>();
 		for (const pr of prs ?? []) {
@@ -547,10 +566,14 @@ async function computeWeeklyRankings(
 		);
 	} else if (metricConfig.metric === "current_streak") {
 		// Use current gamification_stats streak values
-		const { data: stats } = await supabase
+		const { data: stats, error: statsError } = await supabase
 			.from("gamification_stats")
 			.select("user_id, current_streak")
 			.in("user_id", eligibleUserIds);
+		if (statsError) {
+			console.error("Failed to fetch weekly gamification stats:", statsError);
+			throw new Error("Failed to fetch weekly gamification stats");
+		}
 
 		const statsMap = new Map((stats ?? []).map((s) => [s.user_id, s]));
 		entries = buildRankings(
@@ -582,10 +605,18 @@ async function computeUserRankings(
 	targetUserId: string,
 ): Promise<UserRanking[]> {
 	// Get all eligible users
-	const { data: eligibleProfiles } = await supabase
-		.from("profiles")
-		.select("user_id")
-		.eq("leaderboard_participation", true);
+	const { data: eligibleProfiles, error: eligibleProfilesError } =
+		await supabase
+			.from("profiles")
+			.select("user_id")
+			.eq("leaderboard_participation", true);
+	if (eligibleProfilesError) {
+		console.error(
+			"Failed to fetch user ranking eligible profiles:",
+			eligibleProfilesError,
+		);
+		throw new Error("Failed to fetch user ranking profiles");
+	}
 
 	const eligibleUserIds = (eligibleProfiles ?? [])
 		.map((p) => p.user_id)
@@ -597,12 +628,16 @@ async function computeUserRankings(
 	}
 
 	// Get gamification stats for all eligible users
-	const { data: stats } = await supabase
+	const { data: stats, error: statsError } = await supabase
 		.from("gamification_stats")
 		.select(
 			"user_id, total_volume_kg, total_workouts, longest_streak, current_streak",
 		)
 		.in("user_id", eligibleUserIds);
+	if (statsError) {
+		console.error("Failed to fetch user ranking stats:", statsError);
+		throw new Error("Failed to fetch user ranking stats");
+	}
 
 	const statsMap = new Map((stats ?? []).map((s) => [s.user_id, s]));
 	const userStats = statsMap.get(targetUserId);
@@ -674,9 +709,16 @@ async function computeUserRankings(
 	});
 
 	// PR Count ranking (via RPC)
-	const { data: prRank } = await supabase.rpc("get_user_pr_rank", {
-		target_user_id: targetUserId,
-	});
+	const { data: prRank, error: prRankError } = await supabase.rpc(
+		"get_user_pr_rank",
+		{
+			target_user_id: targetUserId,
+		},
+	);
+	if (prRankError) {
+		console.error("Failed to fetch user PR rank:", prRankError);
+		throw new Error("Failed to fetch user PR rank");
+	}
 
 	if (prRank && prRank.length > 0) {
 		const pr = prRank[0];
@@ -689,9 +731,16 @@ async function computeUserRankings(
 		});
 	} else {
 		// User has 0 PRs. Get count of users with >0 PRs from RPC (already called for global rankings)
-		const { data: allPrUsers } = await supabase.rpc("get_pr_count_rankings", {
-			result_limit: totalUsers,
-		});
+		const { data: allPrUsers, error: allPrUsersError } = await supabase.rpc(
+			"get_pr_count_rankings",
+			{
+				result_limit: totalUsers,
+			},
+		);
+		if (allPrUsersError) {
+			console.error("Failed to fetch PR count rankings:", allPrUsersError);
+			throw new Error("Failed to fetch PR count rankings");
+		}
 		// All 0-PR users are tied at rank = (users with PRs) + 1
 		const usersWithPRs = (allPrUsers ?? []).length;
 		const zeroRank = usersWithPRs + 1;
@@ -715,6 +764,7 @@ async function computeUserRankings(
 
 	if (masteryQueryError) {
 		console.error("Failed to fetch user exercise data:", masteryQueryError);
+		throw new Error("Failed to fetch user exercise data");
 	}
 
 	// Group by exercise name, count distinct sessions
@@ -730,12 +780,19 @@ async function computeUserRankings(
 	).length;
 
 	// Get all users' mastery for ranking
-	const { data: allMasteryData } = await supabase.rpc(
+	const { data: allMasteryData, error: allMasteryError } = await supabase.rpc(
 		"get_exercise_mastery_rankings",
 		{
 			result_limit: totalUsers,
 		},
 	);
+	if (allMasteryError) {
+		console.error(
+			"Failed to fetch exercise mastery rankings:",
+			allMasteryError,
+		);
+		throw new Error("Failed to fetch exercise mastery rankings");
+	}
 
 	const masteryValues = (allMasteryData ?? []).map((m) => m.mastered_count);
 	// Users with 0 mastery rank after all users with positive mastery

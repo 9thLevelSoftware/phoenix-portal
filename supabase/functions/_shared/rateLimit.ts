@@ -284,7 +284,7 @@ export async function checkRateLimit(
 
 	if (windowExpired) {
 		// Reset window atomically
-		const { data: reset } = await supabase
+		const { data: reset, error: resetError } = await supabase
 			.from("rate_limit_tracking")
 			.update({
 				requests_this_window: 1,
@@ -293,10 +293,39 @@ export async function checkRateLimit(
 				last_reset_at: now.toISOString(),
 			})
 			.eq("id", current.id)
+			.eq("window_started_at", current.window_started_at)
 			.select("requests_this_window")
-			.single();
+			.maybeSingle();
 
-		const count = reset?.requests_this_window ?? 1;
+		if (resetError || !reset) {
+			console.error("[rateLimit] window reset did not apply; failing closed", {
+				key,
+				userId,
+				windowStartedAt: current.window_started_at,
+				error: resetError,
+			});
+			return {
+				allowed: false,
+				remaining: 0,
+				response: new Response(
+					JSON.stringify({
+						error: "rate_limit_unavailable",
+						message:
+							"Rate limit check temporarily unavailable. Please retry shortly.",
+					}),
+					{
+						status: 503,
+						headers: {
+							...corsHeaders,
+							"Content-Type": "application/json",
+							"Retry-After": "30",
+						},
+					},
+				),
+			};
+		}
+
+		const count = reset.requests_this_window;
 		return { allowed: true, remaining: maxRequests - count };
 	}
 

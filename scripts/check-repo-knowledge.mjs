@@ -169,12 +169,23 @@ function assertMarkdownLinksResolve() {
 				continue;
 			}
 
-			const decodedTarget = decodeURI(withoutAnchor);
+			let decodedTarget;
+			try {
+				decodedTarget = decodeURI(withoutAnchor);
+			} catch {
+				fail(`${file} has an invalid internal link target: ${rawTarget}`);
+				continue;
+			}
 			const resolved = decodedTarget.startsWith("/")
-				? path.join(root, decodedTarget.slice(1))
+				? path.resolve(root, decodedTarget.slice(1))
 				: path.resolve(path.dirname(absolute(file)), decodedTarget);
 
-			if (!resolved.startsWith(root)) {
+			const relativeToRoot = path.relative(root, resolved);
+			if (
+				relativeToRoot === ".." ||
+				relativeToRoot.startsWith(`..${path.sep}`) ||
+				path.isAbsolute(relativeToRoot)
+			) {
 				fail(`${file} links outside the repository: ${rawTarget}`);
 				continue;
 			}

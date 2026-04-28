@@ -57,13 +57,15 @@ function lineCount(filePath) {
 }
 
 function isTypeScriptFile(filePath) {
-	return /\.(ts|tsx)$/.test(filePath) && !filePath.endsWith(".d.ts");
+	return (
+		/\.(ts|tsx|mts|cts)$/.test(filePath) && !/\.d\.(ts|mts|cts)$/.test(filePath)
+	);
 }
 
 function isTestFile(filePath) {
 	return (
 		filePath.includes("/__tests__/") ||
-		/\.(test|spec)\.(ts|tsx)$/.test(filePath) ||
+		/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(filePath) ||
 		filePath.startsWith("tests/") ||
 		filePath.startsWith("e2e/")
 	);
@@ -113,6 +115,8 @@ function firstExistingCandidate(basePath, trackedFileSet) {
 		`${basePath}.cts`,
 		`${basePath}/index.ts`,
 		`${basePath}/index.tsx`,
+		`${basePath}/index.mts`,
+		`${basePath}/index.cts`,
 	];
 
 	for (const candidate of candidates) {

@@ -7,6 +7,11 @@ const KNOWN_ENTITY_FIELDS = [
 	"badgeIds",
 	"personalRecordIds",
 ] as const;
+const UUID_FIELDS = ["sessionIds", "routineIds", "cycleIds"] as const;
+const INTEGER_FIELDS = ["badgeIds", "personalRecordIds"] as const;
+const UUID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POSITIVE_INT_STRING = /^\d+$/;
 
 function errorResponse(
 	message: string,
@@ -16,6 +21,13 @@ function errorResponse(
 		status: 400,
 		headers: { ...cors, "Content-Type": "application/json" },
 	});
+}
+
+function isPositiveIntegerId(value: unknown): boolean {
+	return (
+		(typeof value === "number" && Number.isInteger(value) && value > 0) ||
+		(typeof value === "string" && POSITIVE_INT_STRING.test(value))
+	);
 }
 
 export function validatePullRequestShape(
@@ -59,6 +71,23 @@ export function validatePullRequestShape(
 		const value = body.knownEntityIds[field];
 		if (value !== undefined && !Array.isArray(value)) {
 			return errorResponse(`Invalid knownEntityIds.${field}`, cors);
+		}
+	}
+
+	for (const field of UUID_FIELDS) {
+		const ids = body.knownEntityIds[field];
+		if (
+			Array.isArray(ids) &&
+			!ids.every((id) => typeof id === "string" && UUID_REGEX.test(id))
+		) {
+			return errorResponse(`Invalid knownEntityIds.${field} entry`, cors);
+		}
+	}
+
+	for (const field of INTEGER_FIELDS) {
+		const ids = body.knownEntityIds[field];
+		if (Array.isArray(ids) && !ids.every(isPositiveIntegerId)) {
+			return errorResponse(`Invalid knownEntityIds.${field} entry`, cors);
 		}
 	}
 

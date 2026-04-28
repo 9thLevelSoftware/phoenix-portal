@@ -1,11 +1,12 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/fetchWithTimeout.ts";
 import {
 	decryptOAuthSecret,
 	encryptOAuthSecret,
 } from "../_shared/oauthTokenCrypto.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
-import { readJsonObject } from "../_shared/requestValidation.ts";
+import { isJsonObject, readJsonObject } from "../_shared/requestValidation.ts";
 
 /**
  * Mobile Integration Sync Edge Function
@@ -134,13 +135,71 @@ function parseLiftoscriptMetadata(text: string): {
 // Provider fetch logic
 // =============================================================================
 
+function isHevyWorkout(value: unknown): value is HevyWorkout {
+	return (
+		isJsonObject(value) &&
+		typeof value.id === "string" &&
+		typeof value.title === "string" &&
+		typeof value.start_time === "string" &&
+		typeof value.end_time === "string" &&
+		Array.isArray(value.exercises)
+	);
+}
+
+function parseHevyWorkouts(payload: unknown): HevyWorkout[] {
+	const workouts =
+		isJsonObject(payload) && Array.isArray(payload.workouts)
+			? payload.workouts
+			: payload;
+	if (!Array.isArray(workouts) || !workouts.every(isHevyWorkout)) {
+		throw new Error("Invalid Hevy API payload");
+	}
+	return workouts;
+}
+
+function isLiftosaurRecord(value: unknown): value is LiftosaurRecord {
+	return (
+		isJsonObject(value) &&
+		typeof value.id === "number" &&
+		Number.isFinite(value.id) &&
+		typeof value.text === "string"
+	);
+}
+
+function parseLiftosaurHistoryResponse(
+	payload: unknown,
+): LiftosaurHistoryResponse {
+	if (!isJsonObject(payload) || !isJsonObject(payload.data)) {
+		throw new Error("Invalid Liftosaur API payload");
+	}
+
+	const { records, hasMore, nextCursor } = payload.data;
+	if (
+		!Array.isArray(records) ||
+		!records.every(isLiftosaurRecord) ||
+		typeof hasMore !== "boolean" ||
+		!(
+			nextCursor === null ||
+			(typeof nextCursor === "number" && Number.isFinite(nextCursor))
+		)
+	) {
+		throw new Error("Invalid Liftosaur API payload");
+	}
+
+	return { data: { records, hasMore, nextCursor } };
+}
+
 async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
-	const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-		headers: {
-			"api-key": apiKey,
-			"Content-Type": "application/json",
+	const response = await fetchWithTimeout(
+		`${HEVY_API_BASE}/workouts`,
+		{
+			headers: {
+				"api-key": apiKey,
+				"Content-Type": "application/json",
+			},
 		},
-	});
+		10_000,
+	);
 
 	if (response.status === 401 || response.status === 403) {
 		throw new ApiKeyError(
@@ -151,8 +210,8 @@ async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
 		throw new Error(`Hevy API returned ${response.status}`);
 	}
 
-	const data = await response.json();
-	const workouts: HevyWorkout[] = data.workouts ?? data ?? [];
+	const data: unknown = await response.json();
+	const workouts = parseHevyWorkouts(data);
 
 	return workouts.map((w) => {
 		const startTime = new Date(w.start_time);
@@ -187,7 +246,7 @@ async function fetchLiftosaurActivities(
 			params.set("cursor", cursor.toString());
 		}
 
-		const response = await fetch(
+		const response = await fetchWithTimeout(
 			`${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
 			{
 				headers: {
@@ -195,6 +254,7 @@ async function fetchLiftosaurActivities(
 					"Content-Type": "application/json",
 				},
 			},
+			10_000,
 		);
 
 		if (response.status === 401 || response.status === 403) {
@@ -206,7 +266,7 @@ async function fetchLiftosaurActivities(
 			throw new Error(`Liftosaur API returned ${response.status}`);
 		}
 
-		const result: LiftosaurHistoryResponse = await response.json();
+		const result = parseLiftosaurHistoryResponse(await response.json());
 		allRecords.push(...result.data.records);
 		hasMore = result.data.hasMore;
 		cursor = result.data.nextCursor;
