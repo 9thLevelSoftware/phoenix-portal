@@ -2,10 +2,7 @@
 tracker:
   kind: linear
   api_key: $LINEAR_API_KEY
-  # Required before running Symphony: set this to the Linear project slug from
-  # the project URL. Keep it blank in the committed template to avoid polling
-  # the wrong project by accident.
-  project_slug: ""
+  project_slug: "phoenix-portal-a6089d66fd4f"
   active_states:
     - Todo
     - In Progress
@@ -81,6 +78,8 @@ abstractions.
 
 Important commands:
 - Install dependencies: `npm ci`
+- Standard validation: `npm run verify`
+- Full validation with E2E: `npm run verify:full`
 - Typecheck: `npm run typecheck`
 - Unit and integration tests: `npm test`
 - Sync tests: `npm run test:sync`
@@ -170,12 +169,12 @@ Use this structure and keep it current:
 ## Validation Policy
 
 Default validation before handoff:
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
+- `npm run verify:full`
 
-Run `npm run test:e2e` for UI workflows, routing, auth flow, or browser-visible
-changes. Run `npm run test:sync` for sync, Edge Function, or DTO changes.
+Run `npm run test:sync` for sync, Edge Function, schema, DTO, or
+migration-adjacent changes. If E2E cannot run in the current environment,
+record the exact blocker and do not move the issue to `Human Review` unless the
+issue is explicitly non-browser-visible and CI coverage is sufficient.
 
 For Supabase migrations:
 - Write idempotent SQL migration files under `supabase/migrations/`.

@@ -42,8 +42,8 @@ repo's `WORKFLOW.md`.
    $env:LINEAR_API_KEY = "lin_api_..."
    ```
 
-4. Edit `WORKFLOW.md` and set `tracker.project_slug` to the Linear project slug
-   from the Linear project URL.
+4. Confirm `WORKFLOW.md` has the expected Linear project slug. The committed
+   Phoenix Portal slug is `phoenix-portal-a6089d66fd4f`.
 5. Ensure `git`, `node`, and `npm` are available to the Symphony process.
 
 On Windows, prefer running the Symphony reference implementation from WSL or a
@@ -120,7 +120,7 @@ Additional validation:
 
 Before starting Symphony:
 
-- `WORKFLOW.md` has the correct `tracker.project_slug`.
+- `WORKFLOW.md` has `tracker.project_slug: "phoenix-portal-a6089d66fd4f"`.
 - `LINEAR_API_KEY` is set in the Symphony process environment.
 - The Linear workflow state names match `WORKFLOW.md`.
 - `codex app-server --help` works in the same shell.
