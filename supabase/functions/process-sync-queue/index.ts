@@ -309,11 +309,19 @@ async function incrementRateLimit(
 	const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
 	if (!limit) return;
 
-	const { data: existing } = await supabase
+	const { data: existing, error: lookupError } = await supabase
 		.from("rate_limit_tracking")
 		.select("*")
 		.eq("provider", provider)
-		.single();
+		.maybeSingle();
+
+	if (lookupError) {
+		console.error(
+			`[SYNC_QUEUE] Failed to load rate limit row for ${provider}:`,
+			lookupError,
+		);
+		return;
+	}
 
 	if (!existing) {
 		await supabase.from("rate_limit_tracking").insert({
@@ -324,7 +332,7 @@ async function incrementRateLimit(
 		});
 	} else {
 		const windowStart = new Date(existing.window_started_at).getTime();
-		const windowExpired = now.getTime() - windowStart > limit.windowMs;
+		const windowExpired = now.getTime() - windowStart >= limit.windowMs;
 
 		await supabase
 			.from("rate_limit_tracking")
@@ -354,6 +362,6 @@ function isRateLimited(
 	if (!tracking) return false;
 	const windowStart = new Date(tracking.window_started_at).getTime();
 	const now = Date.now();
-	if (now - windowStart > limit.windowMs) return false;
+	if (now - windowStart >= limit.windowMs) return false;
 	return tracking.requests_this_window >= limit.requests;
 }

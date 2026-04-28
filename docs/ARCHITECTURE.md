@@ -28,7 +28,7 @@ Lower layers must stay independent of UI and React app composition:
 - Queries, mutations, hooks, providers, and stores do not import `src/app`.
 - App code may depend on lower layers.
 - Edge Functions may import external Deno/npm/jsr modules and `_shared` helpers,
-  but not sibling Edge Functions or portal UI code.
+  but not sibling Edge Functions or any `src/**` portal source code.
 - Portal source must not import `supabase/functions/` code. Edge Functions run
   in Deno and must stay isolated from the browser/Vite runtime; violations are
   reported as `import-boundary` failures.

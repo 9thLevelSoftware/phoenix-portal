@@ -36,10 +36,14 @@ async function verifyPaddleSignature(
 	const ts = tsEntry.slice(3);
 	const expectedHex = h1Entry.slice(3).toLowerCase();
 
-	if (!ts || !expectedHex || !/^[0-9a-f]+$/.test(expectedHex)) return false;
+	if (!/^\d+$/.test(ts) || !expectedHex || !/^[0-9a-f]+$/.test(expectedHex)) {
+		return false;
+	}
 
 	// Reject signatures older than 5 minutes to prevent replay attacks
-	const signatureAge = Math.abs(Date.now() / 1000 - parseInt(ts, 10));
+	const timestamp = Number(ts);
+	if (!Number.isSafeInteger(timestamp)) return false;
+	const signatureAge = Math.abs(Date.now() / 1000 - timestamp);
 	if (signatureAge > 300) {
 		console.warn(
 			"[BILLING_ALERT] Webhook signature too old:",
@@ -123,7 +127,9 @@ function parsePaddleWebhookEvent(
 /**
  * Maps a Paddle subscription status to the portal's subscription status.
  */
-function mapPaddleStatusToSubscriptionStatus(paddleStatus: string): string {
+function mapPaddleStatusToSubscriptionStatus(
+	paddleStatus: string,
+): string | null {
 	switch (paddleStatus) {
 		case "active":
 			return "active";
@@ -136,7 +142,7 @@ function mapPaddleStatusToSubscriptionStatus(paddleStatus: string): string {
 		case "past_due":
 			return "past_due";
 		default:
-			return "none";
+			return null;
 	}
 }
 
@@ -335,12 +341,36 @@ Deno.serve(async (req) => {
 
 		// Map status and tier
 		const status = mapPaddleStatusToSubscriptionStatus(paddleStatus);
+		if (!status) {
+			console.error(
+				"[BILLING_ALERT] Unknown Paddle subscription status:",
+				paddleStatus,
+				"event_id:",
+				event.event_id,
+			);
+			return new Response(
+				JSON.stringify({ error: "Unknown subscription status" }),
+				{ status: 400, headers: responseHeaders },
+			);
+		}
 		const firstItem = Array.isArray(event.data.items)
 			? event.data.items[0]
 			: null;
 		const price =
 			isRecord(firstItem) && isRecord(firstItem.price) ? firstItem.price : null;
 		const priceId = typeof price?.id === "string" ? price.id : "";
+		if (!priceId) {
+			console.error(
+				"[BILLING_ALERT] Missing Paddle price ID:",
+				event.event_id,
+				"event_type:",
+				event.event_type,
+			);
+			return new Response(JSON.stringify({ error: "Missing price_id" }), {
+				status: 400,
+				headers: responseHeaders,
+			});
+		}
 		let tier = mapPriceIdToTier(priceId, Deno.env);
 
 		if (priceId && tier === "FREE") {

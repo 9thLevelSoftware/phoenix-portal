@@ -130,7 +130,8 @@ function firstExistingCandidate(basePath, trackedFileSet) {
 
 function resolveImport(sourceFile, specifier, trackedFileSet) {
 	if (specifier.startsWith("@/")) {
-		return firstExistingCandidate(`src/${specifier.slice(2)}`, trackedFileSet);
+		const resolved = path.posix.normalize(`src/${specifier.slice(2)}`);
+		return firstExistingCandidate(resolved, trackedFileSet);
 	}
 
 	if (specifier.startsWith(".")) {
@@ -190,10 +191,9 @@ function importDeclarations(sourceFile, sourceText) {
 }
 
 function makeViolation(rule, filePath, message, extra = {}) {
+	const locationKey = extra.targetPath ?? extra.specifier ?? "";
 	return {
-		id: `${rule}:${filePath}${extra.line ? `:${extra.line}` : ""}${
-			extra.specifier ? `:${extra.specifier}` : ""
-		}`,
+		id: `${rule}:${filePath}${locationKey ? `:${locationKey}` : ""}`,
 		rule,
 		filePath,
 		message,
@@ -216,7 +216,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 			"import-boundary",
 			filePath,
 			`Portal source cannot import Edge Function code; imported ${targetPath}.`,
-			importInfo,
+			{ ...importInfo, targetPath },
 		);
 	}
 
@@ -229,7 +229,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 				"import-boundary",
 				filePath,
 				`Schemas must stay dependency-light; imported ${targetPath}.`,
-				importInfo,
+				{ ...importInfo, targetPath },
 			);
 		}
 	}
@@ -244,7 +244,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 				"import-boundary",
 				filePath,
 				`Lib code cannot import React app/runtime layers; imported ${targetPath}.`,
-				importInfo,
+				{ ...importInfo, targetPath },
 			);
 		}
 	}
@@ -259,7 +259,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 			"import-boundary",
 			filePath,
 			`${sourceLayer} code cannot import app/UI code; imported ${targetPath}.`,
-			importInfo,
+			{ ...importInfo, targetPath },
 		);
 	}
 
@@ -269,7 +269,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 				"import-boundary",
 				filePath,
 				`Edge Functions cannot import portal source code; imported ${targetPath}.`,
-				importInfo,
+				{ ...importInfo, targetPath },
 			);
 		}
 
@@ -284,7 +284,7 @@ function checkImportBoundary(filePath, importInfo, targetPath) {
 					"import-boundary",
 					filePath,
 					`Edge Functions cannot import sibling functions; imported ${targetPath}.`,
-					importInfo,
+					{ ...importInfo, targetPath },
 				);
 			}
 		}

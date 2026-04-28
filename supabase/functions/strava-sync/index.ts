@@ -451,24 +451,36 @@ Deno.serve(async (req) => {
 			);
 		}
 
-		// Update sync_queue entry if one exists
-		const { error: queueUpdateError } = await supabase
+		// Update the newest sync_queue entry if one exists.
+		const { data: queueEntry, error: queueLookupError } = await supabase
 			.from("sync_queue")
-			.update({
-				status: errors.length > 0 ? "completed_with_errors" : "completed",
-				completed_at: syncFinishedAt,
-				error_message:
-					errors.length > 0 ? errors.slice(0, 10).join("; ") : null,
-			})
+			.select("id")
 			.eq("user_id", userId)
 			.eq("provider", "strava")
 			.in("status", ["pending", "processing"])
 			.order("created_at", { ascending: false })
-			.limit(1);
-		if (queueUpdateError) {
+			.limit(1)
+			.maybeSingle();
+		if (queueLookupError) {
 			throw new Error(
-				`Failed to update Strava sync queue state: ${queueUpdateError.message}`,
+				`Failed to find Strava sync queue state: ${queueLookupError.message}`,
 			);
+		}
+		if (queueEntry) {
+			const { error: queueUpdateError } = await supabase
+				.from("sync_queue")
+				.update({
+					status: errors.length > 0 ? "completed_with_errors" : "completed",
+					completed_at: syncFinishedAt,
+					error_message:
+						errors.length > 0 ? errors.slice(0, 10).join("; ") : null,
+				})
+				.eq("id", queueEntry.id);
+			if (queueUpdateError) {
+				throw new Error(
+					`Failed to update Strava sync queue state: ${queueUpdateError.message}`,
+				);
+			}
 		}
 
 		return new Response(JSON.stringify({ synced_count: syncedCount, errors }), {

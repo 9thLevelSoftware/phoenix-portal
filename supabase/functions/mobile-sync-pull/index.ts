@@ -64,6 +64,12 @@ interface PullRequest {
 	};
 }
 
+// Cursor ids must remain validated locally because decodeCursor runs before
+// request body knownEntityIds validation.
+const UUID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POSITIVE_INT_STRING = /^\d+$/;
+
 /**
  * Enforce MAX_PARITY_IDS on each parity list and reject with HTTP 413 if any
  * exceeds the cap. Resolves audit item #7 (2026-04-19). Client must chunk

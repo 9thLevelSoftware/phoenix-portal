@@ -55,8 +55,8 @@ function isGarminActivitySummary(
 		typeof value.activityType === "string" &&
 		typeof value.startTimeInSeconds === "number" &&
 		Number.isFinite(value.startTimeInSeconds) &&
-		(typeof value.startTimeOffsetInSeconds === "number" ||
-			value.startTimeOffsetInSeconds === undefined) &&
+		typeof value.startTimeOffsetInSeconds === "number" &&
+		Number.isFinite(value.startTimeOffsetInSeconds) &&
 		typeof value.durationInSeconds === "number" &&
 		Number.isFinite(value.durationInSeconds)
 	);
@@ -226,6 +226,10 @@ Deno.serve(async (req) => {
 		let processed = 0;
 		let errors = 0;
 		let persistenceFailure = false; // fix(audit): C5 — track unrecoverable DB errors
+		const subscriptionGateByUserId = new Map<
+			string,
+			Awaited<ReturnType<typeof requireSubscription>>
+		>();
 
 		for (const activity of activities) {
 			try {
@@ -259,12 +263,16 @@ Deno.serve(async (req) => {
 				}
 
 				// Subscription gate — FLAME or higher for integrations
-				const gate = await requireSubscription(
-					supabase,
-					integration.user_id,
-					"FLAME",
-					cors,
-				);
+				let gate = subscriptionGateByUserId.get(integration.user_id);
+				if (!gate) {
+					gate = await requireSubscription(
+						supabase,
+						integration.user_id,
+						"FLAME",
+						cors,
+					);
+					subscriptionGateByUserId.set(integration.user_id, gate);
+				}
 				if (!gate.allowed) {
 					console.warn(
 						`[GARMIN_WEBHOOK] user ${integration.user_id} does not have FLAME subscription`,
@@ -299,11 +307,20 @@ Deno.serve(async (req) => {
 				}
 
 				// Update last_sync_at for this user's Garmin integration
-				await supabase
+				const { error: lastSyncUpdateError } = await supabase
 					.from("user_integrations")
 					.update({ last_sync_at: new Date().toISOString() })
 					.eq("user_id", integration.user_id)
 					.eq("provider", "garmin");
+				if (lastSyncUpdateError) {
+					console.error(
+						"[GARMIN_WEBHOOK] failed to update last_sync_at:",
+						lastSyncUpdateError,
+					);
+					persistenceFailure = true;
+					errors++;
+					continue;
+				}
 
 				processed++;
 			} catch (activityError) {

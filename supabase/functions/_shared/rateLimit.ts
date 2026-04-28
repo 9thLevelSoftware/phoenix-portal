@@ -35,6 +35,34 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
 	const { key, userId, maxRequests, windowSeconds } = config;
 
+	if (
+		!Number.isInteger(maxRequests) ||
+		maxRequests <= 0 ||
+		!Number.isFinite(windowSeconds) ||
+		windowSeconds <= 0
+	) {
+		console.error("[rateLimit] invalid configuration:", config);
+		return {
+			allowed: false,
+			remaining: 0,
+			response: new Response(
+				JSON.stringify({
+					error: "rate_limit_unavailable",
+					message:
+						"Rate limit check temporarily unavailable. Please retry shortly.",
+				}),
+				{
+					status: 503,
+					headers: {
+						...corsHeaders,
+						"Content-Type": "application/json",
+						"Retry-After": "30",
+					},
+				},
+			),
+		};
+	}
+
 	// Use atomic RPC function if available (eliminates race condition).
 	// fix(audit): C7 — Distinguish "RPC not deployed" (fall through to fallback)
 	// from "RPC failed unexpectedly" (fail closed with 503). Never allow the
@@ -280,7 +308,7 @@ export async function checkRateLimit(
 	}
 
 	const windowStart = new Date(current.window_started_at).getTime();
-	const windowExpired = now.getTime() - windowStart > windowMs;
+	const windowExpired = now.getTime() - windowStart >= windowMs;
 
 	if (windowExpired) {
 		// Reset window atomically

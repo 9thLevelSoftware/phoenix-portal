@@ -66,6 +66,18 @@ function fileExists(filePath) {
 	return existsSync(absolute(filePath));
 }
 
+function extractMarkdownLinkTarget(rawTarget) {
+	const trimmed = rawTarget.trim();
+	if (!trimmed) return "";
+
+	if (trimmed.startsWith("<")) {
+		const end = trimmed.indexOf(">");
+		return end === -1 ? trimmed : trimmed.slice(1, end).trim();
+	}
+
+	return trimmed.split(/\s+/)[0] ?? "";
+}
+
 function assertTrackedAgentEntryPoint() {
 	try {
 		runGit(["ls-files", "--error-unmatch", "AGENTS.md"]);
@@ -155,7 +167,7 @@ function assertMarkdownLinksResolve() {
 
 		const content = readFileSync(absolute(file), "utf8");
 		for (const match of content.matchAll(markdownLinkPattern)) {
-			const rawTarget = match[1].trim();
+			const rawTarget = extractMarkdownLinkTarget(match[1]);
 			if (
 				!rawTarget ||
 				rawTarget.startsWith("#") ||
