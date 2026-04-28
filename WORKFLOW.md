@@ -42,7 +42,7 @@ codex:
     type: workspaceWrite
     networkAccess: true
   turn_timeout_ms: 3600000
-  read_timeout_ms: 5000
+  read_timeout_ms: 60000
   stall_timeout_ms: 300000
 ---
 You are working on a Linear issue for Phoenix Portal.
