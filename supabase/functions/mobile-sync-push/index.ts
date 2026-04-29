@@ -1439,6 +1439,33 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
+    // 7a-bis. Delete cycles that mobile soft-deleted (tombstone propagation).
+    //         Hard-delete on server — CASCADE removes cycle_days automatically.
+    //         Ownership check prevents cross-user deletion via crafted IDs.
+    // =========================================================================
+    if (payload.deletedCycleIds && payload.deletedCycleIds.length > 0) {
+      const cycleDelOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        cors,
+      );
+      if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
+
+      const { error: cycleDelErr } = await supabase
+        .from('training_cycles')
+        .delete()
+        .in('id', payload.deletedCycleIds)
+        .eq('user_id', userId);
+      if (cycleDelErr) {
+        console.warn('cycle deletion warning:', cycleDelErr.message);
+      } else {
+        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
+      }
+    }
+
+    // =========================================================================
     // 7b. Upsert training_cycles + upsert cycle_days (safe replace pattern)
     //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
     //     constraint instead of delete+insert.

@@ -359,6 +359,7 @@ export const pushPayloadSchema = z.object({
 	routines: arrayOf(routineSchema).default([]),
 	deletedRoutineIds: arrayOf(uuid).default([]),
 	cycles: arrayOf(cycleSchema).default([]),
+	deletedCycleIds: arrayOf(uuid).default([]),
 	rpgAttributes: rpgAttributesSchema.nullable().optional(),
 	badges: arrayOf(badgeSchema).default([]),
 	gamificationStats: gamificationStatsSchema.nullable().optional(),
