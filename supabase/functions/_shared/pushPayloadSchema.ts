@@ -357,6 +357,7 @@ export const pushPayloadSchema = z.object({
 	sessions: arrayOf(sessionSchema).default([]),
 	telemetry: arrayOf(repTelemetrySchema).default([]),
 	routines: arrayOf(routineSchema).default([]),
+	deletedRoutineIds: arrayOf(uuid).default([]),
 	cycles: arrayOf(cycleSchema).default([]),
 	rpgAttributes: rpgAttributesSchema.nullable().optional(),
 	badges: arrayOf(badgeSchema).default([]),
