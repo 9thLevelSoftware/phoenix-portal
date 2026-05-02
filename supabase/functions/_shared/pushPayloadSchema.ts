@@ -195,6 +195,7 @@ const routineExerciseSchema = z.object({
 	supersetOrder: nullableField(z.number().int()),
 	perSetWeights: nullableField(z.string()),
 	perSetRest: nullableField(z.string()),
+	perSetReps: nullableField(z.string()),
 	isAmrap: z.boolean().nullish().transform((v) => v ?? false),
 	isBodyweight: z.boolean().nullish().transform((v) => v ?? false),
 	prPercentage: nullableField(z.number()),

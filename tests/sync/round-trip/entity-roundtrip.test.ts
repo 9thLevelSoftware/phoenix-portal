@@ -292,6 +292,50 @@ describe('Entity Round-Trip Tests', () => {
       const prScaled = exercises.find(e => e.name === 'PR-Scaled Squat');
       expect(prScaled?.prPercentage).toBe(85);
     });
+
+    it('should preserve all-AMRAP per-set reps', async () => {
+      // Arrange
+      const routineId = generateTestId();
+      const perSetReps = '[null,null,null]';
+
+      const routine: RoutineDto = {
+        id: routineId,
+        userId: testUser.id,
+        name: 'All-AMRAP Routine',
+        description: 'Every set is AMRAP',
+        exerciseCount: 1,
+        estimatedDuration: 30,
+        timesCompleted: 0,
+        isFavorite: false,
+        exercises: [
+          {
+            id: generateTestId(),
+            routineId,
+            name: 'Deadlift',
+            muscleGroup: 'Posterior Chain',
+            sets: 3,
+            reps: 10,
+            weight: 180,
+            restSeconds: 180,
+            mode: 'OLD_SCHOOL',
+            orderIndex: 0,
+            perSetReps,
+            isAmrap: true,
+          },
+        ],
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { routines: [routine] });
+
+      // Act
+      await callPushEndpoint(payload, testUser.accessToken);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Assert
+      const exercise = pullResult.data!.routines[0].exercises[0];
+      expect(exercise?.isAmrap).toBe(true);
+      expect(exercise?.perSetReps).toBe(perSetReps);
+    });
   });
 
   describe('Training Cycle with Days Round-Trip', () => {

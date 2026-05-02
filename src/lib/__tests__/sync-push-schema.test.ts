@@ -116,6 +116,33 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.routines).toEqual([]);
 	});
 
+	it("preserves per-set routine reps through validation", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			routines: [
+				{
+					id: UUID,
+					userId: "u1",
+					name: "AMRAP Routine",
+					exercises: [
+						{
+							id: UUID2,
+							routineId: UUID,
+							name: "Deadlift",
+							perSetReps: "[null,null,null]",
+							isAmrap: true,
+						},
+					],
+				},
+			],
+		});
+
+		expect(parsed.routines[0]?.exercises[0]?.perSetReps).toBe(
+			"[null,null,null]",
+		);
+	});
+
 	it("accepts profileId default sentinel and rejects garbage", () => {
 		const ok = pushPayloadSchema.parse({
 			deviceId: "d1",
