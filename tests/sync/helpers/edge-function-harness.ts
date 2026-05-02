@@ -202,6 +202,7 @@ export interface RoutineExerciseDto {
   supersetOrder?: number | null;
   perSetWeights?: string | null;
   perSetRest?: string | null;
+  perSetReps?: string | null;
   isAmrap?: boolean;
   prPercentage?: number | null;
   repCountTiming?: string | null;

@@ -1,0 +1,2066 @@
+{
+  "startedAt": "2026-05-02T01:16:14.805Z",
+  "baseUrl": "http://localhost:5173",
+  "surfaces": {
+    "landing": {
+      "route": "/",
+      "desktopShot": "_audit/screenshots/portal/landing-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/landing-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "privacy": {
+      "route": "/privacy",
+      "desktopShot": "_audit/screenshots/portal/privacy-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/privacy-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Privacy Policy",
+      "interactiveCount": 11,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "50.512px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Privacy Policy"
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "24px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "1. Introduction"
+        },
+        {
+          "selector": "p",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "20px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Project Phoenix - Vitruvian Trainer Companion App"
+        },
+        {
+          "selector": "button",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "oklab(0.222491 0.00493495 -0.0187476 / 0.150588)",
+          "fontSize": "14px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Back"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "support@phoenix-portal.com"
+        }
+      ]
+    },
+    "terms": {
+      "route": "/terms",
+      "desktopShot": "_audit/screenshots/portal/terms-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/terms-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Terms of Service",
+      "interactiveCount": 9,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "50.512px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Terms of Service"
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "24px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "1. Acceptance of Terms"
+        },
+        {
+          "selector": "p",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "20px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Project Phoenix - Vitruvian Trainer Companion App"
+        },
+        {
+          "selector": "button",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "oklab(0.222491 0.00493495 -0.0187476 / 0.150588)",
+          "fontSize": "14px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Back"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Privacy Policy"
+        }
+      ]
+    },
+    "faq": {
+      "route": "/faq",
+      "desktopShot": "_audit/screenshots/portal/faq-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/faq-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Frequently Asked Questions",
+      "interactiveCount": 20,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "50.512px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Frequently Asked Questions"
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "24px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "Getting Started"
+        },
+        {
+          "selector": "p",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "20px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Find answers to common questions about Phoenix Portal, your training data, and a"
+        },
+        {
+          "selector": "button",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "oklab(0.222491 0.00493495 -0.0187476 / 0.150588)",
+          "fontSize": "14px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Back"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(255, 107, 53)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "14px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Open an issue on GitHub"
+        }
+      ]
+    },
+    "dashboard": {
+      "route": "/dashboard",
+      "desktopShot": "_audit/screenshots/portal/dashboard-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/dashboard-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "analytics": {
+      "route": "/analytics",
+      "desktopShot": "_audit/screenshots/portal/analytics-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/analytics-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "biomechanics": {
+      "route": "/biomechanics",
+      "desktopShot": "_audit/screenshots/portal/biomechanics-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/biomechanics-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "routines": {
+      "route": "/routines",
+      "desktopShot": "_audit/screenshots/portal/routines-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/routines-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "routine-editor": {
+      "route": "/routines/new",
+      "desktopShot": "_audit/screenshots/portal/routine-editor-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/routine-editor-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "cycles": {
+      "route": "/cycles",
+      "desktopShot": "_audit/screenshots/portal/cycles-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/cycles-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "cycle-builder": {
+      "route": "/cycles/new",
+      "desktopShot": "_audit/screenshots/portal/cycle-builder-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/cycle-builder-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "calendar": {
+      "route": "/calendar",
+      "desktopShot": "_audit/screenshots/portal/calendar-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/calendar-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "goals": {
+      "route": "/goals",
+      "desktopShot": "_audit/screenshots/portal/goals-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/goals-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "leaderboard": {
+      "route": "/leaderboard",
+      "desktopShot": "_audit/screenshots/portal/leaderboard-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/leaderboard-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "integrations": {
+      "route": "/integrations",
+      "desktopShot": "_audit/screenshots/portal/integrations-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/integrations-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "settings": {
+      "route": "/settings",
+      "desktopShot": "_audit/screenshots/portal/settings-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/settings-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "history": {
+      "route": "/history",
+      "desktopShot": "_audit/screenshots/portal/history-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/history-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    },
+    "pricing": {
+      "route": "/pricing",
+      "desktopShot": "_audit/screenshots/portal/pricing-desktop.png",
+      "mobileShot": "_audit/screenshots/portal/pricing-mobile.png",
+      "consoleErrors": [],
+      "pageErrors": [],
+      "title": "Phoenix Project Fitness Portal",
+      "h1Text": "Your workouts, unlocked.",
+      "interactiveCount": 23,
+      "httpStatus": 200,
+      "colorSamples": [
+        {
+          "selector": "h1",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "96px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "700",
+          "text": "Your workouts, unlocked."
+        },
+        {
+          "selector": "h2",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "60px",
+          "fontFamily": "\"Chakra Petch\", Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "600",
+          "text": "See every rep as data."
+        },
+        {
+          "selector": "p",
+          "color": "rgb(224, 224, 232)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "30px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "400",
+          "text": "Rise From the Ashes. Forge Your Strength."
+        },
+        {
+          "selector": "button",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Features"
+        },
+        {
+          "selector": "a",
+          "color": "rgb(160, 160, 172)",
+          "backgroundColor": "rgba(0, 0, 0, 0)",
+          "fontSize": "16px",
+          "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "fontWeight": "500",
+          "text": "Support"
+        }
+      ]
+    }
+  },
+  "consoleByPage": {},
+  "computedColorSamples": [
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Phoenix Portal",
+      "color": "rgb(255, 107, 53)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.13
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Features",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "16px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Pricing",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "16px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "text": "Support",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "16px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Your workouts, unlocked.",
+      "color": "rgb(255, 107, 53)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "96px",
+      "fontWeight": "700",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.13
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Rise From the Ashes. Forge Your Strength.",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "30px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 15.41
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Phoenix Portal turns your Vitruvian Force data into force curves, biomechanics insights, recovery re",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "20px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Preview dashboard",
+      "color": "rgb(6, 6, 10)",
+      "background": "rgb(255, 107, 53)",
+      "fontSize": "14px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(255, 107, 53)",
+      "ratio": 7.13
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Force Output",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "95 kg",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "peak",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Recovery",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "text",
+      "role": null,
+      "text": "82",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Ready to train",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Fully recovered",
+      "color": "rgb(0, 230, 118)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 11.52
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "PR Trend",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "+12%",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "24px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Bench press 1RM",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Volume",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "This wk",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "18,400",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Last wk",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "14,950",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "+23% volume",
+      "color": "rgb(0, 230, 118)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 11.52
+    },
+    {
+      "tag": "H2",
+      "role": null,
+      "text": "See every rep as data.",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "60px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 20.23
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Force curves, recovery signals, PR trends, and session analysis — synced from the Project Phoenix ap",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "20px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Force curves",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Recovery signals",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Records",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "Replay",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "WHAT YOU GET",
+      "color": "rgb(255, 107, 53)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.13
+    },
+    {
+      "tag": "H2",
+      "role": null,
+      "text": "What your machine captures — finally visible.",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "36px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 20.23
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Every rep generates force, velocity, and timing data. Phoenix Portal turns it into actionable traini",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Sync & Backup",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Workouts sync from the Project Phoenix mobile app automatically. Full history, searchable, exportabl",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Records & Leaderboards",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Personal records tracked per exercise, phase, and weight. See where you rank against other Vitruvian",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Routines & Cycles",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Build training routines with supersets, AMRAP, and PR scaling. Organize into periodized cycles. Shar",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Analytics & Trends",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Volume trends, muscle group distribution, training load, and progressive overload tracking across ev",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Biomechanics & Asymmetry",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Cable A/B force comparison catches left-right imbalances at the 2% threshold. Full biomechanics dash",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Session Replay",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "50Hz telemetry playback of every rep. Scrub through sets on a Canvas timeline, overlay force curves,",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "TRY IT",
+      "color": "rgb(255, 107, 53)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.13
+    },
+    {
+      "tag": "H2",
+      "role": null,
+      "text": "Explore a real force curve.",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "36px",
+      "fontWeight": "600",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 20.23
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "This is one rep of sample data. The full portal shows every set, every session, with velocity zones ",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "18px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(6, 6, 10)",
+      "ratio": 7.82
+    },
+    {
+      "tag": "SPAN",
+      "role": null,
+      "text": "LIVE DEMO",
+      "color": "rgb(255, 107, 53)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11.008px",
+      "fontWeight": "450",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 6.79
+    },
+    {
+      "tag": "H3",
+      "role": null,
+      "text": "Cable bench press — single rep",
+      "color": "rgb(224, 224, 232)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "14px",
+      "fontWeight": "500",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 14.65
+    },
+    {
+      "tag": "P",
+      "role": null,
+      "text": "Hover to explore",
+      "color": "rgb(160, 160, 172)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 7.44
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "20",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "40",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "60",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "80",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "100",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "Force (kg)",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "11px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "0.0",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "1.0",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    },
+    {
+      "tag": "tspan",
+      "role": null,
+      "text": "2.0",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "fontSize": "10px",
+      "fontWeight": "400",
+      "effectiveBg": "rgb(14, 14, 20)",
+      "ratio": 19.24
+    }
+  ],
+  "responsiveProbes": {
+    "375": {
+      "clientWidth": 375,
+      "scrollWidth": 375,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 384,
+        "vw": 375
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w375.png"
+    },
+    "600": {
+      "clientWidth": 600,
+      "scrollWidth": 600,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 609,
+        "vw": 600
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w600.png"
+    },
+    "768": {
+      "clientWidth": 768,
+      "scrollWidth": 768,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 777,
+        "vw": 768
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w768.png"
+    },
+    "900": {
+      "clientWidth": 900,
+      "scrollWidth": 900,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 909,
+        "vw": 900
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w900.png"
+    },
+    "1024": {
+      "clientWidth": 1024,
+      "scrollWidth": 1024,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 1033,
+        "vw": 1024
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w1024.png"
+    },
+    "1200": {
+      "clientWidth": 1200,
+      "scrollWidth": 1200,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 1209,
+        "vw": 1200
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w1200.png"
+    },
+    "1440": {
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "horizScroll": false,
+      "firstOverflow": {
+        "tag": "g",
+        "cls": "[object SVGAnimatedString]",
+        "right": 1449,
+        "vw": 1440
+      },
+      "screenshot": "_audit/screenshots/portal/landing-w1440.png"
+    }
+  },
+  "motionPrefs": {
+    "reduced": true,
+    "animatingCount": 0,
+    "transitioningCount": 0,
+    "animatingSamples": [],
+    "transitioningSamples": [],
+    "screenshot": "_audit/screenshots/portal/landing-prefs-reduced-motion.png"
+  },
+  "dynamicType": {
+    "samples": {
+      "12px": {
+        "rootFontSize": "12px",
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "horizOverflow": false,
+        "bodyHeight": 3857,
+        "screenshot": "_audit/screenshots/portal/landing-fontsize-12px.png"
+      },
+      "20px": {
+        "rootFontSize": "20px",
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "horizOverflow": false,
+        "bodyHeight": 5932,
+        "screenshot": "_audit/screenshots/portal/landing-fontsize-20px.png"
+      },
+      "24px": {
+        "rootFontSize": "24px",
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "horizOverflow": false,
+        "bodyHeight": 7189,
+        "screenshot": "_audit/screenshots/portal/landing-fontsize-24px.png"
+      }
+    }
+  },
+  "routes": {
+    "404": {
+      "httpStatus": 200,
+      "title": "Phoenix Project Fitness Portal",
+      "h1": "Your workouts, unlocked.",
+      "bodyText": "\n    Phoenix PortalFeaturesPricingSupportSign InYour workouts, unlocked.Rise From the Ashes. Forge Your Strength.Phoenix Portal turns your Vitruvian Force data into force curves, biomechanics insights, recovery readiness scores, and a community of athletes — all synced from the Project Phoenix app.Preview dashboardGet the mobile appForce Output95 kgpeakRecovery82Ready to trainFully recoveredPR Trend+12%Bench press 1RMVolumeThis wk18,400Last wk14,950+23% volumeSee every rep as data.Force curves, recovery signals, PR trends, and session analysis — synced from the Project Phoenix app.Force curves",
+      "pageErrors": [],
+      "screenshot": "_audit/screenshots/portal/route-404-desktop.png"
+    },
+    "auth-dialog": {
+      "opened": true,
+      "dialog": {
+        "ariaModal": null,
+        "ariaLabelledBy": null,
+        "ariaDescribedBy": null,
+        "inputs": [],
+        "buttons": [],
+        "htmlSnippet": "<div data-state=\"open\" data-slot=\"dialog-overlay\" class=\"data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur-sm\" data-aria-hidden=\"true\" aria-hidden=\"true\" style=\"pointer-events: auto;\"></div>"
+      },
+      "screenshot": "_audit/screenshots/portal/auth-dialog-desktop.png"
+    }
+  },
+  "notes": [],
+  "keyboardFocus": [
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Features",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) auto 1px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "1px",
+      "boxShadow": "none",
+      "rect": {
+        "x": 605,
+        "y": 19,
+        "w": 66,
+        "h": 26
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Pricing",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) auto 1px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "1px",
+      "boxShadow": "none",
+      "rect": {
+        "x": 696,
+        "y": 19,
+        "w": 53,
+        "h": 26
+      },
+      "visible": true
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "text": "Support",
+      "href": "https://ko-fi.com/vitruvianredux",
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) auto 1px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "1px",
+      "boxShadow": "none",
+      "rect": {
+        "x": 773,
+        "y": 19,
+        "w": 61,
+        "h": 26
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Sign In",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 1256,
+        "y": 16,
+        "w": 72,
+        "h": 32
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Preview dashboard",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 538,
+        "y": 512,
+        "w": 177,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "text": "Get the mobile app",
+      "href": "https://github.com/nicholascross/ProjectPhoenix",
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 726,
+        "y": 512,
+        "w": 176,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Subscribe",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 241,
+        "y": 411,
+        "w": 254,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Subscribe",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 593,
+        "y": 392,
+        "w": 254,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "text": "Get the mobile app",
+      "href": "https://github.com/nicholascross/ProjectPhoenix",
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 538,
+        "y": 850,
+        "w": 174,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Preview dashboard",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) none 0px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0.704524 0.149211 0.121818 / 0.5) 0px 0px 0px 3px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "rect": {
+        "x": 724,
+        "y": 850,
+        "w": 179,
+        "h": 40
+      },
+      "visible": true
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "text": "Support on Ko-fi",
+      "href": "https://ko-fi.com/vitruvianredux",
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) auto 1px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "1px",
+      "boxShadow": "none",
+      "rect": {
+        "x": 665,
+        "y": 440,
+        "w": 110,
+        "h": 20
+      },
+      "visible": true
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "Features",
+      "href": null,
+      "outline": "oklab(0.704524 0.149211 0.121818 / 0.5) auto 1px",
+      "outlineColor": "oklab(0.704524 0.149211 0.121818 / 0.5)",
+      "outlineWidth": "1px",
+      "boxShadow": "none",
+      "rect": {
+        "x": 408,
+        "y": 660,
+        "w": 66,
+        "h": 22
+      },
+      "visible": true
+    }
+  ],
+  "keyboardFocusScreenshot": "_audit/screenshots/portal/landing-focus-state.png",
+  "finishedAt": "2026-05-02T01:17:52.834Z"
+}
