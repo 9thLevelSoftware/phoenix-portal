@@ -104,7 +104,7 @@ export function strengthProgressOptions(
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("exercise_name, value, achieved_at")
+				.select("exercise_name, exercise_id, value, achieved_at")
 				.eq("user_id", userId);
 
 			if (profileId) {

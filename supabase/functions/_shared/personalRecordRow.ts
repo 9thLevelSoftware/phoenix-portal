@@ -30,6 +30,7 @@ export interface PrSetInput {
 
 export interface PrExerciseInput {
 	name: string;
+	exerciseId?: string | null;
 	muscleGroup?: string | null;
 	sets: PrSetInput[];
 }
@@ -43,6 +44,7 @@ export interface PersonalRecordRow {
 	user_id: string;
 	local_profile_id: string | null;
 	exercise_name: string;
+	exercise_id: string | null;
 	muscle_group: string;
 	record_type: string;
 	value: number;
@@ -72,6 +74,7 @@ export function buildPersonalRecordRows(
 					user_id: userId,
 					local_profile_id: localProfileId,
 					exercise_name: exercise.name,
+					exercise_id: exercise.exerciseId ?? null,
 					muscle_group: exercise.muscleGroup ?? "General",
 					record_type: recordType,
 					value,

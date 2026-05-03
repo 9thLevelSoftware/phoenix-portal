@@ -1,4 +1,10 @@
 export const queryKeys = {
+	exercises: {
+		all: ["exercises"] as const,
+		catalog: (filters?: { muscleGroup?: string; search?: string }) =>
+			[...queryKeys.exercises.all, "catalog", filters] as const,
+		byId: (id: string) => [...queryKeys.exercises.all, "detail", id] as const,
+	},
 	workouts: {
 		all: ["workouts"] as const,
 		list: (userId: string, profileId?: string | null) =>

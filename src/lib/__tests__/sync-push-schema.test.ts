@@ -143,6 +143,78 @@ describe("pushPayloadSchema", () => {
 		);
 	});
 
+	it("preserves catalog exercise IDs on session and routine exercises", () => {
+		const catalogExerciseId = "4kmhj9yyZcBI54Vi";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			sessions: [
+				{
+					id: UUID,
+					userId: "u1",
+					exercises: [
+						{
+							id: UUID2,
+							sessionId: UUID,
+							exerciseId: catalogExerciseId,
+							name: "100s",
+						},
+					],
+				},
+			],
+			routines: [
+				{
+					id: "22222222-2222-4222-8222-222222222222",
+					userId: "u1",
+					name: "Core",
+					exercises: [
+						{
+							id: "33333333-3333-4333-8333-333333333333",
+							routineId: "22222222-2222-4222-8222-222222222222",
+							exerciseId: catalogExerciseId,
+							name: "100s",
+						},
+					],
+				},
+			],
+		});
+
+		expect(parsed.sessions[0]?.exercises[0]?.exerciseId).toBe(
+			catalogExerciseId,
+		);
+		expect(parsed.routines[0]?.exercises[0]?.exerciseId).toBe(
+			catalogExerciseId,
+		);
+	});
+
+	it("preserves custom exercises through validation", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			customExercises: [
+				{
+					clientId: "custom_1714700000000",
+					name: "My Custom Press",
+					displayName: "My Custom Press",
+					muscleGroup: "Chest",
+					equipment: "HANDLES,BENCH",
+					defaultCableConfig: "DOUBLE",
+				},
+			],
+		});
+
+		expect(parsed.customExercises).toEqual([
+			{
+				clientId: "custom_1714700000000",
+				name: "My Custom Press",
+				displayName: "My Custom Press",
+				muscleGroup: "Chest",
+				equipment: "HANDLES,BENCH",
+				defaultCableConfig: "DOUBLE",
+			},
+		]);
+	});
+
 	it("accepts profileId default sentinel and rejects garbage", () => {
 		const ok = pushPayloadSchema.parse({
 			deviceId: "d1",
