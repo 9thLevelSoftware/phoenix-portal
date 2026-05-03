@@ -217,6 +217,20 @@ describe("personalRecordIdentityKey", () => {
 		);
 	});
 
+	it("normalizes numeric values across DB and client representations", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				value: 40,
+			}),
+		).toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				value: "40",
+			}),
+		);
+	});
+
 	it("separates records by local profile", () => {
 		expect(
 			personalRecordIdentityKey({
@@ -227,6 +241,24 @@ describe("personalRecordIdentityKey", () => {
 			personalRecordIdentityKey({
 				...baseRecord,
 				local_profile_id: "secondary",
+			}),
+		);
+	});
+
+	it("does not collide when identity fields contain separators", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "profile:name",
+				exercise_id: "curl",
+				exercise_name: "ignored",
+			}),
+		).not.toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "profile",
+				exercise_id: null,
+				exercise_name: "id:curl",
 			}),
 		);
 	});

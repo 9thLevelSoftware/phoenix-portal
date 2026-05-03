@@ -70,14 +70,14 @@ export function personalRecordIdentityKey(
 	const exerciseKey = row.exercise_id
 		? `id:${row.exercise_id}`
 		: `name:${row.exercise_name ?? ""}`;
-	return [
+	return JSON.stringify([
 		profileKey,
 		exerciseKey,
 		row.achieved_at ?? "",
-		row.value ?? "",
+		String(row.value ?? ""),
 		row.record_type ?? "",
 		row.workout_phase ?? "COMBINED",
-	].join(":");
+	]);
 }
 
 export function buildPersonalRecordRows(

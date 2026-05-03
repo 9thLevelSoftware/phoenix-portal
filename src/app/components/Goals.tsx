@@ -302,21 +302,29 @@ export function Goals() {
 	// M26: Derive distinct exercise names from personal records for autocomplete
 	const knownExerciseOptions = useMemo(() => {
 		if (!records) return [];
-		const byName = new Map<string, Set<string>>();
+		const byName = new Map<
+			string,
+			{ displayName: string; exerciseIds: Set<string> }
+		>();
 		for (const record of records) {
 			const name = record.exercise_name.trim();
 			if (!name) continue;
-			if (!byName.has(name)) {
-				byName.set(name, new Set());
+			const normalizedName = name.toLowerCase();
+			let option = byName.get(normalizedName);
+			if (!option) {
+				option = { displayName: name, exerciseIds: new Set() };
+				byName.set(normalizedName, option);
 			}
 			if (record.exercise_id) {
-				byName.get(name)?.add(record.exercise_id);
+				option.exerciseIds.add(record.exercise_id);
 			}
 		}
 		return Array.from(byName.entries())
-			.map(([name, ids]) => ({
-				name,
-				exerciseId: ids.size === 1 ? (Array.from(ids)[0] ?? null) : null,
+			.map(([key, { displayName, exerciseIds }]) => ({
+				key,
+				name: displayName,
+				exerciseId:
+					exerciseIds.size === 1 ? (Array.from(exerciseIds)[0] ?? null) : null,
 			}))
 			.sort((a, b) => a.name.localeCompare(b.name));
 	}, [records]);
@@ -326,10 +334,7 @@ export function Goals() {
 	);
 	const exerciseIdByName = useMemo(() => {
 		return new Map(
-			knownExerciseOptions.map((option) => [
-				option.name.toLowerCase(),
-				option.exerciseId,
-			]),
+			knownExerciseOptions.map((option) => [option.key, option.exerciseId]),
 		);
 	}, [knownExerciseOptions]);
 	const resolveGoalExerciseId = useCallback(
