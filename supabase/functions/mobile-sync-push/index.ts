@@ -1030,6 +1030,7 @@ Deno.serve(async (req) => {
             session_id: e.sessionId,
             user_id: userId,
             name: e.name,
+            exercise_id: e.exerciseId ?? null,
             muscle_group: e.muscleGroup ?? 'General',
             order_index: e.orderIndex ?? 0,
           }))
@@ -1201,6 +1202,7 @@ Deno.serve(async (req) => {
             user_id: userId,
             local_profile_id: localProfileId,
             exercise_name: exercise.name,
+            exercise_id: exercise.exerciseId ?? null,
             session_id: session.id,
             recorded_at: session.startedAt,
             max_weight_kg: maxWeight,
@@ -1350,6 +1352,7 @@ Deno.serve(async (req) => {
           id: e.id,
           routine_id: e.routineId,
           name: e.name,
+          exercise_id: e.exerciseId ?? null,
           muscle_group: e.muscleGroup ?? 'General',
           sets: e.sets ?? 3,
           reps: e.reps ?? 10,
@@ -1559,6 +1562,34 @@ Deno.serve(async (req) => {
           .eq('cycle_id', cycle.id)
           .gt('day_number', maxDayNumber);
         if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
+      }
+    }
+
+    // =========================================================================
+    // 7c. Upsert custom exercises into exercise_catalog
+    // =========================================================================
+    if (payload.customExercises?.length) {
+      const catalogRows = payload.customExercises.map((ce: Record<string, unknown>) => ({
+        id: ce.clientId,
+        name: (ce.name as string ?? "").trim(),
+        display_name: (ce.displayName as string) ?? (ce.name as string ?? "").trim(),
+        muscle_group: (ce.muscleGroup as string) ?? "General",
+        muscle_groups: [(ce.muscleGroup as string) ?? "General"],
+        equipment: ce.equipment ? (ce.equipment as string).split(",").map((e: string) => e.trim()) : [],
+        default_cable_config: (ce.defaultCableConfig as string) ?? "DOUBLE",
+        is_custom: true,
+        user_id: userId,
+        archived: false,
+        popularity: 0,
+      }));
+
+      const { error: catalogError } = await supabase
+        .from("exercise_catalog")
+        .upsert(catalogRows, { onConflict: "id" });
+
+      if (catalogError) {
+        console.error("[sync-push] custom exercise catalog upsert failed:", catalogError);
+        // Non-fatal — custom exercises still work via name fallback
       }
     }
 
