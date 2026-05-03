@@ -218,11 +218,13 @@ function groupStrengthByExercise(
 	// Get all unique dates and exercises
 	const dateSet = new Set<string>();
 	const exerciseMap = new Map<string, Map<string, number>>();
+	const latestByKey = new Map<string, { at: number; value: number }>();
 	// Map grouping key back to display name
 	const keyToName = new Map<string, string>();
 
 	for (const item of data) {
 		const key = item.exercise_id ?? item.exercise_name;
+		const achievedAtTs = new Date(item.achieved_at).getTime();
 		const date = new Date(item.achieved_at).toLocaleDateString("en-US", {
 			month: "short",
 		});
@@ -238,14 +240,18 @@ function groupStrengthByExercise(
 		if (item.value > existing) {
 			exerciseMap.get(key)?.set(date, item.value);
 		}
+		const latest = latestByKey.get(key);
+		if (!latest || achievedAtTs > latest.at) {
+			latestByKey.set(key, { at: achievedAtTs, value: item.value });
+		}
 	}
 
 	const dates = Array.from(dateSet);
 	// Pick top 3 exercises by latest value
-	const topKeys = Array.from(exerciseMap.entries())
-		.map(([key, values]) => ({
+	const topKeys = Array.from(latestByKey.entries())
+		.map(([key, latest]) => ({
 			key,
-			latestValue: Array.from(values.values()).pop() ?? 0,
+			latestValue: latest.value,
 		}))
 		.sort((a, b) => b.latestValue - a.latestValue)
 		.slice(0, 3)

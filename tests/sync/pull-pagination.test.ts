@@ -240,7 +240,7 @@ describe('mobile-sync-pull pagination', () => {
     it('pull response contains entity-bucket keys in the documented order', async () => {
       // Validates the shape, not the page traversal. Per
       // mobile-sync-pull/index.ts line 169, entities are paged in order:
-      //   sessions → routines → cycles → badges → stats
+      //   sessions → routines → cycles → badges → stats → customExercises
       // The response object itself carries buckets for each and two
       // singletons (rpgAttributes, gamificationStats). Mock returns the
       // same structure.
@@ -268,6 +268,7 @@ describe('mobile-sync-pull pagination', () => {
       // Singleton stats keys exist (values may be null when unchanged)
       expect(keys).toContain('rpgAttributes');
       expect(keys).toContain('gamificationStats');
+      expect(keys).toContain('customExercises');
     });
   });
 });

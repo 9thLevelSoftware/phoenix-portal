@@ -212,7 +212,7 @@ const routineExerciseSchema = z.object({
 
 const customExerciseSchema = z.object({
 	clientId: z.string().min(1),
-	name: z.string().min(1),
+	name: z.string().trim().min(1),
 	displayName: nullableField(z.string()),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	equipment: nullableField(z.string()),
