@@ -24,6 +24,26 @@ const workoutModeSchema = z
 	.nullable()
 	.transform((mode) => (mode ? (workoutModeMap[mode] ?? mode) : null));
 
+// --- Equipment Display ---
+
+export const equipmentDisplayMap: Record<string, string> = {
+	HANDLES: "Handles",
+	BAR: "Bar",
+	LONG_BAR: "Long Bar",
+	SHORT_BAR: "Short Bar",
+	ROPE: "Rope",
+	BELT: "Belt",
+	BENCH: "Bench",
+	STRAPS: "Straps",
+	GREY_CABLES: "Cables",
+};
+
+export function formatEquipment(codes: string[]): string {
+	return codes
+		.map((c) => equipmentDisplayMap[c] ?? c)
+		.join(", ");
+}
+
 // --- Workout Session ---
 
 export const workoutSessionSchema = z.object({
@@ -78,6 +98,7 @@ export const exerciseSchema = z.object({
 	name: z.string(),
 	muscle_group: z.string(),
 	order_index: z.number(),
+	exercise_id: z.string().nullable().optional(),
 });
 
 export type Exercise = z.infer<typeof exerciseSchema>;
@@ -111,6 +132,7 @@ export const personalRecordSchema = z.object({
 	id: z.string().uuid(),
 	user_id: z.string().uuid(),
 	exercise_name: z.string(),
+	exercise_id: z.string().nullable().optional(),
 	muscle_group: z.string(),
 	record_type: z.string(),
 	value: weightTransform,
@@ -207,6 +229,7 @@ export const routineExerciseSchema = z.object({
 	routine_id: z.string().uuid(),
 	name: z.string(),
 	muscle_group: z.string(),
+	exercise_id: z.string().nullable().optional(),
 	sets: z.number(),
 	reps: z.number(),
 	weight: weightTransform,
@@ -399,3 +422,35 @@ export const bodyIntelligenceRowSchema = z.object({
 });
 
 export const bodyIntelligenceSchema = z.array(bodyIntelligenceRowSchema);
+
+// --- Exercise Catalog ---
+
+export const catalogExerciseSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	display_name: z.string(),
+	description: z.string().nullable(),
+	muscle_group: z.string(),
+	muscle_groups: z.array(z.string()),
+	muscles: z.array(z.string()).nullable(),
+	equipment: z.array(z.string()),
+	movement: z.string().nullable(),
+	sidedness: z.string().nullable(),
+	grip: z.string().nullable(),
+	grip_width: z.string().nullable(),
+	default_cable_config: z.string(),
+	min_rep_range: z.number().nullable(),
+	popularity: z.number(),
+	aliases: z.array(z.string()).nullable(),
+	thumbnail_url: z.string().nullable(),
+	archived: z.boolean(),
+	is_custom: z.boolean(),
+});
+
+export const catalogExerciseListSchema = z.array(catalogExerciseSchema);
+
+export type CatalogExercise = z.infer<typeof catalogExerciseSchema>;
+
+export function getExerciseDisplayName(exercise: CatalogExercise): string {
+	return exercise.display_name ?? exercise.name;
+}
