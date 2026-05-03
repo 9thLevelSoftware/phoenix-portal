@@ -1,8 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import {
+	type CatalogExercise,
 	catalogExerciseListSchema,
 	catalogExerciseSchema,
-	type CatalogExercise,
 } from "@/schemas/transforms";
 
 export interface ExerciseCatalogFilters {
@@ -36,9 +36,7 @@ export async function fetchExerciseCatalog(
 	if (filters?.search) {
 		// Search across name and display_name
 		const term = `%${filters.search}%`;
-		query = query.or(
-			`name.ilike.${term},display_name.ilike.${term}`,
-		);
+		query = query.or(`name.ilike.${term},display_name.ilike.${term}`);
 	}
 
 	const { data, error } = await query;

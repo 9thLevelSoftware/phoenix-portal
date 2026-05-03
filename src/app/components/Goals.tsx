@@ -115,8 +115,7 @@ export function useGoalProgress(
 					}
 					// Fall back to case-insensitive name match
 					return (
-						r.exercise_name.toLowerCase() ===
-						goal.exercise_name?.toLowerCase()
+						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase()
 					);
 				});
 				if (exercisePRs.length > 0) {

@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/queries/keys";
 import {
-	fetchExerciseCatalog,
 	type ExerciseCatalogFilters,
+	fetchExerciseCatalog,
 } from "@/queries/exercises";
+import { queryKeys } from "@/queries/keys";
 
 export function useExerciseCatalog(filters?: ExerciseCatalogFilters) {
 	return useQuery({

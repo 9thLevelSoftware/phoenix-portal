@@ -38,6 +38,7 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
+import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import {
 	convertWeight,
 	formatWeight,
@@ -45,12 +46,11 @@ import {
 	toKg,
 	type WeightUnit,
 } from "@/lib/units";
-import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
-import { formatEquipment } from "@/schemas/transforms";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
+import { formatEquipment } from "@/schemas/transforms";
 
 const SUPERSET_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B"] as const;
 

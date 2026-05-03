@@ -39,9 +39,7 @@ export const equipmentDisplayMap: Record<string, string> = {
 };
 
 export function formatEquipment(codes: string[]): string {
-	return codes
-		.map((c) => equipmentDisplayMap[c] ?? c)
-		.join(", ");
+	return codes.map((c) => equipmentDisplayMap[c] ?? c).join(", ");
 }
 
 // --- Workout Session ---
