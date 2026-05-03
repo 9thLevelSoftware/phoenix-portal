@@ -300,11 +300,69 @@ export function Goals() {
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
-	const knownExerciseNames = useMemo(() => {
+	const knownExerciseOptions = useMemo(() => {
 		if (!records) return [];
-		const names = [...new Set(records.map((r) => r.exercise_name))];
-		return names.sort((a, b) => a.localeCompare(b));
+		const byName = new Map<
+			string,
+			{ displayName: string; exerciseIds: Set<string> }
+		>();
+		for (const record of records) {
+			const name = record.exercise_name.trim();
+			if (!name) continue;
+			const normalizedName = name.toLowerCase();
+			let option = byName.get(normalizedName);
+			if (!option) {
+				option = { displayName: name, exerciseIds: new Set() };
+				byName.set(normalizedName, option);
+			}
+			if (record.exercise_id) {
+				option.exerciseIds.add(record.exercise_id);
+			}
+		}
+		return Array.from(byName.entries())
+			.map(([key, { displayName, exerciseIds }]) => ({
+				key,
+				name: displayName,
+				exerciseId:
+					exerciseIds.size === 1 ? (Array.from(exerciseIds)[0] ?? null) : null,
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
 	}, [records]);
+	const knownExerciseNames = useMemo(
+		() => knownExerciseOptions.map((option) => option.name),
+		[knownExerciseOptions],
+	);
+	const exerciseIdByName = useMemo(() => {
+		return new Map(
+			knownExerciseOptions.map((option) => [option.key, option.exerciseId]),
+		);
+	}, [knownExerciseOptions]);
+	const resolveGoalExerciseId = useCallback(
+		(
+			data: {
+				goal_type: "frequency" | "volume" | "pr";
+				exercise_name?: string | null;
+			},
+			currentGoal?: Goal,
+		) => {
+			if (data.goal_type !== "pr" || !data.exercise_name) return null;
+
+			const exerciseName = data.exercise_name.trim();
+			const mappedExerciseId = exerciseIdByName.get(exerciseName.toLowerCase());
+			if (mappedExerciseId) return mappedExerciseId;
+
+			if (
+				currentGoal?.exercise_id &&
+				currentGoal.exercise_name?.trim().toLowerCase() ===
+					exerciseName.toLowerCase()
+			) {
+				return currentGoal.exercise_id;
+			}
+
+			return null;
+		},
+		[exerciseIdByName],
+	);
 
 	// Track which goals we have already celebrated to avoid re-triggering
 	const celebratedRef = useRef(new Set<string>());
@@ -630,7 +688,10 @@ export function Goals() {
 				title="Create Goal"
 				exerciseNames={knownExerciseNames}
 				onSubmit={(data) => {
-					createGoal.mutate(data);
+					createGoal.mutate({
+						...data,
+						exercise_id: resolveGoalExerciseId(data),
+					});
 					setCreateOpen(false);
 				}}
 			/>
@@ -661,6 +722,7 @@ export function Goals() {
 								target_value: data.target_value,
 								target_unit: data.target_unit,
 								exercise_name: data.exercise_name ?? null,
+								exercise_id: resolveGoalExerciseId(data, editGoal),
 								deadline: data.deadline ?? null,
 								period: data.period,
 							},
@@ -695,6 +757,7 @@ interface GoalFormDialogProps {
 		target_value: number;
 		target_unit: string;
 		exercise_name?: string | null;
+		exercise_id?: string | null;
 		deadline?: string | null;
 		period: "weekly" | "monthly";
 	}) => void;

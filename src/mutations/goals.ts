@@ -89,9 +89,17 @@ export function useUpdateGoal() {
 		mutationFn: async ({ goalId, updates }: UpdateGoalArgs) => {
 			if (!user) throw new Error("Must be logged in to update goals");
 
+			const payload: UpdateGoalArgs["updates"] & { updated_at: string } = {
+				...updates,
+				updated_at: new Date().toISOString(),
+			};
+			if ("exercise_name" in updates && !("exercise_id" in updates)) {
+				payload.exercise_id = null;
+			}
+
 			const { data, error } = await supabase
 				.from("user_goals")
-				.update({ ...updates, updated_at: new Date().toISOString() })
+				.update(payload)
 				.eq("id", goalId)
 				.eq("user_id", user.id)
 				.select()

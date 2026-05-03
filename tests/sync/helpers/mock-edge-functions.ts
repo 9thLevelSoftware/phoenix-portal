@@ -257,6 +257,7 @@ export function mockPullEndpoint(
     gamificationStats: null,
     localProfiles: [],
     externalActivities: [],
+    customExercises: [],
   };
 
   return {
