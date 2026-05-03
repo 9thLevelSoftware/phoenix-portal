@@ -39,7 +39,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Pagination:
  *   - When cursor is absent, starts from the beginning
  *   - When cursor is present, resumes from that position
- *   - Entity types are paged in order: sessions → routines → cycles → badges → stats
+ *   - Entity types are paged in order: sessions → routines → cycles → badges → stats → customExercises
  *   - Response includes nextCursor and hasMore for client to loop
  *   - Client should loop until hasMore: false before updating lastSyncTimestamp
  *
@@ -61,7 +61,8 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *     badges: [...],
  *     gamificationStats: {...} | null,
  *     localProfiles: [...],
- *     externalActivities: [...]
+ *     externalActivities: [...],
+ *     customExercises: [...]
  *   }
  */
 
@@ -185,8 +186,8 @@ const MAX_PAGE_SIZE = 300;
 const MAX_PARITY_IDS = 10_000;
 
 // Entity types in pagination order
-type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats';
-const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats'];
+type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats' | 'customExercises';
+const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats', 'customExercises'];
 
 interface DecodedCursor {
   type: EntityType;
@@ -221,8 +222,13 @@ function decodeCursor(cursor: string): DecodedCursor | null {
     ) {
       return null;
     }
-    // Validate cursor id: all paged entity ids are UUIDs.
-    if (!UUID_REGEX.test(parsed.id)) {
+    // Most paged entity ids are UUIDs. Custom exercise ids are mobile-minted
+    // catalog ids and may be stable non-UUID strings.
+    if (parsed.type === 'customExercises') {
+      if (parsed.id.length === 0) {
+        return null;
+      }
+    } else if (!UUID_REGEX.test(parsed.id)) {
       return null;
     }
     return parsed as DecodedCursor;
@@ -368,7 +374,7 @@ Deno.serve(async (req) => {
     let customExerciseDtos: Record<string, unknown>[] = [];
 
     // =========================================================================
-    // 4. Paginated fetch of entities in order: sessions → routines → cycles → badges → stats
+    // 4. Paginated fetch of entities in order: sessions → routines → cycles → badges → stats → customExercises
     //    We fetch pageSize+1 to detect hasMore, then trim to pageSize.
     // =========================================================================
 
@@ -1070,19 +1076,49 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 6. Return user's custom exercises from catalog
     // =========================================================================
-    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('stats')) {
-      const { data: customExercises, error: customExercisesError } = await supabase
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('customExercises') && remainingPageSize > 0) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'customExercises');
+
+      let customExercisesQuery = supabase
         .from("exercise_catalog")
         .select("*")
         .eq("is_custom", true)
         .eq("user_id", userId)
-        .gt("updated_at", lastSyncISO);
+        .gt("updated_at", lastSyncISO)
+        .order("updated_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(remainingPageSize + 1);
+
+      if (cursorUpdatedAt && cursorId) {
+        customExercisesQuery = customExercisesQuery.or(
+          `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+        );
+      }
+
+      const { data: customExercises, error: customExercisesError } = await customExercisesQuery;
 
       if (customExercisesError) {
         console.error('Error fetching custom exercises:', customExercisesError);
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch custom exercises',
+            code: customExercisesError.code ?? 'UNKNOWN',
+            details: customExercisesError.message ?? customExercisesError.hint ?? null,
+          }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
       }
 
-      customExerciseDtos = (customExercises ?? []).map((ce: Record<string, unknown>) => ({
+      const customExercisesPage = ((customExercises ?? []) as Record<string, unknown>[]);
+      if (customExercisesPage.length > remainingPageSize) {
+        hasMore = true;
+        const lastCustomExercise = customExercisesPage[remainingPageSize - 1];
+        const updatedAtMs = new Date(lastCustomExercise.updated_at as string).getTime();
+        nextCursor = encodeCursor('customExercises', updatedAtMs, lastCustomExercise.id as string);
+        customExercisesPage.splice(remainingPageSize);
+      }
+
+      customExerciseDtos = customExercisesPage.map((ce: Record<string, unknown>) => ({
         clientId: ce.id,
         name: ce.name,
         displayName: ce.display_name,
@@ -1090,6 +1126,7 @@ Deno.serve(async (req) => {
         equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
         defaultCableConfig: ce.default_cable_config,
       }));
+      remainingPageSize -= customExerciseDtos.length;
     }
 
     // =========================================================================
