@@ -124,6 +124,7 @@ const setSchema = z.object({
 const exerciseSchema = z.object({
 	id: uuid,
 	sessionId: uuid,
+	exerciseId: nullableField(z.string()),
 	name: z.string(),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
@@ -182,6 +183,7 @@ const repTelemetrySchema = z.object({
 const routineExerciseSchema = z.object({
 	id: uuid,
 	routineId: uuid,
+	exerciseId: nullableField(z.string()),
 	name: z.string(),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	sets: z.number().int().nullish().transform((v) => v ?? 3),
@@ -206,6 +208,15 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
+});
+
+const customExerciseSchema = z.object({
+	clientId: z.string().min(1),
+	name: z.string().min(1),
+	displayName: nullableField(z.string()),
+	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
+	equipment: nullableField(z.string()),
+	defaultCableConfig: z.string().nullish().transform((v) => v ?? "DOUBLE"),
 });
 
 const routineSchema = z.object({
@@ -368,6 +379,7 @@ export const pushPayloadSchema = z.object({
 	exerciseSignatures: arrayOf(exerciseSignatureSchema).default([]),
 	assessments: arrayOf(assessmentResultSchema).default([]),
 	externalActivities: arrayOf(externalActivitySchema).nullable().optional(),
+	customExercises: arrayOf(customExerciseSchema).default([]),
 	profileId: localProfileIdSchema.nullable().optional(),
 	profileName: nullableField(z.string()),
 	// allProfiles stays nullable (the handler branches on null vs array).

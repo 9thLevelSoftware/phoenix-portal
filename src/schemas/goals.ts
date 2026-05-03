@@ -9,6 +9,7 @@ export const goalSchema = z.object({
 	target_value: z.number(),
 	target_unit: z.string(),
 	exercise_name: z.string().nullable(),
+	exercise_id: z.string().nullable().optional(),
 	deadline: z
 		.string()
 		.nullable()
@@ -34,6 +35,7 @@ export const createGoalSchema = z
 		goal_type: z.enum(["frequency", "volume", "pr"]),
 		target_value: z.number().positive("Target must be a positive number"),
 		exercise_name: z.string().optional(),
+		exercise_id: z.string().nullable().optional(),
 		deadline: z.string().optional(),
 		period: z.enum(["weekly", "monthly"]).default("weekly"),
 	})

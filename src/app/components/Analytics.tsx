@@ -173,7 +173,9 @@ function periodToInsightPeriod(timePeriod: string): string {
 function bucketByWeek(
 	data: Array<{ started_at: string; total_volume: number }>,
 ) {
-	if (!data || data.length === 0) return [];
+	if (!data || data.length === 0) {
+		return [];
+	}
 	const weeks = new Map<string, { volume: number; workouts: number }>();
 	for (const item of data) {
 		const date = new Date(item.started_at);
@@ -200,46 +202,64 @@ function bucketByWeek(
 
 // Group strength progress data by exercise for line chart
 function groupStrengthByExercise(
-	data: Array<{ exercise_name: string; value: number; achieved_at: string }>,
-) {
-	if (!data || data.length === 0) return [];
+	data: Array<{
+		exercise_name: string;
+		exercise_id?: string | null;
+		value: number;
+		achieved_at: string;
+	}>,
+): {
+	points: Record<string, string | number>[];
+	keyToName: Map<string, string>;
+} {
+	if (!data || data.length === 0) {
+		return { points: [], keyToName: new Map<string, string>() };
+	}
 	// Get all unique dates and exercises
 	const dateSet = new Set<string>();
 	const exerciseMap = new Map<string, Map<string, number>>();
+	// Map grouping key back to display name
+	const keyToName = new Map<string, string>();
 
 	for (const item of data) {
+		const key = item.exercise_id ?? item.exercise_name;
 		const date = new Date(item.achieved_at).toLocaleDateString("en-US", {
 			month: "short",
 		});
 		dateSet.add(date);
-		if (!exerciseMap.has(item.exercise_name)) {
-			exerciseMap.set(item.exercise_name, new Map());
+		if (!keyToName.has(key)) {
+			keyToName.set(key, item.exercise_name);
+		}
+		if (!exerciseMap.has(key)) {
+			exerciseMap.set(key, new Map());
 		}
 		// Keep highest value per exercise per month
-		const existing = exerciseMap.get(item.exercise_name)?.get(date) ?? 0;
+		const existing = exerciseMap.get(key)?.get(date) ?? 0;
 		if (item.value > existing) {
-			exerciseMap.get(item.exercise_name)?.set(date, item.value);
+			exerciseMap.get(key)?.set(date, item.value);
 		}
 	}
 
 	const dates = Array.from(dateSet);
 	// Pick top 3 exercises by latest value
-	const exercises = Array.from(exerciseMap.entries())
-		.map(([name, values]) => ({
-			name,
+	const topKeys = Array.from(exerciseMap.entries())
+		.map(([key, values]) => ({
+			key,
 			latestValue: Array.from(values.values()).pop() ?? 0,
 		}))
 		.sort((a, b) => b.latestValue - a.latestValue)
 		.slice(0, 3)
-		.map((e) => e.name);
+		.map((e) => e.key);
 
-	return dates.map((date) => {
+	const points = dates.map((date) => {
 		const point: Record<string, string | number> = { date };
-		for (const exercise of exercises) {
-			point[exercise] = exerciseMap.get(exercise)?.get(date) ?? 0;
+		for (const key of topKeys) {
+			point[key] = exerciseMap.get(key)?.get(date) ?? 0;
 		}
 		return point;
 	});
+
+	return { points, keyToName };
 }
 
 function convertStrengthSeriesPoint(
@@ -660,13 +680,17 @@ export function Analytics() {
 		}));
 	}, [muscleGroupData]);
 
-	const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []).map(
-		(point) => convertStrengthSeriesPoint(point, unit),
+	const strengthSeries = groupStrengthByExercise(strengthRaw ?? []);
+	const strengthProgressData = strengthSeries.points.map((point) =>
+		convertStrengthSeriesPoint(point, unit),
 	);
-	const strengthExercises =
+	const strengthExerciseKeys =
 		strengthProgressData.length > 0
 			? Object.keys(strengthProgressData[0]).filter((k) => k !== "date")
 			: [];
+	const strengthExercises = strengthExerciseKeys.map(
+		(key) => strengthSeries.keyToName.get(key) ?? key,
+	);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
@@ -902,10 +926,10 @@ export function Analytics() {
 				name: unit,
 				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
 			},
-			series: strengthExercises.map((exercise, i) => ({
-				name: exercise,
+			series: strengthExerciseKeys.map((exerciseKey, i) => ({
+				name: strengthSeries.keyToName.get(exerciseKey) ?? exerciseKey,
 				type: "line",
-				data: strengthProgressData.map((d) => d[exercise] ?? 0),
+				data: strengthProgressData.map((d) => d[exerciseKey] ?? 0),
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
@@ -915,7 +939,13 @@ export function Analytics() {
 				symbolSize: 6,
 			})),
 		};
-	}, [strengthProgressData, strengthExercises, unit]);
+	}, [
+		strengthProgressData,
+		strengthExerciseKeys,
+		strengthExercises,
+		strengthSeries.keyToName,
+		unit,
+	]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {
@@ -1024,19 +1054,27 @@ export function Analytics() {
 		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
 	}));
 	const strengthMap = new Map<string, number>();
+	const strengthNameMap = new Map<string, string>();
 	for (const item of strengthRaw ?? []) {
-		const existing = strengthMap.get(item.exercise_name) ?? 0;
+		const key = item.exercise_id ?? item.exercise_name;
+		if (!strengthNameMap.has(key)) {
+			strengthNameMap.set(key, item.exercise_name);
+		}
+		const existing = strengthMap.get(key) ?? 0;
 		if (item.value > existing) {
-			strengthMap.set(item.exercise_name, item.value);
+			strengthMap.set(key, item.value);
 		}
 	}
 	const mobileStrengthData = Array.from(strengthMap.entries())
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, 5)
-		.map(([exercise, weight]) => ({
-			exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
-			weight: Math.round(convertWeight(weight, unit) * 10) / 10,
-		}));
+		.map(([key, weight]) => {
+			const exercise = strengthNameMap.get(key) ?? key;
+			return {
+				exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
+				weight: Math.round(convertWeight(weight, unit) * 10) / 10,
+			};
+		});
 	const mobileTotalWorkouts = (volumeRaw ?? []).length;
 	const mobileHasData =
 		mobileVolumeData.length > 0 || mobileMusclData.length > 0;

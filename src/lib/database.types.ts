@@ -806,6 +806,7 @@ export type Database = {
 			personal_records: {
 				Row: {
 					achieved_at: string;
+					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
 					local_profile_id: string | null;
@@ -823,6 +824,7 @@ export type Database = {
 				};
 				Insert: {
 					achieved_at?: string;
+					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
 					local_profile_id?: string | null;
@@ -840,6 +842,7 @@ export type Database = {
 				};
 				Update: {
 					achieved_at?: string;
+					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;
 					local_profile_id?: string | null;
@@ -1766,6 +1769,7 @@ export type Database = {
 					completed_at: string | null;
 					created_at: string;
 					deadline: string | null;
+					exercise_id: string | null;
 					exercise_name: string | null;
 					goal_type: string;
 					id: string;
@@ -1782,6 +1786,7 @@ export type Database = {
 					completed_at?: string | null;
 					created_at?: string;
 					deadline?: string | null;
+					exercise_id?: string | null;
 					exercise_name?: string | null;
 					goal_type: string;
 					id?: string;
@@ -1798,6 +1803,7 @@ export type Database = {
 					completed_at?: string | null;
 					created_at?: string;
 					deadline?: string | null;
+					exercise_id?: string | null;
 					exercise_name?: string | null;
 					goal_type?: string;
 					id?: string;

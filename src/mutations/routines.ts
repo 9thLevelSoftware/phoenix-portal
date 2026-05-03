@@ -34,6 +34,7 @@ function normalizePerSetWeights(per: unknown): Json | null {
 interface RoutineExerciseInput {
 	name: string;
 	muscle_group: string;
+	exercise_id?: string | null;
 	sets: number;
 	reps: number;
 	weight: number;
@@ -68,6 +69,7 @@ function toRoutineExerciseRows(
 		routine_id: routineId,
 		name: ex.name,
 		muscle_group: ex.muscle_group,
+		exercise_id: ex.exercise_id ?? null,
 		sets: ex.sets,
 		reps: ex.reps,
 		weight: ex.weight / WEIGHT_MULTIPLIER,
