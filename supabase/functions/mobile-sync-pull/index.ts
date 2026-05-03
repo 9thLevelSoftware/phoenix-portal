@@ -678,7 +678,10 @@ Deno.serve(async (req) => {
       if (routineIds.length > 0) {
         const { data: re } = await supabase
           .from('routine_exercises')
-          .select('*')
+          .select(`
+            *,
+            catalog:exercise_catalog(display_name, equipment)
+          `)
           .in('routine_id', routineIds);
         routineExercisesRaw = re ?? [];
       }
@@ -707,6 +710,11 @@ Deno.serve(async (req) => {
           exercises: rExercises.map((re) => ({
             id: re.id,
             routineId: re.routine_id,
+            exerciseId: re.exercise_id ?? null,
+            displayName: (re.catalog as Record<string, unknown> | null)?.display_name ?? re.name,
+            exerciseEquipment: (re.catalog as Record<string, unknown> | null)?.equipment
+              ? ((re.catalog as Record<string, unknown>).equipment as string[]).join(",")
+              : null,
             name: re.name,
             muscleGroup: re.muscle_group,
             sets: re.sets,
@@ -1058,7 +1066,17 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 6. Return paginated response with cursor metadata
+    // 6. Return user's custom exercises from catalog
+    // =========================================================================
+    const { data: customExercises } = await supabase
+      .from("exercise_catalog")
+      .select("*")
+      .eq("is_custom", true)
+      .eq("user_id", userId)
+      .gt("updated_at", lastSyncISO);
+
+    // =========================================================================
+    // 7. Return paginated response with cursor metadata
     // =========================================================================
     const response = {
       syncTime,
@@ -1075,6 +1093,14 @@ Deno.serve(async (req) => {
       gamificationStats: gamificationDto,
       localProfiles: localProfiles,
       externalActivities: externalActivityDtos,
+      customExercises: (customExercises ?? []).map((ce: Record<string, unknown>) => ({
+        clientId: ce.id,
+        name: ce.name,
+        displayName: ce.display_name,
+        muscleGroup: ce.muscle_group,
+        equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
+        defaultCableConfig: ce.default_cable_config,
+      })),
     };
 
     console.log('[PULL] Response:', {
