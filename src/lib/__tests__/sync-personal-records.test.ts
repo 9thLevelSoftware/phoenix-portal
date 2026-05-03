@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPersonalRecordRows } from "../../../supabase/functions/_shared/personalRecordRow.ts";
+import {
+	buildPersonalRecordRows,
+	personalRecordIdentityKey,
+} from "../../../supabase/functions/_shared/personalRecordRow.ts";
 
 /**
  * These tests lock in the NOT-NULL-DEFAULT guards for personal_records.
@@ -17,6 +20,7 @@ type Overrides = Partial<{
 	prType: string | null;
 	prPhase: string | null;
 	prVolume: number | null;
+	exerciseId: string | null;
 	muscleGroup: string | null;
 	weightKg: number;
 	actualReps: number;
@@ -36,6 +40,7 @@ function baseSession(overrides: Overrides = {}) {
 		exercises: [
 			{
 				name: "Squat",
+				exerciseId: overrides.exerciseId,
 				muscleGroup,
 				sets: [
 					{
@@ -135,6 +140,15 @@ describe("buildPersonalRecordRows", () => {
 		expect(out[0]?.local_profile_id).toBeNull();
 	});
 
+	it("preserves catalog exercise IDs on derived rows", () => {
+		const out = buildPersonalRecordRows(
+			[baseSession({ exerciseId: "catalog-squat-barbell" })],
+			USER_ID,
+			PROFILE_ID,
+		);
+		expect(out[0]?.exercise_id).toBe("catalog-squat-barbell");
+	});
+
 	it("flattens multiple sessions × exercises × sets", () => {
 		const out = buildPersonalRecordRows(
 			[
@@ -162,5 +176,90 @@ describe("buildPersonalRecordRows", () => {
 		);
 		expect(out).toHaveLength(2);
 		expect(out.map((r) => r.exercise_name)).toEqual(["Bench", "Row"]);
+	});
+});
+
+describe("personalRecordIdentityKey", () => {
+	const baseRecord = {
+		local_profile_id: PROFILE_ID,
+		exercise_name: "Curl",
+		achieved_at: "2026-04-20T12:00:00.000Z",
+		value: 40,
+		record_type: "1RM",
+		workout_phase: "COMBINED",
+	};
+
+	it("separates matching-name records by catalog exercise ID", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				exercise_id: "curl-cable",
+			}),
+		).not.toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				exercise_id: "curl-dumbbell",
+			}),
+		);
+	});
+
+	it("falls back to exercise name when exercise ID is absent", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				exercise_id: null,
+			}),
+		).toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				exercise_id: undefined,
+			}),
+		);
+	});
+
+	it("normalizes numeric values across DB and client representations", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				value: 40,
+			}),
+		).toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				value: "40",
+			}),
+		);
+	});
+
+	it("separates records by local profile", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "default",
+			}),
+		).not.toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "secondary",
+			}),
+		);
+	});
+
+	it("does not collide when identity fields contain separators", () => {
+		expect(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "profile:name",
+				exercise_id: "curl",
+				exercise_name: "ignored",
+			}),
+		).not.toBe(
+			personalRecordIdentityKey({
+				...baseRecord,
+				local_profile_id: "profile",
+				exercise_id: null,
+				exercise_name: "id:curl",
+			}),
+		);
 	});
 });

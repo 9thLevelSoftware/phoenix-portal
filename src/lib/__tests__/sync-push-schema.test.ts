@@ -215,6 +215,25 @@ describe("pushPayloadSchema", () => {
 		]);
 	});
 
+	it("rejects whitespace-only custom exercise names", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			customExercises: [
+				{
+					clientId: "custom_1714700000000",
+					name: "   ",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			const paths = result.error.issues.map((issue) => issue.path.join("."));
+			expect(paths).toContain("customExercises.0.name");
+		}
+	});
+
 	it("accepts profileId default sentinel and rejects garbage", () => {
 		const ok = pushPayloadSchema.parse({
 			deviceId: "d1",
