@@ -15,6 +15,7 @@
 ## File Structure
 
 ### New Files
+
 | File | Responsibility |
 |------|---------------|
 | `supabase/migrations/20260503000000_exercise_catalog.sql` | Create catalog table, FK columns, indexes |
@@ -26,6 +27,7 @@
 | `tests/sync/exercise-catalog.test.ts` | Sync round-trip tests for exercise_id preservation |
 
 ### Modified Files
+
 | File | Change |
 |------|--------|
 | `src/lib/database.types.ts` | Regenerated (new table + columns) |
@@ -40,6 +42,7 @@
 | `src/app/components/Goals.tsx` | Match by `exercise_id` with name fallback |
 
 ### Deleted Files
+
 | File | Reason |
 |------|--------|
 | `src/lib/exercise-library.ts` | Replaced by `exercise_catalog` table |
@@ -1097,12 +1100,14 @@ new fields are additive."
 Find the `allExercises` memo (around line 1313-1326). Replace the static library merge with the catalog hook:
 
 Remove the import:
+
 ```typescript
 // DELETE THIS LINE:
 import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
 ```
 
 Add the import:
+
 ```typescript
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import type { CatalogExercise } from "@/schemas/transforms";
@@ -1175,6 +1180,7 @@ rm src/lib/exercise-library.ts
 ```
 
 Search for any remaining imports:
+
 ```bash
 grep -r "exercise-library" src/
 ```

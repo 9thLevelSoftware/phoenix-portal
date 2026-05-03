@@ -450,5 +450,5 @@ export const catalogExerciseListSchema = z.array(catalogExerciseSchema);
 export type CatalogExercise = z.infer<typeof catalogExerciseSchema>;
 
 export function getExerciseDisplayName(exercise: CatalogExercise): string {
-	return exercise.display_name ?? exercise.name;
+	return exercise.display_name;
 }

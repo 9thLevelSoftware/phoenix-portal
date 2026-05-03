@@ -7,6 +7,7 @@
  * Requires env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 import { createClient } from "@supabase/supabase-js";
+import { equipmentDisplayMap } from "../src/schemas/transforms";
 import exerciseDump from "../supabase/seed-data/exercise_dump.json";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -18,18 +19,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-const EQUIPMENT_DISPLAY_MAP: Record<string, string> = {
-  HANDLES: "Handles",
-  BAR: "Bar",
-  LONG_BAR: "Long Bar",
-  SHORT_BAR: "Short Bar",
-  ROPE: "Rope",
-  BELT: "Belt",
-  BENCH: "Bench",
-  STRAPS: "Straps",
-  GREY_CABLES: "Cables",
-};
 
 interface RawExercise {
   id: string;
@@ -67,7 +56,7 @@ function generateDisplayNames(
     if (siblings.length > 1 && ex.equipment.length > 0) {
       const primaryEquip = ex.equipment[0];
       const label =
-        EQUIPMENT_DISPLAY_MAP[primaryEquip] ??
+        equipmentDisplayMap[primaryEquip] ??
         primaryEquip
           .toLowerCase()
           .replace(/_/g, " ")

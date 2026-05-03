@@ -79,6 +79,7 @@ function getMuscleGroupColor(muscleGroup: string): string {
 }
 
 interface ExercisePR {
+	groupKey: string;
 	exercise: string;
 	muscleGroup: string;
 	currentValue: number;
@@ -155,7 +156,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	}
 
 	const exercisePRs: ExercisePR[] = Array.from(exerciseMap.entries()).map(
-		([_key, recs]) => {
+		([groupKey, recs]) => {
 			const name = recs[0].exercise_name;
 			const sorted = [...recs].sort(
 				(a, b) => b.achieved_at.getTime() - a.achieved_at.getTime(),
@@ -171,6 +172,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						? "stable"
 						: "plateau";
 			return {
+				groupKey,
 				exercise: name,
 				muscleGroup: latest.muscle_group,
 				currentValue: latest.value,
@@ -376,7 +378,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						) : (
 							filteredExercises.map((exercise, index) => (
 								<motion.div
-									key={exercise.exercise}
+									key={exercise.groupKey}
 									initial={{ opacity: 0, y: 16 }}
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: index * 0.04 }}
@@ -384,7 +386,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 									<Card className="bg-surface-2 border-secondary overflow-hidden">
 										<button
 											type="button"
-											onClick={() => toggleExercise(exercise.exercise)}
+											onClick={() => toggleExercise(exercise.groupKey)}
 											className="w-full p-4 flex items-center justify-between hover:bg-surface-2/50 transition-colors"
 										>
 											<div className="flex items-center gap-3">
@@ -427,7 +429,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														day: "numeric",
 													})}
 												</span>
-												{expandedExercises.includes(exercise.exercise) ? (
+												{expandedExercises.includes(exercise.groupKey) ? (
 													<ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
 												) : (
 													<ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -435,7 +437,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 											</div>
 										</button>
 
-										{expandedExercises.includes(exercise.exercise) && (
+										{expandedExercises.includes(exercise.groupKey) && (
 											<div className="border-t border-secondary p-4">
 												{/* PR Progression bar chart */}
 												<div className="mb-4 p-3 rounded-lg bg-background border border-secondary">
@@ -451,7 +453,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																);
 																const height =
 																	maxVal > 0 ? (entry.value / maxVal) * 100 : 0;
-																const barKey = `${exercise.exercise}-${idx}`;
+																const barKey = `${exercise.groupKey}-${idx}`;
 																const isHovered = hoveredBarIndex === barKey;
 																return (
 																	// biome-ignore lint/a11y/useSemanticElements: chart bar group needs role for a11y

@@ -109,7 +109,7 @@ Same DTO shapes as push, with the addition of:
 
 ### Display Name Generation Rule
 
-```
+```text
 If only one exercise has this base name -> display_name = name
 If multiple exercises share the base name -> display_name = "{name} ({primary equipment})"
 
@@ -284,7 +284,8 @@ Custom exercises:
 ### Bug Fix Path (Issue #404)
 
 Before:
-```
+
+```text
 Mobile: Routine -> "Bicep Curl" (exerciseId: "abc123", equipment: LONG_BAR)
   -> push
 Portal DB: routine_exercises -> name: "Bicep Curl" (exercise_id: NULL)
@@ -293,7 +294,8 @@ Mobile: findExerciseByName("Bicep Curl") LIMIT 1 -> returns SHORT_BAR variant (W
 ```
 
 After:
-```
+
+```text
 Mobile: Routine -> "Bicep Curl" (exerciseId: "abc123", equipment: LONG_BAR)
   -> push
 Portal DB: routine_exercises -> name: "Bicep Curl", exercise_id: "abc123"
@@ -409,7 +411,7 @@ function getExerciseDisplayName(exercise: CatalogExercise): string {
 
 ## 5. Rollout Order (Portal Side)
 
-```
+```text
 Step 1: Supabase migration — exercise_catalog table + FK columns (nullable)
    Portal and mobile still work — new columns are nullable, catalog exists but isn't required
 Step 2: Seed exercise_catalog from exercise_dump.json

@@ -234,6 +234,7 @@ interface PushPayload {
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
   externalActivities?: ExternalActivityDto[] | null;
+  customExercises?: CustomExerciseDto[];
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -283,6 +284,7 @@ interface SessionDto {
 interface ExerciseDto {
   id: string;
   sessionId: string;
+  exerciseId?: string | null;
   name: string;
   muscleGroup: string;
   orderIndex: number;
@@ -340,6 +342,7 @@ interface RoutineDto {
 interface RoutineExerciseDto {
   id: string;
   routineId: string;
+  exerciseId?: string | null;
   name: string;
   muscleGroup: string;
   sets: number;
@@ -365,6 +368,15 @@ interface RoutineExerciseDto {
   echoLevel: string | null;
   perSetEchoLevels: string | null;
   warmupSets: string | null;
+}
+
+interface CustomExerciseDto {
+  clientId: string;
+  name: string;
+  displayName?: string | null;
+  muscleGroup: string;
+  equipment?: string | null;
+  defaultCableConfig: string;
 }
 
 interface RpgAttributesDto {
@@ -602,6 +614,58 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Upsert custom catalog rows before any session/routine child rows that may
+    // reference those catalog IDs through FK columns.
+    if (payload.customExercises.length > 0) {
+      const catalogRows = payload.customExercises.map((ce) => {
+        const name = ce.name.trim();
+        const muscleGroup = ce.muscleGroup || 'General';
+        return {
+          id: ce.clientId,
+          name,
+          display_name: ce.displayName?.trim() || name,
+          muscle_group: muscleGroup,
+          muscle_groups: [muscleGroup],
+          equipment: ce.equipment
+            ? ce.equipment.split(',').map((e) => e.trim()).filter(Boolean)
+            : [],
+          default_cable_config: ce.defaultCableConfig || 'DOUBLE',
+          is_custom: true,
+          user_id: userId,
+          archived: false,
+          popularity: 0,
+        };
+      });
+
+      const catalogIds = catalogRows.map((row) => row.id);
+      const { data: existingCatalogRows, error: existingCatalogError } = await supabase
+        .from('exercise_catalog')
+        .select('id, is_custom, user_id')
+        .in('id', catalogIds);
+
+      if (existingCatalogError) {
+        throw new Error(`custom exercise catalog ownership lookup failed: ${existingCatalogError.message}`);
+      }
+
+      const conflictingCatalogRow = (existingCatalogRows ?? []).find(
+        (row) => row.is_custom !== true || row.user_id !== userId
+      );
+      if (conflictingCatalogRow) {
+        return new Response(
+          JSON.stringify({ error: 'Custom exercise id conflicts with an existing catalog exercise.' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { error: catalogError } = await supabase
+        .from('exercise_catalog')
+        .upsert(catalogRows, { onConflict: 'id' });
+
+      if (catalogError) {
+        throw new Error(`custom exercise catalog upsert failed: ${catalogError.message}`);
+      }
     }
 
     // =========================================================================
@@ -1218,17 +1282,28 @@ Deno.serve(async (req) => {
         const sessionIds = [...new Set(payload.sessions.map((session) => session.id))];
         const { data: existingProgress, error: existingProgressErr } = await supabase
           .from('exercise_progress')
-          .select('session_id, exercise_name')
+          .select('session_id, exercise_id, exercise_name')
           .in('session_id', sessionIds);
         if (existingProgressErr) {
           throw new Error(`exercise_progress lookup failed: ${existingProgressErr.message}`);
         }
 
+        const progressIdentityKey = (row: {
+          session_id?: unknown;
+          exercise_id?: unknown;
+          exercise_name?: unknown;
+        }) => {
+          const exerciseKey =
+            typeof row.exercise_id === 'string' && row.exercise_id.length > 0
+              ? `id:${row.exercise_id}`
+              : `name:${String(row.exercise_name ?? '')}`;
+          return `${String(row.session_id ?? '')}:${exerciseKey}`;
+        };
         const existingProgressKeys = new Set(
-          (existingProgress ?? []).map((row) => `${row.session_id}:${row.exercise_name}`)
+          (existingProgress ?? []).map((row) => progressIdentityKey(row))
         );
         const dedupedProgressRows = progressRows.filter((row) => {
-          const key = `${row.session_id}:${row.exercise_name}`;
+          const key = progressIdentityKey(row);
           if (existingProgressKeys.has(key)) return false;
           existingProgressKeys.add(key);
           return true;
@@ -1562,34 +1637,6 @@ Deno.serve(async (req) => {
           .eq('cycle_id', cycle.id)
           .gt('day_number', maxDayNumber);
         if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
-      }
-    }
-
-    // =========================================================================
-    // 7c. Upsert custom exercises into exercise_catalog
-    // =========================================================================
-    if (payload.customExercises?.length) {
-      const catalogRows = payload.customExercises.map((ce: Record<string, unknown>) => ({
-        id: ce.clientId,
-        name: (ce.name as string ?? "").trim(),
-        display_name: (ce.displayName as string) ?? (ce.name as string ?? "").trim(),
-        muscle_group: (ce.muscleGroup as string) ?? "General",
-        muscle_groups: [(ce.muscleGroup as string) ?? "General"],
-        equipment: ce.equipment ? (ce.equipment as string).split(",").map((e: string) => e.trim()) : [],
-        default_cable_config: (ce.defaultCableConfig as string) ?? "DOUBLE",
-        is_custom: true,
-        user_id: userId,
-        archived: false,
-        popularity: 0,
-      }));
-
-      const { error: catalogError } = await supabase
-        .from("exercise_catalog")
-        .upsert(catalogRows, { onConflict: "id" });
-
-      if (catalogError) {
-        console.error("[sync-push] custom exercise catalog upsert failed:", catalogError);
-        // Non-fatal — custom exercises still work via name fallback
       }
     }
 

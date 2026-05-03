@@ -173,7 +173,9 @@ function periodToInsightPeriod(timePeriod: string): string {
 function bucketByWeek(
 	data: Array<{ started_at: string; total_volume: number }>,
 ) {
-	if (!data || data.length === 0) return [];
+	if (!data || data.length === 0) {
+		return [];
+	}
 	const weeks = new Map<string, { volume: number; workouts: number }>();
 	for (const item of data) {
 		const date = new Date(item.started_at);
@@ -206,8 +208,13 @@ function groupStrengthByExercise(
 		value: number;
 		achieved_at: string;
 	}>,
-) {
-	if (!data || data.length === 0) return [];
+): {
+	points: Record<string, string | number>[];
+	keyToName: Map<string, string>;
+} {
+	if (!data || data.length === 0) {
+		return { points: [], keyToName: new Map<string, string>() };
+	}
 	// Get all unique dates and exercises
 	const dateSet = new Set<string>();
 	const exerciseMap = new Map<string, Map<string, number>>();
@@ -244,14 +251,15 @@ function groupStrengthByExercise(
 		.slice(0, 3)
 		.map((e) => e.key);
 
-	return dates.map((date) => {
+	const points = dates.map((date) => {
 		const point: Record<string, string | number> = { date };
 		for (const key of topKeys) {
-			const displayName = keyToName.get(key) ?? key;
-			point[displayName] = exerciseMap.get(key)?.get(date) ?? 0;
+			point[key] = exerciseMap.get(key)?.get(date) ?? 0;
 		}
 		return point;
 	});
+
+	return { points, keyToName };
 }
 
 function convertStrengthSeriesPoint(
@@ -672,13 +680,17 @@ export function Analytics() {
 		}));
 	}, [muscleGroupData]);
 
-	const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []).map(
-		(point) => convertStrengthSeriesPoint(point, unit),
+	const strengthSeries = groupStrengthByExercise(strengthRaw ?? []);
+	const strengthProgressData = strengthSeries.points.map((point) =>
+		convertStrengthSeriesPoint(point, unit),
 	);
-	const strengthExercises =
+	const strengthExerciseKeys =
 		strengthProgressData.length > 0
 			? Object.keys(strengthProgressData[0]).filter((k) => k !== "date")
 			: [];
+	const strengthExercises = strengthExerciseKeys.map(
+		(key) => strengthSeries.keyToName.get(key) ?? key,
+	);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
@@ -914,10 +926,10 @@ export function Analytics() {
 				name: unit,
 				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
 			},
-			series: strengthExercises.map((exercise, i) => ({
-				name: exercise,
+			series: strengthExerciseKeys.map((exerciseKey, i) => ({
+				name: strengthSeries.keyToName.get(exerciseKey) ?? exerciseKey,
 				type: "line",
-				data: strengthProgressData.map((d) => d[exercise] ?? 0),
+				data: strengthProgressData.map((d) => d[exerciseKey] ?? 0),
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
@@ -927,7 +939,13 @@ export function Analytics() {
 				symbolSize: 6,
 			})),
 		};
-	}, [strengthProgressData, strengthExercises, unit]);
+	}, [
+		strengthProgressData,
+		strengthExerciseKeys,
+		strengthExercises,
+		strengthSeries.keyToName,
+		unit,
+	]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {

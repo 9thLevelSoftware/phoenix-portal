@@ -10,50 +10,90 @@ import {
 	equipmentDisplayMap,
 	formatEquipment,
 } from "@/schemas/transforms";
+import { pushPayloadSchema } from "../../supabase/functions/_shared/pushPayloadSchema.ts";
+
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
+const SESSION_EXERCISE_ID = "22222222-2222-4222-8222-222222222222";
+const ROUTINE_ID = "33333333-3333-4333-8333-333333333333";
+const ROUTINE_EXERCISE_ID = "44444444-4444-4444-8444-444444444444";
 
 describe("Exercise Catalog Sync", () => {
 	describe("exercise_id preservation through push", () => {
 		it("should store exercise_id on session exercises when provided", () => {
-			const exerciseRow = {
-				id: "session-ex-uuid-1",
-				session_id: "session-uuid-1",
-				user_id: "user-uuid-1",
-				name: "Bicep Curl",
-				muscle_group: "Arms",
-				order_index: 0,
-				exercise_id: "abc123_long_bar",
-			};
+			const parsed = pushPayloadSchema.parse({
+				deviceId: "device-1",
+				platform: "android",
+				sessions: [
+					{
+						id: SESSION_ID,
+						userId: "user-uuid-1",
+						exercises: [
+							{
+								id: SESSION_EXERCISE_ID,
+								sessionId: SESSION_ID,
+								name: "Bicep Curl",
+								muscleGroup: "Arms",
+								exerciseId: "abc123_long_bar",
+							},
+						],
+					},
+				],
+			});
 
-			expect(exerciseRow.exercise_id).toBe("abc123_long_bar");
-			expect(exerciseRow.name).toBe("Bicep Curl");
+			expect(parsed.sessions[0]?.exercises[0]?.exerciseId).toBe(
+				"abc123_long_bar",
+			);
+			expect(parsed.sessions[0]?.exercises[0]?.name).toBe("Bicep Curl");
 		});
 
 		it("should accept null exercise_id for backward compatibility", () => {
-			const exerciseRow = {
-				id: "session-ex-uuid-2",
-				session_id: "session-uuid-2",
-				user_id: "user-uuid-2",
-				name: "Bicep Curl",
-				muscle_group: "Arms",
-				order_index: 0,
-				exercise_id: null,
-			};
+			const parsed = pushPayloadSchema.parse({
+				deviceId: "device-1",
+				platform: "android",
+				sessions: [
+					{
+						id: SESSION_ID,
+						userId: "user-uuid-2",
+						exercises: [
+							{
+								id: SESSION_EXERCISE_ID,
+								sessionId: SESSION_ID,
+								name: "Bicep Curl",
+								exerciseId: null,
+							},
+						],
+					},
+				],
+			});
 
-			expect(exerciseRow.exercise_id).toBeNull();
+			expect(parsed.sessions[0]?.exercises[0]?.exerciseId).toBeNull();
 		});
 
 		it("should store exercise_id on routine exercises when provided", () => {
-			const routineExRow = {
-				id: "re-uuid-1",
-				routine_id: "routine-uuid-1",
-				name: "Bicep Curl",
-				muscle_group: "Arms",
-				exercise_id: "abc123_long_bar",
-				sets: 3,
-				reps: 10,
-			};
+			const parsed = pushPayloadSchema.parse({
+				deviceId: "device-1",
+				platform: "android",
+				routines: [
+					{
+						id: ROUTINE_ID,
+						userId: "user-uuid-1",
+						name: "Arm Day",
+						exercises: [
+							{
+								id: ROUTINE_EXERCISE_ID,
+								routineId: ROUTINE_ID,
+								name: "Bicep Curl",
+								muscleGroup: "Arms",
+								exerciseId: "abc123_long_bar",
+							},
+						],
+					},
+				],
+			});
 
-			expect(routineExRow.exercise_id).toBe("abc123_long_bar");
+			expect(parsed.routines[0]?.exercises[0]?.exerciseId).toBe(
+				"abc123_long_bar",
+			);
 		});
 	});
 

@@ -42,18 +42,26 @@ CREATE INDEX IF NOT EXISTS idx_exercise_catalog_custom
 -- 3. RLS
 ALTER TABLE exercise_catalog ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Library exercises visible to all authenticated users"
+    ON exercise_catalog;
 CREATE POLICY "Library exercises visible to all authenticated users"
     ON exercise_catalog FOR SELECT
     USING (is_custom = FALSE OR user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert their own custom exercises"
+    ON exercise_catalog;
 CREATE POLICY "Users can insert their own custom exercises"
     ON exercise_catalog FOR INSERT
     WITH CHECK (is_custom = TRUE AND user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update their own custom exercises"
+    ON exercise_catalog;
 CREATE POLICY "Users can update their own custom exercises"
     ON exercise_catalog FOR UPDATE
     USING (is_custom = TRUE AND user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete their own custom exercises"
+    ON exercise_catalog;
 CREATE POLICY "Users can delete their own custom exercises"
     ON exercise_catalog FOR DELETE
     USING (is_custom = TRUE AND user_id = auth.uid());
@@ -100,9 +108,12 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
-    IF NOT EXISTS (
+    IF to_regclass('public.overload_suggestions') IS NOT NULL
+       AND NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'overload_suggestions' AND column_name = 'exercise_id'
+        WHERE table_schema = 'public'
+          AND table_name = 'overload_suggestions'
+          AND column_name = 'exercise_id'
     ) THEN
         ALTER TABLE overload_suggestions
             ADD COLUMN exercise_id TEXT REFERENCES exercise_catalog(id);
@@ -128,3 +139,11 @@ CREATE INDEX IF NOT EXISTS idx_exercise_progress_exercise_id
     ON exercise_progress (exercise_id);
 CREATE INDEX IF NOT EXISTS idx_personal_records_exercise_id
     ON personal_records (exercise_id);
+DO $$ BEGIN
+    IF to_regclass('public.overload_suggestions') IS NOT NULL THEN
+        CREATE INDEX IF NOT EXISTS idx_overload_suggestions_exercise_id
+            ON overload_suggestions (exercise_id);
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_user_goals_exercise_id
+    ON user_goals (exercise_id);

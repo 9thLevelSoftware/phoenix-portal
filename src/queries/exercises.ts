@@ -35,7 +35,8 @@ export async function fetchExerciseCatalog(
 
 	if (filters?.search) {
 		// Search across name and display_name
-		const term = `%${filters.search}%`;
+		const escaped = filters.search.replace(/[%_\\]/g, "\\$&");
+		const term = `%${escaped}%`;
 		query = query.or(`name.ilike.${term},display_name.ilike.${term}`);
 	}
 
