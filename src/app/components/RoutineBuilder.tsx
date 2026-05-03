@@ -38,8 +38,6 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
-import { EXERCISE_LIBRARY } from "@/lib/exercise-library";
-import { supabase } from "@/lib/supabase";
 import {
 	convertWeight,
 	formatWeight,
@@ -47,7 +45,9 @@ import {
 	toKg,
 	type WeightUnit,
 } from "@/lib/units";
+import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
+import { formatEquipment } from "@/schemas/transforms";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
@@ -58,6 +58,7 @@ interface Exercise {
 	id: string;
 	name: string;
 	muscleGroup: string;
+	exerciseId?: string | null;
 	sets: number;
 	reps: number;
 	weight: number;
@@ -204,6 +205,7 @@ export function RoutineBuilder() {
 					id: ex.id,
 					name: ex.name,
 					muscleGroup: ex.muscle_group,
+					exerciseId: ex.exercise_id ?? null,
 					sets: ex.sets,
 					reps: ex.reps,
 					weight: ex.weight,
@@ -320,6 +322,7 @@ export function RoutineBuilder() {
 		exercises.map((ex, i) => ({
 			name: ex.name,
 			muscle_group: ex.muscleGroup,
+			exercise_id: ex.exerciseId ?? null,
 			sets: ex.sets,
 			reps: ex.reps,
 			weight: ex.weight,
@@ -625,7 +628,9 @@ export function RoutineBuilder() {
 						onSelect={(exercise) => {
 							const newExercise: Exercise = {
 								id: crypto.randomUUID(),
-								...exercise,
+								name: exercise.name,
+								muscleGroup: exercise.muscleGroup,
+								exerciseId: exercise.exerciseId ?? null,
 								sets: 3,
 								reps: 10,
 								weight: 0,
@@ -1287,43 +1292,27 @@ function ExercisePickerModal({
 	onSelect,
 }: {
 	onClose: () => void;
-	onSelect: (exercise: { name: string; muscleGroup: string }) => void;
+	onSelect: (exercise: {
+		name: string;
+		muscleGroup: string;
+		exerciseId?: string | null;
+	}) => void;
 }) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
 
-	// Fetch user's exercises from Supabase
-	const { data: userExercises } = useQuery({
-		queryKey: ["exercises", "library"],
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("exercises")
-				.select("name, muscle_group")
-				.order("name");
-			if (error) return [];
-			return (data ?? []).map((e) => ({
-				name: e.name,
-				muscleGroup: e.muscle_group,
-			}));
-		},
-		staleTime: 5 * 60 * 1000,
-	});
+	// Fetch exercises from the exercise_catalog table
+	const { data: catalogExercises, isLoading: catalogLoading } =
+		useExerciseCatalog();
 
-	// Merge user exercises with static library, deduplicate by name
 	const allExercises = useMemo(() => {
-		const map = new Map<string, { name: string; muscleGroup: string }>();
-		// Static library first (fallback)
-		for (const ex of EXERCISE_LIBRARY) {
-			map.set(ex.name.toLowerCase(), ex);
-		}
-		// User exercises override static entries
-		for (const ex of userExercises ?? []) {
-			map.set(ex.name.toLowerCase(), ex);
-		}
-		return Array.from(map.values()).sort((a, b) =>
-			a.name.localeCompare(b.name),
-		);
-	}, [userExercises]);
+		return (catalogExercises ?? []).map((ex) => ({
+			name: ex.display_name,
+			muscleGroup: ex.muscle_group,
+			exerciseId: ex.id,
+			equipment: ex.equipment,
+		}));
+	}, [catalogExercises]);
 
 	// Get unique muscle groups for filter buttons
 	const muscleGroups = useMemo(() => {
@@ -1409,7 +1398,12 @@ function ExercisePickerModal({
 				</div>
 
 				<div className="p-6 overflow-y-auto flex-1">
-					{filteredExercises.length === 0 ? (
+					{catalogLoading ? (
+						<div className="flex items-center justify-center py-8 text-muted-foreground">
+							<Loader2 className="w-6 h-6 animate-spin mr-2" />
+							<p>Loading exercises...</p>
+						</div>
+					) : filteredExercises.length === 0 ? (
 						<div className="text-center py-8 text-muted-foreground">
 							<Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
 							<p>No exercises found</p>
@@ -1419,7 +1413,7 @@ function ExercisePickerModal({
 							{filteredExercises.map((exercise) => (
 								<button
 									type="button"
-									key={exercise.name}
+									key={exercise.exerciseId ?? exercise.name}
 									onClick={() => onSelect(exercise)}
 									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
 								>
@@ -1428,9 +1422,16 @@ function ExercisePickerModal({
 											<h4 className="font-semibold text-white mb-1">
 												{exercise.name}
 											</h4>
-											<Badge className="bg-primary text-white border-0 text-xs">
-												{exercise.muscleGroup}
-											</Badge>
+											<div className="flex gap-1.5 flex-wrap">
+												<Badge className="bg-primary text-white border-0 text-xs">
+													{exercise.muscleGroup}
+												</Badge>
+												{exercise.equipment.length > 0 && (
+													<Badge className="bg-secondary text-muted-foreground border-0 text-xs">
+														{formatEquipment(exercise.equipment)}
+													</Badge>
+												)}
+											</div>
 										</div>
 										<Plus className="w-5 h-5 text-muted-foreground" />
 									</div>
