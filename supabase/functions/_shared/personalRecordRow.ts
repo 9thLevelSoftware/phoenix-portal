@@ -53,6 +53,33 @@ export interface PersonalRecordRow {
 	workout_phase: string;
 }
 
+export interface PersonalRecordIdentityInput {
+	local_profile_id?: string | null;
+	exercise_name?: string | null;
+	exercise_id?: string | null;
+	achieved_at?: string | null;
+	value?: number | string | null;
+	record_type?: string | null;
+	workout_phase?: string | null;
+}
+
+export function personalRecordIdentityKey(
+	row: PersonalRecordIdentityInput,
+): string {
+	const profileKey = row.local_profile_id ?? "__no_profile__";
+	const exerciseKey = row.exercise_id
+		? `id:${row.exercise_id}`
+		: `name:${row.exercise_name ?? ""}`;
+	return [
+		profileKey,
+		exerciseKey,
+		row.achieved_at ?? "",
+		row.value ?? "",
+		row.record_type ?? "",
+		row.workout_phase ?? "COMBINED",
+	].join(":");
+}
+
 export function buildPersonalRecordRows(
 	sessions: PrSessionInput[],
 	userId: string,

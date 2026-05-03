@@ -4,7 +4,10 @@ import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
 import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
-import { buildPersonalRecordRows } from '../_shared/personalRecordRow.ts';
+import {
+  buildPersonalRecordRows,
+  personalRecordIdentityKey,
+} from '../_shared/personalRecordRow.ts';
 import {
   formatPushPayloadError,
   pushPayloadSchema,
@@ -1335,19 +1338,18 @@ Deno.serve(async (req) => {
         const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
         const { data: existingPrs, error: existingPrErr } = await supabase
           .from('personal_records')
-          .select('exercise_name, achieved_at, value, record_type, workout_phase')
+          .select('local_profile_id, exercise_id, exercise_name, achieved_at, value, record_type, workout_phase')
           .eq('user_id', userId)
           .in('achieved_at', achievedAtValues);
         if (existingPrErr) {
           throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
         }
 
-        const profileTag = localProfileId ?? '__no_profile__';
         const existingPrKeys = new Set(
-          (existingPrs ?? []).map((row) => `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase ?? 'COMBINED'}`)
+          (existingPrs ?? []).map((row) => personalRecordIdentityKey(row))
         );
         const dedupedPrRows = prRows.filter((row) => {
-          const key = `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase}`;
+          const key = personalRecordIdentityKey(row);
           if (existingPrKeys.has(key)) return false;
           existingPrKeys.add(key);
           return true;
