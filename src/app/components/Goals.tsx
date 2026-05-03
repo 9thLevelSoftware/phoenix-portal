@@ -108,10 +108,17 @@ export function useGoalProgress(
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
 				// Check if any PR for this exercise meets or exceeds the target
 				// PR values are already Zod-transformed (doubled)
-				const exercisePRs = records.filter(
-					(r) =>
-						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase(),
-				);
+				const exercisePRs = records.filter((r) => {
+					// Prefer exercise_id match if both sides have it
+					if (goal.exercise_id && r.exercise_id) {
+						return r.exercise_id === goal.exercise_id;
+					}
+					// Fall back to case-insensitive name match
+					return (
+						r.exercise_name.toLowerCase() ===
+						goal.exercise_name?.toLowerCase()
+					);
+				});
 				if (exercisePRs.length > 0) {
 					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
 					progress = (bestPR / goal.target_value) * 100;

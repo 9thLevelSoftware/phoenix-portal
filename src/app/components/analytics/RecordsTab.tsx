@@ -145,16 +145,18 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 			? (records ?? [])
 			: (records ?? []).filter((r) => r.workout_phase === phaseFilter);
 
-	// Group by exercise
+	// Group by exercise (prefer exercise_id for stable grouping, fall back to name)
 	const exerciseMap = new Map<string, PersonalRecord[]>();
 	for (const record of phaseFiltered) {
-		const existing = exerciseMap.get(record.exercise_name) ?? [];
+		const key = record.exercise_id ?? record.exercise_name;
+		const existing = exerciseMap.get(key) ?? [];
 		existing.push(record);
-		exerciseMap.set(record.exercise_name, existing);
+		exerciseMap.set(key, existing);
 	}
 
 	const exercisePRs: ExercisePR[] = Array.from(exerciseMap.entries()).map(
-		([name, recs]) => {
+		([_key, recs]) => {
+			const name = recs[0].exercise_name;
 			const sorted = [...recs].sort(
 				(a, b) => b.achieved_at.getTime() - a.achieved_at.getTime(),
 			);

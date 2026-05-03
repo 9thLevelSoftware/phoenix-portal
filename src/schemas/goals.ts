@@ -9,6 +9,7 @@ export const goalSchema = z.object({
 	target_value: z.number(),
 	target_unit: z.string(),
 	exercise_name: z.string().nullable(),
+	exercise_id: z.string().nullable().optional(),
 	deadline: z
 		.string()
 		.nullable()
