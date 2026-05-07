@@ -9,7 +9,7 @@
 ## BLOCKER Items (must ALL pass)
 
 ### Phase 0: Baseline Sweep
-- [x] Clean build, no HIGH npm vulns
+- [x] Clean build, no HIGH npm vulnerabilities
 - [x] Environment variable inventory complete
 - [x] CLAUDE.md updated and accurate
 - [x] Migration health confirmed
@@ -74,17 +74,17 @@
 
 ## NON-BLOCKER Items (tracked for post-launch)
 
-| Item | Phase | Status | Remediation |
-|------|-------|--------|-------------|
-| CSP tightened (unsafe-inline for Paddle.js) | 2 | Accepted risk | Nonce-based CSP when Paddle supports it |
-| Analytics.tsx decomposed to <800 lines | 4 | Deferred | Post-launch refactor, improves bundle by ~317KB |
-| CycleBuilder/RoutineBuilder extraction | 4 | Assessed | Both under 1,500 lines, acceptable |
-| Bundle size < 300KB initial gzipped | 6 | 289KB public / 346KB authed | Analytics lazy-loaded, acceptable |
-| Lighthouse scores meet targets | 6 | Deferred | Run pre-launch with live server |
-| CWV all "Good" | 6 | Deferred | Run pre-launch with live server |
-| PWA fully verified | 6 | Code review done | Test in production after deploy |
-| Rate limits match current provider docs | 5 | Conservative margins | Verify before each provider goes live |
-| Garmin webhook ready | 5 | Pending GCPP | Blocked on external approval |
+| Item                                        | Phase | Status                      | Remediation                                     |
+| ------------------------------------------- | ----- | --------------------------- | ----------------------------------------------- |
+| CSP tightened (unsafe-inline for Paddle.js) | 2     | Accepted risk               | Nonce-based CSP when Paddle supports it         |
+| Analytics.tsx decomposed to <800 lines      | 4     | Deferred                    | Post-launch refactor, improves bundle by ~317KB |
+| CycleBuilder/RoutineBuilder extraction      | 4     | Assessed                    | Both under 1,500 lines, acceptable              |
+| Bundle size < 300KB initial gzipped         | 6     | 289KB public / 346KB authed | Analytics lazy-loaded, acceptable               |
+| Lighthouse scores meet targets              | 6     | Deferred                    | Run pre-launch with live server                 |
+| CWV all "Good"                              | 6     | Deferred                    | Run pre-launch with live server                 |
+| PWA fully verified                          | 6     | Code review done            | Test in production after deploy                 |
+| Rate limits match current provider docs     | 5     | Conservative margins        | Verify before each provider goes live           |
+| Garmin webhook ready                        | 5     | Pending GCPP                | Blocked on external approval                    |
 
 ---
 
@@ -128,12 +128,12 @@ Before flipping the switch, complete these live-environment checks:
 
 ## Test Coverage Summary
 
-| Metric | Baseline (Phase 0) | Final | Change |
-|--------|-------------------|-------|--------|
-| Vitest tests | 243 | 465 | +222 (+91%) |
-| Test files | 32 | 51 | +19 |
-| E2E specs | 5 | 9 | +4 |
-| Review documents | 0 | 8 | +8 |
-| Runbooks | 0 | 3 | +3 |
-| Security fixes | 0 | 12+ | Input validation, rate limiting, CORS, RLS, error sanitization |
-| Billing fixes | 0 | 5+ | Price ID trim, CORS cleanup, idempotency, schema verification |
+| Metric           | Baseline (Phase 0) | Final | Change                                                         |
+| ---------------- | ------------------ | ----- | -------------------------------------------------------------- |
+| Vitest tests     | 243                | 465   | +222 (+91%)                                                    |
+| Test files       | 32                 | 51    | +19                                                            |
+| E2E specs        | 5                  | 9     | +4                                                             |
+| Review documents | 0                  | 8     | +8                                                             |
+| Runbooks         | 0                  | 3     | +3                                                             |
+| Security fixes   | 0                  | 12+   | Input validation, rate limiting, CORS, RLS, error sanitization |
+| Billing fixes    | 0                  | 5+    | Price ID trim, CORS cleanup, idempotency, schema verification  |

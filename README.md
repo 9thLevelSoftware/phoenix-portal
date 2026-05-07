@@ -55,31 +55,31 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 
 ## Subscription Tiers
 
-| Tier | Monthly | Annual | Access |
-|------|---------|--------|--------|
-| **FREE** | $0 | $0 | Landing, pricing |
-| **EMBER** | $5 | $49/yr | Cloud sync, history, dashboard, goals |
-| **FLAME** | $15 | $149/yr | Analytics, community, routines, cycles, integrations |
-| **INFERNO** | $25 | $249/yr | Session replay, advanced biomechanics *(coming soon)* |
+| Tier        | Monthly | Annual  | Access                                                |
+| ----------- | ------- | ------- | ----------------------------------------------------- |
+| **FREE**    | $0      | $0      | Landing, pricing                                      |
+| **EMBER**   | $5      | $49/yr  | Cloud sync, history, dashboard, goals                 |
+| **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations  |
+| **INFERNO** | $25     | $249/yr | Session replay, advanced biomechanics *(coming soon)* |
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Build** | Vite 7 |
-| **Framework** | React 19, TypeScript 5.7 |
-| **Styling** | Tailwind CSS v4 |
-| **Components** | shadcn/ui (50+ Radix primitives) |
-| **State** | Zustand 5 (client), TanStack Query 5 (server) |
-| **Visualization** | Recharts 3, @visx, ECharts 6 |
-| **Animation** | Framer Motion (reduced-motion support) |
-| **Validation** | Zod 4 |
-| **Backend** | Supabase (PostgreSQL, Auth, Realtime, Storage) |
-| **Edge Functions** | 20 Deno functions |
-| **Payments** | Paddle (Merchant of Record) |
-| **Monitoring** | Sentry (cookie-consent-gated) |
-| **Testing** | Vitest 4, Playwright 1.58 |
-| **Linting** | Biome 2.4 |
+| Layer              | Technology                                     |
+| ------------------ | ---------------------------------------------- |
+| **Build**          | Vite 7                                         |
+| **Framework**      | React 19, TypeScript 5.7                       |
+| **Styling**        | Tailwind CSS v4                                |
+| **Components**     | shadcn/ui (50+ Radix primitives)               |
+| **State**          | Zustand 5 (client), TanStack Query 5 (server)  |
+| **Visualization**  | Recharts 3, @visx, ECharts 6                   |
+| **Animation**      | Framer Motion (reduced-motion support)         |
+| **Validation**     | Zod 4                                          |
+| **Backend**        | Supabase (PostgreSQL, Auth, Realtime, Storage) |
+| **Edge Functions** | 20 Deno functions                              |
+| **Payments**       | Paddle (Merchant of Record)                    |
+| **Monitoring**     | Sentry (cookie-consent-gated)                  |
+| **Testing**        | Vitest 4, Playwright 1.58                      |
+| **Linting**        | Biome 2.4                                      |
 
 ## Development
 
@@ -148,13 +148,13 @@ Portal ← useRealtimeSync hook ← Channel sync:{userId}
 
 Dark theme with ember color palette:
 
-| Color | Hex | Usage |
-|-------|-----|-------|
-| Background | `#0D0D0D` | App background |
-| Ember | `#FF6B35` | Primary accent |
-| Flame Red | `#DC2626` | Alerts, emphasis |
-| Gold | `#F59E0B` | Achievements, highlights |
-| Forge Green | `#10B981` | Success states |
+| Color       | Hex       | Usage                    |
+| ----------- | --------- | ------------------------ |
+| Background  | `#0D0D0D` | App background           |
+| Ember       | `#FF6B35` | Primary accent           |
+| Flame Red   | `#DC2626` | Alerts, emphasis         |
+| Gold        | `#F59E0B` | Achievements, highlights |
+| Forge Green | `#10B981` | Success states           |
 
 Custom animations: `flame-flicker`, `ember-rise`, `phoenix-glow`
 

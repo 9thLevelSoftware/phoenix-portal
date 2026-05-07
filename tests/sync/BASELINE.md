@@ -5,15 +5,15 @@ Tests run with `MOCK_EDGE_FUNCTIONS=true` against the mock Edge Function impleme
 
 ## Test Summary
 
-| Test Suite | Tests | Pass | Fail | Coverage |
-|------------|-------|------|------|----------|
-| Round-Trip: Workout | 19 | 19 | 0 | Sessions, exercises, sets, rep summaries |
-| Round-Trip: Entity | 25 | 25 | 0 | Routines, cycles, gamification, external activities |
-| Transforms: Weight | 16 | 16 | 0 | Per-cable storage, x2 multiplier, edge cases |
-| Transforms: Mode | 25 | 25 | 0 | All 6 modes + CLASSIC alias |
-| Transforms: Velocity | 28 | 28 | 0 | Zone boundaries, asymmetry threshold |
-| Fixtures | 25 | 25 | 0 | Fixture factory validation |
-| **Total** | **138** | **138** | **0** | |
+| Test Suite           | Tests   | Pass    | Fail  | Coverage                                            |
+| -------------------- | ------- | ------- | ----- | --------------------------------------------------- |
+| Round-Trip: Workout  | 19      | 19      | 0     | Sessions, exercises, sets, rep summaries            |
+| Round-Trip: Entity   | 25      | 25      | 0     | Routines, cycles, gamification, external activities |
+| Transforms: Weight   | 16      | 16      | 0     | Per-cable storage, x2 multiplier, edge cases        |
+| Transforms: Mode     | 25      | 25      | 0     | All 6 modes + CLASSIC alias                         |
+| Transforms: Velocity | 28      | 28      | 0     | Zone boundaries, asymmetry threshold                |
+| Fixtures             | 25      | 25      | 0     | Fixture factory validation                          |
+| **Total**            | **138** | **138** | **0** |                                                     |
 
 ## Working
 
@@ -108,34 +108,34 @@ These features sync but may have edge cases:
 ### Unicode Handling (P2)
 - **Status**: Unicode fixtures exist but not round-trip tested
 - **Risk**: Special characters in names/notes may have encoding issues
-- **Recommendation**: Include unicode test cases in live testing
+- **Recommendation**: Include Unicode test cases in live testing
 
 ## Reference
 
 ### Audit Issues (from PROJECT.md)
-| Issue | Description | Complexity | Tested |
-|-------|-------------|------------|--------|
-| R1 | Session hierarchy sync | Medium | Yes |
-| R2 | Routine superset sync | Medium | Yes |
-| R3 | Cycle day sync | Medium | Yes |
-| R4 | Weight transform parity | Low | Yes |
-| R5 | Mode mapping parity | Low | Yes |
-| R6 | Velocity zone parity | Low | Yes |
-| R7 | Asymmetry threshold parity | Low | Yes |
-| R8 | PR phase handling | Medium | Structure only |
-| R9 | Delta sync timestamps | High | Mock limitation |
-| R10 | Gamification sync | High | Structure only |
+| Issue | Description                | Complexity | Tested          |
+| ----- | -------------------------- | ---------- | --------------- |
+| R1    | Session hierarchy sync     | Medium     | Yes             |
+| R2    | Routine superset sync      | Medium     | Yes             |
+| R3    | Cycle day sync             | Medium     | Yes             |
+| R4    | Weight transform parity    | Low        | Yes             |
+| R5    | Mode mapping parity        | Low        | Yes             |
+| R6    | Velocity zone parity       | Low        | Yes             |
+| R7    | Asymmetry threshold parity | Low        | Yes             |
+| R8    | PR phase handling          | Medium     | Structure only  |
+| R9    | Delta sync timestamps      | High       | Mock limitation |
+| R10   | Gamification sync          | High       | Structure only  |
 
 ### Fix Complexity Estimates
-| Entity Type | Mock Tests | Live Test Estimate | Fix Complexity |
-|-------------|------------|-------------------|----------------|
-| Sessions | Complete | 2h | N/A - working |
-| Routines | Complete | 1h | N/A - working |
-| Cycles | Complete | 1h | N/A - working |
-| Personal Records | Structure | 3h | Medium |
-| Gamification | Structure | 3h | Medium |
-| Telemetry | Minimal | 4h | High (volume) |
-| Delta Sync | Mock-limited | 2h | Medium |
+| Entity Type      | Mock Tests   | Live Test Estimate | Fix Complexity |
+| ---------------- | ------------ | ------------------ | -------------- |
+| Sessions         | Complete     | 2h                 | N/A - working  |
+| Routines         | Complete     | 1h                 | N/A - working  |
+| Cycles           | Complete     | 1h                 | N/A - working  |
+| Personal Records | Structure    | 3h                 | Medium         |
+| Gamification     | Structure    | 3h                 | Medium         |
+| Telemetry        | Minimal      | 4h                 | High (volume)  |
+| Delta Sync       | Mock-limited | 2h                 | Medium         |
 
 ## Next Steps
 

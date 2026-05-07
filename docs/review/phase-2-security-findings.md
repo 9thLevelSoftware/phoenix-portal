@@ -125,14 +125,14 @@ File: `vite.config.ts`
 
 ### 2.11.1 Complete localStorage/Cookie Inventory
 
-| Key | Location | Purpose | Sensitive? |
-|-----|----------|---------|------------|
-| `phoenix-cookie-consent` | `src/lib/consent.ts` | Stores "accepted" or "rejected" | No |
-| `phoenix-sidebar-preferred-open` | `src/app/components/AppSidebar.tsx` | Boolean sidebar open/closed preference | No |
-| `phoenix-blocked-users` | `src/hooks/useBlockedUsers.ts` | Array of blocked user IDs | No (UUIDs only) |
-| `phoenix-install-dismissed` | `src/app/hooks/usePWAInstall.ts` | Boolean PWA install prompt dismissed | No |
-| `phoenix_recovery_disclaimer_dismissed` | `src/app/components/Recovery.tsx` | "dismissed" string for medical disclaimer | No |
-| `sidebar_state` (cookie) | `src/app/components/ui/sidebar.tsx` | Boolean sidebar state for shadcn/ui | No |
+| Key                                     | Location                            | Purpose                                   | Sensitive?      |
+| --------------------------------------- | ----------------------------------- | ----------------------------------------- | --------------- |
+| `phoenix-cookie-consent`                | `src/lib/consent.ts`                | Stores "accepted" or "rejected"           | No              |
+| `phoenix-sidebar-preferred-open`        | `src/app/components/AppSidebar.tsx` | Boolean sidebar open/closed preference    | No              |
+| `phoenix-blocked-users`                 | `src/hooks/useBlockedUsers.ts`      | Array of blocked user IDs                 | No (UUIDs only) |
+| `phoenix-install-dismissed`             | `src/app/hooks/usePWAInstall.ts`    | Boolean PWA install prompt dismissed      | No              |
+| `phoenix_recovery_disclaimer_dismissed` | `src/app/components/Recovery.tsx`   | "dismissed" string for medical disclaimer | No              |
+| `sidebar_state` (cookie)                | `src/app/components/ui/sidebar.tsx` | Boolean sidebar state for shadcn/ui       | No              |
 
 **Result: PASS -- No tokens, user data, billing info, or other sensitive data stored in localStorage or cookies.**
 
@@ -198,15 +198,15 @@ exercises (via workout IDs), sets, rep_summaries, rep_telemetry (paginated), rou
 
 **MISSING tables with user-owned data (7):**
 
-| Table | Has user_id? | Data Type | Impact |
-|-------|-------------|-----------|--------|
-| `earned_badges` | Yes | User achievement badges | MEDIUM -- user-generated history |
-| `gamification_stats` | Yes | XP, level, streaks | MEDIUM -- user activity data |
-| `rpg_attributes` | Yes | RPG-style character stats | LOW -- derived data |
-| `content_reports` | Yes (reporter_id) | Reports user filed | LOW -- but user's own action history |
-| `creator_follows` | Yes (follower_id) | Users they follow | MEDIUM -- social graph data |
-| `user_blocks` | Yes (blocker_id) | Users they blocked | LOW -- but should be portable |
-| `deletion_requests` | Yes | Account deletion requests | LOW -- administrative |
+| Table                | Has user_id?      | Data Type                 | Impact                               |
+| -------------------- | ----------------- | ------------------------- | ------------------------------------ |
+| `earned_badges`      | Yes               | User achievement badges   | MEDIUM -- user-generated history     |
+| `gamification_stats` | Yes               | XP, level, streaks        | MEDIUM -- user activity data         |
+| `rpg_attributes`     | Yes               | RPG-style character stats | LOW -- derived data                  |
+| `content_reports`    | Yes (reporter_id) | Reports user filed        | LOW -- but user's own action history |
+| `creator_follows`    | Yes (follower_id) | Users they follow         | MEDIUM -- social graph data          |
+| `user_blocks`        | Yes (blocker_id)  | Users they blocked        | LOW -- but should be portable        |
+| `deletion_requests`  | Yes               | Account deletion requests | LOW -- administrative                |
 
 Severity: MEDIUM (CVSS 4.5). Under GDPR Article 20 (Right to Data Portability), all personal data provided by the data subject must be exportable. The missing tables represent user-generated data that should be included.
 
@@ -263,25 +263,25 @@ All three are outside the `ProtectedRoute` wrapper, making them accessible witho
 
 ### 2.14.3 Privacy Policy Required Mentions
 
-| Topic | Mentioned? | Location |
-|-------|-----------|----------|
-| Data collection | Yes | Section 2 -- detailed breakdown of account info and fitness data |
-| Paddle billing | Yes | Section 2 (billing status via Paddle), Section 5 (Paddle as payment processor/MoR), Section 6 (Paddle processes subscription payments) |
-| Supabase storage | Yes | Section 2 (hosted by Supabase), Section 4 (encryption, RLS, auth details), Section 5 (cloud database/auth/storage) |
-| Sentry monitoring | Yes | Summary box, Section 5 (error monitoring with data scope defined) |
-| Cookie usage | Yes | Section 7 (cookie preferences, consent banner, reset instructions) |
-| Biometric data notice | Yes | Section 2 (biometric-adjacent data notice for machine sensor data) |
+| Topic                 | Mentioned? | Location                                                                                                                               |
+| --------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Data collection       | Yes        | Section 2 -- detailed breakdown of account info and fitness data                                                                       |
+| Paddle billing        | Yes        | Section 2 (billing status via Paddle), Section 5 (Paddle as payment processor/MoR), Section 6 (Paddle processes subscription payments) |
+| Supabase storage      | Yes        | Section 2 (hosted by Supabase), Section 4 (encryption, RLS, auth details), Section 5 (cloud database/auth/storage)                     |
+| Sentry monitoring     | Yes        | Summary box, Section 5 (error monitoring with data scope defined)                                                                      |
+| Cookie usage          | Yes        | Section 7 (cookie preferences, consent banner, reset instructions)                                                                     |
+| Biometric data notice | Yes        | Section 2 (biometric-adjacent data notice for machine sensor data)                                                                     |
 
 ### 2.14.4 Terms of Service Required Mentions
 
-| Topic | Mentioned? | Location |
-|-------|-----------|----------|
-| Subscription billing | Yes | Section 4 -- monthly/annual billing through Paddle MoR |
-| Cancellation rights | Yes | Section 4 -- cancel anytime, access continues through billing period |
-| Refund policy | Yes | Section 4 -- handled by Paddle, 14-day window |
-| Data export | **No** | Not mentioned in Terms of Service |
-| Price changes | Yes | Section 4 -- 30 days notice to existing subscribers |
-| Merchant of Record | Yes | Section 4 -- Paddle.com identified as MoR |
+| Topic                | Mentioned? | Location                                                             |
+| -------------------- | ---------- | -------------------------------------------------------------------- |
+| Subscription billing | Yes        | Section 4 -- monthly/annual billing through Paddle MoR               |
+| Cancellation rights  | Yes        | Section 4 -- cancel anytime, access continues through billing period |
+| Refund policy        | Yes        | Section 4 -- handled by Paddle, 14-day window                        |
+| Data export          | **No**     | Not mentioned in Terms of Service                                    |
+| Price changes        | Yes        | Section 4 -- 30 days notice to existing subscribers                  |
+| Merchant of Record   | Yes        | Section 4 -- Paddle.com identified as MoR                            |
 
 **Advisory: Data export/portability rights not mentioned in Terms of Service.** While the Privacy Policy covers export in Section 7 ("Export: You can export your workout history...") and the FAQ mentions it, the Terms of Service should reference the right to data portability for completeness. Severity: INFO.
 
@@ -289,13 +289,13 @@ All three are outside the `ProtectedRoute` wrapper, making them accessible witho
 
 ## Summary
 
-| Task | Rating | Critical Issues |
-|------|--------|----------------|
-| 2.10 Sensitive Data Exposure | PASS (with notes) | No hardcoded secrets. Advisory: add `sendDefaultPii: false` to Sentry; sanitize Edge Function error body logging |
-| 2.11 Cookie & localStorage | PASS | No sensitive data in client storage. All 6 items are UI preferences only |
-| 2.12 npm Vulnerabilities | PASS (pending) | Manual `npm audit` execution needed to confirm clean state |
-| 2.13 GDPR Compliance | NEEDS WORK | 7 user-owned tables missing from data export (`earned_badges`, `gamification_stats`, `rpg_attributes`, `content_reports`, `creator_follows`, `user_blocks`, `deletion_requests`) |
-| 2.14 Public Page Content | PASS | Real content on all pages. Privacy policy covers all required topics. Terms cover billing/cancellation but lack data export mention |
+| Task                         | Rating            | Critical Issues                                                                                                                                                                  |
+| ---------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.10 Sensitive Data Exposure | PASS (with notes) | No hardcoded secrets. Advisory: add `sendDefaultPii: false` to Sentry; sanitize Edge Function error body logging                                                                 |
+| 2.11 Cookie & localStorage   | PASS              | No sensitive data in client storage. All 6 items are UI preferences only                                                                                                         |
+| 2.12 npm Vulnerabilities     | PASS (pending)    | Manual `npm audit` execution needed to confirm clean state                                                                                                                       |
+| 2.13 GDPR Compliance         | NEEDS WORK        | 7 user-owned tables missing from data export (`earned_badges`, `gamification_stats`, `rpg_attributes`, `content_reports`, `creator_follows`, `user_blocks`, `deletion_requests`) |
+| 2.14 Public Page Content     | PASS              | Real content on all pages. Privacy policy covers all required topics. Terms cover billing/cancellation but lack data export mention                                              |
 
 ### Priority Remediation
 

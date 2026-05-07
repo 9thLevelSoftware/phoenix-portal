@@ -12,11 +12,11 @@ This report presents a comprehensive security audit of the 19 Supabase Edge Func
 
 ### Key Findings by Severity
 
-| Severity | Count | Summary |
-|----------|-------|---------|
-| 🔴 **Critical** | 0 | No critical vulnerabilities found |
-| 🟡 **Warning** | 4 | Input validation gaps, information disclosure risks |
-| 🔵 **Info** | 6 | Defense in depth opportunities, best practice recommendations |
+| Severity        | Count | Summary                                                       |
+| --------------- | ----- | ------------------------------------------------------------- |
+| 🔴 **Critical** | 0     | No critical vulnerabilities found                             |
+| 🟡 **Warning**  | 4     | Input validation gaps, information disclosure risks           |
+| 🔵 **Info**     | 6     | Defense in depth opportunities, best practice recommendations |
 
 ### Security Strengths
 - ✅ Consistent JWT authentication across all protected endpoints
@@ -35,29 +35,29 @@ This report presents a comprehensive security audit of the 19 Supabase Edge Func
 ### 1. Billing Functions (3)
 
 #### `paddle-webhooks` — **Info**
-| Check | Status |
-|-------|--------|
+| Check                          | Status                                    |
+| ------------------------------ | ----------------------------------------- |
 | Webhook signature verification | ✅ HMAC-SHA256 with timing-safe comparison |
-| Idempotency handling | ✅ `last_event_id` deduplication |
-| Price/tier validation | ✅ Price ID mapping with env var whitelist |
-| Replay attack prevention | ✅ 5-minute signature age limit |
+| Idempotency handling           | ✅ `last_event_id` deduplication           |
+| Price/tier validation          | ✅ Price ID mapping with env var whitelist |
+| Replay attack prevention       | ✅ 5-minute signature age limit            |
 
 **Finding (Info):** Consider adding webhook event logging to a dedicated table for audit trails and debugging.
 
 #### `paddle-cancel-subscription` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 3 req/min/user |
-| Input validation | ✅ No user-supplied input beyond auth |
-| API key protection | ✅ Service role key used server-side |
+| Check              | Status                               |
+| ------------------ | ------------------------------------ |
+| Authentication     | ✅ JWT required                       |
+| Rate limiting      | ✅ 3 req/min/user                     |
+| Input validation   | ✅ No user-supplied input beyond auth |
+| API key protection | ✅ Service role key used server-side  |
 
 #### `paddle-update-subscription` — **Warning**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 3 req/min/user |
-| Input validation | ⚠️ `price_id` length check only (255 chars) |
+| Check            | Status                                          |
+| ---------------- | ----------------------------------------------- |
+| Authentication   | ✅ JWT required                                  |
+| Rate limiting    | ✅ 3 req/min/user                                |
+| Input validation | ⚠️ `price_id` length check only (255 chars)     |
 | Price validation | ❌ No validation that price_id is in allowed set |
 
 **Finding (Warning):** The function accepts any `price_id` string and forwards it to Paddle. While Paddle will reject invalid price IDs, consider validating against the configured `PADDLE_*_PRICE_IDS` environment variables before API call to fail fast and provide better error messages.
@@ -79,34 +79,34 @@ function isValidPriceId(priceId: string): boolean {
 ### 2. OAuth Functions (4)
 
 #### `initiate-oauth` — **Info**
-| Check | Status |
-|-------|--------|
-| State parameter generation | ✅ `crypto.randomUUID()` |
-| State storage | ✅ 10-minute expiry in `oauth_states` table |
-| Provider validation | ✅ Strict whitelist: 'strava', 'fitbit', 'garmin' |
-| Expired cleanup | ✅ Deletes expired tokens on initiation |
+| Check                      | Status                                           |
+| -------------------------- | ------------------------------------------------ |
+| State parameter generation | ✅ `crypto.randomUUID()`                          |
+| State storage              | ✅ 10-minute expiry in `oauth_states` table       |
+| Provider validation        | ✅ Strict whitelist: 'strava', 'fitbit', 'garmin' |
+| Expired cleanup            | ✅ Deletes expired tokens on initiation           |
 
 #### `strava-oauth` — **Info**
-| Check | Status |
-|-------|--------|
-| State validation | ✅ Single-use, expiry checked |
-| Provider mismatch check | ✅ Validates provider='strava' |
-| Token storage | ✅ Server-only `oauth_tokens` table |
-| HTTPS enforcement | ✅ Hardcoded Strava URLs |
+| Check                   | Status                             |
+| ----------------------- | ---------------------------------- |
+| State validation        | ✅ Single-use, expiry checked       |
+| Provider mismatch check | ✅ Validates provider='strava'      |
+| Token storage           | ✅ Server-only `oauth_tokens` table |
+| HTTPS enforcement       | ✅ Hardcoded Strava URLs            |
 
 #### `fitbit-oauth` — **Info**
-| Check | Status |
-|-------|--------|
-| State validation | ✅ Single-use, expiry checked |
-| Basic auth | ✅ Proper `btoa(client_id:client_secret)` encoding |
-| Token storage | ✅ Server-only table |
+| Check            | Status                                            |
+| ---------------- | ------------------------------------------------- |
+| State validation | ✅ Single-use, expiry checked                      |
+| Basic auth       | ✅ Proper `btoa(client_id:client_secret)` encoding |
+| Token storage    | ✅ Server-only table                               |
 
 #### `garmin-oauth` — **Warning**
-| Check | Status |
-|-------|--------|
-| State validation | ✅ Single-use, expiry checked |
-| OAuth 1.0a signature | ✅ HMAC-SHA1 with proper base string |
-| Token storage | ✅ Server-only table |
+| Check                 | Status                                        |
+| --------------------- | --------------------------------------------- |
+| State validation      | ✅ Single-use, expiry checked                  |
+| OAuth 1.0a signature  | ✅ HMAC-SHA1 with proper base string           |
+| Token storage         | ✅ Server-only table                           |
 | Request token cleanup | ⚠️ Overwrites existing token on re-initiation |
 
 **Finding (Warning):** The function stores the OAuth 1.0a request token in `oauth_tokens` before user authorization. If a user initiates OAuth multiple times, the previous request token is overwritten, potentially leaving orphaned authorization states. Consider cleaning up old request tokens explicitly.
@@ -116,29 +116,29 @@ function isValidPriceId(priceId: string): boolean {
 ### 3. Sync Functions (6)
 
 #### `strava-sync` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ Dual-path: JWT or service role |
+| Check                     | Status                                         |
+| ------------------------- | ---------------------------------------------- |
+| Authentication            | ✅ Dual-path: JWT or service role               |
 | Service role verification | ✅ Compares against `SUPABASE_SERVICE_ROLE_KEY` |
-| Token refresh | ✅ Automatic with 60s buffer |
-| Rate limiting | ✅ Via `process-sync-queue` |
-| Data validation | ✅ Normalized before upsert |
+| Token refresh             | ✅ Automatic with 60s buffer                    |
+| Rate limiting             | ✅ Via `process-sync-queue`                     |
+| Data validation           | ✅ Normalized before upsert                     |
 
 #### `fitbit-sync` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ Dual-path: JWT or service role |
-| Token refresh | ✅ Automatic with 10-minute buffer |
-| Pagination | ✅ Offset-based with 100-item limit |
-| Rate limit handling | ✅ 429 detection and tracking |
+| Check               | Status                             |
+| ------------------- | ---------------------------------- |
+| Authentication      | ✅ Dual-path: JWT or service role   |
+| Token refresh       | ✅ Automatic with 10-minute buffer  |
+| Pagination          | ✅ Offset-based with 100-item limit |
+| Rate limit handling | ✅ 429 detection and tracking       |
 
 #### `hevy-sync` — **Warning**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ Dual-path: JWT or service role |
-| API key storage | ✅ Server-only table |
+| Check              | Status                                     |
+| ------------------ | ------------------------------------------ |
+| Authentication     | ✅ Dual-path: JWT or service role           |
+| API key storage    | ✅ Server-only table                        |
 | API key validation | ⚠️ No key format validation before storage |
-| Error handling | ✅ Distinguishes 401/403 from other errors |
+| Error handling     | ✅ Distinguishes 401/403 from other errors  |
 
 **Finding (Warning):** The function stores the provided `api_key` without any format validation. Hevy API keys should have a recognizable format (typically alphanumeric). Adding format validation would catch obvious copy-paste errors early.
 
@@ -153,43 +153,43 @@ if (!/^[a-zA-Z0-9_-]{20,100}$/.test(api_key)) {
 ```
 
 #### `liftosaur-sync` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ Dual-path: JWT or service role |
-| Pagination | ✅ Cursor-based with MAX_PAGES=10 safety limit |
-| API key validation | ✅ Length/type check implicitly via header |
+| Check              | Status                                        |
+| ------------------ | --------------------------------------------- |
+| Authentication     | ✅ Dual-path: JWT or service role              |
+| Pagination         | ✅ Cursor-based with MAX_PAGES=10 safety limit |
+| API key validation | ✅ Length/type check implicitly via header     |
 
 #### `garmin-webhook` — **Info**
-| Check | Status |
-|-------|--------|
-| Webhook secret | ✅ Mandatory `GARMIN_WEBHOOK_SECRET` env var |
-| Signature validation | ✅ Timing-safe comparison |
-| Method enforcement | ✅ GET for verification, POST for events |
-| Subscription gate | ✅ FLAME tier check per activity |
-| Error handling | ✅ Returns 200 to prevent retry storms |
+| Check                | Status                                      |
+| -------------------- | ------------------------------------------- |
+| Webhook secret       | ✅ Mandatory `GARMIN_WEBHOOK_SECRET` env var |
+| Signature validation | ✅ Timing-safe comparison                    |
+| Method enforcement   | ✅ GET for verification, POST for events     |
+| Subscription gate    | ✅ FLAME tier check per activity             |
+| Error handling       | ✅ Returns 200 to prevent retry storms       |
 
 #### `process-sync-queue` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ No external auth (internal function) |
-| Retry logic | ✅ Exponential backoff with 10-attempt cap |
-| Rate limiting | ✅ Per-provider tracking |
-| Queue starvation prevention | ✅ Per-provider processing loop |
-| Dead letter handling | ✅ `permanently_failed` status |
+| Check                       | Status                                    |
+| --------------------------- | ----------------------------------------- |
+| Authentication              | ✅ No external auth (internal function)    |
+| Retry logic                 | ✅ Exponential backoff with 10-attempt cap |
+| Rate limiting               | ✅ Per-provider tracking                   |
+| Queue starvation prevention | ✅ Per-provider processing loop            |
+| Dead letter handling        | ✅ `permanently_failed` status             |
 
 ---
 
 ### 4. Mobile Functions (3)
 
 #### `mobile-sync-push` — **Warning**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 10 req/min/user |
-| Subscription gate | ✅ EMBER tier required |
-| RLS bypass | ✅ Service role with user validation |
-| Payload size | ⚠️ No explicit limit on array sizes |
-| Input validation | ⚠️ String length limits not enforced |
+| Check             | Status                               |
+| ----------------- | ------------------------------------ |
+| Authentication    | ✅ JWT required                       |
+| Rate limiting     | ✅ 10 req/min/user                    |
+| Subscription gate | ✅ EMBER tier required                |
+| RLS bypass        | ✅ Service role with user validation  |
+| Payload size      | ⚠️ No explicit limit on array sizes  |
+| Input validation  | ⚠️ String length limits not enforced |
 
 **Findings (Warning):**
 
@@ -209,38 +209,38 @@ if (payload.sessions?.length > MAX_SESSIONS) {
 }
 ```
 
-2. **String Input Validation:** Fields like `name`, `notes`, `description` don't have length limits enforced, which could lead to database errors or storage issues.
+1. **String Input Validation:** Fields like `name`, `notes`, `description` don't have length limits enforced, which could lead to database errors or storage issues.
 
 #### `mobile-sync-pull` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| RLS bypass | ✅ Service role with user validation |
+| Check             | Status                                        |
+| ----------------- | --------------------------------------------- |
+| Authentication    | ✅ JWT required                                |
+| RLS bypass        | ✅ Service role with user validation           |
 | Subscription gate | ✅ EMBER tier required for external activities |
-| Query injection | ✅ No raw SQL, uses Supabase client |
-| Data filtering | ✅ `user_id` filter on all queries |
+| Query injection   | ✅ No raw SQL, uses Supabase client            |
+| Data filtering    | ✅ `user_id` filter on all queries             |
 
 #### `mobile-integration-sync` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Provider whitelist | ✅ `hevy`, `liftosaur` only |
-| Action whitelist | ✅ `connect`, `sync`, `disconnect` only |
-| API key storage | ✅ Server-only table |
-| Subscription gating | ✅ Paid users get full data |
+| Check               | Status                                 |
+| ------------------- | -------------------------------------- |
+| Authentication      | ✅ JWT required                         |
+| Provider whitelist  | ✅ `hevy`, `liftosaur` only             |
+| Action whitelist    | ✅ `connect`, `sync`, `disconnect` only |
+| API key storage     | ✅ Server-only table                    |
+| Subscription gating | ✅ Paid users get full data             |
 
 ---
 
 ### 5. Account Functions (1)
 
 #### `delete-account` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 1 req/hour/user |
-| Grace period check | ✅ Validates `scheduled_for` has passed |
-| Storage cleanup | ✅ Avatar deletion attempted |
-| Cascade deletion | ✅ Auth delete cascades to all data |
+| Check               | Status                                  |
+| ------------------- | --------------------------------------- |
+| Authentication      | ✅ JWT required                          |
+| Rate limiting       | ✅ 1 req/hour/user                       |
+| Grace period check  | ✅ Validates `scheduled_for` has passed  |
+| Storage cleanup     | ✅ Avatar deletion attempted             |
+| Cascade deletion    | ✅ Auth delete cascades to all data      |
 | Rollback on failure | ✅ Reverts status on auth delete failure |
 
 **Finding (Info):** The function correctly uses `supabaseAdmin.auth.admin.deleteUser()` which cascades to all related data. The comprehensive comment documenting cascade behavior is excellent for maintainability.
@@ -250,27 +250,27 @@ if (payload.sessions?.length > MAX_SESSIONS) {
 ### 6. Integrations Functions (1)
 
 #### `disconnect-integration` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 5 req/min/user |
-| Provider whitelist | ✅ Strict 7-provider set |
-| Token cleanup | ✅ Deletes from `oauth_tokens` |
-| Status update | ✅ Marks `user_integrations` as disconnected |
-| Queue cleanup | ✅ Fails pending sync tasks |
+| Check              | Status                                      |
+| ------------------ | ------------------------------------------- |
+| Authentication     | ✅ JWT required                              |
+| Rate limiting      | ✅ 5 req/min/user                            |
+| Provider whitelist | ✅ Strict 7-provider set                     |
+| Token cleanup      | ✅ Deletes from `oauth_tokens`               |
+| Status update      | ✅ Marks `user_integrations` as disconnected |
+| Queue cleanup      | ✅ Fails pending sync tasks                  |
 
 ---
 
 ### 7. Analytics Functions (1)
 
 #### `generate-insights` — **Info**
-| Check | Status |
-|-------|--------|
-| Authentication | ✅ JWT required |
-| Rate limiting | ✅ 5 req/min/user |
-| User isolation | ✅ Validates `userId` matches JWT |
+| Check             | Status                             |
+| ----------------- | ---------------------------------- |
+| Authentication    | ✅ JWT required                     |
+| Rate limiting     | ✅ 5 req/min/user                   |
+| User isolation    | ✅ Validates `userId` matches JWT   |
 | Period validation | ✅ Whitelist: 7d, 30d, 90d, 1y, all |
-| SQL injection | ✅ No raw SQL, uses Supabase client |
+| SQL injection     | ✅ No raw SQL, uses Supabase client |
 
 ---
 
@@ -278,43 +278,43 @@ if (payload.sessions?.length > MAX_SESSIONS) {
 
 Several functions use the service role key to bypass RLS. This is **justified** in all cases:
 
-| Function | RLS Bypass | Justification | User Validation |
-|----------|------------|---------------|-----------------|
-| `paddle-webhooks` | ✅ Yes | Webhook has no user JWT | Event contains `user_id` in custom_data, validated via subscription lookup |
-| `paddle-cancel-subscription` | ✅ Yes | Must update subscription table | JWT authentication |
-| `paddle-update-subscription` | ✅ Yes | Must update subscription table | JWT authentication |
-| `strava-sync` | ✅ Yes | Called by queue processor | Dual-auth: JWT OR service role |
-| `fitbit-sync` | ✅ Yes | Called by queue processor | Dual-auth: JWT OR service role |
-| `hevy-sync` | ✅ Yes | Called by queue processor | Dual-auth: JWT OR service role |
-| `liftosaur-sync` | ✅ Yes | Called by queue processor | Dual-auth: JWT OR service role |
-| `mobile-sync-push` | ✅ Yes | Complex nested writes | JWT authentication before service role |
-| `mobile-sync-pull` | ✅ Yes | Complex nested reads | JWT authentication before service role |
-| `mobile-integration-sync` | ✅ Yes | API key storage | JWT authentication |
-| `delete-account` | ✅ Yes | Cross-table deletion | JWT + grace period verification |
-| `disconnect-integration` | ✅ Yes | Cross-table updates | JWT authentication |
-| `generate-insights` | ✅ Yes | Analytics queries | JWT + userId match verification |
-| `garmin-webhook` | ✅ Yes | No JWT available | Webhook secret + provider_user_id lookup |
-| `process-sync-queue` | ✅ Yes | Internal cron | No external access |
+| Function                     | RLS Bypass | Justification                  | User Validation                                                            |
+| ---------------------------- | ---------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `paddle-webhooks`            | ✅ Yes      | Webhook has no user JWT        | Event contains `user_id` in custom_data, validated via subscription lookup |
+| `paddle-cancel-subscription` | ✅ Yes      | Must update subscription table | JWT authentication                                                         |
+| `paddle-update-subscription` | ✅ Yes      | Must update subscription table | JWT authentication                                                         |
+| `strava-sync`                | ✅ Yes      | Called by queue processor      | Dual-auth: JWT OR service role                                             |
+| `fitbit-sync`                | ✅ Yes      | Called by queue processor      | Dual-auth: JWT OR service role                                             |
+| `hevy-sync`                  | ✅ Yes      | Called by queue processor      | Dual-auth: JWT OR service role                                             |
+| `liftosaur-sync`             | ✅ Yes      | Called by queue processor      | Dual-auth: JWT OR service role                                             |
+| `mobile-sync-push`           | ✅ Yes      | Complex nested writes          | JWT authentication before service role                                     |
+| `mobile-sync-pull`           | ✅ Yes      | Complex nested reads           | JWT authentication before service role                                     |
+| `mobile-integration-sync`    | ✅ Yes      | API key storage                | JWT authentication                                                         |
+| `delete-account`             | ✅ Yes      | Cross-table deletion           | JWT + grace period verification                                            |
+| `disconnect-integration`     | ✅ Yes      | Cross-table updates            | JWT authentication                                                         |
+| `generate-insights`          | ✅ Yes      | Analytics queries              | JWT + userId match verification                                            |
+| `garmin-webhook`             | ✅ Yes      | No JWT available               | Webhook secret + provider_user_id lookup                                   |
+| `process-sync-queue`         | ✅ Yes      | Internal cron                  | No external access                                                         |
 
 ---
 
 ## Secret Management Audit
 
-| Secret | Usage | Hardcoded? | Proper Env Var? |
-|--------|-------|------------|-----------------|
-| `SUPABASE_URL` | All functions | ❌ No | ✅ `Deno.env.get()` |
-| `SUPABASE_ANON_KEY` | Auth client | ❌ No | ✅ `Deno.env.get()` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Admin operations | ❌ No | ✅ `Deno.env.get()` |
-| `PADDLE_WEBHOOK_SECRET` | Webhook verification | ❌ No | ✅ `Deno.env.get()` |
-| `PADDLE_API_KEY` | API calls | ❌ No | ✅ `Deno.env.get()` |
-| `STRAVA_CLIENT_ID` | OAuth | ❌ No | ✅ `Deno.env.get()` |
-| `STRAVA_CLIENT_SECRET` | OAuth | ❌ No | ✅ `Deno.env.get()` |
-| `FITBIT_CLIENT_ID` | OAuth | ❌ No | ✅ `Deno.env.get()` |
-| `FITBIT_CLIENT_SECRET` | OAuth | ❌ No | ✅ `Deno.env.get()` |
-| `GARMIN_CONSUMER_KEY` | OAuth 1.0a | ❌ No | ✅ `Deno.env.get()` |
-| `GARMIN_CONSUMER_SECRET` | OAuth 1.0a | ❌ No | ✅ `Deno.env.get()` |
-| `GARMIN_WEBHOOK_SECRET` | Webhook | ❌ No | ✅ `Deno.env.get()` |
-| `APP_URL` | CORS/redirects | ❌ No | ✅ `Deno.env.get()` |
+| Secret                      | Usage                | Hardcoded? | Proper Env Var?    |
+| --------------------------- | -------------------- | ---------- | ------------------ |
+| `SUPABASE_URL`              | All functions        | ❌ No       | ✅ `Deno.env.get()` |
+| `SUPABASE_ANON_KEY`         | Auth client          | ❌ No       | ✅ `Deno.env.get()` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Admin operations     | ❌ No       | ✅ `Deno.env.get()` |
+| `PADDLE_WEBHOOK_SECRET`     | Webhook verification | ❌ No       | ✅ `Deno.env.get()` |
+| `PADDLE_API_KEY`            | API calls            | ❌ No       | ✅ `Deno.env.get()` |
+| `STRAVA_CLIENT_ID`          | OAuth                | ❌ No       | ✅ `Deno.env.get()` |
+| `STRAVA_CLIENT_SECRET`      | OAuth                | ❌ No       | ✅ `Deno.env.get()` |
+| `FITBIT_CLIENT_ID`          | OAuth                | ❌ No       | ✅ `Deno.env.get()` |
+| `FITBIT_CLIENT_SECRET`      | OAuth                | ❌ No       | ✅ `Deno.env.get()` |
+| `GARMIN_CONSUMER_KEY`       | OAuth 1.0a           | ❌ No       | ✅ `Deno.env.get()` |
+| `GARMIN_CONSUMER_SECRET`    | OAuth 1.0a           | ❌ No       | ✅ `Deno.env.get()` |
+| `GARMIN_WEBHOOK_SECRET`     | Webhook              | ❌ No       | ✅ `Deno.env.get()` |
+| `APP_URL`                   | CORS/redirects       | ❌ No       | ✅ `Deno.env.get()` |
 
 **Status:** ✅ All secrets properly use environment variables. No hardcoded credentials detected.
 
@@ -322,12 +322,12 @@ Several functions use the service role key to bypass RLS. This is **justified** 
 
 ## CORS Configuration Review
 
-| Function | CORS Headers | Origin Validation | Notes |
-|----------|--------------|-------------------|-------|
-| All browser-facing | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Checks `req.headers.get('origin')` against `ALLOWED_ORIGINS` |
-| `paddle-webhooks` | Static | ✅ N/A | Webhook endpoint, no CORS needed |
-| `garmin-webhook` | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Handles GET verification + POST events |
-| `process-sync-queue` | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Internal, but returns CORS for consistency |
+| Function             | CORS Headers          | Origin Validation   | Notes                                                        |
+| -------------------- | --------------------- | ------------------- | ------------------------------------------------------------ |
+| All browser-facing   | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Checks `req.headers.get('origin')` against `ALLOWED_ORIGINS` |
+| `paddle-webhooks`    | Static                | ✅ N/A               | Webhook endpoint, no CORS needed                             |
+| `garmin-webhook`     | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Handles GET verification + POST events                       |
+| `process-sync-queue` | `getCorsHeaders(req)` | ✅ Dynamic whitelist | Internal, but returns CORS for consistency                   |
 
 **Configuration:**
 ```typescript
@@ -369,14 +369,14 @@ try {
 3. **Validate `price_id` against allowed set** in `paddle-update-subscription`
 
 ### Medium Priority (Address Eventually)
-4. Add API key format validation for Hevy/Liftosaur
-5. Add webhook event logging table for Paddle audit trail
-6. Consider request token cleanup in Garmin OAuth flow
+1. Add API key format validation for Hevy/Liftosaur
+2. Add webhook event logging table for Paddle audit trail
+3. Consider request token cleanup in Garmin OAuth flow
 
 ### Low Priority (Nice to Have)
-7. Add request ID logging for better traceability across function calls
-8. Consider implementing idempotency keys for mobile sync operations
-9. Add metrics collection for sync success/failure rates
+1. Add request ID logging for better traceability across function calls
+2. Consider implementing idempotency keys for mobile sync operations
+3. Add metrics collection for sync success/failure rates
 
 ---
 

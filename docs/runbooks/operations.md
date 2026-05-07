@@ -39,13 +39,13 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 **Key log messages:**
 
-| Log message | Meaning | Severity |
-|---|---|---|
-| `Missing custom_data.user_id in Paddle event` | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access |
-| `Unknown price ID mapped to FREE tier` | Price ID not in `PADDLE_*_PRICE_IDS` env vars | HIGH -- silent tier mismatch |
-| `Error upserting subscription for <event_type>` | Database write failed | MEDIUM -- Paddle retries on 5xx |
-| `Webhook signature too old` | Signature age > 5 minutes | LOW -- replay protection, retry will fix |
-| `Unhandled event type: <type>` | Non-subscription event (normal) | NONE |
+| Log message                                     | Meaning                                           | Severity                                 |
+| ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
+| `Missing custom_data.user_id in Paddle event`   | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
+| `Unknown price ID mapped to FREE tier`          | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
+| `Error upserting subscription for <event_type>` | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
+| `Webhook signature too old`                     | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
+| `Unhandled event type: <type>`                  | Non-subscription event (normal)                   | NONE                                     |
 
 ### Identify missed events in Paddle
 
@@ -136,12 +136,12 @@ ORDER BY provider;
 
 **Rate limit thresholds** (from `process-sync-queue`):
 
-| Provider | Max requests | Window |
-|---|---|---|
-| Strava | 80 | 15 minutes |
-| Fitbit | 120 | 1 hour |
-| Garmin | 40 | 1 hour |
-| Hevy | 40 | 1 hour |
+| Provider | Max requests | Window     |
+| -------- | ------------ | ---------- |
+| Strava   | 80           | 15 minutes |
+| Fitbit   | 120          | 1 hour     |
+| Garmin   | 40           | 1 hour     |
+| Hevy     | 40           | 1 hour     |
 
 If `requests_this_window` is at or above the limit and the window has not expired, the provider is rate-limited and tasks will not be picked up until the window resets.
 
@@ -181,11 +181,11 @@ supabase functions logs hevy-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
 
 **Key log messages:**
 
-| Log message | Meaning |
-|---|---|
-| `Task <id> permanently failed after 10 retries` | Max retry cap hit (MAX_RETRIES = 10) |
-| `Subscription required: <tier> does not meet FLAME minimum` | User's subscription lapsed; sync gated behind FLAME tier |
-| `Token refresh failed: <status>` | OAuth token expired and refresh failed (Strava/Fitbit) |
+| Log message                                                   | Meaning                                                     |
+| ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `Task <id> permanently failed after 10 retries`               | Max retry cap hit (MAX_RETRIES = 10)                        |
+| `Subscription required: <tier> does not meet FLAME minimum`   | User's subscription lapsed; sync gated behind FLAME tier    |
+| `Token refresh failed: <status>`                              | OAuth token expired and refresh failed (Strava/Fitbit)      |
 | `Garmin sync is webhook-driven and cannot be queued manually` | Garmin task incorrectly queued (Garmin uses push, not pull) |
 
 ---
@@ -326,13 +326,13 @@ reversal:
 
 After any rollback, check these surfaces:
 
-| Surface | What to check |
-|---|---|
-| Portal UI | Load the app, sign in, navigate key pages (Dashboard, Analytics, Routines) |
-| Edge Functions | Check invocation logs for the redeployed function(s) |
-| Webhooks | Fire a Paddle simulation to verify webhook processing (see [paddle-simulation-testing.md](paddle-simulation-testing.md)) |
-| Sync | Trigger a manual sync for a test user and verify `sync_queue` completes |
-| Auth | Sign out and sign back in to verify auth flow |
+| Surface        | What to check                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Portal UI      | Load the app, sign in, navigate key pages (Dashboard, Analytics, Routines)                                               |
+| Edge Functions | Check invocation logs for the redeployed function(s)                                                                     |
+| Webhooks       | Fire a Paddle simulation to verify webhook processing (see [paddle-simulation-testing.md](paddle-simulation-testing.md)) |
+| Sync           | Trigger a manual sync for a test user and verify `sync_queue` completes                                                  |
+| Auth           | Sign out and sign back in to verify auth flow                                                                            |
 
 ---
 
@@ -550,12 +550,12 @@ WHERE user_id = '<uuid>';
 
 **Common failure modes:**
 
-| Symptom | Cause | Resolution |
-|---|---|---|
-| `token_expired` status | Refresh token revoked by user in provider's settings | User must re-authorize via the integration settings page |
-| `Token refresh failed: 401` | Provider revoked app access or credentials rotated | Check `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` (or Fitbit equivalents) in Edge Function secrets |
-| `Token refresh failed: 400` | Refresh token used twice (Strava rotates on refresh) | User must re-authorize |
-| Sync succeeds but no new data | `last_sync_at` is recent, no new activities in provider | Normal -- incremental sync only fetches new data |
+| Symptom                       | Cause                                                   | Resolution                                                                                       |
+| ----------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `token_expired` status        | Refresh token revoked by user in provider's settings    | User must re-authorize via the integration settings page                                         |
+| `Token refresh failed: 401`   | Provider revoked app access or credentials rotated      | Check `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` (or Fitbit equivalents) in Edge Function secrets |
+| `Token refresh failed: 400`   | Refresh token used twice (Strava rotates on refresh)    | User must re-authorize                                                                           |
+| Sync succeeds but no new data | `last_sync_at` is recent, no new activities in provider | Normal -- incremental sync only fetches new data                                                 |
 
 **Force re-authorization:**
 
@@ -602,12 +602,12 @@ WHERE user_id = '<uuid>'
 
 **Common error codes:**
 
-| HTTP status | Provider | Meaning |
-|---|---|---|
-| 401 | Hevy | API key invalid or Hevy PRO subscription lapsed |
-| 403 | Hevy | API key valid but insufficient permissions |
-| 401 | Liftosaur | API key invalid |
-| 429 | Both | Rate limited by provider |
+| HTTP status | Provider  | Meaning                                         |
+| ----------- | --------- | ----------------------------------------------- |
+| 401         | Hevy      | API key invalid or Hevy PRO subscription lapsed |
+| 403         | Hevy      | API key valid but insufficient permissions      |
+| 401         | Liftosaur | API key invalid                                 |
+| 429         | Both      | Rate limited by provider                        |
 
 **Resolution:** User needs to generate a new API key from the provider's
 settings and re-enter it in the portal.
@@ -720,17 +720,17 @@ development.
 
 ### Key metrics to watch
 
-| Metric | Where to check | Alert threshold |
-|---|---|---|
-| Webhook error rate | Supabase Edge Functions > paddle-webhooks | Any 5xx responses |
-| Webhook processing time | Paddle Dashboard > Notifications | Approaching 5-second timeout |
-| Sync queue depth | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'pending'` | > 50 pending tasks |
-| Stuck sync tasks | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'processing' AND started_at < NOW() - INTERVAL '10 minutes'` | > 0 |
-| Permanently failed syncs | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'permanently_failed' AND completed_at > NOW() - INTERVAL '24 hours'` | > 5 in 24 hours |
-| Subscription mismatches | SQL: `SELECT COUNT(*) FROM subscriptions WHERE status = 'active' AND current_period_end < NOW()` | > 0 |
-| Token expiry backlog | SQL: `SELECT COUNT(*) FROM user_integrations WHERE status = 'token_expired'` | Rising trend |
-| Sentry error rate | Sentry Issues dashboard | New unresolved issues |
-| Auth failures | Supabase Auth logs | Spike in failed sign-ins |
+| Metric                   | Where to check                                                                                                            | Alert threshold              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Webhook error rate       | Supabase Edge Functions > paddle-webhooks                                                                                 | Any 5xx responses            |
+| Webhook processing time  | Paddle Dashboard > Notifications                                                                                          | Approaching 5-second timeout |
+| Sync queue depth         | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'pending'`                                                           | > 50 pending tasks           |
+| Stuck sync tasks         | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'processing' AND started_at < NOW() - INTERVAL '10 minutes'`         | > 0                          |
+| Permanently failed syncs | SQL: `SELECT COUNT(*) FROM sync_queue WHERE status = 'permanently_failed' AND completed_at > NOW() - INTERVAL '24 hours'` | > 5 in 24 hours              |
+| Subscription mismatches  | SQL: `SELECT COUNT(*) FROM subscriptions WHERE status = 'active' AND current_period_end < NOW()`                          | > 0                          |
+| Token expiry backlog     | SQL: `SELECT COUNT(*) FROM user_integrations WHERE status = 'token_expired'`                                              | Rising trend                 |
+| Sentry error rate        | Sentry Issues dashboard                                                                                                   | New unresolved issues        |
+| Auth failures            | Supabase Auth logs                                                                                                        | Spike in failed sign-ins     |
 
 ### Daily health check queries
 
