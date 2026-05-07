@@ -57,14 +57,14 @@ UI components re-render with fresh data
 
 **Location:** `src/hooks/useRealtimeSync.ts` (50 lines)
 
-| Aspect | Detail |
-|---|---|
-| **Channel name** | `sync:{userId}` (e.g., `sync:00000000-0000-4000-8000-000000000001`) |
-| **Event type** | `sync_complete` (Broadcast, not postgres_changes) |
+| Aspect                  | Detail                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| **Channel name**        | `sync:{userId}` (e.g., `sync:00000000-0000-4000-8000-000000000001`)             |
+| **Event type**          | `sync_complete` (Broadcast, not postgres_changes)                               |
 | **Queries invalidated** | ALL queries -- `queryClient.invalidateQueries()` called with no filter argument |
-| **Subscription gating** | Yes -- FREE users skip entirely (`if (tier === "FREE") return`) |
-| **Loading guard** | Yes -- waits for `useSubscription().isLoading` to resolve before deciding |
-| **Cleanup on unmount** | Yes -- `supabase.removeChannel(channel)` in the useEffect return |
+| **Subscription gating** | Yes -- FREE users skip entirely (`if (tier === "FREE") return`)                 |
+| **Loading guard**       | Yes -- waits for `useSubscription().isLoading` to resolve before deciding       |
+| **Cleanup on unmount**  | Yes -- `supabase.removeChannel(channel)` in the useEffect return                |
 
 **Effect dependencies:** `[user, tier, isLoading, queryClient]`
 
@@ -107,13 +107,13 @@ const broadcastResult = await supabase
 
 **File:** `src/providers/QueryProvider.tsx`
 
-| Setting | Value | Impact on Sync |
-|---|---|---|
-| **staleTime** | 5 minutes (300,000ms) | After invalidation, queries are marked stale immediately (invalidateQueries overrides staleTime). Refetch happens on next observer access. |
-| **gcTime** | Default (5 minutes) | Not explicitly set; TanStack Query default is 5 minutes. Inactive queries are garbage-collected after this window. |
-| **retry** | 1 | Failed refetches get one retry attempt |
-| **refetchOnWindowFocus** | false | Switching browser tabs does NOT trigger refetch. Only explicit invalidation or manual refetch triggers updates. |
-| **refetchOnReconnect** | Default (true) | Not overridden, so reconnecting after network loss will trigger refetch for stale queries. |
+| Setting                  | Value                 | Impact on Sync                                                                                                                             |
+| ------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **staleTime**            | 5 minutes (300,000ms) | After invalidation, queries are marked stale immediately (invalidateQueries overrides staleTime). Refetch happens on next observer access. |
+| **gcTime**               | Default (5 minutes)   | Not explicitly set; TanStack Query default is 5 minutes. Inactive queries are garbage-collected after this window.                         |
+| **retry**                | 1                     | Failed refetches get one retry attempt                                                                                                     |
+| **refetchOnWindowFocus** | false                 | Switching browser tabs does NOT trigger refetch. Only explicit invalidation or manual refetch triggers updates.                            |
+| **refetchOnReconnect**   | Default (true)        | Not overridden, so reconnecting after network loss will trigger refetch for stale queries.                                                 |
 
 ---
 
@@ -255,15 +255,15 @@ This would skip `community`, `comments`, `challenges`, `benchmarks`, `integratio
 
 **Existing test:** `src/hooks/__tests__/useRealtimeSync.test.tsx`
 
-| Test Case | Status |
-|---|---|
-| Subscribes to correct channel name | COVERED |
-| Calls invalidateQueries on sync_complete | COVERED |
-| Cleans up channel on unmount | COVERED |
-| Skips subscription for FREE users | NOT COVERED |
-| Handles CHANNEL_ERROR status | NOT COVERED |
-| Waits for subscription loading | NOT COVERED |
-| Does nothing when user is null | NOT COVERED |
+| Test Case                                | Status      |
+| ---------------------------------------- | ----------- |
+| Subscribes to correct channel name       | COVERED     |
+| Calls invalidateQueries on sync_complete | COVERED     |
+| Cleans up channel on unmount             | COVERED     |
+| Skips subscription for FREE users        | NOT COVERED |
+| Handles CHANNEL_ERROR status             | NOT COVERED |
+| Waits for subscription loading           | NOT COVERED |
+| Does nothing when user is null           | NOT COVERED |
 
 **Recommendation:** Add tests for the FREE-user skip path, the loading guard, and the null-user guard.
 
@@ -273,12 +273,12 @@ This would skip `community`, `comments`, `challenges`, `benchmarks`, `integratio
 
 The portal maintains the following Supabase Realtime channels for an authenticated EMBER+ user:
 
-| Channel | Type | Hook | Purpose |
-|---|---|---|---|
-| `sync:{userId}` | Broadcast | useRealtimeSync | Workout sync from mobile |
-| `subscription:{userId}` | postgres_changes | useSubscription | Subscription tier changes |
-| `comments:{itemId}` | postgres_changes | useCommentRealtime | Live comment updates |
-| `community-votes-realtime` | postgres_changes | useCommunityRealtime | Community vote updates |
+| Channel                    | Type             | Hook                 | Purpose                   |
+| -------------------------- | ---------------- | -------------------- | ------------------------- |
+| `sync:{userId}`            | Broadcast        | useRealtimeSync      | Workout sync from mobile  |
+| `subscription:{userId}`    | postgres_changes | useSubscription      | Subscription tier changes |
+| `comments:{itemId}`        | postgres_changes | useCommentRealtime   | Live comment updates      |
+| `community-votes-realtime` | postgres_changes | useCommunityRealtime | Community vote updates    |
 
 Total: 3-4 concurrent WebSocket channels per authenticated session (comments channel is per-page).
 
@@ -299,8 +299,8 @@ The realtime sync flow is correctly implemented end-to-end:
 2. **MEDIUM** -- Add a reconnection-aware sync check (Issue 1) -- at minimum, a "Last synced" indicator
 
 **Improvements for post-beta:**
-3. **LOW** -- Scope invalidation to sync-affected query keys only (Issue 2)
-4. **LOW** -- Expand test coverage for edge cases (Issue 8)
+1. **LOW** -- Scope invalidation to sync-affected query keys only (Issue 2)
+2. **LOW** -- Expand test coverage for edge cases (Issue 8)
 
 ---
 
@@ -325,15 +325,15 @@ The realtime sync flow is correctly implemented end-to-end:
 
 The mobile app (Kotlin Multiplatform) uses a layered sync architecture:
 
-| Layer | File | Purpose |
-|-------|------|---------|
-| DTOs | `PortalSyncDtos.kt` | Wire-format data classes with `@Serializable` (camelCase JSON) |
-| API Client | `PortalApiClient.kt` | HTTP calls via Ktor; auth token management with auto-refresh |
-| Adapter | `PortalSyncAdapter.kt` | Transforms mobile domain models into portal DTOs |
-| Pull Adapter | `PortalPullAdapter.kt` | Converts pull response DTOs back to legacy merge DTOs |
-| Mappings | `PortalMappings.kt` | Unit conversions (mm/s to m/s, kg to N) and enum mappings |
-| Sync Manager | `SyncManager.kt` | Orchestrates push-then-pull sequence; gathers data from repos |
-| Trigger Manager | `SyncTriggerManager.kt` | Controls when sync fires (workout complete, app foreground) |
+| Layer           | File                    | Purpose                                                        |
+| --------------- | ----------------------- | -------------------------------------------------------------- |
+| DTOs            | `PortalSyncDtos.kt`     | Wire-format data classes with `@Serializable` (camelCase JSON) |
+| API Client      | `PortalApiClient.kt`    | HTTP calls via Ktor; auth token management with auto-refresh   |
+| Adapter         | `PortalSyncAdapter.kt`  | Transforms mobile domain models into portal DTOs               |
+| Pull Adapter    | `PortalPullAdapter.kt`  | Converts pull response DTOs back to legacy merge DTOs          |
+| Mappings        | `PortalMappings.kt`     | Unit conversions (mm/s to m/s, kg to N) and enum mappings      |
+| Sync Manager    | `SyncManager.kt`        | Orchestrates push-then-pull sequence; gathers data from repos  |
+| Trigger Manager | `SyncTriggerManager.kt` | Controls when sync fires (workout complete, app foreground)    |
 
 The Ktor HTTP client is configured with `ignoreUnknownKeys = true`, `isLenient = true`, and `encodeDefaults = true`, meaning default values always appear in the wire payload and unknown response fields are silently ignored.
 
@@ -341,11 +341,11 @@ The Ktor HTTP client is configured with `ignoreUnknownKeys = true`, `isLenient =
 
 ### 12. Sync Triggers
 
-| Trigger | Throttled | Condition |
-|---------|-----------|-----------|
-| **Workout completed** | No (bypasses throttle) | `SyncTriggerManager.onWorkoutCompleted()` -- fires immediately |
-| **App foreground** | Yes (5-minute cooldown) | `SyncTriggerManager.onAppForeground()` -- skips if <5 min since last |
-| **Manual** (implicit) | No | `SyncManager.sync()` can be called directly |
+| Trigger               | Throttled               | Condition                                                            |
+| --------------------- | ----------------------- | -------------------------------------------------------------------- |
+| **Workout completed** | No (bypasses throttle)  | `SyncTriggerManager.onWorkoutCompleted()` -- fires immediately       |
+| **App foreground**    | Yes (5-minute cooldown) | `SyncTriggerManager.onAppForeground()` -- skips if <5 min since last |
+| **Manual** (implicit) | No                      | `SyncManager.sync()` can be called directly                          |
 
 **Pre-conditions checked before every sync attempt:**
 - User is authenticated (`syncManager.isAuthenticated`)
@@ -385,36 +385,36 @@ data class PortalSyncPayload(
 
 #### 14.1 Top-Level PushPayload
 
-| Field | Edge Function (TS) | Mobile (Kotlin) | Match? | Notes |
-|-------|-------------------|-----------------|--------|-------|
-| `deviceId` | `string` | `String` | YES | |
-| `platform` | `string` | `String` (default "android") | YES | |
-| `lastSync` | `string \| null` | `Long` | **MISMATCH** | Edge Function declares ISO 8601 string; mobile sends epoch millis number |
-| `sessions` | `SessionDto[]` | `List<PortalWorkoutSessionDto>` | YES | |
-| `routines` | `RoutineDto[]` | `List<PortalRoutineSyncDto>` | YES | |
-| `cycles` | `CycleDto[]` | `List<PortalTrainingCycleSyncDto>` | YES | |
-| `rpgAttributes` | `RpgAttributesDto \| null` | `PortalRpgAttributesSyncDto?` | YES | |
-| `badges` | `BadgeDto[]` | `List<PortalEarnedBadgeSyncDto>` | YES | |
-| `gamificationStats` | `GamificationStatsDto \| null` | `PortalGamificationStatsSyncDto?` | YES | |
+| Field               | Edge Function (TS)             | Mobile (Kotlin)                    | Match?       | Notes                                                                    |
+| ------------------- | ------------------------------ | ---------------------------------- | ------------ | ------------------------------------------------------------------------ |
+| `deviceId`          | `string`                       | `String`                           | YES          |                                                                          |
+| `platform`          | `string`                       | `String` (default "android")       | YES          |                                                                          |
+| `lastSync`          | `string \| null`               | `Long`                             | **MISMATCH** | Edge Function declares ISO 8601 string; mobile sends epoch millis number |
+| `sessions`          | `SessionDto[]`                 | `List<PortalWorkoutSessionDto>`    | YES          |                                                                          |
+| `routines`          | `RoutineDto[]`                 | `List<PortalRoutineSyncDto>`       | YES          |                                                                          |
+| `cycles`            | `CycleDto[]`                   | `List<PortalTrainingCycleSyncDto>` | YES          |                                                                          |
+| `rpgAttributes`     | `RpgAttributesDto \| null`     | `PortalRpgAttributesSyncDto?`      | YES          |                                                                          |
+| `badges`            | `BadgeDto[]`                   | `List<PortalEarnedBadgeSyncDto>`   | YES          |                                                                          |
+| `gamificationStats` | `GamificationStatsDto \| null` | `PortalGamificationStatsSyncDto?`  | YES          |                                                                          |
 
 #### 14.2 SessionDto / PortalWorkoutSessionDto
 
-| Field | Edge Function Type | Mobile Type | Match? | Notes |
-|-------|-------------------|-------------|--------|-------|
-| `id` | `string` | `String` | YES | |
-| `userId` | `string` | `String` | YES | Edge Function overrides with JWT userId |
-| `name` | `string \| null` | `String? = null` | YES | |
-| `startedAt` | `string` | `String` (ISO 8601) | YES | Converted via `epochToIso8601()` |
-| `durationSeconds` | `number` | `Int = 0` | YES | ms to seconds conversion |
-| `totalVolume` | `number` | `Float = 0f` | YES | Per-cable kg |
-| `setCount` | `number` | `Int = 0` | YES | |
-| `exerciseCount` | `number` | `Int = 0` | YES | |
-| `prCount` | `number` | `Int = 0` | YES | Always 0; PR detection is server-side |
-| `routineName` | `string \| null` | `String? = null` | YES | |
-| `workoutMode` | `string \| null` | `String? = null` | YES | SCREAMING_SNAKE format |
-| `routineSessionId` | `string \| null` | `String? = null` | YES | |
-| `notes` | `string \| null` | **MISSING** | **MISMATCH** | Mobile DTO lacks this field entirely |
-| `exercises` | `ExerciseDto[]` | `List<PortalExerciseDto>` | YES | |
+| Field              | Edge Function Type | Mobile Type               | Match?       | Notes                                   |
+| ------------------ | ------------------ | ------------------------- | ------------ | --------------------------------------- |
+| `id`               | `string`           | `String`                  | YES          |                                         |
+| `userId`           | `string`           | `String`                  | YES          | Edge Function overrides with JWT userId |
+| `name`             | `string \| null`   | `String? = null`          | YES          |                                         |
+| `startedAt`        | `string`           | `String` (ISO 8601)       | YES          | Converted via `epochToIso8601()`        |
+| `durationSeconds`  | `number`           | `Int = 0`                 | YES          | ms to seconds conversion                |
+| `totalVolume`      | `number`           | `Float = 0f`              | YES          | Per-cable kg                            |
+| `setCount`         | `number`           | `Int = 0`                 | YES          |                                         |
+| `exerciseCount`    | `number`           | `Int = 0`                 | YES          |                                         |
+| `prCount`          | `number`           | `Int = 0`                 | YES          | Always 0; PR detection is server-side   |
+| `routineName`      | `string \| null`   | `String? = null`          | YES          |                                         |
+| `workoutMode`      | `string \| null`   | `String? = null`          | YES          | SCREAMING_SNAKE format                  |
+| `routineSessionId` | `string \| null`   | `String? = null`          | YES          |                                         |
+| `notes`            | `string \| null`   | **MISSING**               | **MISMATCH** | Mobile DTO lacks this field entirely    |
+| `exercises`        | `ExerciseDto[]`    | `List<PortalExerciseDto>` | YES          |                                         |
 
 #### 14.3 ExerciseDto / PortalExerciseDto
 
@@ -467,24 +467,24 @@ All 7 fields match. Note: `totalTimeSeconds` is always `0` from mobile.
 
 #### 15.1 Pull Request
 
-| Field | Edge Function expects | Mobile sends | Match? |
-|-------|----------------------|-------------|--------|
-| `deviceId` | `string` | `String` | YES |
-| `lastSync` | `number` (Unix ms, 0 for first) | `Long` (epoch ms) | YES |
+| Field      | Edge Function expects           | Mobile sends      | Match? |
+| ---------- | ------------------------------- | ----------------- | ------ |
+| `deviceId` | `string`                        | `String`          | YES    |
+| `lastSync` | `number` (Unix ms, 0 for first) | `Long` (epoch ms) | YES    |
 
 The pull request matches correctly. Edge Function converts `lastSync` to ISO 8601 for DB queries.
 
 #### 15.2 Pull Response
 
-| Field | Edge Function returns | Mobile expects | Match? | Notes |
-|-------|----------------------|---------------|--------|-------|
-| `syncTime` | `number` (epoch ms) | `Long` | YES | |
-| `sessions` | camelCase hierarchy | `List<PullWorkoutSessionDto>` | YES | Deserialized but SKIPPED during merge |
-| `routines` | camelCase hierarchy | `List<PullRoutineDto>` | YES | |
-| `cycles` | camelCase hierarchy | `List<PullTrainingCycleDto>` | YES | |
-| `rpgAttributes` | camelCase object or null | `PullRpgAttributesDto?` | YES | |
-| `badges` | camelCase array | `List<PullBadgeDto>` | YES | |
-| `gamificationStats` | camelCase object or null | `PullGamificationStatsDto?` | YES | |
+| Field               | Edge Function returns    | Mobile expects                | Match? | Notes                                 |
+| ------------------- | ------------------------ | ----------------------------- | ------ | ------------------------------------- |
+| `syncTime`          | `number` (epoch ms)      | `Long`                        | YES    |                                       |
+| `sessions`          | camelCase hierarchy      | `List<PullWorkoutSessionDto>` | YES    | Deserialized but SKIPPED during merge |
+| `routines`          | camelCase hierarchy      | `List<PullRoutineDto>`        | YES    |                                       |
+| `cycles`            | camelCase hierarchy      | `List<PullTrainingCycleDto>`  | YES    |                                       |
+| `rpgAttributes`     | camelCase object or null | `PullRpgAttributesDto?`       | YES    |                                       |
+| `badges`            | camelCase array          | `List<PullBadgeDto>`          | YES    |                                       |
+| `gamificationStats` | camelCase object or null | `PullGamificationStatsDto?`   | YES    |                                       |
 
 **Pull response includes extra fields the mobile silently ignores** (via `ignoreUnknownKeys = true`):
 - RPG attributes response has `id` and `updatedAt` -- no corresponding DTO fields
@@ -497,14 +497,14 @@ This is safe behavior.
 
 ### 16. Pull Merge Strategy
 
-| Data Type | Merge Strategy | Notes |
-|-----------|---------------|-------|
-| **Sessions** | SKIPPED (push-only) | Sessions are immutable; mobile is source of truth |
-| **Routines** | Local preference | Mobile keeps its version if locally modified since lastSync |
-| **Cycles** | Server wins | Portal is authoritative for training cycles |
-| **Badges** | Union merge | Insert if not exists; never delete |
-| **Gamification stats** | Server wins | Overwrite local stats |
-| **RPG attributes** | Server wins | Overwrite local RPG profile |
+| Data Type              | Merge Strategy      | Notes                                                       |
+| ---------------------- | ------------------- | ----------------------------------------------------------- |
+| **Sessions**           | SKIPPED (push-only) | Sessions are immutable; mobile is source of truth           |
+| **Routines**           | Local preference    | Mobile keeps its version if locally modified since lastSync |
+| **Cycles**             | Server wins         | Portal is authoritative for training cycles                 |
+| **Badges**             | Union merge         | Insert if not exists; never delete                          |
+| **Gamification stats** | Server wins         | Overwrite local stats                                       |
+| **RPG attributes**     | Server wins         | Overwrite local RPG profile                                 |
 
 ---
 
@@ -518,15 +518,15 @@ No snake_case/camelCase mismatch exists in the wire format.
 
 ### 18. Data Type Summary
 
-| Data type | Mobile (Kotlin) | Wire format (JSON) | Edge Function (TypeScript) | Notes |
-|-----------|----------------|-------------------|---------------------------|-------|
-| Timestamps | `Long` (epoch ms) or `String` (ISO 8601) | number or string | `string` or `number` | See Mismatch 1 |
-| UUIDs | `String` (client-generated via `generateUUID()`) | string | `string` | Client-generated; no server ID mapping needed |
-| Integers | `Int` | number | `number` | |
-| Decimals | `Float` | number | `number` | JS float64 is safe for Kotlin Float |
-| Booleans | `Boolean` | boolean | `boolean` | |
-| Nullable | `Type?` with `= null` default | null or value | `Type \| null` | |
-| JSON blobs | `String?` (pre-serialized JSON) | string | `string` (parsed via `safeJsonParse`) | perSetWeights, perSetRest, progressionSettings |
+| Data type  | Mobile (Kotlin)                                  | Wire format (JSON) | Edge Function (TypeScript)            | Notes                                          |
+| ---------- | ------------------------------------------------ | ------------------ | ------------------------------------- | ---------------------------------------------- |
+| Timestamps | `Long` (epoch ms) or `String` (ISO 8601)         | number or string   | `string` or `number`                  | See Mismatch 1                                 |
+| UUIDs      | `String` (client-generated via `generateUUID()`) | string             | `string`                              | Client-generated; no server ID mapping needed  |
+| Integers   | `Int`                                            | number             | `number`                              |                                                |
+| Decimals   | `Float`                                          | number             | `number`                              | JS float64 is safe for Kotlin Float            |
+| Booleans   | `Boolean`                                        | boolean            | `boolean`                             |                                                |
+| Nullable   | `Type?` with `= null` default                    | null or value      | `Type \| null`                        |                                                |
+| JSON blobs | `String?` (pre-serialized JSON)                  | string             | `string` (parsed via `safeJsonParse`) | perSetWeights, perSetRest, progressionSettings |
 
 ---
 
@@ -577,14 +577,14 @@ No snake_case/camelCase mismatch exists in the wire format.
 
 ### 20. Mobile Sync Security Assessment
 
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Auth token management | SOLID | Mutex-protected refresh with double-check pattern and 401 retry |
-| Sensitive data in payload | SAFE | No passwords; userId comes from JWT; Edge Function overrides userId |
-| Token storage | OK | `PortalTokenStorage` manages access/refresh tokens, expiry tracking |
-| Auto-refresh on 401 | YES | `authenticatedRequest()` retries once with a forced token refresh |
-| Retry on failure | LIMITED | `SyncTriggerManager` tracks failures but no exponential backoff on sync itself |
-| Pull endpoint security | CONCERN | No rate limiting or subscription gate on pull (see Phase 3.5 Issue 6 above) |
+| Aspect                    | Status  | Notes                                                                          |
+| ------------------------- | ------- | ------------------------------------------------------------------------------ |
+| Auth token management     | SOLID   | Mutex-protected refresh with double-check pattern and 401 retry                |
+| Sensitive data in payload | SAFE    | No passwords; userId comes from JWT; Edge Function overrides userId            |
+| Token storage             | OK      | `PortalTokenStorage` manages access/refresh tokens, expiry tracking            |
+| Auto-refresh on 401       | YES     | `authenticatedRequest()` retries once with a forced token refresh              |
+| Retry on failure          | LIMITED | `SyncTriggerManager` tracks failures but no exponential backoff on sync itself |
+| Pull endpoint security    | CONCERN | No rate limiting or subscription gate on pull (see Phase 3.5 Issue 6 above)    |
 
 ---
 
@@ -630,14 +630,14 @@ Mobile App                          Portal Edge Functions              Supabase 
 
 ### 22. Summary: Mobile Client Contract Health
 
-| Category | Finding Count | Severity Breakdown |
-|----------|--------------|-------------------|
-| Field name mismatches (camelCase) | 0 | -- |
-| Missing fields | 1 | M2: `notes` on session (LOW) |
-| Type mismatches | 1 | M1: `lastSync` number vs string (LOW) |
-| Unit/format mismatches | 2 | M3: estimatedDuration (MEDIUM), M5: syncTime format (LOW) |
-| Data completeness gaps | 1 | M4: totalTimeSeconds always 0 (LOW) |
-| **Total mismatches** | **5** | **1 MEDIUM, 4 LOW** |
+| Category                          | Finding Count | Severity Breakdown                                        |
+| --------------------------------- | ------------- | --------------------------------------------------------- |
+| Field name mismatches (camelCase) | 0             | --                                                        |
+| Missing fields                    | 1             | M2: `notes` on session (LOW)                              |
+| Type mismatches                   | 1             | M1: `lastSync` number vs string (LOW)                     |
+| Unit/format mismatches            | 2             | M3: estimatedDuration (MEDIUM), M5: syncTime format (LOW) |
+| Data completeness gaps            | 1             | M4: totalTimeSeconds always 0 (LOW)                       |
+| **Total mismatches**              | **5**         | **1 MEDIUM, 4 LOW**                                       |
 
 **Overall contract health: GOOD.** The mobile DTOs were clearly designed alongside the Edge Function interfaces. All field names, data types, and nested structures align correctly. The 5 identified mismatches are minor:
 
@@ -651,8 +651,8 @@ Mobile App                          Portal Edge Functions              Supabase 
 3. **LOW** -- Fix M2: Add `val notes: String? = null` to `PortalWorkoutSessionDto`.
 
 **Post-beta improvements:**
-4. **LOW** -- Fix M4: Compute `totalTimeSeconds` from session durations on mobile.
-5. **LOW** -- Fix M5: Standardize `syncTime` format across push and pull responses.
+1. **LOW** -- Fix M4: Compute `totalTimeSeconds` from session durations on mobile.
+2. **LOW** -- Fix M5: Standardize `syncTime` format across push and pull responses.
 
 ---
 
@@ -686,21 +686,21 @@ Any mismatch between what push writes and what Zod expects to parse will surface
 
 ### 24. Contract Matrix: workout_sessions
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `userId` (string) | hardcoded from JWT | `user_id` | UUID FK NOT NULL | NOT NULL | `user_id` | `z.string().uuid()` | OK |
-| 3 | `name` (string \| null) | `s.name` | `name` | TEXT | NULL | `name` | `z.string().nullable().transform(...)` | OK |
-| 4 | `startedAt` (string) | `s.startedAt` | `started_at` | TIMESTAMPTZ | NOT NULL (default now()) | `started_at` | `z.string().transform(s => new Date(s))` | OK |
-| 5 | `durationSeconds` (number) | `s.durationSeconds` | `duration_seconds` | INT | NOT NULL (default 0) | `duration_seconds` | `z.number().transform(s => Math.round(s/60))` | OK -- Zod converts to minutes for display |
-| 6 | `totalVolume` (number) | `s.totalVolume` | `total_volume` | NUMERIC | NOT NULL (default 0) | `total_volume` | `weightTransform` (x2 multiplier) | OK -- Zod doubles for dual-cable display |
-| 7 | `setCount` (number) | `s.setCount` | `set_count` | INT | NOT NULL (default 0) | `set_count` | `z.number()` | OK |
-| 8 | `exerciseCount` (number) | `s.exerciseCount` | `exercise_count` | INT | NOT NULL (default 0) | `exercise_count` | `z.number()` | OK |
-| 9 | `prCount` (number) | `s.prCount` | `pr_count` | INT | NOT NULL (default 0) | `pr_count` | `z.number()` | OK |
-| 10 | `routineName` (string \| null) | `s.routineName` | `routine_name` | TEXT | NULL | `routine_name` | `z.string().nullable()` | OK |
-| 11 | `workoutMode` (string \| null) | `s.workoutMode` | `workout_mode` | TEXT | NULL | `workout_mode` | `workoutModeSchema` (nullable + display map) | OK |
-| 12 | `routineSessionId` (string \| null) | `s.routineSessionId` | `routine_session_id` | TEXT | NULL | -- | NOT PARSED | **SCHEMA-1** |
-| 13 | `notes` (string \| null) | `s.notes` | `notes` | TEXT | NULL | `notes` | `z.string().nullable().optional()` | OK |
+| #   | Field (Mobile DTO)                  | Push Mapping         | DB Column            | DB Type          | Nullable                 | Zod Schema Field   | Zod Type                                      | Match?                                    |
+| --- | ----------------------------------- | -------------------- | -------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------- | ----------------------------------------- |
+| 1   | `id` (string)                       | `id`                 | `id`                 | UUID PK          | NOT NULL                 | `id`               | `z.string().uuid()`                           | OK                                        |
+| 2   | `userId` (string)                   | hardcoded from JWT   | `user_id`            | UUID FK NOT NULL | NOT NULL                 | `user_id`          | `z.string().uuid()`                           | OK                                        |
+| 3   | `name` (string \| null)             | `s.name`             | `name`               | TEXT             | NULL                     | `name`             | `z.string().nullable().transform(...)`        | OK                                        |
+| 4   | `startedAt` (string)                | `s.startedAt`        | `started_at`         | TIMESTAMPTZ      | NOT NULL (default now()) | `started_at`       | `z.string().transform(s => new Date(s))`      | OK                                        |
+| 5   | `durationSeconds` (number)          | `s.durationSeconds`  | `duration_seconds`   | INT              | NOT NULL (default 0)     | `duration_seconds` | `z.number().transform(s => Math.round(s/60))` | OK -- Zod converts to minutes for display |
+| 6   | `totalVolume` (number)              | `s.totalVolume`      | `total_volume`       | NUMERIC          | NOT NULL (default 0)     | `total_volume`     | `weightTransform` (x2 multiplier)             | OK -- Zod doubles for dual-cable display  |
+| 7   | `setCount` (number)                 | `s.setCount`         | `set_count`          | INT              | NOT NULL (default 0)     | `set_count`        | `z.number()`                                  | OK                                        |
+| 8   | `exerciseCount` (number)            | `s.exerciseCount`    | `exercise_count`     | INT              | NOT NULL (default 0)     | `exercise_count`   | `z.number()`                                  | OK                                        |
+| 9   | `prCount` (number)                  | `s.prCount`          | `pr_count`           | INT              | NOT NULL (default 0)     | `pr_count`         | `z.number()`                                  | OK                                        |
+| 10  | `routineName` (string \| null)      | `s.routineName`      | `routine_name`       | TEXT             | NULL                     | `routine_name`     | `z.string().nullable()`                       | OK                                        |
+| 11  | `workoutMode` (string \| null)      | `s.workoutMode`      | `workout_mode`       | TEXT             | NULL                     | `workout_mode`     | `workoutModeSchema` (nullable + display map)  | OK                                        |
+| 12  | `routineSessionId` (string \| null) | `s.routineSessionId` | `routine_session_id` | TEXT             | NULL                     | --                 | NOT PARSED                                    | **SCHEMA-1**                              |
+| 13  | `notes` (string \| null)            | `s.notes`            | `notes`              | TEXT             | NULL                     | `notes`            | `z.string().nullable().optional()`            | OK                                        |
 
 **SCHEMA-1: `routine_session_id` not parsed by portal Zod.** Push writes it, DB stores it, but `workoutSessionSchema` omits it. Severity: LOW (informational field, not used in any current portal feature).
 
@@ -708,14 +708,14 @@ Any mismatch between what push writes and what Zod expects to parse will surface
 
 ### 25. Contract Matrix: exercises
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `e.id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `sessionId` (string) | `e.sessionId` | `session_id` | UUID FK NOT NULL | NOT NULL | `session_id` | `z.string().uuid()` | OK |
-| 3 | -- | hardcoded from JWT | `user_id` | UUID NOT NULL | NOT NULL | -- | NOT PARSED | OK (denorm) |
-| 4 | `name` (string) | `e.name` | `name` | TEXT | NOT NULL | `name` | `z.string()` | OK |
-| 5 | `muscleGroup` (string) | `e.muscleGroup` | `muscle_group` | TEXT | NOT NULL (default 'General') | `muscle_group` | `z.string()` | OK |
-| 6 | `orderIndex` (number) | `e.orderIndex` | `order_index` | INT | NOT NULL (default 0) | `order_index` | `z.number()` | OK |
+| #   | Field (Mobile DTO)     | Push Mapping       | DB Column      | DB Type          | Nullable                     | Zod Schema Field | Zod Type            | Match?      |
+| --- | ---------------------- | ------------------ | -------------- | ---------------- | ---------------------------- | ---------------- | ------------------- | ----------- |
+| 1   | `id` (string)          | `e.id`             | `id`           | UUID PK          | NOT NULL                     | `id`             | `z.string().uuid()` | OK          |
+| 2   | `sessionId` (string)   | `e.sessionId`      | `session_id`   | UUID FK NOT NULL | NOT NULL                     | `session_id`     | `z.string().uuid()` | OK          |
+| 3   | --                     | hardcoded from JWT | `user_id`      | UUID NOT NULL    | NOT NULL                     | --               | NOT PARSED          | OK (denorm) |
+| 4   | `name` (string)        | `e.name`           | `name`         | TEXT             | NOT NULL                     | `name`           | `z.string()`        | OK          |
+| 5   | `muscleGroup` (string) | `e.muscleGroup`    | `muscle_group` | TEXT             | NOT NULL (default 'General') | `muscle_group`   | `z.string()`        | OK          |
+| 6   | `orderIndex` (number)  | `e.orderIndex`     | `order_index`  | INT              | NOT NULL (default 0)         | `order_index`    | `z.number()`        | OK          |
 
 Clean match. No issues.
 
@@ -723,19 +723,19 @@ Clean match. No issues.
 
 ### 26. Contract Matrix: sets
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `st.id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `exerciseId` (string) | `st.exerciseId` | `exercise_id` | UUID FK NOT NULL | NOT NULL | `exercise_id` | `z.string().uuid()` | OK |
-| 3 | -- | hardcoded from JWT | `user_id` | UUID NOT NULL | NOT NULL | -- | NOT PARSED | OK (denorm) |
-| 4 | `setNumber` (number) | `st.setNumber` | `set_number` | INT | NOT NULL | `set_number` | `z.number()` | OK |
-| 5 | `targetReps` (number \| null) | `st.targetReps` | `target_reps` | INT | NULL | `target_reps` | `z.number().nullable()` | OK |
-| 6 | `actualReps` (number) | `st.actualReps` | `actual_reps` | INT | NOT NULL (default 0) | `actual_reps` | `z.number()` | OK |
-| 7 | `weightKg` (number) | `st.weightKg` | `weight_kg` | NUMERIC | NOT NULL (default 0) | `weight_kg` | `weightTransform` (x2 multiplier) | OK |
-| 8 | `rpe` (number \| null) | `st.rpe` | `rpe` | NUMERIC | NULL | `rpe` | `z.number().nullable()` | OK |
-| 9 | `isPr` (boolean) | `st.isPr` | `is_pr` | BOOLEAN | NOT NULL (default false) | `is_pr` | `z.boolean()` | OK |
-| 10 | `notes` (string \| null) | `st.notes` | `notes` | TEXT | NULL | `notes` | `z.string().nullable()` | OK |
-| 11 | `workoutMode` (string \| null) | `st.workoutMode` | `workout_mode` | TEXT | NULL | -- | NOT PARSED | **SCHEMA-2** |
+| #   | Field (Mobile DTO)             | Push Mapping       | DB Column      | DB Type          | Nullable                 | Zod Schema Field | Zod Type                          | Match?       |
+| --- | ------------------------------ | ------------------ | -------------- | ---------------- | ------------------------ | ---------------- | --------------------------------- | ------------ |
+| 1   | `id` (string)                  | `st.id`            | `id`           | UUID PK          | NOT NULL                 | `id`             | `z.string().uuid()`               | OK           |
+| 2   | `exerciseId` (string)          | `st.exerciseId`    | `exercise_id`  | UUID FK NOT NULL | NOT NULL                 | `exercise_id`    | `z.string().uuid()`               | OK           |
+| 3   | --                             | hardcoded from JWT | `user_id`      | UUID NOT NULL    | NOT NULL                 | --               | NOT PARSED                        | OK (denorm)  |
+| 4   | `setNumber` (number)           | `st.setNumber`     | `set_number`   | INT              | NOT NULL                 | `set_number`     | `z.number()`                      | OK           |
+| 5   | `targetReps` (number \| null)  | `st.targetReps`    | `target_reps`  | INT              | NULL                     | `target_reps`    | `z.number().nullable()`           | OK           |
+| 6   | `actualReps` (number)          | `st.actualReps`    | `actual_reps`  | INT              | NOT NULL (default 0)     | `actual_reps`    | `z.number()`                      | OK           |
+| 7   | `weightKg` (number)            | `st.weightKg`      | `weight_kg`    | NUMERIC          | NOT NULL (default 0)     | `weight_kg`      | `weightTransform` (x2 multiplier) | OK           |
+| 8   | `rpe` (number \| null)         | `st.rpe`           | `rpe`          | NUMERIC          | NULL                     | `rpe`            | `z.number().nullable()`           | OK           |
+| 9   | `isPr` (boolean)               | `st.isPr`          | `is_pr`        | BOOLEAN          | NOT NULL (default false) | `is_pr`          | `z.boolean()`                     | OK           |
+| 10  | `notes` (string \| null)       | `st.notes`         | `notes`        | TEXT             | NULL                     | `notes`          | `z.string().nullable()`           | OK           |
+| 11  | `workoutMode` (string \| null) | `st.workoutMode`   | `workout_mode` | TEXT             | NULL                     | --               | NOT PARSED                        | **SCHEMA-2** |
 
 **SCHEMA-2: Per-set `workout_mode` written to DB but not parsed by portal Zod.** Added in migration `20260302130000`. Push writes it, DB stores it, but `setSchema` omits it. Severity: MEDIUM -- biomechanics analysis may need per-set mode context to interpret VBT training zones.
 
@@ -743,23 +743,23 @@ Clean match. No issues.
 
 ### 27. Contract Matrix: rep_summaries
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema | Match? |
-|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `r.id` | `id` | UUID PK | NOT NULL | -- | **SCHEMA-3** |
-| 2 | `setId` (string) | `r.setId` | `set_id` | UUID FK NOT NULL | NOT NULL | -- | **SCHEMA-3** |
-| 3 | -- | hardcoded from JWT | `user_id` | UUID NOT NULL | NOT NULL | -- | OK (denorm) |
-| 4 | `repNumber` (number) | `r.repNumber` | `rep_number` | INT | NOT NULL | -- | **SCHEMA-3** |
-| 5 | `meanVelocityMps` (number \| null) | `r.meanVelocityMps` | `mean_velocity_mps` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 6 | `peakVelocityMps` (number \| null) | `r.peakVelocityMps` | `peak_velocity_mps` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 7 | `meanForceN` (number \| null) | `r.meanForceN` | `mean_force_n` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 8 | `peakForceN` (number \| null) | `r.peakForceN` | `peak_force_n` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 9 | `powerWatts` (number \| null) | `r.powerWatts` | `power_watts` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 10 | `romMm` (number \| null) | `r.romMm` | `rom_mm` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 11 | `tutMs` (number \| null) | `r.tutMs` | `tut_ms` | INT | NULL | -- | **SCHEMA-3** |
-| 12 | `leftForceAvg` (number \| null) | `r.leftForceAvg` | `left_force_avg` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 13 | `rightForceAvg` (number \| null) | `r.rightForceAvg` | `right_force_avg` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 14 | `asymmetryPct` (number \| null) | `r.asymmetryPct` | `asymmetry_pct` | NUMERIC | NULL | -- | **SCHEMA-3** |
-| 15 | `vbtZone` (string \| null) | `r.vbtZone` | `vbt_zone` | TEXT | NULL | -- | **SCHEMA-3** |
+| #   | Field (Mobile DTO)                 | Push Mapping        | DB Column           | DB Type          | Nullable | Zod Schema | Match?       |
+| --- | ---------------------------------- | ------------------- | ------------------- | ---------------- | -------- | ---------- | ------------ |
+| 1   | `id` (string)                      | `r.id`              | `id`                | UUID PK          | NOT NULL | --         | **SCHEMA-3** |
+| 2   | `setId` (string)                   | `r.setId`           | `set_id`            | UUID FK NOT NULL | NOT NULL | --         | **SCHEMA-3** |
+| 3   | --                                 | hardcoded from JWT  | `user_id`           | UUID NOT NULL    | NOT NULL | --         | OK (denorm)  |
+| 4   | `repNumber` (number)               | `r.repNumber`       | `rep_number`        | INT              | NOT NULL | --         | **SCHEMA-3** |
+| 5   | `meanVelocityMps` (number \| null) | `r.meanVelocityMps` | `mean_velocity_mps` | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 6   | `peakVelocityMps` (number \| null) | `r.peakVelocityMps` | `peak_velocity_mps` | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 7   | `meanForceN` (number \| null)      | `r.meanForceN`      | `mean_force_n`      | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 8   | `peakForceN` (number \| null)      | `r.peakForceN`      | `peak_force_n`      | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 9   | `powerWatts` (number \| null)      | `r.powerWatts`      | `power_watts`       | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 10  | `romMm` (number \| null)           | `r.romMm`           | `rom_mm`            | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 11  | `tutMs` (number \| null)           | `r.tutMs`           | `tut_ms`            | INT              | NULL     | --         | **SCHEMA-3** |
+| 12  | `leftForceAvg` (number \| null)    | `r.leftForceAvg`    | `left_force_avg`    | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 13  | `rightForceAvg` (number \| null)   | `r.rightForceAvg`   | `right_force_avg`   | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 14  | `asymmetryPct` (number \| null)    | `r.asymmetryPct`    | `asymmetry_pct`     | NUMERIC          | NULL     | --         | **SCHEMA-3** |
+| 15  | `vbtZone` (string \| null)         | `r.vbtZone`         | `vbt_zone`          | TEXT             | NULL     | --         | **SCHEMA-3** |
 
 **SCHEMA-3: `rep_summaries` has NO Zod validation schema in `transforms.ts`.** All 15 columns of VBT/biomechanics data are consumed by the portal without type-safe parsing. Null values in numeric fields will cause runtime errors in components expecting numbers. Severity: **HIGH** -- this is the richest data table in the sync pipeline and has zero type-safe parsing on the portal side.
 
@@ -767,18 +767,18 @@ Clean match. No issues.
 
 ### 28. Contract Matrix: routines
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `r.id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `userId` (string) | hardcoded from JWT | `user_id` | UUID FK NOT NULL | NOT NULL | `user_id` | `z.string().uuid()` | OK |
-| 3 | `name` (string) | `r.name` | `name` | TEXT | NOT NULL | `name` | `z.string()` | OK |
-| 4 | `description` (string) | `r.description` | `description` | TEXT | NOT NULL (default '') | `description` | `z.string()` | OK |
-| 5 | `exerciseCount` (number) | `r.exerciseCount` | `exercise_count` | INT | NOT NULL (default 0) | `exercise_count` | `z.number()` | OK |
-| 6 | `estimatedDuration` (number) | `Math.round(r.estimatedDuration / 60)` | `estimated_duration` | INT | NOT NULL (default 0) | `estimated_duration` | `z.number()` | **SCHEMA-4** |
-| 7 | `timesCompleted` (number) | `r.timesCompleted` | `times_completed` | INT | NOT NULL (default 0) | `times_completed` | `z.number()` | OK |
-| 8 | `isFavorite` (boolean) | `r.isFavorite` | `is_favorite` | BOOLEAN | NOT NULL (default false) | `is_favorite` | `z.boolean()` | OK |
-| 9 | -- | NOT PUSHED | `last_used_at` | TIMESTAMPTZ | NULL | `last_used_at` | `z.string().nullable().transform(...)` | **SCHEMA-5** |
-| 10 | -- | NOT PUSHED | `tags` | TEXT[] | NULL | `tags` | `z.array(z.string()).nullable()` | **SCHEMA-6** |
+| #   | Field (Mobile DTO)           | Push Mapping                           | DB Column            | DB Type          | Nullable                 | Zod Schema Field     | Zod Type                               | Match?       |
+| --- | ---------------------------- | -------------------------------------- | -------------------- | ---------------- | ------------------------ | -------------------- | -------------------------------------- | ------------ |
+| 1   | `id` (string)                | `r.id`                                 | `id`                 | UUID PK          | NOT NULL                 | `id`                 | `z.string().uuid()`                    | OK           |
+| 2   | `userId` (string)            | hardcoded from JWT                     | `user_id`            | UUID FK NOT NULL | NOT NULL                 | `user_id`            | `z.string().uuid()`                    | OK           |
+| 3   | `name` (string)              | `r.name`                               | `name`               | TEXT             | NOT NULL                 | `name`               | `z.string()`                           | OK           |
+| 4   | `description` (string)       | `r.description`                        | `description`        | TEXT             | NOT NULL (default '')    | `description`        | `z.string()`                           | OK           |
+| 5   | `exerciseCount` (number)     | `r.exerciseCount`                      | `exercise_count`     | INT              | NOT NULL (default 0)     | `exercise_count`     | `z.number()`                           | OK           |
+| 6   | `estimatedDuration` (number) | `Math.round(r.estimatedDuration / 60)` | `estimated_duration` | INT              | NOT NULL (default 0)     | `estimated_duration` | `z.number()`                           | **SCHEMA-4** |
+| 7   | `timesCompleted` (number)    | `r.timesCompleted`                     | `times_completed`    | INT              | NOT NULL (default 0)     | `times_completed`    | `z.number()`                           | OK           |
+| 8   | `isFavorite` (boolean)       | `r.isFavorite`                         | `is_favorite`        | BOOLEAN          | NOT NULL (default false) | `is_favorite`        | `z.boolean()`                          | OK           |
+| 9   | --                           | NOT PUSHED                             | `last_used_at`       | TIMESTAMPTZ      | NULL                     | `last_used_at`       | `z.string().nullable().transform(...)` | **SCHEMA-5** |
+| 10  | --                           | NOT PUSHED                             | `tags`               | TEXT[]           | NULL                     | `tags`               | `z.array(z.string()).nullable()`       | **SCHEMA-6** |
 
 **SCHEMA-4: `estimated_duration` unit conversion is one-directional.** Push divides by 60 (seconds to minutes). Pull returns raw DB value (minutes). Portal Zod parses minutes directly -- correct for portal display. Mobile round-trip receives minutes where it expects seconds. Severity: MEDIUM for pull path; portal is unaffected.
 
@@ -790,33 +790,33 @@ Clean match. No issues.
 
 ### 29. Contract Matrix: routine_exercises
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `e.id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `routineId` (string) | `e.routineId` | `routine_id` | UUID FK NOT NULL | NOT NULL | `routine_id` | `z.string().uuid()` | OK |
-| 3 | `name` (string) | `e.name` | `name` | TEXT | NOT NULL | `name` | `z.string()` | OK |
-| 4 | `muscleGroup` (string) | `e.muscleGroup` | `muscle_group` | TEXT | NOT NULL (default 'General') | `muscle_group` | `z.string()` | OK |
-| 5 | `sets` (number) | `e.sets` | `sets` | INT | NOT NULL (default 3) | `sets` | `z.number()` | OK |
-| 6 | `reps` (number) | `e.reps` | `reps` | INT | NOT NULL (default 10) | `reps` | `z.number()` | OK |
-| 7 | `weight` (number) | `e.weight` | `weight` | NUMERIC | NOT NULL (default 0) | `weight` | `z.number()` | OK |
-| 8 | `restSeconds` (number) | `e.restSeconds` | `rest_seconds` | INT | NOT NULL (default 90) | `rest_seconds` | `z.number()` | OK |
-| 9 | `mode` (string) | `e.mode` | `mode` | TEXT | NOT NULL (default 'OLD_SCHOOL') | `mode` | `z.string()` | OK |
-| 10 | `orderIndex` (number) | `e.orderIndex` | `order_index` | INT | NOT NULL (default 0) | `order_index` | `z.number()` | OK |
-| 11 | `supersetId` (string \| null) | `e.supersetId` | `superset_id` | TEXT | NULL | `superset_id` | `z.string().nullable().optional()` | OK |
-| 12 | `supersetColor` (string \| null) | `e.supersetColor` | `superset_color` | TEXT | NULL | `superset_color` | `z.string().nullable().optional()` | OK |
-| 13 | `supersetOrder` (number \| null) | `e.supersetOrder` | `superset_order` | INT | NULL | `superset_order` | `z.number().nullable().optional()` | OK |
-| 14 | `perSetWeights` (string \| null) | `safeJsonParse(e.perSetWeights)` | `per_set_weights` | JSONB | NULL | `per_set_weights` | `z.any().nullable().optional()` | **SCHEMA-7** |
-| 15 | `perSetRest` (string \| null) | `safeJsonParse(e.perSetRest)` | `per_set_rest` | JSONB | NULL | `per_set_rest` | `z.any().nullable().optional()` | **SCHEMA-7** |
-| 16 | `isAmrap` (boolean) | `e.isAmrap` | `is_amrap` | BOOLEAN | NULL (default false) | `is_amrap` | `z.boolean().optional().default(false)` | OK |
-| 17 | `prPercentage` (number \| null) | `e.prPercentage` | `pr_percentage` | NUMERIC | NULL | `pr_percentage` | `z.number().nullable().optional()` | OK |
-| 18 | `repCountTiming` (string \| null) | `e.repCountTiming` | `rep_count_timing` | TEXT | NULL | `rep_count_timing` | `z.string().nullable().optional()` | OK |
-| 19 | `stopAtPosition` (string \| null) | `e.stopAtPosition` | `stop_at_position` | TEXT | NULL | `stop_at_position` | `z.string().nullable().optional()` | OK |
-| 20 | `stallDetection` (boolean) | `e.stallDetection` | `stall_detection` | BOOLEAN | NULL (default true) | `stall_detection` | `z.boolean().optional().default(false)` | **SCHEMA-8** |
-| 21 | `eccentricLoad` (string \| null) | `e.eccentricLoad` | `eccentric_load` | TEXT | NULL | `eccentric_load` | `z.string().nullable().optional()` | OK |
-| 22 | `echoLevel` (string \| null) | `e.echoLevel` | `echo_level` | TEXT | NULL | `echo_level` | `z.string().nullable().optional()` | OK |
-| 23 | -- | NOT PUSHED | `created_at` | TIMESTAMPTZ | NOT NULL (default now()) | `created_at` | `z.string().transform(...)` | OK (DB default) |
-| 24 | -- | NOT PUSHED | `is_bodyweight` | BOOLEAN | NOT NULL (default false) | `is_bodyweight` | `z.boolean().optional().default(false)` | **SCHEMA-9** |
-| 25 | -- | NOT PUSHED | `duration_seconds` | INT | NULL | `duration_seconds` | `z.number().nullable().optional()` | **SCHEMA-9** |
+| #   | Field (Mobile DTO)                | Push Mapping                     | DB Column          | DB Type          | Nullable                        | Zod Schema Field   | Zod Type                                | Match?          |
+| --- | --------------------------------- | -------------------------------- | ------------------ | ---------------- | ------------------------------- | ------------------ | --------------------------------------- | --------------- |
+| 1   | `id` (string)                     | `e.id`                           | `id`               | UUID PK          | NOT NULL                        | `id`               | `z.string().uuid()`                     | OK              |
+| 2   | `routineId` (string)              | `e.routineId`                    | `routine_id`       | UUID FK NOT NULL | NOT NULL                        | `routine_id`       | `z.string().uuid()`                     | OK              |
+| 3   | `name` (string)                   | `e.name`                         | `name`             | TEXT             | NOT NULL                        | `name`             | `z.string()`                            | OK              |
+| 4   | `muscleGroup` (string)            | `e.muscleGroup`                  | `muscle_group`     | TEXT             | NOT NULL (default 'General')    | `muscle_group`     | `z.string()`                            | OK              |
+| 5   | `sets` (number)                   | `e.sets`                         | `sets`             | INT              | NOT NULL (default 3)            | `sets`             | `z.number()`                            | OK              |
+| 6   | `reps` (number)                   | `e.reps`                         | `reps`             | INT              | NOT NULL (default 10)           | `reps`             | `z.number()`                            | OK              |
+| 7   | `weight` (number)                 | `e.weight`                       | `weight`           | NUMERIC          | NOT NULL (default 0)            | `weight`           | `z.number()`                            | OK              |
+| 8   | `restSeconds` (number)            | `e.restSeconds`                  | `rest_seconds`     | INT              | NOT NULL (default 90)           | `rest_seconds`     | `z.number()`                            | OK              |
+| 9   | `mode` (string)                   | `e.mode`                         | `mode`             | TEXT             | NOT NULL (default 'OLD_SCHOOL') | `mode`             | `z.string()`                            | OK              |
+| 10  | `orderIndex` (number)             | `e.orderIndex`                   | `order_index`      | INT              | NOT NULL (default 0)            | `order_index`      | `z.number()`                            | OK              |
+| 11  | `supersetId` (string \| null)     | `e.supersetId`                   | `superset_id`      | TEXT             | NULL                            | `superset_id`      | `z.string().nullable().optional()`      | OK              |
+| 12  | `supersetColor` (string \| null)  | `e.supersetColor`                | `superset_color`   | TEXT             | NULL                            | `superset_color`   | `z.string().nullable().optional()`      | OK              |
+| 13  | `supersetOrder` (number \| null)  | `e.supersetOrder`                | `superset_order`   | INT              | NULL                            | `superset_order`   | `z.number().nullable().optional()`      | OK              |
+| 14  | `perSetWeights` (string \| null)  | `safeJsonParse(e.perSetWeights)` | `per_set_weights`  | JSONB            | NULL                            | `per_set_weights`  | `z.any().nullable().optional()`         | **SCHEMA-7**    |
+| 15  | `perSetRest` (string \| null)     | `safeJsonParse(e.perSetRest)`    | `per_set_rest`     | JSONB            | NULL                            | `per_set_rest`     | `z.any().nullable().optional()`         | **SCHEMA-7**    |
+| 16  | `isAmrap` (boolean)               | `e.isAmrap`                      | `is_amrap`         | BOOLEAN          | NULL (default false)            | `is_amrap`         | `z.boolean().optional().default(false)` | OK              |
+| 17  | `prPercentage` (number \| null)   | `e.prPercentage`                 | `pr_percentage`    | NUMERIC          | NULL                            | `pr_percentage`    | `z.number().nullable().optional()`      | OK              |
+| 18  | `repCountTiming` (string \| null) | `e.repCountTiming`               | `rep_count_timing` | TEXT             | NULL                            | `rep_count_timing` | `z.string().nullable().optional()`      | OK              |
+| 19  | `stopAtPosition` (string \| null) | `e.stopAtPosition`               | `stop_at_position` | TEXT             | NULL                            | `stop_at_position` | `z.string().nullable().optional()`      | OK              |
+| 20  | `stallDetection` (boolean)        | `e.stallDetection`               | `stall_detection`  | BOOLEAN          | NULL (default true)             | `stall_detection`  | `z.boolean().optional().default(false)` | **SCHEMA-8**    |
+| 21  | `eccentricLoad` (string \| null)  | `e.eccentricLoad`                | `eccentric_load`   | TEXT             | NULL                            | `eccentric_load`   | `z.string().nullable().optional()`      | OK              |
+| 22  | `echoLevel` (string \| null)      | `e.echoLevel`                    | `echo_level`       | TEXT             | NULL                            | `echo_level`       | `z.string().nullable().optional()`      | OK              |
+| 23  | --                                | NOT PUSHED                       | `created_at`       | TIMESTAMPTZ      | NOT NULL (default now())        | `created_at`       | `z.string().transform(...)`             | OK (DB default) |
+| 24  | --                                | NOT PUSHED                       | `is_bodyweight`    | BOOLEAN          | NOT NULL (default false)        | `is_bodyweight`    | `z.boolean().optional().default(false)` | **SCHEMA-9**    |
+| 25  | --                                | NOT PUSHED                       | `duration_seconds` | INT              | NULL                            | `duration_seconds` | `z.number().nullable().optional()`      | **SCHEMA-9**    |
 
 **SCHEMA-7: `per_set_weights` / `per_set_rest` use `z.any()`.** No structural validation. Mobile sends JSON string, push parses to JSONB, portal accepts anything. Silent data loss if malformed. Severity: LOW-MEDIUM.
 
@@ -828,21 +828,21 @@ Clean match. No issues.
 
 ### 30. Contract Matrix: training_cycles
 
-| # | Field (Mobile DTO) | Push Mapping | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `id` (string) | `c.id` | `id` | UUID PK | NOT NULL | `id` | `z.string().uuid()` | OK |
-| 2 | `userId` (string) | hardcoded from JWT | `user_id` | UUID FK NOT NULL | NOT NULL | `user_id` | `z.string().uuid()` | OK |
-| 3 | `name` (string) | `c.name` | `name` | TEXT | NOT NULL | `name` | `z.string()` | OK |
-| 4 | `description` (string \| null) | `c.description ?? ''` | `description` | TEXT | NULL | `description` | `z.string().nullable().optional()` | **SCHEMA-10** |
-| 5 | `durationWeeks` (number) | `c.durationWeeks` | `duration_weeks` | INT | NOT NULL (default 4) | `duration_weeks` | `z.number()` | OK |
-| 6 | `workoutDays` (number) | `c.workoutDays` | `workout_days` | INT | NOT NULL (default 0) | `workout_days` | `z.number()` | OK |
-| 7 | `restDays` (number) | `c.restDays` | `rest_days` | INT | NOT NULL (default 0) | `rest_days` | `z.number()` | OK |
-| 8 | `currentWeek` (number) | `c.currentWeek` | `current_week` | INT | NOT NULL (default 1) | `current_week` | `z.number()` | OK |
-| 9 | `status` (string) | `c.status` | `status` | TEXT | NOT NULL (default 'draft') | `status` | `z.enum(["active", "completed", "draft"])` | **SCHEMA-11** |
-| 10 | `startedAt` (string \| null) | `c.startedAt` | `started_at` | TIMESTAMPTZ | NULL | `started_at` | `z.string().nullable().optional().transform(...)` | OK |
-| 11 | `lastUsedAt` (string \| null) | `c.lastUsedAt` | `last_used_at` | TIMESTAMPTZ | NULL | `last_used_at` | `z.string().nullable().transform(...)` | OK |
-| 12 | `progressionSettings` (string \| null) | `safeJsonParse(c.progressionSettings)` | `progression_settings` | JSONB | NULL | (in cycleDetailSchema) | `z.any().nullable().optional()` | OK |
-| 13 | `deloadSettings` (string \| null) | `safeJsonParse(c.deloadSettings)` | `deload_settings` | JSONB | NULL | (in cycleDetailSchema) | `z.any().nullable().optional()` | OK |
+| #   | Field (Mobile DTO)                     | Push Mapping                           | DB Column              | DB Type          | Nullable                   | Zod Schema Field       | Zod Type                                          | Match?        |
+| --- | -------------------------------------- | -------------------------------------- | ---------------------- | ---------------- | -------------------------- | ---------------------- | ------------------------------------------------- | ------------- |
+| 1   | `id` (string)                          | `c.id`                                 | `id`                   | UUID PK          | NOT NULL                   | `id`                   | `z.string().uuid()`                               | OK            |
+| 2   | `userId` (string)                      | hardcoded from JWT                     | `user_id`              | UUID FK NOT NULL | NOT NULL                   | `user_id`              | `z.string().uuid()`                               | OK            |
+| 3   | `name` (string)                        | `c.name`                               | `name`                 | TEXT             | NOT NULL                   | `name`                 | `z.string()`                                      | OK            |
+| 4   | `description` (string \| null)         | `c.description ?? ''`                  | `description`          | TEXT             | NULL                       | `description`          | `z.string().nullable().optional()`                | **SCHEMA-10** |
+| 5   | `durationWeeks` (number)               | `c.durationWeeks`                      | `duration_weeks`       | INT              | NOT NULL (default 4)       | `duration_weeks`       | `z.number()`                                      | OK            |
+| 6   | `workoutDays` (number)                 | `c.workoutDays`                        | `workout_days`         | INT              | NOT NULL (default 0)       | `workout_days`         | `z.number()`                                      | OK            |
+| 7   | `restDays` (number)                    | `c.restDays`                           | `rest_days`            | INT              | NOT NULL (default 0)       | `rest_days`            | `z.number()`                                      | OK            |
+| 8   | `currentWeek` (number)                 | `c.currentWeek`                        | `current_week`         | INT              | NOT NULL (default 1)       | `current_week`         | `z.number()`                                      | OK            |
+| 9   | `status` (string)                      | `c.status`                             | `status`               | TEXT             | NOT NULL (default 'draft') | `status`               | `z.enum(["active", "completed", "draft"])`        | **SCHEMA-11** |
+| 10  | `startedAt` (string \| null)           | `c.startedAt`                          | `started_at`           | TIMESTAMPTZ      | NULL                       | `started_at`           | `z.string().nullable().optional().transform(...)` | OK            |
+| 11  | `lastUsedAt` (string \| null)          | `c.lastUsedAt`                         | `last_used_at`         | TIMESTAMPTZ      | NULL                       | `last_used_at`         | `z.string().nullable().transform(...)`            | OK            |
+| 12  | `progressionSettings` (string \| null) | `safeJsonParse(c.progressionSettings)` | `progression_settings` | JSONB            | NULL                       | (in cycleDetailSchema) | `z.any().nullable().optional()`                   | OK            |
+| 13  | `deloadSettings` (string \| null)      | `safeJsonParse(c.deloadSettings)`      | `deload_settings`      | JSONB            | NULL                       | (in cycleDetailSchema) | `z.any().nullable().optional()`                   | OK            |
 
 **SCHEMA-10: Push coerces null description to empty string.** `c.description ?? ''` writes `''` to a nullable column instead of `NULL`. Severity: TRIVIAL.
 
@@ -864,11 +864,11 @@ All 11 fields (including `id`, `user_id`, `updated_at`) match correctly between 
 
 ### 33. Contract Matrix: earned_badges
 
-| # | Field | DB Column | DB Type | Nullable | Zod Type | Match? |
-|---|---|---|---|---|---|---|
-| 1-5 | (standard fields) | -- | -- | -- | -- | OK |
-| 6 | `badgeTier` | `badge_tier` | TEXT | NULL (default 'bronze') | `z.string()` | **SCHEMA-12** |
-| 7 | `earnedAt` | `earned_at` | TIMESTAMPTZ | NOT NULL | `z.string().transform(...)` | OK |
+| #   | Field             | DB Column    | DB Type     | Nullable                | Zod Type                    | Match?        |
+| --- | ----------------- | ------------ | ----------- | ----------------------- | --------------------------- | ------------- |
+| 1-5 | (standard fields) | --           | --          | --                      | --                          | OK            |
+| 6   | `badgeTier`       | `badge_tier` | TEXT        | NULL (default 'bronze') | `z.string()`                | **SCHEMA-12** |
+| 7   | `earnedAt`        | `earned_at`  | TIMESTAMPTZ | NOT NULL                | `z.string().transform(...)` | OK            |
 
 **SCHEMA-12: `badge_tier` nullable in DB but required in Zod.** `TEXT DEFAULT 'bronze'` has no NOT NULL constraint. If `badge_tier = NULL`, Zod throws. Severity: LOW -- DB default protects in practice.
 
@@ -882,10 +882,10 @@ All 9 fields match correctly. Clean contract. No issues.
 
 ### 35. Contract Matrix: personal_records (extracted server-side from is_pr sets)
 
-| # | Source | DB Column | DB Type | Nullable | Zod Schema Field | Zod Type | Match? |
-|---|---|---|---|---|---|---|---|
-| 1-8 | (standard fields) | -- | -- | -- | -- | OK |
-| 9 | NOT SET by push | `previous_value` | NUMERIC | NULL | `previous_value` | `z.number().nullable().transform(v => v !== null ? v*2 : null)` | **SCHEMA-13** |
+| #   | Source            | DB Column        | DB Type | Nullable | Zod Schema Field | Zod Type                                                        | Match?        |
+| --- | ----------------- | ---------------- | ------- | -------- | ---------------- | --------------------------------------------------------------- | ------------- |
+| 1-8 | (standard fields) | --               | --      | --       | --               | OK                                                              |               |
+| 9   | NOT SET by push   | `previous_value` | NUMERIC | NULL     | `previous_value` | `z.number().nullable().transform(v => v !== null ? v*2 : null)` | **SCHEMA-13** |
 
 **SCHEMA-13: `previous_value` is never populated by push.** The push function extracts PRs but never queries the previous max to set `previous_value`. It is always NULL for mobile-synced PRs. The portal Zod defines a x2 transform on it, suggesting the UI expects to display "Previous: Xkg". Severity: MEDIUM -- incomplete PR history.
 
@@ -895,31 +895,31 @@ All 9 fields match correctly. Clean contract. No issues.
 
 #### Critical -- Potential Runtime Crashes
 
-| ID | Finding | Severity |
-|---|---|---|
-| **SCHEMA-3** | `rep_summaries` has NO Zod schema. All 15 VBT/biomechanics columns consumed without type-safe parsing. Null numerics will crash components. | **HIGH** |
+| ID            | Finding                                                                                                                                             | Severity |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| **SCHEMA-3**  | `rep_summaries` has NO Zod schema. All 15 VBT/biomechanics columns consumed without type-safe parsing. Null numerics will crash components.         | **HIGH** |
 | **SCHEMA-11** | `training_cycles.status` Zod enum is `["active", "completed", "draft"]` but DB has no CHECK constraint. Any new mobile status value crashes portal. | **HIGH** |
 
 #### Moderate -- Data Loss or Incorrect Display
 
-| ID | Finding | Severity |
-|---|---|---|
-| **SCHEMA-2** | Per-set `workout_mode` in DB but not in `setSchema`. Biomechanics cannot determine per-set mode. | MEDIUM |
-| **SCHEMA-4** | `estimated_duration` seconds-to-minutes conversion not reversed on pull. Mobile round-trip corruption. | MEDIUM |
-| **SCHEMA-13** | `previous_value` on personal_records never populated by push. PR history always shows NULL. | MEDIUM |
+| ID            | Finding                                                                                                | Severity |
+| ------------- | ------------------------------------------------------------------------------------------------------ | -------- |
+| **SCHEMA-2**  | Per-set `workout_mode` in DB but not in `setSchema`. Biomechanics cannot determine per-set mode.       | MEDIUM   |
+| **SCHEMA-4**  | `estimated_duration` seconds-to-minutes conversion not reversed on pull. Mobile round-trip corruption. | MEDIUM   |
+| **SCHEMA-13** | `previous_value` on personal_records never populated by push. PR history always shows NULL.            | MEDIUM   |
 
 #### Low -- Cosmetic or Defensive Gaps
 
-| ID | Finding | Severity |
-|---|---|---|
-| SCHEMA-1 | `routine_session_id` not in portal Zod. | LOW |
-| SCHEMA-5 | `last_used_at` not pushed by mobile. | LOW |
-| SCHEMA-6 | `tags` not pushed by mobile. | LOW |
-| SCHEMA-7 | `per_set_weights`/`per_set_rest` use `z.any()`. | LOW |
-| SCHEMA-8 | `stall_detection` DB default `true`, Zod default `false`. | LOW |
-| SCHEMA-9 | `is_bodyweight`/`duration_seconds` portal-only. | LOW |
-| SCHEMA-10 | Push coerces null description to `''`. | TRIVIAL |
-| SCHEMA-12 | `badge_tier` nullable in DB but required in Zod. | LOW |
+| ID        | Finding                                                   | Severity |
+| --------- | --------------------------------------------------------- | -------- |
+| SCHEMA-1  | `routine_session_id` not in portal Zod.                   | LOW      |
+| SCHEMA-5  | `last_used_at` not pushed by mobile.                      | LOW      |
+| SCHEMA-6  | `tags` not pushed by mobile.                              | LOW      |
+| SCHEMA-7  | `per_set_weights`/`per_set_rest` use `z.any()`.           | LOW      |
+| SCHEMA-8  | `stall_detection` DB default `true`, Zod default `false`. | LOW      |
+| SCHEMA-9  | `is_bodyweight`/`duration_seconds` portal-only.           | LOW      |
+| SCHEMA-10 | Push coerces null description to `''`.                    | TRIVIAL  |
+| SCHEMA-12 | `badge_tier` nullable in DB but required in Zod.          | LOW      |
 
 ---
 
@@ -933,18 +933,18 @@ All 9 fields match correctly. Clean contract. No issues.
 
 #### Before GA
 
-3. **Add `workout_mode` to `setSchema`** as `z.string().nullable().optional()`. Biomechanics analysis needs per-set mode context.
+1. **Add `workout_mode` to `setSchema`** as `z.string().nullable().optional()`. Biomechanics analysis needs per-set mode context.
 
-4. **Populate `previous_value` in push PR extraction.** Before inserting a new PR, query the existing max `value` for that user/exercise/record_type and set it as `previous_value`.
+2. **Populate `previous_value` in push PR extraction.** Before inserting a new PR, query the existing max `value` for that user/exercise/record_type and set it as `previous_value`.
 
-5. **Document `estimated_duration` unit convention.** Choose one: (a) store seconds everywhere, or (b) document that DB stores minutes and update pull to multiply by 60.
+3. **Document `estimated_duration` unit convention.** Choose one: (a) store seconds everywhere, or (b) document that DB stores minutes and update pull to multiply by 60.
 
 #### Post-GA Hardening
 
-6. Replace `z.any()` on `per_set_weights`/`per_set_rest` with structured validation.
-7. Align `stall_detection` Zod default with DB default.
-8. Make `badge_tier` Zod nullable to match DB definition.
-9. Add `workout_sessions.updated_at` column for proper pull delta sync.
+1. Replace `z.any()` on `per_set_weights`/`per_set_rest` with structured validation.
+2. Align `stall_detection` Zod default with DB default.
+3. Make `badge_tier` Zod nullable to match DB definition.
+4. Add `workout_sessions.updated_at` column for proper pull delta sync.
 
 ---
 
@@ -960,13 +960,13 @@ All 9 fields match correctly. Clean contract. No issues.
 
 The complete foreign key chain is defined in `supabase/migrations/00002_base_schema.sql` (lines 94-217).
 
-| Parent Table       | Child Table      | FK Column    | ON DELETE | Defined In                  |
-|--------------------|------------------|--------------|-----------|-----------------------------|
-| `auth.users`       | `workout_sessions` | `user_id`  | CASCADE   | 00002_base_schema.sql:96    |
-| `workout_sessions` | `exercises`      | `session_id` | CASCADE   | 00002_base_schema.sql:123   |
-| `exercises`        | `sets`           | `exercise_id`| CASCADE   | 00002_base_schema.sql:142   |
-| `sets`             | `rep_summaries`  | `set_id`     | CASCADE   | 00002_base_schema.sql:191   |
-| `sets`             | `rep_telemetry`  | `set_id`     | CASCADE   | 00002_base_schema.sql:224   |
+| Parent Table       | Child Table        | FK Column     | ON DELETE | Defined In                |
+| ------------------ | ------------------ | ------------- | --------- | ------------------------- |
+| `auth.users`       | `workout_sessions` | `user_id`     | CASCADE   | 00002_base_schema.sql:96  |
+| `workout_sessions` | `exercises`        | `session_id`  | CASCADE   | 00002_base_schema.sql:123 |
+| `exercises`        | `sets`             | `exercise_id` | CASCADE   | 00002_base_schema.sql:142 |
+| `sets`             | `rep_summaries`    | `set_id`      | CASCADE   | 00002_base_schema.sql:191 |
+| `sets`             | `rep_telemetry`    | `set_id`      | CASCADE   | 00002_base_schema.sql:224 |
 
 **Verdict: PASS** -- All FKs use `ON DELETE CASCADE`. Deleting a workout_session cascades through exercises, sets, rep_summaries, and rep_telemetry. Deleting a user cascades through workout_sessions and then the full tree. No orphan accumulation risk from deletes.
 
@@ -974,28 +974,28 @@ The complete foreign key chain is defined in `supabase/migrations/00002_base_sch
 
 Migration `20260228_rls_denormalization.sql` added `user_id` directly to child tables to eliminate multi-hop RLS JOIN penalties:
 
-| Table            | user_id Added     | Has FK to auth.users? | ON DELETE |
-|------------------|-------------------|-----------------------|-----------|
-| `exercises`      | 20260304 migration | No (bare UUID)        | N/A       |
-| `sets`           | 20260228 migration | Yes                   | CASCADE   |
-| `rep_summaries`  | 20260228 migration | Yes                   | CASCADE   |
-| `rep_telemetry`  | 20260228 migration | Yes                   | CASCADE   |
+| Table           | user_id Added      | Has FK to auth.users? | ON DELETE |
+| --------------- | ------------------ | --------------------- | --------- |
+| `exercises`     | 20260304 migration | No (bare UUID)        | N/A       |
+| `sets`          | 20260228 migration | Yes                   | CASCADE   |
+| `rep_summaries` | 20260228 migration | Yes                   | CASCADE   |
+| `rep_telemetry` | 20260228 migration | Yes                   | CASCADE   |
 
 **Finding [DI-01, LOW]: `exercises.user_id` has no FK constraint.** The `20260304_exercises_denorm_insert_rls.sql` migration (line 42) adds `user_id UUID` without `REFERENCES auth.users(id)`. Comment on lines 38-39 says this was intentional ("No FK to auth.users -- consistent with sets, rep_summaries, and rep_telemetry which also use denormalized user_id without FK"). However, this comment is factually incorrect: `sets.user_id`, `rep_summaries.user_id`, and `rep_telemetry.user_id` all DO have FK constraints to `auth.users(id) ON DELETE CASCADE` (see `20260228_rls_denormalization.sql` lines 44, 74, 107). Only `exercises.user_id` is missing the FK. This is a documentation/consistency bug, not a data integrity risk (the structural FK via `exercises.session_id -> workout_sessions` still cascades correctly on user deletion), but it should be fixed for consistency.
 
 ### Unique Constraints (Idempotent Upsert Safety)
 
-| Table              | PK / Unique Constraint                          | Upsert Safe? |
-|--------------------|------------------------------------------------|-------------|
-| `workout_sessions` | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `exercises`        | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `sets`             | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `rep_summaries`    | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `routines`         | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `training_cycles`  | `id UUID PRIMARY KEY`                          | Yes -- `onConflict: 'id'` |
-| `rpg_attributes`   | `UNIQUE(user_id)` + UUID PK                   | Yes -- `onConflict: 'user_id'` |
-| `earned_badges`    | `UNIQUE(user_id, badge_id)` + UUID PK          | Yes -- `onConflict: 'user_id,badge_id'` |
-| `gamification_stats`| `UNIQUE(user_id)` + UUID PK                  | Yes -- `onConflict: 'user_id'` |
+| Table                | PK / Unique Constraint                | Upsert Safe?                            |
+| -------------------- | ------------------------------------- | --------------------------------------- |
+| `workout_sessions`   | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `exercises`          | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `sets`               | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `rep_summaries`      | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `routines`           | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `training_cycles`    | `id UUID PRIMARY KEY`                 | Yes -- `onConflict: 'id'`               |
+| `rpg_attributes`     | `UNIQUE(user_id)` + UUID PK           | Yes -- `onConflict: 'user_id'`          |
+| `earned_badges`      | `UNIQUE(user_id, badge_id)` + UUID PK | Yes -- `onConflict: 'user_id,badge_id'` |
+| `gamification_stats` | `UNIQUE(user_id)` + UUID PK           | Yes -- `onConflict: 'user_id'`          |
 
 **Verdict: PASS** -- All tables have UUID primary keys. The mobile-sync-push function uses `upsert(..., { onConflict: 'id' })` for the workout hierarchy, meaning duplicate session pushes (retries) safely update rather than fail with a constraint violation.
 
@@ -1016,12 +1016,12 @@ Source: `supabase/functions/mobile-sync-push/index.ts`, lines 308-410.
 
 **Can orphaned records be created?**
 
-| Scenario | Risk | Assessment |
-|----------|------|------------|
-| Child inserted before parent | None | Sequential awaits enforce parent-first order |
-| Parent upsert succeeds, child upsert fails | **Partial data** | Sessions exist but exercises/sets/rep_summaries may be missing. See DI-02. |
-| Concurrent pushes for same session | None | `upsert` with `onConflict: 'id'` is idempotent -- last write wins |
-| Mobile sends child ID referencing nonexistent parent ID | FK violation (400 error) | Supabase returns error, caught by catch block |
+| Scenario                                                | Risk                     | Assessment                                                                 |
+| ------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------- |
+| Child inserted before parent                            | None                     | Sequential awaits enforce parent-first order                               |
+| Parent upsert succeeds, child upsert fails              | **Partial data**         | Sessions exist but exercises/sets/rep_summaries may be missing. See DI-02. |
+| Concurrent pushes for same session                      | None                     | `upsert` with `onConflict: 'id'` is idempotent -- last write wins          |
+| Mobile sends child ID referencing nonexistent parent ID | FK violation (400 error) | Supabase returns error, caught by catch block                              |
 
 **Finding [DI-02, MEDIUM]: No transaction wrapping for the workout hierarchy upserts.** Steps 4a through 4d are four separate Supabase client calls (lines 326-409). If step 4b (`exercises`) succeeds but step 4c (`sets`) fails, the function throws and returns a 400/500 error. The already-inserted sessions and exercises remain in the database. On retry, the mobile app would re-send the full payload and the upserts would succeed (idempotent), so this is self-healing. However, if the mobile app does NOT retry (e.g., user kills the app), stale partial data persists. This is not an orphan in the FK sense (exercises still reference valid sessions), but it is incomplete data. A Supabase RPC wrapping all four inserts in a single `BEGIN...COMMIT` would make this atomic.
 
@@ -1043,12 +1043,12 @@ Source: `supabase/functions/process-sync-queue/index.ts` (204 lines)
 
 Defined on lines 12-17:
 
-| Provider | Configured Limit | Window    | Official API Limit       | Reserve | Assessment |
-|----------|-----------------|-----------|--------------------------|---------|------------|
-| Strava   | 80 req          | 15 min    | 100 req / 15 min (read)  | 20%     | **PASS** -- 20% headroom is appropriate |
-| Fitbit   | 120 req         | 60 min    | 150 req / hour           | 20%     | **PASS** -- 20% headroom |
-| Garmin   | 40 req          | 60 min    | Push-based (webhook)     | N/A     | See SQ-01 |
-| Hevy     | 40 req          | 60 min    | 100 req / min (per docs) | N/A     | **PASS** -- very conservative |
+| Provider | Configured Limit | Window | Official API Limit       | Reserve | Assessment                              |
+| -------- | ---------------- | ------ | ------------------------ | ------- | --------------------------------------- |
+| Strava   | 80 req           | 15 min | 100 req / 15 min (read)  | 20%     | **PASS** -- 20% headroom is appropriate |
+| Fitbit   | 120 req          | 60 min | 150 req / hour           | 20%     | **PASS** -- 20% headroom                |
+| Garmin   | 40 req           | 60 min | Push-based (webhook)     | N/A     | See SQ-01                               |
+| Hevy     | 40 req           | 60 min | 100 req / min (per docs) | N/A     | **PASS** -- very conservative           |
 
 **Finding [SQ-01, INFO]: Garmin rate limit is defined but Garmin sync is webhook-only.** Line 124-129 of `callSyncFunction()` explicitly throws a 400 error for `provider === 'garmin'` with message "Garmin sync is webhook-driven and cannot be queued manually." The rate limit entry for Garmin on line 16 is dead code. Not harmful, but misleading.
 
@@ -1195,17 +1195,17 @@ ALTER TABLE sync_queue ADD CONSTRAINT sync_queue_provider_check
 
 ## Consolidated Findings (Tasks 3.7 + 3.8)
 
-| ID | Severity | Component | Finding |
-|----|----------|-----------|---------|
-| DI-01 | LOW | exercises.user_id | Missing FK constraint to auth.users -- inconsistent with sets/rep_summaries/rep_telemetry denorm pattern |
-| DI-02 | MEDIUM | mobile-sync-push | No transaction wrapping for workout hierarchy upserts (4a-4d). Partial inserts self-heal on retry but persist if retry never happens |
-| DI-03 | LOW | mobile-sync-push | No transaction wrapping for routine_exercises delete-then-reinsert |
-| SQ-01 | INFO | process-sync-queue | Garmin rate limit definition is dead code (Garmin is webhook-driven) |
-| SQ-02 | INFO | process-sync-queue | Strava daily limit (1,000 req/day) not tracked; only 15-min window is enforced |
-| SQ-03 | MEDIUM | process-sync-queue | Non-429 transient errors (502/503/504) are not retried -- they permanently fail the task |
-| SQ-04 | HIGH | process-sync-queue | No max retry limit -- 429-failed tasks re-queue as pending indefinitely |
-| SQ-05 | HIGH | process-sync-queue | Queue starvation -- one provider's rate-limited tasks block all other providers |
-| SQ-06 | MEDIUM | process-sync-queue | Cron schedule not tracked in version control (dashboard-only configuration) |
+| ID    | Severity | Component          | Finding                                                                                                                              |
+| ----- | -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| DI-01 | LOW      | exercises.user_id  | Missing FK constraint to auth.users -- inconsistent with sets/rep_summaries/rep_telemetry denorm pattern                             |
+| DI-02 | MEDIUM   | mobile-sync-push   | No transaction wrapping for workout hierarchy upserts (4a-4d). Partial inserts self-heal on retry but persist if retry never happens |
+| DI-03 | LOW      | mobile-sync-push   | No transaction wrapping for routine_exercises delete-then-reinsert                                                                   |
+| SQ-01 | INFO     | process-sync-queue | Garmin rate limit definition is dead code (Garmin is webhook-driven)                                                                 |
+| SQ-02 | INFO     | process-sync-queue | Strava daily limit (1,000 req/day) not tracked; only 15-min window is enforced                                                       |
+| SQ-03 | MEDIUM   | process-sync-queue | Non-429 transient errors (502/503/504) are not retried -- they permanently fail the task                                             |
+| SQ-04 | HIGH     | process-sync-queue | No max retry limit -- 429-failed tasks re-queue as pending indefinitely                                                              |
+| SQ-05 | HIGH     | process-sync-queue | Queue starvation -- one provider's rate-limited tasks block all other providers                                                      |
+| SQ-06 | MEDIUM   | process-sync-queue | Cron schedule not tracked in version control (dashboard-only configuration)                                                          |
 
 ### Recommended Priority for Beta
 
@@ -1239,26 +1239,26 @@ The 5MB payload limit (enforced at the gateway/proxy layer) caps the wire size, 
 
 For a single session with E exercises, each having S sets with R reps per set:
 
-| Step | Operation | Row count | Supabase API call |
-|------|-----------|-----------|-------------------|
-| 4a | Upsert `workout_sessions` | 1 per session | 1 call (batched across all sessions) |
-| 4b | Upsert `exercises` | E | 1 call (batched across all sessions) |
-| 4c | Upsert `sets` | E x S | 1 call (batched across all sessions) |
-| 4d | Upsert `rep_summaries` | E x S x R | 1 call (batched across all sessions) |
-| 5 | SELECT existing `exercise_progress` | -- | 1 call |
-| 5 | INSERT `exercise_progress` | E per session | 1 call |
-| 6 | SELECT existing `personal_records` | -- | 1 call |
-| 6 | INSERT `personal_records` | variable | 1 call |
-| 7 | Upsert `routines` | per routine | 1 call |
-| 7 | DELETE `routine_exercises` | per routine | 1 call |
-| 7 | INSERT `routine_exercises` | per routine | 1 call |
-| 7b | Upsert `training_cycles` | per cycle | 1 call |
-| 7b | DELETE `cycle_days` | per cycle | 1 call |
-| 7b | INSERT `cycle_days` | per cycle | 1 call |
-| 8 | Upsert `rpg_attributes` | 1 | 1 call |
-| 9 | Upsert `earned_badges` | N badges | 1 call |
-| 10 | Upsert `gamification_stats` | 1 | 1 call |
-| 11 | Broadcast `sync_complete` | -- | 1 call |
+| Step | Operation                           | Row count     | Supabase API call                    |
+| ---- | ----------------------------------- | ------------- | ------------------------------------ |
+| 4a   | Upsert `workout_sessions`           | 1 per session | 1 call (batched across all sessions) |
+| 4b   | Upsert `exercises`                  | E             | 1 call (batched across all sessions) |
+| 4c   | Upsert `sets`                       | E x S         | 1 call (batched across all sessions) |
+| 4d   | Upsert `rep_summaries`              | E x S x R     | 1 call (batched across all sessions) |
+| 5    | SELECT existing `exercise_progress` | --            | 1 call                               |
+| 5    | INSERT `exercise_progress`          | E per session | 1 call                               |
+| 6    | SELECT existing `personal_records`  | --            | 1 call                               |
+| 6    | INSERT `personal_records`           | variable      | 1 call                               |
+| 7    | Upsert `routines`                   | per routine   | 1 call                               |
+| 7    | DELETE `routine_exercises`          | per routine   | 1 call                               |
+| 7    | INSERT `routine_exercises`          | per routine   | 1 call                               |
+| 7b   | Upsert `training_cycles`            | per cycle     | 1 call                               |
+| 7b   | DELETE `cycle_days`                 | per cycle     | 1 call                               |
+| 7b   | INSERT `cycle_days`                 | per cycle     | 1 call                               |
+| 8    | Upsert `rpg_attributes`             | 1             | 1 call                               |
+| 9    | Upsert `earned_badges`              | N badges      | 1 call                               |
+| 10   | Upsert `gamification_stats`         | 1             | 1 call                               |
+| 11   | Broadcast `sync_complete`           | --            | 1 call                               |
 
 **Minimum sequential API calls for sessions-only push:** 8 (steps 4a through 6, two SELECTs + two INSERTs)
 **Full push with routines, cycles, gamification:** 18+ sequential Supabase REST API calls
@@ -1267,14 +1267,14 @@ For a single session with E exercises, each having S sets with R reps per set:
 
 A user with 200 sessions, averaging 5 exercises per session, 3 sets per exercise, 8 reps per set:
 
-| Table | Row count |
-|-------|-----------|
-| `workout_sessions` | 200 |
-| `exercises` | 1,000 |
-| `sets` | 3,000 |
-| `rep_summaries` | 24,000 |
-| `exercise_progress` | 1,000 |
-| `personal_records` | variable (~100-500) |
+| Table               | Row count           |
+| ------------------- | ------------------- |
+| `workout_sessions`  | 200                 |
+| `exercises`         | 1,000               |
+| `sets`              | 3,000               |
+| `rep_summaries`     | 24,000              |
+| `exercise_progress` | 1,000               |
+| `personal_records`  | variable (~100-500) |
 
 That is approximately 29,000+ rows upserted/inserted across 8+ sequential PostgREST API calls. Each call incurs:
 - HTTP overhead to the Supabase REST API (~10-50ms per call)
@@ -1344,26 +1344,26 @@ Option B: Server-side pagination (requires API contract change)
 
 **Retry-safe tables (upsert with `onConflict`):**
 
-| Table | Conflict target | Retry safe? |
-|-------|----------------|-------------|
-| `workout_sessions` | `onConflict: 'id'` | YES -- same UUID re-upserts cleanly |
-| `exercises` | `onConflict: 'id'` | YES |
-| `sets` | `onConflict: 'id'` | YES |
-| `rep_summaries` | `onConflict: 'id'` | YES |
-| `routines` | `onConflict: 'id'` | YES |
-| `training_cycles` | `onConflict: 'id'` | YES |
-| `earned_badges` | `onConflict: 'user_id,badge_id'` | YES |
-| `rpg_attributes` | `onConflict: 'user_id'` | YES |
-| `gamification_stats` | `onConflict: 'user_id'` | YES |
+| Table                | Conflict target                  | Retry safe?                         |
+| -------------------- | -------------------------------- | ----------------------------------- |
+| `workout_sessions`   | `onConflict: 'id'`               | YES -- same UUID re-upserts cleanly |
+| `exercises`          | `onConflict: 'id'`               | YES                                 |
+| `sets`               | `onConflict: 'id'`               | YES                                 |
+| `rep_summaries`      | `onConflict: 'id'`               | YES                                 |
+| `routines`           | `onConflict: 'id'`               | YES                                 |
+| `training_cycles`    | `onConflict: 'id'`               | YES                                 |
+| `earned_badges`      | `onConflict: 'user_id,badge_id'` | YES                                 |
+| `rpg_attributes`     | `onConflict: 'user_id'`          | YES                                 |
+| `gamification_stats` | `onConflict: 'user_id'`          | YES                                 |
 
 **NOT fully retry-safe operations:**
 
-| Table / Operation | Issue |
-|-------------------|-------|
-| `exercise_progress` INSERT (lines 452-478) | Uses `INSERT` not upsert. Dedup queries existing rows by `session_id + exercise_name` -- safe for retries of the same payload. But the SELECT-then-INSERT is NOT atomic: concurrent pushes with the same sessions could produce duplicates. The table has **no unique constraint** on `(session_id, exercise_name)`. |
-| `personal_records` INSERT (lines 504-531) | Same SELECT-then-INSERT dedup pattern. Dedup key `exercise_name:achieved_at:value:record_type` could miss duplicates with slightly different timestamp formatting. **No unique constraint** at DB level. |
-| `routine_exercises` DELETE-then-INSERT (lines 557-596) | Retry-safe (delete runs first). But if function times out BETWEEN the delete and insert, routine exists with **zero exercises**. |
-| `cycle_days` DELETE-then-INSERT (lines 628-653) | Same pattern and risk as routine_exercises. |
+| Table / Operation                                      | Issue                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exercise_progress` INSERT (lines 452-478)             | Uses `INSERT` not upsert. Dedup queries existing rows by `session_id + exercise_name` -- safe for retries of the same payload. But the SELECT-then-INSERT is NOT atomic: concurrent pushes with the same sessions could produce duplicates. The table has **no unique constraint** on `(session_id, exercise_name)`. |
+| `personal_records` INSERT (lines 504-531)              | Same SELECT-then-INSERT dedup pattern. Dedup key `exercise_name:achieved_at:value:record_type` could miss duplicates with slightly different timestamp formatting. **No unique constraint** at DB level.                                                                                                             |
+| `routine_exercises` DELETE-then-INSERT (lines 557-596) | Retry-safe (delete runs first). But if function times out BETWEEN the delete and insert, routine exists with **zero exercises**.                                                                                                                                                                                     |
+| `cycle_days` DELETE-then-INSERT (lines 628-653)        | Same pattern and risk as routine_exercises.                                                                                                                                                                                                                                                                          |
 
 **Critical finding -- routine_exercises and cycle_days data loss window:**
 
@@ -1386,16 +1386,16 @@ If the INSERT fails or function times out between these calls, the routine exist
 
 #### 3.3.5 Push Findings Summary
 
-| Finding | Severity | Status |
-|---------|----------|--------|
-| Large first-sync (200+ sessions) exceeds 10s Edge Function timeout | HIGH | FAIL |
-| No transaction wrapping -- partial writes on timeout | HIGH | FAIL |
-| No pagination/chunking -- all-or-nothing payload | MEDIUM | FAIL |
-| Core workout data retry-safe (upsert on UUID PK) | -- | PASS |
-| `exercise_progress` SELECT-then-INSERT race condition | LOW | ADVISORY |
-| `personal_records` SELECT-then-INSERT race condition | LOW | ADVISORY |
-| `routine_exercises` delete-then-insert non-atomic data loss window | MEDIUM | FAIL |
-| `cycle_days` delete-then-insert non-atomic data loss window | MEDIUM | FAIL |
+| Finding                                                            | Severity | Status   |
+| ------------------------------------------------------------------ | -------- | -------- |
+| Large first-sync (200+ sessions) exceeds 10s Edge Function timeout | HIGH     | FAIL     |
+| No transaction wrapping -- partial writes on timeout               | HIGH     | FAIL     |
+| No pagination/chunking -- all-or-nothing payload                   | MEDIUM   | FAIL     |
+| Core workout data retry-safe (upsert on UUID PK)                   | --       | PASS     |
+| `exercise_progress` SELECT-then-INSERT race condition              | LOW      | ADVISORY |
+| `personal_records` SELECT-then-INSERT race condition               | LOW      | ADVISORY |
+| `routine_exercises` delete-then-insert non-atomic data loss window | MEDIUM   | FAIL     |
+| `cycle_days` delete-then-insert non-atomic data loss window        | MEDIUM   | FAIL     |
 
 ---
 
@@ -1421,13 +1421,13 @@ If the INSERT fails or function times out between these calls, the routine exist
 
 **UTC consistency:**
 
-| Component | Handling | UTC? |
-|-----------|---------|------|
-| Client sends | `Date.now()` epoch ms | YES |
-| Server converts | `new Date(n).toISOString()` | YES |
-| PostgreSQL | `TIMESTAMPTZ` (internal UTC) | YES |
-| PostgREST `.gt()` | ISO string vs TIMESTAMPTZ | YES |
-| Server returns | `Date.now()` epoch ms | YES |
+| Component         | Handling                     | UTC? |
+| ----------------- | ---------------------------- | ---- |
+| Client sends      | `Date.now()` epoch ms        | YES  |
+| Server converts   | `new Date(n).toISOString()`  | YES  |
+| PostgreSQL        | `TIMESTAMPTZ` (internal UTC) | YES  |
+| PostgREST `.gt()` | ISO string vs TIMESTAMPTZ    | YES  |
+| Server returns    | `Date.now()` epoch ms        | YES  |
 
 No timezone mismatch risk. **PASS.**
 
@@ -1459,12 +1459,12 @@ No mechanism exists to communicate deletions:
 
 **Affected entities:**
 
-| Entity | Portal-deletable? | Ping-pong risk? |
-|--------|-------------------|----------------|
-| Routines | YES | HIGH |
-| Training cycles | YES | HIGH |
-| Workout sessions | NO (read-only) | None |
-| Badges/RPG/Stats | NO | None |
+| Entity           | Portal-deletable? | Ping-pong risk? |
+| ---------------- | ----------------- | --------------- |
+| Routines         | YES               | HIGH            |
+| Training cycles  | YES               | HIGH            |
+| Workout sessions | NO (read-only)    | None            |
+| Badges/RPG/Stats | NO                | None            |
 
 **Severity:** MEDIUM. Users will see deleted routines/cycles reappear.
 
@@ -1491,12 +1491,12 @@ T7: Infinite overwrite loop
 
 **Risk by entity type:**
 
-| Entity | Risk | Why |
-|--------|------|-----|
+| Entity                       | Risk | Why                                |
+| ---------------------------- | ---- | ---------------------------------- |
 | Sessions/exercises/sets/reps | NONE | Append-only, mobile is sole author |
-| Routines | HIGH | Both platforms create/edit/delete |
-| Training cycles | HIGH | Both platforms create/edit/delete |
-| RPG/badges/stats | LOW | Single-row, server-wins acceptable |
+| Routines                     | HIGH | Both platforms create/edit/delete  |
+| Training cycles              | HIGH | Both platforms create/edit/delete  |
+| RPG/badges/stats             | LOW  | Single-row, server-wins acceptable |
 
 **Severity:** MEDIUM for beta (small user base). Must fix before GA.
 
@@ -1537,11 +1537,11 @@ No fields silently dropped. All `SELECT *` columns mapped to camelCase DTOs.
 
 Waterfall queries send parent IDs as URL query parameters. UUID = 36 chars; URL-encoded ~38 chars/ID.
 
-| Query level | IDs (200-session scenario) | URL size |
-|-------------|---------------------------|----------|
-| Exercises by session_id | 200 | ~7.6KB (borderline) |
-| Sets by exercise_id | ~1,000 | ~38KB (**EXCEEDS** 8KB limit) |
-| Rep summaries by set_id | ~3,000 | ~114KB (**far exceeds**) |
+| Query level             | IDs (200-session scenario) | URL size                      |
+| ----------------------- | -------------------------- | ----------------------------- |
+| Exercises by session_id | 200                        | ~7.6KB (borderline)           |
+| Sets by exercise_id     | ~1,000                     | ~38KB (**EXCEEDS** 8KB limit) |
+| Rep summaries by set_id | ~3,000                     | ~114KB (**far exceeds**)      |
 
 For 200+ sessions, the sets and rep_summaries queries **will fail**. This is a blocking bug for large training histories.
 
@@ -1561,19 +1561,19 @@ Push requires EMBER tier. Pull has no subscription check. Should be documented a
 
 #### 3.4.6 Pull Findings Summary
 
-| Finding | Severity | Status |
-|---------|----------|--------|
-| Delta boundary uses immutable `started_at` | LOW | ADVISORY |
-| First pull (lastSync=0) returns all data correctly | -- | PASS |
-| UTC timestamps consistent end-to-end | -- | PASS |
-| No deleted record propagation | MEDIUM | FAIL |
-| No concurrent edit conflict detection | MEDIUM | FAIL |
-| Full nested hierarchy returned correctly | -- | PASS |
-| Routines/cycles full-sync every pull (wasteful) | LOW | ADVISORY |
-| `.in()` WILL exceed URL length for 200+ sessions | MEDIUM | FAIL |
-| 7 of 11 queries parallelizable but sequential | LOW | ADVISORY |
-| No rate limiting on pull | LOW | ADVISORY |
-| No subscription gate on pull | LOW | ADVISORY |
+| Finding                                            | Severity | Status   |
+| -------------------------------------------------- | -------- | -------- |
+| Delta boundary uses immutable `started_at`         | LOW      | ADVISORY |
+| First pull (lastSync=0) returns all data correctly | --       | PASS     |
+| UTC timestamps consistent end-to-end               | --       | PASS     |
+| No deleted record propagation                      | MEDIUM   | FAIL     |
+| No concurrent edit conflict detection              | MEDIUM   | FAIL     |
+| Full nested hierarchy returned correctly           | --       | PASS     |
+| Routines/cycles full-sync every pull (wasteful)    | LOW      | ADVISORY |
+| `.in()` WILL exceed URL length for 200+ sessions   | MEDIUM   | FAIL     |
+| 7 of 11 queries parallelizable but sequential      | LOW      | ADVISORY |
+| No rate limiting on pull                           | LOW      | ADVISORY |
+| No subscription gate on pull                       | LOW      | ADVISORY |
 
 ---
 
@@ -1581,31 +1581,31 @@ Push requires EMBER tier. Pull has no subscription check. Should be documented a
 
 #### HIGH -- Must fix before beta
 
-| ID | Issue | Endpoint | Fix |
-|----|-------|----------|-----|
-| SYNC-P01 | First-sync (200+ sessions) exceeds 10s timeout | push | Client-side chunking: max 50 sessions/push. No server changes. |
-| SYNC-P02 | No transaction wrapping; partial writes on timeout | push | Mitigate via SYNC-P01 (smaller payloads). Ensure mobile retries on 5xx. |
+| ID       | Issue                                              | Endpoint | Fix                                                                     |
+| -------- | -------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
+| SYNC-P01 | First-sync (200+ sessions) exceeds 10s timeout     | push     | Client-side chunking: max 50 sessions/push. No server changes.          |
+| SYNC-P02 | No transaction wrapping; partial writes on timeout | push     | Mitigate via SYNC-P01 (smaller payloads). Ensure mobile retries on 5xx. |
 
 #### MEDIUM -- Should fix for beta, must fix for GA
 
-| ID | Issue | Endpoint | Fix |
-|----|-------|----------|-----|
-| SYNC-P03 | `routine_exercises` non-atomic delete-then-insert | push | PostgreSQL function wrapping both in one transaction, called via `rpc()`. |
-| SYNC-P04 | `cycle_days` non-atomic delete-then-insert | push | Same approach; `cycle_days` already has `UNIQUE(cycle_id, day_number)`. |
-| SYNC-P05 | Deleted routines/cycles reappear via push (no tombstones) | pull | Soft-delete columns or `sync_deletions` log. Return `deletedIds` in pull. |
-| SYNC-P06 | No conflict detection for routines/cycles | both | Optimistic locking: add `version INT` column; reject stale pushes (409). |
-| SYNC-P07 | `.in()` URL length exceeded at 200+ sessions | pull | Chunk IDs into batches of 100 or use `supabase.rpc()` with UUID arrays. |
+| ID       | Issue                                                     | Endpoint | Fix                                                                       |
+| -------- | --------------------------------------------------------- | -------- | ------------------------------------------------------------------------- |
+| SYNC-P03 | `routine_exercises` non-atomic delete-then-insert         | push     | PostgreSQL function wrapping both in one transaction, called via `rpc()`. |
+| SYNC-P04 | `cycle_days` non-atomic delete-then-insert                | push     | Same approach; `cycle_days` already has `UNIQUE(cycle_id, day_number)`.   |
+| SYNC-P05 | Deleted routines/cycles reappear via push (no tombstones) | pull     | Soft-delete columns or `sync_deletions` log. Return `deletedIds` in pull. |
+| SYNC-P06 | No conflict detection for routines/cycles                 | both     | Optimistic locking: add `version INT` column; reject stale pushes (409).  |
+| SYNC-P07 | `.in()` URL length exceeded at 200+ sessions              | pull     | Chunk IDs into batches of 100 or use `supabase.rpc()` with UUID arrays.   |
 
 #### LOW -- Post-beta backlog
 
-| ID | Issue | Endpoint | Fix |
-|----|-------|----------|-----|
-| SYNC-P08 | `exercise_progress` race condition (no unique constraint) | push | Add `UNIQUE(session_id, exercise_name)`; convert to upsert. |
-| SYNC-P09 | `personal_records` race condition (no unique constraint) | push | Add `UNIQUE(user_id, exercise_name, record_type, achieved_at)`; upsert. |
-| SYNC-P10 | Routines/cycles full-sync every pull | pull | Add `updated_at` with triggers; use delta queries. |
-| SYNC-P11 | 7 parallelizable pull queries run sequentially | pull | `Promise.all` for independent queries (~40% latency cut). |
-| SYNC-P12 | No rate limiting on pull | pull | Add `checkRateLimit` (10 req/min). |
-| SYNC-P13 | No subscription gate on pull | pull | Document as design choice or add `requireSubscription('EMBER')`. |
+| ID       | Issue                                                     | Endpoint | Fix                                                                     |
+| -------- | --------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
+| SYNC-P08 | `exercise_progress` race condition (no unique constraint) | push     | Add `UNIQUE(session_id, exercise_name)`; convert to upsert.             |
+| SYNC-P09 | `personal_records` race condition (no unique constraint)  | push     | Add `UNIQUE(user_id, exercise_name, record_type, achieved_at)`; upsert. |
+| SYNC-P10 | Routines/cycles full-sync every pull                      | pull     | Add `updated_at` with triggers; use delta queries.                      |
+| SYNC-P11 | 7 parallelizable pull queries run sequentially            | pull     | `Promise.all` for independent queries (~40% latency cut).               |
+| SYNC-P12 | No rate limiting on pull                                  | pull     | Add `checkRateLimit` (10 req/min).                                      |
+| SYNC-P13 | No subscription gate on pull                              | pull     | Document as design choice or add `requireSubscription('EMBER')`.        |
 
 ---
 
