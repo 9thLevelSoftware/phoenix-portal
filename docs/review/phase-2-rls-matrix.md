@@ -9,18 +9,18 @@
 
 ## Summary
 
-| Metric | Count |
-|--------|-------|
-| Total tables in public schema | 37 |
-| Tables with RLS enabled | 37 |
-| Tables with zero policies (service-role only) | 2 |
-| Intentional public-read tables | 7 |
-| Security gaps found | 9 |
-| CRITICAL findings | 0 |
-| HIGH findings | 3 |
-| MEDIUM findings | 3 |
-| LOW findings | 2 |
-| INFO findings | 1 |
+| Metric                                        | Count |
+| --------------------------------------------- | ----- |
+| Total tables in public schema                 | 37    |
+| Tables with RLS enabled                       | 37    |
+| Tables with zero policies (service-role only) | 2     |
+| Intentional public-read tables                | 7     |
+| Security gaps found                           | 9     |
+| CRITICAL findings                             | 0     |
+| HIGH findings                                 | 3     |
+| MEDIUM findings                               | 3     |
+| LOW findings                                  | 2     |
+| INFO findings                                 | 1     |
 
 ---
 
@@ -40,94 +40,94 @@
 
 ### Core User Data
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 1 | `profiles` | YES | uid() = id | -- | uid() = id | -- | Created by `handle_new_user()` trigger (SECURITY DEFINER). No INSERT policy needed -- trigger runs as definer. No DELETE policy -- cascade from auth.users. Has duplicate policy names from migrations 00001 + 00002 (see GAP-08). |
-| 2 | `subscriptions` | YES | uid() | -- | -- | -- | SELECT only. All writes via Edge Functions (service-role). Realtime-enabled. |
+| #   | Table           | RLS | SELECT     | INSERT | UPDATE     | DELETE | Notes                                                                                                                                                                                                                              |
+| --- | --------------- | --- | ---------- | ------ | ---------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `profiles`      | YES | uid() = id | --     | uid() = id | --     | Created by `handle_new_user()` trigger (SECURITY DEFINER). No INSERT policy needed -- trigger runs as definer. No DELETE policy -- cascade from auth.users. Has duplicate policy names from migrations 00001 + 00002 (see GAP-08). |
+| 2   | `subscriptions` | YES | uid()      | --     | --         | --     | SELECT only. All writes via Edge Functions (service-role). Realtime-enabled.                                                                                                                                                       |
 
 ### Workout Data (Sync Targets)
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 3 | `workout_sessions` | YES | uid() | uid() | uid() | -- | UPDATE added in `20260222_session_notes.sql`. No DELETE policy (see GAP-01). |
-| 4 | `exercises` | YES | (select uid()) auth | (select uid()) auth | -- | -- | Denormalized user_id added in `20260304`. No UPDATE/DELETE (see GAP-02). |
-| 5 | `sets` | YES | (select uid()) | (select uid()) auth | -- | -- | Denormalized user_id from `20260228`. No UPDATE/DELETE (see GAP-02). |
-| 6 | `personal_records` | YES | uid() | -- | -- | -- | SELECT only. No INSERT policy (see GAP-03). |
-| 7 | `rep_summaries` | YES | (select uid()) | (select uid()) auth | -- | -- | Denormalized user_id from `20260228`. Premium data -- no tier gating at DB level (see GAP-04). |
-| 8 | `rep_telemetry` | YES | (select uid()) | (select uid()) auth | -- | -- | Denormalized user_id from `20260228`. Premium data -- no tier gating at DB level (see GAP-04). |
-| 9 | `exercise_progress` | YES | uid() | uid() | -- | -- | SELECT + INSERT only. No UPDATE/DELETE. |
+| #   | Table               | RLS | SELECT              | INSERT              | UPDATE | DELETE | Notes                                                                                          |
+| --- | ------------------- | --- | ------------------- | ------------------- | ------ | ------ | ---------------------------------------------------------------------------------------------- |
+| 3   | `workout_sessions`  | YES | uid()               | uid()               | uid()  | --     | UPDATE added in `20260222_session_notes.sql`. No DELETE policy (see GAP-01).                   |
+| 4   | `exercises`         | YES | (select uid()) auth | (select uid()) auth | --     | --     | Denormalized user_id added in `20260304`. No UPDATE/DELETE (see GAP-02).                       |
+| 5   | `sets`              | YES | (select uid())      | (select uid()) auth | --     | --     | Denormalized user_id from `20260228`. No UPDATE/DELETE (see GAP-02).                           |
+| 6   | `personal_records`  | YES | uid()               | --                  | --     | --     | SELECT only. No INSERT policy (see GAP-03).                                                    |
+| 7   | `rep_summaries`     | YES | (select uid())      | (select uid()) auth | --     | --     | Denormalized user_id from `20260228`. Premium data -- no tier gating at DB level (see GAP-04). |
+| 8   | `rep_telemetry`     | YES | (select uid())      | (select uid()) auth | --     | --     | Denormalized user_id from `20260228`. Premium data -- no tier gating at DB level (see GAP-04). |
+| 9   | `exercise_progress` | YES | uid()               | uid()               | --     | --     | SELECT + INSERT only. No UPDATE/DELETE.                                                        |
 
 ### Routine & Cycle Builder
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 10 | `routines` | YES | uid() | uid() | uid() | uid() | Full CRUD. Well-protected. |
-| 11 | `routine_exercises` | YES | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | Uses `routine_id IN (SELECT id FROM routines WHERE user_id = auth.uid())`. Single FOR ALL policy. |
-| 12 | `training_cycles` | YES | uid() | uid() | uid() | uid() | Full CRUD. Well-protected. |
-| 13 | `cycle_days` | YES | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | Uses `cycle_id IN (SELECT id FROM training_cycles WHERE user_id = auth.uid())`. Single FOR ALL policy. |
+| #   | Table               | RLS | SELECT                | INSERT                | UPDATE                | DELETE                | Notes                                                                                                  |
+| --- | ------------------- | --- | --------------------- | --------------------- | --------------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
+| 10  | `routines`          | YES | uid()                 | uid()                 | uid()                 | uid()                 | Full CRUD. Well-protected.                                                                             |
+| 11  | `routine_exercises` | YES | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | Uses `routine_id IN (SELECT id FROM routines WHERE user_id = auth.uid())`. Single FOR ALL policy.      |
+| 12  | `training_cycles`   | YES | uid()                 | uid()                 | uid()                 | uid()                 | Full CRUD. Well-protected.                                                                             |
+| 13  | `cycle_days`        | YES | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | parent-join (FOR ALL) | Uses `cycle_id IN (SELECT id FROM training_cycles WHERE user_id = auth.uid())`. Single FOR ALL policy. |
 
 ### Community & Social
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 14 | `shared_routines` | YES | public auth | uid() | uid() | uid() | Public read for all authenticated users. DELETE added in `20260318_community_fixes.sql`. |
-| 15 | `shared_cycles` | YES | public auth | uid() | uid() | uid() | Public read for all authenticated users. DELETE added in `20260318_community_fixes.sql`. |
-| 16 | `community_votes` | YES | public auth | uid() | -- | uid() | Public read. No UPDATE (vote is boolean -- insert/delete only). Correct design. |
-| 17 | `community_comments` | YES | public auth (non-deleted) | uid() + tier-gated | uid() (5-min window) | uid() | INSERT requires EMBER/FLAME/INFERNO tier. SELECT filters `deleted_at IS NULL`. Rate-limited via trigger (5/hour). |
-| 18 | `saved_community_items` | YES | uid() | uid() | -- | uid() | No UPDATE needed (save/unsave is insert/delete). Correct design. |
-| 19 | `creator_follows` | YES | public (no role restriction) | uid() = follower_id | -- | uid() = follower_id | SELECT uses `USING (true)` without `TO authenticated` (see GAP-05). |
-| 20 | `content_reports` | YES | (select uid()) auth | (select uid()) auth | -- | -- | No UPDATE/DELETE -- reports are immutable. Correct design. |
-| 21 | `user_blocks` | YES | (select uid()) auth | (select uid()) auth | -- | (select uid()) auth | No UPDATE -- blocks are create/delete only. Correct design. |
+| #   | Table                   | RLS | SELECT                       | INSERT              | UPDATE               | DELETE              | Notes                                                                                                             |
+| --- | ----------------------- | --- | ---------------------------- | ------------------- | -------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 14  | `shared_routines`       | YES | public auth                  | uid()               | uid()                | uid()               | Public read for all authenticated users. DELETE added in `20260318_community_fixes.sql`.                          |
+| 15  | `shared_cycles`         | YES | public auth                  | uid()               | uid()                | uid()               | Public read for all authenticated users. DELETE added in `20260318_community_fixes.sql`.                          |
+| 16  | `community_votes`       | YES | public auth                  | uid()               | --                   | uid()               | Public read. No UPDATE (vote is boolean -- insert/delete only). Correct design.                                   |
+| 17  | `community_comments`    | YES | public auth (non-deleted)    | uid() + tier-gated  | uid() (5-min window) | uid()               | INSERT requires EMBER/FLAME/INFERNO tier. SELECT filters `deleted_at IS NULL`. Rate-limited via trigger (5/hour). |
+| 18  | `saved_community_items` | YES | uid()                        | uid()               | --                   | uid()               | No UPDATE needed (save/unsave is insert/delete). Correct design.                                                  |
+| 19  | `creator_follows`       | YES | public (no role restriction) | uid() = follower_id | --                   | uid() = follower_id | SELECT uses `USING (true)` without `TO authenticated` (see GAP-05).                                               |
+| 20  | `content_reports`       | YES | (select uid()) auth          | (select uid()) auth | --                   | --                  | No UPDATE/DELETE -- reports are immutable. Correct design.                                                        |
+| 21  | `user_blocks`           | YES | (select uid()) auth          | (select uid()) auth | --                   | (select uid()) auth | No UPDATE -- blocks are create/delete only. Correct design.                                                       |
 
 ### Gamification & RPG
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 22 | `rpg_attributes` | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | -- | No DELETE -- RPG attributes persist. Correct design. |
-| 23 | `earned_badges` | YES | (select uid()) auth | (select uid()) auth | -- | (select uid()) auth | No UPDATE -- badges are earned/revoked. Correct design. |
-| 24 | `gamification_stats` | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | -- | No DELETE -- stats accumulate. Correct design. |
-| 25 | `challenges` | YES | public auth | -- | -- | -- | Read-only for authenticated users. Seed data inserted via migration. No INSERT/UPDATE/DELETE for users. Correct design -- challenges are system-managed. |
-| 26 | `challenge_participants` | YES | uid() | uid() | -- | -- | No UPDATE/DELETE (see GAP-06). Users cannot leave challenges or update completion. |
+| #   | Table                    | RLS | SELECT              | INSERT              | UPDATE              | DELETE              | Notes                                                                                                                                                    |
+| --- | ------------------------ | --- | ------------------- | ------------------- | ------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 22  | `rpg_attributes`         | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | --                  | No DELETE -- RPG attributes persist. Correct design.                                                                                                     |
+| 23  | `earned_badges`          | YES | (select uid()) auth | (select uid()) auth | --                  | (select uid()) auth | No UPDATE -- badges are earned/revoked. Correct design.                                                                                                  |
+| 24  | `gamification_stats`     | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | --                  | No DELETE -- stats accumulate. Correct design.                                                                                                           |
+| 25  | `challenges`             | YES | public auth         | --                  | --                  | --                  | Read-only for authenticated users. Seed data inserted via migration. No INSERT/UPDATE/DELETE for users. Correct design -- challenges are system-managed. |
+| 26  | `challenge_participants` | YES | uid()               | uid()               | --                  | --                  | No UPDATE/DELETE (see GAP-06). Users cannot leave challenges or update completion.                                                                       |
 
 ### User Settings & Onboarding
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 27 | `user_onboarding` | YES | uid() | uid() | uid() | -- | No DELETE -- onboarding state persists. Correct design. |
-| 28 | `user_goals` | YES | uid() | uid() | uid() | uid() | Full CRUD. Goal limit enforced via `check_goal_limit()` trigger (FREE=1, paid=3). |
-| 29 | `deletion_requests` | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | -- | No DELETE -- cancellation is via UPDATE to 'cancelled' status. Correct design. |
+| #   | Table               | RLS | SELECT              | INSERT              | UPDATE              | DELETE | Notes                                                                             |
+| --- | ------------------- | --- | ------------------- | ------------------- | ------------------- | ------ | --------------------------------------------------------------------------------- |
+| 27  | `user_onboarding`   | YES | uid()               | uid()               | uid()               | --     | No DELETE -- onboarding state persists. Correct design.                           |
+| 28  | `user_goals`        | YES | uid()               | uid()               | uid()               | uid()  | Full CRUD. Goal limit enforced via `check_goal_limit()` trigger (FREE=1, paid=3). |
+| 29  | `deletion_requests` | YES | (select uid()) auth | (select uid()) auth | (select uid()) auth | --     | No DELETE -- cancellation is via UPDATE to 'cancelled' status. Correct design.    |
 
 ### Integrations & Sync
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 30 | `user_integrations` | YES | uid() | uid() | uid() | uid() | Full CRUD. Token columns removed in `20260227_oauth_security.sql` (migrated to oauth_tokens). |
-| 31 | `sync_queue` | YES | uid() | uid() | -- | -- | No UPDATE/DELETE for authenticated users. Service-role updates status. Correct design (see GAP-07). |
-| 32 | `rate_limit_tracking` | YES | auth.role() = 'authenticated' | -- | -- | -- | All writes via service-role (Edge Functions). Authenticated users can read rate limits. Correct design. |
-| 33 | `external_activities` | YES | uid() | uid() | uid() | uid() | Full CRUD. Well-protected. |
+| #   | Table                 | RLS | SELECT                        | INSERT | UPDATE | DELETE | Notes                                                                                                   |
+| --- | --------------------- | --- | ----------------------------- | ------ | ------ | ------ | ------------------------------------------------------------------------------------------------------- |
+| 30  | `user_integrations`   | YES | uid()                         | uid()  | uid()  | uid()  | Full CRUD. Token columns removed in `20260227_oauth_security.sql` (migrated to oauth_tokens).           |
+| 31  | `sync_queue`          | YES | uid()                         | uid()  | --     | --     | No UPDATE/DELETE for authenticated users. Service-role updates status. Correct design (see GAP-07).     |
+| 32  | `rate_limit_tracking` | YES | auth.role() = 'authenticated' | --     | --     | --     | All writes via service-role (Edge Functions). Authenticated users can read rate limits. Correct design. |
+| 33  | `external_activities` | YES | uid()                         | uid()  | uid()  | uid()  | Full CRUD. Well-protected.                                                                              |
 
 ### OAuth Security (Service-Role Only)
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 34 | `oauth_tokens` | YES | -- (svc) | -- (svc) | -- (svc) | -- (svc) | INTENTIONAL: Zero policies. RLS enabled but no policies = deny all for anon/authenticated. Service-role bypasses RLS. Stores sensitive OAuth credentials. |
-| 35 | `oauth_states` | YES | -- (svc) | -- (svc) | -- (svc) | -- (svc) | INTENTIONAL: Zero policies. CSRF state tokens with 10-minute expiry. Server-only access. |
+| #   | Table          | RLS | SELECT   | INSERT   | UPDATE   | DELETE   | Notes                                                                                                                                                     |
+| --- | -------------- | --- | -------- | -------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 34  | `oauth_tokens` | YES | -- (svc) | -- (svc) | -- (svc) | -- (svc) | INTENTIONAL: Zero policies. RLS enabled but no policies = deny all for anon/authenticated. Service-role bypasses RLS. Stores sensitive OAuth credentials. |
+| 35  | `oauth_states` | YES | -- (svc) | -- (svc) | -- (svc) | -- (svc) | INTENTIONAL: Zero policies. CSRF state tokens with 10-minute expiry. Server-only access.                                                                  |
 
 ### Analytics (New - 2026-03-18)
 
-| # | Table | RLS | SELECT | INSERT | UPDATE | DELETE | Notes |
-|---|-------|-----|--------|--------|--------|--------|-------|
-| 36 | `user_insights` | YES | uid() | svc (jwt role check) | svc (jwt role check) | svc (jwt role check) | SELECT for own insights. FOR ALL policy gated by `auth.jwt() ->> 'role' = 'service_role'` for writes. |
-| 37 | `community_benchmarks` | YES | public (no role restriction) | svc (jwt role check) | svc (jwt role check) | svc (jwt role check) | Public read (anonymized aggregate data). FOR ALL policy for service-role writes. SELECT uses `USING (true)` without `TO authenticated` (see GAP-05). |
+| #   | Table                  | RLS | SELECT                       | INSERT               | UPDATE               | DELETE               | Notes                                                                                                                                                |
+| --- | ---------------------- | --- | ---------------------------- | -------------------- | -------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 36  | `user_insights`        | YES | uid()                        | svc (jwt role check) | svc (jwt role check) | svc (jwt role check) | SELECT for own insights. FOR ALL policy gated by `auth.jwt() ->> 'role' = 'service_role'` for writes.                                                |
+| 37  | `community_benchmarks` | YES | public (no role restriction) | svc (jwt role check) | svc (jwt role check) | svc (jwt role check) | Public read (anonymized aggregate data). FOR ALL policy for service-role writes. SELECT uses `USING (true)` without `TO authenticated` (see GAP-05). |
 
 ---
 
 ## Views (Not Subject to RLS Directly)
 
-| View | Underlying Tables | Notes |
-|------|-------------------|-------|
-| `telemetry_points` | `rep_telemetry` | Alias view (`SELECT * FROM rep_telemetry`). Inherits rep_telemetry RLS. |
-| `creator_stats` | `profiles`, `shared_routines`, `shared_cycles` | Aggregated view. RLS applied to underlying tables during query execution. |
+| View               | Underlying Tables                              | Notes                                                                     |
+| ------------------ | ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `telemetry_points` | `rep_telemetry`                                | Alias view (`SELECT * FROM rep_telemetry`). Inherits rep_telemetry RLS.   |
+| `creator_stats`    | `profiles`, `shared_routines`, `shared_cycles` | Aggregated view. RLS applied to underlying tables during query execution. |
 
 ---
 
@@ -223,7 +223,7 @@ CREATE POLICY "Premium users can view rep summaries"
     AND public.user_subscription_tier() IN ('EMBER', 'FLAME', 'INFERNO')
   );
 ```
-2. **(Alternative) Accept as design decision:** Document that premium gating is client-side only and accept the risk that technically sophisticated users can bypass it. This is a common pattern in B2C apps where the client-side UX is the primary enforcement mechanism.
+1. **(Alternative) Accept as design decision:** Document that premium gating is client-side only and accept the risk that technically sophisticated users can bypass it. This is a common pattern in B2C apps where the client-side UX is the primary enforcement mechanism.
 
 **Note:** The same pattern applies to `exercise_progress` -- analytics data accessible to all tiers at DB level. Evaluate whether this is also premium content.
 
@@ -372,14 +372,14 @@ The following tables still use bare `auth.uid()` without the `(select ...)` wrap
 
 ## Subscription Tier Enforcement Summary
 
-| Enforcement Point | Location | Mechanism |
-|-------------------|----------|-----------|
-| Comment posting | `community_comments` INSERT policy | `user_subscription_tier() IN ('EMBER', 'FLAME', 'INFERNO')` -- DB-level |
-| Goal limit | `user_goals` INSERT trigger | `check_goal_limit()` trigger -- DB-level (FREE=1, paid=3) |
-| Biomechanics data | Client-side only | `SubscriptionGate` component -- NO DB-level enforcement |
-| Analytics features | Client-side only | `SubscriptionGate` component -- NO DB-level enforcement |
-| Session replay | Client-side only | `SubscriptionGate` component -- NO DB-level enforcement |
-| Integrations | Client-side only | `SubscriptionGate` component -- NO DB-level enforcement |
+| Enforcement Point  | Location                           | Mechanism                                                               |
+| ------------------ | ---------------------------------- | ----------------------------------------------------------------------- |
+| Comment posting    | `community_comments` INSERT policy | `user_subscription_tier() IN ('EMBER', 'FLAME', 'INFERNO')` -- DB-level |
+| Goal limit         | `user_goals` INSERT trigger        | `check_goal_limit()` trigger -- DB-level (FREE=1, paid=3)               |
+| Biomechanics data  | Client-side only                   | `SubscriptionGate` component -- NO DB-level enforcement                 |
+| Analytics features | Client-side only                   | `SubscriptionGate` component -- NO DB-level enforcement                 |
+| Session replay     | Client-side only                   | `SubscriptionGate` component -- NO DB-level enforcement                 |
+| Integrations       | Client-side only                   | `SubscriptionGate` component -- NO DB-level enforcement                 |
 
 **Assessment:** Only 2 of 6 premium features are enforced at the database level. The remaining 4 rely entirely on client-side gating, which can be bypassed by any user who can make direct Supabase API calls (the anon key is embedded in the frontend JavaScript bundle). See GAP-04 for details.
 
@@ -389,14 +389,14 @@ The following tables still use bare `auth.uid()` without the `(select ...)` wrap
 
 The following functions run with elevated privileges (owner's permissions, not caller's):
 
-| Function | Purpose | Risk Assessment |
-|----------|---------|-----------------|
-| `user_subscription_tier()` | Returns current user's subscription tier | LOW -- reads only, uses `auth.uid()` for scoping |
-| `check_comment_rate_limit()` | Enforces 5 comments/hour limit | LOW -- trigger-only, reads comment count |
-| `check_goal_limit()` | Enforces goal count per tier | LOW -- trigger-only, reads goal count |
-| `update_comment_count()` | Maintains denormalized comment_count | LOW -- trigger-only, increments/decrements counters |
-| `update_vote_count()` | Maintains denormalized vote_count | LOW -- trigger-only, increments/decrements counters |
-| `handle_new_user()` | Auto-creates profile on signup | MEDIUM -- INSERTs into profiles, but uses `ON CONFLICT DO NOTHING` and is limited to `auth.users` trigger |
+| Function                     | Purpose                                  | Risk Assessment                                                                                           |
+| ---------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `user_subscription_tier()`   | Returns current user's subscription tier | LOW -- reads only, uses `auth.uid()` for scoping                                                          |
+| `check_comment_rate_limit()` | Enforces 5 comments/hour limit           | LOW -- trigger-only, reads comment count                                                                  |
+| `check_goal_limit()`         | Enforces goal count per tier             | LOW -- trigger-only, reads goal count                                                                     |
+| `update_comment_count()`     | Maintains denormalized comment_count     | LOW -- trigger-only, increments/decrements counters                                                       |
+| `update_vote_count()`        | Maintains denormalized vote_count        | LOW -- trigger-only, increments/decrements counters                                                       |
+| `handle_new_user()`          | Auto-creates profile on signup           | MEDIUM -- INSERTs into profiles, but uses `ON CONFLICT DO NOTHING` and is limited to `auth.users` trigger |
 
 All SECURITY DEFINER functions are trigger-bound or query-helpers, limiting their attack surface. None accept arbitrary user input beyond what the trigger provides.
 
@@ -410,64 +410,64 @@ No critical RLS findings. All tables have RLS enabled. No tables are fully open 
 
 ### HIGH (3)
 
-| ID | Finding | Tables | Action Required |
-|----|---------|--------|----------------|
-| GAP-06 | Missing DELETE/UPDATE on challenge_participants | `challenge_participants` | Add policies if withdrawal/completion is a feature |
-| GAP-08 | Duplicate policy names on profiles | `profiles` | Drop legacy policy names from 00001 |
-| GAP-09 | Dead-code service-role FOR ALL policies | `user_insights`, `community_benchmarks` | Remove misleading policies, add comments |
+| ID     | Finding                                         | Tables                                  | Action Required                                    |
+| ------ | ----------------------------------------------- | --------------------------------------- | -------------------------------------------------- |
+| GAP-06 | Missing DELETE/UPDATE on challenge_participants | `challenge_participants`                | Add policies if withdrawal/completion is a feature |
+| GAP-08 | Duplicate policy names on profiles              | `profiles`                              | Drop legacy policy names from 00001                |
+| GAP-09 | Dead-code service-role FOR ALL policies         | `user_insights`, `community_benchmarks` | Remove misleading policies, add comments           |
 
 ### MEDIUM (3)
 
-| ID | Finding | Tables | Action Required |
-|----|---------|--------|----------------|
-| GAP-03 | personal_records has no INSERT policy | `personal_records` | Add INSERT policy for defense-in-depth |
-| GAP-04 | Premium data not tier-gated at DB level | `rep_summaries`, `rep_telemetry` | Add tier-gated SELECT policies or accept risk |
-| GAP-05 | Policies missing TO authenticated restriction | `creator_follows`, `community_benchmarks` | Add TO authenticated to SELECT policies |
+| ID     | Finding                                       | Tables                                    | Action Required                               |
+| ------ | --------------------------------------------- | ----------------------------------------- | --------------------------------------------- |
+| GAP-03 | personal_records has no INSERT policy         | `personal_records`                        | Add INSERT policy for defense-in-depth        |
+| GAP-04 | Premium data not tier-gated at DB level       | `rep_summaries`, `rep_telemetry`          | Add tier-gated SELECT policies or accept risk |
+| GAP-05 | Policies missing TO authenticated restriction | `creator_follows`, `community_benchmarks` | Add TO authenticated to SELECT policies       |
 
 ### LOW (2)
 
-| ID | Finding | Tables | Action Required |
-|----|---------|--------|----------------|
-| GAP-01 | No DELETE policy on workout_sessions | `workout_sessions` | Add if individual session deletion is a feature |
-| GAP-02 | No UPDATE/DELETE on exercises/sets | `exercises`, `sets` | Document as intentional (immutable sync data) |
+| ID     | Finding                              | Tables              | Action Required                                 |
+| ------ | ------------------------------------ | ------------------- | ----------------------------------------------- |
+| GAP-01 | No DELETE policy on workout_sessions | `workout_sessions`  | Add if individual session deletion is a feature |
+| GAP-02 | No UPDATE/DELETE on exercises/sets   | `exercises`, `sets` | Document as intentional (immutable sync data)   |
 
 ### INFO (1)
 
-| ID | Finding | Tables | Action Required |
-|----|---------|--------|----------------|
+| ID     | Finding                          | Tables       | Action Required                                   |
+| ------ | -------------------------------- | ------------ | ------------------------------------------------- |
 | GAP-07 | sync_queue missing documentation | `sync_queue` | Add table comment documenting service-role writes |
 
 ---
 
 ## Migration Files Reviewed
 
-| File | Tables Affected | Key RLS Operations |
-|------|----------------|-------------------|
-| `00001_create_subscriptions.sql` | profiles, subscriptions | Initial RLS + policies |
-| `00002_base_schema.sql` | routines, training_cycles, workout_sessions, exercises, sets, personal_records, rep_summaries, rep_telemetry, shared_routines, shared_cycles, community_votes, saved_community_items | Initial RLS + policies, telemetry_points view |
-| `20260216_integrations.sql` | user_integrations, sync_queue, rate_limit_tracking, external_activities | Full CRUD policies |
-| `20260217_phase10_tables.sql` | routine_exercises, cycle_days, challenges, challenge_participants | FOR ALL policies, public read challenges |
-| `20260218_phase11_comments.sql` | community_comments | Tier-gated INSERT, 5-min edit window, soft delete |
-| `20260219_phase11_goals.sql` | user_goals | Full CRUD, goal limit trigger |
-| `20260220_phase11_onboarding.sql` | user_onboarding | SELECT/INSERT/UPDATE |
-| `20260221_exercise_progress_and_creator_stats.sql` | exercise_progress | SELECT/INSERT, creator_stats view |
-| `20260222120000_session_notes.sql` | workout_sessions | Added UPDATE policy |
-| `20260222_creator_follows.sql` | creator_follows | Public SELECT, follower-scoped INSERT/DELETE |
-| `20260227_oauth_security.sql` | oauth_tokens, oauth_states | Zero policies (service-role only) |
-| `20260228_rls_denormalization.sql` | sets, rep_summaries, rep_telemetry | Denormalized user_id, replaced multi-hop policies |
-| `20260301_deletion_support.sql` | deletion_requests, community_comments, shared_routines, shared_cycles | GDPR deletion, CASCADE to SET NULL |
-| `20260302120000_sync_compat_rpg_gamification.sql` | rpg_attributes, earned_badges, gamification_stats | Initial policies (later replaced) |
-| `20260302130000_sync_compat_superset_perset.sql` | routine_exercises, sets, workout_sessions | Column additions only |
-| `20260302_community_safety.sql` | content_reports, user_blocks | SELECT/INSERT policies, blocker-scoped |
-| `20260303_revenuecat_schema_migration.sql` | subscriptions | Schema evolution, no RLS changes |
-| `20260304120000_mode_wire_format_migration.sql` | routine_exercises, workout_sessions | Data migration only |
-| `20260304130000_sync_compat_quality_fixes.sql` | rpg_attributes, earned_badges, gamification_stats | Replaced with (select auth.uid()) + TO authenticated |
-| `20260304_exercises_denorm_insert_rls.sql` | exercises, sets, rep_summaries, rep_telemetry | Denormalized exercises.user_id, added INSERT policies |
-| `20260315_vote_count_trigger.sql` | community_votes | Trigger only, no RLS changes |
-| `20260316_align_tier_names.sql` | subscriptions, community_comments | Tier name alignment |
-| `20260317_paddle_schema_fix.sql` | subscriptions | Schema evolution, no RLS changes |
-| `20260317143000_routine_exercise_bodyweight_duration.sql` | routine_exercises | Column additions only |
-| `20260318_community_fixes.sql` | shared_routines, shared_cycles, community_comments, profiles | Added DELETE policies, FK fixes, comment tier fix |
-| `20260318_insights_benchmarks.sql` | user_insights, community_benchmarks | New tables with service-role patterns |
-| `20260318_demo_data_seed.sql` | exercises, personal_records, workout_sessions, rep_summaries | Data seed only |
-| `20260318120000_fix_period_end_nullable.sql` | subscriptions | Schema fix only |
+| File                                                      | Tables Affected                                                                                                                                                                      | Key RLS Operations                                    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `00001_create_subscriptions.sql`                          | profiles, subscriptions                                                                                                                                                              | Initial RLS + policies                                |
+| `00002_base_schema.sql`                                   | routines, training_cycles, workout_sessions, exercises, sets, personal_records, rep_summaries, rep_telemetry, shared_routines, shared_cycles, community_votes, saved_community_items | Initial RLS + policies, telemetry_points view         |
+| `20260216_integrations.sql`                               | user_integrations, sync_queue, rate_limit_tracking, external_activities                                                                                                              | Full CRUD policies                                    |
+| `20260217_phase10_tables.sql`                             | routine_exercises, cycle_days, challenges, challenge_participants                                                                                                                    | FOR ALL policies, public read challenges              |
+| `20260218_phase11_comments.sql`                           | community_comments                                                                                                                                                                   | Tier-gated INSERT, 5-min edit window, soft delete     |
+| `20260219_phase11_goals.sql`                              | user_goals                                                                                                                                                                           | Full CRUD, goal limit trigger                         |
+| `20260220_phase11_onboarding.sql`                         | user_onboarding                                                                                                                                                                      | SELECT/INSERT/UPDATE                                  |
+| `20260221_exercise_progress_and_creator_stats.sql`        | exercise_progress                                                                                                                                                                    | SELECT/INSERT, creator_stats view                     |
+| `20260222120000_session_notes.sql`                        | workout_sessions                                                                                                                                                                     | Added UPDATE policy                                   |
+| `20260222_creator_follows.sql`                            | creator_follows                                                                                                                                                                      | Public SELECT, follower-scoped INSERT/DELETE          |
+| `20260227_oauth_security.sql`                             | oauth_tokens, oauth_states                                                                                                                                                           | Zero policies (service-role only)                     |
+| `20260228_rls_denormalization.sql`                        | sets, rep_summaries, rep_telemetry                                                                                                                                                   | Denormalized user_id, replaced multi-hop policies     |
+| `20260301_deletion_support.sql`                           | deletion_requests, community_comments, shared_routines, shared_cycles                                                                                                                | GDPR deletion, CASCADE to SET NULL                    |
+| `20260302120000_sync_compat_rpg_gamification.sql`         | rpg_attributes, earned_badges, gamification_stats                                                                                                                                    | Initial policies (later replaced)                     |
+| `20260302130000_sync_compat_superset_perset.sql`          | routine_exercises, sets, workout_sessions                                                                                                                                            | Column additions only                                 |
+| `20260302_community_safety.sql`                           | content_reports, user_blocks                                                                                                                                                         | SELECT/INSERT policies, blocker-scoped                |
+| `20260303_revenuecat_schema_migration.sql`                | subscriptions                                                                                                                                                                        | Schema evolution, no RLS changes                      |
+| `20260304120000_mode_wire_format_migration.sql`           | routine_exercises, workout_sessions                                                                                                                                                  | Data migration only                                   |
+| `20260304130000_sync_compat_quality_fixes.sql`            | rpg_attributes, earned_badges, gamification_stats                                                                                                                                    | Replaced with (select auth.uid()) + TO authenticated  |
+| `20260304_exercises_denorm_insert_rls.sql`                | exercises, sets, rep_summaries, rep_telemetry                                                                                                                                        | Denormalized exercises.user_id, added INSERT policies |
+| `20260315_vote_count_trigger.sql`                         | community_votes                                                                                                                                                                      | Trigger only, no RLS changes                          |
+| `20260316_align_tier_names.sql`                           | subscriptions, community_comments                                                                                                                                                    | Tier name alignment                                   |
+| `20260317_paddle_schema_fix.sql`                          | subscriptions                                                                                                                                                                        | Schema evolution, no RLS changes                      |
+| `20260317143000_routine_exercise_bodyweight_duration.sql` | routine_exercises                                                                                                                                                                    | Column additions only                                 |
+| `20260318_community_fixes.sql`                            | shared_routines, shared_cycles, community_comments, profiles                                                                                                                         | Added DELETE policies, FK fixes, comment tier fix     |
+| `20260318_insights_benchmarks.sql`                        | user_insights, community_benchmarks                                                                                                                                                  | New tables with service-role patterns                 |
+| `20260318_demo_data_seed.sql`                             | exercises, personal_records, workout_sessions, rep_summaries                                                                                                                         | Data seed only                                        |
+| `20260318120000_fix_period_end_nullable.sql`              | subscriptions                                                                                                                                                                        | Schema fix only                                       |

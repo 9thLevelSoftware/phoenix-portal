@@ -80,11 +80,11 @@ The handler reads these secrets at runtime. Confirm they are set in the
 Supabase dashboard under **Edge Functions > paddle-webhooks > Secrets**, or via
 the CLI:
 
-| Variable | Purpose |
-|---|---|
-| `PADDLE_WEBHOOK_SECRET` | HMAC-SHA256 secret for signature verification |
-| `PADDLE_EMBER_PRICE_IDS` | Comma-separated Paddle price IDs that map to the EMBER tier |
-| `PADDLE_FLAME_PRICE_IDS` | Comma-separated Paddle price IDs that map to the FLAME tier |
+| Variable                   | Purpose                                                       |
+| -------------------------- | ------------------------------------------------------------- |
+| `PADDLE_WEBHOOK_SECRET`    | HMAC-SHA256 secret for signature verification                 |
+| `PADDLE_EMBER_PRICE_IDS`   | Comma-separated Paddle price IDs that map to the EMBER tier   |
+| `PADDLE_FLAME_PRICE_IDS`   | Comma-separated Paddle price IDs that map to the FLAME tier   |
 | `PADDLE_INFERNO_PRICE_IDS` | Comma-separated Paddle price IDs that map to the INFERNO tier |
 
 If a price ID in your simulation payload does not appear in any of these
@@ -123,22 +123,22 @@ customize these fields to match your test scenario:
 
 **Fields you must set:**
 
-| Field path | What to enter | Why it matters |
-|---|---|---|
-| `data.custom_data.user_id` | A real portal user UUID | Links the subscription to a portal user. Without this, the handler returns 500. |
-| `data.items[0].price.id` | A Paddle price ID from your env vars | Determines the tier (EMBER/FLAME/INFERNO). Use an ID from `PADDLE_EMBER_PRICE_IDS`, etc. |
-| `data.status` | The Paddle subscription status | Maps to the portal status: `active`, `trialing`, `paused`, `canceled`, or `past_due`. |
+| Field path                 | What to enter                        | Why it matters                                                                           |
+| -------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `data.custom_data.user_id` | A real portal user UUID              | Links the subscription to a portal user. Without this, the handler returns 500.          |
+| `data.items[0].price.id`   | A Paddle price ID from your env vars | Determines the tier (EMBER/FLAME/INFERNO). Use an ID from `PADDLE_EMBER_PRICE_IDS`, etc. |
+| `data.status`              | The Paddle subscription status       | Maps to the portal status: `active`, `trialing`, `paused`, `canceled`, or `past_due`.    |
 
 **Fields to set for specific scenarios:**
 
-| Field path | When to set | Example value |
-|---|---|---|
-| `data.scheduled_change.action` | Cancel-at-period-end or pause scenarios | `"cancel"` or `"pause"` |
-| `data.scheduled_change.effective_at` | When the scheduled change takes effect | `"2026-04-01T00:00:00Z"` |
+| Field path                              | When to set                               | Example value            |
+| --------------------------------------- | ----------------------------------------- | ------------------------ |
+| `data.scheduled_change.action`          | Cancel-at-period-end or pause scenarios   | `"cancel"` or `"pause"`  |
+| `data.scheduled_change.effective_at`    | When the scheduled change takes effect    | `"2026-04-01T00:00:00Z"` |
 | `data.current_billing_period.starts_at` | Any scenario where you need billing dates | `"2026-03-01T00:00:00Z"` |
-| `data.current_billing_period.ends_at` | Any scenario where you need billing dates | `"2026-04-01T00:00:00Z"` |
-| `data.id` | Always (subscription ID) | `"sub_sim_01abc"` |
-| `data.customer_id` | Always (customer ID) | `"ctm_sim_01abc"` |
+| `data.current_billing_period.ends_at`   | Any scenario where you need billing dates | `"2026-04-01T00:00:00Z"` |
+| `data.id`                               | Always (subscription ID)                  | `"sub_sim_01abc"`        |
+| `data.customer_id`                      | Always (customer ID)                      | `"ctm_sim_01abc"`        |
 
 **Tip:** Use a consistent `data.id` prefix like `sub_sim_` for simulated
 subscriptions. This makes them easy to identify and clean up in the database.
@@ -169,22 +169,22 @@ order listed (each scenario builds on the state left by the previous one).
 
 ### Scenario table
 
-| # | Scenario | Event Type | Key Payload Fields | Expected DB State |
-|---|----------|-----------|-------------------|------------------|
-| 1 | New subscription (EMBER) | `subscription.created` | `status: "active"`, `items[0].price.id: <EMBER price>`, `custom_data.user_id: <UUID>` | `tier=EMBER`, `status=active`, `cancel_at_period_end=false` |
-| 2 | Upgrade to FLAME | `subscription.updated` | `status: "active"`, `items[0].price.id: <FLAME price>` | `tier=FLAME`, `status=active` |
-| 3 | Upgrade to INFERNO | `subscription.updated` | `status: "active"`, `items[0].price.id: <INFERNO price>` | `tier=INFERNO`, `status=active` |
-| 4 | Downgrade to EMBER | `subscription.updated` | `status: "active"`, `items[0].price.id: <EMBER price>` | `tier=EMBER`, `status=active` |
-| 5 | Cancel at period end | `subscription.canceled` | `status: "canceled"`, `scheduled_change.action: "cancel"` | `status=canceled`, `cancel_at_period_end=true` |
-| 6 | Pause subscription | `subscription.paused` | `status: "paused"` | `status=canceled` (mapped), `cancel_at_period_end=true` |
-| 7 | Resume after pause | `subscription.resumed` | `status: "active"` | `status=active`, `cancel_at_period_end=false` |
-| 8 | Past due (payment failed) | `subscription.updated` | `status: "past_due"` | `status=past_due` |
-| 9 | Recovery from past due | `subscription.updated` | `status: "active"` | `status=active` |
-| 10 | Trial started | `subscription.created` | `status: "trialing"`, `items[0].price.id: <EMBER price>` | `tier=EMBER`, `status=trialing` |
-| 11 | Trial converted | `subscription.activated` | `status: "active"` | `status=active` |
-| 12 | Duplicate event (idempotency) | Any (reuse exact `event_id` from a previous scenario) | Same payload as the previous run | HTTP 200 with `{ "received": true, "duplicate": true }`, DB unchanged |
-| 13 | Missing user_id | `subscription.created` | `custom_data: {}` (no `user_id`) | HTTP 500 with `"Missing user_id in custom_data"`, no DB change |
-| 14 | Unknown price ID | `subscription.updated` | `items[0].price.id: "pri_does_not_exist"` | `tier=FREE` (silent fallback -- see known issue 8.5 in billing-incident-response.md) |
+| #   | Scenario                      | Event Type                                            | Key Payload Fields                                                                    | Expected DB State                                                                    |
+| --- | ----------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1   | New subscription (EMBER)      | `subscription.created`                                | `status: "active"`, `items[0].price.id: <EMBER price>`, `custom_data.user_id: <UUID>` | `tier=EMBER`, `status=active`, `cancel_at_period_end=false`                          |
+| 2   | Upgrade to FLAME              | `subscription.updated`                                | `status: "active"`, `items[0].price.id: <FLAME price>`                                | `tier=FLAME`, `status=active`                                                        |
+| 3   | Upgrade to INFERNO            | `subscription.updated`                                | `status: "active"`, `items[0].price.id: <INFERNO price>`                              | `tier=INFERNO`, `status=active`                                                      |
+| 4   | Downgrade to EMBER            | `subscription.updated`                                | `status: "active"`, `items[0].price.id: <EMBER price>`                                | `tier=EMBER`, `status=active`                                                        |
+| 5   | Cancel at period end          | `subscription.canceled`                               | `status: "canceled"`, `scheduled_change.action: "cancel"`                             | `status=canceled`, `cancel_at_period_end=true`                                       |
+| 6   | Pause subscription            | `subscription.paused`                                 | `status: "paused"`                                                                    | `status=canceled` (mapped), `cancel_at_period_end=true`                              |
+| 7   | Resume after pause            | `subscription.resumed`                                | `status: "active"`                                                                    | `status=active`, `cancel_at_period_end=false`                                        |
+| 8   | Past due (payment failed)     | `subscription.updated`                                | `status: "past_due"`                                                                  | `status=past_due`                                                                    |
+| 9   | Recovery from past due        | `subscription.updated`                                | `status: "active"`                                                                    | `status=active`                                                                      |
+| 10  | Trial started                 | `subscription.created`                                | `status: "trialing"`, `items[0].price.id: <EMBER price>`                              | `tier=EMBER`, `status=trialing`                                                      |
+| 11  | Trial converted               | `subscription.activated`                              | `status: "active"`                                                                    | `status=active`                                                                      |
+| 12  | Duplicate event (idempotency) | Any (reuse exact `event_id` from a previous scenario) | Same payload as the previous run                                                      | HTTP 200 with `{ "received": true, "duplicate": true }`, DB unchanged                |
+| 13  | Missing user_id               | `subscription.created`                                | `custom_data: {}` (no `user_id`)                                                      | HTTP 500 with `"Missing user_id in custom_data"`, no DB change                       |
+| 14  | Unknown price ID              | `subscription.updated`                                | `items[0].price.id: "pri_does_not_exist"`                                             | `tier=FREE` (silent fallback -- see known issue 8.5 in billing-incident-response.md) |
 
 ### Detailed walkthrough: Scenario 1 (New subscription)
 
@@ -235,16 +235,16 @@ FROM subscriptions
 WHERE user_id = 'YOUR_TEST_USER_UUID';
 ```
 
-| Column | Expected value |
-|---|---|
-| `tier` | `EMBER` |
-| `status` | `active` |
-| `paddle_subscription_id` | `sub_sim_test01` |
-| `paddle_customer_id` | `ctm_sim_test01` |
-| `cancel_at_period_end` | `false` |
-| `current_period_start` | `2026-03-18T00:00:00Z` |
-| `current_period_end` | `2026-04-18T00:00:00Z` |
-| `last_event_id` | `evt_sim_001` |
+| Column                   | Expected value         |
+| ------------------------ | ---------------------- |
+| `tier`                   | `EMBER`                |
+| `status`                 | `active`               |
+| `paddle_subscription_id` | `sub_sim_test01`       |
+| `paddle_customer_id`     | `ctm_sim_test01`       |
+| `cancel_at_period_end`   | `false`                |
+| `current_period_start`   | `2026-03-18T00:00:00Z` |
+| `current_period_end`     | `2026-04-18T00:00:00Z` |
+| `last_event_id`          | `evt_sim_001`          |
 
 ### Detailed walkthrough: Scenario 12 (Duplicate event / idempotency)
 
@@ -439,32 +439,32 @@ portal database state. Refer to these when building simulation payloads.
 ### Paddle status to portal status
 
 | Paddle `data.status` | Portal `status` column | Portal access tier |
-|---|---|---|
-| `active` | `active` | Paid tier granted |
-| `trialing` | `trialing` | Paid tier granted |
-| `paused` | `canceled` | Falls back to FREE |
-| `canceled` | `canceled` | Falls back to FREE |
-| `past_due` | `past_due` | Falls back to FREE |
+| -------------------- | ---------------------- | ------------------ |
+| `active`             | `active`               | Paid tier granted  |
+| `trialing`           | `trialing`             | Paid tier granted  |
+| `paused`             | `canceled`             | Falls back to FREE |
+| `canceled`           | `canceled`             | Falls back to FREE |
+| `past_due`           | `past_due`             | Falls back to FREE |
 
 ### Price ID to tier
 
-| Environment variable | Portal `tier` value |
-|---|---|
-| `PADDLE_EMBER_PRICE_IDS` | `EMBER` |
-| `PADDLE_FLAME_PRICE_IDS` | `FLAME` |
-| `PADDLE_INFERNO_PRICE_IDS` | `INFERNO` |
-| No match | `FREE` |
+| Environment variable       | Portal `tier` value |
+| -------------------------- | ------------------- |
+| `PADDLE_EMBER_PRICE_IDS`   | `EMBER`             |
+| `PADDLE_FLAME_PRICE_IDS`   | `FLAME`             |
+| `PADDLE_INFERNO_PRICE_IDS` | `INFERNO`           |
+| No match                   | `FREE`              |
 
 ### Handled event types
 
-| Paddle event type | Typical scenario |
-|---|---|
-| `subscription.created` | User completes checkout for the first time |
-| `subscription.updated` | Upgrade, downgrade, renewal, or payment failure |
-| `subscription.canceled` | User cancels (may be scheduled for period end) |
-| `subscription.paused` | Subscription paused (maps to canceled in portal) |
-| `subscription.resumed` | Subscription resumed after pause |
-| `subscription.activated` | Trial converts to active (first real payment) |
+| Paddle event type        | Typical scenario                                 |
+| ------------------------ | ------------------------------------------------ |
+| `subscription.created`   | User completes checkout for the first time       |
+| `subscription.updated`   | Upgrade, downgrade, renewal, or payment failure  |
+| `subscription.canceled`  | User cancels (may be scheduled for period end)   |
+| `subscription.paused`    | Subscription paused (maps to canceled in portal) |
+| `subscription.resumed`   | Subscription resumed after pause                 |
+| `subscription.activated` | Trial converts to active (first real payment)    |
 
 ---
 

@@ -10,23 +10,23 @@
 
 ### 6.1: Bundle Size Analysis — NON-BLOCKER ✅
 
-| Route | Gzipped Size | Target | Status |
-|-------|-------------|--------|--------|
-| Landing (public, initial) | ~289 KB | <300 KB | PASS |
-| Dashboard (authenticated) | ~346 KB | <300 KB | OVER (lazy loaded beyond initial) |
-| Analytics (lazy) | 317 KB alone | N/A | Optimization opportunity |
+| Route                     | Gzipped Size | Target  | Status                            |
+| ------------------------- | ------------ | ------- | --------------------------------- |
+| Landing (public, initial) | ~289 KB      | <300 KB | PASS                              |
+| Dashboard (authenticated) | ~346 KB      | <300 KB | OVER (lazy loaded beyond initial) |
+| Analytics (lazy)          | 317 KB alone | N/A     | Optimization opportunity          |
 
 **Top chunks by size:**
 
-| Chunk | Raw | Gzipped |
-|-------|-----|---------|
-| Analytics | 929 KB | 317 KB |
-| vendor-recharts | 392 KB | 115 KB |
-| vendor-react | 226 KB | 73 KB |
-| index (app shell) | 158 KB | 50 KB |
-| vendor-radix | 150 KB | 48 KB |
-| vendor-supabase | 170 KB | 45 KB |
-| RoutineBuilder | 141 KB | 44 KB |
+| Chunk             | Raw    | Gzipped |
+| ----------------- | ------ | ------- |
+| Analytics         | 929 KB | 317 KB  |
+| vendor-recharts   | 392 KB | 115 KB  |
+| vendor-react      | 226 KB | 73 KB   |
+| index (app shell) | 158 KB | 50 KB   |
+| vendor-radix      | 150 KB | 48 KB   |
+| vendor-supabase   | 170 KB | 45 KB   |
+| RoutineBuilder    | 141 KB | 44 KB   |
 
 **Key finding:** Analytics.tsx (2,048 lines) produces the largest chunk. Decomposition (Phase 4.7, NON-BLOCKER) would significantly reduce this. All feature pages are lazy-loaded — users only download what they visit.
 
@@ -44,12 +44,12 @@
 
 **Import analysis (minimal cold start risk):**
 
-| Function | Imports | Expected Cold Start |
-|----------|---------|-------------------|
-| paddle-webhooks | supabase-js only | <500ms |
-| mobile-sync-push | supabase-js + 2 shared utils | <500ms |
-| mobile-sync-pull | supabase-js + 1 shared util | <500ms |
-| process-sync-queue | supabase-js + exponential-backoff + 2 shared utils | <800ms |
+| Function           | Imports                                            | Expected Cold Start |
+| ------------------ | -------------------------------------------------- | ------------------- |
+| paddle-webhooks    | supabase-js only                                   | <500ms              |
+| mobile-sync-push   | supabase-js + 2 shared utils                       | <500ms              |
+| mobile-sync-pull   | supabase-js + 1 shared util                        | <500ms              |
+| process-sync-queue | supabase-js + exponential-backoff + 2 shared utils | <800ms              |
 
 All critical functions have minimal imports — well under the 3s BLOCKER threshold. Live timing confirmation recommended.
 
@@ -117,16 +117,16 @@ Committed at `docs/runbooks/operations.md` (7 sections covering all specified sc
 
 ## Exit Criteria Assessment
 
-| Criteria | Classification | Status |
-|----------|---------------|--------|
-| Bundle size documented | NON-BLOCKER | ✅ PASS |
-| Lighthouse scores | NON-BLOCKER | ⏸️ Deferred |
-| CWV in "Good" range | NON-BLOCKER | ⏸️ Deferred |
-| Edge Function cold starts <3s | BLOCKER | ✅ PASS (code review) |
-| Database queries profiled | BLOCKER | ✅ PASS |
-| PWA verified | NON-BLOCKER | ✅ PASS |
-| Sentry confirmed working | BLOCKER | ✅ PASS (code review, live test recommended) |
-| Minimum viable alerting | BLOCKER | ⚠️ Accepted risk for beta |
-| Load test at beta scale | BLOCKER | ⏸️ Deferred |
-| CI/CD verified, rollback tested | BLOCKER | ✅ PASS |
-| Operational runbook committed | BLOCKER | ✅ PASS |
+| Criteria                        | Classification | Status                                      |
+| ------------------------------- | -------------- | ------------------------------------------- |
+| Bundle size documented          | NON-BLOCKER    | ✅ PASS                                      |
+| Lighthouse scores               | NON-BLOCKER    | ⏸️ Deferred                                 |
+| CWV in "Good" range             | NON-BLOCKER    | ⏸️ Deferred                                 |
+| Edge Function cold starts <3s   | BLOCKER        | ✅ PASS (code review)                        |
+| Database queries profiled       | BLOCKER        | ✅ PASS                                      |
+| PWA verified                    | NON-BLOCKER    | ✅ PASS                                      |
+| Sentry confirmed working        | BLOCKER        | ✅ PASS (code review, live test recommended) |
+| Minimum viable alerting         | BLOCKER        | ⚠️ Accepted risk for beta                   |
+| Load test at beta scale         | BLOCKER        | ⏸️ Deferred                                 |
+| CI/CD verified, rollback tested | BLOCKER        | ✅ PASS                                      |
+| Operational runbook committed   | BLOCKER        | ✅ PASS                                      |

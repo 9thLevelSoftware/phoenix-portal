@@ -240,38 +240,38 @@ Mobile sends metadata. Portal doesn't store; computes on push. **Not round-tripp
 
 ## CONFLICT-RESOLUTION MATRIX
 
-| Entity | Push | Pull | Outcome | Match |
-|--------|------|------|---------|-------|
-| Sessions | Upsert LWW | INSERT OR IGNORE | Asymmetric | ❌ |
-| Exercises | Upsert LWW | INSERT OR IGNORE | Asymmetric | ❌ |
-| Sets | Upsert LWW | INSERT OR IGNORE | Asymmetric | ❌ |
-| RepSummaries | Upsert LWW | INSERT OR IGNORE | Asymmetric | ❌ |
-| Routines | Upsert | INSERT OR IGNORE | Mobile-authoritative | ⚠️ |
-| Cycles | Upsert | INSERT OR IGNORE | Mobile-authoritative | ⚠️ |
-| RpgAttributes | Upsert user_id (server wins) | Server-wins | Portal-authoritative | ✅ |
-| GamificationStats | Upsert user_id (server wins) | Server-wins | Portal-authoritative | ✅ |
-| Badges | Upsert (user_id, badge_id) | INSERT OR IGNORE | Mixed | ⚠️ |
-| PersonalRecords | Insert-only | INSERT OR IGNORE | Append-only, may duplicate | ❌ |
-| ExternalActivities | Upsert (user_id, provider, externalId) | Merge TBD | Inconsistent | ⚠️ |
+| Entity             | Push                                   | Pull             | Outcome                    | Match |
+| ------------------ | -------------------------------------- | ---------------- | -------------------------- | ----- |
+| Sessions           | Upsert LWW                             | INSERT OR IGNORE | Asymmetric                 | ❌     |
+| Exercises          | Upsert LWW                             | INSERT OR IGNORE | Asymmetric                 | ❌     |
+| Sets               | Upsert LWW                             | INSERT OR IGNORE | Asymmetric                 | ❌     |
+| RepSummaries       | Upsert LWW                             | INSERT OR IGNORE | Asymmetric                 | ❌     |
+| Routines           | Upsert                                 | INSERT OR IGNORE | Mobile-authoritative       | ⚠️    |
+| Cycles             | Upsert                                 | INSERT OR IGNORE | Mobile-authoritative       | ⚠️    |
+| RpgAttributes      | Upsert user_id (server wins)           | Server-wins      | Portal-authoritative       | ✅     |
+| GamificationStats  | Upsert user_id (server wins)           | Server-wins      | Portal-authoritative       | ✅     |
+| Badges             | Upsert (user_id, badge_id)             | INSERT OR IGNORE | Mixed                      | ⚠️    |
+| PersonalRecords    | Insert-only                            | INSERT OR IGNORE | Append-only, may duplicate | ❌     |
+| ExternalActivities | Upsert (user_id, provider, externalId) | Merge TBD        | Inconsistent               | ⚠️    |
 
 ---
 
 ## INVARIANT DRIFT
 
-| Invariant | Portal | Mobile | Match |
-|-----------|--------|--------|-------|
-| Workout modes (6) | OLD_SCHOOL, ECHO, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY | Same via ProgramMode | ✅ |
-| WorkoutPhase | COMBINED, CONCENTRIC, ECCENTRIC | Same | ✅ |
-| Velocity zones (5) | EXPLOSIVE≥1.0, FAST≥0.75, MODERATE≥0.5, SLOW≥0.25, GRIND<0.25 | Same thresholds | ✅ |
-| Asymmetry threshold | 2% implicit | 2% client-side | ✅ |
-| Rate limit push | 10/min enforced | Mobile doesn't self-throttle | ⚠️ |
-| Rate limit pull | 20/min enforced | Mobile doesn't self-throttle | ⚠️ |
-| Payload cap | 10MB enforced | Mobile doesn't self-cap | ❌ |
-| Array caps | Sessions 10k, cycles 1k | Mobile doesn't self-cap | ❌ |
-| Subscription gate | EMBER+ server-only | Mobile doesn't gate | ✅ |
-| Cursor semantics | Composite (updated_at, id) base64 JSON | Mobile expects same | ✅ |
-| Entity pull order | sessions → routines → cycles → badges → stats | Same | ✅ |
-| Parity limit | >500 IDs skip silently | Mobile sends unlimited | ❌ |
+| Invariant           | Portal                                                        | Mobile                       | Match |
+| ------------------- | ------------------------------------------------------------- | ---------------------------- | ----- |
+| Workout modes (6)   | OLD_SCHOOL, ECHO, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY        | Same via ProgramMode         | ✅     |
+| WorkoutPhase        | COMBINED, CONCENTRIC, ECCENTRIC                               | Same                         | ✅     |
+| Velocity zones (5)  | EXPLOSIVE≥1.0, FAST≥0.75, MODERATE≥0.5, SLOW≥0.25, GRIND<0.25 | Same thresholds              | ✅     |
+| Asymmetry threshold | 2% implicit                                                   | 2% client-side               | ✅     |
+| Rate limit push     | 10/min enforced                                               | Mobile doesn't self-throttle | ⚠️    |
+| Rate limit pull     | 20/min enforced                                               | Mobile doesn't self-throttle | ⚠️    |
+| Payload cap         | 10MB enforced                                                 | Mobile doesn't self-cap      | ❌     |
+| Array caps          | Sessions 10k, cycles 1k                                       | Mobile doesn't self-cap      | ❌     |
+| Subscription gate   | EMBER+ server-only                                            | Mobile doesn't gate          | ✅     |
+| Cursor semantics    | Composite (updated_at, id) base64 JSON                        | Mobile expects same          | ✅     |
+| Entity pull order   | sessions → routines → cycles → badges → stats                 | Same                         | ✅     |
+| Parity limit        | >500 IDs skip silently                                        | Mobile sends unlimited       | ❌     |
 
 ---
 

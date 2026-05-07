@@ -9,17 +9,17 @@
 
 ## Files Reviewed
 
-| File | Role |
-|------|------|
-| `supabase/functions/paddle-update-subscription/index.ts` | Edge Function: tier change API |
-| `supabase/functions/paddle-cancel-subscription/index.ts` | Edge Function: cancellation API |
-| `supabase/functions/paddle-webhooks/index.ts` | Webhook handler: source of truth for DB state |
-| `src/lib/pricing.ts` | Tier pricing config (price IDs, amounts) |
-| `src/lib/paddle.ts` | Paddle types, mapping utilities, signature verification |
-| `src/lib/paddle-client.ts` | Client-side Paddle.js SDK wrapper |
-| `src/hooks/useSubscription.ts` | Client subscription state (TanStack Query + Realtime) |
-| `src/app/components/PricingPlans.tsx` | UI: pricing cards, upgrade/cancel actions |
-| `supabase/functions/_shared/requireSubscription.ts` | Server-side tier gating helper |
+| File                                                     | Role                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------- |
+| `supabase/functions/paddle-update-subscription/index.ts` | Edge Function: tier change API                          |
+| `supabase/functions/paddle-cancel-subscription/index.ts` | Edge Function: cancellation API                         |
+| `supabase/functions/paddle-webhooks/index.ts`            | Webhook handler: source of truth for DB state           |
+| `src/lib/pricing.ts`                                     | Tier pricing config (price IDs, amounts)                |
+| `src/lib/paddle.ts`                                      | Paddle types, mapping utilities, signature verification |
+| `src/lib/paddle-client.ts`                               | Client-side Paddle.js SDK wrapper                       |
+| `src/hooks/useSubscription.ts`                           | Client subscription state (TanStack Query + Realtime)   |
+| `src/app/components/PricingPlans.tsx`                    | UI: pricing cards, upgrade/cancel actions               |
+| `supabase/functions/_shared/requireSubscription.ts`      | Server-side tier gating helper                          |
 
 ---
 
@@ -27,22 +27,22 @@
 
 Final schema after all migrations (00001 + RevenueCat migration + Paddle schema fix + period-end nullable fix):
 
-| Column | Type | Nullable | Notes |
-|--------|------|----------|-------|
-| `id` | UUID | NO | PK, gen_random_uuid() |
-| `user_id` | UUID | NO | FK to auth.users, UNIQUE |
-| `paddle_customer_id` | TEXT | YES | ctm_XXXX |
-| `paddle_subscription_id` | TEXT | YES | sub_XXXX |
-| `tier` | TEXT | NO | CHECK: FREE, EMBER, FLAME, INFERNO |
-| `status` | TEXT | NO | CHECK: active, past_due, canceled, trialing, incomplete, none |
-| `price_id` | TEXT | YES | Paddle price ID (pri_XXXX) |
-| `current_period_start` | TIMESTAMPTZ | YES | Billing period start |
-| `current_period_end` | TIMESTAMPTZ | YES | Billing period end |
-| `cancel_at_period_end` | BOOLEAN | YES | DEFAULT FALSE |
-| `last_event_id` | TEXT | YES | Idempotency: last processed webhook event ID |
-| `environment` | TEXT | YES | DEFAULT 'PRODUCTION' |
-| `created_at` | TIMESTAMPTZ | YES | DEFAULT NOW() |
-| `updated_at` | TIMESTAMPTZ | YES | DEFAULT NOW() |
+| Column                   | Type        | Nullable | Notes                                                         |
+| ------------------------ | ----------- | -------- | ------------------------------------------------------------- |
+| `id`                     | UUID        | NO       | PK, gen_random_uuid()                                         |
+| `user_id`                | UUID        | NO       | FK to auth.users, UNIQUE                                      |
+| `paddle_customer_id`     | TEXT        | YES      | ctm_XXXX                                                      |
+| `paddle_subscription_id` | TEXT        | YES      | sub_XXXX                                                      |
+| `tier`                   | TEXT        | NO       | CHECK: FREE, EMBER, FLAME, INFERNO                            |
+| `status`                 | TEXT        | NO       | CHECK: active, past_due, canceled, trialing, incomplete, none |
+| `price_id`               | TEXT        | YES      | Paddle price ID (pri_XXXX)                                    |
+| `current_period_start`   | TIMESTAMPTZ | YES      | Billing period start                                          |
+| `current_period_end`     | TIMESTAMPTZ | YES      | Billing period end                                            |
+| `cancel_at_period_end`   | BOOLEAN     | YES      | DEFAULT FALSE                                                 |
+| `last_event_id`          | TEXT        | YES      | Idempotency: last processed webhook event ID                  |
+| `environment`            | TEXT        | YES      | DEFAULT 'PRODUCTION'                                          |
+| `created_at`             | TIMESTAMPTZ | YES      | DEFAULT NOW()                                                 |
+| `updated_at`             | TIMESTAMPTZ | YES      | DEFAULT NOW()                                                 |
 
 **RLS:** Users can SELECT their own row. Service-role key (used by webhook handler) bypasses RLS.
 **Realtime:** Enabled via `ALTER PUBLICATION supabase_realtime ADD TABLE subscriptions`.
@@ -153,16 +153,16 @@ Before calling Paddle, the Edge Function validates:
 
 #### Scenario A: EMBER -> FLAME (upgrade)
 
-| Step | Action | DB State |
-|------|--------|----------|
-| 0 | User is on EMBER monthly | tier=EMBER, status=active, price_id=pri_ember_monthly |
-| 1 | User clicks "Upgrade" on FLAME card | UI shows confirmation dialog: "Your payment method on file will be charged a prorated amount..." |
-| 2 | User confirms | `paddle-update-subscription` called with FLAME monthly price ID |
-| 3 | Edge Function validates: has active sub, price ID differs | Calls `PATCH /subscriptions/{id}` with new price ID |
-| 4 | Paddle charges prorated difference immediately | Returns 200 |
-| 5 | Edge Function returns `{ success: true }` | Toast: "Subscription updated!" |
-| 6 | Paddle fires `subscription.updated` webhook | Webhook handler: tier=FLAME, status=active, price_id=pri_flame_monthly |
-| 7 | Realtime event fires | `useSubscription` invalidates cache, UI shows FLAME |
+| Step | Action                                                    | DB State                                                                                         |
+| ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 0    | User is on EMBER monthly                                  | tier=EMBER, status=active, price_id=pri_ember_monthly                                            |
+| 1    | User clicks "Upgrade" on FLAME card                       | UI shows confirmation dialog: "Your payment method on file will be charged a prorated amount..." |
+| 2    | User confirms                                             | `paddle-update-subscription` called with FLAME monthly price ID                                  |
+| 3    | Edge Function validates: has active sub, price ID differs | Calls `PATCH /subscriptions/{id}` with new price ID                                              |
+| 4    | Paddle charges prorated difference immediately            | Returns 200                                                                                      |
+| 5    | Edge Function returns `{ success: true }`                 | Toast: "Subscription updated!"                                                                   |
+| 6    | Paddle fires `subscription.updated` webhook               | Webhook handler: tier=FLAME, status=active, price_id=pri_flame_monthly                           |
+| 7    | Realtime event fires                                      | `useSubscription` invalidates cache, UI shows FLAME                                              |
 
 **Expected final DB state:**
 ```
@@ -176,10 +176,10 @@ current_period_end: <original end> (unchanged within same period)
 
 #### Scenario B: FLAME -> EMBER (downgrade)
 
-| Step | Action | DB State |
-|------|--------|----------|
-| 0 | User is on FLAME monthly | tier=FLAME, status=active, price_id=pri_flame_monthly |
-| 1 | User attempts downgrade | **UI does not expose a downgrade button** |
+| Step | Action                   | DB State                                              |
+| ---- | ------------------------ | ----------------------------------------------------- |
+| 0    | User is on FLAME monthly | tier=FLAME, status=active, price_id=pri_flame_monthly |
+| 1    | User attempts downgrade  | **UI does not expose a downgrade button**             |
 
 **Current UI behavior (PricingPlans.tsx, line 291-296):** When the user's current tier is higher than the displayed card tier, the button shows "Included in your plan" (disabled). There is no downgrade path in the UI.
 
@@ -192,11 +192,11 @@ current_period_end: <original end> (unchanged within same period)
 
 #### Scenario C: FLAME monthly -> FLAME annual (billing period change)
 
-| Step | Action | DB State |
-|------|--------|----------|
-| 0 | User is on FLAME monthly (pri_flame_monthly) | tier=FLAME, status=active |
-| 1 | User toggles to "Annual" billing | Pricing cards show annual prices |
-| 2 | User clicks "Upgrade" on FLAME card | **This will NOT work** |
+| Step | Action                                       | DB State                         |
+| ---- | -------------------------------------------- | -------------------------------- |
+| 0    | User is on FLAME monthly (pri_flame_monthly) | tier=FLAME, status=active        |
+| 1    | User toggles to "Annual" billing             | Pricing cards show annual prices |
+| 2    | User clicks "Upgrade" on FLAME card          | **This will NOT work**           |
 
 **Issue:** The Edge Function checks `sub.price_id === newPriceId` (line 82) and returns "Already on this plan" if they match. Since the monthly and annual price IDs are different, this check would pass. However, `handleUpgrade` only fires when `isUpgradeEligible` is true AND the target tier is higher than the current tier.
 
@@ -366,47 +366,47 @@ Step 8: After period end
 
 ### Confirmed Working
 
-| ID | Finding | Status |
-|----|---------|--------|
-| F1 | JWT authentication on both Edge Functions | OK |
-| F2 | Upgrade flow (EMBER -> FLAME) with immediate proration | OK |
-| F3 | Cancel-at-period-end behavior with grace period | OK |
-| F4 | Webhook idempotency via `last_event_id` | OK |
-| F5 | Realtime subscription for automatic UI refresh | OK |
-| F6 | HMAC-SHA256 signature verification with timing-safe comparison | OK |
-| F7 | Paddle sandbox/production environment switching | OK |
-| F8 | Server-side gating (`requireSubscription`) correctly checks status | OK |
+| ID  | Finding                                                            | Status |
+| --- | ------------------------------------------------------------------ | ------ |
+| F1  | JWT authentication on both Edge Functions                          | OK     |
+| F2  | Upgrade flow (EMBER -> FLAME) with immediate proration             | OK     |
+| F3  | Cancel-at-period-end behavior with grace period                    | OK     |
+| F4  | Webhook idempotency via `last_event_id`                            | OK     |
+| F5  | Realtime subscription for automatic UI refresh                     | OK     |
+| F6  | HMAC-SHA256 signature verification with timing-safe comparison     | OK     |
+| F7  | Paddle sandbox/production environment switching                    | OK     |
+| F8  | Server-side gating (`requireSubscription`) correctly checks status | OK     |
 
 ### Gaps and Risks
 
-| ID | Severity | Finding | Recommendation |
-|----|----------|---------|----------------|
-| G1 | **Medium** | No downgrade path in UI. FLAME users cannot downgrade to EMBER without cancel + re-subscribe. | Decide if this is intentional. If not, add a downgrade button with Paddle's `prorated_immediately` mode (which handles credits). |
-| G2 | **Medium** | No same-tier billing period change (monthly <-> annual). UI shows "Current Plan" regardless of billing frequency. | Add detection: compare current price ID against monthly/annual variants. Show "Switch to Annual" or "Switch to Monthly" when appropriate. |
-| G3 | **Medium** | No "undo cancellation" / resume flow. Users who cancel during grace period cannot self-service reverse it. | Add a `paddle-resume-subscription` Edge Function that calls `PATCH /subscriptions/{id}` to remove the `scheduled_change`. Add a "Resume" button when `cancelAtPeriodEnd` is true. |
-| G4 | **Low-Medium** | `isPremium` in `useSubscription` returns true for canceled subscriptions (tier is still FLAME in DB). Components relying on `isPremium` instead of proper gating may show premium UI to expired users. | Either revert tier to FREE on `subscription.canceled` webhook, or audit all `isPremium` usage to ensure it's paired with a status check. |
-| G5 | **Low** | No reconciliation mechanism if webhooks fail persistently. Paddle retries help, but extended outages could leave DB stale. | Consider a periodic reconciliation job that calls Paddle's `GET /subscriptions` API and syncs any drift. |
-| G6 | **Low** | Edge Function does not validate price ID against known tiers before calling Paddle. Invalid price IDs produce generic error messages. | Add server-side validation: check `newPriceId` against `PADDLE_*_PRICE_IDS` env vars before calling Paddle. Return a specific 400 error for unknown price IDs. |
-| G7 | **Informational** | The `tier` column retains the last paid tier after cancellation (e.g., FLAME) rather than reverting to FREE. This is a design choice, not a bug, since access gating uses status. | Document this behavior. Ensure all future feature checks use status-aware gating, not `tier !== "FREE"`. |
+| ID  | Severity          | Finding                                                                                                                                                                                                | Recommendation                                                                                                                                                                    |
+| --- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | **Medium**        | No downgrade path in UI. FLAME users cannot downgrade to EMBER without cancel + re-subscribe.                                                                                                          | Decide if this is intentional. If not, add a downgrade button with Paddle's `prorated_immediately` mode (which handles credits).                                                  |
+| G2  | **Medium**        | No same-tier billing period change (monthly <-> annual). UI shows "Current Plan" regardless of billing frequency.                                                                                      | Add detection: compare current price ID against monthly/annual variants. Show "Switch to Annual" or "Switch to Monthly" when appropriate.                                         |
+| G3  | **Medium**        | No "undo cancellation" / resume flow. Users who cancel during grace period cannot self-service reverse it.                                                                                             | Add a `paddle-resume-subscription` Edge Function that calls `PATCH /subscriptions/{id}` to remove the `scheduled_change`. Add a "Resume" button when `cancelAtPeriodEnd` is true. |
+| G4  | **Low-Medium**    | `isPremium` in `useSubscription` returns true for canceled subscriptions (tier is still FLAME in DB). Components relying on `isPremium` instead of proper gating may show premium UI to expired users. | Either revert tier to FREE on `subscription.canceled` webhook, or audit all `isPremium` usage to ensure it's paired with a status check.                                          |
+| G5  | **Low**           | No reconciliation mechanism if webhooks fail persistently. Paddle retries help, but extended outages could leave DB stale.                                                                             | Consider a periodic reconciliation job that calls Paddle's `GET /subscriptions` API and syncs any drift.                                                                          |
+| G6  | **Low**           | Edge Function does not validate price ID against known tiers before calling Paddle. Invalid price IDs produce generic error messages.                                                                  | Add server-side validation: check `newPriceId` against `PADDLE_*_PRICE_IDS` env vars before calling Paddle. Return a specific 400 error for unknown price IDs.                    |
+| G7  | **Informational** | The `tier` column retains the last paid tier after cancellation (e.g., FLAME) rather than reverting to FREE. This is a design choice, not a bug, since access gating uses status.                      | Document this behavior. Ensure all future feature checks use status-aware gating, not `tier !== "FREE"`.                                                                          |
 
 ### Pre-existing Schema Issues
 
-| ID | Finding | Notes |
-|----|---------|-------|
-| S1 | Original migration created `stripe_customer_id` and `stripe_subscription_id` columns, which were removed during RevenueCat migration and replaced by Paddle columns. Column names in the webhook handler comment as "legacy Stripe column names" (line 223) is outdated -- they are now Paddle columns. | Cosmetic, no functional impact. |
-| S2 | The `subscriptions_status_check` constraint allows `incomplete` and `none` but the Paddle status mapper never produces `incomplete`. The `none` status comes from the default case in `mapPaddleStatusToSubscriptionStatus`. | No functional issue; the CHECK constraint is just permissive. |
+| ID  | Finding                                                                                                                                                                                                                                                                                                 | Notes                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| S1  | Original migration created `stripe_customer_id` and `stripe_subscription_id` columns, which were removed during RevenueCat migration and replaced by Paddle columns. Column names in the webhook handler comment as "legacy Stripe column names" (line 223) is outdated -- they are now Paddle columns. | Cosmetic, no functional impact.                               |
+| S2  | The `subscriptions_status_check` constraint allows `incomplete` and `none` but the Paddle status mapper never produces `incomplete`. The `none` status comes from the default case in `mapPaddleStatusToSubscriptionStatus`.                                                                            | No functional issue; the CHECK constraint is just permissive. |
 
 ---
 
 ## Test Matrix
 
-| Scenario | Edge Function | Paddle API | Webhook Event | Final DB State | UI State |
-|----------|--------------|------------|---------------|----------------|----------|
-| EMBER -> FLAME (upgrade) | paddle-update-subscription | PATCH /subscriptions/{id} | subscription.updated | tier=FLAME, status=active, cancel_at_period_end=false | "Current Plan" on FLAME |
-| FLAME -> EMBER (downgrade) | paddle-update-subscription | PATCH /subscriptions/{id} | subscription.updated | tier=EMBER, status=active | **Not reachable from UI** |
-| FLAME monthly -> annual | paddle-update-subscription | PATCH /subscriptions/{id} | subscription.updated | tier=FLAME, price_id=pri_flame_annual | **Not reachable from UI** |
-| Cancel FLAME | paddle-cancel-subscription | POST /subscriptions/{id}/cancel | subscription.updated (scheduled) | tier=FLAME, status=active, cancel_at_period_end=true | "Cancels on {date}" |
-| Period end after cancel | N/A (webhook-driven) | N/A | subscription.canceled | tier=FLAME, status=canceled | "Subscribe" buttons |
-| Resume after cancel | N/A | N/A | N/A | N/A | **Not implemented** |
-| FREE user tries update | paddle-update-subscription | N/A (rejected at validation) | N/A | No change | 400 "No active subscription found" |
-| Already on same plan | paddle-update-subscription | N/A (rejected at validation) | N/A | No change | 400 "Already on this plan" |
+| Scenario                   | Edge Function              | Paddle API                      | Webhook Event                    | Final DB State                                        | UI State                           |
+| -------------------------- | -------------------------- | ------------------------------- | -------------------------------- | ----------------------------------------------------- | ---------------------------------- |
+| EMBER -> FLAME (upgrade)   | paddle-update-subscription | PATCH /subscriptions/{id}       | subscription.updated             | tier=FLAME, status=active, cancel_at_period_end=false | "Current Plan" on FLAME            |
+| FLAME -> EMBER (downgrade) | paddle-update-subscription | PATCH /subscriptions/{id}       | subscription.updated             | tier=EMBER, status=active                             | **Not reachable from UI**          |
+| FLAME monthly -> annual    | paddle-update-subscription | PATCH /subscriptions/{id}       | subscription.updated             | tier=FLAME, price_id=pri_flame_annual                 | **Not reachable from UI**          |
+| Cancel FLAME               | paddle-cancel-subscription | POST /subscriptions/{id}/cancel | subscription.updated (scheduled) | tier=FLAME, status=active, cancel_at_period_end=true  | "Cancels on {date}"                |
+| Period end after cancel    | N/A (webhook-driven)       | N/A                             | subscription.canceled            | tier=FLAME, status=canceled                           | "Subscribe" buttons                |
+| Resume after cancel        | N/A                        | N/A                             | N/A                              | N/A                                                   | **Not implemented**                |
+| FREE user tries update     | paddle-update-subscription | N/A (rejected at validation)    | N/A                              | No change                                             | 400 "No active subscription found" |
+| Already on same plan       | paddle-update-subscription | N/A (rejected at validation)    | N/A                              | No change                                             | 400 "Already on this plan"         |
