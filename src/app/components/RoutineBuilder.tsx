@@ -223,7 +223,7 @@ export function RoutineBuilder() {
 					prPercentage: ex.pr_percentage ?? null,
 					repCountTiming: ex.rep_count_timing ?? null,
 					stopAtPosition: ex.stop_at_position ?? null,
-					stallDetection: ex.stall_detection ?? false,
+					stallDetection: ex.stall_detection ?? true,
 					eccentricLoad: ex.eccentric_load ?? null,
 					echoLevel: ex.echo_level ?? null,
 				})),
@@ -648,7 +648,7 @@ export function RoutineBuilder() {
 								prPercentage: null,
 								repCountTiming: null,
 								stopAtPosition: null,
-								stallDetection: false,
+								stallDetection: true,
 								eccentricLoad: null,
 								echoLevel: null,
 							};

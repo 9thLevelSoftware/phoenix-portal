@@ -213,7 +213,7 @@ export interface RoutineExerciseDto {
   prPercentage?: number | null;
   repCountTiming?: string | null;
   stopAtPosition?: string | null;
-  stallDetection?: string | null;
+  stallDetection?: boolean | null;
   eccentricLoad?: number | null;
   echoLevel?: number | null;
   perSetEchoLevels?: number[] | null;

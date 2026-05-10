@@ -203,7 +203,7 @@ const routineExerciseSchema = z.object({
 	prPercentage: nullableField(z.number()),
 	repCountTiming: nullableField(z.string()),
 	stopAtPosition: nullableField(z.string()),
-	stallDetection: z.boolean().nullish().transform((v) => v ?? false),
+	stallDetection: z.boolean().nullish().transform((v) => v ?? true),
 	eccentricLoad: nullableField(z.string()),
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),

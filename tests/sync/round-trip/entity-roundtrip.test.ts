@@ -293,6 +293,68 @@ describe('Entity Round-Trip Tests', () => {
       expect(prScaled?.prPercentage).toBe(85);
     });
 
+    it('should preserve stall detection settings through round-trip', async () => {
+      // Arrange
+      const routineId = generateTestId();
+
+      const exercises: RoutineExerciseDto[] = [
+        {
+          id: generateTestId(),
+          routineId,
+          name: 'Enabled Stall Detection',
+          muscleGroup: 'Chest',
+          sets: 3,
+          reps: 10,
+          weight: 60,
+          restSeconds: 90,
+          mode: 'OLD_SCHOOL',
+          orderIndex: 0,
+          stallDetection: true,
+        },
+        {
+          id: generateTestId(),
+          routineId,
+          name: 'Disabled Stall Detection',
+          muscleGroup: 'Back',
+          sets: 3,
+          reps: 10,
+          weight: 55,
+          restSeconds: 90,
+          mode: 'OLD_SCHOOL',
+          orderIndex: 1,
+          stallDetection: false,
+        },
+      ];
+
+      const routine: RoutineDto = {
+        id: routineId,
+        userId: testUser.id,
+        name: 'Stall Detection Routine',
+        description: 'Exercises with both stall detection states',
+        exerciseCount: 2,
+        estimatedDuration: 30,
+        timesCompleted: 0,
+        isFavorite: false,
+        exercises,
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { routines: [routine] });
+
+      // Act
+      await callPushEndpoint(payload, testUser.accessToken);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Assert
+      expect(pullResult.success).toBe(true);
+
+      const pulledExercises = pullResult.data!.routines[0].exercises;
+      const enabled = pulledExercises.find(e => e.name === 'Enabled Stall Detection');
+      const disabled = pulledExercises.find(e => e.name === 'Disabled Stall Detection');
+
+      expect(enabled?.stallDetection).toBe(true);
+      expect(disabled?.stallDetection).toBe(false);
+    });
+
     it('should preserve all-AMRAP per-set reps', async () => {
       // Arrange
       const routineId = generateTestId();
