@@ -88,7 +88,7 @@ function toRoutineExerciseRows(
 		pr_percentage: ex.pr_percentage ?? null,
 		rep_count_timing: ex.rep_count_timing ?? null,
 		stop_at_position: ex.stop_at_position ?? null,
-		stall_detection: ex.stall_detection ?? false,
+		stall_detection: ex.stall_detection ?? true,
 		eccentric_load: ex.eccentric_load ?? null,
 		echo_level: ex.echo_level ?? null,
 	}));

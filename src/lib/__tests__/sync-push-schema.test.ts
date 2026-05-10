@@ -143,6 +143,52 @@ describe("pushPayloadSchema", () => {
 		);
 	});
 
+	it("defaults missing or null routine stall detection to true and preserves explicit values", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			routines: [
+				{
+					id: UUID,
+					userId: "u1",
+					name: "Stall Detection Routine",
+					exercises: [
+						{
+							id: UUID2,
+							routineId: UUID,
+							name: "Missing",
+						},
+						{
+							id: "22222222-2222-4222-8222-222222222222",
+							routineId: UUID,
+							name: "Null",
+							stallDetection: null,
+						},
+						{
+							id: "33333333-3333-4333-8333-333333333333",
+							routineId: UUID,
+							name: "True",
+							stallDetection: true,
+						},
+						{
+							id: "44444444-4444-4444-8444-444444444444",
+							routineId: UUID,
+							name: "False",
+							stallDetection: false,
+						},
+					],
+				},
+			],
+		});
+
+		expect(parsed.routines[0]?.exercises.map((ex) => ex.stallDetection)).toEqual([
+			true,
+			true,
+			true,
+			false,
+		]);
+	});
+
 	it("preserves catalog exercise IDs on session and routine exercises", () => {
 		const catalogExerciseId = "4kmhj9yyZcBI54Vi";
 		const parsed = pushPayloadSchema.parse({
