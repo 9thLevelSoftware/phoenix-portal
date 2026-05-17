@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { hmacSha256Hex } from '../../supabase/functions/_shared/hmac.ts';
 import {
+  getConfiguredPriceIdForTierInterval,
+  parsePaddleBillingInterval,
+  parsePaddlePaidTier,
+} from '../../supabase/functions/_shared/paddlePriceIds.ts';
+import {
   classifyPaddleEventOrder,
   evaluatePaddleCustomDataTrust,
   verifyPaddleCustomDataSignature,
@@ -133,6 +138,28 @@ describe('Paddle webhook security helpers', () => {
     expect(
       buildPaddleSubscriptionPatch('pri_flame_monthly', 'pri_flame_monthly', true),
     ).toEqual({ action: 'uncancel', body: { scheduled_change: null } });
+  });
+
+  it('resolves server-side Paddle plan selections for subscription updates', () => {
+    const env = {
+      get: (key: string) =>
+        ({
+          PADDLE_EMBER_MONTHLY_PRICE_ID: 'pri_ember_monthly',
+          PADDLE_FLAME_ANNUAL_PRICE_ID: 'pri_flame_annual',
+        })[key],
+    };
+
+    expect(parsePaddlePaidTier('ember')).toBe('EMBER');
+    expect(parsePaddlePaidTier('invalid')).toBeNull();
+    expect(parsePaddleBillingInterval('annual')).toBe('annual');
+    expect(parsePaddleBillingInterval('weekly')).toBeNull();
+    expect(getConfiguredPriceIdForTierInterval('EMBER', 'monthly', env)).toBe(
+      'pri_ember_monthly',
+    );
+    expect(getConfiguredPriceIdForTierInterval('FLAME', 'annual', env)).toBe(
+      'pri_flame_annual',
+    );
+    expect(getConfiguredPriceIdForTierInterval('FLAME', 'monthly', env)).toBeNull();
   });
 
   it('maps fully canceled Paddle subscriptions to closed local state', () => {
