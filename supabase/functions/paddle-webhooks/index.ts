@@ -4,7 +4,12 @@ import {
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
+  buildSubscriptionUpsertFromPaddleState,
+  type PaddleSubscriptionState,
+} from "../_shared/paddleSubscriptionState.ts";
+import {
   classifyPaddleEventOrder,
+  evaluatePaddleCustomDataTrust,
   verifyPaddleCustomDataSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
 
@@ -78,28 +83,6 @@ async function verifyPaddleSignature(
     mismatch |= a[i]! ^ b[i]!;
   }
   return mismatch === 0;
-}
-
-// ─── Status Mapping ─────────────────────────────────────────────────────────
-
-/**
- * Maps a Paddle subscription status to the portal's subscription status.
- */
-function mapPaddleStatusToSubscriptionStatus(paddleStatus: string): string {
-  switch (paddleStatus) {
-    case "active":
-      return "active";
-    case "trialing":
-      return "trialing";
-    case "paused":
-      return "canceled";
-    case "canceled":
-      return "canceled";
-    case "past_due":
-      return "past_due";
-    default:
-      return "none";
-  }
 }
 
 // ─── Webhook Handler ────────────────────────────────────────────────────────
@@ -218,6 +201,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Load the existing row before custom_data trust checks. New checkouts must
+    // carry cd_sig; legacy subscriptions may omit it only when the Paddle
+    // subscription ID already matches the stored row for the same user.
+    const { data: existingSubscription } = await supabase
+      .from("subscriptions")
+      .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
     // Verify the signed user_id handed out by paddle-checkout-custom-data so
     // a client can't forge another user's user_id in custom_data (P1-10).
     const providedSig = event.data.custom_data?.cd_sig;
@@ -226,26 +218,32 @@ Deno.serve(async (req) => {
       providedSig,
       customDataSecret,
     );
-    if (!signedCustomDataValid) {
+    const trustDecision = evaluatePaddleCustomDataTrust({
+      signedCustomDataValid,
+      eventSubscriptionId: event.data.id,
+      existingSubscriptionId: existingSubscription?.paddle_subscription_id,
+    });
+    if (!trustDecision.trusted) {
       console.error(
         "[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):",
         event.event_id,
         "user_id:",
         userId,
+        "reason:",
+        trustDecision.reason,
       );
       return new Response(
         JSON.stringify({ error: "Invalid cd_sig" }),
         { status: 401, headers: responseHeaders },
       );
     }
+    if (trustDecision.method === "legacy_subscription_match") {
+      console.warn(
+        `[Paddle] Accepted legacy unsigned event ${event.event_id} by stored subscription match`,
+      );
+    }
 
     // Idempotency and ordering check — skip duplicates and stale delivery.
-    const { data: existingSubscription } = await supabase
-      .from("subscriptions")
-      .select("last_event_id, last_event_occurred_at, tier")
-      .eq("user_id", userId)
-      .maybeSingle();
-
     const eventOrder = classifyPaddleEventOrder(
       event.event_id,
       event.occurred_at,
@@ -277,8 +275,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Map status and tier
-    const status = mapPaddleStatusToSubscriptionStatus(event.data.status);
     const priceId = event.data.items?.[0]?.price?.id ?? "";
     let tier = mapPriceIdToTier(priceId, Deno.env);
 
@@ -305,29 +301,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Detect cancel/pause scheduling
-    const isCanceled =
-      event.event_type === "subscription.canceled" ||
-      event.data.scheduled_change?.action === "cancel";
-    const isPaused =
-      event.event_type === "subscription.paused" ||
-      event.data.scheduled_change?.action === "pause";
-
     // Build upsert payload (uses legacy Stripe column names)
-    const upsertData: Record<string, unknown> = {
-      user_id: userId,
-      paddle_customer_id: event.data.customer_id,
-      paddle_subscription_id: event.data.id,
+    const upsertData = buildSubscriptionUpsertFromPaddleState({
+      userId,
+      subscription: event.data as PaddleSubscriptionState,
       tier,
-      status,
-      price_id: priceId || null,
-      current_period_start: event.data.current_billing_period?.starts_at ?? null,
-      current_period_end: event.data.current_billing_period?.ends_at ?? null,
-      cancel_at_period_end: isCanceled || isPaused,
-      last_event_id: event.event_id,
-      last_event_occurred_at: eventOrder.occurredAt,
-      updated_at: new Date().toISOString(),
-    };
+      eventId: event.event_id,
+      occurredAt: eventOrder.occurredAt,
+    });
 
     const { error } = await supabase
       .from("subscriptions")

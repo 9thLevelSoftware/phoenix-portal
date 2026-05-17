@@ -181,12 +181,9 @@ describe("pushPayloadSchema", () => {
 			],
 		});
 
-		expect(parsed.routines[0]?.exercises.map((ex) => ex.stallDetection)).toEqual([
-			true,
-			true,
-			true,
-			false,
-		]);
+		expect(
+			parsed.routines[0]?.exercises.map((ex) => ex.stallDetection),
+		).toEqual([true, true, true, false]);
 	});
 
 	it("preserves catalog exercise IDs on session and routine exercises", () => {

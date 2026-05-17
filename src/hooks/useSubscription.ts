@@ -1,6 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { z } from "zod";
+import {
+	getEffectiveSubscriptionTier,
+	isStaleActiveSubscription,
+	type SubscriptionStatus,
+	type SubscriptionTier,
+} from "@/lib/subscription-entitlement";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
@@ -15,29 +21,19 @@ const subscriptionStatusSchema = z.enum([
 	"none",
 ]);
 
-export type SubscriptionTier = "FREE" | "EMBER" | "FLAME" | "INFERNO";
-export type SubscriptionStatus =
-	| "active"
-	| "past_due"
-	| "canceled"
-	| "trialing"
-	| "incomplete"
-	| "none";
-
-/** Statuses that grant access to the user's paid tier. */
-const ACTIVE_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
-	"active",
-	"trialing",
-]);
+export type { SubscriptionStatus, SubscriptionTier };
 
 interface SubscriptionData {
-	/** Access-control tier: falls back to FREE when subscription is not active/trialing. */
+	/** Access-control tier: falls back to FREE unless active/trialing and period end is future. */
 	tier: SubscriptionTier;
 	/** Raw tier stored in the database (useful for display, e.g. "Your FLAME plan cancels on…"). */
 	rawTier: SubscriptionTier;
 	status: SubscriptionStatus;
+	priceId: string | null;
 	currentPeriodEnd: string | null;
 	cancelAtPeriodEnd: boolean;
+	isEntitled: boolean;
+	isStale: boolean;
 	isLoading: boolean;
 	isPremium: boolean;
 	isFlame: boolean;
@@ -47,7 +43,7 @@ interface SubscriptionData {
 async function fetchSubscription(userId: string) {
 	const { data, error } = await supabase
 		.from("subscriptions")
-		.select("tier, status, current_period_end, cancel_at_period_end")
+		.select("tier, status, price_id, current_period_end, cancel_at_period_end")
 		.eq("user_id", userId)
 		.maybeSingle();
 
@@ -59,6 +55,7 @@ async function fetchSubscription(userId: string) {
 		return {
 			tier: "FREE" as SubscriptionTier,
 			status: "none" as SubscriptionStatus,
+			priceId: null,
 			currentPeriodEnd: null,
 			cancelAtPeriodEnd: false,
 		};
@@ -79,8 +76,9 @@ async function fetchSubscription(userId: string) {
 	return {
 		tier,
 		status,
-		currentPeriodEnd: data.current_period_end,
-		cancelAtPeriodEnd: data.cancel_at_period_end,
+		priceId: typeof data.price_id === "string" ? data.price_id : null,
+		currentPeriodEnd: data.current_period_end ?? null,
+		cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
 	};
 }
 
@@ -125,19 +123,26 @@ export function useSubscription(): SubscriptionData {
 
 	const rawTier: SubscriptionTier = data?.tier ?? "FREE";
 	const status: SubscriptionStatus = data?.status ?? "none";
+	const currentPeriodEnd = data?.currentPeriodEnd ?? null;
 
-	// Effective tier mirrors server-side requireSubscription() logic:
-	// only active/trialing subscriptions grant paid access.
-	const tier: SubscriptionTier = ACTIVE_STATUSES.has(status) ? rawTier : "FREE";
+	const tier: SubscriptionTier = getEffectiveSubscriptionTier(
+		rawTier,
+		status,
+		currentPeriodEnd,
+	);
+	const isEntitled = tier !== "FREE";
 
 	return {
 		tier,
 		rawTier,
 		status,
-		currentPeriodEnd: data?.currentPeriodEnd ?? null,
+		priceId: data?.priceId ?? null,
+		currentPeriodEnd,
 		cancelAtPeriodEnd: data?.cancelAtPeriodEnd ?? false,
+		isEntitled,
+		isStale: isStaleActiveSubscription(status, currentPeriodEnd),
 		isLoading,
-		isPremium: tier !== "FREE",
+		isPremium: isEntitled,
 		isFlame: tier === "FLAME" || tier === "INFERNO",
 		isInferno: tier === "INFERNO",
 	};

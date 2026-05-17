@@ -145,14 +145,11 @@ export function buildSubscriptionUpsert(
 	const priceId = data.items?.[0]?.price?.id ?? "";
 	const tier = tierResolver(priceId);
 
-	// Detect cancel_at_period_end from scheduled_change or event type
-	const isCanceled =
-		event.event_type === "subscription.canceled" ||
-		data.scheduled_change?.action === "cancel";
-
-	const isPaused =
-		event.event_type === "subscription.paused" ||
-		data.scheduled_change?.action === "pause";
+	const isInactive = status === "canceled";
+	const hasPendingScheduledChange =
+		(status === "active" || status === "trialing") &&
+		(data.scheduled_change?.action === "cancel" ||
+			data.scheduled_change?.action === "pause");
 
 	return {
 		user_id: userId,
@@ -161,9 +158,13 @@ export function buildSubscriptionUpsert(
 		tier,
 		status,
 		price_id: priceId || null,
-		current_period_start: data.current_billing_period?.starts_at ?? null,
-		current_period_end: data.current_billing_period?.ends_at ?? null,
-		cancel_at_period_end: isCanceled || isPaused,
+		current_period_start: isInactive
+			? null
+			: (data.current_billing_period?.starts_at ?? null),
+		current_period_end: isInactive
+			? null
+			: (data.current_billing_period?.ends_at ?? null),
+		cancel_at_period_end: hasPendingScheduledChange,
 		last_event_id: event.event_id,
 		last_event_occurred_at: event.occurred_at,
 		updated_at: new Date().toISOString(),

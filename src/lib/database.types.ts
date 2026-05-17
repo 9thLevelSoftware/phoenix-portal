@@ -1565,7 +1565,7 @@ export type Database = {
 				Row: {
 					cancel_at_period_end: boolean | null;
 					created_at: string | null;
-					current_period_end: string;
+					current_period_end: string | null;
 					current_period_start: string | null;
 					environment: string | null;
 					id: string;
@@ -1582,7 +1582,7 @@ export type Database = {
 				Insert: {
 					cancel_at_period_end?: boolean | null;
 					created_at?: string | null;
-					current_period_end: string;
+					current_period_end?: string | null;
 					current_period_start?: string | null;
 					environment?: string | null;
 					id?: string;
@@ -1599,7 +1599,7 @@ export type Database = {
 				Update: {
 					cancel_at_period_end?: boolean | null;
 					created_at?: string | null;
-					current_period_end?: string;
+					current_period_end?: string | null;
 					current_period_start?: string | null;
 					environment?: string | null;
 					id?: string;

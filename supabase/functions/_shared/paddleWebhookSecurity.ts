@@ -66,3 +66,31 @@ export async function verifyPaddleCustomDataSignature(
   }
   return mismatch === 0;
 }
+
+export type PaddleCustomDataTrustDecision =
+  | { trusted: true; method: "signature" | "legacy_subscription_match" }
+  | { trusted: false; reason: "invalid_signature" | "missing_subscription_id" | "subscription_mismatch" };
+
+export function evaluatePaddleCustomDataTrust({
+  signedCustomDataValid,
+  eventSubscriptionId,
+  existingSubscriptionId,
+}: {
+  signedCustomDataValid: boolean;
+  eventSubscriptionId: unknown;
+  existingSubscriptionId: string | null | undefined;
+}): PaddleCustomDataTrustDecision {
+  if (signedCustomDataValid) {
+    return { trusted: true, method: "signature" };
+  }
+
+  if (typeof eventSubscriptionId !== "string" || eventSubscriptionId.length === 0) {
+    return { trusted: false, reason: "missing_subscription_id" };
+  }
+
+  if (existingSubscriptionId && existingSubscriptionId === eventSubscriptionId) {
+    return { trusted: true, method: "legacy_subscription_match" };
+  }
+
+  return { trusted: false, reason: "subscription_mismatch" };
+}
