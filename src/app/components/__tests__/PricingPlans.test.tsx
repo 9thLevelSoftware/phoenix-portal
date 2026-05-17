@@ -160,7 +160,11 @@ describe("PricingPlans billing actions", () => {
 		await user.click(screen.getByRole("button", { name: /keep plan/i }));
 
 		expect(mockInvoke).toHaveBeenCalledWith("paddle-update-subscription", {
-			body: { price_id: "pri_flame_monthly" },
+			body: {
+				tier: "FLAME",
+				billing_interval: "monthly",
+				price_id: "pri_flame_monthly",
+			},
 		});
 	});
 
@@ -186,6 +190,32 @@ describe("PricingPlans billing actions", () => {
 		).not.toBeInTheDocument();
 	});
 
+	it("submits downgrade requests with tier, billing interval, and fallback price id", async () => {
+		const user = userEvent.setup();
+		setSubscription({
+			tier: "FLAME",
+			rawTier: "FLAME",
+			status: "active",
+			priceId: "pri_flame_monthly",
+			currentPeriodEnd: "2999-04-17T00:00:00Z",
+			isEntitled: true,
+			isPremium: true,
+			isFlame: true,
+		});
+
+		renderWithProviders(<PricingPlans />);
+		await user.click(screen.getByRole("button", { name: /downgrade/i }));
+		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
+
+		expect(mockInvoke).toHaveBeenCalledWith("paddle-update-subscription", {
+			body: {
+				tier: "EMBER",
+				billing_interval: "monthly",
+				price_id: "pri_ember_monthly",
+			},
+		});
+	});
+
 	it("offers a billing-cycle switch when the selected price differs", async () => {
 		const user = userEvent.setup();
 		setSubscription({
@@ -205,5 +235,46 @@ describe("PricingPlans billing actions", () => {
 		expect(
 			screen.getByRole("button", { name: /switch billing/i }),
 		).toBeInTheDocument();
+	});
+
+	it("refreshes billing state after checkout completes", async () => {
+		const user = userEvent.setup();
+		mockOpenCheckout.mockImplementationOnce(async ({ onSuccess }) => {
+			onSuccess?.({
+				name: "checkout.completed",
+				data: { transaction_id: "txn_01h00000000000000000000000" },
+			});
+		});
+		mockInvoke.mockImplementation((name: string) => {
+			if (name === "paddle-refresh-subscription") {
+				return Promise.resolve({
+					data: {
+						status: "refreshed",
+						subscription: {
+							tier: "FLAME",
+							status: "active",
+							priceId: "pri_flame_monthly",
+							currentPeriodEnd: "2999-04-17T00:00:00Z",
+							cancelAtPeriodEnd: false,
+						},
+					},
+					error: null,
+				});
+			}
+			return Promise.resolve({ data: { success: true }, error: null });
+		});
+
+		renderWithProviders(<PricingPlans />);
+		const subscribeButtons = screen.getAllByRole("button", {
+			name: /subscribe/i,
+		});
+		expect(subscribeButtons).toHaveLength(2);
+		await user.click(subscribeButtons[1]);
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription", {
+				body: { transaction_id: "txn_01h00000000000000000000000" },
+			});
+		});
 	});
 });

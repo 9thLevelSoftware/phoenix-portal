@@ -2,9 +2,17 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import {
+  getConfiguredPriceIdForTierInterval,
   getAllAllowedPriceIds,
+  mapPriceIdToTier,
   paddlePriceIdsConfigured,
+  parsePaddleBillingInterval,
+  parsePaddlePaidTier,
 } from "../_shared/paddlePriceIds.ts";
+import {
+  buildSubscriptionUpsertFromPaddleState,
+  type PaddleSubscriptionState,
+} from "../_shared/paddleSubscriptionState.ts";
 import { isSubscriptionEntitled, type SubscriptionStatus } from "../_shared/subscriptionEntitlement.ts";
 import {
   buildPaddleSubscriptionPatch,
@@ -87,10 +95,26 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
-    const newPriceId = body.price_id;
-    if (!newPriceId || typeof newPriceId !== "string" || newPriceId.length > 255) {
+    const fallbackPriceId = body.price_id;
+    const requestedTier = parsePaddlePaidTier(body.tier);
+    const requestedBillingInterval = parsePaddleBillingInterval(body.billing_interval);
+    const serverResolvedPriceId = requestedTier && requestedBillingInterval
+      ? getConfiguredPriceIdForTierInterval(
+        requestedTier,
+        requestedBillingInterval,
+        Deno.env,
+      )
+      : null;
+    const newPriceId = serverResolvedPriceId ||
+      (typeof fallbackPriceId === "string" ? fallbackPriceId : null);
+
+    if (!newPriceId || newPriceId.length > 255) {
       return new Response(
-        JSON.stringify({ error: "Missing or invalid price_id" }),
+        JSON.stringify({
+          error: "Missing or invalid plan selection",
+          code: "invalid_plan_selection",
+          message: "Choose a valid paid plan and billing interval.",
+        }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
@@ -99,7 +123,12 @@ Deno.serve(async (req) => {
     if (!ALLOWED_PRICE_IDS.has(newPriceId)) {
       console.warn("Invalid price_id attempted:", newPriceId);
       return new Response(
-        JSON.stringify({ error: "Invalid price_id" }),
+        JSON.stringify({
+          error: "Invalid price_id",
+          code: "invalid_price_id",
+          message:
+            "Billing price is not configured for this environment. Check Paddle price ID secrets.",
+        }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
@@ -107,7 +136,7 @@ Deno.serve(async (req) => {
     // Look up user's current subscription
     const { data: sub, error: subError } = await supabaseAdmin
       .from("subscriptions")
-      .select("paddle_subscription_id, price_id, status, current_period_end, cancel_at_period_end")
+      .select("paddle_subscription_id, price_id, tier, status, current_period_end, cancel_at_period_end")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -154,6 +183,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const currentPaddleSubscriptionId = sub.paddle_subscription_id;
+
     const patchDecision = buildPaddleSubscriptionPatch(
       sub.price_id,
       newPriceId,
@@ -190,8 +221,88 @@ Deno.serve(async (req) => {
       );
     }
 
+    let paddleBody: Record<string, unknown> | null = null;
+    try {
+      paddleBody = await paddleResponse.json();
+    } catch {
+      console.error("Paddle API returned non-JSON update response");
+      return new Response(
+        JSON.stringify({ error: "Invalid Paddle response" }),
+        { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const updatedSubscription = paddleBody?.data as PaddleSubscriptionState | undefined;
+    if (!updatedSubscription?.id) {
+      console.error("Paddle subscription update response missing data.id");
+      return new Response(
+        JSON.stringify({ error: "Invalid Paddle response" }),
+        { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (updatedSubscription.id !== currentPaddleSubscriptionId) {
+      console.error(
+        "[BILLING_ALERT] Paddle update response subscription mismatch:",
+        updatedSubscription.id,
+        currentPaddleSubscriptionId,
+      );
+      return new Response(
+        JSON.stringify({ error: "Paddle subscription mismatch" }),
+        { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const updatedPriceId = updatedSubscription.items?.[0]?.price?.id ?? newPriceId;
+    let updatedTier = mapPriceIdToTier(updatedPriceId, Deno.env);
+    if (updatedPriceId && updatedTier === "FREE") {
+      const existingTier = sub.tier as string | undefined;
+      if (existingTier && existingTier !== "FREE" && existingTier !== "free") {
+        console.warn(
+          `[BILLING_ALERT] Unknown price ID ${updatedPriceId} after update — preserving existing tier ${existingTier}`,
+        );
+        updatedTier = existingTier as typeof updatedTier;
+      } else {
+        console.error(
+          "[BILLING_ALERT] Unknown price ID after update — no existing tier to preserve:",
+          updatedPriceId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Unknown price_id — configuration error" }),
+          { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    const upsertData = buildSubscriptionUpsertFromPaddleState({
+      userId: user.id,
+      subscription: updatedSubscription,
+      tier: updatedTier,
+    });
+    const { error: updateError } = await supabaseAdmin
+      .from("subscriptions")
+      .upsert(upsertData, { onConflict: "user_id" });
+
+    if (updateError) {
+      console.error("Error upserting subscription after Paddle update:", updateError);
+      return new Response(
+        JSON.stringify({ error: "Database upsert failed" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
     return new Response(
-      JSON.stringify({ success: true, action: patchDecision.action }),
+      JSON.stringify({
+        success: true,
+        action: patchDecision.action,
+        subscription: {
+          tier: upsertData.tier,
+          status: upsertData.status,
+          priceId: upsertData.price_id,
+          currentPeriodEnd: upsertData.current_period_end,
+          cancelAtPeriodEnd: upsertData.cancel_at_period_end,
+        },
+      }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
     );
   } catch (err) {

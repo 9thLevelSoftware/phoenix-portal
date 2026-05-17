@@ -21,6 +21,48 @@ function extraIds(env: { get(key: string): string | undefined }, keys: string[])
   return out;
 }
 
+export type PaddlePaidTier = "EMBER" | "FLAME" | "INFERNO";
+export type PaddleBillingInterval = "monthly" | "annual";
+
+const PRICE_ID_BY_TIER_INTERVAL: Record<
+  PaddlePaidTier,
+  Record<PaddleBillingInterval, string>
+> = {
+  EMBER: {
+    monthly: "PADDLE_EMBER_MONTHLY_PRICE_ID",
+    annual: "PADDLE_EMBER_ANNUAL_PRICE_ID",
+  },
+  FLAME: {
+    monthly: "PADDLE_FLAME_MONTHLY_PRICE_ID",
+    annual: "PADDLE_FLAME_ANNUAL_PRICE_ID",
+  },
+  INFERNO: {
+    monthly: "PADDLE_INFERNO_MONTHLY_PRICE_ID",
+    annual: "PADDLE_INFERNO_ANNUAL_PRICE_ID",
+  },
+};
+
+export function parsePaddlePaidTier(value: unknown): PaddlePaidTier | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.toUpperCase();
+  return normalized === "EMBER" || normalized === "FLAME" || normalized === "INFERNO"
+    ? normalized
+    : null;
+}
+
+export function parsePaddleBillingInterval(value: unknown): PaddleBillingInterval | null {
+  if (value === "monthly" || value === "annual") return value;
+  return null;
+}
+
+export function getConfiguredPriceIdForTierInterval(
+  tier: PaddlePaidTier,
+  billingInterval: PaddleBillingInterval,
+  env: { get(key: string): string | undefined },
+): string | null {
+  return env.get(PRICE_ID_BY_TIER_INTERVAL[tier][billingInterval])?.trim() || null;
+}
+
 export function getPaddlePriceIdSets(env: {
   get(key: string): string | undefined;
 }): {

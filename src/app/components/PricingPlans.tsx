@@ -68,6 +68,7 @@ interface TierConfig extends TierDisplayConfig {
 interface PlanChangeIntent {
 	tier: SubscriptionTier;
 	priceId: string;
+	billingInterval: "monthly" | "annual";
 	label: string;
 }
 
@@ -77,6 +78,37 @@ interface UpdateSubscriptionResponse {
 	code?: "checkout_required";
 	error?: string;
 	message?: string;
+	subscription?: {
+		tier: SubscriptionTier;
+		status:
+			| "active"
+			| "trialing"
+			| "past_due"
+			| "canceled"
+			| "incomplete"
+			| "none";
+		priceId: string | null;
+		currentPeriodEnd: string | null;
+		cancelAtPeriodEnd: boolean;
+	};
+}
+
+interface RefreshSubscriptionResponse {
+	status?: "no_subscription" | "refreshed";
+	subscription?: {
+		tier?: SubscriptionTier;
+		status?: UpdateSubscriptionResponse["subscription"] extends infer T
+			? T extends { status: infer S }
+				? S
+				: never
+			: never;
+		price_id?: string | null;
+		priceId?: string | null;
+		current_period_end?: string | null;
+		currentPeriodEnd?: string | null;
+		cancel_at_period_end?: boolean;
+		cancelAtPeriodEnd?: boolean;
+	};
 }
 
 const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
@@ -141,6 +173,75 @@ function selectedPriceId(tierConfig: TierConfig, isAnnual: boolean): string {
 
 function tierName(tier: SubscriptionTier): string {
 	return TIER_PRICING.find((t) => t.tier === tier)?.name ?? tier;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getFunctionErrorMessage(
+	error: unknown,
+	response: Response | undefined,
+): Promise<string> {
+	if (response) {
+		try {
+			const body = await response.clone().json();
+			if (typeof body?.message === "string") return body.message;
+			if (typeof body?.error === "string") return body.error;
+		} catch {
+			// Fall back to the SDK error below.
+		}
+	}
+
+	return error instanceof Error
+		? error.message
+		: "Failed to update subscription";
+}
+
+function normalizeSubscriptionPayload(
+	subscription:
+		| UpdateSubscriptionResponse["subscription"]
+		| RefreshSubscriptionResponse["subscription"]
+		| undefined,
+) {
+	if (!subscription) return null;
+
+	return {
+		tier: subscription.tier ?? "FREE",
+		status: subscription.status ?? "none",
+		priceId:
+			"priceId" in subscription
+				? (subscription.priceId ?? null)
+				: (subscription.price_id ?? null),
+		currentPeriodEnd:
+			"currentPeriodEnd" in subscription
+				? (subscription.currentPeriodEnd ?? null)
+				: (subscription.current_period_end ?? null),
+		cancelAtPeriodEnd:
+			"cancelAtPeriodEnd" in subscription
+				? Boolean(subscription.cancelAtPeriodEnd)
+				: Boolean(subscription.cancel_at_period_end),
+	};
+}
+
+function isFreshPaidSubscription(
+	subscription: ReturnType<typeof normalizeSubscriptionPayload>,
+	target: { tier: SubscriptionTier; priceId: string },
+): boolean {
+	if (!subscription) return false;
+	if (
+		subscription.tier !== target.tier ||
+		subscription.priceId !== target.priceId
+	) {
+		return false;
+	}
+	if (subscription.status !== "active" && subscription.status !== "trialing") {
+		return false;
+	}
+	if (!subscription.currentPeriodEnd) return false;
+
+	const periodEndMs = Date.parse(subscription.currentPeriodEnd);
+	return Number.isFinite(periodEndMs) && periodEndMs > Date.now();
 }
 
 export function PricingPlans() {
@@ -221,18 +322,60 @@ export function PricingPlans() {
 			return;
 		}
 
+		const reconcileBillingAfterCheckout = async (
+			checkoutTransactionId: string | null,
+		) => {
+			for (let attempt = 0; attempt < 5; attempt++) {
+				if (attempt > 0) {
+					await sleep(1500);
+				}
+
+				const invokeOptions = checkoutTransactionId
+					? { body: { transaction_id: checkoutTransactionId } }
+					: undefined;
+				const { data, error } =
+					await supabase.functions.invoke<RefreshSubscriptionResponse>(
+						"paddle-refresh-subscription",
+						invokeOptions,
+					);
+
+				if (error) {
+					console.warn("Failed to refresh subscription after checkout", error);
+				}
+
+				const normalized = normalizeSubscriptionPayload(data?.subscription);
+				if (normalized) {
+					queryClient.setQueryData(queryKeys.subscription.byUser(user.id), {
+						tier: normalized.tier,
+						status: normalized.status,
+						priceId: normalized.priceId,
+						currentPeriodEnd: normalized.currentPeriodEnd,
+						cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
+					});
+				}
+
+				await queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+
+				if (isFreshPaidSubscription(normalized, { tier, priceId })) {
+					return;
+				}
+			}
+		};
+
 		try {
 			await openCheckout({
 				priceId,
 				userId: user.id,
 				userEmail: user.email ?? "",
-				onSuccess: () => {
-					toast.success(
-						"Checkout complete. Your subscription will update after Paddle confirms the payment.",
-					);
-					void queryClient.invalidateQueries({
-						queryKey: queryKeys.subscription.byUser(user.id),
-					});
+				onSuccess: (event) => {
+					const checkoutTransactionId =
+						typeof event.data?.transaction_id === "string"
+							? event.data.transaction_id
+							: null;
+					toast.success("Checkout complete. Finalizing your subscription...");
+					void reconcileBillingAfterCheckout(checkoutTransactionId);
 				},
 			});
 		} catch (error) {
@@ -281,10 +424,16 @@ export function PricingPlans() {
 
 		setBillingActionPriceId(intent.priceId);
 		try {
-			const { data, error } =
+			const { data, error, response } =
 				await supabase.functions.invoke<UpdateSubscriptionResponse>(
 					"paddle-update-subscription",
-					{ body: { price_id: intent.priceId } },
+					{
+						body: {
+							tier: intent.tier,
+							billing_interval: intent.billingInterval,
+							price_id: intent.priceId,
+						},
+					},
 				);
 
 			if (data?.code === "checkout_required") {
@@ -293,7 +442,7 @@ export function PricingPlans() {
 			}
 
 			if (error) {
-				toast.error(error.message || "Failed to update subscription");
+				toast.error(await getFunctionErrorMessage(error, response));
 				return;
 			}
 
@@ -302,6 +451,17 @@ export function PricingPlans() {
 					? "Cancellation removed. Your subscription will continue renewing."
 					: "Subscription updated. Changes may take a moment to reflect.",
 			);
+
+			const normalized = normalizeSubscriptionPayload(data?.subscription);
+			if (normalized) {
+				queryClient.setQueryData(queryKeys.subscription.byUser(user.id), {
+					tier: normalized.tier,
+					status: normalized.status,
+					priceId: normalized.priceId,
+					currentPeriodEnd: normalized.currentPeriodEnd,
+					cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
+				});
+			}
 
 			void queryClient.invalidateQueries({
 				queryKey: queryKeys.subscription.byUser(user.id),
@@ -340,6 +500,7 @@ export function PricingPlans() {
 		}
 
 		const priceId = selectedPriceId(tierConfig, isAnnual);
+		const billingInterval = isAnnual ? "annual" : "monthly";
 		if (!priceId) {
 			return (
 				<Button variant="outline" className="w-full opacity-60" disabled>
@@ -361,6 +522,7 @@ export function PricingPlans() {
 								void handlePlanChange({
 									tier: tierConfig.tier,
 									priceId,
+									billingInterval,
 									label: "Keep plan",
 								})
 							}
@@ -421,6 +583,7 @@ export function PricingPlans() {
 						setPendingPlanChange({
 							tier: tierConfig.tier,
 							priceId,
+							billingInterval,
 							label: actionLabel,
 						})
 					}
