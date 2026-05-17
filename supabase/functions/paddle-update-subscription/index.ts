@@ -5,6 +5,11 @@ import {
   getAllAllowedPriceIds,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
+import { isSubscriptionEntitled, type SubscriptionStatus } from "../_shared/subscriptionEntitlement.ts";
+import {
+  buildPaddleSubscriptionPatch,
+  checkoutRequiredResponseBody,
+} from "../_shared/paddleSubscriptionUpdate.ts";
 
 // Service-role client for DB queries (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -102,7 +107,7 @@ Deno.serve(async (req) => {
     // Look up user's current subscription
     const { data: sub, error: subError } = await supabaseAdmin
       .from("subscriptions")
-      .select("paddle_subscription_id, price_id, status")
+      .select("paddle_subscription_id, price_id, status, current_period_end, cancel_at_period_end")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -117,22 +122,20 @@ Deno.serve(async (req) => {
     // Validate subscription state
     if (!sub || !sub.paddle_subscription_id) {
       return new Response(
-        JSON.stringify({ error: "No active subscription found" }),
-        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+        JSON.stringify(checkoutRequiredResponseBody("missing_subscription")),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
-    if (!["active", "trialing"].includes(sub.status)) {
+    if (
+      !isSubscriptionEntitled(
+        (sub.status as SubscriptionStatus | undefined) ?? "none",
+        sub.current_period_end ?? null,
+      )
+    ) {
       return new Response(
-        JSON.stringify({ error: "No active subscription found" }),
-        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    if (sub.price_id === newPriceId) {
-      return new Response(
-        JSON.stringify({ error: "Already on this plan" }),
-        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+        JSON.stringify(checkoutRequiredResponseBody("inactive_or_expired_subscription")),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
@@ -151,6 +154,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    const patchDecision = buildPaddleSubscriptionPatch(
+      sub.price_id,
+      newPriceId,
+      Boolean(sub.cancel_at_period_end),
+    );
+    if (patchDecision.action === "already_current") {
+      return new Response(
+        JSON.stringify({ error: "Already on this plan" }),
+        { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
     const paddleResponse = await fetch(
       `${baseUrl}/subscriptions/${sub.paddle_subscription_id}`,
       {
@@ -159,10 +174,7 @@ Deno.serve(async (req) => {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          items: [{ price_id: newPriceId, quantity: 1 }],
-          proration_billing_mode: "prorated_immediately",
-        }),
+        body: JSON.stringify(patchDecision.body),
       },
     );
 
@@ -179,7 +191,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, action: patchDecision.action }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
     );
   } catch (err) {

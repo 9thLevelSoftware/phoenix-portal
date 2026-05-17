@@ -256,7 +256,10 @@ export const routineExerciseSchema = z.object({
 	pr_percentage: z.number().nullable().optional(),
 	rep_count_timing: z.string().nullable().optional(),
 	stop_at_position: z.string().nullable().optional(),
-	stall_detection: z.boolean().nullish().transform((v) => v ?? true),
+	stall_detection: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? true),
 	eccentric_load: z.string().nullable().optional(),
 	echo_level: z.string().nullable().optional(),
 	created_at: z.string().transform((s) => new Date(s)),

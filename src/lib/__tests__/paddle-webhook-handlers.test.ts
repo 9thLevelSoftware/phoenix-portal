@@ -145,13 +145,19 @@ describe("buildSubscriptionUpsert", () => {
 		expect(result?.current_period_end).toBe("2026-04-01T00:00:00Z");
 	});
 
-	it("sets cancel_at_period_end to true for subscription.canceled", () => {
+	it("clears pending-cancel state and period end for subscription.canceled", () => {
 		const event = makeMockEvent({
 			event_type: "subscription.canceled",
+			data: {
+				...makeMockEvent().data,
+				status: "canceled",
+			},
 		});
 		const result = buildSubscriptionUpsert(event, () => "EMBER");
 
-		expect(result?.cancel_at_period_end).toBe(true);
+		expect(result?.status).toBe("canceled");
+		expect(result?.current_period_end).toBeNull();
+		expect(result?.cancel_at_period_end).toBe(false);
 	});
 
 	it("sets cancel_at_period_end to true when scheduled_change action is cancel", () => {
