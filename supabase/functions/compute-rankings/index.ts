@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 // =============================================================================
 // Response Types (matching src/queries/leaderboard.ts)
@@ -182,6 +183,8 @@ Deno.serve(async (req) => {
     const viewerId = userData.user.id;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const gate = await requireSubscription(supabase, viewerId, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
 
     if (body.type === 'user') {
       if (!body.userId) {

@@ -153,31 +153,39 @@ export function PricingPlans() {
 			return;
 		}
 
-		await openCheckout({
-			priceId,
-			userId: user.id,
-			userEmail: user.email ?? "",
-			onSuccess: () => {
-				toast.success("Subscription activated!");
-				queryClient.setQueryData(
-					queryKeys.subscription.byUser(user.id),
-					(prev) => ({
-						...(prev ?? {
-							tier: "FREE" as SubscriptionTier,
-							status: "none" as const,
-							currentPeriodEnd: null,
+		try {
+			await openCheckout({
+				priceId,
+				userId: user.id,
+				userEmail: user.email ?? "",
+				onSuccess: () => {
+					toast.success("Subscription activated!");
+					queryClient.setQueryData(
+						queryKeys.subscription.byUser(user.id),
+						(prev) => ({
+							...(prev ?? {
+								tier: "FREE" as SubscriptionTier,
+								status: "none" as const,
+								currentPeriodEnd: null,
+								cancelAtPeriodEnd: false,
+							}),
+							tier,
+							status: "active" as const,
 							cancelAtPeriodEnd: false,
 						}),
-						tier,
-						status: "active" as const,
-						cancelAtPeriodEnd: false,
-					}),
-				);
-				void queryClient.invalidateQueries({
-					queryKey: queryKeys.subscription.byUser(user.id),
-				});
-			},
-		});
+					);
+					void queryClient.invalidateQueries({
+						queryKey: queryKeys.subscription.byUser(user.id),
+					});
+				},
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Billing checkout is unavailable. Please try again.";
+			toast.error(message);
+		}
 	};
 
 	const handleCancel = async () => {

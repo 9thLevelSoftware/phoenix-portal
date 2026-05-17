@@ -134,6 +134,7 @@ describe("buildSubscriptionUpsert", () => {
 		expect(result?.status).toBe("active");
 		expect(result?.price_id).toBe("pri_ember_monthly");
 		expect(result?.last_event_id).toBe("evt_01abc");
+		expect(result?.last_event_occurred_at).toBe("2026-03-15T00:00:00Z");
 	});
 
 	it("extracts billing period dates", () => {

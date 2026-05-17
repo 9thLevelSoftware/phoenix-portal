@@ -1,6 +1,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  resolveGarminWebhookIdentity,
+  type GarminIdentityCandidate,
+} from '../_shared/garminIdentity.ts';
+import { decryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 
 /**
  * Garmin Connect webhook handler for activity push notifications.
@@ -179,45 +184,82 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    const { data: connectedIntegrations, error: integrationsError } = await supabase
+      .from('user_integrations')
+      .select('user_id, provider_user_id')
+      .eq('provider', 'garmin')
+      .eq('status', 'connected');
+
+    if (integrationsError) {
+      console.error('[GARMIN_WEBHOOK] failed to fetch connected integrations:', integrationsError);
+      return new Response(
+        JSON.stringify({ received: true, processed: 0, errors: activities.length }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const { data: tokenRows, error: tokensError } = await supabase
+      .from('oauth_tokens')
+      .select('user_id, access_token')
+      .eq('provider', 'garmin');
+
+    if (tokensError) {
+      console.error('[GARMIN_WEBHOOK] failed to fetch Garmin tokens:', tokensError);
+      return new Response(
+        JSON.stringify({ received: true, processed: 0, errors: activities.length }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const tokenByUserId = new Map(
+      (tokenRows ?? []).map((token) => [token.user_id, token.access_token]),
+    );
+    const identityCandidates: GarminIdentityCandidate[] = (connectedIntegrations ?? [])
+      .map((integration) => ({
+        user_id: integration.user_id,
+        provider_user_id: integration.provider_user_id ?? null,
+        access_token: tokenByUserId.get(integration.user_id),
+      }));
+
     let processed = 0;
     let errors = 0;
     let persistenceFailure = false; // fix(audit): C5 — track unrecoverable DB errors
 
     for (const activity of activities) {
       try {
-        // Look up the Phoenix user_id by Garmin provider_user_id
-        const { data: integration, error: lookupError } = await supabase
-          .from('user_integrations')
-          .select('user_id')
-          .eq('provider', 'garmin')
-          .eq('provider_user_id', activity.userId)
-          .eq('status', 'connected')
-          .single();
+        const identity = await resolveGarminWebhookIdentity(
+          activity,
+          identityCandidates,
+          decryptOAuthSecret,
+        );
 
-        if (lookupError) {
-          // fix(audit): C5 — DB lookup failure is transient; signal retry to Garmin
-          console.error(
-            `[GARMIN_WEBHOOK] DB lookup failed for Garmin userId ${activity.userId}:`,
-            lookupError,
+        if (!identity.ok) {
+          console.warn(
+            `[GARMIN_WEBHOOK] rejected Garmin identity for userId ${activity.userId}: ${identity.reason}`,
           );
-          persistenceFailure = true;
           errors++;
           continue;
         }
-        if (!integration) {
-          // Not an error on our side — Garmin user is no longer connected.
-          // Log and ack (no retry needed).
-          console.warn(
-            `[GARMIN_WEBHOOK] no connected user for Garmin userId ${activity.userId}`,
-          );
-          errors++;
-          continue;
+
+        if (identity.bindProviderUserId) {
+          const { error: bindError } = await supabase
+            .from('user_integrations')
+            .update({ provider_user_id: activity.userId })
+            .eq('user_id', identity.userId)
+            .eq('provider', 'garmin');
+
+          if (bindError) {
+            console.error('[GARMIN_WEBHOOK] failed to bind Garmin provider_user_id:', bindError);
+            persistenceFailure = true;
+            errors++;
+            continue;
+          }
         }
 
         // Subscription gate — FLAME or higher for integrations
-        const gate = await requireSubscription(supabase, integration.user_id, 'FLAME', cors);
+        const gate = await requireSubscription(supabase, identity.userId, 'FLAME', cors);
         if (!gate.allowed) {
-          console.warn(`[GARMIN_WEBHOOK] user ${integration.user_id} does not have FLAME subscription`);
+          console.warn(`[GARMIN_WEBHOOK] user ${identity.userId} does not have FLAME subscription`);
           errors++;
           continue;
         }
@@ -228,7 +270,7 @@ Deno.serve(async (req) => {
           .from('external_activities')
           .upsert(
             {
-              user_id: integration.user_id,
+              user_id: identity.userId,
               ...normalized,
               raw_data: activity,
               synced_at: new Date().toISOString(),
@@ -248,7 +290,7 @@ Deno.serve(async (req) => {
         await supabase
           .from('user_integrations')
           .update({ last_sync_at: new Date().toISOString() })
-          .eq('user_id', integration.user_id)
+          .eq('user_id', identity.userId)
           .eq('provider', 'garmin');
 
         processed++;

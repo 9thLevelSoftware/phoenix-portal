@@ -165,6 +165,7 @@ export function buildSubscriptionUpsert(
 		current_period_end: data.current_billing_period?.ends_at ?? null,
 		cancel_at_period_end: isCanceled || isPaused,
 		last_event_id: event.event_id,
+		last_event_occurred_at: event.occurred_at,
 		updated_at: new Date().toISOString(),
 	};
 }

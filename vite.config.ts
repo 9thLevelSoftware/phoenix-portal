@@ -1,12 +1,20 @@
 /// <reference types="vitest/config" />
 
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import {
+	productionSourcemapSetting,
+	shouldUploadSourcemaps,
+} from "./src/lib/build/sourcemaps";
+
+const uploadSourcemaps = shouldUploadSourcemaps(process.env);
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	plugins: [
@@ -61,7 +69,7 @@ export default defineConfig({
 		...(process.env.ANALYZE === "true"
 			? [visualizer({ open: true, gzipSize: true, brotliSize: true })]
 			: []),
-		...(process.env.SENTRY_AUTH_TOKEN
+		...(uploadSourcemaps
 			? [
 					sentryVitePlugin({
 						org: process.env.SENTRY_ORG || "phoenix-portal",
@@ -77,11 +85,11 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			// Alias @ to the src directory
-			"@": path.resolve(__dirname, "./src"),
+			"@": path.resolve(configDir, "./src"),
 		},
 	},
 	build: {
-		sourcemap: "hidden",
+		sourcemap: productionSourcemapSetting(process.env),
 		chunkSizeWarningLimit: 700,
 		rollupOptions: {
 			output: {
@@ -162,6 +170,9 @@ export default defineConfig({
 		environment: "jsdom",
 		setupFiles: ["./src/test/setup.ts"],
 		css: true,
-		include: ["src/**/*.{test,spec}.{ts,tsx}"],
+		include: [
+			"src/**/*.{test,spec}.{ts,tsx}",
+			"tests/security/**/*.{test,spec}.{ts,tsx}",
+		],
 	},
 });
