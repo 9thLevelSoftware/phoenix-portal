@@ -295,6 +295,14 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-pull',
+      userId,
+      maxRequests: 20,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     // =========================================================================
     // 3. Parse request body with pagination parameters
     // =========================================================================
@@ -319,14 +327,6 @@ Deno.serve(async (req) => {
     // filter, which looked like a parity match and masked data-loss cases.
     const parityCapExceeded = enforceParityCaps(body, cors);
     if (parityCapExceeded) return parityCapExceeded;
-
-    const rateCheck = await checkRateLimit(supabase, {
-      key: 'mobile-sync-pull',
-      userId,
-      maxRequests: 20,
-      windowSeconds: 60,
-    }, cors);
-    if (!rateCheck.allowed) return rateCheck.response!;
 
     const emberGate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!emberGate.allowed) return emberGate.response!;

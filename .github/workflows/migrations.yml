@@ -21,6 +21,9 @@ on:
     paths:
       - "supabase/migrations/**"
 
+permissions:
+  contents: read
+
 concurrency:
   group: migrations-${{ github.ref }}
   cancel-in-progress: true
@@ -30,12 +33,12 @@ jobs:
     name: Clean apply from empty DB
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
         with:
-          version: latest
+          version: 2.76.9
 
       # Neutralize seed.sql for the clean-apply check. This job only verifies
       # that every migration applies cleanly from an empty DB; it should NOT

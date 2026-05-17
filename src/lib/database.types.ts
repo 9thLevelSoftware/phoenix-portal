@@ -1570,6 +1570,7 @@ export type Database = {
 					environment: string | null;
 					id: string;
 					last_event_id: string | null;
+					last_event_occurred_at: string | null;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
 					price_id: string | null;
@@ -1586,6 +1587,7 @@ export type Database = {
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
@@ -1602,6 +1604,7 @@ export type Database = {
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
@@ -2138,6 +2141,15 @@ export type Database = {
 					featured_count: number | null;
 					total_shares: number | null;
 					total_upvotes: number | null;
+					user_id: string | null;
+				};
+				Relationships: [];
+			};
+			public_profiles: {
+				Row: {
+					avatar_url: string | null;
+					display_name: string | null;
+					id: string | null;
 					user_id: string | null;
 				};
 				Relationships: [];

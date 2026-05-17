@@ -1,3 +1,4 @@
+import { escapeCSVField } from "@/lib/export/csv-security";
 import { supabase } from "@/lib/supabase";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
@@ -74,22 +75,6 @@ function formatDate(isoString: string): string {
 	const d = new Date(isoString);
 	const pad = (n: number) => n.toString().padStart(2, "0");
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-/**
- * Escape a CSV field value. Wraps in quotes if it contains commas,
- * quotes, or newlines.
- */
-function escapeCSV(value: string): string {
-	if (
-		value.includes(",") ||
-		value.includes('"') ||
-		value.includes("\n") ||
-		value.includes("\r")
-	) {
-		return `"${value.replace(/"/g, '""')}"`;
-	}
-	return value;
 }
 
 export interface ExportOptions {
@@ -231,7 +216,7 @@ export async function exportWorkoutsAsCSV(
 		const values = headers.map((h) => {
 			const val = row[h as keyof CSVRow];
 			if (typeof val === "number") return val.toString();
-			return escapeCSV(String(val));
+			return escapeCSVField(String(val));
 		});
 		lines.push(values.join(","));
 	}

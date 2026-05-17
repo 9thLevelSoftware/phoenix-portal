@@ -30,7 +30,7 @@ export function generateWorkoutCSV(
 		Mode: w.workout_mode ?? "",
 	}));
 
-	return Papa.unparse(data);
+	return Papa.unparse(data, { escapeFormulae: true });
 }
 
 /**
@@ -56,7 +56,7 @@ export function generateRecordsCSV(
 				: (r.previous_value ?? ""),
 	}));
 
-	return Papa.unparse(data);
+	return Papa.unparse(data, { escapeFormulae: true });
 }
 
 function formatRecordType(type: string): string {

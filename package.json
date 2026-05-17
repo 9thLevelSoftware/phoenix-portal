@@ -7,6 +7,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
+    "assert:no-sourcemaps": "node scripts/assert-no-sourcemaps.mjs dist",
     "auth:social:check": "node scripts/sync-social-auth.mjs check",
     "auth:social:push": "node scripts/sync-social-auth.mjs push",
     "auth:apple:rotate": "node scripts/generate-apple-client-secret.mjs --write-env",
@@ -22,7 +23,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run assert:no-sourcemaps",
     "verify:full": "npm run verify && npm run test:e2e",
     "gen:types": "npx supabase gen types typescript --project-id ilzlswmatadlnsuxatcv --schema public > src/lib/database.types.ts"
   },

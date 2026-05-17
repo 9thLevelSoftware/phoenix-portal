@@ -1,9 +1,12 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { hmacSha256Hex } from "../_shared/hmac.ts";
 import {
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
+import {
+  classifyPaddleEventOrder,
+  verifyPaddleCustomDataSignature,
+} from "../_shared/paddleWebhookSecurity.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -120,6 +123,14 @@ Deno.serve(async (req) => {
         { status: 500, headers: responseHeaders },
       );
     }
+    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
+    if (!customDataSecret) {
+      console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");
+      return new Response(
+        JSON.stringify({ error: "Billing custom_data signing is not configured" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
 
     // Read raw body BEFORE parsing — needed for signature verification
     const rawBody = await req.text();
@@ -209,57 +220,60 @@ Deno.serve(async (req) => {
 
     // Verify the signed user_id handed out by paddle-checkout-custom-data so
     // a client can't forge another user's user_id in custom_data (P1-10).
-    // Only enforce when the signing secret is configured — lets envs that
-    // haven't rolled out the signed-checkout flow keep working.
-    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
-    if (customDataSecret?.trim()) {
-      const providedSig = event.data.custom_data?.cd_sig;
-      if (!providedSig || typeof providedSig !== "string") {
-        console.error(
-          "[BILLING_ALERT] Missing cd_sig in custom_data (user_id spoofing attempt?):",
-          event.event_id,
-          "user_id:",
-          userId,
-        );
-        return new Response(
-          JSON.stringify({ error: "Missing cd_sig in custom_data" }),
-          { status: 401, headers: responseHeaders },
-        );
-      }
-
-      const expectedSig = await hmacSha256Hex(customDataSecret.trim(), userId);
-      const a = new TextEncoder().encode(providedSig);
-      const b = new TextEncoder().encode(expectedSig);
-      let sigMismatch = a.length !== b.length ? 1 : 0;
-      const cmpLen = Math.min(a.length, b.length);
-      for (let i = 0; i < cmpLen; i++) {
-        sigMismatch |= a[i]! ^ b[i]!;
-      }
-      if (sigMismatch !== 0) {
-        console.error(
-          "[BILLING_ALERT] Invalid cd_sig in custom_data (user_id spoofing attempt?):",
-          event.event_id,
-          "user_id:",
-          userId,
-        );
-        return new Response(
-          JSON.stringify({ error: "Invalid cd_sig" }),
-          { status: 401, headers: responseHeaders },
-        );
-      }
+    const providedSig = event.data.custom_data?.cd_sig;
+    const signedCustomDataValid = await verifyPaddleCustomDataSignature(
+      userId,
+      providedSig,
+      customDataSecret,
+    );
+    if (!signedCustomDataValid) {
+      console.error(
+        "[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):",
+        event.event_id,
+        "user_id:",
+        userId,
+      );
+      return new Response(
+        JSON.stringify({ error: "Invalid cd_sig" }),
+        { status: 401, headers: responseHeaders },
+      );
     }
 
-    // Idempotency check — skip if this event was already processed
-    const { data: existing } = await supabase
+    // Idempotency and ordering check — skip duplicates and stale delivery.
+    const { data: existingSubscription } = await supabase
       .from("subscriptions")
-      .select("last_event_id")
+      .select("last_event_id, last_event_occurred_at, tier")
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (existing?.last_event_id === event.event_id) {
+    const eventOrder = classifyPaddleEventOrder(
+      event.event_id,
+      event.occurred_at,
+      existingSubscription,
+    );
+    if (eventOrder.action === "duplicate") {
       return new Response(
         JSON.stringify({ received: true, duplicate: true }),
         { status: 200, headers: responseHeaders },
+      );
+    }
+    if (eventOrder.action === "stale") {
+      console.warn(
+        `[Paddle] Ignoring stale event ${event.event_id}: occurred_at=${eventOrder.occurredAt}, last_event_occurred_at=${eventOrder.lastOccurredAt}`,
+      );
+      return new Response(
+        JSON.stringify({ received: true, stale: true }),
+        { status: 200, headers: responseHeaders },
+      );
+    }
+    if (eventOrder.action === "invalid") {
+      console.error(
+        "[BILLING_ALERT] Missing or invalid Paddle occurred_at:",
+        event.event_id,
+      );
+      return new Response(
+        JSON.stringify({ error: "Invalid occurred_at" }),
+        { status: 400, headers: responseHeaders },
       );
     }
 
@@ -269,12 +283,7 @@ Deno.serve(async (req) => {
     let tier = mapPriceIdToTier(priceId, Deno.env);
 
     if (priceId && tier === "FREE") {
-      const { data: subRow } = await supabase
-        .from("subscriptions")
-        .select("tier")
-        .eq("user_id", userId)
-        .maybeSingle();
-      const existingTier = subRow?.tier as string | undefined;
+      const existingTier = existingSubscription?.tier as string | undefined;
       if (
         existingTier &&
         existingTier !== "FREE" &&
@@ -316,6 +325,7 @@ Deno.serve(async (req) => {
       current_period_end: event.data.current_billing_period?.ends_at ?? null,
       cancel_at_period_end: isCanceled || isPaused,
       last_event_id: event.event_id,
+      last_event_occurred_at: eventOrder.occurredAt,
       updated_at: new Date().toISOString(),
     };
 

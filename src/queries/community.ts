@@ -91,21 +91,22 @@ export function communityFeedOptions(params: FeedParams) {
 
 			const profileMap: Record<
 				string,
-				{ display_name: string; avatar_url: string | null }
+				{ display_name: string | null; avatar_url: string | null }
 			> = {};
 
 			if (userIds.length > 0) {
 				const { data: profiles } = await supabase
-					.from("profiles")
+					.from("public_profiles")
 					.select("id, display_name, avatar_url")
 					.in("id", userIds);
 
 				if (profiles) {
 					for (const p of profiles as {
-						id: string;
-						display_name: string;
+						id: string | null;
+						display_name: string | null;
 						avatar_url: string | null;
 					}[]) {
+						if (!p.id) continue;
 						profileMap[p.id] = {
 							display_name: p.display_name,
 							avatar_url: p.avatar_url,

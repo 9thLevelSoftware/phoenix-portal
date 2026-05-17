@@ -2,6 +2,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
  * Mobile Integration Sync Edge Function
@@ -356,6 +357,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
+
     // =========================================================================
     // 5. Handle CONNECT — store API key + fetch activities
     // =========================================================================
@@ -431,9 +435,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Check if user is paid — if so, persist activities to external_activities
-      const isPaid = await checkUserIsPaid(supabase, userId);
-      if (isPaid && activities.length > 0) {
+      if (activities.length > 0) {
         await persistActivities(supabase, userId, provider, activities);
       }
 
@@ -451,8 +453,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           status: 'connected',
-          activities: isPaid ? activities : [],
-          ...(isPaid ? {} : { requiresUpgrade: true }),
+          activities,
         }),
         { headers: { ...cors, 'Content-Type': 'application/json' } }
       );
@@ -511,9 +512,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user is paid — if so, persist activities to external_activities
-    const isPaid = await checkUserIsPaid(supabase, userId);
-    if (isPaid && activities.length > 0) {
+    if (activities.length > 0) {
       await persistActivities(supabase, userId, provider, activities);
     }
 
@@ -531,8 +530,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         status: 'synced',
-        activities: isPaid ? activities : [],
-        ...(isPaid ? {} : { requiresUpgrade: true }),
+        activities,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
@@ -548,26 +546,6 @@ Deno.serve(async (req) => {
 // =============================================================================
 // Helpers
 // =============================================================================
-
-/**
- * Check if user has any active/trialing subscription (any tier above FREE).
- * Uses the same `subscriptions` table as requireSubscription but without gating.
- */
-async function checkUserIsPaid(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
-): Promise<boolean> {
-  const { data: subscription } = await supabase
-    .from('subscriptions')
-    .select('tier, status')
-    .eq('user_id', userId)
-    .in('status', ['active', 'trialing'])
-    .maybeSingle();
-
-  if (!subscription) return false;
-  const tier = (subscription.tier as string) ?? 'FREE';
-  return tier !== 'FREE';
-}
 
 /**
  * Persist normalized activities to external_activities table.
