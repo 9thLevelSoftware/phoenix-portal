@@ -62,4 +62,4 @@ jobs:
           PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
         run: |
           echo "Deploying all local Edge Functions to project $PROJECT_REF"
-          supabase functions deploy --project-ref "$PROJECT_REF" --jobs 4
+          supabase functions deploy --project-ref "$PROJECT_REF"
