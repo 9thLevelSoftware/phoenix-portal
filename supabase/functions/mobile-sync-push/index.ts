@@ -1690,8 +1690,9 @@ Deno.serve(async (req) => {
         .flatMap((c) =>
           c.days.map((d) => ({
             // Do not upsert id when conflict target is (cycle_id, day_number).
-            // A reused client id across two day rows should not trip
-            // cycle_days_pkey before the composite conflict target is applied.
+            // If a client reuses an id across different day rows, Postgres can
+            // still raise duplicate key on cycle_days_pkey before conflict
+            // resolution for the composite unique key.
             cycle_id: d.cycleId,
             day_number: d.dayNumber,
             day_type: d.dayType ?? 'workout',

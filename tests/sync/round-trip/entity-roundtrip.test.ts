@@ -537,10 +537,12 @@ describe('Entity Round-Trip Tests', () => {
 
       const payload = createMinimalPushPayload(testUser.id, { cycles: [cycle] });
 
+      // Act: should not fail with duplicate-key errors from cycle_days_pkey
       const pushResult = await callPushEndpoint(payload, testUser.accessToken);
       expect(pushResult.success).toBe(true);
       const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
+      // Assert: both day rows are preserved by (cycleId, dayNumber)
       expect(pullResult.success).toBe(true);
       const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
       expect(pulledCycle).toBeDefined();

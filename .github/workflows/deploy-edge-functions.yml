@@ -1,49 +1,39 @@
 name: Deploy Edge Functions
 
-# Deploys the mobile-sync-push Edge Function to the production Supabase
-# project on merges to main that change its source.
+# Deploys all local Edge Functions to the production Supabase project on merges
+# to main that change function source or function config.
 #
 # This exists alongside the Supabase Branching GitHub App integration (the
 # "Supabase Preview" check) to provide a deterministic merge-to-main deploy
-# path independent of Branching's preview-branch lifecycle.
+# path for Edge Functions independent of Branching's preview-branch lifecycle.
+# Database migrations are deployed by the Supabase GitHub App.
 #
 # Required repository secrets:
 #   - SUPABASE_ACCESS_TOKEN         Personal access token from
 #                                   https://supabase.com/dashboard/account/tokens
 #   - SUPABASE_PROD_PROJECT_REF     Project ref of the prod Supabase project
 #                                   (the 20-char string in the dashboard URL)
-#
-# Scope: only `mobile-sync-push` and its shared helpers. Other functions are
-# not auto-deployed here to keep blast radius small; extend the matrix or
-# duplicate the job if you want coverage for another function.
 
 on:
   push:
     branches: [main]
     paths:
-      - "supabase/functions/mobile-sync-push/**"
-      - "supabase/functions/_shared/**"
+      - "supabase/functions/**"
       - "supabase/config.toml"
       - ".github/workflows/deploy-edge-functions.yml"
-  workflow_dispatch:
-    inputs:
-      function:
-        description: "Edge Function to deploy (default: mobile-sync-push)"
-        required: false
-        default: "mobile-sync-push"
-        type: string
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  # Serialize deploys; never cancel an in-flight prod push mid-upload.
+  # Serialize function deploys; never cancel an in-flight prod upload.
   group: deploy-edge-functions-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy ${{ github.event.inputs.function || 'mobile-sync-push' }}
+    name: Deploy Edge Functions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -66,11 +56,10 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy Edge Function
+      - name: Deploy all Edge Functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          FUNCTION: ${{ github.event.inputs.function || 'mobile-sync-push' }}
           PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
         run: |
-          echo "Deploying $FUNCTION to project $PROJECT_REF"
-          supabase functions deploy "$FUNCTION" --project-ref "$PROJECT_REF"
+          echo "Deploying all local Edge Functions to project $PROJECT_REF"
+          supabase functions deploy --project-ref "$PROJECT_REF"
