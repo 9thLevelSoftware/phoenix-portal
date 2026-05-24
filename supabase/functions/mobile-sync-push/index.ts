@@ -1607,19 +1607,22 @@ Deno.serve(async (req) => {
       const dayRows = payload.cycles
         .filter((c) => childAllowed(acceptedCycleIds, c.id))
         .flatMap((c) =>
-        c.days.map((d) => ({
-          id: d.id,
-          cycle_id: d.cycleId,
-          day_number: d.dayNumber,
-          day_type: d.dayType ?? 'workout',
-          routine_id: d.routineId,
-          weight_adjustment: d.weightAdjustment ?? 0,
-          rep_modifier: d.repModifier ?? 0,
-          rest_override: d.restOverride,
-          rest_type: d.restType,
-          notes: d.notes,
-        }))
-      );
+          c.days.map((d) => ({
+            // Do not upsert id when conflict target is (cycle_id, day_number).
+            // If a client reuses an id across different day rows, Postgres can
+            // still raise duplicate key on cycle_days_pkey before conflict
+            // resolution for the composite unique key.
+            cycle_id: d.cycleId,
+            day_number: d.dayNumber,
+            day_type: d.dayType ?? 'workout',
+            routine_id: d.routineId,
+            weight_adjustment: d.weightAdjustment ?? 0,
+            rep_modifier: d.repModifier ?? 0,
+            rest_override: d.restOverride,
+            rest_type: d.restType,
+            notes: d.notes,
+          })),
+        );
 
       if (dayRows.length > 0) {
         const { error: dayErr } = await supabase
