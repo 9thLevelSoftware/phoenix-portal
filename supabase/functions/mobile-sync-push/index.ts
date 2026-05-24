@@ -9,6 +9,10 @@ import {
   personalRecordIdentityKey,
 } from '../_shared/personalRecordRow.ts';
 import {
+  findPushPayloadDuplicateConflictKeys,
+  findPushPayloadIncompleteRoutines,
+  formatPushPayloadDuplicateError,
+  formatPushPayloadIncompleteRoutinesError,
   formatPushPayloadError,
   pushPayloadSchema,
 } from '../_shared/pushPayloadSchema.ts';
@@ -32,6 +36,68 @@ interface LwwUpsertRow {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PUSH_BODY_BYTES = 10 * 1024 * 1024;
+const PUSH_BODY_TOO_LARGE_ERROR = 'Payload too large. Maximum size is 10MB.';
+
+type JsonBodyReadResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413; error: string };
+
+function declaredContentLengthExceedsLimit(req: Request, maxBytes: number): boolean {
+  const contentLength = req.headers.get('content-length');
+  if (!contentLength) return false;
+
+  const declaredBytes = Number.parseInt(contentLength, 10);
+  return Number.isFinite(declaredBytes) && declaredBytes > maxBytes;
+}
+
+async function readJsonBodyWithLimit(
+  req: Request,
+  maxBytes: number,
+): Promise<JsonBodyReadResult> {
+  if (declaredContentLengthExceedsLimit(req, maxBytes)) {
+    return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
+  }
+
+  if (!req.body) {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      receivedBytes += value.byteLength;
+      if (receivedBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
+      }
+
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+
+  const bytes = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+}
 
 /**
  * Prevent cross-user takeover when upserting by primary key only.
@@ -479,6 +545,13 @@ Deno.serve(async (req) => {
     );
   }
 
+  if (declaredContentLengthExceedsLimit(req, MAX_PUSH_BODY_BYTES)) {
+    return new Response(
+      JSON.stringify({ error: PUSH_BODY_TOO_LARGE_ERROR }),
+      { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     // =========================================================================
     // 1. JWT verification — authenticate the mobile user
@@ -519,8 +592,10 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
-    // 2b. Rate limit: 10 requests per minute per user
+    // 2a. Rate/subscription gates before payload parsing
     // =========================================================================
+    // Keep the abuse controls ahead of JSON parsing and schema validation so
+    // malformed payloads still consume the limiter instead of bypassing it.
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-sync-push',
       userId,
@@ -529,21 +604,17 @@ Deno.serve(async (req) => {
     }, cors);
     if (!rateCheck.allowed) return rateCheck.response!;
 
-    // =========================================================================
-    // 2c. Subscription gate — EMBER or higher required
-    // =========================================================================
     const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!gate.allowed) return gate.response;
 
     // =========================================================================
     // 3. Parse request body with size validation
     // =========================================================================
-    // Validate payload size (max 10MB to prevent abuse)
-    const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+    const rawBody = await readJsonBodyWithLimit(req, MAX_PUSH_BODY_BYTES);
+    if (!rawBody.ok) {
       return new Response(
-        JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }),
-        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: rawBody.error }),
+        { status: rawBody.status, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -552,15 +623,7 @@ Deno.serve(async (req) => {
     // platform normalizer, profile-id validator, inline scalar guards).
     // On failure, we return a 400 with a precise list of {path, message}
     // issues so mobile debugging doesn't require reading edge function logs.
-    let rawPayload: unknown;
-    try {
-      rawPayload = await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON body' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
+    const rawPayload = rawBody.value;
 
     // Capture the raw platform value BEFORE the schema transforms it, so the
     // diagnostic log (when normalized === "unknown") can still tell us what
@@ -619,6 +682,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
+    if (duplicateConflictKeys.length > 0) {
+      return new Response(
+        JSON.stringify(formatPushPayloadDuplicateError(duplicateConflictKeys)),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const incompleteRoutineIds = findPushPayloadIncompleteRoutines(payload);
+    if (incompleteRoutineIds.length > 0) {
+      return new Response(
+        JSON.stringify(formatPushPayloadIncompleteRoutinesError(incompleteRoutineIds)),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
     if (payload.customExercises.length > 0) {
@@ -672,7 +751,7 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 3b. Sync local profiles
+    // 3a. Sync local profiles
     //
     // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
     // composite FK → local_profiles(user_id, id).  The profile row MUST exist
@@ -773,7 +852,7 @@ Deno.serve(async (req) => {
     let externalActivitiesUpserted = 0;
 
     // =========================================================================
-    // 3c. Cross-user takeover protection
+    // 3b. Cross-user takeover protection
     //
     // The service-role client used below bypasses RLS, so we must verify
     // up-front that every client-supplied primary key either doesn't exist
@@ -1466,7 +1545,9 @@ Deno.serve(async (req) => {
       // Remove orphan exercises: rows belonging to synced routines whose IDs
       // are not in the current payload. This handles exercises deleted on mobile.
       const syncedExerciseIds = reRows.map((r) => r.id);
-      const routineIds = payload.routines.map((r) => r.id);
+      const routineIds = payload.routines
+        .filter((r) => childAllowed(acceptedRoutineIds, r.id))
+        .map((r) => r.id);
       for (const routineId of routineIds) {
         const idsForRoutine = syncedExerciseIds.length > 0
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
@@ -1519,9 +1600,9 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 7a-bis. Delete cycles that mobile soft-deleted (tombstone propagation).
-    //         Hard-delete on server — CASCADE removes cycle_days automatically.
-    //         Ownership check prevents cross-user deletion via crafted IDs.
+    // 7b. Delete cycles that mobile soft-deleted (tombstone propagation).
+    //     Hard-delete on server — CASCADE removes cycle_days automatically.
+    //     Ownership check prevents cross-user deletion via crafted IDs.
     // =========================================================================
     if (payload.deletedCycleIds && payload.deletedCycleIds.length > 0) {
       const cycleDelOwnershipResp = await assertRowsOwnedByUser(
@@ -1546,7 +1627,7 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 7b. Upsert training_cycles + upsert cycle_days (safe replace pattern)
+    // 7c. Upsert training_cycles + upsert cycle_days (safe replace pattern)
     //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
     //     constraint instead of delete+insert.
     // =========================================================================

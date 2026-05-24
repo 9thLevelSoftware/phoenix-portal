@@ -544,7 +544,7 @@ describe('Entity Round-Trip Tests', () => {
 
       // Assert: both day rows are preserved by (cycleId, dayNumber)
       expect(pullResult.success).toBe(true);
-      const pulledCycle = pullResult.data!.cycles.find(c => c.id === cycleId);
+      const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
       expect(pulledCycle).toBeDefined();
       expect(pulledCycle!.days).toHaveLength(2);
       expect(pulledCycle!.days).toEqual(
@@ -963,7 +963,7 @@ describe('Entity Round-Trip Tests', () => {
             userId: testUser.id,
             name: 'Full Sync Routine',
             description: null,
-            exerciseCount: 3,
+            exerciseCount: 0,
             estimatedDuration: 45,
             timesCompleted: 0,
             isFavorite: false,

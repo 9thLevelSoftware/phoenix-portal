@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+	findPushPayloadDuplicateConflictKeys,
+	findPushPayloadIncompleteRoutines,
 	formatPushPayloadError,
 	localProfileIdSchema,
 	platformSchema,
@@ -353,6 +355,163 @@ describe("pushPayloadSchema", () => {
 		expect(
 			pushPayloadSchema.parse({ deviceId: "d1", platform: undefined }).platform,
 		).toBe("unknown");
+	});
+
+	it("reports duplicate session exercise IDs before bulk upsert", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			sessions: [
+				{
+					id: UUID,
+					userId: "u1",
+					exercises: [
+						{ id: UUID2, sessionId: UUID, name: "Squat" },
+						{ id: UUID2, sessionId: UUID, name: "Squat Again" },
+					],
+				},
+			],
+		});
+
+		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
+			table: "exercises",
+			ids: [UUID2],
+		});
+	});
+
+	it("reports duplicate routine exercise IDs before orphan cleanup", () => {
+		const routineId = "22222222-2222-4222-8222-222222222222";
+		const routineExerciseId = "33333333-3333-4333-8333-333333333333";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			routines: [
+				{
+					id: routineId,
+					userId: "u1",
+					name: "Duplicate Routine",
+					exerciseCount: 2,
+					exercises: [
+						{
+							id: routineExerciseId,
+							routineId,
+							name: "Press",
+						},
+						{
+							id: routineExerciseId,
+							routineId,
+							name: "Press Again",
+						},
+					],
+				},
+			],
+		});
+
+		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
+			table: "routine_exercises",
+			ids: [routineExerciseId],
+		});
+	});
+
+	it("reports duplicate cycle day compound conflict keys", () => {
+		const cycleId = "44444444-4444-4444-8444-444444444444";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			cycles: [
+				{
+					id: cycleId,
+					userId: "u1",
+					name: "Cycle",
+					days: [
+						{
+							id: "55555555-5555-4555-8555-555555555555",
+							cycleId,
+							dayNumber: 1,
+						},
+						{
+							id: "66666666-6666-4666-8666-666666666666",
+							cycleId,
+							dayNumber: 1,
+						},
+					],
+				},
+			],
+		});
+
+		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
+			table: "cycle_days",
+			ids: [`${cycleId}:1`],
+		});
+	});
+
+	it("reports duplicate assessment exercise/time conflict keys", () => {
+		const exerciseId = "88888888-8888-4888-8888-888888888888";
+		const createdAt = "2026-05-24T03:00:00.000Z";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			assessments: [
+				{
+					id: "99999999-9999-4999-8999-999999999999",
+					exerciseId,
+					estimatedOneRepMaxKg: 120,
+					loadVelocityData: "{}",
+					assessmentSessionId: null,
+					userOverrideKg: null,
+					createdAt,
+				},
+				{
+					id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+					exerciseId,
+					estimatedOneRepMaxKg: 125,
+					loadVelocityData: "{}",
+					assessmentSessionId: null,
+					userOverrideKg: null,
+					createdAt,
+				},
+			],
+		});
+
+		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
+			table: "vbt_assessments",
+			ids: [`${exerciseId}:${createdAt}`],
+		});
+	});
+
+	it("reports duplicate local profile IDs before profile upsert", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			allProfiles: [
+				{ id: "default", name: "Default", colorIndex: 0 },
+				{ id: "default", name: "Default Again", colorIndex: 1 },
+			],
+		});
+
+		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
+			table: "local_profiles",
+			ids: ["default"],
+		});
+	});
+
+	it("reports routines that claim exercises but omit the routine exercise projection", () => {
+		const routineId = "77777777-7777-4777-8777-777777777777";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			routines: [
+				{
+					id: routineId,
+					userId: "u1",
+					name: "Incomplete Routine",
+					exerciseCount: 3,
+					exercises: [],
+				},
+			],
+		});
+
+		expect(findPushPayloadIncompleteRoutines(parsed)).toEqual([routineId]);
 	});
 });
 

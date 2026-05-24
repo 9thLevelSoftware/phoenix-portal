@@ -365,7 +365,7 @@ describe('Conflict Resolution Integration Tests', () => {
         userId: testUser.id,
         name: 'Leg Day',
         description: 'Legs workout',
-        exerciseCount: 3,
+        exerciseCount: 0,
         estimatedDuration: 45,
         timesCompleted: 5,
         isFavorite: true,
