@@ -445,39 +445,6 @@ describe("pushPayloadSchema", () => {
 		});
 	});
 
-	it("reports duplicate cycle day IDs before primary-key upsert failure", () => {
-		const cycleId = "44444444-4444-4444-8444-444444444444";
-		const duplicateDayId = "55555555-5555-4555-8555-555555555555";
-		const parsed = pushPayloadSchema.parse({
-			deviceId: "d1",
-			platform: "ios",
-			cycles: [
-				{
-					id: cycleId,
-					userId: "u1",
-					name: "Cycle",
-					days: [
-						{
-							id: duplicateDayId,
-							cycleId,
-							dayNumber: 1,
-						},
-						{
-							id: duplicateDayId,
-							cycleId,
-							dayNumber: 2,
-						},
-					],
-				},
-			],
-		});
-
-		expect(findPushPayloadDuplicateConflictKeys(parsed)).toContainEqual({
-			table: "cycle_days.id",
-			ids: [duplicateDayId],
-		});
-	});
-
 	it("reports duplicate assessment exercise/time conflict keys", () => {
 		const exerciseId = "88888888-8888-4888-8888-888888888888";
 		const createdAt = "2026-05-24T03:00:00.000Z";

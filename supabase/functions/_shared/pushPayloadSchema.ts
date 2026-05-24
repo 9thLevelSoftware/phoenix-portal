@@ -412,7 +412,7 @@ interface PushPayloadForDuplicateCheck {
 	}>;
 	cycles?: Array<{
 		id: string;
-		days?: Array<{ id: string; cycleId: string; dayNumber: number }>;
+		days?: Array<{ cycleId: string; dayNumber: number }>;
 	}>;
 	phaseStatistics?: Array<{ sessionId: string }>;
 	exerciseSignatures?: Array<{ exerciseId: string }>;
@@ -516,13 +516,6 @@ export function findPushPayloadDuplicateConflictKeys(
 		reports,
 		"training_cycles",
 		(payload.cycles ?? []).map((cycle) => cycle.id),
-	);
-	reportDuplicate(
-		reports,
-		"cycle_days.id",
-		(payload.cycles ?? []).flatMap((cycle) =>
-			(cycle.days ?? []).map((day) => day.id),
-		),
 	);
 	reportDuplicate(
 		reports,

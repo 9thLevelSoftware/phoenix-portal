@@ -486,6 +486,81 @@ describe('Entity Round-Trip Tests', () => {
       expect(pulledCycle.days).toHaveLength(3);
     });
 
+    it('should handle cycle day DTOs that reuse the same id across different day numbers', async () => {
+      // Arrange: two day DTOs intentionally reuse the same id
+      const cycleId = generateTestId();
+      const sharedDayId = generateTestId();
+      const firstRoutineId = generateTestId();
+      const secondRoutineId = generateTestId();
+
+      const cycle: CycleDto = {
+        id: cycleId,
+        userId: testUser.id,
+        name: 'Duplicate Day ID Cycle',
+        description: 'Regression test for cycle_days upsert conflict target',
+        durationWeeks: 4,
+        workoutDays: 2,
+        restDays: 0,
+        currentWeek: 1,
+        status: 'active',
+        startedAt: null,
+        lastUsedAt: null,
+        progressionSettings: null,
+        deloadSettings: null,
+        days: [
+          {
+            id: sharedDayId,
+            cycleId,
+            dayNumber: 1,
+            dayType: 'workout',
+            routineId: firstRoutineId,
+            weightAdjustment: 5,
+            repModifier: 1,
+            restOverride: null,
+            restType: null,
+            notes: 'Day 1 update',
+          },
+          {
+            id: sharedDayId,
+            cycleId,
+            dayNumber: 2,
+            dayType: 'workout',
+            routineId: secondRoutineId,
+            weightAdjustment: -5,
+            repModifier: -1,
+            restOverride: null,
+            restType: null,
+            notes: 'Day 2 update',
+          },
+        ],
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { cycles: [cycle] });
+
+      const pushResult = await callPushEndpoint(payload, testUser.accessToken);
+      expect(pushResult.success).toBe(true);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      expect(pullResult.success).toBe(true);
+      const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
+      expect(pulledCycle).toBeDefined();
+      expect(pulledCycle!.days).toHaveLength(2);
+      expect(pulledCycle!.days).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            dayNumber: 1,
+            routineId: firstRoutineId,
+            notes: 'Day 1 update',
+          }),
+          expect.objectContaining({
+            dayNumber: 2,
+            routineId: secondRoutineId,
+            notes: 'Day 2 update',
+          }),
+        ]),
+      );
+    });
+
     it('should preserve deload day configuration', async () => {
       // Arrange: Cycle with deload week
       const cycleId = generateTestId();
