@@ -6,7 +6,7 @@ This roadmap is restricted to the web portal infrastructure in this repository. 
 
 Primary evidence sources:
 
-- [`API Feature Analysis.pdf`](C:/Users/dasbl/Downloads/API%20Feature%20Analysis.pdf)
+- [`API Feature Analysis.pdf`](./api-feature-analysis.pdf)
 - [`src/app/components/Integrations.tsx`](../src/app/components/Integrations.tsx)
 - [`src/app/components/integrations/HevyConnect.tsx`](../src/app/components/integrations/HevyConnect.tsx)
 - [`src/app/components/integrations/LiftosaurConnect.tsx`](../src/app/components/integrations/LiftosaurConnect.tsx)

@@ -14,9 +14,8 @@
  *   - Expired / invalid JWT → 401 with AUTH signal
  *
  * Source of truth (Edge Functions):
- *   - supabase/functions/mobile-sync-push/index.ts (lines 477-534 for size
- *     and array caps, 460-472 for rate limit & subscription gate, 422-447
- *     for auth).
+ *   - supabase/functions/mobile-sync-push/index.ts (auth, rate/subscription
+ *     gate, size checks, array caps, and duplicate conflict-key validation).
  *   - supabase/functions/mobile-sync-pull/index.ts mirrors the auth +
  *     subscription gate but allows 20 req/min.
  *
@@ -268,6 +267,46 @@ describe('Server-Side Validation Invariants', () => {
       expect(result.status).toBe(400);
       expect(result.error?.message).toContain('Duplicate IDs in push payload');
       expect(result.error?.message).toContain('exercises');
+
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+      expect(pullResult.success).toBe(true);
+      expect(pullResult.data!.sessions).toHaveLength(0);
+    });
+
+    it('rejects duplicate assessment keys before persisting earlier rows', async () => {
+      const session = createTestSession(testUser.id, { exercises: [] });
+      const exerciseId = generateTestId();
+      const createdAt = new Date('2026-05-24T03:00:00.000Z').toISOString();
+      const payload = createMinimalPushPayload(testUser.id, {
+        sessions: [session],
+        assessments: [
+          {
+            id: generateTestId(),
+            exerciseId,
+            estimatedOneRepMaxKg: 120,
+            loadVelocityData: '{}',
+            assessmentSessionId: null,
+            userOverrideKg: null,
+            createdAt,
+          },
+          {
+            id: generateTestId(),
+            exerciseId,
+            estimatedOneRepMaxKg: 125,
+            loadVelocityData: '{}',
+            assessmentSessionId: null,
+            userOverrideKg: null,
+            createdAt,
+          },
+        ],
+      });
+
+      const result = await callPushEndpoint(payload, testUser.accessToken);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.error?.message).toContain('Duplicate IDs in push payload');
+      expect(result.error?.message).toContain('vbt_assessments');
 
       const pullResult = await callPullEndpoint(0, testUser.accessToken);
       expect(pullResult.success).toBe(true);
