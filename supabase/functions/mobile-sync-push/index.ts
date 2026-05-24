@@ -9,6 +9,10 @@ import {
   personalRecordIdentityKey,
 } from '../_shared/personalRecordRow.ts';
 import {
+  findPushPayloadDuplicateConflictKeys,
+  findPushPayloadIncompleteRoutines,
+  formatPushPayloadDuplicateError,
+  formatPushPayloadIncompleteRoutinesError,
   formatPushPayloadError,
   pushPayloadSchema,
 } from '../_shared/pushPayloadSchema.ts';
@@ -519,23 +523,6 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
-    // 2b. Rate limit: 10 requests per minute per user
-    // =========================================================================
-    const rateCheck = await checkRateLimit(supabase, {
-      key: 'mobile-sync-push',
-      userId,
-      maxRequests: 10,
-      windowSeconds: 60,
-    }, cors);
-    if (!rateCheck.allowed) return rateCheck.response!;
-
-    // =========================================================================
-    // 2c. Subscription gate — EMBER or higher required
-    // =========================================================================
-    const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
-    if (!gate.allowed) return gate.response;
-
-    // =========================================================================
     // 3. Parse request body with size validation
     // =========================================================================
     // Validate payload size (max 10MB to prevent abuse)
@@ -618,6 +605,40 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+
+    const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
+    if (duplicateConflictKeys.length > 0) {
+      return new Response(
+        JSON.stringify(formatPushPayloadDuplicateError(duplicateConflictKeys)),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const incompleteRoutineIds = findPushPayloadIncompleteRoutines(payload);
+    if (incompleteRoutineIds.length > 0) {
+      return new Response(
+        JSON.stringify(formatPushPayloadIncompleteRoutinesError(incompleteRoutineIds)),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =========================================================================
+    // 3b. Rate/subscription gates after payload validation
+    //
+    // Duplicate conflict keys and incomplete routine projections are rejected
+    // before any database writes, including rate-limit state writes. This keeps
+    // malformed sync payloads from producing partial side effects.
+    // =========================================================================
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-push',
+      userId,
+      maxRequests: 10,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    if (!gate.allowed) return gate.response;
 
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
@@ -1466,7 +1487,9 @@ Deno.serve(async (req) => {
       // Remove orphan exercises: rows belonging to synced routines whose IDs
       // are not in the current payload. This handles exercises deleted on mobile.
       const syncedExerciseIds = reRows.map((r) => r.id);
-      const routineIds = payload.routines.map((r) => r.id);
+      const routineIds = payload.routines
+        .filter((r) => childAllowed(acceptedRoutineIds, r.id))
+        .map((r) => r.id);
       for (const routineId of routineIds) {
         const idsForRoutine = syncedExerciseIds.length > 0
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)

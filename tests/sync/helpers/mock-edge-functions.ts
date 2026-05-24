@@ -17,6 +17,12 @@ import type {
   BadgeResponseDto,
 } from './edge-function-harness';
 import { recordBroadcast } from './mock-broadcast';
+import {
+  findPushPayloadDuplicateConflictKeys,
+  findPushPayloadIncompleteRoutines,
+  formatPushPayloadDuplicateError,
+  formatPushPayloadIncompleteRoutinesError,
+} from '../../../supabase/functions/_shared/pushPayloadSchema.ts';
 
 /**
  * Check if mocks should be used
@@ -112,6 +118,32 @@ export function mockPushEndpoint(
       status: 400,
       error: {
         message: 'Missing required field: platform',
+        code: 'VALIDATION_ERROR',
+      },
+    };
+  }
+
+  const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
+  if (duplicateConflictKeys.length > 0) {
+    const formatted = formatPushPayloadDuplicateError(duplicateConflictKeys);
+    return {
+      success: false,
+      status: 400,
+      error: {
+        message: formatted.error,
+        code: 'VALIDATION_ERROR',
+      },
+    };
+  }
+
+  const incompleteRoutineIds = findPushPayloadIncompleteRoutines(payload);
+  if (incompleteRoutineIds.length > 0) {
+    const formatted = formatPushPayloadIncompleteRoutinesError(incompleteRoutineIds);
+    return {
+      success: false,
+      status: 400,
+      error: {
+        message: formatted.error,
         code: 'VALIDATION_ERROR',
       },
     };

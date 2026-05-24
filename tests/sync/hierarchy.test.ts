@@ -822,7 +822,7 @@ describe('Task 2: Profile Scoping Isolation', () => {
         userId: testUser.id,
         name: 'Profile A Routine',
         description: 'Routine for profile A',
-        exerciseCount: 2,
+        exerciseCount: 0,
         estimatedDuration: 45,
         timesCompleted: 0,
         isFavorite: false,

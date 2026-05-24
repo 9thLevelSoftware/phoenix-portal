@@ -36,6 +36,7 @@ import {
   createTestUser,
   createMinimalPushPayload,
   createTestSession,
+  createTestExercise,
   generateTestId,
   type SessionDto,
   type RoutineDto,
@@ -236,6 +237,41 @@ describe('Server-Side Validation Invariants', () => {
       const result = await callPushEndpoint(payload, testUser.accessToken);
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
+    });
+  });
+
+  describe('Duplicate conflict-key payloads', () => {
+    it('rejects duplicate exercise IDs before persisting any rows', async () => {
+      const sessionId = generateTestId();
+      const duplicateExerciseId = generateTestId();
+      const session = createTestSession(testUser.id, {
+        id: sessionId,
+        exerciseCount: 2,
+        exercises: [
+          createTestExercise(sessionId, 0, {
+            id: duplicateExerciseId,
+            name: 'Bench Press',
+          }),
+          createTestExercise(sessionId, 1, {
+            id: duplicateExerciseId,
+            name: 'Incline Bench Press',
+          }),
+        ],
+      });
+      const payload = createMinimalPushPayload(testUser.id, {
+        sessions: [session],
+      });
+
+      const result = await callPushEndpoint(payload, testUser.accessToken);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.error?.message).toContain('Duplicate IDs in push payload');
+      expect(result.error?.message).toContain('exercises');
+
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+      expect(pullResult.success).toBe(true);
+      expect(pullResult.data!.sessions).toHaveLength(0);
     });
   });
 
