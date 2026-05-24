@@ -388,6 +388,232 @@ export const pushPayloadSchema = z.object({
 
 export type PushPayloadParsed = z.infer<typeof pushPayloadSchema>;
 
+export interface PushPayloadDuplicateReport {
+	table: string;
+	ids: string[];
+}
+
+interface PushPayloadForDuplicateCheck {
+	sessions?: Array<{
+		id: string;
+		exercises?: Array<{
+			id: string;
+			sets?: Array<{
+				id: string;
+				repSummaries?: Array<{ id: string }>;
+			}>;
+		}>;
+	}>;
+	telemetry?: Array<{ id: string }>;
+	routines?: Array<{
+		id: string;
+		exerciseCount?: number;
+		exercises?: Array<{ id: string }>;
+	}>;
+	cycles?: Array<{
+		id: string;
+		days?: Array<{ cycleId: string; dayNumber: number }>;
+	}>;
+	phaseStatistics?: Array<{ sessionId: string }>;
+	exerciseSignatures?: Array<{ exerciseId: string }>;
+	assessments?: Array<{ exerciseId: string; createdAt: string }>;
+	badges?: Array<{ badgeId: string }>;
+	externalActivities?: Array<{
+		id?: string;
+		provider: string;
+		externalId: string;
+	}> | null;
+	customExercises?: Array<{ clientId: string }>;
+	allProfiles?: Array<{ id: string }> | null;
+}
+
+function duplicateValues(values: string[]): string[] {
+	const seen = new Set<string>();
+	const duplicates = new Set<string>();
+	for (const value of values) {
+		if (seen.has(value)) {
+			duplicates.add(value);
+		} else {
+			seen.add(value);
+		}
+	}
+	return [...duplicates].sort();
+}
+
+function reportDuplicate(
+	reports: PushPayloadDuplicateReport[],
+	table: string,
+	values: string[],
+) {
+	const ids = duplicateValues(values.filter((v) => v.length > 0));
+	if (ids.length > 0) {
+		reports.push({ table, ids });
+	}
+}
+
+/**
+ * Detect duplicate conflict keys before mobile-sync-push performs any writes.
+ *
+ * PostgreSQL rejects a single INSERT ... ON CONFLICT DO UPDATE statement when
+ * two input rows hit the same conflict target. Returning a deterministic 400
+ * here prevents partial writes before the bulk upsert fails.
+ */
+export function findPushPayloadDuplicateConflictKeys(
+	payload: PushPayloadForDuplicateCheck,
+): PushPayloadDuplicateReport[] {
+	const reports: PushPayloadDuplicateReport[] = [];
+
+	reportDuplicate(
+		reports,
+		"workout_sessions",
+		(payload.sessions ?? []).map((session) => session.id),
+	);
+	reportDuplicate(
+		reports,
+		"exercises",
+		(payload.sessions ?? []).flatMap((session) =>
+			(session.exercises ?? []).map((exercise) => exercise.id),
+		),
+	);
+	reportDuplicate(
+		reports,
+		"sets",
+		(payload.sessions ?? []).flatMap((session) =>
+			(session.exercises ?? []).flatMap((exercise) =>
+				(exercise.sets ?? []).map((set) => set.id),
+			),
+		),
+	);
+	reportDuplicate(
+		reports,
+		"rep_summaries",
+		(payload.sessions ?? []).flatMap((session) =>
+			(session.exercises ?? []).flatMap((exercise) =>
+				(exercise.sets ?? []).flatMap((set) =>
+					(set.repSummaries ?? []).map((summary) => summary.id),
+				),
+			),
+		),
+	);
+	reportDuplicate(
+		reports,
+		"rep_telemetry",
+		(payload.telemetry ?? []).map((point) => point.id),
+	);
+	reportDuplicate(
+		reports,
+		"routines",
+		(payload.routines ?? []).map((routine) => routine.id),
+	);
+	reportDuplicate(
+		reports,
+		"routine_exercises",
+		(payload.routines ?? []).flatMap((routine) =>
+			(routine.exercises ?? []).map((exercise) => exercise.id),
+		),
+	);
+	reportDuplicate(
+		reports,
+		"training_cycles",
+		(payload.cycles ?? []).map((cycle) => cycle.id),
+	);
+	reportDuplicate(
+		reports,
+		"cycle_days",
+		(payload.cycles ?? []).flatMap((cycle) =>
+			(cycle.days ?? []).map((day) => `${day.cycleId}:${day.dayNumber}`),
+		),
+	);
+	reportDuplicate(
+		reports,
+		"session_phase_statistics",
+		(payload.phaseStatistics ?? []).map((stats) => stats.sessionId),
+	);
+	reportDuplicate(
+		reports,
+		"exercise_signatures",
+		(payload.exerciseSignatures ?? []).map((signature) => signature.exerciseId),
+	);
+	reportDuplicate(
+		reports,
+		"vbt_assessments",
+		(payload.assessments ?? []).map(
+			(assessment) => `${assessment.exerciseId}:${assessment.createdAt}`,
+		),
+	);
+	reportDuplicate(
+		reports,
+		"earned_badges",
+		(payload.badges ?? []).map((badge) => badge.badgeId),
+	);
+	reportDuplicate(
+		reports,
+		"external_activities.id",
+		(payload.externalActivities ?? []).flatMap((activity) =>
+			activity.id ? [activity.id] : [],
+		),
+	);
+	reportDuplicate(
+		reports,
+		"external_activities",
+		(payload.externalActivities ?? []).map(
+			(activity) => `${activity.provider}:${activity.externalId}`,
+		),
+	);
+	reportDuplicate(
+		reports,
+		"exercise_catalog",
+		(payload.customExercises ?? []).map((exercise) => exercise.clientId),
+	);
+	reportDuplicate(
+		reports,
+		"local_profiles",
+		(payload.allProfiles ?? []).map((profile) => profile.id),
+	);
+
+	return reports;
+}
+
+export function formatPushPayloadDuplicateError(
+	duplicates: PushPayloadDuplicateReport[],
+): {
+	error: string;
+	duplicates: PushPayloadDuplicateReport[];
+} {
+	const first = duplicates[0];
+	return {
+		error: first
+			? `Duplicate IDs in push payload: ${first.table} contains duplicate key(s): ${first.ids.join(", ")}`
+			: "Duplicate IDs in push payload",
+		duplicates,
+	};
+}
+
+export function findPushPayloadIncompleteRoutines(
+	payload: PushPayloadForDuplicateCheck,
+): string[] {
+	return (payload.routines ?? [])
+		.filter(
+			(routine) =>
+				(routine.exerciseCount ?? 0) > 0 &&
+				(routine.exercises ?? []).length === 0,
+		)
+		.map((routine) => routine.id)
+		.sort();
+}
+
+export function formatPushPayloadIncompleteRoutinesError(
+	routineIds: string[],
+): {
+	error: string;
+	routineIds: string[];
+} {
+	return {
+		error: `Incomplete routine payload: routine(s) with nonzero exerciseCount omitted exercises: ${routineIds.join(", ")}`,
+		routineIds,
+	};
+}
+
 /**
  * Format a Zod error for the response body. Returns a short summary plus
  * a list of `{path, message}` entries so mobile debugging doesn't require
