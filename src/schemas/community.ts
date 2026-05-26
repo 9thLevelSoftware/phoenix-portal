@@ -3,6 +3,101 @@ import { z } from "zod";
 const difficultyEnum = z.enum(["Beginner", "Intermediate", "Advanced"]);
 const itemTypeEnum = z.enum(["routine", "cycle"]);
 
+const profileSummarySchema = z
+	.object({
+		display_name: z.string().nullable(),
+		avatar_url: z.string().nullable(),
+	})
+	.optional()
+	.nullable();
+
+const nullableUnknownSchema = z.unknown().nullable().optional();
+
+export const routineExerciseSnapshotSchema = z.object({
+	name: z.string().default("Exercise"),
+	muscle_group: z.string().default("General"),
+	exercise_id: z.string().nullable().optional(),
+	sets: z.number().default(3),
+	reps: z.number().default(10),
+	weight: z.number().default(0),
+	rest_seconds: z.number().default(90),
+	duration_seconds: z.number().nullable().optional(),
+	mode: z.string().default("OLD_SCHOOL"),
+	order_index: z.number().default(0),
+	superset_id: z.string().nullable().optional(),
+	superset_color: z.string().nullable().optional(),
+	superset_order: z.number().nullable().optional(),
+	per_set_weights: nullableUnknownSchema,
+	per_set_rest: nullableUnknownSchema,
+	per_set_reps: nullableUnknownSchema,
+	per_set_echo_levels: nullableUnknownSchema,
+	is_amrap: z.boolean().nullable().optional().default(false),
+	is_bodyweight: z.boolean().nullable().optional().default(false),
+	pr_percentage: z.number().nullable().optional(),
+	rep_count_timing: z.string().nullable().optional(),
+	stop_at_position: z.string().nullable().optional(),
+	stall_detection: z.boolean().nullable().optional().default(true),
+	eccentric_load: z.string().nullable().optional(),
+	echo_level: z.string().nullable().optional(),
+	warmup_sets: nullableUnknownSchema,
+});
+
+export const routineExercisesSnapshotSchema = z.array(
+	routineExerciseSnapshotSchema,
+);
+
+export type RoutineExerciseSnapshot = z.infer<
+	typeof routineExerciseSnapshotSchema
+>;
+
+export const embeddedRoutineSnapshotSchema = z.object({
+	source_routine_id: z.string().nullable().optional(),
+	name: z.string().default("Imported Routine"),
+	description: z.string().nullable().optional().default(""),
+	exercise_count: z.number().default(0),
+	estimated_duration: z.number().default(0),
+	tags: z.array(z.string()).nullable().optional().default([]),
+	exercises: routineExercisesSnapshotSchema.default([]),
+});
+
+export type EmbeddedRoutineSnapshot = z.infer<
+	typeof embeddedRoutineSnapshotSchema
+>;
+
+export const cycleDaySnapshotSchema = z.object({
+	day_number: z.number(),
+	day_type: z.string().default("workout"),
+	routine_id: z.string().nullable().optional(),
+	weight_adjustment: z.number().default(0),
+	rep_modifier: z.number().default(0),
+	rest_override: z.number().nullable().optional(),
+	notes: z.string().nullable().optional(),
+	rest_type: z.string().nullable().optional(),
+	routine: embeddedRoutineSnapshotSchema.nullable().optional(),
+});
+
+export const cycleSnapshotSchema = z.object({
+	duration_weeks: z.number(),
+	workout_days: z.number().optional(),
+	rest_days: z.number().optional(),
+	progression_settings: nullableUnknownSchema,
+	deload_settings: nullableUnknownSchema,
+	days: z.array(cycleDaySnapshotSchema).default([]),
+});
+
+export type CycleSnapshot = z.infer<typeof cycleSnapshotSchema>;
+
+const routineSnapshotValueSchema = z
+	.preprocess(
+		(value) => value ?? null,
+		routineExercisesSnapshotSchema.nullable(),
+	)
+	.catch(null);
+
+const cycleSnapshotValueSchema = z
+	.preprocess((value) => value ?? null, cycleSnapshotSchema.nullable())
+	.catch(null);
+
 // --- Shared Routine ---
 
 export const sharedRoutineSchema = z.object({
@@ -13,7 +108,6 @@ export const sharedRoutineSchema = z.object({
 	description: z.string(),
 	exercise_count: z.number(),
 	estimated_duration: z.number(),
-	exercises_snapshot: z.unknown(),
 	tags: z.array(z.string()),
 	difficulty: difficultyEnum,
 	vote_count: z.number(),
@@ -22,16 +116,16 @@ export const sharedRoutineSchema = z.object({
 	comment_count: z.number().default(0),
 	shared_at: z.string().transform((s) => new Date(s)),
 	updated_at: z.string().transform((s) => new Date(s)),
-	profiles: z
-		.object({
-			display_name: z.string().nullable(),
-			avatar_url: z.string().nullable(),
-		})
-		.optional()
-		.nullable(),
+	profiles: profileSummarySchema,
 });
 
 export type SharedRoutine = z.infer<typeof sharedRoutineSchema>;
+
+export const sharedRoutineDetailSchema = sharedRoutineSchema.extend({
+	exercises_snapshot: routineSnapshotValueSchema,
+});
+
+export type SharedRoutineDetail = z.infer<typeof sharedRoutineDetailSchema>;
 
 // --- Shared Cycle ---
 
@@ -50,16 +144,16 @@ export const sharedCycleSchema = z.object({
 	comment_count: z.number().default(0),
 	shared_at: z.string().transform((s) => new Date(s)),
 	updated_at: z.string().transform((s) => new Date(s)),
-	profiles: z
-		.object({
-			display_name: z.string().nullable(),
-			avatar_url: z.string().nullable(),
-		})
-		.optional()
-		.nullable(),
+	profiles: profileSummarySchema,
 });
 
 export type SharedCycle = z.infer<typeof sharedCycleSchema>;
+
+export const sharedCycleDetailSchema = sharedCycleSchema.extend({
+	cycle_snapshot: cycleSnapshotValueSchema,
+});
+
+export type SharedCycleDetail = z.infer<typeof sharedCycleDetailSchema>;
 
 // --- Community Vote ---
 
@@ -80,6 +174,8 @@ export const savedItemSchema = z.object({
 	user_id: z.string().uuid(),
 	shared_item_id: z.string().uuid(),
 	item_type: itemTypeEnum,
+	imported_routine_id: z.string().uuid().nullable().optional(),
+	imported_cycle_id: z.string().uuid().nullable().optional(),
 	saved_at: z.string().transform((s) => new Date(s)),
 });
 
@@ -123,3 +219,4 @@ export const blockUserSchema = z.object({
 // --- Union type for feed items ---
 
 export type CommunityFeedItem = SharedRoutine | SharedCycle;
+export type CommunityItemDetail = SharedRoutineDetail | SharedCycleDetail;

@@ -5,12 +5,20 @@ import {
 	communityVoteSchema,
 	creatorStatsSchema,
 	savedItemSchema,
+	sharedCycleDetailSchema,
 	sharedCycleSchema,
+	sharedRoutineDetailSchema,
 	sharedRoutineSchema,
 } from "@/schemas/community";
 import { queryKeys } from "./keys";
 
 const PAGE_SIZE = 20;
+const ROUTINE_SUMMARY_SELECT =
+	"id,user_id,routine_id,name,description,exercise_count,estimated_duration,tags,difficulty,vote_count,save_count,hot_score,comment_count,shared_at,updated_at";
+const CYCLE_SUMMARY_SELECT =
+	"id,user_id,cycle_id,name,description,duration_weeks,tags,difficulty,vote_count,save_count,hot_score,comment_count,shared_at,updated_at";
+const ROUTINE_DETAIL_SELECT = `${ROUTINE_SUMMARY_SELECT},exercises_snapshot`;
+const CYCLE_DETAIL_SELECT = `${CYCLE_SUMMARY_SELECT},cycle_snapshot`;
 
 type FeedTab = "routines" | "cycles";
 type FeedSort = "hot" | "top" | "new";
@@ -26,8 +34,51 @@ interface FeedParams {
 	userId?: string;
 }
 
+type ProfileSummary = {
+	display_name: string | null;
+	avatar_url: string | null;
+};
+
+async function hydrateProfiles<T extends { user_id: string | null }>(
+	rows: T[],
+): Promise<Array<T & { profiles: ProfileSummary | null }>> {
+	const userIds = [
+		...new Set(
+			rows.map((row) => row.user_id).filter((id): id is string => id !== null),
+		),
+	];
+
+	const profileMap: Record<string, ProfileSummary> = {};
+
+	if (userIds.length > 0) {
+		const { data: profiles } = await supabase
+			.from("public_profiles")
+			.select("id, display_name, avatar_url")
+			.in("id", userIds);
+
+		if (profiles) {
+			for (const p of profiles as Array<
+				ProfileSummary & { id: string | null }
+			>) {
+				if (!p.id) continue;
+				profileMap[p.id] = {
+					display_name: p.display_name,
+					avatar_url: p.avatar_url,
+				};
+			}
+		}
+	}
+
+	return rows.map((row) => ({
+		...row,
+		profiles: row.user_id ? (profileMap[row.user_id] ?? null) : null,
+	}));
+}
+
 export function communityFeedOptions(params: FeedParams) {
 	const table = params.tab === "routines" ? "shared_routines" : "shared_cycles";
+	const select =
+		params.tab === "routines" ? ROUTINE_SUMMARY_SELECT : CYCLE_SUMMARY_SELECT;
 	const schema =
 		params.tab === "routines"
 			? z.array(sharedRoutineSchema)
@@ -45,15 +96,15 @@ export function communityFeedOptions(params: FeedParams) {
 			// shared_routines/shared_cycles.user_id -> auth.users(id), not profiles(id)
 			// PostgREST cannot resolve the profiles join directly, so we do a
 			// two-step fetch: get feed rows first, then batch-fetch profiles.
-			let query = supabase.from(table).select("*");
+			let query = supabase.from(table).select(select);
 
 			// Sort
 			if (params.sort === "new") {
 				query = query.order("shared_at", { ascending: false });
-			} else if (params.sort === "top") {
-				query = query.order("vote_count", { ascending: false });
 			} else {
-				query = query.order("hot_score", { ascending: false });
+				query = query
+					.order("vote_count", { ascending: false })
+					.order("shared_at", { ascending: false });
 			}
 
 			// Creator filter
@@ -80,45 +131,9 @@ export function communityFeedOptions(params: FeedParams) {
 			const { data, error } = await query;
 			if (error) throw error;
 
-			// Batch-fetch profiles for all non-null user_ids in this page
-			const userIds = [
-				...new Set(
-					(data as { user_id: string | null }[])
-						.map((row) => row.user_id)
-						.filter((id): id is string => id !== null),
-				),
-			];
-
-			const profileMap: Record<
-				string,
-				{ display_name: string | null; avatar_url: string | null }
-			> = {};
-
-			if (userIds.length > 0) {
-				const { data: profiles } = await supabase
-					.from("public_profiles")
-					.select("id, display_name, avatar_url")
-					.in("id", userIds);
-
-				if (profiles) {
-					for (const p of profiles as {
-						id: string | null;
-						display_name: string | null;
-						avatar_url: string | null;
-					}[]) {
-						if (!p.id) continue;
-						profileMap[p.id] = {
-							display_name: p.display_name,
-							avatar_url: p.avatar_url,
-						};
-					}
-				}
-			}
-
-			const merged = (data as { user_id: string | null }[]).map((row) => ({
-				...row,
-				profiles: row.user_id ? (profileMap[row.user_id] ?? null) : null,
-			}));
+			const merged = await hydrateProfiles(
+				data as { user_id: string | null }[],
+			);
 
 			return schema.parse(merged);
 		},
@@ -127,6 +142,37 @@ export function communityFeedOptions(params: FeedParams) {
 			if (lastPage.length < PAGE_SIZE) return undefined;
 			return allPages.reduce((total, page) => total + page.length, 0);
 		},
+	});
+}
+
+export function communityItemDetailOptions(
+	itemType: "routine" | "cycle",
+	itemId: string,
+) {
+	const table = itemType === "routine" ? "shared_routines" : "shared_cycles";
+	const select =
+		itemType === "routine" ? ROUTINE_DETAIL_SELECT : CYCLE_DETAIL_SELECT;
+	const schema =
+		itemType === "routine"
+			? sharedRoutineDetailSchema
+			: sharedCycleDetailSchema;
+
+	return queryOptions({
+		queryKey: queryKeys.community.detail(itemType, itemId),
+		queryFn: async () => {
+			const { data, error } = await supabase
+				.from(table)
+				.select(select)
+				.eq("id", itemId)
+				.single();
+			if (error) throw error;
+
+			const [merged] = await hydrateProfiles([
+				data as { user_id: string | null },
+			]);
+			return schema.parse(merged);
+		},
+		enabled: !!itemId,
 	});
 }
 

@@ -16,9 +16,10 @@ const mockChain = {
 };
 
 const from = vi.fn(() => mockChain);
+const rpc = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from },
+	supabase: { from, rpc },
 }));
 
 vi.mock("@/providers/AuthProvider", () => ({
@@ -137,6 +138,52 @@ describe("useShareContent", () => {
 	it("inserts into shared_routines for routine type and invalidates feed", async () => {
 		const { useShareContent } = await import("../community");
 
+		const single = vi.fn().mockResolvedValue({
+			data: {
+				id: "routine-1",
+				user_id: "test-user-id",
+				name: "Source Routine",
+				description: "Source description",
+				exercise_count: 1,
+				estimated_duration: 2700,
+				tags: ["Chest"],
+				routine_exercises: [
+					{
+						name: "Bench Press",
+						muscle_group: "Chest",
+						exercise_id: null,
+						sets: 3,
+						reps: 8,
+						weight: 40,
+						rest_seconds: 90,
+						duration_seconds: null,
+						mode: "OLD_SCHOOL",
+						order_index: 0,
+						superset_id: null,
+						superset_color: null,
+						superset_order: null,
+						per_set_weights: null,
+						per_set_rest: null,
+						per_set_reps: null,
+						per_set_echo_levels: null,
+						is_amrap: false,
+						is_bodyweight: false,
+						pr_percentage: null,
+						rep_count_timing: null,
+						stop_at_position: null,
+						stall_detection: true,
+						eccentric_load: null,
+						echo_level: null,
+						warmup_sets: null,
+					},
+				],
+			},
+			error: null,
+		});
+		const order = vi.fn(() => ({ single }));
+		const eqUserId = vi.fn(() => ({ order }));
+		const eqRoutineId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.select.mockReturnValue({ eq: eqRoutineId });
 		mockChain.insert.mockResolvedValue({ error: null });
 
 		const { queryClient, wrapper } = createWrapper();
@@ -151,21 +198,130 @@ describe("useShareContent", () => {
 			description: "Shared routine",
 			tags: ["Chest"],
 			difficulty: "Intermediate",
-			exerciseCount: 5,
-			estimatedDuration: 45,
 		});
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("shared_routines");
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercise_count: 1,
+				estimated_duration: 45,
+				exercises_snapshot: [
+					expect.objectContaining({ name: "Bench Press", weight: 40 }),
+				],
+			}),
+		);
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.community.all,
 		});
 	});
 
+	it("converts short raw routine durations from seconds to shared minutes", async () => {
+		const { useShareContent } = await import("../community");
+
+		const single = vi.fn().mockResolvedValue({
+			data: {
+				id: "routine-1",
+				user_id: "test-user-id",
+				name: "Short Routine",
+				description: "Source description",
+				exercise_count: 1,
+				estimated_duration: 150,
+				tags: [],
+				routine_exercises: [],
+			},
+			error: null,
+		});
+		const order = vi.fn(() => ({ single }));
+		const eqUserId = vi.fn(() => ({ order }));
+		const eqRoutineId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.select.mockReturnValue({ eq: eqRoutineId });
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useShareContent(), { wrapper });
+
+		result.current.mutate({
+			type: "routine",
+			sourceId: "routine-1",
+			name: "Short Routine",
+			description: "Shared routine",
+			tags: [],
+			difficulty: "Beginner",
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				estimated_duration: 3,
+			}),
+		);
+	});
+
 	it("inserts into shared_cycles for cycle type", async () => {
 		const { useShareContent } = await import("../community");
 
+		const cycleSingle = vi.fn().mockResolvedValue({
+			data: {
+				id: "cycle-1",
+				user_id: "test-user-id",
+				name: "Source Cycle",
+				description: "Cycle source",
+				duration_weeks: 7,
+				workout_days: 1,
+				rest_days: 1,
+				progression_settings: { type: "percentage" },
+				deload_settings: null,
+				cycle_days: [
+					{
+						day_number: 1,
+						day_type: "workout",
+						routine_id: "routine-1",
+						weight_adjustment: 5,
+						rep_modifier: 0,
+						rest_override: null,
+						notes: "Push day",
+						rest_type: null,
+					},
+					{
+						day_number: 2,
+						day_type: "rest",
+						routine_id: null,
+						weight_adjustment: 0,
+						rep_modifier: 0,
+						rest_override: null,
+						notes: null,
+						rest_type: "complete",
+					},
+				],
+			},
+			error: null,
+		});
+		const cycleOrder = vi.fn(() => ({ single: cycleSingle }));
+		const cycleEqUserId = vi.fn(() => ({ order: cycleOrder }));
+		const cycleEqId = vi.fn(() => ({ eq: cycleEqUserId }));
+		const routinesOrder = vi.fn().mockResolvedValue({
+			data: [
+				{
+					id: "routine-1",
+					user_id: "test-user-id",
+					name: "Push Routine",
+					description: "Push",
+					exercise_count: 1,
+					estimated_duration: 2700,
+					tags: ["Chest"],
+					routine_exercises: [],
+				},
+			],
+			error: null,
+		});
+		const routinesIn = vi.fn(() => ({ order: routinesOrder }));
+		const routinesEqUserId = vi.fn(() => ({ in: routinesIn }));
+		mockChain.select
+			.mockReturnValueOnce({ eq: cycleEqId })
+			.mockReturnValueOnce({ eq: routinesEqUserId });
 		mockChain.insert.mockResolvedValue({ error: null });
 
 		const { wrapper } = createWrapper();
@@ -178,17 +334,47 @@ describe("useShareContent", () => {
 			description: "Shared cycle",
 			tags: ["Strength"],
 			difficulty: "Advanced",
-			durationWeeks: 6,
 		});
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("shared_cycles");
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				duration_weeks: 7,
+				cycle_snapshot: expect.objectContaining({
+					duration_weeks: 7,
+					days: expect.arrayContaining([
+						expect.objectContaining({
+							day_number: 1,
+							routine: expect.objectContaining({ name: "Push Routine" }),
+						}),
+					]),
+				}),
+			}),
+		);
 	});
 
 	it("shows user-friendly error on share failure", async () => {
 		const { useShareContent } = await import("../community");
 
+		const single = vi.fn().mockResolvedValue({
+			data: {
+				id: "routine-1",
+				user_id: "test-user-id",
+				name: "Source Routine",
+				description: "",
+				exercise_count: 0,
+				estimated_duration: 0,
+				tags: [],
+				routine_exercises: [],
+			},
+			error: null,
+		});
+		const order = vi.fn(() => ({ single }));
+		const eqUserId = vi.fn(() => ({ order }));
+		const eqRoutineId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.select.mockReturnValue({ eq: eqRoutineId });
 		mockChain.insert.mockResolvedValue({
 			error: { message: "already shared this routine", code: "23505" },
 		});
@@ -488,16 +674,10 @@ describe("useSaveItem", () => {
 		vi.clearAllMocks();
 	});
 
-	it("saves an item when not already saved and invalidates saves cache", async () => {
+	it("imports a routine into the personal library and invalidates affected caches", async () => {
 		const { useSaveItem } = await import("../community");
 
-		// select chain: not saved yet
-		const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
-		const eqItemType = vi.fn(() => ({ maybeSingle }));
-		const eqSharedItemId = vi.fn(() => ({ eq: eqItemType }));
-		const eqUserId = vi.fn(() => ({ eq: eqSharedItemId }));
-		mockChain.select.mockReturnValue({ eq: eqUserId });
-		mockChain.insert.mockResolvedValue({ error: null });
+		rpc.mockResolvedValue({ data: "imported-routine-1", error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -508,36 +688,49 @@ describe("useSaveItem", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(from).toHaveBeenCalledWith("saved_community_items");
-		expect(result.current.data).toEqual({ action: "saved" });
+		expect(rpc).toHaveBeenCalledWith("import_shared_routine", {
+			p_shared_routine_id: "shared-1",
+			p_local_profile_id: null,
+		});
+		expect(result.current.data).toEqual({
+			action: "imported",
+			importedId: "imported-routine-1",
+			itemType: "routine",
+		});
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.community.saves("test-user-id"),
 		});
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.community.all,
+		});
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.routines.all,
+		});
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.cycles.all,
+		});
 	});
 
-	it("unsaves an item when already saved", async () => {
+	it("imports a cycle through the cycle import RPC", async () => {
 		const { useSaveItem } = await import("../community");
 
-		// select chain: already saved
-		const maybeSingle = vi.fn().mockResolvedValue({
-			data: { id: "save-1" },
-			error: null,
-		});
-		const eqItemType = vi.fn(() => ({ maybeSingle }));
-		const eqSharedItemId = vi.fn(() => ({ eq: eqItemType }));
-		const eqUserId = vi.fn(() => ({ eq: eqSharedItemId }));
-		mockChain.select.mockReturnValue({ eq: eqUserId });
-		mockChain.delete.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
-		}));
+		rpc.mockResolvedValue({ data: "imported-cycle-1", error: null });
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useSaveItem(), { wrapper });
 
-		result.current.mutate({ sharedItemId: "shared-1", itemType: "routine" });
+		result.current.mutate({ sharedItemId: "shared-2", itemType: "cycle" });
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(result.current.data).toEqual({ action: "unsaved" });
+		expect(rpc).toHaveBeenCalledWith("import_shared_cycle", {
+			p_shared_cycle_id: "shared-2",
+			p_local_profile_id: null,
+		});
+		expect(result.current.data).toEqual({
+			action: "imported",
+			importedId: "imported-cycle-1",
+			itemType: "cycle",
+		});
 	});
 });

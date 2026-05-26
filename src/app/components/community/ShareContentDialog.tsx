@@ -42,7 +42,6 @@ interface SourceItem {
 	name: string;
 	exercise_count?: number;
 	estimated_duration?: number;
-	exercises_snapshot?: unknown;
 	duration_weeks?: number;
 }
 
@@ -129,14 +128,6 @@ export function ShareContentDialog({
 				description,
 				tags,
 				difficulty: difficulty as "Beginner" | "Intermediate" | "Advanced",
-				exerciseCount: selectedSource?.exercise_count,
-				estimatedDuration: selectedSource?.estimated_duration,
-				exercisesSnapshot:
-					contentType === "routine"
-						? selectedSource?.exercises_snapshot
-						: undefined,
-				durationWeeks:
-					contentType === "cycle" ? selectedSource?.duration_weeks : undefined,
 			},
 			{
 				onSuccess: () => {
@@ -233,7 +224,7 @@ export function ShareContentDialog({
 								<p className="text-xs text-muted-foreground">
 									{selectedSource.exercise_count ?? 0} exercises
 									{selectedSource.estimated_duration
-										? ` / ~${selectedSource.estimated_duration > 300 ? Math.round(selectedSource.estimated_duration / 60) : selectedSource.estimated_duration} min`
+										? ` / ~${selectedSource.estimated_duration} min`
 										: ""}
 								</p>
 							)}
