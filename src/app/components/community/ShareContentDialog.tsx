@@ -42,7 +42,6 @@ interface SourceItem {
 	name: string;
 	exercise_count?: number;
 	estimated_duration?: number;
-	exercises_snapshot?: unknown;
 	duration_weeks?: number;
 }
 
@@ -129,14 +128,6 @@ export function ShareContentDialog({
 				description,
 				tags,
 				difficulty: difficulty as "Beginner" | "Intermediate" | "Advanced",
-				exerciseCount: selectedSource?.exercise_count,
-				estimatedDuration: selectedSource?.estimated_duration,
-				exercisesSnapshot:
-					contentType === "routine"
-						? selectedSource?.exercises_snapshot
-						: undefined,
-				durationWeeks:
-					contentType === "cycle" ? selectedSource?.duration_weeks : undefined,
 			},
 			{
 				onSuccess: () => {

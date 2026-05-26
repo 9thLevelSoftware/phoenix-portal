@@ -5,7 +5,7 @@ describe("useCommunityStore", () => {
 	beforeEach(() => {
 		useCommunityStore.setState({
 			activeTab: "routines",
-			sort: "hot",
+			sort: "top",
 			search: "",
 			filters: {},
 			selectedItemId: null,
@@ -16,7 +16,7 @@ describe("useCommunityStore", () => {
 	it("has correct initial state", () => {
 		const state = useCommunityStore.getState();
 		expect(state.activeTab).toBe("routines");
-		expect(state.sort).toBe("hot");
+		expect(state.sort).toBe("top");
 		expect(state.search).toBe("");
 		expect(state.filters).toEqual({});
 		expect(state.selectedItemId).toBeNull();
@@ -71,7 +71,7 @@ describe("useCommunityStore", () => {
 		useCommunityStore.getState().resetAll();
 		const state = useCommunityStore.getState();
 		expect(state.activeTab).toBe("routines");
-		expect(state.sort).toBe("hot");
+		expect(state.sort).toBe("top");
 		expect(state.search).toBe("");
 		expect(state.filters).toEqual({});
 		expect(state.selectedItemId).toBeNull();

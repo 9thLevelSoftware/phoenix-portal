@@ -1273,6 +1273,8 @@ export type Database = {
 			saved_community_items: {
 				Row: {
 					id: string;
+					imported_cycle_id: string | null;
+					imported_routine_id: string | null;
 					item_type: string;
 					saved_at: string;
 					shared_item_id: string;
@@ -1280,6 +1282,8 @@ export type Database = {
 				};
 				Insert: {
 					id?: string;
+					imported_cycle_id?: string | null;
+					imported_routine_id?: string | null;
 					item_type: string;
 					saved_at?: string;
 					shared_item_id: string;
@@ -1287,6 +1291,8 @@ export type Database = {
 				};
 				Update: {
 					id?: string;
+					imported_cycle_id?: string | null;
+					imported_routine_id?: string | null;
 					item_type?: string;
 					saved_at?: string;
 					shared_item_id?: string;
@@ -1412,6 +1418,7 @@ export type Database = {
 			shared_cycles: {
 				Row: {
 					comment_count: number;
+					cycle_snapshot: Json | null;
 					cycle_id: string;
 					description: string;
 					difficulty: string;
@@ -1428,6 +1435,7 @@ export type Database = {
 				};
 				Insert: {
 					comment_count?: number;
+					cycle_snapshot?: Json | null;
 					cycle_id: string;
 					description?: string;
 					difficulty?: string;
@@ -1444,6 +1452,7 @@ export type Database = {
 				};
 				Update: {
 					comment_count?: number;
+					cycle_snapshot?: Json | null;
 					cycle_id?: string;
 					description?: string;
 					difficulty?: string;
@@ -2496,6 +2505,20 @@ export type Database = {
 			get_workout_streak: {
 				Args: { p_profile_id?: string; p_user_id: string };
 				Returns: number;
+			};
+			import_shared_cycle: {
+				Args: {
+					p_local_profile_id?: string | null;
+					p_shared_cycle_id: string;
+				};
+				Returns: string;
+			};
+			import_shared_routine: {
+				Args: {
+					p_local_profile_id?: string | null;
+					p_shared_routine_id: string;
+				};
+				Returns: string;
 			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };

@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // ---------- useVote (confirmed pattern) ----------
 
@@ -71,10 +73,136 @@ interface ShareContentArgs {
 	description: string;
 	tags: string[];
 	difficulty: "Beginner" | "Intermediate" | "Advanced";
-	exerciseCount?: number;
-	estimatedDuration?: number;
-	exercisesSnapshot?: unknown;
-	durationWeeks?: number;
+}
+
+type RoutineRow = Database["public"]["Tables"]["routines"]["Row"];
+type RoutineExerciseRow =
+	Database["public"]["Tables"]["routine_exercises"]["Row"];
+type TrainingCycleRow = Database["public"]["Tables"]["training_cycles"]["Row"];
+type CycleDayRow = Database["public"]["Tables"]["cycle_days"]["Row"];
+
+type RoutineWithExercises = RoutineRow & {
+	routine_exercises?: RoutineExerciseRow[];
+};
+
+type CycleWithDays = TrainingCycleRow & {
+	cycle_days?: CycleDayRow[];
+};
+
+function toSharedDurationMinutes(duration: number | null | undefined): number {
+	if (!duration) return 0;
+	return duration > 300 ? Math.round(duration / 60) : Math.round(duration);
+}
+
+function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
+	return {
+		name: exercise.name,
+		muscle_group: exercise.muscle_group,
+		exercise_id: exercise.exercise_id,
+		sets: exercise.sets,
+		reps: exercise.reps,
+		weight: exercise.weight,
+		rest_seconds: exercise.rest_seconds,
+		duration_seconds: exercise.duration_seconds,
+		mode: exercise.mode,
+		order_index: exercise.order_index,
+		superset_id: exercise.superset_id,
+		superset_color: exercise.superset_color,
+		superset_order: exercise.superset_order,
+		per_set_weights: exercise.per_set_weights,
+		per_set_rest: exercise.per_set_rest,
+		per_set_reps: exercise.per_set_reps,
+		per_set_echo_levels: exercise.per_set_echo_levels,
+		is_amrap: exercise.is_amrap,
+		is_bodyweight: exercise.is_bodyweight,
+		pr_percentage: exercise.pr_percentage,
+		rep_count_timing: exercise.rep_count_timing,
+		stop_at_position: exercise.stop_at_position,
+		stall_detection: exercise.stall_detection,
+		eccentric_load: exercise.eccentric_load,
+		echo_level: exercise.echo_level,
+		warmup_sets: exercise.warmup_sets,
+	};
+}
+
+function routineSnapshot(routine: RoutineWithExercises) {
+	const exercises = [...(routine.routine_exercises ?? [])]
+		.sort((a, b) => a.order_index - b.order_index)
+		.map(routineExerciseSnapshot);
+
+	return {
+		source_routine_id: routine.id,
+		name: routine.name,
+		description: routine.description,
+		exercise_count: routine.exercise_count,
+		estimated_duration: routine.estimated_duration,
+		tags: routine.tags ?? [],
+		exercises,
+	};
+}
+
+async function fetchRoutineWithExercises(
+	routineId: string,
+	userId: string,
+): Promise<RoutineWithExercises> {
+	const { data, error } = await supabase
+		.from("routines")
+		.select("*, routine_exercises(*)")
+		.eq("id", routineId)
+		.eq("user_id", userId)
+		.order("order_index", {
+			referencedTable: "routine_exercises",
+			ascending: true,
+		})
+		.single();
+
+	if (error) throw error;
+	return data as RoutineWithExercises;
+}
+
+async function fetchCycleWithDays(
+	cycleId: string,
+	userId: string,
+): Promise<CycleWithDays> {
+	const { data, error } = await supabase
+		.from("training_cycles")
+		.select("*, cycle_days(*)")
+		.eq("id", cycleId)
+		.eq("user_id", userId)
+		.order("day_number", {
+			referencedTable: "cycle_days",
+			ascending: true,
+		})
+		.single();
+
+	if (error) throw error;
+	return data as CycleWithDays;
+}
+
+async function fetchRoutinesById(
+	routineIds: string[],
+	userId: string,
+): Promise<Map<string, RoutineWithExercises>> {
+	if (routineIds.length === 0) return new Map();
+
+	const { data, error } = await supabase
+		.from("routines")
+		.select("*, routine_exercises(*)")
+		.eq("user_id", userId)
+		.in("id", routineIds)
+		.order("order_index", {
+			referencedTable: "routine_exercises",
+			ascending: true,
+		});
+
+	if (error) throw error;
+
+	return new Map(
+		((data ?? []) as RoutineWithExercises[]).map((routine) => [
+			routine.id,
+			routine,
+		]),
+	);
 }
 
 export function useShareContent() {
@@ -86,6 +214,11 @@ export function useShareContent() {
 			if (!user) throw new Error("Must be logged in to share");
 
 			if (args.type === "routine") {
+				const routine = await fetchRoutineWithExercises(args.sourceId, user.id);
+				const exercisesSnapshot = (routine.routine_exercises ?? [])
+					.sort((a, b) => a.order_index - b.order_index)
+					.map(routineExerciseSnapshot);
+
 				const { error } = await supabase.from("shared_routines").insert({
 					user_id: user.id,
 					routine_id: args.sourceId,
@@ -93,12 +226,52 @@ export function useShareContent() {
 					description: args.description,
 					tags: args.tags,
 					difficulty: args.difficulty,
-					exercise_count: args.exerciseCount ?? 0,
-					estimated_duration: args.estimatedDuration ?? 0,
-					exercises_snapshot: args.exercisesSnapshot ?? null,
+					exercise_count: routine.exercise_count ?? exercisesSnapshot.length,
+					estimated_duration: toSharedDurationMinutes(
+						routine.estimated_duration,
+					),
+					exercises_snapshot: exercisesSnapshot as Json,
 				});
 				if (error) throw error;
 			} else {
+				const cycle = await fetchCycleWithDays(args.sourceId, user.id);
+				const days = [...(cycle.cycle_days ?? [])].sort(
+					(a, b) => a.day_number - b.day_number,
+				);
+				const routineIds = [
+					...new Set(
+						days
+							.map((day) => day.routine_id)
+							.filter((id): id is string => id !== null),
+					),
+				];
+				const routineMap = await fetchRoutinesById(routineIds, user.id);
+				const cycleSnapshot = {
+					duration_weeks: cycle.duration_weeks,
+					workout_days: cycle.workout_days,
+					rest_days: cycle.rest_days,
+					progression_settings: cycle.progression_settings,
+					deload_settings: cycle.deload_settings,
+					days: days.map((day) => {
+						const embeddedRoutine = day.routine_id
+							? routineMap.get(day.routine_id)
+							: undefined;
+						return {
+							day_number: day.day_number,
+							day_type: day.day_type,
+							routine_id: day.routine_id,
+							weight_adjustment: day.weight_adjustment,
+							rep_modifier: day.rep_modifier,
+							rest_override: day.rest_override,
+							notes: day.notes,
+							rest_type: day.rest_type,
+							routine: embeddedRoutine
+								? routineSnapshot(embeddedRoutine)
+								: null,
+						};
+					}),
+				};
+
 				const { error } = await supabase.from("shared_cycles").insert({
 					user_id: user.id,
 					cycle_id: args.sourceId,
@@ -106,7 +279,8 @@ export function useShareContent() {
 					description: args.description,
 					tags: args.tags,
 					difficulty: args.difficulty,
-					duration_weeks: args.durationWeeks ?? 0,
+					duration_weeks: cycle.duration_weeks,
+					cycle_snapshot: cycleSnapshot as Json,
 				});
 				if (error) throw error;
 			}
@@ -381,43 +555,45 @@ export function useSaveItem() {
 		mutationFn: async ({ sharedItemId, itemType }: SaveItemArgs) => {
 			if (!user) throw new Error("Must be logged in to save");
 
-			// Check if already saved
-			const { data: existing, error: checkError } = await supabase
-				.from("saved_community_items")
-				.select("id")
-				.eq("user_id", user.id)
-				.eq("shared_item_id", sharedItemId)
-				.eq("item_type", itemType)
-				.maybeSingle();
+			const activeProfileId = useProfileFilterStore.getState().activeProfileId;
+			const { data, error } =
+				itemType === "routine"
+					? await supabase.rpc("import_shared_routine", {
+							p_shared_routine_id: sharedItemId,
+							p_local_profile_id: activeProfileId,
+						})
+					: await supabase.rpc("import_shared_cycle", {
+							p_shared_cycle_id: sharedItemId,
+							p_local_profile_id: activeProfileId,
+						});
 
-			if (checkError) throw checkError;
-
-			if (existing) {
-				// Remove save (linked reference)
-				const { error } = await supabase
-					.from("saved_community_items")
-					.delete()
-					.eq("id", existing.id);
-				if (error) throw error;
-				return { action: "unsaved" as const };
-			} else {
-				// Create linked reference (FK to shared_routines/shared_cycles, NOT a data copy)
-				const { error } = await supabase.from("saved_community_items").insert({
-					user_id: user.id,
-					shared_item_id: sharedItemId,
-					item_type: itemType,
-				});
-				if (error) throw error;
-				return { action: "saved" as const };
-			}
+			if (error) throw error;
+			return {
+				action: "imported" as const,
+				importedId: data as string,
+				itemType,
+			};
 		},
 
-		onSuccess: () => {
+		onSuccess: (data) => {
+			toast.success(
+				data.itemType === "routine"
+					? "Routine saved to My Routines"
+					: "Cycle saved to My Cycles",
+			);
 			if (user) {
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.community.saves(user.id),
 				});
 			}
+			queryClient.invalidateQueries({ queryKey: queryKeys.community.all });
+			queryClient.invalidateQueries({ queryKey: queryKeys.routines.all });
+			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
+		},
+
+		onError: (error: Error) => {
+			console.error("[useSaveItem] failed:", error);
+			toast.error("Failed to save content. Please try again.");
 		},
 	});
 }
