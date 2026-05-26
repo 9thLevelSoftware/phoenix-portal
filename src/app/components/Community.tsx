@@ -33,7 +33,6 @@ import type { CommunityFeedItem } from "@/schemas/community";
 import { useCommunityStore } from "@/stores/useCommunityStore";
 
 const SORT_OPTIONS = [
-	{ value: "hot", label: "Hot" },
 	{ value: "top", label: "Top" },
 	{ value: "new", label: "New" },
 ] as const;

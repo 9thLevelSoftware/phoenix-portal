@@ -140,6 +140,8 @@ export const queryKeys = {
 			search?: string;
 			userId?: string;
 		}) => [...queryKeys.community.all, "feed", params] as const,
+		detail: (itemType: "routine" | "cycle", itemId: string) =>
+			[...queryKeys.community.all, "detail", itemType, itemId] as const,
 		creators: {
 			all: [...["community"], "creators"] as const,
 			featured: () =>
