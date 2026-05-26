@@ -217,6 +217,49 @@ describe("useShareContent", () => {
 		});
 	});
 
+	it("converts short raw routine durations from seconds to shared minutes", async () => {
+		const { useShareContent } = await import("../community");
+
+		const single = vi.fn().mockResolvedValue({
+			data: {
+				id: "routine-1",
+				user_id: "test-user-id",
+				name: "Short Routine",
+				description: "Source description",
+				exercise_count: 1,
+				estimated_duration: 150,
+				tags: [],
+				routine_exercises: [],
+			},
+			error: null,
+		});
+		const order = vi.fn(() => ({ single }));
+		const eqUserId = vi.fn(() => ({ order }));
+		const eqRoutineId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.select.mockReturnValue({ eq: eqRoutineId });
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useShareContent(), { wrapper });
+
+		result.current.mutate({
+			type: "routine",
+			sourceId: "routine-1",
+			name: "Short Routine",
+			description: "Shared routine",
+			tags: [],
+			difficulty: "Beginner",
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				estimated_duration: 3,
+			}),
+		);
+	});
+
 	it("inserts into shared_cycles for cycle type", async () => {
 		const { useShareContent } = await import("../community");
 

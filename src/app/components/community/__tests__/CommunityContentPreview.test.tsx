@@ -37,6 +37,64 @@ describe("CommunityContentPreview", () => {
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
 	});
 
+	it("keeps exercise numbering sequential when supersets are rendered", () => {
+		render(
+			<RoutineSnapshotPreview
+				exercises={[
+					{
+						name: "Back Squat",
+						muscle_group: "Legs",
+						sets: 3,
+						reps: 5,
+						weight: 80,
+						rest_seconds: 120,
+						mode: "OLD_SCHOOL",
+						order_index: 0,
+					},
+					{
+						name: "Pull Up",
+						muscle_group: "Back",
+						sets: 3,
+						reps: 8,
+						weight: 0,
+						rest_seconds: 90,
+						mode: "OLD_SCHOOL",
+						order_index: 1,
+						superset_id: "superset-a",
+						superset_order: 0,
+					},
+					{
+						name: "Push Up",
+						muscle_group: "Chest",
+						sets: 3,
+						reps: 12,
+						weight: 0,
+						rest_seconds: 90,
+						mode: "OLD_SCHOOL",
+						order_index: 2,
+						superset_id: "superset-a",
+						superset_order: 1,
+					},
+					{
+						name: "Plank",
+						muscle_group: "Core",
+						sets: 3,
+						reps: 1,
+						weight: 0,
+						rest_seconds: 60,
+						duration_seconds: 45,
+						mode: "OLD_SCHOOL",
+						order_index: 3,
+					},
+				]}
+			/>,
+		);
+
+		expect(
+			screen.getAllByText(/^\d\d$/).map((node) => node.textContent),
+		).toEqual(["01", "02", "03", "04"]);
+	});
+
 	it("renders cycle days, overrides, and embedded routine details", () => {
 		render(
 			<CycleSnapshotPreview
@@ -61,7 +119,7 @@ describe("CommunityContentPreview", () => {
 								name: "Push Routine",
 								description: "Upper body",
 								exercise_count: 1,
-								estimated_duration: 2700,
+								estimated_duration: 150,
 								tags: ["Chest"],
 								exercises: [
 									{
@@ -93,7 +151,9 @@ describe("CommunityContentPreview", () => {
 		);
 
 		expect(screen.getByText("Cycle Details")).toBeInTheDocument();
+		expect(screen.getByText("7 weeks")).toBeInTheDocument();
 		expect(screen.getByText("Push Routine")).toBeInTheDocument();
+		expect(screen.getByText(/1 exercises \/ 3 min/i)).toBeInTheDocument();
 		expect(screen.getByText("Push emphasis")).toBeInTheDocument();
 		expect(screen.getByText("View Push Routine")).toBeInTheDocument();
 		expect(screen.getByText("Rest Day")).toBeInTheDocument();

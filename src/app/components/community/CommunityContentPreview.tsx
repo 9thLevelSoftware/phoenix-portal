@@ -22,9 +22,7 @@ function asPrimitiveArray(value: unknown): Array<string | number | boolean> {
 
 function formatStoredDurationMinutes(duration: number | null | undefined) {
 	if (!duration) return "0 min";
-	return duration > 300
-		? `${Math.round(duration / 60)} min`
-		: `${Math.round(duration)} min`;
+	return `${Math.round(duration / 60)} min`;
 }
 
 function formatLoad(exercise: RoutineExerciseSnapshot) {
@@ -177,6 +175,22 @@ export function RoutineSnapshotPreview({
 		});
 		return items;
 	}, []);
+	let exerciseNumber = 0;
+	const indexedGroups = grouped.map((item) => {
+		if (item.type === "exercise") {
+			const indexedItem = { ...item, index: exerciseNumber };
+			exerciseNumber += 1;
+			return indexedItem;
+		}
+
+		const indexedExercises = item.exercises.map((exercise) => {
+			const indexedExercise = { exercise, index: exerciseNumber };
+			exerciseNumber += 1;
+			return indexedExercise;
+		});
+
+		return { ...item, exercises: indexedExercises };
+	});
 
 	return (
 		<section className="space-y-3">
@@ -185,12 +199,12 @@ export function RoutineSnapshotPreview({
 				<h4 className="text-sm font-semibold text-white">{title}</h4>
 			</div>
 			<div className="space-y-3">
-				{grouped.map((item, itemIndex) =>
+				{indexedGroups.map((item) =>
 					item.type === "exercise" ? (
 						<RoutineExerciseCard
 							key={`${item.exercise.name}-${item.exercise.order_index}`}
 							exercise={item.exercise}
-							index={itemIndex}
+							index={item.index}
 						/>
 					) : (
 						<div
@@ -213,11 +227,11 @@ export function RoutineSnapshotPreview({
 								</span>
 							</div>
 							<div className="space-y-2">
-								{item.exercises.map((exercise, exerciseIndex) => (
+								{item.exercises.map(({ exercise, index }) => (
 									<RoutineExerciseCard
 										key={`${exercise.name}-${exercise.order_index}`}
 										exercise={exercise}
-										index={exerciseIndex}
+										index={index}
 									/>
 								))}
 							</div>
@@ -317,7 +331,7 @@ export function CycleSnapshotPreview({
 						Duration
 					</div>
 					<p className="text-lg font-semibold text-white">
-						{snapshot.duration_weeks} days
+						{snapshot.duration_weeks} weeks
 					</p>
 				</div>
 				<div className="rounded-lg border border-secondary bg-surface-2 p-3">

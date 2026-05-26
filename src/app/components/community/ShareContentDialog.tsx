@@ -224,7 +224,7 @@ export function ShareContentDialog({
 								<p className="text-xs text-muted-foreground">
 									{selectedSource.exercise_count ?? 0} exercises
 									{selectedSource.estimated_duration
-										? ` / ~${selectedSource.estimated_duration > 300 ? Math.round(selectedSource.estimated_duration / 60) : selectedSource.estimated_duration} min`
+										? ` / ~${selectedSource.estimated_duration} min`
 										: ""}
 								</p>
 							)}

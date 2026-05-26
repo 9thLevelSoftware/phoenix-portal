@@ -241,7 +241,7 @@ BEGIN
     per_set_weights JSONB,
     per_set_rest JSONB,
     per_set_reps JSONB,
-    per_set_echo_levels TEXT,
+    per_set_echo_levels JSONB,
     is_amrap BOOLEAN,
     is_bodyweight BOOLEAN,
     pr_percentage NUMERIC,
@@ -337,8 +337,10 @@ BEGIN
     COALESCE(v_shared.description, ''),
     COALESCE(v_shared.exercise_count, jsonb_array_length(v_snapshot)),
     CASE
-      WHEN COALESCE(v_shared.estimated_duration, 0) > 300 THEN v_shared.estimated_duration
-      ELSE COALESCE(v_shared.estimated_duration, 0) * 60
+      WHEN COALESCE(v_shared.estimated_duration, 0) <= 0 THEN 0
+      WHEN COALESCE(v_shared.estimated_duration, 0) < GREATEST(COALESCE(v_shared.exercise_count, jsonb_array_length(v_snapshot), 1), 1) * 150
+        THEN COALESCE(v_shared.estimated_duration, 0) * 60
+      ELSE COALESCE(v_shared.estimated_duration, 0)
     END,
     0,
     COALESCE(v_shared.tags, '{}'::TEXT[]),
@@ -574,5 +576,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.import_shared_routine(UUID, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.import_shared_cycle(UUID, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.import_shared_routine(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.import_shared_cycle(UUID, TEXT) TO authenticated;

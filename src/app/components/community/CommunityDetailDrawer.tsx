@@ -171,7 +171,7 @@ function DetailContent({
 				) : (
 					<div className="flex items-center gap-1">
 						<Calendar className="w-4 h-4" />
-						<span>{displayItem.duration_weeks} days</span>
+						<span>{displayItem.duration_weeks} weeks</span>
 					</div>
 				)}
 			</div>

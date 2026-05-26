@@ -91,7 +91,7 @@ type CycleWithDays = TrainingCycleRow & {
 
 function toSharedDurationMinutes(duration: number | null | undefined): number {
 	if (!duration) return 0;
-	return duration > 300 ? Math.round(duration / 60) : Math.round(duration);
+	return Math.round(duration / 60);
 }
 
 function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
