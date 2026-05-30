@@ -17,13 +17,14 @@
 -- stored column agrees with what the portal computes. Canonical groups:
 -- Chest, Back, Shoulders, Arms, Legs, Core.
 --
--- IDEMPOTENT: only rows still equal to 'General' are touched, and the join
--- is on lower(btrim(name)), so re-running is a safe no-op. Genuinely
--- unknown/ambiguous names ("Unknown Exercise", "Bear Crawl", "Muscle Clean &
--- Press", "Bar Rotation") are intentionally left as 'General'.
+-- IDEMPOTENT: only rows still equal to 'General' are touched. The backfill
+-- matches both exact lower-trimmed names and the same normalized names the
+-- portal classifier uses, so re-running is a safe no-op. Genuinely unknown/
+-- ambiguous names ("Unknown Exercise", "Bear Crawl", "Muscle Clean & Press",
+-- "Bar Rotation") are intentionally left as 'General'.
 -- =============================================================
 
-WITH name_map(norm_name, grp) AS (
+WITH RECURSIVE name_map(norm_name, grp) AS (
     VALUES
         -- ── Chest ──
         ('bench press', 'Chest'),
@@ -195,9 +196,82 @@ WITH name_map(norm_name, grp) AS (
         ('dead bug', 'Core'),
         ('alternating oblique punch', 'Core'),
         ('double leg raise (bench supported)', 'Core')
+),
+exercise_names AS (
+    SELECT
+        id,
+        lower(btrim(name)) AS raw_name,
+        btrim(
+            regexp_replace(
+                lower(btrim(name)),
+                '[[:space:]]*\(.*\)[[:space:]]*$',
+                ''
+            )
+        ) AS seed_name
+    FROM exercises
+    WHERE muscle_group = 'General'
+),
+normalized_names(id, norm_name) AS (
+    SELECT id, seed_name
+    FROM exercise_names
+
+    UNION ALL
+
+    SELECT nn.id, next_norm.norm_name
+    FROM normalized_names nn
+    CROSS JOIN LATERAL (
+        SELECT
+            CASE
+                WHEN nn.norm_name ~ '^(db|bb|cable|machine)[[:space:]]+' THEN
+                    btrim(
+                        regexp_replace(
+                            nn.norm_name,
+                            '^(db|bb|cable|machine)[[:space:]]+',
+                            ''
+                        )
+                    )
+                WHEN nn.norm_name ~ '^(seated|standing|incline|decline)[[:space:]]+'
+                    AND btrim(
+                        regexp_replace(
+                            nn.norm_name,
+                            '^(seated|standing|incline|decline)[[:space:]]+',
+                            ''
+                        )
+                    ) LIKE '% %' THEN
+                    btrim(
+                        regexp_replace(
+                            nn.norm_name,
+                            '^(seated|standing|incline|decline)[[:space:]]+',
+                            ''
+                        )
+                    )
+                ELSE nn.norm_name
+            END AS norm_name
+    ) next_norm
+    WHERE next_norm.norm_name <> nn.norm_name
+),
+final_names AS (
+    SELECT DISTINCT ON (id) id, norm_name
+    FROM normalized_names
+    ORDER BY id, length(norm_name)
+),
+matched_groups AS (
+    SELECT DISTINCT ON (en.id)
+        en.id,
+        nm.grp
+    FROM exercise_names en
+    JOIN final_names fn ON fn.id = en.id
+    JOIN LATERAL (
+        VALUES
+            (fn.norm_name, 1),
+            (en.seed_name, 2),
+            (en.raw_name, 3)
+    ) candidate(norm_name, priority) ON TRUE
+    JOIN name_map nm ON nm.norm_name = candidate.norm_name
+    ORDER BY en.id, candidate.priority
 )
 UPDATE exercises ex
-SET muscle_group = nm.grp
-FROM name_map nm
-WHERE ex.muscle_group = 'General'
-  AND lower(btrim(ex.name)) = nm.norm_name;
+SET muscle_group = mg.grp
+FROM matched_groups mg
+WHERE ex.id = mg.id
+  AND ex.muscle_group = 'General';

@@ -29,6 +29,20 @@ function parseBackfillNameMap(): {
 	return { entries, duplicates };
 }
 
+function lookupBackfillGroupForExerciseName(
+	name: string,
+	entries: Map<string, string>,
+): string | undefined {
+	const rawName = name.trim().toLowerCase();
+	const parensStrippedName = rawName.replace(/\s*\(.*\)\s*$/, "").trim();
+	const normalizedName = normalizeExerciseName(name);
+	for (const candidate of [normalizedName, parensStrippedName, rawName]) {
+		const group = entries.get(candidate);
+		if (group) return group;
+	}
+	return undefined;
+}
+
 describe("normalizeExerciseName", () => {
 	it("lowercases and trims", () => {
 		expect(normalizeExerciseName("  Bench Press  ")).toBe("bench press");
@@ -228,5 +242,22 @@ describe("exercise muscle group backfill migration", () => {
 
 		expect(duplicates).toEqual([]);
 		expect(mismatches).toEqual([]);
+	});
+
+	it("backfills names that require classifier normalization", () => {
+		const { entries } = parseBackfillNameMap();
+		const cases: Array<[string, string]> = [
+			["DB Bench Press", "Chest"],
+			["Machine Row", "Back"],
+			["Incline DB Bench Press", "Chest"],
+			["Seated Cable Fly", "Chest"],
+			["Standing Hamstring Curl", "Legs"],
+			["Shoulder Press (Inside)", "Shoulders"],
+			["Incline Pec Fly", "Chest"],
+		];
+
+		for (const [name, expected] of cases) {
+			expect(lookupBackfillGroupForExerciseName(name, entries)).toBe(expected);
+		}
 	});
 });
