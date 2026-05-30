@@ -495,6 +495,32 @@ describe("pushPayloadSchema", () => {
 		});
 	});
 
+	it("parses estimatedOneRepMaxKg on an exercise", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "dev-1",
+			platform: "android",
+			sessions: [
+				{
+					id: "11111111-1111-1111-1111-111111111111",
+					userId: "u1",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							id: "22222222-2222-2222-2222-222222222222",
+							sessionId: "11111111-1111-1111-1111-111111111111",
+							name: "Squat",
+							estimatedOneRepMaxKg: 133.33,
+							sets: [],
+						},
+					],
+				},
+			],
+		});
+		expect(parsed.sessions[0].exercises[0].estimatedOneRepMaxKg).toBeCloseTo(
+			133.33,
+		);
+	});
+
 	it("reports routines that claim exercises but omit the routine exercise projection", () => {
 		const routineId = "77777777-7777-4777-8777-777777777777";
 		const parsed = pushPayloadSchema.parse({

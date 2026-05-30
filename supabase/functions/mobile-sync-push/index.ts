@@ -16,6 +16,7 @@ import {
   formatPushPayloadError,
   pushPayloadSchema,
 } from '../_shared/pushPayloadSchema.ts';
+import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
 
 /**
  * Per-row rejection record returned to the mobile client when an LWW RPC
@@ -1319,46 +1320,13 @@ Deno.serve(async (req) => {
       }
 
       // =====================================================================
-      // 5. Compute exercise_progress from sets (Brzycki 1RM for reps 1-12)
+      // 5. Compute exercise_progress (mobile-provided 1RM, hybrid fallback)
       // =====================================================================
-      const progressRows: Record<string, unknown>[] = [];
-
-      for (const session of payload.sessions) {
-        for (const exercise of session.exercises) {
-          if (exercise.sets.length === 0) continue;
-
-          const maxWeight = Math.max(...exercise.sets.map((s) => s.weightKg));
-          const totalVolume = exercise.sets.reduce(
-            (sum, s) => sum + s.weightKg * s.actualReps,
-            0
-          );
-          const maxReps = Math.max(...exercise.sets.map((s) => s.actualReps));
-          const setCount = exercise.sets.length;
-
-          // Brzycki 1RM: weight * (36 / (37 - reps)), best set with reps 1-12 and weight > 0
-          let estimated1rm = 0;
-          for (const s of exercise.sets) {
-            if (s.weightKg > 0 && s.actualReps >= 1 && s.actualReps <= 12) {
-              const e1rm = s.weightKg * (36 / (37 - s.actualReps));
-              if (e1rm > estimated1rm) estimated1rm = e1rm;
-            }
-          }
-
-          progressRows.push({
-            user_id: userId,
-            local_profile_id: localProfileId,
-            exercise_name: exercise.name,
-            exercise_id: exercise.exerciseId ?? null,
-            session_id: session.id,
-            recorded_at: session.startedAt,
-            max_weight_kg: maxWeight,
-            total_volume_kg: totalVolume,
-            estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
-            max_reps: maxReps,
-            set_count: setCount,
-          });
-        }
-      }
+      const progressRows = buildExerciseProgressRows(
+        payload.sessions,
+        userId,
+        localProfileId,
+      );
 
       if (progressRows.length > 0) {
         const sessionIds = [...new Set(payload.sessions.map((session) => session.id))];
