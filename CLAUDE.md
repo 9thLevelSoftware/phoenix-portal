@@ -151,6 +151,11 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 - `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)
 - `tests/sync/helpers/mock-edge-functions.ts` — Mock implementation
 
+### 1RM Estimate Parity (PARITY-CRITICAL)
+- Estimated 1RM is computed on MOBILE (hybrid: Brzycki reps<=10, Epley reps>10) and shipped as `estimatedOneRepMaxKg` per exercise. The edge function stores it verbatim in `exercise_progress.estimated_1rm_kg`.
+- `supabase/functions/_shared/exerciseProgressRows.ts#estimateOneRepMaxKg` and `src/lib/biomechanics.ts#estimateOneRepMax` are FALLBACKS only and MUST match the mobile formula. Mirror any change in the Project-Phoenix-MP counterpart (`OneRepMaxCalculator.estimate`).
+- `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". Record-type label maps (`csv.ts`, `RecordsTab.tsx`) key on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
+
 ### Styling
 - Dark theme by default (background: #0D0D0D)
 - Phoenix color palette in `src/styles/theme.css`:
