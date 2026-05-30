@@ -29,6 +29,7 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
+import { displayExerciseName } from "@/lib/exercise-display";
 import { formatVolume, formatWeight } from "@/lib/units";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
@@ -585,7 +586,7 @@ export function SessionDetail() {
 											<div className="text-left">
 												<div className="flex items-center gap-2">
 													<h3 className="text-lg font-semibold text-white">
-														{exercise.name}
+														{displayExerciseName(exercise.name)}
 													</h3>
 													{exercise.hasPR && (
 														<Flame className="w-4 h-4 text-accent" />

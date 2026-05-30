@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { usePlayback } from "@/hooks/usePlayback";
 import { useSubscription } from "@/hooks/useSubscription";
+import { displayExerciseName } from "@/lib/exercise-display";
 import { detectFatigue } from "@/lib/fatigue-detection";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
@@ -59,7 +60,7 @@ export function SessionReplay() {
 		return sessionQuery.data.exercises.flatMap((exercise) =>
 			(exercise.sets ?? []).map((set) => ({
 				setId: set.id,
-				exerciseName: exercise.exercise_name,
+				exerciseName: displayExerciseName(exercise.exercise_name),
 				setNumber: set.set_number,
 			})),
 		);
