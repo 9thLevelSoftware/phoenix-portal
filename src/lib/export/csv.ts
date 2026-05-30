@@ -69,7 +69,7 @@ function formatRecordType(type: string): string {
 		LONGEST_DISTANCE: "Longest Distance",
 	};
 	// Normalize so legacy lowercase values map too.
-	return types[(type ?? "").toUpperCase()] ?? type;
+	return types[(type ?? "").toUpperCase()] ?? type ?? "";
 }
 
 /**
