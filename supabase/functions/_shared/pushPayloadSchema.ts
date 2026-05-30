@@ -128,6 +128,9 @@ const exerciseSchema = z.object({
 	name: z.string(),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	// Mobile-provided canonical estimated 1RM (per-cable kg). Optional for
+	// backward compat; absent → server recomputes (see exerciseProgressRows).
+	estimatedOneRepMaxKg: nullableField(z.number()),
 	sets: arrayOf(setSchema).default([]),
 });
 
