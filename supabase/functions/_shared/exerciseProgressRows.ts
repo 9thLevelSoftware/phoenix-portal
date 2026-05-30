@@ -1,0 +1,101 @@
+/**
+ * exercise_progress row builder.
+ *
+ * Source of truth for estimated 1RM is the MOBILE app, which ships
+ * `estimatedOneRepMaxKg` per exercise. This builder stores that value
+ * verbatim. It only recomputes (via the canonical hybrid) when the field is
+ * absent — i.e. legacy payloads from pre-parity mobile builds.
+ *
+ * PARITY-CRITICAL: estimateOneRepMaxKg must match mobile
+ * OneRepMaxCalculator.estimate (Brzycki for reps <= 10, Epley for reps > 10).
+ */
+
+export interface ProgressSetInput {
+	weightKg: number;
+	actualReps: number;
+}
+
+export interface ProgressExerciseInput {
+	name: string;
+	exerciseId?: string | null;
+	estimatedOneRepMaxKg?: number | null;
+	sets: ProgressSetInput[];
+}
+
+export interface ProgressSessionInput {
+	id: string;
+	startedAt: string;
+	exercises: ProgressExerciseInput[];
+}
+
+export interface ExerciseProgressRow {
+	user_id: string;
+	local_profile_id: string | null;
+	exercise_name: string;
+	exercise_id: string | null;
+	session_id: string;
+	recorded_at: string;
+	max_weight_kg: number;
+	total_volume_kg: number;
+	estimated_1rm_kg: number;
+	max_reps: number;
+	set_count: number;
+}
+
+/** Canonical hybrid 1RM estimate (per-cable kg). Continuous at reps == 10. */
+export function estimateOneRepMaxKg(weightKg: number, reps: number): number {
+	if (weightKg <= 0 || reps <= 0) return 0;
+	if (reps === 1) return weightKg;
+	if (reps <= 10) return weightKg * (36 / (37 - reps));
+	return weightKg * (1 + reps / 30);
+}
+
+function bestEstimateFromSets(sets: ProgressSetInput[]): number {
+	let best = 0;
+	for (const s of sets) {
+		const e1rm = estimateOneRepMaxKg(s.weightKg, s.actualReps);
+		if (e1rm > best) best = e1rm;
+	}
+	return best;
+}
+
+export function buildExerciseProgressRows(
+	sessions: ProgressSessionInput[],
+	userId: string,
+	localProfileId: string | null,
+): ExerciseProgressRow[] {
+	const rows: ExerciseProgressRow[] = [];
+	for (const session of sessions) {
+		for (const exercise of session.exercises) {
+			if (exercise.sets.length === 0) continue;
+
+			const maxWeight = Math.max(...exercise.sets.map((s) => s.weightKg));
+			const totalVolume = exercise.sets.reduce(
+				(sum, s) => sum + s.weightKg * s.actualReps,
+				0,
+			);
+			const maxReps = Math.max(...exercise.sets.map((s) => s.actualReps));
+			const setCount = exercise.sets.length;
+
+			const estimated1rm =
+				exercise.estimatedOneRepMaxKg != null && exercise.estimatedOneRepMaxKg > 0
+					? exercise.estimatedOneRepMaxKg
+					: bestEstimateFromSets(exercise.sets);
+
+			rows.push({
+				user_id: userId,
+				local_profile_id: localProfileId,
+				exercise_name: exercise.name,
+				exercise_id: exercise.exerciseId ?? null,
+				session_id: session.id,
+				recorded_at: session.startedAt,
+				max_weight_kg: maxWeight,
+				total_volume_kg: totalVolume,
+				estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
+				max_reps: maxReps,
+				set_count: setCount,
+			});
+		}
+	}
+	return rows;
+}
