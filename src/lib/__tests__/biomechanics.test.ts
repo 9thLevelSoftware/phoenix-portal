@@ -66,13 +66,25 @@ describe("estimateOneRepMax", () => {
 		expect(estimateOneRepMax(225, 1)).toBe(225);
 	});
 
-	it("applies Epley formula for reps > 1", () => {
-		// 100 * (1 + 5/30) = 100 * 1.1667 = 116.67 -> Math.round -> 117
-		expect(estimateOneRepMax(100, 5)).toBe(117);
+	it("estimateOneRepMax uses Brzycki at or below 10 reps", () => {
+		expect(estimateOneRepMax(100, 5)).toBe(113); // 112.5 -> 113
 	});
 
-	it("calculates correctly for higher reps", () => {
-		// 80 * (1 + 10/30) = 80 * 1.3333 = 106.67 -> 107
+	it("estimateOneRepMax is continuous at 10 reps", () => {
+		expect(estimateOneRepMax(100, 10)).toBe(133); // 133.33 -> 133
+	});
+
+	it("estimateOneRepMax uses Epley above 10 reps", () => {
+		expect(estimateOneRepMax(100, 11)).toBe(137); // 136.67 -> 137
+	});
+
+	it("estimateOneRepMax returns weight for 1 rep and 0 for invalid", () => {
+		expect(estimateOneRepMax(100, 1)).toBe(100);
+		expect(estimateOneRepMax(0, 5)).toBe(0);
+	});
+
+	it("calculates correctly for higher reps (Brzycki)", () => {
+		// 80 * (36 / (37 - 10)) = 80 * (36/27) = 80 * 1.3333 = 106.67 -> 107
 		expect(estimateOneRepMax(80, 10)).toBe(107);
 	});
 });

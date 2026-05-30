@@ -16,13 +16,20 @@ export function calculateAsymmetry(
 }
 
 /**
- * Estimate one-rep max using the Epley formula.
- * Returns 0 for invalid inputs, weight itself for single reps.
+ * Estimate one-rep max using the canonical hybrid (parity with mobile
+ * OneRepMaxCalculator.estimate): Brzycki for reps <= 10, Epley for reps > 10.
+ * Returns a rounded integer; 0 for invalid input; weight itself for 1 rep.
+ *
+ * NOTE: After 1RM parity, the portal reads estimated_1rm_kg from
+ * exercise_progress (mobile-provided). This client computation is a fallback
+ * only and MUST use the same formula.
  */
 export function estimateOneRepMax(weight: number, reps: number): number {
 	if (weight <= 0 || reps <= 0) return 0;
 	if (reps === 1) return weight;
-	return Math.round(weight * (1 + reps / 30));
+	const raw =
+		reps <= 10 ? weight * (36 / (37 - reps)) : weight * (1 + reps / 30);
+	return Math.round(raw);
 }
 
 /**
