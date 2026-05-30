@@ -693,6 +693,7 @@ const FUZZY_THRESHOLD = 0.7;
  *   - "hamstring|leg (press|ext|curl)" -> Legs BEFORE generic "curl" -> Arms
  *   - "rear delt" -> Shoulders BEFORE generic "row" -> Back
  *   - "tricep" -> Arms BEFORE generic "dip"/"curl"
+ *   - "plank/hip dips" -> Core BEFORE generic "dip" -> Chest
  *   - "leg raise|knee raise" -> Core (never matched by the Legs rules, which
  *     only match "leg press|extension|curl")
  */
@@ -736,6 +737,11 @@ const KEYWORD_RULES: Array<{ pattern: RegExp; group: string }> = [
 	// ── Arms (tricep before generic dip/curl) ──
 	{ pattern: /\b(triceps?|skulls?|kick ?backs?)\b/, group: "Arms" },
 	{ pattern: /\bcurls?\b/, group: "Arms" },
+	// ── Core dip variants before generic chest dips ──
+	{
+		pattern: /\bhip dips?\b|\b(plank|oblique)s?\b.*\bdips?\b/,
+		group: "Core",
+	},
 	// ── Chest ──
 	{ pattern: /\b(fl(?:y|ies|ye?s?)|pecs?)\b/, group: "Chest" },
 	{ pattern: /\b(bench|chest) press(?:es)?\b/, group: "Chest" },

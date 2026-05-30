@@ -8,10 +8,12 @@ import {
 } from "@/lib/exercise-muscles";
 
 const BACKFILL_MIGRATION = "20260529000000_backfill_exercise_muscle_groups.sql";
+const CORE_DIP_FIX_MIGRATION =
+	"20260530000000_fix_core_dip_muscle_group_backfill.sql";
 
-function readBackfillMigration(): string {
+function readMigration(filename: string): string {
 	return readFileSync(
-		join(process.cwd(), "supabase", "migrations", BACKFILL_MIGRATION),
+		join(process.cwd(), "supabase", "migrations", filename),
 		"utf8",
 	);
 }
@@ -20,7 +22,7 @@ function parseBackfillNameMap(): {
 	entries: Map<string, string>;
 	duplicates: string[];
 } {
-	const sql = readBackfillMigration();
+	const sql = readMigration(BACKFILL_MIGRATION);
 	const entries = new Map<string, string>();
 	const duplicates: string[] = [];
 	for (const match of sql.matchAll(/\('((?:''|[^'])*)',\s*'([^']+)'\)/g)) {
@@ -38,7 +40,7 @@ function parseBackfillKeywordRules(): Array<{
 	pattern: RegExp;
 	group: string;
 }> {
-	const sql = readBackfillMigration();
+	const sql = readMigration(BACKFILL_MIGRATION);
 	const [, body = ""] =
 		sql.match(
 			/keyword_rules\(priority, pattern, grp\) AS \(\s*VALUES([\s\S]*?)\),\s*exercise_names AS/,
@@ -53,6 +55,19 @@ function parseBackfillKeywordRules(): Array<{
 			group: match[3],
 		}))
 		.sort((a, b) => a.priority - b.priority);
+}
+
+function parseCoreDipFixPatterns(): RegExp[] {
+	const sql = readMigration(CORE_DIP_FIX_MIGRATION);
+	const [, body = ""] =
+		sql.match(
+			/core_dip_patterns\(pattern\) AS \(\s*VALUES([\s\S]*?)\),\s*candidate_exercises AS/,
+		) ?? [];
+
+	return [...body.matchAll(/\(\s*'((?:''|[^'])*)'\s*\)/g)].map(
+		(match) =>
+			new RegExp(match[1].replace(/''/g, "'").replace(/\\m|\\M/g, "\\b")),
+	);
 }
 
 function lookupBackfillGroupForExerciseName(
@@ -73,6 +88,28 @@ function lookupBackfillGroupForExerciseName(
 	}
 
 	return undefined;
+}
+
+function lookupBackfillGroupAfterAllMigrations(
+	name: string,
+	entries: Map<string, string>,
+	keywordRules: Array<{ pattern: RegExp; group: string }>,
+	coreDipPatterns: RegExp[],
+): string | undefined {
+	const backfillGroup = lookupBackfillGroupForExerciseName(
+		name,
+		entries,
+		keywordRules,
+	);
+	const currentGroup = backfillGroup ?? "General";
+	const normalizedName = normalizeExerciseName(name);
+	if (
+		(currentGroup === "General" || currentGroup === "Chest") &&
+		coreDipPatterns.some((pattern) => pattern.test(normalizedName))
+	) {
+		return "Core";
+	}
+	return backfillGroup;
 }
 
 describe("normalizeExerciseName", () => {
@@ -188,6 +225,9 @@ describe("getExerciseProfile", () => {
 			["Bent Over Tricep Extension", "Arms"],
 			["Tricep Kick Back", "Arms"],
 			["Alternating Oblique Punch", "Core"],
+			["Alternating Plank Dips", "Core"],
+			["Side Clam Hip Dips", "Core"],
+			["Side Plank Hip Dips", "Core"],
 			["SA Bicycle Crunch", "Core"],
 			["High Crunch", "Core"],
 			["Crunches", "Core"],
@@ -210,6 +250,17 @@ describe("getExerciseProfile", () => {
 			expect(getExerciseProfile("Rear Delt Row").primary.group).toBe(
 				"Shoulders",
 			);
+		});
+
+		it("does not let generic 'dip' override core dip variants", () => {
+			expect(
+				getExerciseProfile("Side Plank Hip Dips", "Core").primary.group,
+			).toBe("Core");
+			expect(
+				getExerciseProfile("Side Clam Hip Dips", "Core").primary.group,
+			).toBe("Core");
+			expect(getExerciseProfile("Dips").primary.group).toBe("Chest");
+			expect(getExerciseProfile("Tricep Dip").primary.group).toBe("Arms");
 		});
 
 		it("leaves genuinely unknown / ambiguous names as General", () => {
@@ -304,6 +355,7 @@ describe("exercise muscle group backfill migration", () => {
 			["Chin-ups", "Back"],
 			["Shoulder Presses", "Shoulders"],
 			["Reverse Flies", "Shoulders"],
+			["Dips", "Chest"],
 			["Crunches", "Core"],
 		];
 
@@ -316,5 +368,30 @@ describe("exercise muscle group backfill migration", () => {
 		expect(
 			lookupBackfillGroupForExerciseName("Bar Rotation", entries, keywordRules),
 		).toBeUndefined();
+	});
+
+	it("corrects core dip variants after the already-pushed keyword backfill", () => {
+		const { entries } = parseBackfillNameMap();
+		const keywordRules = parseBackfillKeywordRules();
+		const coreDipPatterns = parseCoreDipFixPatterns();
+		const cases: Array<[string, string]> = [
+			["Alternating Plank Dips", "Core"],
+			["Side Clam Hip Dips", "Core"],
+			["Side Plank Hip Dips", "Core"],
+			["Dips", "Chest"],
+			["Tricep Dip", "Arms"],
+		];
+
+		expect(coreDipPatterns.length).toBeGreaterThan(0);
+		for (const [name, expected] of cases) {
+			expect(
+				lookupBackfillGroupAfterAllMigrations(
+					name,
+					entries,
+					keywordRules,
+					coreDipPatterns,
+				),
+			).toBe(expected);
+		}
 	});
 });
