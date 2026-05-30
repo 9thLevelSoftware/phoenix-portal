@@ -7,7 +7,7 @@
 
 WITH core_dip_patterns(pattern) AS (
     VALUES
-        ('\m(plank dips?|hip dips?|oblique dips?)\M'),
+        ('\mhip dips?\M'),
         ('\m(plank|oblique)s?\M.*\mdips?\M')
 ),
 candidate_exercises AS (

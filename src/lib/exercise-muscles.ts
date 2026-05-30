@@ -739,8 +739,7 @@ const KEYWORD_RULES: Array<{ pattern: RegExp; group: string }> = [
 	{ pattern: /\bcurls?\b/, group: "Arms" },
 	// ── Core dip variants before generic chest dips ──
 	{
-		pattern:
-			/\b(plank dips?|hip dips?|oblique dips?)\b|\b(plank|oblique)s?\b.*\bdips?\b/,
+		pattern: /\bhip dips?\b|\b(plank|oblique)s?\b.*\bdips?\b/,
 		group: "Core",
 	},
 	// ── Chest ──
