@@ -9,14 +9,18 @@ import {
 
 const BACKFILL_MIGRATION = "20260529000000_backfill_exercise_muscle_groups.sql";
 
+function readBackfillMigration(): string {
+	return readFileSync(
+		join(process.cwd(), "supabase", "migrations", BACKFILL_MIGRATION),
+		"utf8",
+	);
+}
+
 function parseBackfillNameMap(): {
 	entries: Map<string, string>;
 	duplicates: string[];
 } {
-	const sql = readFileSync(
-		join(process.cwd(), "supabase", "migrations", BACKFILL_MIGRATION),
-		"utf8",
-	);
+	const sql = readBackfillMigration();
 	const entries = new Map<string, string>();
 	const duplicates: string[] = [];
 	for (const match of sql.matchAll(/\('((?:''|[^'])*)',\s*'([^']+)'\)/g)) {
@@ -29,9 +33,32 @@ function parseBackfillNameMap(): {
 	return { entries, duplicates };
 }
 
+function parseBackfillKeywordRules(): Array<{
+	priority: number;
+	pattern: RegExp;
+	group: string;
+}> {
+	const sql = readBackfillMigration();
+	const [, body = ""] =
+		sql.match(
+			/keyword_rules\(priority, pattern, grp\) AS \(\s*VALUES([\s\S]*?)\),\s*exercise_names AS/,
+		) ?? [];
+
+	return [...body.matchAll(/\(\s*(\d+),\s*'((?:''|[^'])*)',\s*'([^']+)'\s*\)/g)]
+		.map((match) => ({
+			priority: Number(match[1]),
+			pattern: new RegExp(
+				match[2].replace(/''/g, "'").replace(/\\m|\\M/g, "\\b"),
+			),
+			group: match[3],
+		}))
+		.sort((a, b) => a.priority - b.priority);
+}
+
 function lookupBackfillGroupForExerciseName(
 	name: string,
 	entries: Map<string, string>,
+	keywordRules: Array<{ pattern: RegExp; group: string }> = [],
 ): string | undefined {
 	const rawName = name.trim().toLowerCase();
 	const parensStrippedName = rawName.replace(/\s*\(.*\)\s*$/, "").trim();
@@ -40,6 +67,11 @@ function lookupBackfillGroupForExerciseName(
 		const group = entries.get(candidate);
 		if (group) return group;
 	}
+
+	for (const rule of keywordRules) {
+		if (rule.pattern.test(normalizedName)) return rule.group;
+	}
+
 	return undefined;
 }
 
@@ -259,5 +291,30 @@ describe("exercise muscle group backfill migration", () => {
 		for (const [name, expected] of cases) {
 			expect(lookupBackfillGroupForExerciseName(name, entries)).toBe(expected);
 		}
+	});
+
+	it("backfills names that require classifier keyword fallback", () => {
+		const { entries } = parseBackfillNameMap();
+		const keywordRules = parseBackfillKeywordRules();
+		const cases: Array<[string, string]> = [
+			["Deadlifts", "Back"],
+			["Leg Presses", "Legs"],
+			["Pushups", "Chest"],
+			["Pull-ups", "Back"],
+			["Chin-ups", "Back"],
+			["Shoulder Presses", "Shoulders"],
+			["Reverse Flies", "Shoulders"],
+			["Crunches", "Core"],
+		];
+
+		expect(keywordRules.length).toBeGreaterThan(0);
+		for (const [name, expected] of cases) {
+			expect(
+				lookupBackfillGroupForExerciseName(name, entries, keywordRules),
+			).toBe(expected);
+		}
+		expect(
+			lookupBackfillGroupForExerciseName("Bar Rotation", entries, keywordRules),
+		).toBeUndefined();
 	});
 });

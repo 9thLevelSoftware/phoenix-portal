@@ -197,6 +197,40 @@ WITH RECURSIVE name_map(norm_name, grp) AS (
         ('alternating oblique punch', 'Core'),
         ('double leg raise (bench supported)', 'Core')
 ),
+keyword_rules(priority, pattern, grp) AS (
+    VALUES
+        -- ORDER IS LOAD-BEARING and mirrors src/lib/exercise-muscles.ts.
+        (1, '\m(romanian deadlifts?|rdls?|stiff[- ]?leg(ged)?( deadlifts?)?)\M', 'Legs'),
+        (2, '\mhamstrings?\M', 'Legs'),
+        (3, '\mglutes?\M', 'Legs'),
+        (4, '\m(calf|calves)\M', 'Legs'),
+        (5, '\mquads?\M|\mquadriceps\M', 'Legs'),
+        (6, '\mleg (press(es)?|extension|curl)s?\M', 'Legs'),
+        (7, '\mhip (thrust|abduction|adduction)s?\M', 'Legs'),
+        (8, '\m(abductor|adductor)s?\M', 'Legs'),
+        (9, '\msquat', 'Legs'),
+        (10, '\mlunge', 'Legs'),
+        (11, '\mstep[- ]?up', 'Legs'),
+        (12, '\mdeadlifts?\M', 'Back'),
+        (13, '\m(rear delts?|reverse fl(y|ies|ye?s?))\M', 'Shoulders'),
+        (14, '\m(lateral|side|front) raises?\M', 'Shoulders'),
+        (15, '\m(shoulder|overhead|military|arnold) press(es)?\M', 'Shoulders'),
+        (16, '\mupright rows?\M', 'Shoulders'),
+        (17, '\mface pulls?\M', 'Shoulders'),
+        (18, '\mpulldowns?\M', 'Back'),
+        (19, '\mpullovers?\M', 'Chest'),
+        (20, '\m(pull[- ]?ups?|chin[- ]?ups?)\M', 'Back'),
+        (21, '\mrows?\M', 'Back'),
+        (22, '\mshrugs?\M', 'Back'),
+        (23, '\m(triceps?|skulls?|kick ?backs?)\M', 'Arms'),
+        (24, '\mcurls?\M', 'Arms'),
+        (25, '\m(fl(y|ies|ye?s?)|pecs?)\M', 'Chest'),
+        (26, '\m(bench|chest) press(es)?\M', 'Chest'),
+        (27, '\mpush[- ]?ups?\M', 'Chest'),
+        (28, '\mcrossovers?\M', 'Chest'),
+        (29, '\mdips?\M', 'Chest'),
+        (30, '\m(crunch(es)?|planks?|obliques?|sit[- ]?ups?|leg raises?|knee raises?|hollows?|dead bugs?|wood ?chops?|russian twists?|mountain climbers?|ab wheels?|ab rollouts?)\M', 'Core')
+),
 exercise_names AS (
     SELECT
         id,
@@ -258,17 +292,30 @@ final_names AS (
 matched_groups AS (
     SELECT DISTINCT ON (en.id)
         en.id,
-        nm.grp
+        matched.grp
     FROM exercise_names en
     JOIN final_names fn ON fn.id = en.id
     JOIN LATERAL (
-        VALUES
-            (fn.norm_name, 1),
-            (en.seed_name, 2),
-            (en.raw_name, 3)
-    ) candidate(norm_name, priority) ON TRUE
-    JOIN name_map nm ON nm.norm_name = candidate.norm_name
-    ORDER BY en.id, candidate.priority
+        SELECT
+            nm.grp,
+            candidate.priority
+        FROM (
+            VALUES
+                (fn.norm_name, 1),
+                (en.seed_name, 2),
+                (en.raw_name, 3)
+        ) candidate(norm_name, priority)
+        JOIN name_map nm ON nm.norm_name = candidate.norm_name
+
+        UNION ALL
+
+        SELECT
+            kr.grp,
+            1000 + kr.priority AS priority
+        FROM keyword_rules kr
+        WHERE fn.norm_name ~ kr.pattern
+    ) matched ON TRUE
+    ORDER BY en.id, matched.priority
 )
 UPDATE exercises ex
 SET muscle_group = mg.grp
