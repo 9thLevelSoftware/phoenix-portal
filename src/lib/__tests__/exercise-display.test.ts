@@ -10,6 +10,12 @@ describe("displayExerciseName", () => {
 		expect(displayExerciseName("Unknown Exercise")).toBe(
 			UNTAGGED_EXERCISE_LABEL,
 		);
+		expect(displayExerciseName("unknown exercise")).toBe(
+			UNTAGGED_EXERCISE_LABEL,
+		);
+		expect(displayExerciseName("  UNKNOWN EXERCISE  ")).toBe(
+			UNTAGGED_EXERCISE_LABEL,
+		);
 	});
 
 	it("maps null / undefined / blank names to the friendly label", () => {
@@ -27,6 +33,8 @@ describe("displayExerciseName", () => {
 describe("isUntaggedExercise", () => {
 	it("detects the placeholder and empty names", () => {
 		expect(isUntaggedExercise("Unknown Exercise")).toBe(true);
+		expect(isUntaggedExercise("unknown exercise")).toBe(true);
+		expect(isUntaggedExercise("  UNKNOWN EXERCISE  ")).toBe(true);
 		expect(isUntaggedExercise(null)).toBe(true);
 		expect(isUntaggedExercise("")).toBe(true);
 	});

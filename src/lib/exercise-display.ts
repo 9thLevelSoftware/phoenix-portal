@@ -13,6 +13,7 @@
 
 /** The raw placeholder mobile writes for an untagged Just Lift exercise. */
 export const UNTAGGED_EXERCISE_RAW = "Unknown Exercise";
+const UNTAGGED_EXERCISE_RAW_NORMALIZED = UNTAGGED_EXERCISE_RAW.toLowerCase();
 
 /** User-facing label for an untagged Just Lift lift. */
 export const UNTAGGED_EXERCISE_LABEL = "Just Lift (untagged)";
@@ -24,7 +25,7 @@ export const UNTAGGED_EXERCISE_LABEL = "Just Lift (untagged)";
  */
 export function displayExerciseName(name?: string | null): string {
 	const trimmed = name?.trim();
-	if (!trimmed || trimmed === UNTAGGED_EXERCISE_RAW) {
+	if (!trimmed || trimmed.toLowerCase() === UNTAGGED_EXERCISE_RAW_NORMALIZED) {
 		return UNTAGGED_EXERCISE_LABEL;
 	}
 	return trimmed;
@@ -33,5 +34,5 @@ export function displayExerciseName(name?: string | null): string {
 /** True when the name represents an untagged Just Lift placeholder. */
 export function isUntaggedExercise(name?: string | null): boolean {
 	const trimmed = name?.trim();
-	return !trimmed || trimmed === UNTAGGED_EXERCISE_RAW;
+	return !trimmed || trimmed.toLowerCase() === UNTAGGED_EXERCISE_RAW_NORMALIZED;
 }

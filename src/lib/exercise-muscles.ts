@@ -698,47 +698,54 @@ const FUZZY_THRESHOLD = 0.7;
  */
 const KEYWORD_RULES: Array<{ pattern: RegExp; group: string }> = [
 	// ── Legs (specific posterior-chain & knee/hip patterns first) ──
-	{ pattern: /\b(romanian deadlift|rdl|stiff[- ]?leg)\b/, group: "Legs" },
+	{
+		pattern:
+			/\b(romanian deadlifts?|rdls?|stiff[- ]?leg(?:ged)?(?: deadlifts?)?)\b/,
+		group: "Legs",
+	},
 	{ pattern: /\bhamstrings?\b/, group: "Legs" },
 	{ pattern: /\bglutes?\b/, group: "Legs" },
 	{ pattern: /\b(calf|calves)\b/, group: "Legs" },
 	{ pattern: /\bquads?\b|\bquadriceps\b/, group: "Legs" },
-	{ pattern: /\bleg (press|extension|curl)\b/, group: "Legs" },
-	{ pattern: /\bhip (thrust|abduction|adduction)\b/, group: "Legs" },
+	{ pattern: /\bleg (press(?:es)?|extension|curl)s?\b/, group: "Legs" },
+	{ pattern: /\bhip (thrust|abduction|adduction)s?\b/, group: "Legs" },
 	{ pattern: /\b(abductor|adductor)s?\b/, group: "Legs" },
 	{ pattern: /\bsquat/, group: "Legs" },
 	{ pattern: /\blunge/, group: "Legs" },
 	{ pattern: /\bstep[- ]?up/, group: "Legs" },
 	// ── Back ──
-	{ pattern: /\bdeadlift\b/, group: "Back" },
+	{ pattern: /\bdeadlifts?\b/, group: "Back" },
 	// ── Shoulders (rear-delt & raises before generic row) ──
-	{ pattern: /\b(rear delt|reverse fly)\b/, group: "Shoulders" },
-	{ pattern: /\b(lateral|side|front) raise\b/, group: "Shoulders" },
 	{
-		pattern: /\b(shoulder|overhead|military|arnold) press\b/,
+		pattern: /\b(rear delts?|reverse fl(?:y|ies|ye?s?))\b/,
 		group: "Shoulders",
 	},
-	{ pattern: /\bupright row\b/, group: "Shoulders" },
+	{ pattern: /\b(lateral|side|front) raises?\b/, group: "Shoulders" },
+	{
+		pattern: /\b(shoulder|overhead|military|arnold) press(?:es)?\b/,
+		group: "Shoulders",
+	},
+	{ pattern: /\bupright rows?\b/, group: "Shoulders" },
 	{ pattern: /\bface pulls?\b/, group: "Shoulders" },
 	// ── Back (pull patterns) ──
-	{ pattern: /\bpulldown\b/, group: "Back" },
-	{ pattern: /\bpullover\b/, group: "Chest" },
-	{ pattern: /\b(pull[- ]?up|chin[- ]?up)\b/, group: "Back" },
+	{ pattern: /\bpulldowns?\b/, group: "Back" },
+	{ pattern: /\bpullovers?\b/, group: "Chest" },
+	{ pattern: /\b(pull[- ]?ups?|chin[- ]?ups?)\b/, group: "Back" },
 	{ pattern: /\brows?\b/, group: "Back" },
 	{ pattern: /\bshrugs?\b/, group: "Back" },
 	// ── Arms (tricep before generic dip/curl) ──
-	{ pattern: /\b(triceps?|skull|kick ?back)\b/, group: "Arms" },
+	{ pattern: /\b(triceps?|skulls?|kick ?backs?)\b/, group: "Arms" },
 	{ pattern: /\bcurls?\b/, group: "Arms" },
 	// ── Chest ──
-	{ pattern: /\b(fly|flye|pec)\b/, group: "Chest" },
-	{ pattern: /\b(bench|chest) press\b/, group: "Chest" },
-	{ pattern: /\bpush[- ]?up\b/, group: "Chest" },
-	{ pattern: /\bcrossover\b/, group: "Chest" },
+	{ pattern: /\b(fl(?:y|ies|ye?s?)|pecs?)\b/, group: "Chest" },
+	{ pattern: /\b(bench|chest) press(?:es)?\b/, group: "Chest" },
+	{ pattern: /\bpush[- ]?ups?\b/, group: "Chest" },
+	{ pattern: /\bcrossovers?\b/, group: "Chest" },
 	{ pattern: /\bdips?\b/, group: "Chest" },
 	// ── Core ──
 	{
 		pattern:
-			/\b(crunch|plank|oblique|sit[- ]?up|leg raise|knee raise|rotation|hollow|dead bug|wood ?chop|russian twist|mountain climber|ab wheel|ab rollout)\b/,
+			/\b(crunch(?:es)?|planks?|obliques?|sit[- ]?ups?|leg raises?|knee raises?|hollows?|dead bugs?|wood ?chops?|russian twists?|mountain climbers?|ab wheels?|ab rollouts?)\b/,
 		group: "Core",
 	},
 ];

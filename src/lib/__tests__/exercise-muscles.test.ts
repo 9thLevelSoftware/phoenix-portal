@@ -1,8 +1,33 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	EXERCISE_MAP,
 	getExerciseProfile,
 	normalizeExerciseName,
 } from "@/lib/exercise-muscles";
+
+const BACKFILL_MIGRATION = "20260529000000_backfill_exercise_muscle_groups.sql";
+
+function parseBackfillNameMap(): {
+	entries: Map<string, string>;
+	duplicates: string[];
+} {
+	const sql = readFileSync(
+		join(process.cwd(), "supabase", "migrations", BACKFILL_MIGRATION),
+		"utf8",
+	);
+	const entries = new Map<string, string>();
+	const duplicates: string[] = [];
+	for (const match of sql.matchAll(/\('((?:''|[^'])*)',\s*'([^']+)'\)/g)) {
+		const name = match[1].replace(/''/g, "'");
+		if (entries.has(name)) {
+			duplicates.push(name);
+		}
+		entries.set(name, match[2]);
+	}
+	return { entries, duplicates };
+}
 
 describe("normalizeExerciseName", () => {
 	it("lowercases and trims", () => {
@@ -64,6 +89,7 @@ describe("getExerciseProfile", () => {
 		// keyword tier they all collapsed to "General".
 		const cases: Array<[string, string]> = [
 			["Conventional Deadlift", "Back"],
+			["Deadlifts", "Back"],
 			["Suitcase Deadlift", "Back"],
 			["Bayesian Curl", "Arms"],
 			["Outward Bicep Curl", "Arms"],
@@ -75,12 +101,15 @@ describe("getExerciseProfile", () => {
 			["Suitcase Squat", "Legs"],
 			["Bulgarian Split Squats", "Legs"],
 			["Side Lunge", "Legs"],
+			["Leg Presses", "Legs"],
 			["Close Grip Pulldown", "Back"],
 			["Wide Grip Pulldown", "Back"],
 			["Lying Pec Fly", "Chest"],
 			["Incline Pec Fly", "Chest"],
+			["Reverse Flies", "Shoulders"],
 			["Cable Fly", "Chest"],
 			["Lat Pullover", "Chest"],
+			["Pullovers", "Chest"],
 			["Prone Lat Pullover", "Chest"],
 			["SL Hamstring Curl", "Legs"],
 			["Standing Hamstring Curl", "Legs"],
@@ -89,9 +118,12 @@ describe("getExerciseProfile", () => {
 			["Split Stance RDL", "Legs"],
 			["SL RDL w/ Knee Raise", "Legs"],
 			["Stiff Leg Deadlift", "Legs"],
+			["Stiff-Legged Deadlift", "Legs"],
 			["Crossover Lateral Raise", "Shoulders"],
+			["Lateral Raises", "Shoulders"],
 			["Double Arm Front Raise", "Shoulders"],
 			["Shoulder Press - Neutral Grip", "Shoulders"],
+			["Shoulder Presses", "Shoulders"],
 			["Rear Delt Row", "Shoulders"],
 			["Crossover Rear Delt Row - Single Arm", "Shoulders"],
 			["Face Pulls", "Shoulders"],
@@ -103,11 +135,16 @@ describe("getExerciseProfile", () => {
 			["Alternating Bench Press", "Chest"],
 			["Chest Press - Gym Ball", "Chest"],
 			["Bench Press - Wide Grip", "Chest"],
+			["Cable Crossovers", "Chest"],
+			["Pushups", "Chest"],
+			["Pull-ups", "Back"],
+			["Chin-ups", "Back"],
 			["Bent Over Tricep Extension", "Arms"],
 			["Tricep Kick Back", "Arms"],
 			["Alternating Oblique Punch", "Core"],
 			["SA Bicycle Crunch", "Core"],
 			["High Crunch", "Core"],
+			["Crunches", "Core"],
 			["Double Leg Raise (Bench Supported)", "Core"],
 		];
 
@@ -134,6 +171,10 @@ describe("getExerciseProfile", () => {
 				"General",
 			);
 			expect(getExerciseProfile("Bear Crawl").primary.group).toBe("General");
+			expect(getExerciseProfile("Bar Rotation").primary.group).toBe("General");
+			expect(getExerciseProfile("B Stance Bar Rotation").primary.group).toBe(
+				"General",
+			);
 		});
 
 		it("still prefers an explicit dbMuscleGroup over keyword guessing only when name is unclassifiable", () => {
@@ -171,5 +212,21 @@ describe("getExerciseProfile", () => {
 				expect(validGroups.has(s.group)).toBe(true);
 			}
 		}
+	});
+});
+
+describe("exercise muscle group backfill migration", () => {
+	it("covers every exact EXERCISE_MAP name with the same primary group", () => {
+		const { entries, duplicates } = parseBackfillNameMap();
+		const mismatches = Object.entries(EXERCISE_MAP)
+			.filter(([name, profile]) => entries.get(name) !== profile.primary.group)
+			.map(([name, profile]) => ({
+				name,
+				expected: profile.primary.group,
+				actual: entries.get(name) ?? "missing",
+			}));
+
+		expect(duplicates).toEqual([]);
+		expect(mismatches).toEqual([]);
 	});
 });
