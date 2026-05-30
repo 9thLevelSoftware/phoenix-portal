@@ -49,7 +49,7 @@ function formatRecordTypeLabel(recordType: string): string {
 		MAX_FORCE: "Force PR",
 		MAX_VELOCITY: "Velocity PR",
 	};
-	return labels[(recordType ?? "").toUpperCase()] ?? recordType;
+	return labels[(recordType ?? "").toUpperCase()] ?? recordType ?? "";
 }
 
 function formatRecordMeasurement(
