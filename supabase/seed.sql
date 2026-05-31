@@ -184,7 +184,8 @@ BEGIN
   -- Get the authenticated user
   SELECT id INTO uid FROM auth.users LIMIT 1;
   IF uid IS NULL THEN
-    RAISE EXCEPTION 'No user found in auth.users. Sign up first!';
+    RAISE NOTICE 'No user found in auth.users; skipping seed data load.';
+    RETURN;
   END IF;
 
   -- ============================================================

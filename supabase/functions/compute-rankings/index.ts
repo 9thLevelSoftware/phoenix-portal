@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 // =============================================================================
@@ -61,6 +61,8 @@ interface UserRequest {
 }
 
 type RankingRequest = GlobalRequest | WeeklyRequest | UserRequest;
+
+type SupabaseAnyClient = SupabaseClient<any, 'public', any>;
 
 // =============================================================================
 // Weekly Metric Rotation
@@ -154,10 +156,8 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
+    const { data, error: authError } = await supabaseAuth.auth.getUser();
+    const user = data?.user;
 
     if (authError || !user) {
       return new Response(
@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 3. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey) as SupabaseAnyClient;
 
     // =========================================================================
     // 4. Handle each request type
@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
 // Global Rankings
 // =============================================================================
 
-async function computeGlobalRankings(supabase: ReturnType<typeof createClient>): Promise<GlobalLeaderboard> {
+async function computeGlobalRankings(supabase: SupabaseAnyClient): Promise<GlobalLeaderboard> {
   const LIMIT = 100;
 
   // Get eligible users (leaderboard_participation = true)
@@ -373,7 +373,7 @@ async function computeGlobalRankings(supabase: ReturnType<typeof createClient>):
 // =============================================================================
 
 async function computeWeeklyRankings(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseAnyClient,
   weekStart?: string
 ): Promise<WeeklyCompetition> {
   const LIMIT = 100;
@@ -503,7 +503,7 @@ async function computeWeeklyRankings(
 // =============================================================================
 
 async function computeUserRankings(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseAnyClient,
   targetUserId: string
 ): Promise<UserRanking[]> {
   // Get all eligible users
@@ -633,7 +633,7 @@ async function computeUserRankings(
     result_limit: totalUsers,
   });
 
-  const masteryValues = (allMasteryData ?? []).map(m => m.mastered_count);
+  const masteryValues = (allMasteryData ?? []).map((m: { mastered_count: number }) => m.mastered_count);
   // Users with 0 mastery rank after all users with positive mastery
   const usersWithMastery = masteryValues.length;
   const masteryRank = masteredCount > 0
