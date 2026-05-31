@@ -89,13 +89,13 @@ and runs `npm ci`. The workspace persists between attempts for the same issue.
 
 The `codex` config in `WORKFLOW.md` uses:
 
-- `approval_policy: never` for unattended operation
+- `approval_policy: on-request` to require confirmation before privileged actions
 - `thread_sandbox: workspace-write`
-- `turn_sandbox_policy.networkAccess: true`
+- `turn_sandbox_policy.networkAccess: false` to block agent network egress by default
 
-That is intentional for an autonomous runner, but it is not a low-risk default.
-Do not run it against untrusted issues, untrusted branches, or a workstation with
-credentials you are unwilling to expose to an agent process.
+This is a safer default for issue content that may be untrusted. If you relax
+these controls for controlled environments, document the risk and use a
+minimally scoped runtime identity.
 
 ## Validation Bar
 
