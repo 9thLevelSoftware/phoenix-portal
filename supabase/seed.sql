@@ -184,7 +184,7 @@ BEGIN
   -- Get the authenticated user
   SELECT id INTO uid FROM auth.users LIMIT 1;
   IF uid IS NULL THEN
-    RAISE NOTICE 'No user found in auth.users. Skipping user-scoped seed data.';
+    RAISE NOTICE 'No user found in auth.users; skipping seed data load.';
     RETURN;
   END IF;
 
