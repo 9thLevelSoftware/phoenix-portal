@@ -132,7 +132,42 @@ Deno.serve(async (req) => {
 
   try {
     // =========================================================================
-    // 1. Parse request body
+    // 1. Verify JWT auth for all ranking requests
+    // =========================================================================
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      throw new Error('Missing required environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Not authenticated' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // =========================================================================
+    // 2. Parse request body
     // =========================================================================
     let body: RankingRequest;
     try {
@@ -152,19 +187,12 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 2. Service-role client for DB operations (bypasses RLS)
+    // 3. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-    }
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // =========================================================================
-    // 3. Handle each request type
+    // 4. Handle each request type
     // =========================================================================
     if (body.type === 'global') {
       const result = await computeGlobalRankings(supabase);
@@ -189,6 +217,14 @@ Deno.serve(async (req) => {
           { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
+
+      if (body.userId !== user.id) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden: cannot access rankings for another user' }),
+          { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
       const result = await computeUserRankings(supabase, body.userId);
       return new Response(
         JSON.stringify(result),
