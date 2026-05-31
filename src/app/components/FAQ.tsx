@@ -274,10 +274,10 @@ export function FAQ() {
 									{category.title}
 								</h2>
 								<Accordion type="single" collapsible className="w-full">
-									{category.items.map((item, index) => (
+									{category.items.map((item) => (
 										<AccordionItem
-											key={`${category.title}-${index}`}
-											value={`${category.title}-${index}`}
+											key={`${category.title}-${item.question}`}
+											value={`${category.title}-${item.question}`}
 										>
 											<AccordionTrigger className="text-base">
 												{item.question}

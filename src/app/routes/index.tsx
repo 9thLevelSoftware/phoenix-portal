@@ -58,6 +58,11 @@ const ResetPassword = lazyWithReload(() =>
 		default: m.ResetPassword,
 	})),
 );
+const AuthCallback = lazyWithReload(() =>
+	import("@/app/components/AuthCallback").then((m) => ({
+		default: m.AuthCallback,
+	})),
+);
 const Dashboard = lazyWithReload(() =>
 	import("@/app/components/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
@@ -156,6 +161,7 @@ export function AppRoutes() {
 				<Route path="/privacy" element={<PrivacyPolicy />} />
 				<Route path="/terms" element={<TermsOfService />} />
 				<Route path="/faq" element={<FAQ />} />
+				<Route path="/auth/callback" element={<AuthCallback />} />
 				<Route path="/auth/reset-password" element={<ResetPassword />} />
 
 				{/* Protected routes */}
@@ -198,8 +204,8 @@ export function AppRoutes() {
 							/>
 						</Route>
 
-						{/* INFERNO tier — session replay */}
-						<Route element={<SubscribedRoute requiredTier="INFERNO" />}>
+						{/* FLAME tier — session replay (INFERNO not yet purchasable) */}
+						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
 							<Route path="/replay/:sessionId" element={<SessionReplay />} />
 						</Route>
 

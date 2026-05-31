@@ -33,12 +33,13 @@ test.describe("Pricing and gates", () => {
 		).toBeVisible();
 	});
 
-	test("flame users see lower tiers as included", async ({
-		page,
-	}) => {
+	test("flame users can downgrade to lower paid tiers", async ({ page }) => {
 		await mockAuthenticatedApp(page, { tier: "FLAME" });
 
 		await page.goto("/pricing");
-		await expect(page.getByText("Included in your plan")).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Downgrade" }),
+		).toBeVisible();
+		await expect(page.getByText("Included in your plan")).toHaveCount(0);
 	});
 });

@@ -8,7 +8,7 @@ import { queryKeys } from "@/queries/keys";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockSelectSingle = vi.fn();
+const _mockSelectSingle = vi.fn();
 
 const mockChain = {
 	insert: vi.fn(),
@@ -187,6 +187,7 @@ describe("useCreateGoal", () => {
 			target_value: 150,
 			target_unit: "kg",
 			exercise_name: "Squat",
+			exercise_id: "catalog-squat",
 			deadline: "2026-06-01",
 			period: "monthly",
 		});
@@ -194,9 +195,10 @@ describe("useCreateGoal", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(capturedPayload).not.toBeNull();
-		expect(capturedPayload!.exercise_name).toBe("Squat");
-		expect(capturedPayload!.deadline).toBe("2026-06-01");
-		expect(capturedPayload!.period).toBe("monthly");
+		expect(capturedPayload?.exercise_name).toBe("Squat");
+		expect(capturedPayload?.exercise_id).toBe("catalog-squat");
+		expect(capturedPayload?.deadline).toBe("2026-06-01");
+		expect(capturedPayload?.period).toBe("monthly");
 	});
 });
 
@@ -241,6 +243,36 @@ describe("useUpdateGoal", () => {
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.goals.all,
 		});
+	});
+
+	it("clears stale exercise_id when only exercise_name changes", async () => {
+		const { useUpdateGoal } = await import("../goals");
+
+		let capturedPayload: Record<string, unknown> | null = null;
+		const selectSingle = vi.fn().mockResolvedValue({
+			data: { id: "goal-1", exercise_name: "Deadlift" },
+			error: null,
+		});
+		const selectFn = vi.fn(() => ({ single: selectSingle }));
+		const eqUser = vi.fn(() => ({ select: selectFn }));
+		const eqId = vi.fn(() => ({ eq: eqUser }));
+		mockChain.update.mockImplementation((payload: Record<string, unknown>) => {
+			capturedPayload = payload;
+			return { eq: eqId };
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateGoal(), { wrapper });
+
+		result.current.mutate({
+			goalId: "goal-1",
+			updates: { exercise_name: "Deadlift" },
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(capturedPayload?.exercise_name).toBe("Deadlift");
+		expect(capturedPayload?.exercise_id).toBeNull();
 	});
 
 	it("shows user-friendly error on update failure", async () => {

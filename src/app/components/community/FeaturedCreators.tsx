@@ -69,6 +69,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 					<>
 						<div className="absolute left-0 top-0 bottom-2 w-8 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
 						<button
+							type="button"
 							onClick={() => scroll("left")}
 							className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
 							aria-label="Scroll left"
@@ -81,6 +82,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 					<>
 						<div className="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
 						<button
+							type="button"
 							onClick={() => scroll("right")}
 							className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
 							aria-label="Scroll right"
@@ -97,6 +99,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 					{isLoading
 						? Array.from({ length: 5 }).map((_, i) => (
 								<div
+									// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 									key={i}
 									className="flex flex-col items-center gap-1.5 shrink-0"
 								>
@@ -106,6 +109,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 							))
 						: creators?.map((creator) => (
 								<button
+									type="button"
 									key={creator.user_id}
 									onClick={() => onSelectCreator(creator.user_id)}
 									className="flex flex-col items-center gap-1.5 shrink-0 snap-start group"

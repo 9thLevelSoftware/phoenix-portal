@@ -14,8 +14,8 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
+import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -111,6 +111,7 @@ export function RoutinesEnhanced() {
 				<PageShell>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<RoutineCardSkeleton key={i} />
 						))}
 					</div>
@@ -271,6 +272,7 @@ function RoutineGrid({
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<button
+												type="button"
 												onClick={() => onToggleFavorite(routine.id)}
 												aria-label={
 													favorite
@@ -290,7 +292,10 @@ function RoutineGrid({
 									</Tooltip>
 									<DropdownMenu>
 										<DropdownMenuTrigger asChild>
-											<button className="text-muted-foreground hover:text-white transition-colors">
+											<button
+												type="button"
+												className="text-muted-foreground hover:text-white transition-colors"
+											>
 												<MoreVertical className="w-5 h-5" />
 											</button>
 										</DropdownMenuTrigger>
@@ -308,7 +313,9 @@ function RoutineGrid({
 											</DropdownMenuItem>
 											<DropdownMenuItem
 												className="text-red-400 hover:bg-red-900/20 cursor-pointer"
-												onClick={() => onDelete({ id: routine.id, name: routine.name })}
+												onClick={() =>
+													onDelete({ id: routine.id, name: routine.name })
+												}
 											>
 												<Trash2 className="w-4 h-4 mr-2" />
 												Delete
@@ -326,13 +333,7 @@ function RoutineGrid({
 								</div>
 								<div className="flex items-center gap-1 text-muted-foreground">
 									<Clock className="w-4 h-4" />
-									<span>
-										~
-										{routine.estimated_duration > 300
-											? Math.round(routine.estimated_duration / 60)
-											: routine.estimated_duration}{" "}
-										min
-									</span>
+									<span>~{routine.estimated_duration} min</span>
 								</div>
 							</div>
 

@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
@@ -200,8 +201,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    let accessToken = tokens.access_token as string;
-    const refreshToken = tokens.refresh_token as string;
+    let accessToken = (await decryptOAuthSecret(tokens.access_token as string)) ?? '';
+    let refreshToken = (await decryptOAuthSecret(tokens.refresh_token as string)) ?? '';
     const tokenExpiresAt = tokens.token_expires_at
       ? new Date(tokens.token_expires_at).getTime()
       : 0;
@@ -214,13 +215,17 @@ Deno.serve(async (req) => {
       const refreshed = await refreshAccessToken(refreshToken);
 
       accessToken = refreshed.access_token;
+      // Strava rotates refresh tokens on every refresh call; keep the in-memory
+      // copy in sync with what we persist so any subsequent refresh in this
+      // invocation uses the rotated value, not the now-revoked original.
+      refreshToken = refreshed.refresh_token ?? refreshToken;
 
       // Persist new tokens in oauth_tokens (server-only table)
       await supabase
         .from('oauth_tokens')
         .update({
-          access_token: refreshed.access_token,
-          refresh_token: refreshed.refresh_token,
+          access_token: await encryptOAuthSecret(refreshed.access_token),
+          refresh_token: await encryptOAuthSecret(refreshToken),
           token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -231,43 +236,59 @@ Deno.serve(async (req) => {
     // ---------------------------------------------------------------
     // Fetch activities from Strava
     // ---------------------------------------------------------------
-    const params = new URLSearchParams({ per_page: '200', page: '1' });
+    const baseParams = new URLSearchParams({ per_page: '200' });
 
     // For incremental sync, only fetch activities after last sync
     if (sync_type !== 'initial' && integration.last_sync_at) {
       const afterEpoch = Math.floor(
         new Date(integration.last_sync_at as string).getTime() / 1000
       );
-      params.set('after', String(afterEpoch));
+      baseParams.set('after', String(afterEpoch));
     }
 
-    const activitiesResponse = await fetch(
-      `https://www.strava.com/api/v3/athlete/activities?${params}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    const rawActivities: StravaActivityRaw[] = [];
+    let page = 1;
+    const maxPages = 50;
+    const delayBetweenPagesMs = 350;
 
-    if (!activitiesResponse.ok) {
-      const errorText = await activitiesResponse.text();
-      console.error('Strava activities fetch failed:', activitiesResponse.status, errorText);
+    while (page <= maxPages) {
+      const params = new URLSearchParams(baseParams);
+      params.set('page', String(page));
 
-      // Mark integration as errored if 401 (token revoked)
-      if (activitiesResponse.status === 401) {
-        await supabase
-          .from('user_integrations')
-          .update({ status: 'token_expired', error_message: 'Access token revoked or invalid' })
-          .eq('user_id', userId)
-          .eq('provider', 'strava');
-      }
-
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch Strava activities', details: errorText }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      const activitiesResponse = await fetch(
+        `https://www.strava.com/api/v3/athlete/activities?${params}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
       );
-    }
 
-    const rawActivities: StravaActivityRaw[] = await activitiesResponse.json();
+      if (!activitiesResponse.ok) {
+        const errorText = await activitiesResponse.text();
+        console.error('Strava activities fetch failed:', activitiesResponse.status, errorText);
+
+        if (activitiesResponse.status === 401) {
+          await supabase
+            .from('user_integrations')
+            .update({ status: 'token_expired', error_message: 'Access token revoked or invalid' })
+            .eq('user_id', userId)
+            .eq('provider', 'strava');
+        }
+
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch Strava activities', details: errorText }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const pageActivities: StravaActivityRaw[] = await activitiesResponse.json();
+      rawActivities.push(...pageActivities);
+
+      if (pageActivities.length < 200) {
+        break;
+      }
+      page++;
+      await new Promise((r) => setTimeout(r, delayBetweenPagesMs));
+    }
 
     // ---------------------------------------------------------------
     // Normalize and upsert activities

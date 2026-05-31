@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
@@ -71,14 +72,21 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			const sessionIds = sessions.map((s) => s.id);
 			const { data: exercises, error: exerciseError } = await supabase
 				.from("exercises")
-				.select("muscle_group")
+				.select("name, muscle_group")
 				.in("session_id", sessionIds);
 			if (exerciseError) throw exerciseError;
 
-			// Group by muscle_group and count
+			// Classify by exercise NAME (canonical 6 groups), falling back to a
+			// real muscle_group hint only when the name is unclassifiable. The DB
+			// muscle_group column is unreliable — historically it was hardcoded to
+			// "General" on every row by the mobile sync push, so trusting it
+			// collapsed the entire distribution into a single "General" bucket.
+			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
 			for (const ex of exercises ?? []) {
-				counts[ex.muscle_group] = (counts[ex.muscle_group] ?? 0) + 1;
+				const group = classifyMuscleGroup(ex.name ?? "", ex.muscle_group);
+				if (group === "General") continue;
+				counts[group] = (counts[group] ?? 0) + 1;
 			}
 
 			const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
@@ -104,7 +112,7 @@ export function strengthProgressOptions(
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("exercise_name, value, achieved_at")
+				.select("exercise_name, exercise_id, value, achieved_at")
 				.eq("user_id", userId);
 
 			if (profileId) {

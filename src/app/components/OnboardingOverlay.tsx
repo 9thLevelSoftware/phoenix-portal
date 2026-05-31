@@ -175,6 +175,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 					<div className="flex gap-1.5">
 						{steps.map((_, i) => (
 							<button
+								// biome-ignore lint/suspicious/noArrayIndexKey: static step dots never reorder
 								key={`step-dot-${i}`}
 								type="button"
 								aria-label={`Go to step ${i + 1}`}

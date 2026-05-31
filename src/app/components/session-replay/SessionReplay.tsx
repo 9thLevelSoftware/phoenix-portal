@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { usePlayback } from "@/hooks/usePlayback";
 import { useSubscription } from "@/hooks/useSubscription";
+import { displayExerciseName } from "@/lib/exercise-display";
 import { detectFatigue } from "@/lib/fatigue-detection";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
@@ -25,13 +26,13 @@ import { TimelineBar } from "./TimelineBar";
  * Session Replay page component.
  * Provides full playback visualization of a workout set with force/velocity charts,
  * rep quality badges, and fatigue detection.
- * Gated behind ELITE subscription tier.
+ * Gated behind FLAME+ subscription tier.
  */
 export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
-	const { isInferno } = useSubscription();
+	const { isFlame } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -50,7 +51,7 @@ export function SessionReplay() {
 	// Fetch session structure
 	const sessionQuery = useQuery({
 		...replaySessionOptions(sessionId ?? ""),
-		enabled: isInferno && !!sessionId,
+		enabled: isFlame && !!sessionId,
 	});
 
 	// Derive all sets from session exercises
@@ -59,7 +60,7 @@ export function SessionReplay() {
 		return sessionQuery.data.exercises.flatMap((exercise) =>
 			(exercise.sets ?? []).map((set) => ({
 				setId: set.id,
-				exerciseName: exercise.exercise_name,
+				exerciseName: displayExerciseName(exercise.exercise_name),
 				setNumber: set.set_number,
 			})),
 		);
@@ -71,7 +72,7 @@ export function SessionReplay() {
 	// Fetch telemetry for current set
 	const telemetryQuery = useQuery({
 		...replayTelemetryOptions(currentSet?.setId ?? ""),
-		enabled: isInferno && !!currentSet?.setId,
+		enabled: isFlame && !!currentSet?.setId,
 	});
 
 	// Process telemetry data
@@ -157,7 +158,7 @@ export function SessionReplay() {
 	}
 
 	return (
-		<SubscriptionGate requiredTier="INFERNO">
+		<SubscriptionGate requiredTier="FLAME">
 			<div className="min-h-screen p-4 space-y-4">
 				{/* Header */}
 				<div className="flex items-center gap-3">

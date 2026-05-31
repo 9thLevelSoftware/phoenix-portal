@@ -17,6 +17,36 @@ if (typeof window !== "undefined") {
 
 const DISMISS_KEY = "phoenix-install-dismissed";
 
+function readDismissedState(): boolean {
+	if (
+		typeof window === "undefined" ||
+		typeof window.localStorage?.getItem !== "function"
+	) {
+		return false;
+	}
+
+	try {
+		return window.localStorage.getItem(DISMISS_KEY) === "true";
+	} catch {
+		return false;
+	}
+}
+
+function writeDismissedState(): void {
+	if (
+		typeof window === "undefined" ||
+		typeof window.localStorage?.setItem !== "function"
+	) {
+		return;
+	}
+
+	try {
+		window.localStorage.setItem(DISMISS_KEY, "true");
+	} catch {
+		// Ignore storage failures; the in-memory React state still dismisses.
+	}
+}
+
 interface UsePWAInstallOptions {
 	workoutCount: number;
 	minWorkouts?: number;
@@ -30,7 +60,8 @@ function isIOSSafari(): boolean {
 		/iPad|iPhone|iPod/.test(ua) ||
 		(navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 	const isStandalone =
-		"standalone" in navigator && (navigator as any).standalone;
+		"standalone" in navigator &&
+		(navigator as unknown as { standalone: boolean }).standalone;
 	return isIOS && !isStandalone;
 }
 
@@ -55,10 +86,7 @@ export function usePWAInstall({
 	const [promptAvailable, setPromptAvailable] = useState(
 		() => deferredPrompt !== null,
 	);
-	const [dismissed, setDismissed] = useState(() => {
-		if (typeof window === "undefined") return false;
-		return localStorage.getItem(DISMISS_KEY) === "true";
-	});
+	const [dismissed, setDismissed] = useState(readDismissedState);
 
 	// Listen for late-arriving beforeinstallprompt events
 	useEffect(() => {
@@ -83,7 +111,7 @@ export function usePWAInstall({
 		const { outcome } = await deferredPrompt.userChoice;
 
 		if (outcome === "dismissed") {
-			localStorage.setItem(DISMISS_KEY, "true");
+			writeDismissedState();
 			setDismissed(true);
 		}
 
@@ -92,7 +120,7 @@ export function usePWAInstall({
 	}, []);
 
 	const dismiss = useCallback(() => {
-		localStorage.setItem(DISMISS_KEY, "true");
+		writeDismissedState();
 		setDismissed(true);
 	}, []);
 

@@ -4,6 +4,19 @@ import type { Database } from "./database.types";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+export type SocialAuthProvider = "google" | "apple";
+
+export type SocialAuthAvailability = Record<SocialAuthProvider, boolean>;
+
+export const DEFAULT_SOCIAL_AUTH_AVAILABILITY: SocialAuthAvailability = {
+	google: false,
+	apple: false,
+};
+
+export const OAUTH_CALLBACK_PATH = "/auth/callback";
+export const GOOGLE_OAUTH_SCOPES =
+	"https://www.googleapis.com/auth/userinfo.email";
+
 if (!supabaseUrl || !supabaseAnonKey) {
 	throw new Error(
 		"Missing Supabase environment variables. " +
@@ -12,4 +25,86 @@ if (!supabaseUrl || !supabaseAnonKey) {
 	);
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+/**
+ * Mutable ref so the custom `fetch` can call `refreshSession` without a circular
+ * initialization dependency on `supabase`.
+ */
+const supabaseRef: {
+	current: ReturnType<typeof createClient<Database>> | null;
+} = { current: null };
+
+/**
+ * One-shot retry on 401 after `refreshSession()` so idle sessions recover when
+ * a stale JWT reaches PostgREST before the client-side auto-refresh runs.
+ * The retry must re-inject the freshly refreshed access token into the
+ * Authorization header — reusing `init.headers` would send the stale JWT again.
+ */
+const fetchWithAuthRetry: typeof fetch = async (input, init) => {
+	const response = await fetch(input, init);
+	if (response.status !== 401 || !supabaseRef.current) {
+		return response;
+	}
+
+	const { data, error } = await supabaseRef.current.auth.refreshSession();
+	if (error || !data.session) {
+		return response;
+	}
+
+	const headers = new Headers(
+		init?.headers ?? (input instanceof Request ? input.headers : undefined),
+	);
+	headers.set("Authorization", `Bearer ${data.session.access_token}`);
+
+	return fetch(input, { ...init, headers });
+};
+
+/**
+ * Supabase client configuration.
+ *
+ * Background token refresh is enabled so JWTs renew before expiry. Multi-client
+ * refresh is mitigated by `refresh_token_reuse_interval` in `supabase/config.toml`.
+ */
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+	global: { fetch: fetchWithAuthRetry },
+	auth: {
+		autoRefreshToken: true,
+		persistSession: true,
+		detectSessionInUrl: true,
+	},
+});
+
+supabaseRef.current = supabase;
+
+type AuthSettingsResponse = {
+	external?: Partial<Record<SocialAuthProvider, boolean>>;
+};
+
+export async function getSocialAuthAvailability(
+	fetchImpl: typeof fetch = fetch,
+): Promise<SocialAuthAvailability> {
+	const response = await fetchImpl(`${supabaseUrl}/auth/v1/settings`, {
+		headers: {
+			apikey: supabaseAnonKey,
+			Authorization: `Bearer ${supabaseAnonKey}`,
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to load auth settings (${response.status})`);
+	}
+
+	const settings = (await response.json()) as AuthSettingsResponse;
+
+	return {
+		google: settings.external?.google === true,
+		apple: settings.external?.apple === true,
+	};
+}
+
+export function buildSocialAuthRedirectUrl(
+	provider: SocialAuthProvider,
+): string {
+	const redirectUrl = new URL(OAUTH_CALLBACK_PATH, window.location.origin);
+	redirectUrl.searchParams.set("provider", provider);
+	return redirectUrl.toString();
+}

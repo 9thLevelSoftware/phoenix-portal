@@ -9,6 +9,7 @@ import {
 	Link2,
 } from "lucide-react";
 import { useMemo } from "react";
+import { Link } from "react-router";
 import { FeatureHint } from "@/app/components/FeatureHint";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -31,9 +32,21 @@ import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { PHOENIX } from "@/lib/colors";
 import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
-import { savedItemsOptions } from "@/queries/community";
-import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
+import {
+	communityItemDetailOptions,
+	savedItemsOptions,
+} from "@/queries/community";
+import type {
+	CommunityFeedItem,
+	CommunityItemDetail,
+	SharedRoutine,
+	SharedRoutineDetail,
+} from "@/schemas/community";
 import { CommentThread } from "./CommentThread";
+import {
+	CycleSnapshotPreview,
+	RoutineSnapshotPreview,
+} from "./CommunityContentPreview";
 import { ContentActionMenu } from "./ContentActionMenu";
 
 interface CommunityDetailDrawerProps {
@@ -42,18 +55,33 @@ interface CommunityDetailDrawerProps {
 	onClose: () => void;
 }
 
-function isRoutine(item: CommunityFeedItem): item is SharedRoutine {
+function isRoutine(
+	item: CommunityFeedItem | CommunityItemDetail,
+): item is SharedRoutine | SharedRoutineDetail {
 	return "exercise_count" in item;
 }
 
-function DetailContent({ item }: { item: CommunityFeedItem }) {
+function DetailContent({
+	item,
+	detail,
+	detailLoading,
+	detailError,
+}: {
+	item: CommunityFeedItem;
+	detail: CommunityItemDetail | undefined;
+	detailLoading: boolean;
+	detailError: boolean;
+}) {
 	const { user } = useAuth();
-	const isDeletedUser = item.user_id === null;
+	const displayItem = detail ?? item;
+	const isDeletedUser = displayItem.user_id === null;
 	const authorName = isDeletedUser
 		? "[Deleted User]"
-		: (item.profiles?.display_name ?? "Unknown");
-	const sharedAgo = formatDistanceToNow(item.shared_at, { addSuffix: true });
-	const itemType = isRoutine(item) ? "routine" : "cycle";
+		: (displayItem.profiles?.display_name ?? "Unknown");
+	const sharedAgo = formatDistanceToNow(displayItem.shared_at, {
+		addSuffix: true,
+	});
+	const itemType = isRoutine(displayItem) ? "routine" : "cycle";
 
 	const voteMutation = useVote();
 	const saveMutation = useSaveItem();
@@ -63,10 +91,27 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 		enabled: !!user?.id,
 	});
 
-	const isSaved = useMemo(
-		() => savedItems?.some((s) => s.shared_item_id === item.id) ?? false,
-		[savedItems, item.id],
+	const savedItem = useMemo(
+		() =>
+			savedItems?.find(
+				(s) => s.shared_item_id === displayItem.id && s.item_type === itemType,
+			) ?? null,
+		[savedItems, displayItem.id, itemType],
 	);
+	const importedId =
+		itemType === "routine"
+			? savedItem?.imported_routine_id
+			: savedItem?.imported_cycle_id;
+	const isImported = Boolean(importedId);
+	const importedHref =
+		itemType === "routine"
+			? `/routines/${importedId}/view`
+			: `/cycles/${importedId}`;
+	const hasImportableSnapshot = isRoutine(displayItem)
+		? "exercises_snapshot" in displayItem &&
+			Array.isArray(displayItem.exercises_snapshot) &&
+			displayItem.exercises_snapshot.length > 0
+		: "cycle_snapshot" in displayItem && Boolean(displayItem.cycle_snapshot);
 
 	return (
 		<div className="space-y-4">
@@ -83,21 +128,23 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 				</div>
 				{user && (
 					<ContentActionMenu
-						contentId={item.id}
+						contentId={displayItem.id}
 						contentType={itemType}
-						authorId={item.user_id}
+						authorId={displayItem.user_id}
 						currentUserId={user.id}
 					/>
 				)}
 			</div>
 
 			{/* Description */}
-			<p className="text-sm text-secondary-foreground">{item.description}</p>
+			<p className="text-sm text-secondary-foreground">
+				{displayItem.description}
+			</p>
 
 			{/* Tags */}
-			{item.tags.length > 0 && (
+			{displayItem.tags.length > 0 && (
 				<div className="flex flex-wrap gap-1.5">
-					{item.tags.map((tag) => (
+					{displayItem.tags.map((tag) => (
 						<Badge
 							key={tag}
 							className="bg-secondary text-secondary-foreground border-0 text-xs"
@@ -110,90 +157,107 @@ function DetailContent({ item }: { item: CommunityFeedItem }) {
 
 			{/* Stats */}
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
-				{isRoutine(item) ? (
+				{isRoutine(displayItem) ? (
 					<>
 						<div className="flex items-center gap-1">
 							<Dumbbell className="w-4 h-4" />
-							<span>{item.exercise_count} exercises</span>
+							<span>{displayItem.exercise_count} exercises</span>
 						</div>
 						<div className="flex items-center gap-1">
 							<Clock className="w-4 h-4" />
-							<span>{item.estimated_duration} min</span>
+							<span>{displayItem.estimated_duration} min</span>
 						</div>
 					</>
 				) : (
 					<div className="flex items-center gap-1">
 						<Calendar className="w-4 h-4" />
-						<span>{item.duration_weeks} weeks</span>
+						<span>{displayItem.duration_weeks} weeks</span>
 					</div>
 				)}
 			</div>
 
-			{/* Exercise list preview for routines */}
-			{isRoutine(item) && item.exercises_snapshot && (
-				<div>
-					<h4 className="text-sm font-semibold text-white mb-2">Exercises</h4>
-					<div className="space-y-1.5">
-						{(Array.isArray(item.exercises_snapshot)
-							? (item.exercises_snapshot as Array<{ name?: string }>)
-							: []
-						)
-							.slice(0, 6)
-							.map((ex, i) => (
-								<div
-									key={i}
-									className="flex items-center gap-2 p-2 bg-surface-2 rounded-md text-sm"
-								>
-									<span className="text-muted-foreground w-5 text-right">
-										{i + 1}
-									</span>
-									<span className="text-white">
-										{typeof ex === "object" && ex?.name
-											? ex.name
-											: `Exercise ${i + 1}`}
-									</span>
-								</div>
-							))}
-					</div>
+			{detailLoading ? (
+				<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
+					Loading full details...
 				</div>
+			) : detailError ? (
+				<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+					Full details could not be loaded.
+				</div>
+			) : isRoutine(displayItem) ? (
+				<RoutineSnapshotPreview
+					exercises={
+						"exercises_snapshot" in displayItem
+							? displayItem.exercises_snapshot
+							: null
+					}
+				/>
+			) : (
+				<CycleSnapshotPreview
+					snapshot={
+						"cycle_snapshot" in displayItem ? displayItem.cycle_snapshot : null
+					}
+				/>
 			)}
 
 			{/* Vote + Save actions */}
 			<div className="flex items-center gap-3 pt-2">
 				<Button
 					variant="outline"
-					onClick={() => voteMutation.mutate({ itemId: item.id, itemType })}
+					onClick={() =>
+						voteMutation.mutate({ itemId: displayItem.id, itemType })
+					}
 					disabled={voteMutation.isPending}
 					className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-white"
 				>
 					<ArrowBigUp className="w-5 h-5 mr-1.5" />
-					{item.vote_count}
+					{displayItem.vote_count}
 				</Button>
-				<Button
-					variant="outline"
-					onClick={() =>
-						saveMutation.mutate({ sharedItemId: item.id, itemType })
-					}
-					disabled={saveMutation.isPending}
-					className={`flex-1 border-secondary transition-colors ${
-						isSaved
-							? "text-primary border-primary/50"
-							: "text-muted-foreground hover:border-primary hover:text-white"
-					}`}
-				>
-					<Bookmark
-						className="w-4 h-4 mr-1.5"
-						fill={isSaved ? PHOENIX.ember : "none"}
-					/>
-					{isSaved ? "Saved" : "Save"}
-				</Button>
+				{isImported && importedId ? (
+					<Button
+						asChild
+						variant="outline"
+						className="flex-1 border-primary/50 text-primary transition-colors"
+					>
+						<Link to={importedHref}>
+							<Bookmark className="w-4 h-4 mr-1.5" fill={PHOENIX.ember} />
+							{itemType === "routine"
+								? "Saved to My Routines"
+								: "Saved to My Cycles"}
+						</Link>
+					</Button>
+				) : (
+					<Button
+						variant="outline"
+						onClick={() =>
+							saveMutation.mutate({ sharedItemId: displayItem.id, itemType })
+						}
+						disabled={
+							saveMutation.isPending ||
+							detailLoading ||
+							detailError ||
+							!hasImportableSnapshot
+						}
+						className="flex-1 border-secondary text-muted-foreground transition-colors hover:border-primary hover:text-white"
+					>
+						<Bookmark className="w-4 h-4 mr-1.5" />
+						{saveMutation.isPending
+							? "Saving..."
+							: itemType === "routine"
+								? "Save to My Routines"
+								: "Save to My Cycles"}
+					</Button>
+				)}
 			</div>
 
 			{/* Linked reference indicator */}
-			{isSaved && (
+			{isImported && (
 				<div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1">
 					<Link2 className="w-3 h-3" />
-					<span>Linked to original</span>
+					<span>
+						Imported as an editable copy. Community comments stay linked to the
+						original share.
+					</span>
 				</div>
 			)}
 		</div>
@@ -206,6 +270,11 @@ export function CommunityDetailDrawer({
 	onClose,
 }: CommunityDetailDrawerProps) {
 	const isMobile = useIsMobile();
+	const itemType = item && isRoutine(item) ? "routine" : "cycle";
+	const detailQuery = useQuery({
+		...communityItemDetailOptions(itemType, item?.id ?? ""),
+		enabled: open && !!item,
+	});
 
 	if (!item) return null;
 
@@ -222,7 +291,12 @@ export function CommunityDetailDrawer({
 						</DrawerDescription>
 					</DrawerHeader>
 					<div className="px-4 pb-4 overflow-y-auto">
-						<DetailContent item={item} />
+						<DetailContent
+							item={item}
+							detail={detailQuery.data}
+							detailLoading={detailQuery.isLoading}
+							detailError={detailQuery.isError}
+						/>
 						<div className="mt-4 pt-4 border-t border-secondary">
 							<CommentThread
 								itemId={item.id}
@@ -245,7 +319,12 @@ export function CommunityDetailDrawer({
 						{item.difficulty} {isRoutine(item) ? "Routine" : "Cycle"}
 					</DialogDescription>
 				</DialogHeader>
-				<DetailContent item={item} />
+				<DetailContent
+					item={item}
+					detail={detailQuery.data}
+					detailLoading={detailQuery.isLoading}
+					detailError={detailQuery.isError}
+				/>
 				<FeatureHint
 					hintId="community-comments"
 					content="Join the discussion -- share feedback on routines and training cycles"

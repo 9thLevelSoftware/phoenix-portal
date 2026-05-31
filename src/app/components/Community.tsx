@@ -33,7 +33,6 @@ import type { CommunityFeedItem } from "@/schemas/community";
 import { useCommunityStore } from "@/stores/useCommunityStore";
 
 const SORT_OPTIONS = [
-	{ value: "hot", label: "Hot" },
 	{ value: "top", label: "Top" },
 	{ value: "new", label: "New" },
 ] as const;
@@ -190,9 +189,9 @@ export function Community() {
 						{/* Mobile Feed */}
 						<div className="px-4 space-y-3">
 							{isLoading ? (
-								Array.from({ length: 4 }).map((_, i) => (
+								["s1", "s2", "s3", "s4"].map((id) => (
 									<Card
-										key={i}
+										key={id}
 										className="p-5 bg-surface-2 border-secondary animate-pulse h-40"
 									/>
 								))
@@ -332,9 +331,9 @@ export function Community() {
 							{/* Desktop Feed grid */}
 							{isLoading ? (
 								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-									{Array.from({ length: 6 }).map((_, i) => (
+									{["d1", "d2", "d3", "d4", "d5", "d6"].map((id) => (
 										<Card
-											key={i}
+											key={id}
 											className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
 										/>
 									))}
@@ -346,6 +345,7 @@ export function Community() {
 										Failed to load community feed. Please try again.
 									</p>
 									<button
+										type="button"
 										onClick={() => refetch()}
 										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors"
 									>

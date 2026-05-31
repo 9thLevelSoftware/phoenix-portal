@@ -44,6 +44,7 @@ export interface PushPayload {
   exerciseSignatures?: ExerciseSignatureDto[];
   assessments?: AssessmentResultDto[];
   externalActivities?: ExternalActivityDto[] | null;
+  customExercises?: CustomExerciseDto[];
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -72,6 +73,7 @@ export interface PullResponse {
   gamificationStats: GamificationStatsResponseDto | null;
   localProfiles: LocalProfileResponseDto[];
   externalActivities: ExternalActivityResponseDto[];
+  customExercises?: CustomExerciseResponseDto[];
 }
 
 /**
@@ -127,6 +129,7 @@ export interface SessionDto {
 export interface ExerciseDto {
   id: string;
   sessionId: string;
+  exerciseId?: string | null;
   name: string;
   muscleGroup: string;
   orderIndex: number;
@@ -189,6 +192,9 @@ export interface RoutineDto {
 export interface RoutineExerciseDto {
   id: string;
   routineId: string;
+  exerciseId?: string | null;
+  displayName?: string | null;
+  exerciseEquipment?: string | null;
   name: string;
   muscleGroup: string;
   sets: number;
@@ -202,15 +208,25 @@ export interface RoutineExerciseDto {
   supersetOrder?: number | null;
   perSetWeights?: string | null;
   perSetRest?: string | null;
+  perSetReps?: string | null;
   isAmrap?: boolean;
   prPercentage?: number | null;
   repCountTiming?: string | null;
   stopAtPosition?: string | null;
-  stallDetection?: string | null;
+  stallDetection?: boolean | null;
   eccentricLoad?: number | null;
   echoLevel?: number | null;
   perSetEchoLevels?: number[] | null;
   warmupSets?: number | null;
+}
+
+export interface CustomExerciseDto {
+  clientId: string;
+  name: string;
+  displayName?: string | null;
+  muscleGroup: string;
+  equipment?: string | null;
+  defaultCableConfig: string;
 }
 
 export interface CycleDto {
@@ -400,6 +416,8 @@ export interface ExternalActivityResponseDto {
   elevationGainMeters: number | null;
   rawData: string | null;
 }
+
+export interface CustomExerciseResponseDto extends CustomExerciseDto {}
 
 // ============================================================================
 // Test User Management

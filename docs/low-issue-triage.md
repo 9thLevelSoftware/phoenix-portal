@@ -5,19 +5,19 @@
 
 ## Triage Summary
 
-| ID | Issue | Decision | Rationale |
-|----|-------|----------|-----------|
-| 1.3 | 401 retry doesn't re-serialize | **Document** | Protected by syncMutex at higher level; architectural fragility has no practical impact |
-| 1.5 | No server-side logout | **Fix** | Simple 1-line fix, improves security hygiene |
-| 3.2 | Duration split imprecise | **Document** | Cosmetic precision loss, integer division rounding |
-| 3.3 | Pull weight uses max not avg | **Document** | Intentional data simplification for mobile's flatter model |
-| 3.5 | Superset color lossy | **Fix** | Create reverse mapping to restore round-trip; cosmetic but annoying |
-| 4.4 | 30s timeout may be tight | **Fix** | Increase to 60s; trivial change, helps slow connections |
-| 5.1 | Non-suspend lock | **Document** | Locked sections are non-suspending and very fast |
-| 5.2 | Login + sync race | **Document** | UI prevents simultaneous login and sync actions |
-| 6.3 | No 429/503 handling | **ALREADY FIXED** | classifyByStatusCode() handles 429 and 500-599 |
-| 8.3 | Device ID not hardware-bound | **Document** | Privacy by design - UUID is intentional |
-| 9.1 | HttpClient never closed | **Document** | Singleton lifetime matches app lifetime; acceptable |
+| ID  | Issue                          | Decision          | Rationale                                                                               |
+| --- | ------------------------------ | ----------------- | --------------------------------------------------------------------------------------- |
+| 1.3 | 401 retry doesn't re-serialize | **Document**      | Protected by syncMutex at higher level; architectural fragility has no practical impact |
+| 1.5 | No server-side logout          | **Fix**           | Simple 1-line fix, improves security hygiene                                            |
+| 3.2 | Duration split imprecise       | **Document**      | Cosmetic precision loss, integer division rounding                                      |
+| 3.3 | Pull weight uses max not avg   | **Document**      | Intentional data simplification for mobile's flatter model                              |
+| 3.5 | Superset color lossy           | **Fix**           | Create reverse mapping to restore round-trip; cosmetic but annoying                     |
+| 4.4 | 30s timeout may be tight       | **Fix**           | Increase to 60s; trivial change, helps slow connections                                 |
+| 5.1 | Non-suspend lock               | **Document**      | Locked sections are non-suspending and very fast                                        |
+| 5.2 | Login + sync race              | **Document**      | UI prevents simultaneous login and sync actions                                         |
+| 6.3 | No 429/503 handling            | **ALREADY FIXED** | classifyByStatusCode() handles 429 and 500-599                                          |
+| 8.3 | Device ID not hardware-bound   | **Document**      | Privacy by design - UUID is intentional                                                 |
+| 9.1 | HttpClient never closed        | **Document**      | Singleton lifetime matches app lifetime; acceptable                                     |
 
 ## Final Categories
 
@@ -131,7 +131,7 @@ The portal sends color as name ("pink", "indigo") from push adapter (PortalSyncA
 ### 4.4 [Fix] HTTP Timeout May Be Tight
 
 **File**: `PortalApiClient.kt` lines 182-185
-**Impact**: Large payloads may timeout on slow connections
+**Impact**: Large payloads may time out on slow connections
 
 **Current Code**:
 ```kotlin

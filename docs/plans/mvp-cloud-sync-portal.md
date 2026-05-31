@@ -18,7 +18,7 @@
    - [5.2 Fitbit](#52-fitbit)
    - [5.3 Garmin](#53-garmin)
    - [5.4 Hevy](#54-hevy)
-6. [Sentry Error Monitoring (Optional)](#6-sentry-error-monitoring)
+6. [Sentry Error Monitoring (Optional)](#6-sentry-error-monitoring-optional)
 7. [Code Fixes](#7-code-fixes)
 8. [CI/CD Pipeline](#8-cicd-pipeline)
 9. [DNS & Domain Setup](#9-dns--domain-setup)
@@ -171,14 +171,14 @@ Non-production: APP_URL + localhost:5173 + localhost:3000
 
 Set these in Vercel Dashboard → Project → Settings → Environment Variables:
 
-| Variable | Value | Environment |
-|----------|-------|-------------|
-| `VITE_SUPABASE_URL` | `https://ilzlswmatadlnsuxatcv.supabase.co` | Production, Preview, Development |
+| Variable                 | Value                                            | Environment                      |
+| ------------------------ | ------------------------------------------------ | -------------------------------- |
+| `VITE_SUPABASE_URL`      | `https://ilzlswmatadlnsuxatcv.supabase.co`       | Production, Preview, Development |
 | `VITE_SUPABASE_ANON_KEY` | `sb_publishable_UDrjasV6UJLm_IdIzGljoQ_YaRes4dQ` | Production, Preview, Development |
-| `VITE_SENTRY_DSN` | *(your Sentry DSN, optional)* | Production |
-| `SENTRY_AUTH_TOKEN` | *(your Sentry auth token, optional)* | Production |
-| `SENTRY_ORG` | `phoenix-portal` | Production |
-| `SENTRY_PROJECT` | `phoenix-portal` | Production |
+| `VITE_SENTRY_DSN`        | *(your Sentry DSN, optional)*                    | Production                       |
+| `SENTRY_AUTH_TOKEN`      | *(your Sentry auth token, optional)*             | Production                       |
+| `SENTRY_ORG`             | `phoenix-portal`                                 | Production                       |
+| `SENTRY_PROJECT`         | `phoenix-portal`                                 | Production                       |
 
 **Note:** `VITE_` prefixed variables are embedded in the client bundle at build time. They are safe to expose (public keys only).
 
@@ -323,17 +323,17 @@ VITE_STRAVA_CLIENT_ID=your-client-id
 
 **Data Synced:**
 
-| Strava Field | Portal Field | Notes |
-|--------------|--------------|-------|
-| `sport_type` | `activity_type` | Mapped: Run→running, Ride→cycling, WeightTraining→strength, etc. |
-| `name` | `name` | Activity title |
-| `start_date` | `started_at` | ISO timestamp |
-| `elapsed_time` | `duration_seconds` | Seconds |
-| `distance` | `distance_meters` | Already in meters |
-| `kilojoules` | `calories` | Converted: kJ × 0.239 |
-| `average_heartrate` | `avg_heart_rate` | BPM |
-| `max_heartrate` | `max_heart_rate` | BPM |
-| `total_elevation_gain` | `elevation_gain_meters` | Meters |
+| Strava Field           | Portal Field            | Notes                                                            |
+| ---------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `sport_type`           | `activity_type`         | Mapped: Run→running, Ride→cycling, WeightTraining→strength, etc. |
+| `name`                 | `name`                  | Activity title                                                   |
+| `start_date`           | `started_at`            | ISO timestamp                                                    |
+| `elapsed_time`         | `duration_seconds`      | Seconds                                                          |
+| `distance`             | `distance_meters`       | Already in meters                                                |
+| `kilojoules`           | `calories`              | Converted: kJ × 0.239                                            |
+| `average_heartrate`    | `avg_heart_rate`        | BPM                                                              |
+| `max_heartrate`        | `max_heart_rate`        | BPM                                                              |
+| `total_elevation_gain` | `elevation_gain_meters` | Meters                                                           |
 
 ---
 
@@ -388,16 +388,16 @@ Authorization: Basic base64(client_id:client_secret)
 
 **Data Synced:**
 
-| Fitbit Field | Portal Field | Notes |
-|--------------|--------------|-------|
-| `activityName` | `name` | Activity title |
-| `activityTypeId` | `activity_type` | Numeric mapping: 90013→running, 90009→cycling, 15000→strength, etc. |
-| `startTime` | `started_at` | ISO timestamp |
-| `duration` | `duration_seconds` | Converted: ms ÷ 1000 |
-| `distance` | `distance_meters` | Converted: km × 1000 |
-| `calories` | `calories` | kcal |
-| `averageHeartRate` | `avg_heart_rate` | BPM |
-| *(not available)* | `max_heart_rate` | NULL |
+| Fitbit Field       | Portal Field       | Notes                                                               |
+| ------------------ | ------------------ | ------------------------------------------------------------------- |
+| `activityName`     | `name`             | Activity title                                                      |
+| `activityTypeId`   | `activity_type`    | Numeric mapping: 90013→running, 90009→cycling, 15000→strength, etc. |
+| `startTime`        | `started_at`       | ISO timestamp                                                       |
+| `duration`         | `duration_seconds` | Converted: ms ÷ 1000                                                |
+| `distance`         | `distance_meters`  | Converted: km × 1000                                                |
+| `calories`         | `calories`         | kcal                                                                |
+| `averageHeartRate` | `avg_heart_rate`   | BPM                                                                 |
+| *(not available)*  | `max_heart_rate`   | NULL                                                                |
 
 ---
 
@@ -466,17 +466,17 @@ supabase secrets set GARMIN_WEBHOOK_SECRET "your-webhook-secret"
 
 **Data Synced (via webhook push):**
 
-| Garmin Field | Portal Field | Notes |
-|--------------|--------------|-------|
-| `activityName` | `name` | Activity title |
-| `activityType` | `activity_type` | String mapping: RUNNING→running, STRENGTH_TRAINING→strength, etc. |
-| `startTimeInSeconds` | `started_at` | Unix seconds + offset → ISO |
-| `durationInSeconds` | `duration_seconds` | Seconds |
-| `distanceInMeters` | `distance_meters` | Already metric |
-| `activeKilocalories` | `calories` | kcal |
-| `averageHeartRateInBeatsPerMinute` | `avg_heart_rate` | BPM |
-| `maxHeartRateInBeatsPerMinute` | `max_heart_rate` | BPM |
-| `elevationGainInMeters` | `elevation_gain_meters` | Meters |
+| Garmin Field                       | Portal Field            | Notes                                                             |
+| ---------------------------------- | ----------------------- | ----------------------------------------------------------------- |
+| `activityName`                     | `name`                  | Activity title                                                    |
+| `activityType`                     | `activity_type`         | String mapping: RUNNING→running, STRENGTH_TRAINING→strength, etc. |
+| `startTimeInSeconds`               | `started_at`            | Unix seconds + offset → ISO                                       |
+| `durationInSeconds`                | `duration_seconds`      | Seconds                                                           |
+| `distanceInMeters`                 | `distance_meters`       | Already metric                                                    |
+| `activeKilocalories`               | `calories`              | kcal                                                              |
+| `averageHeartRateInBeatsPerMinute` | `avg_heart_rate`        | BPM                                                               |
+| `maxHeartRateInBeatsPerMinute`     | `max_heart_rate`        | BPM                                                               |
+| `elevationGainInMeters`            | `elevation_gain_meters` | Meters                                                            |
 
 ---
 
@@ -591,11 +591,11 @@ Then in the provider card rendering, conditionally show a "Coming Soon" badge an
 
 Three dead links need updating:
 
-| Line | Current | Fix |
-|------|---------|-----|
-| ~925 | `<a href="#">Mobile App</a>` | Link to Play Store listing or GitHub releases |
+| Line | Current                         | Fix                                            |
+| ---- | ------------------------------- | ---------------------------------------------- |
+| ~925 | `<a href="#">Mobile App</a>`    | Link to Play Store listing or GitHub releases  |
 | ~933 | `<a href="#">Portal Source</a>` | Link to GitHub repo (if open source) or remove |
-| ~975 | `Security` (no link tag) | Add `<Link to="/privacy">` or remove |
+| ~975 | `Security` (no link tag)        | Add `<Link to="/privacy">` or remove           |
 
 ### 7.4 Notification Bell (NO ACTION NEEDED)
 
@@ -626,7 +626,7 @@ The CI pipeline (`.github/workflows/ci.yml`) runs on push to `main` and PRs:
 
 **Option B — Deploy only after CI passes:**
 
-Add a deploy job to `.github/workflows/ci.yml`:
+Add a deployment job to `.github/workflows/ci.yml`:
 
 ```yaml
 deploy:
@@ -645,11 +645,11 @@ deploy:
 
 **Required GitHub Secrets:**
 
-| Secret | How to Obtain |
-|--------|---------------|
-| `VERCEL_TOKEN` | Vercel Dashboard → Settings → Tokens → Create |
-| `VERCEL_ORG_ID` | Vercel Dashboard → Settings → General → Team ID (or personal account ID) |
-| `VERCEL_PROJECT_ID` | Vercel Dashboard → Project → Settings → General → Project ID |
+| Secret              | How to Obtain                                                            |
+| ------------------- | ------------------------------------------------------------------------ |
+| `VERCEL_TOKEN`      | Vercel Dashboard → Settings → Tokens → Create                            |
+| `VERCEL_ORG_ID`     | Vercel Dashboard → Settings → General → Team ID (or personal account ID) |
+| `VERCEL_PROJECT_ID` | Vercel Dashboard → Project → Settings → General → Project ID             |
 
 ### 8.3 Edge Function Deployment
 
@@ -791,24 +791,24 @@ For each configured integration:
 
 ### 11.3 Key Metrics to Watch
 
-| Metric | Where | Alert Threshold |
-|--------|-------|-----------------|
-| Edge Function error rate | Supabase Logs | > 5% of requests |
-| `mobile-sync-push` latency | Supabase Logs | > 5s average |
-| Auth signup success rate | Supabase Auth | < 90% |
-| CORS rejections | Edge Function Logs | Any in production |
-| RevenueCat webhook failures | Supabase Logs | Any 401/500 |
-| OAuth callback failures | Edge Function Logs | Any 4xx |
+| Metric                      | Where              | Alert Threshold   |
+| --------------------------- | ------------------ | ----------------- |
+| Edge Function error rate    | Supabase Logs      | > 5% of requests  |
+| `mobile-sync-push` latency  | Supabase Logs      | > 5s average      |
+| Auth signup success rate    | Supabase Auth      | < 90%             |
+| CORS rejections             | Edge Function Logs | Any in production |
+| RevenueCat webhook failures | Supabase Logs      | Any 401/500       |
+| OAuth callback failures     | Edge Function Logs | Any 4xx           |
 
 ### 11.4 Known Risks
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| `APP_URL` mismatch | CORS blocks all Edge Function calls | Double-check before launch; test from production domain |
-| OAuth state token expiry (10 min) | Slow users can't complete OAuth | Monitor and consider increasing expiry |
-| Rate limit exhaustion (Strava: 80/15min) | Heavy users can't sync | Queue processor handles retries; users see error message |
-| Garmin OAuth 1.0a signature failures | Connection fails | HMAC-SHA1 signing is fragile — test thoroughly |
-| Large sync payloads | Timeout on push/pull | 30s timeout in Edge Functions; monitor for users with 1000+ workouts |
+| Risk                                     | Impact                              | Mitigation                                                           |
+| ---------------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `APP_URL` mismatch                       | CORS blocks all Edge Function calls | Double-check before launch; test from production domain              |
+| OAuth state token expiry (10 min)        | Slow users can't complete OAuth     | Monitor and consider increasing expiry                               |
+| Rate limit exhaustion (Strava: 80/15min) | Heavy users can't sync              | Queue processor handles retries; users see error message             |
+| Garmin OAuth 1.0a signature failures     | Connection fails                    | HMAC-SHA1 signing is fragile — test thoroughly                       |
+| Large sync payloads                      | Timeout on push/pull                | 30s timeout in Edge Functions; monitor for users with 1000+ workouts |
 
 ---
 
@@ -826,29 +826,29 @@ For each configured integration:
 
 ### Day 1: Integrations - Immediate (30 min)
 
-8. ☐ Create Strava API application (instant approval)
-9. ☐ Set Strava secrets in Supabase
+1. ☐ Create Strava API application (instant approval)
+2. ☐ Set Strava secrets in Supabase
 
 ### Day 1: Integrations - Submit Applications (30 min)
 
-10. ☐ Submit Fitbit developer application (1-3 week wait)
-11. ☐ Submit Garmin developer program application (2-6 week wait)
+1. ☐ Submit Fitbit developer application (1-3 week wait)
+2. ☐ Submit Garmin developer program application (2-6 week wait)
 
 ### Day 1: Code Fixes (30 min)
 
-12. ☐ Add "Coming Soon" badge for Fitbit/Garmin on Integrations page
-13. ☐ Fix dead footer links
-14. ☐ Commit and push to main → auto-deploys to Vercel
+1. ☐ Add "Coming Soon" badge for Fitbit/Garmin on Integrations page
+2. ☐ Fix dead footer links
+3. ☐ Commit and push to main → auto-deploys to Vercel
 
 ### Day 1: Verification (1 hour)
 
-15. ☐ Run full test suite locally
-16. ☐ Test auth flow on production domain
-17. ☐ Test end-to-end sync with mobile app
-18. ☐ Test Strava OAuth flow
-19. ☐ Send RevenueCat test webhook
+1. ☐ Run full test suite locally
+2. ☐ Test auth flow on production domain
+3. ☐ Test end-to-end sync with mobile app
+4. ☐ Test Strava OAuth flow
+5. ☐ Send RevenueCat test webhook
 
 ### Ongoing: As Approvals Come In
 
-20. ☐ Fitbit approved → set secrets → remove "Coming Soon" badge
-21. ☐ Garmin approved → set secrets → configure webhook → remove "Coming Soon" badge
+1. ☐ Fitbit approved → set secrets → remove "Coming Soon" badge
+2. ☐ Garmin approved → set secrets → configure webhook → remove "Coming Soon" badge

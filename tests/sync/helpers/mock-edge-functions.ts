@@ -16,6 +16,13 @@ import type {
   CycleResponseDto,
   BadgeResponseDto,
 } from './edge-function-harness';
+import { recordBroadcast } from './mock-broadcast';
+import {
+  findPushPayloadDuplicateConflictKeys,
+  findPushPayloadIncompleteRoutines,
+  formatPushPayloadDuplicateError,
+  formatPushPayloadIncompleteRoutinesError,
+} from '../../../supabase/functions/_shared/pushPayloadSchema.ts';
 
 /**
  * Check if mocks should be used
@@ -116,6 +123,32 @@ export function mockPushEndpoint(
     };
   }
 
+  const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
+  if (duplicateConflictKeys.length > 0) {
+    const formatted = formatPushPayloadDuplicateError(duplicateConflictKeys);
+    return {
+      success: false,
+      status: 400,
+      error: {
+        message: formatted.error,
+        code: 'VALIDATION_ERROR',
+      },
+    };
+  }
+
+  const incompleteRoutineIds = findPushPayloadIncompleteRoutines(payload);
+  if (incompleteRoutineIds.length > 0) {
+    const formatted = formatPushPayloadIncompleteRoutinesError(incompleteRoutineIds);
+    return {
+      success: false,
+      status: 400,
+      error: {
+        message: formatted.error,
+        code: 'VALIDATION_ERROR',
+      },
+    };
+  }
+
   // Store sessions
   if (payload.sessions) {
     for (const session of payload.sessions) {
@@ -164,6 +197,22 @@ export function mockPushEndpoint(
 
   const syncTime = Date.now();
   mockStore.lastPushTime = syncTime;
+
+  // Emit mirror of the Edge Function's fire-and-forget broadcast.
+  // The real implementation is at mobile-sync-push/index.ts lines 1449-1471.
+  // We derive a userId from the sessions payload or fall back to 'mock-user'.
+  const userId = payload.sessions?.[0]?.userId ?? 'mock-user';
+  recordBroadcast(`sync:${userId}`, 'sync_complete', {
+    syncTime: new Date(syncTime).toISOString(),
+    deviceId: payload.deviceId,
+    platform: payload.platform,
+    profileId: payload.profileId ?? null,
+    profileName: payload.profileName ?? null,
+    sessionsInserted: payload.sessions?.length ?? 0,
+    routinesUpserted: payload.routines?.length ?? 0,
+    cyclesUpserted: payload.cycles?.length ?? 0,
+    badgesUpserted: payload.badges?.length ?? 0,
+  });
 
   return {
     success: true,
@@ -240,6 +289,7 @@ export function mockPullEndpoint(
     gamificationStats: null,
     localProfiles: [],
     externalActivities: [],
+    customExercises: [],
   };
 
   return {

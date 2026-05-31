@@ -71,10 +71,10 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].total_volume).toBe(1000); // doubled
+		expect(result[0].total_volume).toBe(500); // Phase 40 fix: no longer doubled (already total)
 		expect(result[0].duration_seconds).toBe(60); // minutes
 		expect(result[0].started_at).toBeInstanceOf(Date);
 		expect(result[0].workout_mode).toBe("Echo");
@@ -87,7 +87,7 @@ describe("workoutListOptions", () => {
 		});
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "DB error" }),
 		);
 	});
@@ -96,7 +96,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -120,7 +120,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result[0].name).toBe("Untitled Workout");
 	});
 });
@@ -185,7 +185,7 @@ describe("sessionDetailOptions", () => {
 
 		const { sessionDetailOptions } = await import("../workouts");
 		const opts = sessionDetailOptions("11111111-1111-4111-8111-111111111111");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.name).toBe("Leg Day");
 		expect(result.exercises).toHaveLength(1);
@@ -229,7 +229,7 @@ describe("dashboardStatsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { dashboardStatsOptions } = await import("../workouts");
 		const opts = dashboardStatsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		// Raw data returned as-is (no doubling)
 		expect(result[0].total_volume).toBe(400);
 	});
@@ -281,7 +281,7 @@ describe("recentPRsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { recentPRsOptions } = await import("../workouts");
 		const opts = recentPRsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result[0].value).toBe(200); // doubled
 		expect(result[0].previous_value).toBe(180); // doubled
 		expect(result[0].achieved_at).toBeInstanceOf(Date);

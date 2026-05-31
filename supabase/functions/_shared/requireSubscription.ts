@@ -1,4 +1,5 @@
 import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { isSubscriptionEntitled, type SubscriptionStatus } from './subscriptionEntitlement.ts';
 
 /**
  * Subscription tier hierarchy.
@@ -37,12 +38,14 @@ export async function requireSubscription(
 > {
   const { data: subscription } = await supabase
     .from('subscriptions')
-    .select('tier, status')
+    .select('tier, status, current_period_end')
     .eq('user_id', userId)
-    .in('status', ['active', 'trialing'])
     .maybeSingle();
 
-  const tier = (subscription?.tier as SubscriptionTier) ?? 'FREE';
+  const rawTier = (subscription?.tier as SubscriptionTier) ?? 'FREE';
+  const status = (subscription?.status as SubscriptionStatus | undefined) ?? 'none';
+  const entitled = isSubscriptionEntitled(status, subscription?.current_period_end ?? null);
+  const tier: SubscriptionTier = entitled ? rawTier : 'FREE';
   const userLevel = TIER_LEVEL[tier] ?? 0;
   const requiredLevel = TIER_LEVEL[minimumTier] ?? 0;
 

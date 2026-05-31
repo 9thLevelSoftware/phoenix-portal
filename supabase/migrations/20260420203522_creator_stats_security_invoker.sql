@@ -1,0 +1,3 @@
+-- Applied remotely. Converts creator_stats from materialized view to regular view
+-- with security_invoker = true.
+-- Stub file for migration tracking.

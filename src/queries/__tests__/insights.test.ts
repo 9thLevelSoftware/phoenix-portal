@@ -59,7 +59,7 @@ describe("insightsOptions", () => {
 		chain = buildChain({ data: [insightRow], error: null });
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].title).toBe("Volume is up 15%");
@@ -73,7 +73,7 @@ describe("insightsOptions", () => {
 		});
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "insights fetch failed" }),
 		);
 	});
@@ -82,7 +82,7 @@ describe("insightsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -90,7 +90,7 @@ describe("insightsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { insightsOptions } = await import("../insights");
 		const opts = insightsOptions("user-1", "7d");
-		await opts.queryFn!({} as never);
+		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("user_insights");
 	});
 });

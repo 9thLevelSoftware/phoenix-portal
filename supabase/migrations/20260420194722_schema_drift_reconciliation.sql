@@ -1,0 +1,3 @@
+-- Applied remotely. Adds is_bodyweight, duration_seconds to routine_exercises.
+-- Updates RLS policies on community_benchmarks.
+-- Stub file for migration tracking.

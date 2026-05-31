@@ -4,6 +4,7 @@ import {
 	earnedBadgeListSchema,
 	gamificationStatsSchema,
 	rpgAttributesSchema,
+	WEIGHT_MULTIPLIER,
 } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
@@ -56,9 +57,8 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 			if (sessionsError) throw sessionsError;
 
 			const totalWorkouts = sessions?.length ?? 0;
-			// total_volume is per-cable in DB; multiply by 2 for total
 			const totalVolume = (sessions ?? []).reduce(
-				(sum, s) => sum + (s.total_volume ?? 0) * 2,
+				(sum, s) => sum + (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 				0,
 			);
 

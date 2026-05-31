@@ -32,8 +32,22 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import {
+	buildAndroidChromeIntentUrl,
+	detectInAppBrowser,
+	getInAppBrowserLabel,
+	type InAppBrowserDetection,
+} from "@/lib/in-app-browser";
 import { TIER_PRICING } from "@/lib/pricing";
-import { supabase } from "@/lib/supabase";
+import {
+	buildSocialAuthRedirectUrl,
+	DEFAULT_SOCIAL_AUTH_AVAILABILITY,
+	GOOGLE_OAUTH_SCOPES,
+	getSocialAuthAvailability,
+	type SocialAuthAvailability,
+	type SocialAuthProvider,
+	supabase,
+} from "@/lib/supabase";
 import { ForceCurveDemo } from "./landing/ForceCurveDemo";
 import { ProductShowcase } from "./landing/ProductShowcase";
 import { PhoenixLogo } from "./PhoenixLogo";
@@ -74,7 +88,18 @@ export function LandingPage() {
 	const [authLoading, setAuthLoading] = useState(false);
 	const [showForgotPassword, setShowForgotPassword] = useState(false);
 	const [resetEmail, setResetEmail] = useState("");
+	const [authAlertMessage, setAuthAlertMessage] = useState<string | null>(null);
 	const [scrolled, setScrolled] = useState(false);
+	const [socialAuthAvailability, setSocialAuthAvailability] =
+		useState<SocialAuthAvailability>(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
+		isInAppBrowser: false,
+		browser: null,
+		platform: "other",
+	});
+
+	const hasSocialAuthOptions =
+		socialAuthAvailability.google || socialAuthAvailability.apple;
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -102,17 +127,43 @@ export function LandingPage() {
 		return () => window.removeEventListener("scroll", handleScroll);
 	}, []);
 
+	useEffect(() => {
+		setInAppBrowser(detectInAppBrowser());
+	}, []);
+
+	useEffect(() => {
+		let isActive = true;
+
+		void getSocialAuthAvailability()
+			.then((availability) => {
+				if (isActive) {
+					setSocialAuthAvailability(availability);
+				}
+			})
+			.catch(() => {
+				if (isActive) {
+					setSocialAuthAvailability(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+				}
+			});
+
+		return () => {
+			isActive = false;
+		};
+	}, []);
+
 	const handleResetPassword = async () => {
 		if (!resetEmail) {
 			toast.error("Please enter your email address");
 			return;
 		}
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
 				redirectTo: `${window.location.origin}/auth/reset-password`,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			} else {
 				toast.success("Password reset link sent. Check your email.");
@@ -138,16 +189,20 @@ export function LandingPage() {
 
 	const handleSignIn = async (data: SignInFormData) => {
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signInWithPassword({
 				email: data.email,
 				password: data.password,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
@@ -155,12 +210,14 @@ export function LandingPage() {
 
 	const handleSignUp = async (data: SignUpFormData) => {
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signUp({
 				email: data.email,
 				password: data.password,
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			} else {
 				toast.success(
@@ -168,24 +225,52 @@ export function LandingPage() {
 				);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
 	};
 
-	const handleOAuthSignIn = async (provider: "google" | "apple") => {
+	const handleOAuthSignIn = async (provider: SocialAuthProvider) => {
+		if (!socialAuthAvailability[provider]) {
+			const providerLabel = provider === "apple" ? "Apple" : "Google";
+			const msg = `${providerLabel} sign-in is not configured right now.`;
+			setAuthAlertMessage(msg);
+			toast.error(msg);
+			return;
+		}
+
+		if (inAppBrowser.isInAppBrowser) {
+			const providerLabel = provider === "apple" ? "Apple" : "Google";
+			const hostLabel = inAppBrowser.browser
+				? getInAppBrowserLabel(inAppBrowser.browser)
+				: "this app";
+			const msg = `${providerLabel} blocks sign-in from ${hostLabel}'s in-app browser. Open phoenix-portal.com in your device browser (Chrome/Safari) and try again.`;
+			setAuthAlertMessage(msg);
+			toast.error(msg);
+			return;
+		}
+
 		setAuthLoading(true);
+		setAuthAlertMessage(null);
 		try {
 			const { error } = await supabase.auth.signInWithOAuth({
 				provider,
-				options: { redirectTo: window.location.origin },
+				options: {
+					redirectTo: buildSocialAuthRedirectUrl(provider),
+					...(provider === "google" ? { scopes: GOOGLE_OAUTH_SCOPES } : {}),
+				},
 			});
 			if (error) {
+				setAuthAlertMessage(error.message);
 				toast.error(error.message);
 			}
 		} catch {
-			toast.error("An unexpected error occurred");
+			const msg = "An unexpected error occurred";
+			setAuthAlertMessage(msg);
+			toast.error(msg);
 		} finally {
 			setAuthLoading(false);
 		}
@@ -264,6 +349,7 @@ export function LandingPage() {
 					setAuthLoading(false);
 					setShowForgotPassword(false);
 					setResetEmail("");
+					setAuthAlertMessage(null);
 				}
 			}}
 		>
@@ -337,8 +423,18 @@ export function LandingPage() {
 							<TabsTrigger value="signup">Sign Up</TabsTrigger>
 						</TabsList>
 
+						{authAlertMessage ? (
+							<div
+								role="alert"
+								className="mb-4 rounded border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-300"
+							>
+								{authAlertMessage}
+							</div>
+						) : null}
+
 						<TabsContent value="signin">
 							<form
+								noValidate
 								onSubmit={signInForm.handleSubmit(handleSignIn)}
 								className="space-y-4"
 							>
@@ -357,7 +453,7 @@ export function LandingPage() {
 										{...signInForm.register("email")}
 									/>
 									{signInForm.formState.errors.email && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signInForm.formState.errors.email.message}
 										</p>
 									)}
@@ -377,7 +473,7 @@ export function LandingPage() {
 										{...signInForm.register("password")}
 									/>
 									{signInForm.formState.errors.password && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signInForm.formState.errors.password.message}
 										</p>
 									)}
@@ -409,6 +505,7 @@ export function LandingPage() {
 
 						<TabsContent value="signup">
 							<form
+								noValidate
 								onSubmit={signUpForm.handleSubmit(handleSignUp)}
 								className="space-y-4"
 							>
@@ -427,7 +524,7 @@ export function LandingPage() {
 										{...signUpForm.register("email")}
 									/>
 									{signUpForm.formState.errors.email && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.email.message}
 										</p>
 									)}
@@ -447,7 +544,7 @@ export function LandingPage() {
 										{...signUpForm.register("password")}
 									/>
 									{signUpForm.formState.errors.password && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.password.message}
 										</p>
 									)}
@@ -467,7 +564,7 @@ export function LandingPage() {
 										{...signUpForm.register("confirmPassword")}
 									/>
 									{signUpForm.formState.errors.confirmPassword && (
-										<p className="text-sm text-red-400">
+										<p className="text-sm text-red-400" role="alert">
 											{signUpForm.formState.errors.confirmPassword.message}
 										</p>
 									)}
@@ -488,73 +585,110 @@ export function LandingPage() {
 							</form>
 						</TabsContent>
 
-						{/* OAuth divider */}
-						<div className="relative my-6">
-							<div className="absolute inset-0 flex items-center">
-								<div className="w-full border-t border-secondary" />
-							</div>
-							<div className="relative flex justify-center text-sm">
-								<span className="bg-surface-2 px-2 text-muted-foreground">
-									or continue with
-								</span>
-							</div>
-						</div>
+						{hasSocialAuthOptions ? (
+							<>
+								{/* OAuth divider */}
+								<div className="relative my-6">
+									<div className="absolute inset-0 flex items-center">
+										<div className="w-full border-t border-secondary" />
+									</div>
+									<div className="relative flex justify-center text-sm">
+										<span className="bg-surface-2 px-2 text-muted-foreground">
+											or continue with
+										</span>
+									</div>
+								</div>
 
-						{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
-						<div className="flex flex-col gap-3">
-							<button
-								type="button"
-								disabled={authLoading}
-								onClick={() => handleOAuthSignIn("google")}
-								className="flex items-center justify-center gap-3 w-full h-11 px-4 rounded-md bg-white hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									width="20"
-									height="20"
-									aria-hidden="true"
-								>
-									<path
-										d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-										fill="#4285F4"
-									/>
-									<path
-										d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-										fill="#34A853"
-									/>
-									<path
-										d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-										fill="#FBBC05"
-									/>
-									<path
-										d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-										fill="#EA4335"
-									/>
-								</svg>
-								<span className="text-sm font-medium text-gray-700">
-									Sign in with Google
-								</span>
-							</button>
-							<button
-								type="button"
-								disabled={authLoading}
-								onClick={() => handleOAuthSignIn("apple")}
-								className="flex items-center justify-center gap-3 w-full h-11 px-4 rounded-md bg-white hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									width="20"
-									height="20"
-									fill="#000"
-									aria-hidden="true"
-								>
-									<path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-								</svg>
-								<span className="text-sm font-medium text-gray-700">
-									Sign in with Apple
-								</span>
-							</button>
-						</div>
+								{inAppBrowser.isInAppBrowser ? (
+									<div
+										role="alert"
+										className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200"
+									>
+										<p className="font-medium">
+											Google and Apple block sign-in from in-app browsers.
+										</p>
+										<p className="mt-1 text-amber-200/90">
+											{inAppBrowser.platform === "ios"
+												? "Tap the ••• menu above and choose \u201COpen in Safari\u201D, then try again. Or use email and password below."
+												: inAppBrowser.platform === "android"
+													? "Tap the ••• menu above and choose \u201COpen in browser\u201D, then try again."
+													: "Open phoenix-portal.com in Chrome or Safari, then try again."}
+										</p>
+										{inAppBrowser.platform === "android" ? (
+											<a
+												href={
+													buildAndroidChromeIntentUrl() ??
+													"https://phoenix-portal.com"
+												}
+												className="mt-2 inline-flex items-center text-amber-100 underline underline-offset-2 hover:text-white"
+											>
+												Open in Chrome
+											</a>
+										) : null}
+									</div>
+								) : null}
+
+								{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
+								<div className="flex flex-col gap-3">
+									{socialAuthAvailability.google ? (
+										<button
+											type="button"
+											disabled={authLoading}
+											onClick={() => handleOAuthSignIn("google")}
+											className="flex items-center justify-center gap-3 w-full h-11 px-4 rounded-md bg-white hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+										>
+											<svg
+												viewBox="0 0 24 24"
+												width="20"
+												height="20"
+												aria-hidden="true"
+											>
+												<path
+													d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+													fill="#4285F4"
+												/>
+												<path
+													d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+													fill="#34A853"
+												/>
+												<path
+													d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+													fill="#FBBC05"
+												/>
+												<path
+													d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+													fill="#EA4335"
+												/>
+											</svg>
+											<span className="text-sm font-medium text-gray-700">
+												Sign in with Google
+											</span>
+										</button>
+									) : null}
+									{socialAuthAvailability.apple ? (
+										<button
+											type="button"
+											disabled={authLoading}
+											onClick={() => handleOAuthSignIn("apple")}
+											className="flex items-center justify-center gap-3 w-full h-11 px-4 rounded-md bg-white hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 transition-colors"
+										>
+											<svg
+												viewBox="0 0 24 24"
+												width="20"
+												height="20"
+												fill="#000"
+												aria-hidden="true"
+											>
+												<path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+											</svg>
+											<span className="text-sm font-medium text-gray-700">
+												Sign in with Apple
+											</span>
+										</button>
+									) : null}
+								</div>
+							</>
+						) : null}
 					</Tabs>
 				)}
 			</DialogContent>

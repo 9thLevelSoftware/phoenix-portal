@@ -276,12 +276,12 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 ### Key log messages to search for
 
-| Log message | Meaning |
-|---|---|
-| `Missing custom_data.user_id in Paddle event` | Checkout was created without passing `user_id` in custom_data |
-| `Error upserting subscription for <event_type>` | Database write failed (constraint violation, connection error) |
-| `Paddle webhook handler error` | Unhandled exception (likely JSON parse failure or network issue) |
-| `Unhandled event type: <type>` | Received a non-subscription event (normal, returns 200) |
+| Log message                                     | Meaning                                                          |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `Missing custom_data.user_id in Paddle event`   | Checkout was created without passing `user_id` in custom_data    |
+| `Error upserting subscription for <event_type>` | Database write failed (constraint violation, connection error)   |
+| `Paddle webhook handler error`                  | Unhandled exception (likely JSON parse failure or network issue) |
+| `Unhandled event type: <type>`                  | Received a non-subscription event (normal, returns 200)          |
 
 ---
 
@@ -325,10 +325,10 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 ## 9. Paddle Webhook Retry Policy Reference
 
-| Environment | Max retries | Window | Distribution |
-|---|---|---|---|
-| Sandbox | 3 | 15 minutes | Exponential backoff |
-| Live | 60 | 3 days | 20 attempts in first hour, 47 in first day, 60 total |
+| Environment | Max retries | Window     | Distribution                                         |
+| ----------- | ----------- | ---------- | ---------------------------------------------------- |
+| Sandbox     | 3           | 15 minutes | Exponential backoff                                  |
+| Live        | 60          | 3 days     | 20 attempts in first hour, 47 in first day, 60 total |
 
 - Paddle expects an HTTP 200 response within **5 seconds**.
 - Only **5xx responses** and **timeouts** trigger retries.

@@ -682,13 +682,89 @@ function tokenOverlapRatio(a: string, b: string): number {
 const FUZZY_THRESHOLD = 0.7;
 
 /**
+ * Keyword/substring classification rules, applied in order (first match wins)
+ * against the normalized exercise name. This catches the long tail of named
+ * variants ("Conventional Deadlift", "Low Bar Squat", "Bayesian Curl", grip /
+ * stance / unilateral descriptors, etc.) that are real movements but don't
+ * match EXERCISE_MAP exactly and fall below the fuzzy threshold.
+ *
+ * ORDER IS LOAD-BEARING — specific rules must precede generic ones:
+ *   - "romanian/rdl/stiff-leg" -> Legs BEFORE generic "deadlift" -> Back
+ *   - "hamstring|leg (press|ext|curl)" -> Legs BEFORE generic "curl" -> Arms
+ *   - "rear delt" -> Shoulders BEFORE generic "row" -> Back
+ *   - "tricep" -> Arms BEFORE generic "dip"/"curl"
+ *   - "plank/hip dips" -> Core BEFORE generic "dip" -> Chest
+ *   - "leg raise|knee raise" -> Core (never matched by the Legs rules, which
+ *     only match "leg press|extension|curl")
+ */
+const KEYWORD_RULES: Array<{ pattern: RegExp; group: string }> = [
+	// ── Legs (specific posterior-chain & knee/hip patterns first) ──
+	{
+		pattern:
+			/\b(romanian deadlifts?|rdls?|stiff[- ]?leg(?:ged)?(?: deadlifts?)?)\b/,
+		group: "Legs",
+	},
+	{ pattern: /\bhamstrings?\b/, group: "Legs" },
+	{ pattern: /\bglutes?\b/, group: "Legs" },
+	{ pattern: /\b(calf|calves)\b/, group: "Legs" },
+	{ pattern: /\bquads?\b|\bquadriceps\b/, group: "Legs" },
+	{ pattern: /\bleg (press(?:es)?|extension|curl)s?\b/, group: "Legs" },
+	{ pattern: /\bhip (thrust|abduction|adduction)s?\b/, group: "Legs" },
+	{ pattern: /\b(abductor|adductor)s?\b/, group: "Legs" },
+	{ pattern: /\bsquat/, group: "Legs" },
+	{ pattern: /\blunge/, group: "Legs" },
+	{ pattern: /\bstep[- ]?up/, group: "Legs" },
+	// ── Back ──
+	{ pattern: /\bdeadlifts?\b/, group: "Back" },
+	// ── Shoulders (rear-delt & raises before generic row) ──
+	{
+		pattern: /\b(rear delts?|reverse fl(?:y|ies|ye?s?))\b/,
+		group: "Shoulders",
+	},
+	{ pattern: /\b(lateral|side|front) raises?\b/, group: "Shoulders" },
+	{
+		pattern: /\b(shoulder|overhead|military|arnold) press(?:es)?\b/,
+		group: "Shoulders",
+	},
+	{ pattern: /\bupright rows?\b/, group: "Shoulders" },
+	{ pattern: /\bface pulls?\b/, group: "Shoulders" },
+	// ── Back (pull patterns) ──
+	{ pattern: /\bpulldowns?\b/, group: "Back" },
+	{ pattern: /\bpullovers?\b/, group: "Chest" },
+	{ pattern: /\b(pull[- ]?ups?|chin[- ]?ups?)\b/, group: "Back" },
+	{ pattern: /\brows?\b/, group: "Back" },
+	{ pattern: /\bshrugs?\b/, group: "Back" },
+	// ── Arms (tricep before generic dip/curl) ──
+	{ pattern: /\b(triceps?|skulls?|kick ?backs?)\b/, group: "Arms" },
+	{ pattern: /\bcurls?\b/, group: "Arms" },
+	// ── Core dip variants before generic chest dips ──
+	{
+		pattern: /\bhip dips?\b|\b(plank|oblique)s?\b.*\bdips?\b/,
+		group: "Core",
+	},
+	// ── Chest ──
+	{ pattern: /\b(fl(?:y|ies|ye?s?)|pecs?)\b/, group: "Chest" },
+	{ pattern: /\b(bench|chest) press(?:es)?\b/, group: "Chest" },
+	{ pattern: /\bpush[- ]?ups?\b/, group: "Chest" },
+	{ pattern: /\bcrossovers?\b/, group: "Chest" },
+	{ pattern: /\bdips?\b/, group: "Chest" },
+	// ── Core ──
+	{
+		pattern:
+			/\b(crunch(?:es)?|planks?|obliques?|sit[- ]?ups?|leg raises?|knee raises?|hollows?|dead bugs?|wood ?chops?|russian twists?|mountain climbers?|ab wheels?|ab rollouts?)\b/,
+		group: "Core",
+	},
+];
+
+/**
  * Looks up an exercise profile by name.
  *
  * Resolution order:
  * 1. Exact match after normalization
  * 2. Fuzzy token-overlap match (threshold: 0.7)
- * 3. Fallback to `dbMuscleGroup` at 100% activation with no secondaries
- * 4. Fallback to "General" with 100% activation and no secondaries
+ * 3. Keyword/substring match (KEYWORD_RULES, ordered)
+ * 4. Fallback to `dbMuscleGroup` at 100% activation with no secondaries
+ * 5. Fallback to "General" with 100% activation and no secondaries
  */
 export function getExerciseProfile(
 	exerciseName: string,
@@ -715,7 +791,14 @@ export function getExerciseProfile(
 		return EXERCISE_MAP[bestKey];
 	}
 
-	// 3. DB muscle group fallback
+	// 3. Keyword/substring match (ordered, specific-before-generic)
+	for (const { pattern, group } of KEYWORD_RULES) {
+		if (pattern.test(normalized)) {
+			return { primary: { group, activation: 1.0 }, secondary: [] };
+		}
+	}
+
+	// 4. DB muscle group fallback
 	if (dbMuscleGroup) {
 		return {
 			primary: { group: dbMuscleGroup, activation: 1.0 },
@@ -723,9 +806,28 @@ export function getExerciseProfile(
 		};
 	}
 
-	// 4. Generic fallback
+	// 5. Generic fallback
 	return {
 		primary: { group: "General", activation: 1.0 },
 		secondary: [],
 	};
+}
+
+/**
+ * Classifies an exercise to one of the six canonical muscle groups
+ * (Chest, Back, Shoulders, Arms, Legs, Core) or "General" when unknown.
+ *
+ * A real `dbMuscleGroup` is only used as a fallback when the name itself
+ * cannot be classified. The literal placeholder "General" is treated as
+ * "no information" so it never short-circuits name-based classification.
+ */
+export function classifyMuscleGroup(
+	exerciseName: string,
+	dbMuscleGroup?: string | null,
+): string {
+	const hint =
+		dbMuscleGroup?.trim() && dbMuscleGroup !== "General"
+			? dbMuscleGroup
+			: undefined;
+	return getExerciseProfile(exerciseName, hint).primary.group;
 }

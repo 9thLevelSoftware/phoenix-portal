@@ -46,10 +46,11 @@ describe("workoutSessionSchema", () => {
 		expect(result.name).toBe("Morning Workout");
 	});
 
-	it("doubles total_volume (per-cable to total)", () => {
+	it("passes total_volume through without doubling (Phase 40 fix)", () => {
 		const result = workoutSessionSchema.parse(validSession);
-		// Input 100 -> output 200 (WEIGHT_MULTIPLIER = 2)
-		expect(result.total_volume).toBe(200);
+		// total_volume is already total (not per-cable), so no transform applied.
+		// Phase 40 fix: bodyweight volume was being incorrectly doubled.
+		expect(result.total_volume).toBe(100);
 	});
 
 	it("converts duration_seconds to minutes", () => {
@@ -141,7 +142,7 @@ describe("workoutSessionSchema", () => {
 			...validSession,
 			total_volume: 0,
 		});
-		// 0 * 2 = 0
+		// No transform: 0 stays 0
 		expect(result.total_volume).toBe(0);
 	});
 
@@ -150,8 +151,8 @@ describe("workoutSessionSchema", () => {
 			...validSession,
 			total_volume: 55.5,
 		});
-		// 55.5 * 2 = 111
-		expect(result.total_volume).toBe(111);
+		// No transform: passes through as-is
+		expect(result.total_volume).toBe(55.5);
 	});
 
 	it("handles max per-cable weight (110kg) correctly", () => {
@@ -348,20 +349,20 @@ describe("routineExerciseSchema", () => {
 		created_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("does NOT transform weight (routines store per-cable for mobile)", () => {
+	it("doubles weight (per-cable to total) to match set/PR schemas", () => {
 		const result = routineExerciseSchema.parse(validRoutineExercise);
-		// Routine weights are NOT transformed - stored as per-cable for mobile execution
-		expect(result.weight).toBe(50);
+		// Routine weights are stored per-cable and displayed as total (×2).
+		expect(result.weight).toBe(100);
 	});
 
-	it("preserves per_set_weights as-is (no transform)", () => {
-		const perSetWeights = [50, 55, 60, 55]; // Pyramid scheme
+	it("doubles per_set_weights (per-cable to total) for display consistency", () => {
+		const perSetWeights = [50, 55, 60, 55]; // Pyramid scheme stored per-cable
 		const result = routineExerciseSchema.parse({
 			...validRoutineExercise,
 			per_set_weights: perSetWeights,
 		});
-		// Per-set weights are NOT transformed
-		expect(result.per_set_weights).toEqual(perSetWeights);
+		// Per-set weights follow the same per-cable → total rule as `weight`.
+		expect(result.per_set_weights).toEqual([100, 110, 120, 110]);
 	});
 
 	it("handles null per_set_weights", () => {
@@ -388,10 +389,10 @@ describe("analyticsSummarySchema", () => {
 		computed_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("doubles total_volume (per-cable to total)", () => {
+	it("passes total_volume through without doubling (Phase 40 fix)", () => {
 		const result = analyticsSummarySchema.parse(validSummary);
-		// Input 10000 -> output 20000
-		expect(result.total_volume).toBe(20000);
+		// total_volume is already total (not per-cable), so no transform applied.
+		expect(result.total_volume).toBe(10000);
 	});
 
 	it("handles zero total_volume correctly", () => {

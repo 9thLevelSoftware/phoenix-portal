@@ -52,7 +52,7 @@ export function Integrations() {
 		}
 	}, [searchParams, setSearchParams]);
 
-	const { data: integrations, isLoading } = useQuery({
+	const { data: integrations } = useQuery({
 		...integrationsOptions(userId),
 		enabled: isPremium && !!userId,
 	});

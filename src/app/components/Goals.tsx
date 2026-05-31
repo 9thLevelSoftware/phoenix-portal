@@ -108,10 +108,16 @@ export function useGoalProgress(
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
 				// Check if any PR for this exercise meets or exceeds the target
 				// PR values are already Zod-transformed (doubled)
-				const exercisePRs = records.filter(
-					(r) =>
-						r.exercise_name.toLowerCase() === goal.exercise_name!.toLowerCase(),
-				);
+				const exercisePRs = records.filter((r) => {
+					// Prefer exercise_id match if both sides have it
+					if (goal.exercise_id && r.exercise_id) {
+						return r.exercise_id === goal.exercise_id;
+					}
+					// Fall back to case-insensitive name match
+					return (
+						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase()
+					);
+				});
 				if (exercisePRs.length > 0) {
 					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
 					progress = (bestPR / goal.target_value) * 100;
@@ -294,11 +300,69 @@ export function Goals() {
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
-	const knownExerciseNames = useMemo(() => {
+	const knownExerciseOptions = useMemo(() => {
 		if (!records) return [];
-		const names = [...new Set(records.map((r) => r.exercise_name))];
-		return names.sort((a, b) => a.localeCompare(b));
+		const byName = new Map<
+			string,
+			{ displayName: string; exerciseIds: Set<string> }
+		>();
+		for (const record of records) {
+			const name = record.exercise_name.trim();
+			if (!name) continue;
+			const normalizedName = name.toLowerCase();
+			let option = byName.get(normalizedName);
+			if (!option) {
+				option = { displayName: name, exerciseIds: new Set() };
+				byName.set(normalizedName, option);
+			}
+			if (record.exercise_id) {
+				option.exerciseIds.add(record.exercise_id);
+			}
+		}
+		return Array.from(byName.entries())
+			.map(([key, { displayName, exerciseIds }]) => ({
+				key,
+				name: displayName,
+				exerciseId:
+					exerciseIds.size === 1 ? (Array.from(exerciseIds)[0] ?? null) : null,
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
 	}, [records]);
+	const knownExerciseNames = useMemo(
+		() => knownExerciseOptions.map((option) => option.name),
+		[knownExerciseOptions],
+	);
+	const exerciseIdByName = useMemo(() => {
+		return new Map(
+			knownExerciseOptions.map((option) => [option.key, option.exerciseId]),
+		);
+	}, [knownExerciseOptions]);
+	const resolveGoalExerciseId = useCallback(
+		(
+			data: {
+				goal_type: "frequency" | "volume" | "pr";
+				exercise_name?: string | null;
+			},
+			currentGoal?: Goal,
+		) => {
+			if (data.goal_type !== "pr" || !data.exercise_name) return null;
+
+			const exerciseName = data.exercise_name.trim();
+			const mappedExerciseId = exerciseIdByName.get(exerciseName.toLowerCase());
+			if (mappedExerciseId) return mappedExerciseId;
+
+			if (
+				currentGoal?.exercise_id &&
+				currentGoal.exercise_name?.trim().toLowerCase() ===
+					exerciseName.toLowerCase()
+			) {
+				return currentGoal.exercise_id;
+			}
+
+			return null;
+		},
+		[exerciseIdByName],
+	);
 
 	// Track which goals we have already celebrated to avoid re-triggering
 	const celebratedRef = useRef(new Set<string>());
@@ -404,6 +468,7 @@ export function Goals() {
 				{isPending ? (
 					<div className="space-y-4">
 						{Array.from({ length: 2 }).map((_, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
 								<div className="h-20" />
 							</Card>
@@ -490,6 +555,7 @@ export function Goals() {
 						transition={{ delay: 0.3 }}
 					>
 						<button
+							type="button"
 							onClick={() => setShowCompleted(!showCompleted)}
 							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
 						>
@@ -540,6 +606,7 @@ export function Goals() {
 						className="mt-4"
 					>
 						<button
+							type="button"
 							onClick={() => setShowArchived(!showArchived)}
 							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
 						>
@@ -621,7 +688,10 @@ export function Goals() {
 				title="Create Goal"
 				exerciseNames={knownExerciseNames}
 				onSubmit={(data) => {
-					createGoal.mutate(data);
+					createGoal.mutate({
+						...data,
+						exercise_id: resolveGoalExerciseId(data),
+					});
 					setCreateOpen(false);
 				}}
 			/>
@@ -652,6 +722,7 @@ export function Goals() {
 								target_value: data.target_value,
 								target_unit: data.target_unit,
 								exercise_name: data.exercise_name ?? null,
+								exercise_id: resolveGoalExerciseId(data, editGoal),
 								deadline: data.deadline ?? null,
 								period: data.period,
 							},
@@ -686,6 +757,7 @@ interface GoalFormDialogProps {
 		target_value: number;
 		target_unit: string;
 		exercise_name?: string | null;
+		exercise_id?: string | null;
 		deadline?: string | null;
 		period: "weekly" | "monthly";
 	}) => void;
@@ -745,7 +817,7 @@ function GoalFormDialog({
 
 	const handleSubmit = () => {
 		const value = parseFloat(targetValue);
-		if (isNaN(value) || value <= 0) return;
+		if (Number.isNaN(value) || value <= 0) return;
 		if (goalType === "pr" && !exerciseName.trim()) return;
 
 		onSubmit({

@@ -13,8 +13,8 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { ShareContentDialog } from "@/app/components/community/ShareContentDialog";
+import { DeleteConfirmDialog } from "@/app/components/DeleteConfirmDialog";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -94,6 +94,7 @@ export function TrainingCycles() {
 					<CardSkeleton />
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{Array.from({ length: 3 }).map((_, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<CardSkeleton key={i} />
 						))}
 					</div>
@@ -256,7 +257,10 @@ export function TrainingCycles() {
 											</div>
 											<DropdownMenu>
 												<DropdownMenuTrigger asChild>
-													<button className="text-muted-foreground hover:text-white transition-colors">
+													<button
+														type="button"
+														className="text-muted-foreground hover:text-white transition-colors"
+													>
 														<MoreVertical className="w-5 h-5" />
 													</button>
 												</DropdownMenuTrigger>

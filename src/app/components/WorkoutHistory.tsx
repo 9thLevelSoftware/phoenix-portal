@@ -14,12 +14,12 @@ import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { CalendarWidget } from "@/app/components/CalendarWidget";
 import { PageShell } from "@/app/components/PageShell";
-import { WorkoutQuickStats } from "@/app/components/WorkoutQuickStats";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { Skeleton, WorkoutCardSkeleton } from "@/app/components/ui/skeleton";
+import { WorkoutQuickStats } from "@/app/components/WorkoutQuickStats";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -252,6 +252,7 @@ export function WorkoutHistory() {
 			const page = await queryClient.fetchQuery({
 				...opts,
 				queryKey: opts.queryKey,
+				// biome-ignore lint/style/noNonNullAssertion: queryFn always defined in workoutListPageOptions
 				queryFn: opts.queryFn!,
 			});
 			setExtraWorkouts((prev) => [...prev, ...page]);
@@ -326,6 +327,7 @@ export function WorkoutHistory() {
 				</div>
 				<PageShell>
 					{Array.from({ length: 5 }).map((_, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 						<WorkoutCardSkeleton key={i} />
 					))}
 				</PageShell>

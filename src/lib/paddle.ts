@@ -5,6 +5,9 @@
  * pure functions that translate Paddle webhook payloads into the shape
  * expected by the portal's `subscriptions` table.
  *
+ * Tier resolution from price IDs happens only in Edge Functions (`paddle-webhooks`);
+ * the portal reads tier from the database via `useSubscription`.
+ *
  * Column names in the subscriptions table:
  *   paddle_customer_id  -> Paddle customer_id  (ctm_XXXX)
  *   paddle_subscription_id -> Paddle subscription_id (sub_XXXX)
@@ -19,6 +22,8 @@ export type PaddleEventType =
 	| "subscription.paused"
 	| "subscription.resumed"
 	| "subscription.activated"
+	| "subscription.past_due"
+	| "subscription.trialing"
 	| "transaction.completed"
 	| "transaction.payment_failed";
 
@@ -58,41 +63,13 @@ export interface PaddleWebhookEvent {
 	data: PaddleSubscriptionData;
 }
 
-// ─── Price → Tier Mapping ───────────────────────────────────────────────────
+// ─── Price → Tier (tests / shared logic only; mirrors Edge `PADDLE_*_PRICE_IDS`) ─
 
 /**
- * Maps a Paddle price ID to a Phoenix Portal subscription tier.
- *
- * Price IDs are configured in the Paddle dashboard and stored in env vars.
- * Falls back to "FREE" for unknown price IDs.
+ * Maps a Paddle price ID to tier using the same env shape as Edge Functions.
+ * Used in unit tests; production tier writes run in `paddle-webhooks` only.
  */
-export function mapPriceIdToTier(priceId: string): string {
-	// Check env vars first (allows runtime configuration)
-	const infernoPriceIds = (import.meta.env.VITE_PADDLE_INFERNO_PRICE_IDS ?? "")
-		.split(",")
-		.map((s: string) => s.trim())
-		.filter(Boolean);
-	const flamePriceIds = (import.meta.env.VITE_PADDLE_FLAME_PRICE_IDS ?? "")
-		.split(",")
-		.map((s: string) => s.trim())
-		.filter(Boolean);
-	const emberPriceIds = (import.meta.env.VITE_PADDLE_EMBER_PRICE_IDS ?? "")
-		.split(",")
-		.map((s: string) => s.trim())
-		.filter(Boolean);
-
-	if (infernoPriceIds.includes(priceId)) return "INFERNO";
-	if (flamePriceIds.includes(priceId)) return "FLAME";
-	if (emberPriceIds.includes(priceId)) return "EMBER";
-
-	return "FREE";
-}
-
-/**
- * Server-side variant that reads from Deno.env (for Edge Functions).
- * Not exported from the client bundle — duplicated in the Edge Function.
- */
-export function mapPriceIdToTierServer(
+export function mapPriceIdToTierFromEnv(
 	priceId: string,
 	env: { get(key: string): string | undefined },
 ): string {
@@ -150,10 +127,12 @@ export function mapPaddleStatusToSubscriptionStatus(
  *   paddle_subscription_id -> Paddle subscription_id
  *
  * Returns null if the event has no user_id in custom_data (can't associate with portal user).
+ *
+ * @param tierResolver — Always supply the server-side mapper (e.g. from `PADDLE_*_PRICE_IDS`).
  */
 export function buildSubscriptionUpsert(
 	event: PaddleWebhookEvent,
-	tierResolver: (priceId: string) => string = mapPriceIdToTier,
+	tierResolver: (priceId: string) => string,
 ): Record<string, unknown> | null {
 	const data = event.data;
 	const userId = data.custom_data?.user_id;
@@ -166,14 +145,11 @@ export function buildSubscriptionUpsert(
 	const priceId = data.items?.[0]?.price?.id ?? "";
 	const tier = tierResolver(priceId);
 
-	// Detect cancel_at_period_end from scheduled_change or event type
-	const isCanceled =
-		event.event_type === "subscription.canceled" ||
-		data.scheduled_change?.action === "cancel";
-
-	const isPaused =
-		event.event_type === "subscription.paused" ||
-		data.scheduled_change?.action === "pause";
+	const isInactive = status === "canceled";
+	const hasPendingScheduledChange =
+		(status === "active" || status === "trialing") &&
+		(data.scheduled_change?.action === "cancel" ||
+			data.scheduled_change?.action === "pause");
 
 	return {
 		user_id: userId,
@@ -182,10 +158,15 @@ export function buildSubscriptionUpsert(
 		tier,
 		status,
 		price_id: priceId || null,
-		current_period_start: data.current_billing_period?.starts_at ?? null,
-		current_period_end: data.current_billing_period?.ends_at ?? null,
-		cancel_at_period_end: isCanceled || isPaused,
+		current_period_start: isInactive
+			? null
+			: (data.current_billing_period?.starts_at ?? null),
+		current_period_end: isInactive
+			? null
+			: (data.current_billing_period?.ends_at ?? null),
+		cancel_at_period_end: hasPendingScheduledChange,
 		last_event_id: event.event_id,
+		last_event_occurred_at: event.occurred_at,
 		updated_at: new Date().toISOString(),
 	};
 }
@@ -198,7 +179,7 @@ export function buildSubscriptionUpsert(
  * Paddle-Signature header format: ts=<timestamp>;h1=<hmac_hex>
  * HMAC payload: ts + ":" + raw_body
  *
- * Uses timing-safe comparison to prevent timing attacks.
+ * Uses constant-time comparison to prevent timing attacks.
  */
 export async function verifyPaddleSignature(
 	rawBody: string,
@@ -242,18 +223,14 @@ export async function verifyPaddleSignature(
 	// Timing-safe comparison
 	if (computedHex.length !== expectedHex.length) return false;
 
-	const a = encoder.encode(computedHex);
-	const b = encoder.encode(expectedHex);
+	const a = new Uint8Array(encoder.encode(computedHex));
+	const b = new Uint8Array(encoder.encode(expectedHex));
+	if (a.length !== b.length) return false;
 
-	// Use crypto.subtle.timingSafeEqual if available, otherwise constant-time compare
-	if (typeof crypto.subtle.timingSafeEqual === "function") {
-		return crypto.subtle.timingSafeEqual(a, b);
-	}
-
-	// Fallback: constant-time comparison
 	let mismatch = 0;
 	for (let i = 0; i < a.length; i++) {
-		mismatch |= a[i] ^ b[i];
+		// biome-ignore lint/style/noNonNullAssertion: index is within bounds (loop guard ensures i < a.length === b.length)
+		mismatch |= a[i]! ^ b[i]!;
 	}
 	return mismatch === 0;
 }

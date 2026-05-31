@@ -54,7 +54,7 @@ profilesQuery.select.mockReturnValue(profilesQuery);
 profilesQuery.in.mockReturnValue({ data: profileRows, error: null });
 
 const from = vi.fn((table: string) => {
-	if (table === "profiles") return profilesQuery;
+	if (table === "public_profiles") return profilesQuery;
 	return feedQuery;
 });
 
@@ -72,12 +72,14 @@ describe("communityFeedOptions", () => {
 			sort: "hot",
 		});
 
-		const result = await options.queryFn!({ pageParam: 0 } as never);
+		const result = await options.queryFn?.({ pageParam: 0 } as never);
 
 		expect(from).toHaveBeenCalledWith("shared_routines");
-		expect(feedQuery.select).toHaveBeenCalledWith("*");
+		expect(feedQuery.select).toHaveBeenCalledWith(
+			expect.not.stringContaining("exercises_snapshot"),
+		);
 		expect(feedQuery.range).toHaveBeenCalledWith(0, 19);
-		expect(from).toHaveBeenCalledWith("profiles");
+		expect(from).toHaveBeenCalledWith("public_profiles");
 		expect(profilesQuery.select).toHaveBeenCalledWith(
 			"id, display_name, avatar_url",
 		);

@@ -360,14 +360,14 @@ Portal now clearly functions as a companion analytics site."
 
 ## Summary of Changes
 
-| Component | Change |
-|-----------|--------|
-| Dashboard.tsx | "Start Workout" → "View Routine Details" |
-| RoutinesEnhanced.tsx | "Start" → "View" |
-| Community.tsx | "Import" → "Save to Library", "Start Program" → "Import Program" |
-| Challenges.tsx | Added tooltip clarifying challenge tracking |
-| PortalBanner.tsx | New component explaining portal purpose |
-| SyncStatus.tsx | Clarified sync direction |
+| Component            | Change                                                           |
+| -------------------- | ---------------------------------------------------------------- |
+| Dashboard.tsx        | "Start Workout" → "View Routine Details"                         |
+| RoutinesEnhanced.tsx | "Start" → "View"                                                 |
+| Community.tsx        | "Import" → "Save to Library", "Start Program" → "Import Program" |
+| Challenges.tsx       | Added tooltip clarifying challenge tracking                      |
+| PortalBanner.tsx     | New component explaining portal purpose                          |
+| SyncStatus.tsx       | Clarified sync direction                                         |
 
 ---
 

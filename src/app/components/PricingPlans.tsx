@@ -1,14 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+	ArrowDown,
 	ArrowUp,
 	Check,
 	Clock,
 	Crown,
 	Flame,
 	Loader2,
+	RefreshCw,
 	Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
 	AlertDialog,
@@ -63,7 +65,52 @@ interface TierConfig extends TierDisplayConfig {
 	comingSoon?: boolean;
 }
 
-// Display-only configuration per tier (no prices here — prices come from TIER_PRICING)
+interface PlanChangeIntent {
+	tier: SubscriptionTier;
+	priceId: string;
+	billingInterval: "monthly" | "annual";
+	label: string;
+}
+
+interface UpdateSubscriptionResponse {
+	success?: boolean;
+	action?: "switch" | "uncancel";
+	code?: "checkout_required";
+	error?: string;
+	message?: string;
+	subscription?: {
+		tier: SubscriptionTier;
+		status:
+			| "active"
+			| "trialing"
+			| "past_due"
+			| "canceled"
+			| "incomplete"
+			| "none";
+		priceId: string | null;
+		currentPeriodEnd: string | null;
+		cancelAtPeriodEnd: boolean;
+	};
+}
+
+interface RefreshSubscriptionResponse {
+	status?: "no_subscription" | "refreshed";
+	subscription?: {
+		tier?: SubscriptionTier;
+		status?: UpdateSubscriptionResponse["subscription"] extends infer T
+			? T extends { status: infer S }
+				? S
+				: never
+			: never;
+		price_id?: string | null;
+		priceId?: string | null;
+		current_period_end?: string | null;
+		currentPeriodEnd?: string | null;
+		cancel_at_period_end?: boolean;
+		cancelAtPeriodEnd?: boolean;
+	};
+}
+
 const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 	FREE: {
 		icon: Flame,
@@ -97,7 +144,6 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 	},
 };
 
-// Merge shared pricing data with display config — no hardcoded prices in this file
 const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
 	...TIER_DISPLAY[pricing.tier],
 	name: pricing.name,
@@ -116,32 +162,155 @@ const TIER_LEVEL: Record<SubscriptionTier, number> = {
 	INFERNO: 3,
 };
 
+function selectedPriceId(tierConfig: TierConfig, isAnnual: boolean): string {
+	const tierPricing = TIER_PRICING.find(
+		(t: TierPricing) => t.tier === tierConfig.tier,
+	);
+	return isAnnual
+		? (tierPricing?.paddleAnnualPriceId ?? "")
+		: (tierPricing?.paddleMonthlyPriceId ?? "");
+}
+
+function tierName(tier: SubscriptionTier): string {
+	return TIER_PRICING.find((t) => t.tier === tier)?.name ?? tier;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getFunctionErrorMessage(
+	error: unknown,
+	response: Response | undefined,
+): Promise<string> {
+	if (response) {
+		try {
+			const body = await response.clone().json();
+			if (typeof body?.message === "string") return body.message;
+			if (typeof body?.error === "string") return body.error;
+		} catch {
+			// Fall back to the SDK error below.
+		}
+	}
+
+	return error instanceof Error
+		? error.message
+		: "Failed to update subscription";
+}
+
+function normalizeSubscriptionPayload(
+	subscription:
+		| UpdateSubscriptionResponse["subscription"]
+		| RefreshSubscriptionResponse["subscription"]
+		| undefined,
+) {
+	if (!subscription) return null;
+
+	return {
+		tier: subscription.tier ?? "FREE",
+		status: subscription.status ?? "none",
+		priceId:
+			"priceId" in subscription
+				? (subscription.priceId ?? null)
+				: (subscription.price_id ?? null),
+		currentPeriodEnd:
+			"currentPeriodEnd" in subscription
+				? (subscription.currentPeriodEnd ?? null)
+				: (subscription.current_period_end ?? null),
+		cancelAtPeriodEnd:
+			"cancelAtPeriodEnd" in subscription
+				? Boolean(subscription.cancelAtPeriodEnd)
+				: Boolean(subscription.cancel_at_period_end),
+	};
+}
+
+function isFreshPaidSubscription(
+	subscription: ReturnType<typeof normalizeSubscriptionPayload>,
+	target: { tier: SubscriptionTier; priceId: string },
+): boolean {
+	if (!subscription) return false;
+	if (
+		subscription.tier !== target.tier ||
+		subscription.priceId !== target.priceId
+	) {
+		return false;
+	}
+	if (subscription.status !== "active" && subscription.status !== "trialing") {
+		return false;
+	}
+	if (!subscription.currentPeriodEnd) return false;
+
+	const periodEndMs = Date.parse(subscription.currentPeriodEnd);
+	return Number.isFinite(periodEndMs) && periodEndMs > Date.now();
+}
+
 export function PricingPlans() {
 	const {
 		tier: currentTier,
-		status: currentStatus,
+		priceId: currentPriceId,
 		isLoading: subscriptionLoading,
 		cancelAtPeriodEnd,
 		currentPeriodEnd,
+		isEntitled,
+		isStale,
 	} = useSubscription();
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
 	const queryClient = useQueryClient();
-	const [upgradingTier, setUpgradingTier] = useState<SubscriptionTier | null>(
-		null,
-	);
-	const [confirmUpgradeTier, setConfirmUpgradeTier] =
-		useState<SubscriptionTier | null>(null);
+	const [billingActionPriceId, setBillingActionPriceId] = useState<
+		string | null
+	>(null);
+	const [pendingPlanChange, setPendingPlanChange] =
+		useState<PlanChangeIntent | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
+	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
+		string | null
+	>(null);
 
-	const handleSubscribe = async (tier: SubscriptionTier) => {
+	useEffect(() => {
+		if (
+			!user ||
+			subscriptionLoading ||
+			!isStale ||
+			refreshAttemptedForUser === user.id
+		) {
+			return;
+		}
+
+		setRefreshAttemptedForUser(user.id);
+		void supabase.functions
+			.invoke("paddle-refresh-subscription")
+			.then(({ error }) => {
+				if (error) {
+					console.warn("Failed to refresh stale Paddle subscription", error);
+				}
+			})
+			.finally(() => {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			});
+	}, [
+		user,
+		subscriptionLoading,
+		isStale,
+		refreshAttemptedForUser,
+		queryClient,
+	]);
+
+	const handleSubscribe = async (
+		tier: SubscriptionTier,
+		explicitPriceId?: string,
+	) => {
 		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
-		const priceId = isAnnual
-			? tierPricing.paddleAnnualPriceId
-			: tierPricing.paddleMonthlyPriceId;
+		const priceId =
+			explicitPriceId ??
+			(isAnnual
+				? tierPricing.paddleAnnualPriceId
+				: tierPricing.paddleMonthlyPriceId);
 
 		if (!priceId) {
 			toast.error("Paddle checkout is not configured yet.");
@@ -153,17 +322,69 @@ export function PricingPlans() {
 			return;
 		}
 
-		await openCheckout({
-			priceId,
-			userId: user.id,
-			userEmail: user.email ?? "",
-			onSuccess: () => {
-				toast.success("Subscription activated!");
-				queryClient.invalidateQueries({
+		const reconcileBillingAfterCheckout = async (
+			checkoutTransactionId: string | null,
+		) => {
+			for (let attempt = 0; attempt < 5; attempt++) {
+				if (attempt > 0) {
+					await sleep(1500);
+				}
+
+				const invokeOptions = checkoutTransactionId
+					? { body: { transaction_id: checkoutTransactionId } }
+					: undefined;
+				const { data, error } =
+					await supabase.functions.invoke<RefreshSubscriptionResponse>(
+						"paddle-refresh-subscription",
+						invokeOptions,
+					);
+
+				if (error) {
+					console.warn("Failed to refresh subscription after checkout", error);
+				}
+
+				const normalized = normalizeSubscriptionPayload(data?.subscription);
+				if (normalized) {
+					queryClient.setQueryData(queryKeys.subscription.byUser(user.id), {
+						tier: normalized.tier,
+						status: normalized.status,
+						priceId: normalized.priceId,
+						currentPeriodEnd: normalized.currentPeriodEnd,
+						cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
+					});
+				}
+
+				await queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
-			},
-		});
+
+				if (isFreshPaidSubscription(normalized, { tier, priceId })) {
+					return;
+				}
+			}
+		};
+
+		try {
+			await openCheckout({
+				priceId,
+				userId: user.id,
+				userEmail: user.email ?? "",
+				onSuccess: (event) => {
+					const checkoutTransactionId =
+						typeof event.data?.transaction_id === "string"
+							? event.data.transaction_id
+							: null;
+					toast.success("Checkout complete. Finalizing your subscription...");
+					void reconcileBillingAfterCheckout(checkoutTransactionId);
+				},
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "Billing checkout is unavailable. Please try again.";
+			toast.error(message);
+		}
 	};
 
 	const handleCancel = async () => {
@@ -182,9 +403,8 @@ export function PricingPlans() {
 				"Subscription canceled. You'll retain access until the end of your billing period.",
 			);
 
-			// Invalidate subscription cache to trigger refetch
 			if (user) {
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
 			}
@@ -196,55 +416,77 @@ export function PricingPlans() {
 		}
 	};
 
-	const isUpgradeEligible =
-		currentTier !== "FREE" &&
-		(currentStatus === "active" || currentStatus === "trialing");
-
-	const handleUpgrade = async (tier: SubscriptionTier) => {
-		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
-		if (!tierPricing) return;
-
-		const priceId = isAnnual
-			? tierPricing.paddleAnnualPriceId
-			: tierPricing.paddleMonthlyPriceId;
-
-		if (!priceId) {
-			toast.error("Paddle checkout is not configured yet.");
-			return;
-		}
-
+	const handlePlanChange = async (intent: PlanChangeIntent) => {
 		if (!user) {
-			toast.error("You must be logged in to upgrade.");
+			toast.error("You must be logged in to manage your subscription.");
 			return;
 		}
 
-		setUpgradingTier(tier);
+		setBillingActionPriceId(intent.priceId);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-update-subscription",
-				{ body: { price_id: priceId } },
-			);
+			const { data, error, response } =
+				await supabase.functions.invoke<UpdateSubscriptionResponse>(
+					"paddle-update-subscription",
+					{
+						body: {
+							tier: intent.tier,
+							billing_interval: intent.billingInterval,
+							price_id: intent.priceId,
+						},
+					},
+				);
+
+			if (data?.code === "checkout_required") {
+				await handleSubscribe(intent.tier, intent.priceId);
+				return;
+			}
 
 			if (error) {
-				toast.error(error.message || "Failed to update subscription");
+				toast.error(await getFunctionErrorMessage(error, response));
 				return;
 			}
 
 			toast.success(
-				"Subscription updated! Changes may take a moment to reflect.",
+				data?.action === "uncancel"
+					? "Cancellation removed. Your subscription will continue renewing."
+					: "Subscription updated. Changes may take a moment to reflect.",
 			);
 
-			// Invalidate subscription cache to trigger refetch
-			if (user) {
-				queryClient.invalidateQueries({
-					queryKey: queryKeys.subscription.byUser(user.id),
+			const normalized = normalizeSubscriptionPayload(data?.subscription);
+			if (normalized) {
+				queryClient.setQueryData(queryKeys.subscription.byUser(user.id), {
+					tier: normalized.tier,
+					status: normalized.status,
+					priceId: normalized.priceId,
+					currentPeriodEnd: normalized.currentPeriodEnd,
+					cancelAtPeriodEnd: normalized.cancelAtPeriodEnd,
 				});
 			}
+
+			void queryClient.invalidateQueries({
+				queryKey: queryKeys.subscription.byUser(user.id),
+			});
 		} catch {
 			toast.error("An unexpected error occurred");
 		} finally {
-			setUpgradingTier(null);
+			setBillingActionPriceId(null);
 		}
+	};
+
+	const getPlanChangeLabel = (tier: SubscriptionTier, priceId: string) => {
+		if (isEntitled && currentTier === tier && currentPriceId !== priceId) {
+			return "Switch billing";
+		}
+
+		if (TIER_LEVEL[tier] < TIER_LEVEL[currentTier]) {
+			return "Downgrade";
+		}
+
+		if (TIER_LEVEL[tier] > TIER_LEVEL[currentTier]) {
+			return "Upgrade";
+		}
+
+		return "Switch plan";
 	};
 
 	const renderCTA = (tierConfig: TierConfig) => {
@@ -257,20 +499,46 @@ export function PricingPlans() {
 			);
 		}
 
-		if (currentTier === tierConfig.tier) {
-			if (tierConfig.tier === "FREE") {
-				return (
-					<Button variant="outline" className="w-full" disabled>
-						Current Plan
-					</Button>
-				);
-			}
+		const priceId = selectedPriceId(tierConfig, isAnnual);
+		const billingInterval = isAnnual ? "annual" : "monthly";
+		if (!priceId) {
+			return (
+				<Button variant="outline" className="w-full opacity-60" disabled>
+					Unavailable
+				</Button>
+			);
+		}
 
+		const isCurrentPrice = isEntitled && currentPriceId === priceId;
+		const isBillingActionInFlight = billingActionPriceId === priceId;
+
+		if (isCurrentPrice) {
 			if (cancelAtPeriodEnd) {
 				return (
 					<div className="flex flex-col gap-2 w-full">
-						<Button variant="outline" className="w-full" disabled>
-							Current Plan
+						<Button
+							className={`w-full ${tierConfig.buttonClass}`}
+							onClick={() =>
+								void handlePlanChange({
+									tier: tierConfig.tier,
+									priceId,
+									billingInterval,
+									label: "Keep plan",
+								})
+							}
+							disabled={isBillingActionInFlight}
+						>
+							{isBillingActionInFlight ? (
+								<>
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+									Keeping...
+								</>
+							) : (
+								<>
+									<RefreshCw className="w-4 h-4 mr-2" />
+									Keep plan
+								</>
+							)}
 						</Button>
 						<p className="text-xs text-muted-foreground text-center">
 							Cancels on{" "}
@@ -299,33 +567,37 @@ export function PricingPlans() {
 			);
 		}
 
-		if (TIER_LEVEL[currentTier] > TIER_LEVEL[tierConfig.tier]) {
-			return (
-				<Button variant="outline" className="w-full opacity-50" disabled>
-					Included in your plan
-				</Button>
-			);
-		}
+		if (isEntitled) {
+			const actionLabel = getPlanChangeLabel(tierConfig.tier, priceId);
+			const ActionIcon =
+				actionLabel === "Downgrade"
+					? ArrowDown
+					: actionLabel === "Switch billing"
+						? RefreshCw
+						: ArrowUp;
 
-		// Higher tier — upgrade or subscribe
-		const isUpgrading = upgradingTier === tierConfig.tier;
-
-		if (isUpgradeEligible) {
 			return (
 				<Button
 					className={`w-full ${tierConfig.buttonClass}`}
-					onClick={() => setConfirmUpgradeTier(tierConfig.tier)}
-					disabled={isUpgrading}
+					onClick={() =>
+						setPendingPlanChange({
+							tier: tierConfig.tier,
+							priceId,
+							billingInterval,
+							label: actionLabel,
+						})
+					}
+					disabled={isBillingActionInFlight}
 				>
-					{isUpgrading ? (
+					{isBillingActionInFlight ? (
 						<>
 							<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-							Upgrading...
+							Updating...
 						</>
 					) : (
 						<>
-							<ArrowUp className="w-4 h-4 mr-2" />
-							Upgrade
+							<ActionIcon className="w-4 h-4 mr-2" />
+							{actionLabel}
 						</>
 					)}
 				</Button>
@@ -335,17 +607,21 @@ export function PricingPlans() {
 		return (
 			<Button
 				className={`w-full ${tierConfig.buttonClass}`}
-				onClick={() => handleSubscribe(tierConfig.tier)}
+				onClick={() => void handleSubscribe(tierConfig.tier, priceId)}
 			>
 				Subscribe
 			</Button>
 		);
 	};
 
+	const planChangeTitle = pendingPlanChange
+		? `${pendingPlanChange.label} ${tierName(pendingPlanChange.tier)}`
+		: "Change plan";
+	const planChangeAction = pendingPlanChange?.label ?? "Confirm";
+
 	return (
 		<div className="min-h-screen p-4 md:p-8">
 			<div className="max-w-5xl mx-auto">
-				{/* Header */}
 				<div className="text-center mb-10">
 					<h1 className="text-display-2 text-white mb-3">Choose Your Plan</h1>
 					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
@@ -353,7 +629,6 @@ export function PricingPlans() {
 					</p>
 				</div>
 
-				{/* Billing Toggle */}
 				<div className="flex items-center justify-center gap-3 mb-10">
 					<span
 						className={`text-sm font-medium ${!isAnnual ? "text-white" : "text-muted-foreground"}`}
@@ -377,11 +652,14 @@ export function PricingPlans() {
 					)}
 				</div>
 
-				{/* Tier Cards */}
 				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
 					{TIERS.map((tierConfig) => {
 						const Icon = tierConfig.icon;
-						const isCurrent = currentTier === tierConfig.tier;
+						const isCurrent = isEntitled && currentTier === tierConfig.tier;
+						const currentPriceMismatch =
+							isCurrent &&
+							Boolean(currentPriceId) &&
+							currentPriceId !== selectedPriceId(tierConfig, isAnnual);
 
 						return (
 							<Card
@@ -390,7 +668,6 @@ export function PricingPlans() {
 									isCurrent ? tierConfig.accentBorder : "border-secondary"
 								} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
 							>
-								{/* Popular Badge */}
 								{tierConfig.popular && (
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
 										<Badge className="bg-primary text-white border-0 px-3">
@@ -399,7 +676,6 @@ export function PricingPlans() {
 									</div>
 								)}
 
-								{/* Coming Soon Badge */}
 								{tierConfig.comingSoon && (
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
 										<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
@@ -409,14 +685,13 @@ export function PricingPlans() {
 									</div>
 								)}
 
-								{/* Current Plan Indicator */}
 								{isCurrent && (
 									<div className="absolute -top-3 right-4">
 										<Badge
 											variant="outline"
 											className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
 										>
-											Current
+											{currentPriceMismatch ? "Current Tier" : "Current"}
 										</Badge>
 									</div>
 								)}
@@ -437,7 +712,6 @@ export function PricingPlans() {
 								</CardHeader>
 
 								<CardContent className="text-center">
-									{/* Price */}
 									<div className="mb-6">
 										<div className="flex items-baseline justify-center gap-1">
 											<span className="text-4xl font-bold text-white font-data">
@@ -454,7 +728,6 @@ export function PricingPlans() {
 										)}
 									</div>
 
-									{/* Features */}
 									<ul className="space-y-3 text-left">
 										{tierConfig.features.map((feature) => (
 											<li
@@ -488,22 +761,18 @@ export function PricingPlans() {
 				</div>
 			</div>
 
-			{/* Upgrade Confirmation Dialog */}
 			<AlertDialog
-				open={confirmUpgradeTier !== null}
+				open={pendingPlanChange !== null}
 				onOpenChange={(open) => {
-					if (!open) setConfirmUpgradeTier(null);
+					if (!open) setPendingPlanChange(null);
 				}}
 			>
 				<AlertDialogContent className="bg-surface-2 border-primary/30">
 					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Upgrade to {confirmUpgradeTier ?? ""}
-						</AlertDialogTitle>
+						<AlertDialogTitle>{planChangeTitle}</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your payment method on file will be charged a prorated amount for
-							the remainder of your current billing period. The new plan takes
-							effect immediately.
+							Paddle will apply prorated billing immediately. If you had a
+							scheduled cancellation, this will keep the subscription active.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -511,19 +780,18 @@ export function PricingPlans() {
 						<AlertDialogAction
 							className="bg-primary text-white border-0"
 							onClick={() => {
-								if (confirmUpgradeTier) {
-									handleUpgrade(confirmUpgradeTier);
+								if (pendingPlanChange) {
+									void handlePlanChange(pendingPlanChange);
 								}
-								setConfirmUpgradeTier(null);
+								setPendingPlanChange(null);
 							}}
 						>
-							Confirm Upgrade
+							{planChangeAction}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{/* Cancel Confirmation Dialog */}
 			<AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
 				<AlertDialogContent className="bg-surface-2 border-destructive/30">
 					<AlertDialogHeader>

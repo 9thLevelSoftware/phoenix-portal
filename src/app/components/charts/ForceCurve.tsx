@@ -185,6 +185,8 @@ function ForceCurveInner({
 				height={height}
 				onMouseMove={handleMouseMove}
 				onMouseLeave={() => hideTooltip()}
+				role="img"
+				aria-label="Force curve chart"
 			>
 				{/* Gradient definitions for each rep */}
 				{processedReps.map((rep) => {

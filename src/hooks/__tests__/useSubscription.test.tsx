@@ -16,6 +16,7 @@ import {
 let mockSubscriptionRow: {
 	tier: SubscriptionTier;
 	status: SubscriptionStatus;
+	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
 } | null = null;
@@ -72,7 +73,8 @@ describe("useSubscription effective tier", () => {
 		mockSubscriptionRow = {
 			tier: "FLAME",
 			status: "active",
-			current_period_end: "2026-04-01",
+			price_id: "pri_flame_monthly",
+			current_period_end: "2999-04-01T00:00:00Z",
 			cancel_at_period_end: false,
 		};
 
@@ -84,6 +86,8 @@ describe("useSubscription effective tier", () => {
 
 		expect(result.current.tier).toBe("FLAME");
 		expect(result.current.rawTier).toBe("FLAME");
+		expect(result.current.priceId).toBe("pri_flame_monthly");
+		expect(result.current.isEntitled).toBe(true);
 		expect(result.current.isPremium).toBe(true);
 		expect(result.current.isFlame).toBe(true);
 	});
@@ -92,7 +96,8 @@ describe("useSubscription effective tier", () => {
 		mockSubscriptionRow = {
 			tier: "INFERNO",
 			status: "trialing",
-			current_period_end: "2026-04-01",
+			price_id: "pri_inferno_monthly",
+			current_period_end: "2999-04-01T00:00:00Z",
 			cancel_at_period_end: false,
 		};
 
@@ -104,14 +109,57 @@ describe("useSubscription effective tier", () => {
 
 		expect(result.current.tier).toBe("INFERNO");
 		expect(result.current.rawTier).toBe("INFERNO");
+		expect(result.current.isEntitled).toBe(true);
 		expect(result.current.isPremium).toBe(true);
 		expect(result.current.isInferno).toBe(true);
+	});
+
+	it("downgrades active subscriptions to FREE when the period end is past", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "active",
+			price_id: "pri_flame_monthly",
+			current_period_end: "2026-04-01T00:00:00Z",
+			cancel_at_period_end: true,
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FREE");
+		expect(result.current.rawTier).toBe("FLAME");
+		expect(result.current.isEntitled).toBe(false);
+		expect(result.current.isStale).toBe(true);
+	});
+
+	it("keeps scheduled cancellations entitled until the future period end", async () => {
+		mockSubscriptionRow = {
+			tier: "EMBER",
+			status: "active",
+			price_id: "pri_ember_monthly",
+			current_period_end: "2999-04-01T00:00:00Z",
+			cancel_at_period_end: true,
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("EMBER");
+		expect(result.current.isEntitled).toBe(true);
+		expect(result.current.isStale).toBe(false);
 	});
 
 	it("downgrades effective tier to FREE when status is 'canceled'", async () => {
 		mockSubscriptionRow = {
 			tier: "FLAME",
 			status: "canceled",
+			price_id: "pri_flame_monthly",
 			current_period_end: "2026-03-01",
 			cancel_at_period_end: true,
 		};
@@ -135,6 +183,7 @@ describe("useSubscription effective tier", () => {
 		mockSubscriptionRow = {
 			tier: "EMBER",
 			status: "past_due",
+			price_id: "pri_ember_monthly",
 			current_period_end: "2026-03-15",
 			cancel_at_period_end: false,
 		};
@@ -154,6 +203,7 @@ describe("useSubscription effective tier", () => {
 		mockSubscriptionRow = {
 			tier: "INFERNO",
 			status: "incomplete",
+			price_id: "pri_inferno_monthly",
 			current_period_end: null,
 			cancel_at_period_end: false,
 		};

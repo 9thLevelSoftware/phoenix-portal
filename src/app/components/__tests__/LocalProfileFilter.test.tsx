@@ -23,6 +23,7 @@ const twoProfiles = [
 	},
 ];
 
+// biome-ignore lint/suspicious/noExplicitAny: test mock data
 let mockQueryReturn: { data: any; isLoading: boolean } = {
 	data: twoProfiles,
 	isLoading: false,

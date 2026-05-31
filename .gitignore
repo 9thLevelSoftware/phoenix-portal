@@ -34,9 +34,14 @@ supabase/.temp/
 # Logs
 *.log
 npm-debug.log*
+
+# Local inspection exports
+code-review/
+
 e2e/.env
 e2e/fixtures/.session-cache.json
-/AGENTS.md
+playwright-report/
+test-results/
 
 # Git worktrees
 .worktrees/

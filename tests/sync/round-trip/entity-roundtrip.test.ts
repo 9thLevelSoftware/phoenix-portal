@@ -292,6 +292,112 @@ describe('Entity Round-Trip Tests', () => {
       const prScaled = exercises.find(e => e.name === 'PR-Scaled Squat');
       expect(prScaled?.prPercentage).toBe(85);
     });
+
+    it('should preserve stall detection settings through round-trip', async () => {
+      // Arrange
+      const routineId = generateTestId();
+
+      const exercises: RoutineExerciseDto[] = [
+        {
+          id: generateTestId(),
+          routineId,
+          name: 'Enabled Stall Detection',
+          muscleGroup: 'Chest',
+          sets: 3,
+          reps: 10,
+          weight: 60,
+          restSeconds: 90,
+          mode: 'OLD_SCHOOL',
+          orderIndex: 0,
+          stallDetection: true,
+        },
+        {
+          id: generateTestId(),
+          routineId,
+          name: 'Disabled Stall Detection',
+          muscleGroup: 'Back',
+          sets: 3,
+          reps: 10,
+          weight: 55,
+          restSeconds: 90,
+          mode: 'OLD_SCHOOL',
+          orderIndex: 1,
+          stallDetection: false,
+        },
+      ];
+
+      const routine: RoutineDto = {
+        id: routineId,
+        userId: testUser.id,
+        name: 'Stall Detection Routine',
+        description: 'Exercises with both stall detection states',
+        exerciseCount: 2,
+        estimatedDuration: 30,
+        timesCompleted: 0,
+        isFavorite: false,
+        exercises,
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { routines: [routine] });
+
+      // Act
+      await callPushEndpoint(payload, testUser.accessToken);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Assert
+      expect(pullResult.success).toBe(true);
+
+      const pulledExercises = pullResult.data!.routines[0].exercises;
+      const enabled = pulledExercises.find(e => e.name === 'Enabled Stall Detection');
+      const disabled = pulledExercises.find(e => e.name === 'Disabled Stall Detection');
+
+      expect(enabled?.stallDetection).toBe(true);
+      expect(disabled?.stallDetection).toBe(false);
+    });
+
+    it('should preserve all-AMRAP per-set reps', async () => {
+      // Arrange
+      const routineId = generateTestId();
+      const perSetReps = '[null,null,null]';
+
+      const routine: RoutineDto = {
+        id: routineId,
+        userId: testUser.id,
+        name: 'All-AMRAP Routine',
+        description: 'Every set is AMRAP',
+        exerciseCount: 1,
+        estimatedDuration: 30,
+        timesCompleted: 0,
+        isFavorite: false,
+        exercises: [
+          {
+            id: generateTestId(),
+            routineId,
+            name: 'Deadlift',
+            muscleGroup: 'Posterior Chain',
+            sets: 3,
+            reps: 10,
+            weight: 180,
+            restSeconds: 180,
+            mode: 'OLD_SCHOOL',
+            orderIndex: 0,
+            perSetReps,
+            isAmrap: true,
+          },
+        ],
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { routines: [routine] });
+
+      // Act
+      await callPushEndpoint(payload, testUser.accessToken);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Assert
+      const exercise = pullResult.data!.routines[0].exercises[0];
+      expect(exercise?.isAmrap).toBe(true);
+      expect(exercise?.perSetReps).toBe(perSetReps);
+    });
   });
 
   describe('Training Cycle with Days Round-Trip', () => {
@@ -378,6 +484,83 @@ describe('Entity Round-Trip Tests', () => {
       expect(pulledCycle.currentWeek).toBe(1);
       expect(pulledCycle.status).toBe('active');
       expect(pulledCycle.days).toHaveLength(3);
+    });
+
+    it('should handle cycle day DTOs that reuse the same id across different day numbers', async () => {
+      // Arrange: two day DTOs intentionally reuse the same id
+      const cycleId = generateTestId();
+      const sharedDayId = generateTestId();
+      const firstRoutineId = generateTestId();
+      const secondRoutineId = generateTestId();
+
+      const cycle: CycleDto = {
+        id: cycleId,
+        userId: testUser.id,
+        name: 'Duplicate Day ID Cycle',
+        description: 'Regression test for cycle_days upsert conflict target',
+        durationWeeks: 4,
+        workoutDays: 2,
+        restDays: 0,
+        currentWeek: 1,
+        status: 'active',
+        startedAt: null,
+        lastUsedAt: null,
+        progressionSettings: null,
+        deloadSettings: null,
+        days: [
+          {
+            id: sharedDayId,
+            cycleId,
+            dayNumber: 1,
+            dayType: 'workout',
+            routineId: firstRoutineId,
+            weightAdjustment: 5,
+            repModifier: 1,
+            restOverride: null,
+            restType: null,
+            notes: 'Day 1 update',
+          },
+          {
+            id: sharedDayId,
+            cycleId,
+            dayNumber: 2,
+            dayType: 'workout',
+            routineId: secondRoutineId,
+            weightAdjustment: -5,
+            repModifier: -1,
+            restOverride: null,
+            restType: null,
+            notes: 'Day 2 update',
+          },
+        ],
+      };
+
+      const payload = createMinimalPushPayload(testUser.id, { cycles: [cycle] });
+
+      // Act: should not fail with duplicate-key errors from cycle_days_pkey
+      const pushResult = await callPushEndpoint(payload, testUser.accessToken);
+      expect(pushResult.success).toBe(true);
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+      // Assert: both day rows are preserved by (cycleId, dayNumber)
+      expect(pullResult.success).toBe(true);
+      const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
+      expect(pulledCycle).toBeDefined();
+      expect(pulledCycle!.days).toHaveLength(2);
+      expect(pulledCycle!.days).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            dayNumber: 1,
+            routineId: firstRoutineId,
+            notes: 'Day 1 update',
+          }),
+          expect.objectContaining({
+            dayNumber: 2,
+            routineId: secondRoutineId,
+            notes: 'Day 2 update',
+          }),
+        ]),
+      );
     });
 
     it('should preserve deload day configuration', async () => {
@@ -780,7 +963,7 @@ describe('Entity Round-Trip Tests', () => {
             userId: testUser.id,
             name: 'Full Sync Routine',
             description: null,
-            exerciseCount: 3,
+            exerciseCount: 0,
             estimatedDuration: 45,
             timesCompleted: 0,
             isFavorite: false,

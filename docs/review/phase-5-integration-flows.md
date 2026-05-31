@@ -9,23 +9,23 @@
 
 ## Summary Table
 
-| ID | Finding | Severity | Status |
-|---|---|---|---|
-| F-01 | Strava rate limit 80/15min vs actual 100/15min non-upload limit | NON-BLOCKER | Open |
-| F-02 | Fitbit rate limit 120/hr vs actual 150/hr | NON-BLOCKER | Open |
-| F-03 | Strava and Fitbit concurrent sync race condition on token refresh | NON-BLOCKER | Open |
-| F-04 | Garmin never-expiring tokens — no out-of-band revocation detection | NON-BLOCKER | Open |
-| F-05 | Garmin implementation untested — developer program approval pending | BLOCKER | Open |
-| F-06 | Strava sync normalizer duplicated between Edge Function and client library | NON-BLOCKER | Open |
-| F-07 | Fitbit 429 handler uses rolling window instead of top-of-hour reset | NON-BLOCKER | Open |
-| F-08 | disconnect-integration does not call provider revoke endpoints | ACCEPTED-RISK | Open |
-| F-09 | Garmin webhook: raw shared-secret scheme unconfirmed vs Garmin spec | NON-BLOCKER | Open |
-| F-10 | useConnectIntegration mutation writes api_key to user_integrations (client-readable) | BLOCKER | Open |
-| F-11 | Liftosaur missing timestamp silently falls back to current time | NON-BLOCKER | Open |
-| F-12 | Fitbit comingSoon flag blocks UI — acceptable while app review pending | ACCEPTED-RISK | Open |
-| F-13 | Liftosaur absent from RATE_LIMITS in process-sync-queue | NON-BLOCKER | Open |
-| F-14 | ProviderCard does not distinguish token_expired from generic disconnected state | NON-BLOCKER | Open |
-| F-15 | liftosaur missing from ALLOWED_PROVIDERS in disconnect-integration | NON-BLOCKER | Open |
+| ID   | Finding                                                                              | Severity      | Status |
+| ---- | ------------------------------------------------------------------------------------ | ------------- | ------ |
+| F-01 | Strava rate limit 80/15min vs actual 100/15min non-upload limit                      | NON-BLOCKER   | Open   |
+| F-02 | Fitbit rate limit 120/hr vs actual 150/hr                                            | NON-BLOCKER   | Open   |
+| F-03 | Strava and Fitbit concurrent sync race condition on token refresh                    | NON-BLOCKER   | Open   |
+| F-04 | Garmin never-expiring tokens — no out-of-band revocation detection                   | NON-BLOCKER   | Open   |
+| F-05 | Garmin implementation untested — developer program approval pending                  | BLOCKER       | Open   |
+| F-06 | Strava sync normalizer duplicated between Edge Function and client library           | NON-BLOCKER   | Open   |
+| F-07 | Fitbit 429 handler uses rolling window instead of top-of-hour reset                  | NON-BLOCKER   | Open   |
+| F-08 | disconnect-integration does not call provider revoke endpoints                       | ACCEPTED-RISK | Open   |
+| F-09 | Garmin webhook: raw shared-secret scheme unconfirmed vs Garmin spec                  | NON-BLOCKER   | Open   |
+| F-10 | useConnectIntegration mutation writes api_key to user_integrations (client-readable) | BLOCKER       | Open   |
+| F-11 | Liftosaur missing timestamp silently falls back to current time                      | NON-BLOCKER   | Open   |
+| F-12 | Fitbit comingSoon flag blocks UI — acceptable while app review pending               | ACCEPTED-RISK | Open   |
+| F-13 | Liftosaur absent from RATE_LIMITS in process-sync-queue                              | NON-BLOCKER   | Open   |
+| F-14 | ProviderCard does not distinguish token_expired from generic disconnected state      | NON-BLOCKER   | Open   |
+| F-15 | liftosaur missing from ALLOWED_PROVIDERS in disconnect-integration                   | NON-BLOCKER   | Open   |
 
 ---
 
@@ -95,13 +95,13 @@ Backend ready, flag intentional pending Fitbit developer portal review.
 
 ## Per-Provider Status
 
-| Provider | Auth | Sync | Rate Limit | Token Refresh | Beta Status |
-|---|---|---|---|---|---|
-| Strava | OAuth 2.0 | Pull | 80/15min | Handled, rotation | READY |
-| Fitbit | OAuth 2.0 + Basic | Pull | 120/hr | Handled, rotation | READY (comingSoon) |
-| Garmin | OAuth 1.0a HMAC-SHA1 | Push (webhook) | 40/hr est. | N/A (no expiry) | BLOCKED (untested) |
-| Hevy | API key | Pull / CSV | 40/hr est. | N/A | READY |
-| Liftosaur | Bearer token | Pull (cursor) | None configured | N/A | READY (with F-11) |
+| Provider  | Auth                 | Sync           | Rate Limit      | Token Refresh     | Beta Status        |
+| --------- | -------------------- | -------------- | --------------- | ----------------- | ------------------ |
+| Strava    | OAuth 2.0            | Pull           | 80/15min        | Handled, rotation | READY              |
+| Fitbit    | OAuth 2.0 + Basic    | Pull           | 120/hr          | Handled, rotation | READY (comingSoon) |
+| Garmin    | OAuth 1.0a HMAC-SHA1 | Push (webhook) | 40/hr est.      | N/A (no expiry)   | BLOCKED (untested) |
+| Hevy      | API key              | Pull / CSV     | 40/hr est.      | N/A               | READY              |
+| Liftosaur | Bearer token         | Pull (cursor)  | None configured | N/A               | READY (with F-11)  |
 
 ---
 

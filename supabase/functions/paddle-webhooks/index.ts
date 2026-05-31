@@ -1,8 +1,21 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import {
+  mapPriceIdToTier,
+  paddlePriceIdsConfigured,
+} from "../_shared/paddlePriceIds.ts";
+import {
+  buildSubscriptionUpsertFromPaddleState,
+  type PaddleSubscriptionState,
+} from "../_shared/paddleSubscriptionState.ts";
+import {
+  classifyPaddleEventOrder,
+  evaluatePaddleCustomDataTrust,
+  verifyPaddleCustomDataSignature,
+} from "../_shared/paddleWebhookSecurity.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
 const responseHeaders = {
@@ -20,7 +33,7 @@ const responseHeaders = {
 async function verifyPaddleSignature(
   rawBody: string,
   signatureHeader: string,
-  secret: string
+  secret: string,
 ): Promise<boolean> {
   const parts = signatureHeader.split(";");
   const tsEntry = parts.find((p) => p.startsWith("ts="));
@@ -46,21 +59,20 @@ async function verifyPaddleSignature(
     encoder.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
 
   const payload = `${ts}:${rawBody}`;
   const signatureBuffer = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(payload)
+    encoder.encode(payload),
   );
 
   const computedHex = Array.from(new Uint8Array(signatureBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  // Timing-safe comparison
   if (computedHex.length !== expectedHex.length) return false;
 
   const a = encoder.encode(computedHex);
@@ -68,61 +80,9 @@ async function verifyPaddleSignature(
 
   let mismatch = 0;
   for (let i = 0; i < a.length; i++) {
-    mismatch |= a[i] ^ b[i];
+    mismatch |= a[i]! ^ b[i]!;
   }
   return mismatch === 0;
-}
-
-// ─── Price → Tier Mapping ───────────────────────────────────────────────────
-
-/**
- * Maps a Paddle price ID to a Phoenix Portal subscription tier.
- * Price IDs are configured via environment variables.
- */
-function mapPriceIdToTier(priceId: string): string {
-  const infernoPriceIds = (Deno.env.get("PADDLE_INFERNO_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-  const flamePriceIds = (Deno.env.get("PADDLE_FLAME_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-  const emberPriceIds = (Deno.env.get("PADDLE_EMBER_PRICE_IDS") ?? "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  if (infernoPriceIds.includes(priceId)) return "INFERNO";
-  if (flamePriceIds.includes(priceId)) return "FLAME";
-  if (emberPriceIds.includes(priceId)) return "EMBER";
-
-  if (priceId) {
-    console.warn("[BILLING_ALERT] Unknown price ID mapped to FREE tier:", priceId, "— check PADDLE_*_PRICE_IDS env vars");
-  }
-  return "FREE";
-}
-
-// ─── Status Mapping ─────────────────────────────────────────────────────────
-
-/**
- * Maps a Paddle subscription status to the portal's subscription status.
- */
-function mapPaddleStatusToSubscriptionStatus(paddleStatus: string): string {
-  switch (paddleStatus) {
-    case "active":
-      return "active";
-    case "trialing":
-      return "trialing";
-    case "paused":
-      return "canceled";
-    case "canceled":
-      return "canceled";
-    case "past_due":
-      return "past_due";
-    default:
-      return "none";
-  }
 }
 
 // ─── Webhook Handler ────────────────────────────────────────────────────────
@@ -132,11 +92,29 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: responseHeaders }
+      { status: 405, headers: responseHeaders },
     );
   }
 
   try {
+    if (!paddlePriceIdsConfigured(Deno.env)) {
+      console.error(
+        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration incomplete" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
+    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
+    if (!customDataSecret) {
+      console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");
+      return new Response(
+        JSON.stringify({ error: "Billing custom_data signing is not configured" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
+
     // Read raw body BEFORE parsing — needed for signature verification
     const rawBody = await req.text();
 
@@ -147,7 +125,7 @@ Deno.serve(async (req) => {
     if (!webhookSecret || !signatureHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: responseHeaders }
+        { status: 401, headers: responseHeaders },
       );
     }
 
@@ -155,21 +133,24 @@ Deno.serve(async (req) => {
     if (!isValid) {
       return new Response(
         JSON.stringify({ error: "Invalid signature" }),
-        { status: 401, headers: responseHeaders }
+        { status: 401, headers: responseHeaders },
       );
     }
 
     // Parse the event after signature verification
     const event = JSON.parse(rawBody);
 
+    console.log(
+      `[Paddle] Received event: ${event.event_type}, event_id: ${event.event_id}, customer_id: ${event.data?.customer_id}`,
+    );
+
     if (!event.event_id || !event.event_type || !event.data) {
       return new Response(
         JSON.stringify({ error: "Invalid event payload" }),
-        { status: 400, headers: responseHeaders }
+        { status: 400, headers: responseHeaders },
       );
     }
 
-    // Only handle subscription events
     const handledEvents = [
       "subscription.created",
       "subscription.updated",
@@ -177,90 +158,183 @@ Deno.serve(async (req) => {
       "subscription.paused",
       "subscription.resumed",
       "subscription.activated",
+      "subscription.past_due",
+      "subscription.trialing",
+      "transaction.completed",
+      "transaction.payment_failed",
     ];
 
     if (!handledEvents.includes(event.event_type)) {
-      // Return 200 for unknown events — don't trigger Paddle retries
-      console.log(`Unhandled event type: ${event.event_type}`);
+      console.warn(`[Paddle] Unhandled event type: ${event.event_type}`);
       return new Response(
         JSON.stringify({ received: true }),
-        { status: 200, headers: responseHeaders }
+        { status: 200, headers: responseHeaders },
+      );
+    }
+
+    // Transaction-only events: acknowledge (extend with billing_events table later)
+    if (
+      event.event_type === "transaction.completed" ||
+      event.event_type === "transaction.payment_failed"
+    ) {
+      console.log(
+        `[Paddle] Acknowledged ${event.event_type} event_id=${event.event_id}`,
+      );
+      return new Response(
+        JSON.stringify({ received: true }),
+        { status: 200, headers: responseHeaders },
       );
     }
 
     // Extract user_id from custom_data
     const userId = event.data.custom_data?.user_id;
     if (!userId) {
-      console.error("[BILLING_ALERT] Missing custom_data.user_id in Paddle event:", event.event_id, "event_type:", event.event_type);
+      console.error(
+        "[BILLING_ALERT] Missing custom_data.user_id in Paddle event:",
+        event.event_id,
+        "event_type:",
+        event.event_type,
+      );
       return new Response(
         JSON.stringify({ error: "Missing user_id in custom_data" }),
-        { status: 500, headers: responseHeaders }
+        { status: 500, headers: responseHeaders },
       );
     }
 
-    // Idempotency check — skip if this event was already processed
-    const { data: existing } = await supabase
+    // Load the existing row before custom_data trust checks. New checkouts must
+    // carry cd_sig; legacy subscriptions may omit it only when the Paddle
+    // subscription ID already matches the stored row for the same user.
+    const { data: existingSubscription } = await supabase
       .from("subscriptions")
-      .select("last_event_id")
+      .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (existing?.last_event_id === event.event_id) {
+    // Verify the signed user_id handed out by paddle-checkout-custom-data so
+    // a client can't forge another user's user_id in custom_data (P1-10).
+    const providedSig = event.data.custom_data?.cd_sig;
+    const signedCustomDataValid = await verifyPaddleCustomDataSignature(
+      userId,
+      providedSig,
+      customDataSecret,
+    );
+    const trustDecision = evaluatePaddleCustomDataTrust({
+      signedCustomDataValid,
+      eventSubscriptionId: event.data.id,
+      existingSubscriptionId: existingSubscription?.paddle_subscription_id,
+    });
+    if (!trustDecision.trusted) {
+      console.error(
+        "[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):",
+        event.event_id,
+        "user_id:",
+        userId,
+        "reason:",
+        trustDecision.reason,
+      );
       return new Response(
-        JSON.stringify({ received: true, duplicate: true }),
-        { status: 200, headers: responseHeaders }
+        JSON.stringify({ error: "Invalid cd_sig" }),
+        { status: 401, headers: responseHeaders },
+      );
+    }
+    if (trustDecision.method === "legacy_subscription_match") {
+      console.warn(
+        `[Paddle] Accepted legacy unsigned event ${event.event_id} by stored subscription match`,
       );
     }
 
-    // Map status and tier
-    const status = mapPaddleStatusToSubscriptionStatus(event.data.status);
-    const priceId = event.data.items?.[0]?.price?.id ?? "";
-    const tier = mapPriceIdToTier(priceId);
+    // Idempotency and ordering check — skip duplicates and stale delivery.
+    const eventOrder = classifyPaddleEventOrder(
+      event.event_id,
+      event.occurred_at,
+      existingSubscription,
+    );
+    if (eventOrder.action === "duplicate") {
+      return new Response(
+        JSON.stringify({ received: true, duplicate: true }),
+        { status: 200, headers: responseHeaders },
+      );
+    }
+    if (eventOrder.action === "stale") {
+      console.warn(
+        `[Paddle] Ignoring stale event ${event.event_id}: occurred_at=${eventOrder.occurredAt}, last_event_occurred_at=${eventOrder.lastOccurredAt}`,
+      );
+      return new Response(
+        JSON.stringify({ received: true, stale: true }),
+        { status: 200, headers: responseHeaders },
+      );
+    }
+    if (eventOrder.action === "invalid") {
+      console.error(
+        "[BILLING_ALERT] Missing or invalid Paddle occurred_at:",
+        event.event_id,
+      );
+      return new Response(
+        JSON.stringify({ error: "Invalid occurred_at" }),
+        { status: 400, headers: responseHeaders },
+      );
+    }
 
-    // Detect cancel/pause scheduling
-    const isCanceled =
-      event.event_type === "subscription.canceled" ||
-      event.data.scheduled_change?.action === "cancel";
-    const isPaused =
-      event.event_type === "subscription.paused" ||
-      event.data.scheduled_change?.action === "pause";
+    const priceId = event.data.items?.[0]?.price?.id ?? "";
+    let tier = mapPriceIdToTier(priceId, Deno.env);
+
+    if (priceId && tier === "FREE") {
+      const existingTier = existingSubscription?.tier as string | undefined;
+      if (
+        existingTier &&
+        existingTier !== "FREE" &&
+        existingTier !== "free"
+      ) {
+        console.warn(
+          `[BILLING_ALERT] Unknown price ID ${priceId} — preserving existing tier ${existingTier}`,
+        );
+        tier = existingTier as typeof tier;
+      } else {
+        console.error(
+          "[BILLING_ALERT] Unknown price ID — no existing tier to preserve (check PADDLE_* price envs):",
+          priceId,
+        );
+        return new Response(
+          JSON.stringify({ error: "Unknown price_id — configuration error" }),
+          { status: 500, headers: responseHeaders },
+        );
+      }
+    }
 
     // Build upsert payload (uses legacy Stripe column names)
-    const upsertData: Record<string, unknown> = {
-      user_id: userId,
-      paddle_customer_id: event.data.customer_id,
-      paddle_subscription_id: event.data.id,
+    const upsertData = buildSubscriptionUpsertFromPaddleState({
+      userId,
+      subscription: event.data as PaddleSubscriptionState,
       tier,
-      status,
-      price_id: priceId || null,
-      current_period_start: event.data.current_billing_period?.starts_at ?? null,
-      current_period_end: event.data.current_billing_period?.ends_at ?? null,
-      cancel_at_period_end: isCanceled || isPaused,
-      last_event_id: event.event_id,
-      updated_at: new Date().toISOString(),
-    };
+      eventId: event.event_id,
+      occurredAt: eventOrder.occurredAt,
+    });
 
     const { error } = await supabase
       .from("subscriptions")
       .upsert(upsertData, { onConflict: "user_id" });
 
     if (error) {
-      console.error(`Error upserting subscription for ${event.event_type}:`, error);
+      console.error(`[BILLING_ALERT] Error upserting subscription for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
-        { status: 500, headers: responseHeaders }
+        { status: 500, headers: responseHeaders },
       );
     }
 
+    console.log(
+      `[Paddle] Successfully processed ${event.event_type} for user ${userId}, paddle_customer_id: ${event.data.customer_id}`,
+    );
+
     return new Response(
       JSON.stringify({ received: true }),
-      { status: 200, headers: responseHeaders }
+      { status: 200, headers: responseHeaders },
     );
   } catch (err) {
     console.error("Paddle webhook handler error:", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: responseHeaders }
+      { status: 500, headers: responseHeaders },
     );
   }
 });

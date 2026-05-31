@@ -8,13 +8,13 @@ This document specifies the test scenarios for validating sync behavior across m
 
 **WARNING**: The plan document claims certain conflict resolution strategies that do NOT match the actual implementation:
 
-| Entity | Plan Claims | Actual Implementation | Gap |
-|--------|-------------|----------------------|-----|
-| Sessions | LOCAL WINS (INSERT OR IGNORE) | `upsert({ onConflict: 'id' })` - SERVER WINS | CRITICAL |
-| Personal Records | LOCAL WINS (INSERT OR IGNORE) | `insert()` after dedup check - LOCAL WINS | OK |
-| Routines | Timestamp-based LWW | `upsert({ onConflict: 'id' })` - SERVER WINS | Minor |
-| Cycles | Server wins | `upsert({ onConflict: 'id' })` - SERVER WINS | OK |
-| Badges | Union merge (INSERT OR IGNORE) | `upsert({ onConflict: 'user_id,badge_id' })` - Last push wins | Minor |
+| Entity           | Plan Claims                    | Actual Implementation                                         | Gap      |
+| ---------------- | ------------------------------ | ------------------------------------------------------------- | -------- |
+| Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - SERVER WINS                  | CRITICAL |
+| Personal Records | LOCAL WINS (INSERT OR IGNORE)  | `insert()` after dedup check - LOCAL WINS                     | OK       |
+| Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - SERVER WINS                  | Minor    |
+| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - SERVER WINS                  | OK       |
+| Badges           | Union merge (INSERT OR IGNORE) | `upsert({ onConflict: 'user_id,badge_id' })` - Last push wins | Minor    |
 
 The tests in this suite will verify the ACTUAL behavior, not the claimed behavior.
 

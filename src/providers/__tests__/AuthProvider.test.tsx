@@ -1,7 +1,16 @@
 import type { Session, User } from "@supabase/supabase-js";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { vi } from "vitest";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
+
+function wrap(ui: ReactNode) {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+	});
+	return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+}
 
 // Mock the supabase client
 vi.mock("@/lib/supabase", () => ({
@@ -52,9 +61,11 @@ describe("AuthProvider", () => {
 		);
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		expect(screen.getByTestId("loading")).toHaveTextContent("loading");
@@ -73,9 +84,11 @@ describe("AuthProvider", () => {
 		});
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -90,9 +103,11 @@ describe("AuthProvider", () => {
 		mockSupabase.auth.getSession.mockRejectedValue(new Error("Network error"));
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -110,9 +125,11 @@ describe("AuthProvider", () => {
 		});
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -149,9 +166,11 @@ describe("AuthProvider", () => {
 		);
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -183,9 +202,11 @@ describe("AuthProvider", () => {
 		});
 
 		const { unmount } = render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -220,9 +241,11 @@ describe("AuthProvider", () => {
 		);
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {
@@ -250,9 +273,11 @@ describe("AuthProvider", () => {
 		mockSupabase.auth.signOut.mockResolvedValue({ error: null });
 
 		render(
-			<AuthProvider>
-				<TestComponent />
-			</AuthProvider>,
+			wrap(
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>,
+			),
 		);
 
 		await waitFor(() => {

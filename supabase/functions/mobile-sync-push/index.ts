@@ -2,6 +2,220 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
+import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
+import {
+  buildPersonalRecordRows,
+  personalRecordIdentityKey,
+} from '../_shared/personalRecordRow.ts';
+import {
+  findPushPayloadDuplicateConflictKeys,
+  findPushPayloadIncompleteRoutines,
+  formatPushPayloadDuplicateError,
+  formatPushPayloadIncompleteRoutinesError,
+  formatPushPayloadError,
+  pushPayloadSchema,
+} from '../_shared/pushPayloadSchema.ts';
+import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
+
+/**
+ * Per-row rejection record returned to the mobile client when an LWW RPC
+ * declines an incoming row because the server already has a newer copy.
+ * Mobile logs these and repairs convergence on the next pull. See audit
+ * item #1 resolution in phoenix-portal/docs/dto-drift-matrix.md.
+ */
+interface EntityRejection {
+  id: string;
+  serverUpdatedAt: string | null;
+}
+
+/** Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1). */
+interface LwwUpsertRow {
+  id: string;
+  accepted: boolean;
+  server_updated_at: string | null;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PUSH_BODY_BYTES = 10 * 1024 * 1024;
+const PUSH_BODY_TOO_LARGE_ERROR = 'Payload too large. Maximum size is 10MB.';
+
+/**
+ * Defense-in-depth: deduplicate rows by a key field before upserting.
+ * PostgreSQL rejects an INSERT ... ON CONFLICT DO UPDATE when two rows in the
+ * same statement hit the same conflict target. The pre-flight
+ * `findPushPayloadDuplicateConflictKeys` check should prevent this, but UUID
+ * case differences (iOS NSUUID = uppercase, Android = lowercase) or edge-case
+ * data corruption can slip through. Last-wins semantics: if duplicates exist,
+ * the later row in the array survives.
+ */
+function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
+  const seen = new Map<string, number>();
+  for (let i = 0; i < rows.length; i++) {
+    // Normalize to lowercase for case-insensitive UUID comparison
+    seen.set(keyFn(rows[i]).toLowerCase(), i);
+  }
+  // Preserve original order, keep only the last occurrence of each key
+  return rows.filter((_, i) => {
+    const key = keyFn(rows[i]).toLowerCase();
+    return seen.get(key) === i;
+  });
+}
+
+type JsonBodyReadResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413; error: string };
+
+function declaredContentLengthExceedsLimit(req: Request, maxBytes: number): boolean {
+  const contentLength = req.headers.get('content-length');
+  if (!contentLength) return false;
+
+  const declaredBytes = Number.parseInt(contentLength, 10);
+  return Number.isFinite(declaredBytes) && declaredBytes > maxBytes;
+}
+
+async function readJsonBodyWithLimit(
+  req: Request,
+  maxBytes: number,
+): Promise<JsonBodyReadResult> {
+  if (declaredContentLengthExceedsLimit(req, maxBytes)) {
+    return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
+  }
+
+  if (!req.body) {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      receivedBytes += value.byteLength;
+      if (receivedBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
+      }
+
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+
+  const bytes = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
+  }
+}
+
+/**
+ * Prevent cross-user takeover when upserting by primary key only.
+ *
+ * For tables with a direct `user_id` column, this checks that any existing
+ * rows with the supplied ids are either absent or owned by `userId`.
+ * Returns a 400 Response on violation, or null when safe to proceed.
+ */
+async function assertRowsOwnedByUser(
+  supabase: ReturnType<typeof createClient>,
+  table: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('id')
+      .in('id', chunk)
+      .neq('user_id', userId);
+    if (error) {
+      // Fail closed — if the ownership probe itself errors (e.g. missing
+      // column), we must not proceed with an upsert that could overwrite a
+      // victim row. Surface as 500 so the caller retries / we notice.
+      throw new Error(`Ownership check on ${table} failed: ${error.message}`);
+    }
+    if (rows && rows.length > 0) {
+      return new Response(
+        JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Prevent cross-user takeover for child tables whose ownership flows through
+ * a parent FK (the child has no direct `user_id` column). Resolves the parent
+ * ids for any existing child rows and checks ownership against the parent
+ * table's `user_id` column.
+ */
+async function assertChildRowsOwnedViaParent(
+  supabase: ReturnType<typeof createClient>,
+  childTable: string,
+  childFkColumn: string,
+  parentTable: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return null;
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: childRows, error: childErr } = await supabase
+      .from(childTable)
+      .select(`id, ${childFkColumn}`)
+      .in('id', chunk);
+    if (childErr) {
+      throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
+    }
+    if (!childRows || childRows.length === 0) continue;
+    const parentIds = [
+      ...new Set(
+        childRows
+          .map((r) => (r as Record<string, unknown>)[childFkColumn])
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    ];
+    if (parentIds.length === 0) continue;
+    const { data: foreignParents, error: parentErr } = await supabase
+      .from(parentTable)
+      .select('id')
+      .in('id', parentIds)
+      .neq('user_id', userId);
+    if (parentErr) {
+      throw new Error(`Ownership check on ${parentTable} failed: ${parentErr.message}`);
+    }
+    if (foreignParents && foreignParents.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: `Refused: existing ${childTable} row belongs to another user`,
+        }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+  return null;
+}
 
 // =============================================================================
 // TypeScript interfaces matching mobile DTO wire format (camelCase)
@@ -80,9 +294,21 @@ interface ExternalActivityDto {
   syncedAt?: string;
 }
 
+/**
+ * Acknowledgement returned to mobile after an external_activity upsert so the
+ * client can reconcile server-assigned metadata (e.g. updated_at) back onto
+ * its local row. `localId` and `serverId` are both the same mobile-minted
+ * UUID in steady state; they are kept as separate fields to allow for any
+ * future server-side id remapping without another wire break.
+ *
+ * Resolves audit items #5 and #10 (2026-04-19).
+ */
 interface ExternalActivityAckDto {
+  localId: string;
+  serverId: string;
   externalId: string;
   provider: string;
+  updatedAt: string;
 }
 
 interface PushPayload {
@@ -100,6 +326,7 @@ interface PushPayload {
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
   externalActivities?: ExternalActivityDto[] | null;
+  customExercises?: CustomExerciseDto[];
   profileId?: string | null;
   profileName?: string | null;
   allProfiles?: LocalProfileDto[] | null;
@@ -110,6 +337,13 @@ interface SessionDto {
   userId: string;
   name: string | null;
   startedAt: string;
+  /**
+   * Client-canonical last-write timestamp (ISO 8601). Consumed by the LWW
+   * RPC when SYNC_LWW_ENABLED=true. Optional for backward compat with
+   * pre-LWW mobile builds — server falls back to NOW() when missing.
+   * Resolves audit item #1.
+   */
+  updatedAt?: string | null;
   durationSeconds: number;
   totalVolume: number;
   setCount: number;
@@ -142,6 +376,7 @@ interface SessionDto {
 interface ExerciseDto {
   id: string;
   sessionId: string;
+  exerciseId?: string | null;
   name: string;
   muscleGroup: string;
   orderIndex: number;
@@ -191,12 +426,15 @@ interface RoutineDto {
   estimatedDuration: number;
   timesCompleted: number;
   isFavorite: boolean;
+  /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
+  updatedAt?: string | null;
   exercises: RoutineExerciseDto[];
 }
 
 interface RoutineExerciseDto {
   id: string;
   routineId: string;
+  exerciseId?: string | null;
   name: string;
   muscleGroup: string;
   sets: number;
@@ -211,7 +449,9 @@ interface RoutineExerciseDto {
   supersetOrder: number | null;
   perSetWeights: string | null;
   perSetRest: string | null;
+  perSetReps: string | null;
   isAmrap: boolean;
+  isBodyweight: boolean;
   prPercentage: number | null;
   repCountTiming: string | null;
   stopAtPosition: string | null;
@@ -220,6 +460,15 @@ interface RoutineExerciseDto {
   echoLevel: string | null;
   perSetEchoLevels: string | null;
   warmupSets: string | null;
+}
+
+interface CustomExerciseDto {
+  clientId: string;
+  name: string;
+  displayName?: string | null;
+  muscleGroup: string;
+  equipment?: string | null;
+  defaultCableConfig: string;
 }
 
 interface RpgAttributesDto {
@@ -255,6 +504,8 @@ interface CycleDto {
   status: string;
   startedAt: string | null;
   lastUsedAt: string | null;
+  /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
+  updatedAt?: string | null;
   progressionSettings: string | null;
   deloadSettings: string | null;
   days: CycleDayDto[];
@@ -317,6 +568,13 @@ Deno.serve(async (req) => {
     );
   }
 
+  if (declaredContentLengthExceedsLimit(req, MAX_PUSH_BODY_BYTES)) {
+    return new Response(
+      JSON.stringify({ error: PUSH_BODY_TOO_LARGE_ERROR }),
+      { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     // =========================================================================
     // 1. JWT verification — authenticate the mobile user
@@ -357,8 +615,10 @@ Deno.serve(async (req) => {
     );
 
     // =========================================================================
-    // 2b. Rate limit: 10 requests per minute per user
+    // 2a. Rate/subscription gates before payload parsing
     // =========================================================================
+    // Keep the abuse controls ahead of JSON parsing and schema validation so
+    // malformed payloads still consume the limiter instead of bypassing it.
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-sync-push',
       userId,
@@ -367,81 +627,168 @@ Deno.serve(async (req) => {
     }, cors);
     if (!rateCheck.allowed) return rateCheck.response!;
 
-    // =========================================================================
-    // 2c. Subscription gate — EMBER or higher required
-    // =========================================================================
     const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!gate.allowed) return gate.response;
 
     // =========================================================================
     // 3. Parse request body with size validation
     // =========================================================================
-    // Validate payload size (max 10MB to prevent abuse)
-    const contentLength = req.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) {
+    const rawBody = await readJsonBodyWithLimit(req, MAX_PUSH_BODY_BYTES);
+    if (!rawBody.ok) {
       return new Response(
-        JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }),
-        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: rawBody.error }),
+        { status: rawBody.status, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
-    let payload: PushPayload;
-    try {
-      payload = await req.json();
-    } catch {
+    // Parse + normalize the payload through a single Zod schema.
+    // This replaces the previous chain of ad-hoc helpers (shape normalizer,
+    // platform normalizer, profile-id validator, inline scalar guards).
+    // On failure, we return a 400 with a precise list of {path, message}
+    // issues so mobile debugging doesn't require reading edge function logs.
+    const rawPayload = rawBody.value;
+
+    // Capture the raw platform value BEFORE the schema transforms it, so the
+    // diagnostic log (when normalized === "unknown") can still tell us what
+    // the mobile client actually sent.
+    const rawPlatformInput =
+      typeof rawPayload === 'object' && rawPayload !== null
+        ? (rawPayload as Record<string, unknown>).platform
+        : undefined;
+
+    const parseResult = pushPayloadSchema.safeParse(rawPayload);
+    if (!parseResult.success) {
       return new Response(
-        JSON.stringify({ error: 'Invalid JSON body' }),
+        JSON.stringify(formatPushPayloadError(parseResult.error)),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    const payload = parseResult.data;
+    const normalizedPlatform = payload.platform;
+    if (normalizedPlatform === 'unknown') {
+      console.warn(
+        'mobile-sync-push received missing/invalid platform; defaulting to unknown',
+        describeSyncPlatformInput(rawPlatformInput),
+      );
+    }
+
+    // Validate array sizes to prevent memory exhaustion. Telemetry has its
+    // own (higher) cap because it scales with BLE sample rate per rep, not
+    // with user activity volume.
+    // See https://github.com/9thLevelSoftware/Project-Phoenix-MP/issues/381
+    const MAX_ENTITIES_PER_TYPE = 10_000;
+    const MAX_TELEMETRY_POINTS = 50_000;
+    if (payload.sessions && payload.sessions.length > MAX_ENTITIES_PER_TYPE) {
+      return new Response(
+        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.telemetry && payload.telemetry.length > MAX_TELEMETRY_POINTS) {
+      return new Response(
+        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_TELEMETRY_POINTS}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (payload.routines && payload.routines.length > MAX_ENTITIES_PER_TYPE) {
+      return new Response(
+        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    // fix(audit #6): align cycles cap with sessions/routines (10000).
+    // Prior 1000 cap was a silent cliff for users with large cycle histories.
+    if (payload.cycles && payload.cycles.length > MAX_ENTITIES_PER_TYPE) {
+      return new Response(
+        JSON.stringify({ error: `Too many cycles. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!payload.deviceId || typeof payload.deviceId !== 'string') {
+    const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
+    if (duplicateConflictKeys.length > 0) {
       return new Response(
-        JSON.stringify({ error: 'Missing or invalid deviceId' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-    if (!payload.platform || typeof payload.platform !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Missing or invalid platform' }),
+        JSON.stringify(formatPushPayloadDuplicateError(duplicateConflictKeys)),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate array sizes to prevent memory exhaustion
-    const MAX_ARRAY_SIZE = 10000;
-    if (payload.sessions && payload.sessions.length > MAX_ARRAY_SIZE) {
+    const incompleteRoutineIds = findPushPayloadIncompleteRoutines(payload);
+    if (incompleteRoutineIds.length > 0) {
       return new Response(
-        JSON.stringify({ error: `Too many sessions. Maximum is ${MAX_ARRAY_SIZE}.` }),
+        JSON.stringify(formatPushPayloadIncompleteRoutinesError(incompleteRoutineIds)),
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
-    if (payload.telemetry && payload.telemetry.length > MAX_ARRAY_SIZE) {
-      return new Response(
-        JSON.stringify({ error: `Too many telemetry items. Maximum is ${MAX_ARRAY_SIZE}.` }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+
+    // Upsert custom catalog rows before any session/routine child rows that may
+    // reference those catalog IDs through FK columns.
+    if (payload.customExercises.length > 0) {
+      const catalogRows = payload.customExercises.map((ce) => {
+        const name = ce.name.trim();
+        const muscleGroup = ce.muscleGroup || 'General';
+        return {
+          id: ce.clientId,
+          name,
+          display_name: ce.displayName?.trim() || name,
+          muscle_group: muscleGroup,
+          muscle_groups: [muscleGroup],
+          equipment: ce.equipment
+            ? ce.equipment.split(',').map((e) => e.trim()).filter(Boolean)
+            : [],
+          default_cable_config: ce.defaultCableConfig || 'DOUBLE',
+          is_custom: true,
+          user_id: userId,
+          archived: false,
+          popularity: 0,
+        };
+      });
+
+      const catalogIds = catalogRows.map((row) => row.id);
+      const { data: existingCatalogRows, error: existingCatalogError } = await supabase
+        .from('exercise_catalog')
+        .select('id, is_custom, user_id')
+        .in('id', catalogIds);
+
+      if (existingCatalogError) {
+        throw new Error(`custom exercise catalog ownership lookup failed: ${existingCatalogError.message}`);
+      }
+
+      const conflictingCatalogRow = (existingCatalogRows ?? []).find(
+        (row) => row.is_custom !== true || row.user_id !== userId
       );
-    }
-    if (payload.routines && payload.routines.length > MAX_ARRAY_SIZE) {
-      return new Response(
-        JSON.stringify({ error: `Too many routines. Maximum is ${MAX_ARRAY_SIZE}.` }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-    if (payload.cycles && payload.cycles.length > 1000) {
-      return new Response(
-        JSON.stringify({ error: 'Too many cycles. Maximum is 1000.' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      if (conflictingCatalogRow) {
+        return new Response(
+          JSON.stringify({ error: 'Custom exercise id conflicts with an existing catalog exercise.' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { error: catalogError } = await supabase
+        .from('exercise_catalog')
+        .upsert(catalogRows, { onConflict: 'id' });
+
+      if (catalogError) {
+        throw new Error(`custom exercise catalog upsert failed: ${catalogError.message}`);
+      }
     }
 
     // =========================================================================
-    // 3b. Sync local profiles
+    // 3a. Sync local profiles
+    //
+    // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
+    // composite FK → local_profiles(user_id, id).  The profile row MUST exist
+    // before any session insert, otherwise the FK fires.  If the upsert fails
+    // for any reason we null out localProfileId so downstream inserts store
+    // rows as profile-unscoped (NULL) rather than crashing with a FK violation.
     // =========================================================================
-    const localProfileId: string | null = payload.profileId ?? null;
+    // Use `let` so we can clear it to null if the profile upsert fails.
+    let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
 
     if (allProfiles && allProfiles.length > 0) {
+      // Schema already validated each allProfiles[].id is "default" or a UUID
+      // (see pushPayloadSchema.ts → localProfileSchema). No per-row recheck here.
       // Upsert all profiles from the device
       const profileRows = allProfiles.map((p) => ({
         user_id: userId,
@@ -457,30 +804,46 @@ Deno.serve(async (req) => {
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
       if (upsertError) {
+        // Null out localProfileId so subsequent session/routine/cycle inserts
+        // store rows as profile-unscoped (NULL) instead of hitting the FK.
         console.warn('Failed to upsert local profiles:', upsertError.message);
-      }
+        if (localProfileId) {
+          console.warn('Clearing localProfileId to avoid FK violation on session insert');
+          localProfileId = null;
+        }
+      } else {
+        // Delete profiles that no longer exist on the device (from this device only)
+        const activeIds = allProfiles.map((p) => p.id);
+        const { error: deleteError } = await supabase
+          .from('local_profiles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('device_id', payload.deviceId)
+          .not(
+            'id',
+            'in',
+            `(${activeIds.map((id) => `"${id}"`).join(',')})`,
+          );
 
-      // Delete profiles that no longer exist on the device (from this device only)
-      const activeIds = allProfiles.map((p) => p.id);
-      const { error: deleteError } = await supabase
-        .from('local_profiles')
-        .delete()
-        .eq('user_id', userId)
-        .eq('device_id', payload.deviceId)
-        .not('id', 'in', `(${activeIds.join(',')})`);
-
-      if (deleteError) {
-        console.warn('Failed to clean stale profiles:', deleteError.message);
+        if (deleteError) {
+          console.warn('Failed to clean stale profiles:', deleteError.message);
+        }
       }
-    } else if (localProfileId && payload.profileName) {
-      // Fallback for older clients: upsert just the active profile
+    } else if (localProfileId) {
+      // Upsert the active profile. Uses profileName when present; falls back to
+      // a safe placeholder for clients that send profileId without profileName
+      // (older builds pre-allProfiles field, or missing optional field).
+      // Without this branch those clients hit a FK violation on session insert
+      // because the local_profiles row doesn't exist yet (issue #376).
+      const profileName =
+        payload.profileName ?? (localProfileId === 'default' ? 'Default' : 'Profile');
       const { error: profileError } = await supabase
         .from('local_profiles')
         .upsert(
           {
             user_id: userId,
             id: localProfileId,
-            name: payload.profileName,
+            name: profileName,
             device_id: payload.deviceId,
             updated_at: new Date().toISOString(),
           },
@@ -488,7 +851,10 @@ Deno.serve(async (req) => {
         );
 
       if (profileError) {
+        // Null out so sessions are stored unscoped rather than failing the FK.
         console.warn('Failed to upsert local profile:', profileError.message);
+        console.warn('Clearing localProfileId to avoid FK violation on session insert');
+        localProfileId = null;
       }
     }
 
@@ -509,6 +875,217 @@ Deno.serve(async (req) => {
     let externalActivitiesUpserted = 0;
 
     // =========================================================================
+    // 3b. Cross-user takeover protection
+    //
+    // The service-role client used below bypasses RLS, so we must verify
+    // up-front that every client-supplied primary key either doesn't exist
+    // yet or is already owned by the authenticated user. Also enforce that
+    // child rows reference parents from this same payload — otherwise an
+    // attacker could attach their rows to a victim's parent row.
+    // =========================================================================
+    const allSessionIds = (payload.sessions ?? []).map((s) => s.id);
+    const allExerciseIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.map((e) => e.id),
+    );
+    const allSetIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.map((st) => st.id)),
+    );
+    const allRepSummaryIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.flatMap((st) => st.repSummaries.map((r) => r.id))),
+    );
+    const allTelemetryIds = (payload.telemetry ?? []).map((t) => t.id);
+    const allRoutineIds = (payload.routines ?? []).map((r) => r.id);
+    const allRoutineExerciseIds = (payload.routines ?? []).flatMap((r) =>
+      r.exercises.map((e) => e.id),
+    );
+    const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
+    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
+    const sessionIdSet = new Set(allSessionIds);
+    const exerciseIdSet = new Set(allExerciseIds);
+    const setIdSet = new Set(allSetIds);
+    const routineIdSet = new Set(allRoutineIds);
+    const cycleIdSet = new Set(allCycleIds);
+
+    const fkMismatchResponse = (msg: string): Response =>
+      new Response(
+        JSON.stringify({ error: `FK mismatch in payload: ${msg}` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    for (const s of payload.sessions ?? []) {
+      for (const e of s.exercises) {
+        if (e.sessionId !== s.id) {
+          return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
+        }
+        for (const st of e.sets) {
+          if (st.exerciseId !== e.id) {
+            return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
+          }
+          for (const r of st.repSummaries) {
+            if (r.setId !== st.id) {
+              return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
+            }
+          }
+        }
+      }
+    }
+    for (const r of payload.routines ?? []) {
+      for (const e of r.exercises) {
+        if (e.routineId !== r.id) {
+          return fkMismatchResponse(
+            `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
+          );
+        }
+      }
+    }
+    for (const c of payload.cycles ?? []) {
+      for (const d of c.days) {
+        if (d.cycleId !== c.id) {
+          return fkMismatchResponse(
+            `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
+          );
+        }
+      }
+    }
+
+    // Direct-id ownership checks against tables with a user_id column
+    const directOwnerChecks: Array<[string, string[]]> = [
+      ['workout_sessions', allSessionIds],
+      ['exercises', allExerciseIds],
+      ['sets', allSetIds],
+      ['rep_summaries', allRepSummaryIds],
+      ['rep_telemetry', allTelemetryIds],
+      ['routines', allRoutineIds],
+      ['training_cycles', allCycleIds],
+    ];
+    for (const [table, ids] of directOwnerChecks) {
+      const blocked = await assertRowsOwnedByUser(supabase, table, ids, userId, cors);
+      if (blocked) return blocked;
+    }
+
+    // Parent-FK ownership checks for tables without a user_id column
+    const reBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'routine_exercises',
+      'routine_id',
+      'routines',
+      allRoutineExerciseIds,
+      userId,
+      cors,
+    );
+    if (reBlocked) return reBlocked;
+
+    const cdBlocked = await assertChildRowsOwnedViaParent(
+      supabase,
+      'cycle_days',
+      'cycle_id',
+      'training_cycles',
+      allCycleDayIds,
+      userId,
+      cors,
+    );
+    if (cdBlocked) return cdBlocked;
+
+    // Telemetry, phase stats, signatures and assessments may reference parent
+    // rows from previous pushes, not this payload. Validate those cross-payload
+    // parent references against the authoritative user_id column on each parent.
+    const telemetrySetIdsToVerify = (payload.telemetry ?? [])
+      .map((t) => t.setId)
+      .filter((sid) => !setIdSet.has(sid));
+    const telParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'sets',
+      telemetrySetIdsToVerify,
+      userId,
+      cors,
+    );
+    if (telParentBlocked) return telParentBlocked;
+
+    const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
+      .map((p) => p.sessionId)
+      .filter((sid) => !sessionIdSet.has(sid));
+    const phaseParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'workout_sessions',
+      phaseSessionIdsToVerify,
+      userId,
+      cors,
+    );
+    if (phaseParentBlocked) return phaseParentBlocked;
+
+    const sigExerciseIdsToVerify = (payload.exerciseSignatures ?? [])
+      .map((es) => es.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const sigParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      sigExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sigParentBlocked) return sigParentBlocked;
+
+    const assessExerciseIdsToVerify = (payload.assessments ?? [])
+      .map((a) => a.exerciseId)
+      .filter((eid) => !exerciseIdSet.has(eid));
+    const assessParentBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'exercises',
+      assessExerciseIdsToVerify,
+      userId,
+      cors,
+    );
+    if (assessParentBlocked) return assessParentBlocked;
+
+    const dayRoutineIdsToVerify = (payload.cycles ?? [])
+      .flatMap((c) => c.days.map((d) => d.routineId))
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const dayRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      dayRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (dayRoutineBlocked) return dayRoutineBlocked;
+
+    const sessionRoutineIdsToVerify = (payload.sessions ?? [])
+      .map((s) => s.routineSessionId)
+      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    const sessionRoutineBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'routines',
+      sessionRoutineIdsToVerify,
+      userId,
+      cors,
+    );
+    if (sessionRoutineBlocked) return sessionRoutineBlocked;
+
+    // =========================================================================
+    // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
+    // and no filtering is applied. When true, the push handler routes each
+    // shared-edit entity upsert through its `upsert_<entity>_lww` RPC and
+    // uses the accepted-id sets to filter child-table upserts so orphan child
+    // rows are not created under rejected parents.
+    // =========================================================================
+    const rejections = {
+      sessions: [] as EntityRejection[],
+      routines: [] as EntityRejection[],
+      cycles: [] as EntityRejection[],
+      externalActivities: [] as EntityRejection[],
+      rpgAttributes: [] as EntityRejection[],
+      gamificationStats: [] as EntityRejection[],
+    };
+    // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
+    // cleared the LWW gate).
+    let acceptedSessionIds: Set<string> | null = null;
+    let acceptedRoutineIds: Set<string> | null = null;
+    let acceptedCycleIds: Set<string> | null = null;
+
+    const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
+      parentSet === null || parentSet.has(parentId);
+
+    // =========================================================================
     // 4. Insert workout hierarchy in FK order
     // =========================================================================
     if (payload.sessions && payload.sessions.length > 0) {
@@ -518,12 +1095,15 @@ Deno.serve(async (req) => {
         user_id: userId,
         local_profile_id: localProfileId,
         name: s.name,
-        started_at: s.startedAt,
-        duration_seconds: s.durationSeconds,
-        total_volume: s.totalVolume,
-        set_count: s.setCount,
-        exercise_count: s.exerciseCount,
-        pr_count: s.prCount,
+        // NOT NULL DEFAULT columns: coerce client-supplied nulls/undefined to
+        // the DB default. Postgres only applies DEFAULT when a column is
+        // OMITTED from the INSERT column list — an explicit NULL bypasses it.
+        started_at: s.startedAt ?? new Date().toISOString(),
+        duration_seconds: s.durationSeconds ?? 0,
+        total_volume: s.totalVolume ?? 0,
+        set_count: s.setCount ?? 0,
+        exercise_count: s.exerciseCount ?? 0,
+        pr_count: s.prCount ?? 0,
         routine_name: s.routineName,
         workout_mode: s.workoutMode,
         routine_session_id: s.routineSessionId,
@@ -545,95 +1125,206 @@ Deno.serve(async (req) => {
         echo_level: s.echoLevel ?? null,
         warmup_reps: s.warmupReps ?? null,
         working_reps: s.workingReps ?? null,
+        updated_at: s.updatedAt ?? null,
       }));
 
-      const { error: sessErr } = await supabase
-        .from('workout_sessions')
-        .upsert(sessionRows, { onConflict: 'id' });
-      if (sessErr) throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
-      sessionsInserted = sessionRows.length;
+      // Cross-user takeover defense (from main beta audit hardening): always
+      // verify every primary key is either absent or owned by the caller
+      // before the service-role upsert touches it.
+      const sessionOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'workout_sessions',
+        sessionRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (sessionOwnershipResp) return sessionOwnershipResp;
+
+      if (SYNC_LWW_ENABLED) {
+        // Phase 3.2: route through the LWW RPC so the server rejects stale
+        // rows instead of overwriting with older data. Accepted ids are used
+        // to filter the exercises/sets/rep_summaries child upserts below.
+        // Fallback to NOW() when the client DTO omits updated_at (older
+        // mobile builds pre-Phase-3.2).
+        const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_workout_session_lww',
+          { p_rows: sessionRowsWithUpdatedAt },
+        );
+        if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
+        acceptedSessionIds = new Set<string>();
+        for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (r.accepted) acceptedSessionIds.add(r.id);
+          else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
+        }
+        sessionsInserted = acceptedSessionIds.size;
+      } else {
+        const { error: sessErr } = await supabase
+          .from('workout_sessions')
+          .upsert(sessionRows, { onConflict: 'id' });
+        if (sessErr) throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
+        sessionsInserted = sessionRows.length;
+      }
+
+      // --- 4b-pre. Clean stale exercises before re-inserting (issue #33) ---
+      // Mobile generates new random exercise/set UUIDs each sync push,
+      // so upsert-by-id never matches the old rows — duplicates pile up.
+      // Delete existing exercises for affected sessions first; CASCADE
+      // removes their sets, rep_summaries, and rep_telemetry automatically.
+      const affectedSessionIds = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .map((s) => s.id);
+
+      if (affectedSessionIds.length > 0) {
+        const { error: cleanupErr } = await supabase
+          .from('exercises')
+          .delete()
+          .in('session_id', affectedSessionIds)
+          .eq('user_id', userId);
+        if (cleanupErr) throw new Error(`exercises pre-cleanup failed: ${cleanupErr.message}`);
+      }
 
       // --- 4b. Batch upsert exercises ---
-      const exerciseRows = payload.sessions.flatMap((s) =>
-        s.exercises.map((e) => ({
-          id: e.id,
-          session_id: e.sessionId,
-          user_id: userId,
-          name: e.name,
-          muscle_group: e.muscleGroup,
-          order_index: e.orderIndex,
-        }))
-      );
+      // When LWW is enabled, only accept exercises whose parent session was
+      // accepted by the LWW gate. Rejecting the parent but inserting the
+      // children would leave orphan rows referencing a stale session.
+      const exerciseRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.map((e) => ({
+            id: e.id,
+            session_id: e.sessionId,
+            user_id: userId,
+            name: e.name,
+            exercise_id: e.exerciseId ?? null,
+            muscle_group: e.muscleGroup ?? 'General',
+            order_index: e.orderIndex ?? 0,
+          }))
+        );
 
-      if (exerciseRows.length > 0) {
+      // Defense-in-depth: deduplicate by id before upsert. The pre-flight
+      // duplicate check should prevent this, but case-insensitive UUID
+      // collisions (iOS uppercase vs Android lowercase) can slip past the
+      // case-sensitive JS Set check while PostgreSQL treats them as equal.
+      const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
+
+      if (dedupedExerciseRows.length > 0) {
+        const exerciseOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'exercises',
+          dedupedExerciseRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (exerciseOwnershipResp) return exerciseOwnershipResp;
+
         const { error: exErr } = await supabase
           .from('exercises')
-          .upsert(exerciseRows, { onConflict: 'id' });
+          .upsert(dedupedExerciseRows, { onConflict: 'id' });
         if (exErr) throw new Error(`exercises upsert failed: ${exErr.message}`);
-        exercisesInserted = exerciseRows.length;
+        exercisesInserted = dedupedExerciseRows.length;
       }
 
       // --- 4c. Batch upsert sets ---
-      const setRows = payload.sessions.flatMap((s) =>
-        s.exercises.flatMap((e) =>
-          e.sets.map((st) => ({
-            id: st.id,
-            exercise_id: st.exerciseId,
-            user_id: userId,
-            set_number: st.setNumber,
-            target_reps: st.targetReps,
-            actual_reps: st.actualReps,
-            weight_kg: st.weightKg,
-            rpe: st.rpe,
-            is_pr: st.isPr,
-            notes: st.notes,
-            workout_mode: st.workoutMode,
-          }))
-        )
-      );
+      // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
+      // projection. They are send-only derivation hints consumed by the
+      // personal_records insert path below; the `sets` table has no columns
+      // for them. See PortalSetDto doc comment in mobile for the contract.
+      // Resolves audit item #3 (2026-04-19).
+      const setRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.flatMap((e) =>
+            e.sets.map((st) => ({
+              id: st.id,
+              exercise_id: st.exerciseId,
+              user_id: userId,
+              set_number: st.setNumber,
+              target_reps: st.targetReps,
+              actual_reps: st.actualReps ?? 0,
+              weight_kg: st.weightKg ?? 0,
+              rpe: st.rpe,
+              is_pr: st.isPr ?? false,
+              notes: st.notes,
+              workout_mode: st.workoutMode,
+            }))
+          )
+        );
 
-      if (setRows.length > 0) {
+      const dedupedSetRows = deduplicateByKey(setRows, (r) => r.id);
+
+      if (dedupedSetRows.length > 0) {
+        const setOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'sets',
+          dedupedSetRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (setOwnershipResp) return setOwnershipResp;
+
         const { error: setErr } = await supabase
           .from('sets')
-          .upsert(setRows, { onConflict: 'id' });
+          .upsert(dedupedSetRows, { onConflict: 'id' });
         if (setErr) throw new Error(`sets upsert failed: ${setErr.message}`);
-        setsInserted = setRows.length;
+        setsInserted = dedupedSetRows.length;
       }
 
       // --- 4d. Batch upsert rep_summaries ---
-      const repRows = payload.sessions.flatMap((s) =>
-        s.exercises.flatMap((e) =>
-          e.sets.flatMap((st) =>
-            st.repSummaries.map((r) => ({
-              id: r.id,
-              set_id: r.setId,
-              user_id: userId,
-              rep_number: r.repNumber,
-              mean_velocity_mps: r.meanVelocityMps,
-              peak_velocity_mps: r.peakVelocityMps,
-              mean_force_n: r.meanForceN,
-              peak_force_n: r.peakForceN,
-              power_watts: r.powerWatts,
-              rom_mm: r.romMm,
-              tut_ms: r.tutMs,
-              left_force_avg: r.leftForceAvg,
-              right_force_avg: r.rightForceAvg,
-              asymmetry_pct: r.asymmetryPct,
-              vbt_zone: r.vbtZone,
-            }))
+      const repRows = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id))
+        .flatMap((s) =>
+          s.exercises.flatMap((e) =>
+            e.sets.flatMap((st) =>
+              st.repSummaries.map((r) => ({
+                id: r.id,
+                set_id: r.setId,
+                user_id: userId,
+                rep_number: r.repNumber,
+                mean_velocity_mps: r.meanVelocityMps,
+                peak_velocity_mps: r.peakVelocityMps,
+                mean_force_n: r.meanForceN,
+                peak_force_n: r.peakForceN,
+                power_watts: r.powerWatts,
+                rom_mm: r.romMm,
+                tut_ms: r.tutMs,
+                left_force_avg: r.leftForceAvg,
+                right_force_avg: r.rightForceAvg,
+                asymmetry_pct: r.asymmetryPct,
+                vbt_zone: r.vbtZone,
+              }))
+            )
           )
-        )
-      );
+        );
 
-      if (repRows.length > 0) {
+      const dedupedRepRows = deduplicateByKey(repRows, (r) => r.id);
+
+      if (dedupedRepRows.length > 0) {
+        const repOwnershipResp = await assertRowsOwnedByUser(
+          supabase,
+          'rep_summaries',
+          dedupedRepRows.map((r) => r.id),
+          userId,
+          cors,
+        );
+        if (repOwnershipResp) return repOwnershipResp;
+
         const { error: repErr } = await supabase
           .from('rep_summaries')
-          .upsert(repRows, { onConflict: 'id' });
+          .upsert(dedupedRepRows, { onConflict: 'id' });
         if (repErr) throw new Error(`rep_summaries upsert failed: ${repErr.message}`);
-        repSummariesInserted = repRows.length;
+        repSummariesInserted = dedupedRepRows.length;
       }
 
       // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
+      // NOTE: ownership for rep_telemetry.id is already verified in the
+      // directOwnerChecks loop above (see `allTelemetryIds`). Re-checking
+      // here would double the serial SELECTs on a chunked probe — at
+      // MAX_TELEMETRY_POINTS=50_000 that's an extra ~500 roundtrips before
+      // any insert. Keep the single upstream check and proceed directly.
       if (payload.telemetry && payload.telemetry.length > 0) {
         // Insert in batches of 500 to avoid payload limits
         const TELEMETRY_BATCH = 500;
@@ -646,6 +1337,9 @@ Deno.serve(async (req) => {
             force_n: t.forceN,
             velocity_mps: t.velocityMps,
             position_mm: t.positionMm,
+            // cable stored canonically as "A" | "B" from BLE. Do not translate
+            // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
+            // when a human-readable label is needed. Audit item #4 (2026-04-19).
             cable: t.cable,
           }));
 
@@ -658,61 +1352,40 @@ Deno.serve(async (req) => {
       }
 
       // =====================================================================
-      // 5. Compute exercise_progress from sets (Brzycki 1RM for reps 1-12)
+      // 5. Compute exercise_progress (mobile-provided 1RM, hybrid fallback)
       // =====================================================================
-      const progressRows: Record<string, unknown>[] = [];
-
-      for (const session of payload.sessions) {
-        for (const exercise of session.exercises) {
-          if (exercise.sets.length === 0) continue;
-
-          const maxWeight = Math.max(...exercise.sets.map((s) => s.weightKg));
-          const totalVolume = exercise.sets.reduce(
-            (sum, s) => sum + s.weightKg * s.actualReps,
-            0
-          );
-          const maxReps = Math.max(...exercise.sets.map((s) => s.actualReps));
-          const setCount = exercise.sets.length;
-
-          // Brzycki 1RM: weight * (36 / (37 - reps)), best set with reps 1-12 and weight > 0
-          let estimated1rm = 0;
-          for (const s of exercise.sets) {
-            if (s.weightKg > 0 && s.actualReps >= 1 && s.actualReps <= 12) {
-              const e1rm = s.weightKg * (36 / (37 - s.actualReps));
-              if (e1rm > estimated1rm) estimated1rm = e1rm;
-            }
-          }
-
-          progressRows.push({
-            user_id: userId,
-            local_profile_id: localProfileId,
-            exercise_name: exercise.name,
-            session_id: session.id,
-            recorded_at: session.startedAt,
-            max_weight_kg: maxWeight,
-            total_volume_kg: totalVolume,
-            estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
-            max_reps: maxReps,
-            set_count: setCount,
-          });
-        }
-      }
+      const progressRows = buildExerciseProgressRows(
+        payload.sessions,
+        userId,
+        localProfileId,
+      );
 
       if (progressRows.length > 0) {
         const sessionIds = [...new Set(payload.sessions.map((session) => session.id))];
         const { data: existingProgress, error: existingProgressErr } = await supabase
           .from('exercise_progress')
-          .select('session_id, exercise_name')
+          .select('session_id, exercise_id, exercise_name')
           .in('session_id', sessionIds);
         if (existingProgressErr) {
           throw new Error(`exercise_progress lookup failed: ${existingProgressErr.message}`);
         }
 
+        const progressIdentityKey = (row: {
+          session_id?: unknown;
+          exercise_id?: unknown;
+          exercise_name?: unknown;
+        }) => {
+          const exerciseKey =
+            typeof row.exercise_id === 'string' && row.exercise_id.length > 0
+              ? `id:${row.exercise_id}`
+              : `name:${String(row.exercise_name ?? '')}`;
+          return `${String(row.session_id ?? '')}:${exerciseKey}`;
+        };
         const existingProgressKeys = new Set(
-          (existingProgress ?? []).map((row) => `${row.session_id}:${row.exercise_name}`)
+          (existingProgress ?? []).map((row) => progressIdentityKey(row))
         );
         const dedupedProgressRows = progressRows.filter((row) => {
-          const key = `${row.session_id}:${row.exercise_name}`;
+          const key = progressIdentityKey(row);
           if (existingProgressKeys.has(key)) return false;
           existingProgressKeys.add(key);
           return true;
@@ -729,51 +1402,33 @@ Deno.serve(async (req) => {
 
       // =====================================================================
       // 6. Extract personal_records from is_pr sets
+      //
+      // Row construction delegated to _shared/personalRecordRow.ts so the
+      // NOT-NULL-DEFAULT guards (record_type, muscle_group, unit,
+      // workout_phase) are unit-testable in isolation.
       // =====================================================================
-      const prRows: Record<string, unknown>[] = [];
-
-      for (const session of payload.sessions) {
-        for (const exercise of session.exercises) {
-          for (const set of exercise.sets) {
-            if (set.isPr) {
-              // GAP 2 fix: Use actual PR type/phase from mobile instead of hardcoded '1RM'
-              const recordType = set.prType ?? '1RM';
-              const value = recordType === 'MAX_VOLUME'
-                ? (set.prVolume ?? set.weightKg * set.actualReps)
-                : set.weightKg;
-              prRows.push({
-                user_id: userId,
-                local_profile_id: localProfileId,
-                exercise_name: exercise.name,
-                muscle_group: exercise.muscleGroup ?? 'General',
-                record_type: recordType,
-                value,
-                unit: recordType === 'MAX_VOLUME' ? 'kg×reps' : 'kg',
-                achieved_at: session.startedAt,
-                workout_phase: set.prPhase ?? 'COMBINED',
-              });
-            }
-          }
-        }
-      }
+      const prRows = buildPersonalRecordRows(
+        payload.sessions,
+        userId,
+        localProfileId,
+      );
 
       if (prRows.length > 0) {
         const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
         const { data: existingPrs, error: existingPrErr } = await supabase
           .from('personal_records')
-          .select('exercise_name, achieved_at, value, record_type, workout_phase')
+          .select('local_profile_id, exercise_id, exercise_name, achieved_at, value, record_type, workout_phase')
           .eq('user_id', userId)
           .in('achieved_at', achievedAtValues);
         if (existingPrErr) {
           throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
         }
 
-        const profileTag = localProfileId ?? '__no_profile__';
         const existingPrKeys = new Set(
-          (existingPrs ?? []).map((row) => `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase ?? 'COMBINED'}`)
+          (existingPrs ?? []).map((row) => personalRecordIdentityKey(row))
         );
         const dedupedPrRows = prRows.filter((row) => {
-          const key = `${profileTag}:${row.exercise_name}:${row.achieved_at}:${row.value}:${row.record_type}:${row.workout_phase}`;
+          const key = personalRecordIdentityKey(row);
           if (existingPrKeys.has(key)) return false;
           existingPrKeys.add(key);
           return true;
@@ -801,39 +1456,74 @@ Deno.serve(async (req) => {
         user_id: userId,
         local_profile_id: localProfileId,
         name: r.name,
-        description: r.description,
-        exercise_count: r.exerciseCount,
-        estimated_duration: Math.round(r.estimatedDuration / 60),
-        times_completed: r.timesCompleted,
-        is_favorite: r.isFavorite,
+        description: r.description ?? '',
+        exercise_count: r.exerciseCount ?? 0,
+        estimated_duration: Math.round(r.estimatedDuration ?? 0),
+        times_completed: r.timesCompleted ?? 0,
+        is_favorite: r.isFavorite ?? false,
+        updated_at: r.updatedAt ?? null,
       }));
 
-      const { error: routErr } = await supabase
-        .from('routines')
-        .upsert(routineRows, { onConflict: 'id' });
-      if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
-      routinesUpserted = routineRows.length;
+      const routineOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'routines',
+        routineRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (routineOwnershipResp) return routineOwnershipResp;
+
+      if (SYNC_LWW_ENABLED) {
+        const rows = routineRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_routine_lww',
+          { p_rows: rows },
+        );
+        if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
+        acceptedRoutineIds = new Set<string>();
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (rr.accepted) acceptedRoutineIds.add(rr.id);
+          else rejections.routines.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+        routinesUpserted = acceptedRoutineIds.size;
+      } else {
+        const { error: routErr } = await supabase
+          .from('routines')
+          .upsert(routineRows, { onConflict: 'id' });
+        if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
+        routinesUpserted = routineRows.length;
+      }
 
       // Upsert exercises by primary key (id). Each exercise has a stable UUID
       // generated on mobile, so onConflict: 'id' safely updates existing rows.
-      const reRows = payload.routines.flatMap((r) =>
+      // When LWW is enabled, skip children of routines whose parent was
+      // rejected to avoid orphan FK rows.
+      const reRows = payload.routines
+        .filter((r) => childAllowed(acceptedRoutineIds, r.id))
+        .flatMap((r) =>
         r.exercises.map((e) => ({
           id: e.id,
           routine_id: e.routineId,
           name: e.name,
-          muscle_group: e.muscleGroup,
-          sets: e.sets,
-          reps: e.reps,
-          weight: e.weight,
-          rest_seconds: e.restSeconds,
-          mode: e.mode,
-          order_index: e.orderIndex,
+          exercise_id: e.exerciseId ?? null,
+          muscle_group: e.muscleGroup ?? 'General',
+          sets: e.sets ?? 3,
+          reps: e.reps ?? 10,
+          weight: e.weight ?? 0,
+          rest_seconds: e.restSeconds ?? 90,
+          mode: e.mode ?? 'OLD_SCHOOL',
+          order_index: e.orderIndex ?? 0,
           superset_id: e.supersetId,
           superset_color: e.supersetColor,
           superset_order: e.supersetOrder,
           per_set_weights: safeJsonParse(e.perSetWeights),
           per_set_rest: safeJsonParse(e.perSetRest),
+          per_set_reps: safeJsonParse(e.perSetReps),
           is_amrap: e.isAmrap,
+          is_bodyweight: e.isBodyweight,
           pr_percentage: e.prPercentage,
           rep_count_timing: e.repCountTiming,
           stop_at_position: e.stopAtPosition,
@@ -855,7 +1545,9 @@ Deno.serve(async (req) => {
       // Remove orphan exercises: rows belonging to synced routines whose IDs
       // are not in the current payload. This handles exercises deleted on mobile.
       const syncedExerciseIds = reRows.map((r) => r.id);
-      const routineIds = payload.routines.map((r) => r.id);
+      const routineIds = payload.routines
+        .filter((r) => childAllowed(acceptedRoutineIds, r.id))
+        .map((r) => r.id);
       for (const routineId of routineIds) {
         const idsForRoutine = syncedExerciseIds.length > 0
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
@@ -881,7 +1573,61 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // 7b. Upsert training_cycles + upsert cycle_days (safe replace pattern)
+    // 7a. Delete routines that mobile soft-deleted (tombstone propagation).
+    //     Hard-delete on server — CASCADE removes routine_exercises automatically.
+    //     Ownership check prevents cross-user deletion via crafted IDs.
+    // =========================================================================
+    if (payload.deletedRoutineIds && payload.deletedRoutineIds.length > 0) {
+      const ownershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'routines',
+        payload.deletedRoutineIds,
+        userId,
+        cors,
+      );
+      if (ownershipResp) return ownershipResp;
+
+      const { error: delErr } = await supabase
+        .from('routines')
+        .delete()
+        .in('id', payload.deletedRoutineIds)
+        .eq('user_id', userId);
+      if (delErr) {
+        console.warn('routine deletion warning:', delErr.message);
+      } else {
+        console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
+      }
+    }
+
+    // =========================================================================
+    // 7b. Delete cycles that mobile soft-deleted (tombstone propagation).
+    //     Hard-delete on server — CASCADE removes cycle_days automatically.
+    //     Ownership check prevents cross-user deletion via crafted IDs.
+    // =========================================================================
+    if (payload.deletedCycleIds && payload.deletedCycleIds.length > 0) {
+      const cycleDelOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        cors,
+      );
+      if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
+
+      const { error: cycleDelErr } = await supabase
+        .from('training_cycles')
+        .delete()
+        .in('id', payload.deletedCycleIds)
+        .eq('user_id', userId);
+      if (cycleDelErr) {
+        console.warn('cycle deletion warning:', cycleDelErr.message);
+      } else {
+        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
+      }
+    }
+
+    // =========================================================================
+    // 7c. Upsert training_cycles + upsert cycle_days (safe replace pattern)
     //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
     //     constraint instead of delete+insert.
     // =========================================================================
@@ -892,38 +1638,72 @@ Deno.serve(async (req) => {
         local_profile_id: localProfileId,
         name: c.name,
         description: c.description ?? '',
-        duration_weeks: c.durationWeeks,
-        workout_days: c.workoutDays,
-        rest_days: c.restDays,
-        current_week: c.currentWeek,
-        status: c.status,
+        duration_weeks: c.durationWeeks ?? 4,
+        workout_days: c.workoutDays ?? 0,
+        rest_days: c.restDays ?? 0,
+        current_week: c.currentWeek ?? 1,
+        status: c.status ?? 'draft',
         started_at: c.startedAt,
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
         deload_settings: safeJsonParse(c.deloadSettings),
+        updated_at: c.updatedAt ?? null,
       }));
 
-      const { error: cycErr } = await supabase
-        .from('training_cycles')
-        .upsert(cycleRows, { onConflict: 'id' });
-      if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
-      cyclesUpserted = cycleRows.length;
+      const cycleOwnershipResp = await assertRowsOwnedByUser(
+        supabase,
+        'training_cycles',
+        cycleRows.map((r) => r.id),
+        userId,
+        cors,
+      );
+      if (cycleOwnershipResp) return cycleOwnershipResp;
+
+      if (SYNC_LWW_ENABLED) {
+        const rows = cycleRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_training_cycle_lww',
+          { p_rows: rows },
+        );
+        if (lwwErr) throw new Error(`training_cycles LWW RPC failed: ${lwwErr.message}`);
+        acceptedCycleIds = new Set<string>();
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (rr.accepted) acceptedCycleIds.add(rr.id);
+          else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+        cyclesUpserted = acceptedCycleIds.size;
+      } else {
+        const { error: cycErr } = await supabase
+          .from('training_cycles')
+          .upsert(cycleRows, { onConflict: 'id' });
+        if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
+        cyclesUpserted = cycleRows.length;
+      }
 
       // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
-      const dayRows = payload.cycles.flatMap((c) =>
-        c.days.map((d) => ({
-          id: d.id,
-          cycle_id: d.cycleId,
-          day_number: d.dayNumber,
-          day_type: d.dayType,
-          routine_id: d.routineId,
-          weight_adjustment: d.weightAdjustment,
-          rep_modifier: d.repModifier,
-          rest_override: d.restOverride,
-          rest_type: d.restType,
-          notes: d.notes,
-        }))
-      );
+      // When LWW is enabled, skip days whose parent cycle was rejected.
+      const dayRows = payload.cycles
+        .filter((c) => childAllowed(acceptedCycleIds, c.id))
+        .flatMap((c) =>
+          c.days.map((d) => ({
+            // Do not upsert id when conflict target is (cycle_id, day_number).
+            // If a client reuses an id across different day rows, Postgres can
+            // still raise duplicate key on cycle_days_pkey before conflict
+            // resolution for the composite unique key.
+            cycle_id: d.cycleId,
+            day_number: d.dayNumber,
+            day_type: d.dayType ?? 'workout',
+            routine_id: d.routineId,
+            weight_adjustment: d.weightAdjustment ?? 0,
+            rep_modifier: d.repModifier ?? 0,
+            rest_override: d.restOverride,
+            rest_type: d.restType,
+            notes: d.notes,
+          })),
+        );
 
       if (dayRows.length > 0) {
         const { error: dayErr } = await supabase
@@ -951,24 +1731,40 @@ Deno.serve(async (req) => {
     // =========================================================================
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
-      const { error: rpgErr } = await supabase
-        .from('rpg_attributes')
-        .upsert(
-          {
-            user_id: userId,
-            strength: rpg.strength,
-            power: rpg.power,
-            stamina: rpg.stamina,
-            consistency: rpg.consistency,
-            mastery: rpg.mastery,
-            character_class: rpg.characterClass,
-            level: rpg.level,
-            experience_points: rpg.experiencePoints,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
+      // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
+      // Int per the Kotlin DTO, but any buggy producer (e.g. analytics pipeline)
+      // that feeds a float here would break the round-trip on pull. See
+      // _shared/rpgSchema.ts.
+      const rpgInt = (v: unknown, fallback: number) =>
+        Number.isFinite(Number(v)) ? Math.round(Number(v)) : fallback;
+      const rpgRow = {
+        user_id: userId,
+        strength: rpgInt(rpg.strength, 0),
+        power: rpgInt(rpg.power, 0),
+        stamina: rpgInt(rpg.stamina, 0),
+        consistency: rpgInt(rpg.consistency, 0),
+        mastery: rpgInt(rpg.mastery, 0),
+        character_class: rpg.characterClass,
+        level: rpgInt(rpg.level, 1),
+        experience_points: rpgInt(rpg.experiencePoints, 0),
+        updated_at: new Date().toISOString(),
+      };
+
+      if (SYNC_LWW_ENABLED) {
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_rpg_attributes_lww',
+          { p_rows: [rpgRow] },
         );
-      if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+        if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+      } else {
+        const { error: rpgErr } = await supabase
+          .from('rpg_attributes')
+          .upsert(rpgRow, { onConflict: 'user_id' });
+        if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+      }
     }
 
     // =========================================================================
@@ -980,8 +1776,8 @@ Deno.serve(async (req) => {
         badge_id: b.badgeId,
         badge_name: b.badgeName,
         badge_description: b.badgeDescription,
-        badge_tier: b.badgeTier,
-        earned_at: b.earnedAt,
+        badge_tier: b.badgeTier ?? 'bronze',
+        earned_at: b.earnedAt ?? new Date().toISOString(),
       }));
 
       const { error: badgeErr } = await supabase
@@ -996,22 +1792,32 @@ Deno.serve(async (req) => {
     // =========================================================================
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
-      const { error: gsErr } = await supabase
-        .from('gamification_stats')
-        .upsert(
-          {
-            user_id: userId,
-            total_workouts: gs.totalWorkouts,
-            total_reps: gs.totalReps,
-            total_volume_kg: gs.totalVolumeKg,
-            longest_streak: gs.longestStreak,
-            current_streak: gs.currentStreak,
-            total_time_seconds: gs.totalTimeSeconds,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
+      const gsRow = {
+        user_id: userId,
+        total_workouts: gs.totalWorkouts ?? 0,
+        total_reps: gs.totalReps ?? 0,
+        total_volume_kg: gs.totalVolumeKg ?? 0,
+        longest_streak: gs.longestStreak ?? 0,
+        current_streak: gs.currentStreak ?? 0,
+        total_time_seconds: gs.totalTimeSeconds ?? 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (SYNC_LWW_ENABLED) {
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_gamification_stats_lww',
+          { p_rows: [gsRow] },
         );
-      if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+        if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
+        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+          if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        }
+      } else {
+        const { error: gsErr } = await supabase
+          .from('gamification_stats')
+          .upsert(gsRow, { onConflict: 'user_id' });
+        if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+      }
     }
 
     // =========================================================================
@@ -1109,8 +1915,23 @@ Deno.serve(async (req) => {
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (payload.externalActivities && payload.externalActivities.length > 0) {
+      // fix(audit #5): require client-minted id. Mobile already mints via
+      // ExternalActivity.id = generateUUID() default, so any payload missing
+      // it indicates a buggy producer. Rejecting up-front prevents the server
+      // from generating a UUID the client will never learn about.
+      for (const a of payload.externalActivities) {
+        if (!a.id) {
+          return new Response(
+            JSON.stringify({
+              error: 'external_activity.id is required (mobile must mint UUID before send)',
+            }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       const activityRows = payload.externalActivities.map((a) => ({
-        ...(a.id ? { id: a.id } : {}),
+        id: a.id,
         user_id: userId,
         external_id: a.externalId,
         provider: a.provider,
@@ -1125,22 +1946,74 @@ Deno.serve(async (req) => {
         elevation_gain_meters: a.elevationGainMeters ?? null,
         raw_data: a.rawData ? safeJsonParse(a.rawData) : null,
         synced_at: a.syncedAt ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }));
 
-      const { error: extErr } = await supabase
-        .from('external_activities')
-        .upsert(activityRows, { onConflict: 'user_id,provider,external_id' });
-      if (extErr) {
-        console.warn('external_activities upsert warning:', extErr.message);
-        externalActivityIds = [];
-        externalActivityKeys = [];
+      if (SYNC_LWW_ENABLED) {
+        // Phase 3.2: route through LWW RPC so a stale webhook push does not
+        // overwrite a newer mobile-captured row (or vice versa). The RPC
+        // returns the canonical server id which we surface in the ack list.
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_external_activity_lww',
+          { p_rows: activityRows },
+        );
+        if (lwwErr) {
+          console.warn('external_activities LWW RPC warning:', lwwErr.message);
+          externalActivityIds = [];
+          externalActivityKeys = [];
+        } else {
+          const acceptedRows = (lwwData ?? []) as LwwUpsertRow[];
+          // Preserve compound-key metadata by matching back against activityRows.
+          const byIdx = new Map<string, { externalId: string; provider: string }>();
+          for (const r of activityRows) {
+            byIdx.set(r.id, { externalId: r.external_id, provider: r.provider });
+          }
+          externalActivityKeys = acceptedRows
+            .filter((r) => r.accepted)
+            .map((r) => {
+              const meta = byIdx.get(r.id) ?? { externalId: '', provider: '' };
+              return {
+                localId: r.id,
+                serverId: r.id,
+                externalId: meta.externalId,
+                provider: meta.provider,
+                updatedAt: r.server_updated_at ?? new Date().toISOString(),
+              };
+            });
+          for (const r of acceptedRows) {
+            if (!r.accepted) {
+              rejections.externalActivities.push({
+                id: r.id,
+                serverUpdatedAt: r.server_updated_at,
+              });
+            }
+          }
+          externalActivityIds = externalActivityKeys.map((k) => k.externalId);
+          externalActivitiesUpserted = externalActivityKeys.length;
+        }
       } else {
-        externalActivitiesUpserted = activityRows.length;
-        externalActivityIds = activityRows.map((r) => r.external_id);
-        externalActivityKeys = activityRows.map((r) => ({
-          externalId: r.external_id,
-          provider: r.provider,
-        }));
+        // fix(audit #10): .select() after upsert so we can return the
+        // server-canonical row metadata (including updated_at) to the client.
+        const { data: extData, error: extErr } = await supabase
+          .from('external_activities')
+          .upsert(activityRows, { onConflict: 'user_id,provider,external_id' })
+          .select('id, external_id, provider, updated_at');
+        if (extErr) {
+          console.warn('external_activities upsert warning:', extErr.message);
+          externalActivityIds = [];
+          externalActivityKeys = [];
+        } else {
+          externalActivitiesUpserted = activityRows.length;
+          externalActivityKeys = (extData ?? []).map((r: Record<string, unknown>) => ({
+            localId: String(r.id),
+            serverId: String(r.id),
+            externalId: String(r.external_id),
+            provider: String(r.provider),
+            updatedAt: String(r.updated_at),
+          }));
+          // Backward-compat alias for clients that read externalActivityIds only.
+          externalActivityIds = externalActivityKeys.map((k) => k.externalId);
+        }
       }
     }
 
@@ -1148,26 +2021,55 @@ Deno.serve(async (req) => {
     // 15. Return sync result
     // =========================================================================
     const syncTime = new Date().toISOString();
+    // Use HTTP broadcast so the edge function doesn't need an active WebSocket
+    // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
+    const channel = supabase.channel(`sync:${userId}`, {
+      config: { broadcast: { self: false } },
+    });
     try {
-      const broadcastResult = await supabase
-        .channel(`sync:${userId}`)
-        .httpSend('sync_complete', {
+      await new Promise<void>((resolve) => {
+        const subscription = channel.subscribe((status) => {
+          if (
+            status === 'SUBSCRIBED' ||
+            status === 'CHANNEL_ERROR' ||
+            status === 'TIMED_OUT' ||
+            status === 'CLOSED'
+          ) {
+            resolve();
+            // Avoid unused-binding warning on `subscription`.
+            void subscription;
+          }
+        });
+        // Safety timeout — don't block the response waiting for realtime.
+        setTimeout(resolve, 1500);
+      });
+
+      const { error: broadcastError } = await channel.send({
+        type: 'broadcast',
+        event: 'sync_complete',
+        payload: {
           syncTime,
           deviceId: payload.deviceId,
-          platform: payload.platform,
+          platform: normalizedPlatform,
           profileId: localProfileId,
           profileName: payload.profileName ?? null,
           sessionsInserted,
           routinesUpserted,
           cyclesUpserted,
           badgesUpserted,
-        });
-
-      if (!broadcastResult.success) {
-        console.warn('mobile-sync-push broadcast warning:', broadcastResult);
+        },
+      });
+      if (broadcastError) {
+        console.warn('mobile-sync-push broadcast warning:', broadcastError);
       }
     } catch (broadcastErr) {
       console.warn('mobile-sync-push broadcast failed:', broadcastErr);
+    } finally {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (cleanupErr) {
+        console.warn('mobile-sync-push channel cleanup warning:', cleanupErr);
+      }
     }
 
     return new Response(
@@ -1189,11 +2091,21 @@ Deno.serve(async (req) => {
         externalActivitiesUpserted,
         externalActivityIds,
         externalActivityKeys,
+        // Phase 3.2: per-entity LWW rejection lists. Empty when SYNC_LWW_ENABLED
+        // is false or when every incoming row cleared the LWW gate. Mobile
+        // logs these and repairs convergence via the next pull.
+        rejections,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    console.error('mobile-sync-push error:', err);
+    // Emit full error + stack to function logs so the next regression is
+    // debuggable from Supabase without guessing at the call site.
+    if (err instanceof Error) {
+      console.error('mobile-sync-push error:', err.message, err.stack);
+    } else {
+      console.error('mobile-sync-push error (non-Error):', err);
+    }
     const message = err instanceof Error ? err.message : 'Internal server error';
     const status = message.includes('upsert failed') || message.includes('insert failed')
       ? 400

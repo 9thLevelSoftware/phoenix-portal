@@ -31,8 +31,9 @@ export async function exportAllUserData(
 		progress(`Exporting ${tableName}...`);
 		const { data, error } = await query;
 		if (error) {
-			console.warn(`Failed to export ${tableName}:`, error);
-			return null;
+			throw new Error(
+				`Export failed for ${tableName}: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 		if (data && data.length > 0) {
 			zip.file(`${filename}.json`, JSON.stringify(data, null, 2));
@@ -227,7 +228,7 @@ export async function exportAllUserData(
 			await addTable(
 				"exercises",
 				"exercises",
-				supabase.from("exercises").select("*").in("workout_id", workoutIds),
+				supabase.from("exercises").select("*").in("session_id", workoutIds),
 			);
 		} else {
 			progress("Skipping exercises (no workouts)...");
@@ -302,10 +303,7 @@ export async function exportAllUserData(
 			await addTable(
 				"cycle_days",
 				"cycle-days",
-				supabase
-					.from("cycle_days")
-					.select("*")
-					.in("training_cycle_id", cycleIds),
+				supabase.from("cycle_days").select("*").in("cycle_id", cycleIds),
 			);
 		} else {
 			progress("Skipping cycle days (no training cycles)...");

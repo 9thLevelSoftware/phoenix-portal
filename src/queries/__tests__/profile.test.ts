@@ -89,18 +89,18 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: profileRow, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).not.toBeNull();
-		expect(result!.display_name).toBe("Phoenix User");
-		expect(result!.weight_unit).toBe("kg");
+		expect(result?.display_name).toBe("Phoenix User");
+		expect(result?.weight_unit).toBe("kg");
 	});
 
 	it("returns null when profile does not exist (maybeSingle)", async () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toBeNull();
 	});
 
@@ -111,7 +111,7 @@ describe("profileOptions", () => {
 		});
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "profile error" }),
 		);
 	});
@@ -120,7 +120,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await opts.queryFn!({} as never);
+		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("profiles");
 	});
 });
@@ -155,7 +155,7 @@ describe("profileStatsOptions", () => {
 
 		const { profileStatsOptions } = await import("../profile");
 		const opts = profileStatsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.totalWorkouts).toBe(3);
 		// total_volume is per-cable, doubled: (500+600+400)*2 = 3000
@@ -175,7 +175,7 @@ describe("profileStatsOptions", () => {
 
 		const { profileStatsOptions } = await import("../profile");
 		const opts = profileStatsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.totalWorkouts).toBe(0);
 		expect(result.totalVolume).toBe(0);
@@ -220,7 +220,7 @@ describe("topExercisesOptions", () => {
 
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(5);
 		expect(result[0].name).toBe("Bench Press");
@@ -233,7 +233,7 @@ describe("topExercisesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -255,7 +255,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [badgeRow], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].badge_name).toBe("First Flame");
@@ -267,7 +267,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -289,20 +289,20 @@ describe("rpgAttributesOptions", () => {
 		chain = buildChain({ data: rpgRow, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).not.toBeNull();
-		expect(result!.strength).toBe(25);
-		expect(result!.level).toBe(5);
-		expect(result!.character_class).toBe("warrior");
-		expect(result!.updated_at).toBeInstanceOf(Date);
+		expect(result?.strength).toBe(25);
+		expect(result?.level).toBe(5);
+		expect(result?.character_class).toBe("warrior");
+		expect(result?.updated_at).toBeInstanceOf(Date);
 	});
 
 	it("returns null when no RPG data exists (maybeSingle)", async () => {
 		chain = buildChain({ data: null, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toBeNull();
 	});
 });
@@ -324,20 +324,20 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: gamificationRow, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result).not.toBeNull();
-		expect(result!.total_workouts).toBe(50);
-		expect(result!.longest_streak).toBe(14);
-		expect(result!.current_streak).toBe(3);
-		expect(result!.updated_at).toBeInstanceOf(Date);
+		expect(result?.total_workouts).toBe(50);
+		expect(result?.longest_streak).toBe(14);
+		expect(result?.current_streak).toBe(3);
+		expect(result?.updated_at).toBeInstanceOf(Date);
 	});
 
 	it("returns null when no gamification data exists", async () => {
 		chain = buildChain({ data: null, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toBeNull();
 	});
 });

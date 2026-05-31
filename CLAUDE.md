@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+> Legacy note: this file is Claude-specific project guidance. Codex and
+> Symphony workspaces should use `AGENTS.md` and `WORKFLOW.md` as the current
+> operating contract, with this file treated as supplemental historical context.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -147,6 +151,11 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 - `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)
 - `tests/sync/helpers/mock-edge-functions.ts` — Mock implementation
 
+### 1RM Estimate Parity (PARITY-CRITICAL)
+- Estimated 1RM is computed on MOBILE (hybrid: Brzycki reps<=10, Epley reps>10) and shipped as `estimatedOneRepMaxKg` per exercise. The edge function stores it verbatim in `exercise_progress.estimated_1rm_kg`.
+- `supabase/functions/_shared/exerciseProgressRows.ts#estimateOneRepMaxKg` and `src/lib/biomechanics.ts#estimateOneRepMax` are FALLBACKS only and MUST match the mobile formula. Mirror any change in the Project-Phoenix-MP counterpart (`OneRepMaxCalculator.estimate`).
+- `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". Record-type label maps (`csv.ts`, `RecordsTab.tsx`) key on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
+
 ### Styling
 - Dark theme by default (background: #0D0D0D)
 - Phoenix color palette in `src/styles/theme.css`:
@@ -182,6 +191,34 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 - **Unit/Integration:** Vitest with jsdom, Testing Library React. Tests in `src/app/components/__tests__/` and `src/lib/__tests__/`
 - **E2E:** Playwright with Chromium. Tests in `e2e/` directory
 - **Linting:** Biome for formatting and lint rules
+
+## Migration Workflow Discipline
+
+Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 migrations were recorded in `schema_migrations` but their DDL was absent from prod):
+
+### DO
+- Write every schema change as a migration file in `supabase/migrations/`.
+- Keep every DDL statement **idempotent** (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DO $$ ... IF NOT EXISTS ... $$`). A migration must be safe to re-run.
+- Push migrations with `supabase db push` (or `supabase migration up`). This is the only path that executes SQL *and* records it in `schema_migrations`.
+- Verify the artifact exists in prod after push (e.g. `SELECT 1 FROM information_schema.columns WHERE ...`).
+- If the `.github/workflows/migrations.yml` PR gate fails, fix the migration — do not bypass.
+
+### DO NOT
+- **Never** run schema changes through the Supabase dashboard SQL editor. Dashboard runs bypass `supabase_migrations.schema_migrations`, and any subsequent `supabase db pull` will mark them applied without running them — the exact footgun that broke `routine_exercises.is_bodyweight`, `creator_stats`, and the benchmarks RLS policies.
+- **Never** run `supabase migration repair --status applied <version>` unless you have **already executed** the DDL against the target DB and are only correcting tracking metadata. Repair inserts a bare row into `schema_migrations` with null `name`/`statements` — it runs zero SQL.
+- **Never** run `supabase db pull` against a DB that had manual dashboard changes. It captures state but invents migration rows whose statements were never executed.
+- **Never** commit a migration that depends on non-idempotent DDL. Partial apply = stuck forever.
+
+### When drift is suspected
+1. Compare local files: `ls supabase/migrations/*.sql`.
+2. Compare tracked rows: `SELECT version, name, array_length(statements,1) FROM supabase_migrations.schema_migrations ORDER BY version;`.
+3. Any row with `name IS NULL` or `statements IS NULL` is a bare-repaired ghost — its DDL may or may not have executed.
+4. For each ghost, check whether its artifacts exist (`information_schema.columns`, `pg_views`, `pg_policies`, `pg_proc`).
+5. Write a reconciliation migration that reapplies only the **missing** artifacts using idempotent DDL; leave already-present artifacts alone (especially views/tables of different `relkind` than the migration assumed — see the `creator_stats` materialized-view incident).
+
+### CI coverage
+- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/`. Fails on file-vs-applied count mismatch.
+- Follow-up not yet wired: a scheduled `supabase db diff --linked --schema public` that alerts on prod drift. Requires `SUPABASE_ACCESS_TOKEN` + DB password secrets.
 
 ## The Daem0n's Covenant
 

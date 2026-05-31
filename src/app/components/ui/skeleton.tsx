@@ -111,9 +111,11 @@ export function ChartSkeleton() {
 			<Skeleton className="h-6 w-48 mb-6" />
 			<div className="space-y-2">
 				{Array.from({ length: 5 }).map((_, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 					<div key={i} className="flex items-end gap-2 h-32">
 						{Array.from({ length: 7 }).map((_, j) => (
 							<Skeleton
+								// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 								key={j}
 								className="flex-1"
 								style={{ height: `${Math.random() * 100 + 20}%` }}
@@ -138,6 +140,7 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 				</div>
 			</div>
 			{Array.from({ length: rows }).map((_, i) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 				<div key={i} className="p-4 border-b border-[#374151] last:border-0">
 					<div className="flex gap-4">
 						<Skeleton className="h-4 w-32" />

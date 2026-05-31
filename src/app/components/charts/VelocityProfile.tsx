@@ -5,7 +5,16 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
-import { classifyMannZone, getDominantMannZone, MANN_ZONES } from "@/lib/vbt";
+import {
+	classifyMannZone,
+	classifyVbtZone,
+	getDominantMannZone,
+	getDominantSimplifiedZone,
+	MANN_ZONES,
+	type MannZoneInfo,
+	SIMPLIFIED_ZONES,
+	type SimplifiedZoneInfo,
+} from "@/lib/vbt";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
@@ -15,7 +24,7 @@ export interface VelocityProfileProps {
 	height?: number;
 	showPeakVelocity?: boolean;
 	showZoneLabels?: boolean;
-	/** Zone system to display - defaults to Dr. Mann VBT zones */
+	/** Zone system — simplified matches mobile; Mann is advanced overlay */
 	zoneSystem?: "mann" | "simplified";
 	/** Show zone indicator badge */
 	showZoneIndicator?: boolean;
@@ -28,7 +37,7 @@ function VelocityProfileInner({
 	height = 280,
 	showPeakVelocity = true,
 	showZoneLabels = true,
-	zoneSystem = "mann",
+	zoneSystem = "simplified",
 	showZoneIndicator = true,
 	showDominantZone = true,
 	width,
@@ -83,6 +92,18 @@ function VelocityProfileInner({
 		[maxVelocity, innerHeight],
 	);
 
+	const legendHeight = 36;
+	const velocities = useMemo(
+		() => repSummaries.map((r) => r.mean_velocity_mps),
+		[repSummaries],
+	);
+	const dominantZone = useMemo(() => {
+		if (repSummaries.length === 0) return null;
+		return zoneSystem === "mann"
+			? getDominantMannZone(velocities)
+			: getDominantSimplifiedZone(velocities);
+	}, [repSummaries.length, velocities, zoneSystem]);
+
 	if (repSummaries.length === 0) {
 		return (
 			<div
@@ -94,29 +115,37 @@ function VelocityProfileInner({
 		);
 	}
 
-	const legendHeight = 36;
-	const dominantZone = getDominantMannZone(
-		repSummaries.map((r) => r.mean_velocity_mps),
-	);
-
 	return (
 		<div style={{ position: "relative" }}>
 			{/* Zone indicator header */}
 			{(showZoneIndicator || showDominantZone) && (
 				<div className="flex items-center justify-between px-2 mb-2">
 					{showDominantZone && dominantZone && (
-						<ZoneBadge zone={dominantZone} system="mann" size="sm" showDot />
+						<ZoneBadge
+							zone={dominantZone}
+							system={zoneSystem}
+							size="sm"
+							showDot
+						/>
 					)}
 					{showZoneIndicator && <ZoneIndicator system={zoneSystem} />}
 				</div>
 			)}
-			<svg width={width} height={height}>
+			<svg
+				width={width}
+				height={height}
+				role="img"
+				aria-label="Velocity profile chart"
+			>
 				<Group left={margin.left} top={margin.top}>
 					{repSummaries.map((rep, i) => {
 						const label = String(i + 1);
 						const barX = xScale(label) ?? 0;
 						const barWidth = xScale.bandwidth();
-						const zone = classifyMannZone(rep.mean_velocity_mps);
+						const zone: MannZoneInfo | SimplifiedZoneInfo =
+							zoneSystem === "mann"
+								? classifyMannZone(rep.mean_velocity_mps)
+								: classifyVbtZone(rep.mean_velocity_mps);
 
 						const meanBarHeight =
 							innerHeight - (yScale(rep.mean_velocity_mps) ?? 0);
@@ -182,15 +211,18 @@ function VelocityProfileInner({
 										fontSize={9}
 										fontWeight={500}
 									>
-										{zone.zone === "absolute-strength"
-											? "Abs"
-											: zone.zone === "accelerative-strength"
-												? "Acc"
-												: zone.zone === "strength-speed"
-													? "SS"
-													: zone.zone === "speed-strength"
-														? "SpS"
-														: "Sta"}
+										{zoneSystem === "mann"
+											? (zone as MannZoneInfo).zone === "absolute-strength"
+												? "Abs"
+												: (zone as MannZoneInfo).zone ===
+														"accelerative-strength"
+													? "Acc"
+													: (zone as MannZoneInfo).zone === "strength-speed"
+														? "SS"
+														: (zone as MannZoneInfo).zone === "speed-strength"
+															? "SpS"
+															: "Sta"
+											: (zone as SimplifiedZoneInfo).zone.slice(0, 3)}
 									</text>
 								)}
 							</Group>
@@ -235,12 +267,11 @@ function VelocityProfileInner({
 				</Group>
 			</svg>
 
-			{/* Zone legend - Dr. Mann zones */}
 			<div
 				className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-2"
 				style={{ height: legendHeight }}
 			>
-				{MANN_ZONES.map((z) => (
+				{(zoneSystem === "mann" ? MANN_ZONES : SIMPLIFIED_ZONES).map((z) => (
 					<div key={z.zone} className="flex items-center gap-1.5 text-xs">
 						<span
 							className="inline-block h-2.5 w-2.5 rounded-sm"

@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -28,7 +31,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: ".nvmrc"
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -40,7 +43,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: ".nvmrc"
           cache: npm
       - run: npm ci
       - run: npm test
@@ -52,7 +55,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: ".nvmrc"
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
@@ -73,10 +76,11 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: ".nvmrc"
           cache: npm
       - run: npm ci
       - run: npm run build
         env:
           VITE_SUPABASE_URL: "https://placeholder.supabase.co"
           VITE_SUPABASE_ANON_KEY: "placeholder-anon-key"
+      - run: npm run assert:no-sourcemaps

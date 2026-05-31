@@ -1,4 +1,6 @@
+import { escapeCSVField } from "@/lib/export/csv-security";
 import { supabase } from "@/lib/supabase";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
 // =============================================================================
 // Export Phoenix workouts as Strong-compatible CSV
@@ -9,9 +11,6 @@ import { supabase } from "@/lib/supabase";
 //   Date, Workout Name, Duration, Exercise Name, Set Order,
 //   Weight, Reps, Distance, Seconds, Notes, Workout Notes
 // =============================================================================
-
-/** Per-cable to total weight multiplier (must match WEIGHT_MULTIPLIER in transforms.ts) */
-const WEIGHT_MULTIPLIER = 2;
 
 /** Kilograms to pounds conversion factor */
 const KG_TO_LBS = 2.20462;
@@ -35,7 +34,7 @@ interface RawSet {
 	exercise_id: string;
 	set_number: number;
 	actual_reps: number;
-	weight: number; // per-cable kg in DB
+	weight_kg: number; // per-cable kg in DB
 	rpe: number | null;
 	notes: string | null;
 }
@@ -76,22 +75,6 @@ function formatDate(isoString: string): string {
 	const d = new Date(isoString);
 	const pad = (n: number) => n.toString().padStart(2, "0");
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-/**
- * Escape a CSV field value. Wraps in quotes if it contains commas,
- * quotes, or newlines.
- */
-function escapeCSV(value: string): string {
-	if (
-		value.includes(",") ||
-		value.includes('"') ||
-		value.includes("\n") ||
-		value.includes("\r")
-	) {
-		return `"${value.replace(/"/g, '""')}"`;
-	}
-	return value;
 }
 
 export interface ExportOptions {
@@ -151,7 +134,7 @@ export async function exportWorkoutsAsCSV(
 			const batch = exerciseIds.slice(i, i + BATCH_SIZE);
 			const { data: sets, error: setError } = await supabase
 				.from("sets")
-				.select("exercise_id, set_number, actual_reps, weight, rpe, notes")
+				.select("exercise_id, set_number, actual_reps, weight_kg, rpe, notes")
 				.in("exercise_id", batch)
 				.order("set_number", { ascending: true });
 			if (setError) throw setError;
@@ -189,7 +172,7 @@ export async function exportWorkoutsAsCSV(
 
 			for (const set of exerciseSets) {
 				// Convert per-cable weight to total, then optionally to lbs
-				let weight = set.weight * WEIGHT_MULTIPLIER;
+				let weight = set.weight_kg * WEIGHT_MULTIPLIER;
 				if (weightUnit === "lbs") {
 					weight = Math.round(weight * KG_TO_LBS * 100) / 100;
 				} else {
@@ -233,7 +216,7 @@ export async function exportWorkoutsAsCSV(
 		const values = headers.map((h) => {
 			const val = row[h as keyof CSVRow];
 			if (typeof val === "number") return val.toString();
-			return escapeCSV(String(val));
+			return escapeCSVField(String(val));
 		});
 		lines.push(values.join(","));
 	}

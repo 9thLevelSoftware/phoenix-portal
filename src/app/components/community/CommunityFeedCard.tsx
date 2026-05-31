@@ -55,6 +55,7 @@ export function CommunityFeedCard({
 							{authorName.charAt(0).toUpperCase()}
 						</div>
 						<button
+							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								if (!isDeletedUser && item.user_id) {
@@ -77,6 +78,7 @@ export function CommunityFeedCard({
 							/>
 						)}
 						<button
+							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								onVote(item.id);
@@ -125,12 +127,7 @@ export function CommunityFeedCard({
 							</div>
 							<div className="flex items-center gap-1">
 								<Clock className="w-3.5 h-3.5" />
-								<span>
-									{item.estimated_duration > 300
-										? Math.round(item.estimated_duration / 60)
-										: item.estimated_duration}{" "}
-									min
-								</span>
+								<span>{item.estimated_duration} min</span>
 							</div>
 						</>
 					) : (

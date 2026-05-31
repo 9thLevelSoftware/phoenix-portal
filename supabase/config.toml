@@ -1,5 +1,87 @@
-[functions.paddle-webhooks]
+# Auth configuration for multi-client session handling
+# Both the mobile app and web portal share this Supabase auth backend.
+# These settings prevent token refresh conflicts between clients.
+[auth]
+# `npm run auth:social:push` replaces the managed block below in a temporary
+# config before pushing hosted Google/Apple settings via `supabase config push`.
+# JWT access tokens expire after 1 hour (default)
+jwt_expiry = 3600
+
+# Enable refresh token rotation for security (rotates on each refresh)
+enable_refresh_token_rotation = true
+
+# CRITICAL: Allow old refresh tokens to remain valid for 60 seconds after rotation.
+# This prevents multi-client conflicts where:
+# 1. Portal refreshes token -> mobile's old refresh token is rotated out
+# 2. Mobile tries to refresh within 60s -> old token still works
+# Default is 10s which is too short for independent client refresh cycles.
+refresh_token_reuse_interval = 60
+
+# BEGIN_MANAGED_SOCIAL_AUTH
+# Generated only in a temporary config by scripts/sync-social-auth.mjs.
+# END_MANAGED_SOCIAL_AUTH
+
+# Keep every deployed Edge Function listed here so Supabase production and
+# preview deploys use explicit JWT-verification settings.
+[functions.compute-rankings]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.disconnect-integration]
+verify_jwt = true
+
+[functions.fitbit-oauth]
+verify_jwt = false
+
+[functions.fitbit-sync]
+verify_jwt = true
+
+[functions.garmin-oauth]
 verify_jwt = false
 
 [functions.garmin-webhook]
 verify_jwt = false
+
+[functions.hevy-sync]
+verify_jwt = true
+
+[functions.initiate-oauth]
+verify_jwt = true
+
+[functions.liftosaur-sync]
+verify_jwt = true
+
+[functions.mobile-integration-sync]
+verify_jwt = true
+
+[functions.mobile-sync-pull]
+verify_jwt = false
+
+[functions.mobile-sync-push]
+verify_jwt = false
+
+[functions.paddle-cancel-subscription]
+verify_jwt = true
+
+[functions.paddle-checkout-custom-data]
+verify_jwt = true
+
+[functions.paddle-refresh-subscription]
+verify_jwt = true
+
+[functions.paddle-update-subscription]
+verify_jwt = true
+
+[functions.paddle-webhooks]
+verify_jwt = false
+
+[functions.process-sync-queue]
+verify_jwt = false
+
+[functions.strava-oauth]
+verify_jwt = false
+
+[functions.strava-sync]
+verify_jwt = true

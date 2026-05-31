@@ -3,7 +3,7 @@ import { z } from "zod";
 // Per-cable to total weight conversion
 // Vitruvian has dual cables; DB stores per-cable, portal shows total
 // Change to 1 if DB convention changes to store total
-const WEIGHT_MULTIPLIER = 2;
+export const WEIGHT_MULTIPLIER = 2;
 const weightTransform = z
 	.number()
 	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
@@ -24,6 +24,24 @@ const workoutModeSchema = z
 	.nullable()
 	.transform((mode) => (mode ? (workoutModeMap[mode] ?? mode) : null));
 
+// --- Equipment Display ---
+
+export const equipmentDisplayMap: Record<string, string> = {
+	HANDLES: "Handles",
+	BAR: "Bar",
+	LONG_BAR: "Long Bar",
+	SHORT_BAR: "Short Bar",
+	ROPE: "Rope",
+	BELT: "Belt",
+	BENCH: "Bench",
+	STRAPS: "Straps",
+	GREY_CABLES: "Cables",
+};
+
+export function formatEquipment(codes: string[]): string {
+	return codes.map((c) => equipmentDisplayMap[c] ?? c).join(", ");
+}
+
 // --- Workout Session ---
 
 export const workoutSessionSchema = z.object({
@@ -35,7 +53,7 @@ export const workoutSessionSchema = z.object({
 		.transform((name) => name?.trim() || "Untitled Workout"),
 	started_at: z.string().transform((s) => new Date(s)),
 	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
-	total_volume: weightTransform,
+	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform that was incorrectly doubling volume.
 	set_count: z.number(),
 	exercise_count: z.number(),
 	pr_count: z.number(),
@@ -78,6 +96,7 @@ export const exerciseSchema = z.object({
 	name: z.string(),
 	muscle_group: z.string(),
 	order_index: z.number(),
+	exercise_id: z.string().nullable().optional(),
 });
 
 export type Exercise = z.infer<typeof exerciseSchema>;
@@ -111,6 +130,7 @@ export const personalRecordSchema = z.object({
 	id: z.string().uuid(),
 	user_id: z.string().uuid(),
 	exercise_name: z.string(),
+	exercise_id: z.string().nullable().optional(),
 	muscle_group: z.string(),
 	record_type: z.string(),
 	value: weightTransform,
@@ -140,7 +160,8 @@ export const routineSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	exercise_count: z.number(),
-	estimated_duration: z.number(),
+	/** Stored as seconds in DB; exposed to portal UI as minutes */
+	estimated_duration: z.number().transform((sec) => Math.round(sec / 60)),
 	times_completed: z.number(),
 	last_used_at: z
 		.string()
@@ -190,7 +211,7 @@ export const analyticsSummarySchema = z.object({
 	user_id: z.string().uuid(),
 	period: z.string(),
 	total_workouts: z.number(),
-	total_volume: weightTransform,
+	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform.
 	total_duration: z.number(),
 	avg_session_duration: z.number(),
 	streak_days: z.number(),
@@ -206,9 +227,10 @@ export const routineExerciseSchema = z.object({
 	routine_id: z.string().uuid(),
 	name: z.string(),
 	muscle_group: z.string(),
+	exercise_id: z.string().nullable().optional(),
 	sets: z.number(),
 	reps: z.number(),
-	weight: z.number(),
+	weight: weightTransform,
 	rest_seconds: z.number(),
 	duration_seconds: z.number().nullable().optional(),
 	mode: z.string(),
@@ -216,14 +238,28 @@ export const routineExerciseSchema = z.object({
 	superset_id: z.string().nullable().optional(),
 	superset_color: z.string().nullable().optional(),
 	superset_order: z.number().nullable().optional(),
-	per_set_weights: z.any().nullable().optional(),
+	// Stored per-cable to match the single `weight` column; multiply back to
+	// display totals so the UI keeps round-trip symmetry with `weight`.
+	per_set_weights: z
+		.any()
+		.nullable()
+		.optional()
+		.transform((v) =>
+			Array.isArray(v)
+				? v.map((x) => (typeof x === "number" ? x * WEIGHT_MULTIPLIER : x))
+				: v,
+		),
 	per_set_rest: z.any().nullable().optional(),
+	per_set_reps: z.any().nullable().optional(),
 	is_amrap: z.boolean().optional().default(false),
 	is_bodyweight: z.boolean().optional().default(false),
 	pr_percentage: z.number().nullable().optional(),
 	rep_count_timing: z.string().nullable().optional(),
 	stop_at_position: z.string().nullable().optional(),
-	stall_detection: z.boolean().optional().default(false),
+	stall_detection: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? true),
 	eccentric_load: z.string().nullable().optional(),
 	echo_level: z.string().nullable().optional(),
 	created_at: z.string().transform((s) => new Date(s)),
@@ -387,3 +423,35 @@ export const bodyIntelligenceRowSchema = z.object({
 });
 
 export const bodyIntelligenceSchema = z.array(bodyIntelligenceRowSchema);
+
+// --- Exercise Catalog ---
+
+export const catalogExerciseSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	display_name: z.string(),
+	description: z.string().nullable(),
+	muscle_group: z.string(),
+	muscle_groups: z.array(z.string()),
+	muscles: z.array(z.string()).nullable(),
+	equipment: z.array(z.string()),
+	movement: z.string().nullable(),
+	sidedness: z.string().nullable(),
+	grip: z.string().nullable(),
+	grip_width: z.string().nullable(),
+	default_cable_config: z.string(),
+	min_rep_range: z.number().nullable(),
+	popularity: z.number(),
+	aliases: z.array(z.string()).nullable(),
+	thumbnail_url: z.string().nullable(),
+	archived: z.boolean(),
+	is_custom: z.boolean(),
+});
+
+export const catalogExerciseListSchema = z.array(catalogExerciseSchema);
+
+export type CatalogExercise = z.infer<typeof catalogExerciseSchema>;
+
+export function getExerciseDisplayName(exercise: CatalogExercise): string {
+	return exercise.display_name;
+}

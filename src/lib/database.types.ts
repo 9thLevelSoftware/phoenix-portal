@@ -508,6 +508,7 @@ export type Database = {
 					raw_data: Json | null;
 					started_at: string;
 					synced_at: string | null;
+					updated_at: string;
 					user_id: string;
 				};
 				Insert: {
@@ -525,6 +526,7 @@ export type Database = {
 					raw_data?: Json | null;
 					started_at: string;
 					synced_at?: string | null;
+					updated_at?: string;
 					user_id: string;
 				};
 				Update: {
@@ -542,15 +544,18 @@ export type Database = {
 					raw_data?: Json | null;
 					started_at?: string;
 					synced_at?: string | null;
+					updated_at?: string;
 					user_id?: string;
 				};
 				Relationships: [];
 			};
 			gamification_stats: {
 				Row: {
+					best_streak: number;
 					current_streak: number;
 					id: string;
 					longest_streak: number;
+					pr_count: number;
 					total_reps: number;
 					total_time_seconds: number;
 					total_volume_kg: number;
@@ -559,9 +564,11 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					best_streak?: number;
 					current_streak?: number;
 					id?: string;
 					longest_streak?: number;
+					pr_count?: number;
 					total_reps?: number;
 					total_time_seconds?: number;
 					total_volume_kg?: number;
@@ -570,15 +577,97 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					best_streak?: number;
 					current_streak?: number;
 					id?: string;
 					longest_streak?: number;
+					pr_count?: number;
 					total_reps?: number;
 					total_time_seconds?: number;
 					total_volume_kg?: number;
 					total_workouts?: number;
 					updated_at?: string;
 					user_id?: string;
+				};
+				Relationships: [];
+			};
+			goal_snapshots: {
+				Row: {
+					current_value: number;
+					goal_id: string;
+					id: string;
+					predicted_completion: string | null;
+					progress_pct: number;
+					snapshotted_at: string;
+					user_id: string;
+				};
+				Insert: {
+					current_value?: number;
+					goal_id: string;
+					id?: string;
+					predicted_completion?: string | null;
+					progress_pct?: number;
+					snapshotted_at?: string;
+					user_id: string;
+				};
+				Update: {
+					current_value?: number;
+					goal_id?: string;
+					id?: string;
+					predicted_completion?: string | null;
+					progress_pct?: number;
+					snapshotted_at?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "goal_snapshots_goal_id_fkey";
+						columns: ["goal_id"];
+						isOneToOne: false;
+						referencedRelation: "user_goals";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			leaderboard_events: {
+				Row: {
+					created_at: string | null;
+					description: string | null;
+					end_date: string;
+					id: string;
+					is_active: boolean | null;
+					metric: string;
+					metric_label: string;
+					name: string;
+					prize_description: string | null;
+					start_date: string;
+					updated_at: string | null;
+				};
+				Insert: {
+					created_at?: string | null;
+					description?: string | null;
+					end_date: string;
+					id?: string;
+					is_active?: boolean | null;
+					metric: string;
+					metric_label: string;
+					name: string;
+					prize_description?: string | null;
+					start_date: string;
+					updated_at?: string | null;
+				};
+				Update: {
+					created_at?: string | null;
+					description?: string | null;
+					end_date?: string;
+					id?: string;
+					is_active?: boolean | null;
+					metric?: string;
+					metric_label?: string;
+					name?: string;
+					prize_description?: string | null;
+					start_date?: string;
+					updated_at?: string | null;
 				};
 				Relationships: [];
 			};
@@ -675,47 +764,98 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			overload_suggestions: {
+				Row: {
+					confidence: number;
+					created_at: string;
+					current_value: number;
+					exercise_name: string;
+					expires_at: string;
+					id: string;
+					rationale: string;
+					suggested_value: number;
+					suggestion_type: string;
+					user_id: string;
+				};
+				Insert: {
+					confidence: number;
+					created_at?: string;
+					current_value: number;
+					exercise_name: string;
+					expires_at?: string;
+					id?: string;
+					rationale: string;
+					suggested_value: number;
+					suggestion_type: string;
+					user_id: string;
+				};
+				Update: {
+					confidence?: number;
+					created_at?: string;
+					current_value?: number;
+					exercise_name?: string;
+					expires_at?: string;
+					id?: string;
+					rationale?: string;
+					suggested_value?: number;
+					suggestion_type?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			personal_records: {
 				Row: {
 					achieved_at: string;
+					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
 					local_profile_id: string | null;
 					muscle_group: string;
 					previous_value: number | null;
 					record_type: string;
+					reps: number | null;
+					session_id: string | null;
 					unit: string;
 					updated_at: string;
 					user_id: string;
 					value: number;
+					weight_kg: number | null;
 					workout_phase: string | null;
 				};
 				Insert: {
 					achieved_at?: string;
+					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
 					local_profile_id?: string | null;
 					muscle_group?: string;
 					previous_value?: number | null;
 					record_type?: string;
+					reps?: number | null;
+					session_id?: string | null;
 					unit?: string;
 					updated_at?: string;
 					user_id: string;
 					value: number;
+					weight_kg?: number | null;
 					workout_phase?: string | null;
 				};
 				Update: {
 					achieved_at?: string;
+					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;
 					local_profile_id?: string | null;
 					muscle_group?: string;
 					previous_value?: number | null;
 					record_type?: string;
+					reps?: number | null;
+					session_id?: string | null;
 					unit?: string;
 					updated_at?: string;
 					user_id?: string;
 					value?: number;
+					weight_kg?: number | null;
 					workout_phase?: string | null;
 				};
 				Relationships: [
@@ -726,6 +866,13 @@ export type Database = {
 						referencedRelation: "local_profiles";
 						referencedColumns: ["user_id", "id"];
 					},
+					{
+						foreignKeyName: "personal_records_session_id_fkey";
+						columns: ["session_id"];
+						isOneToOne: false;
+						referencedRelation: "workout_sessions";
+						referencedColumns: ["id"];
+					},
 				];
 			};
 			profiles: {
@@ -733,8 +880,11 @@ export type Database = {
 					avatar_url: string | null;
 					challenge_updates: boolean;
 					created_at: string | null;
+					digest_frequency: string | null;
+					digest_last_sent_at: string | null;
 					display_name: string | null;
 					email_digests: boolean;
+					feature_flags: Json | null;
 					id: string;
 					leaderboard_participation: boolean;
 					profile_visible: boolean;
@@ -749,8 +899,11 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
+					digest_frequency?: string | null;
+					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
+					feature_flags?: Json | null;
 					id: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -765,8 +918,11 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
+					digest_frequency?: string | null;
+					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
+					feature_flags?: Json | null;
 					id?: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -782,26 +938,32 @@ export type Database = {
 			rate_limit_tracking: {
 				Row: {
 					id: string;
+					key: string | null;
 					last_request_at: string | null;
 					last_reset_at: string | null;
 					provider: string;
 					requests_this_window: number | null;
+					user_id: string | null;
 					window_started_at: string | null;
 				};
 				Insert: {
 					id?: string;
+					key?: string | null;
 					last_request_at?: string | null;
 					last_reset_at?: string | null;
 					provider: string;
 					requests_this_window?: number | null;
+					user_id?: string | null;
 					window_started_at?: string | null;
 				};
 				Update: {
 					id?: string;
+					key?: string | null;
 					last_request_at?: string | null;
 					last_reset_at?: string | null;
 					provider?: string;
 					requests_this_window?: number | null;
+					user_id?: string | null;
 					window_started_at?: string | null;
 				};
 				Relationships: [];
@@ -912,15 +1074,18 @@ export type Database = {
 			routine_exercises: {
 				Row: {
 					created_at: string;
+					duration_seconds: number | null;
 					eccentric_load: string | null;
 					echo_level: string | null;
 					id: string;
 					is_amrap: boolean | null;
+					is_bodyweight: boolean;
 					mode: string;
 					muscle_group: string;
 					name: string;
 					order_index: number;
 					per_set_echo_levels: Json | null;
+					per_set_reps: Json | null;
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
 					pr_percentage: number | null;
@@ -939,15 +1104,18 @@ export type Database = {
 				};
 				Insert: {
 					created_at?: string;
+					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;
 					id?: string;
 					is_amrap?: boolean | null;
+					is_bodyweight?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name: string;
 					order_index?: number;
 					per_set_echo_levels?: Json | null;
+					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
@@ -966,15 +1134,18 @@ export type Database = {
 				};
 				Update: {
 					created_at?: string;
+					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;
 					id?: string;
 					is_amrap?: boolean | null;
+					is_bodyweight?: boolean;
 					mode?: string;
 					muscle_group?: string;
 					name?: string;
 					order_index?: number;
 					per_set_echo_levels?: Json | null;
+					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
@@ -1102,6 +1273,8 @@ export type Database = {
 			saved_community_items: {
 				Row: {
 					id: string;
+					imported_cycle_id: string | null;
+					imported_routine_id: string | null;
 					item_type: string;
 					saved_at: string;
 					shared_item_id: string;
@@ -1109,6 +1282,8 @@ export type Database = {
 				};
 				Insert: {
 					id?: string;
+					imported_cycle_id?: string | null;
+					imported_routine_id?: string | null;
 					item_type: string;
 					saved_at?: string;
 					shared_item_id: string;
@@ -1116,6 +1291,8 @@ export type Database = {
 				};
 				Update: {
 					id?: string;
+					imported_cycle_id?: string | null;
+					imported_routine_id?: string | null;
 					item_type?: string;
 					saved_at?: string;
 					shared_item_id?: string;
@@ -1182,7 +1359,7 @@ export type Database = {
 					{
 						foreignKeyName: "session_phase_statistics_session_id_fkey";
 						columns: ["session_id"];
-						isOneToOne: false;
+						isOneToOne: true;
 						referencedRelation: "workout_sessions";
 						referencedColumns: ["id"];
 					},
@@ -1241,6 +1418,7 @@ export type Database = {
 			shared_cycles: {
 				Row: {
 					comment_count: number;
+					cycle_snapshot: Json | null;
 					cycle_id: string;
 					description: string;
 					difficulty: string;
@@ -1257,6 +1435,7 @@ export type Database = {
 				};
 				Insert: {
 					comment_count?: number;
+					cycle_snapshot?: Json | null;
 					cycle_id: string;
 					description?: string;
 					difficulty?: string;
@@ -1273,6 +1452,7 @@ export type Database = {
 				};
 				Update: {
 					comment_count?: number;
+					cycle_snapshot?: Json | null;
 					cycle_id?: string;
 					description?: string;
 					difficulty?: string;
@@ -1394,11 +1574,12 @@ export type Database = {
 				Row: {
 					cancel_at_period_end: boolean | null;
 					created_at: string | null;
-					current_period_end: string;
+					current_period_end: string | null;
 					current_period_start: string | null;
 					environment: string | null;
 					id: string;
 					last_event_id: string | null;
+					last_event_occurred_at: string | null;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
 					price_id: string | null;
@@ -1410,11 +1591,12 @@ export type Database = {
 				Insert: {
 					cancel_at_period_end?: boolean | null;
 					created_at?: string | null;
-					current_period_end: string;
+					current_period_end?: string | null;
 					current_period_start?: string | null;
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
@@ -1426,11 +1608,12 @@ export type Database = {
 				Update: {
 					cancel_at_period_end?: boolean | null;
 					created_at?: string | null;
-					current_period_end?: string;
+					current_period_end?: string | null;
 					current_period_start?: string | null;
 					environment?: string | null;
 					id?: string;
 					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
@@ -1477,6 +1660,36 @@ export type Database = {
 					status?: string | null;
 					sync_type?: string | null;
 					user_id?: string;
+				};
+				Relationships: [];
+			};
+			telemetry_analysis: {
+				Row: {
+					analysis_type: string;
+					computed_at: string;
+					id: string;
+					result: Json;
+					set_id: string;
+					user_id: string;
+					worker_version: string | null;
+				};
+				Insert: {
+					analysis_type: string;
+					computed_at?: string;
+					id?: string;
+					result: Json;
+					set_id: string;
+					user_id: string;
+					worker_version?: string | null;
+				};
+				Update: {
+					analysis_type?: string;
+					computed_at?: string;
+					id?: string;
+					result?: Json;
+					set_id?: string;
+					user_id?: string;
+					worker_version?: string | null;
 				};
 				Relationships: [];
 			};
@@ -1568,10 +1781,13 @@ export type Database = {
 					completed_at: string | null;
 					created_at: string;
 					deadline: string | null;
+					exercise_id: string | null;
 					exercise_name: string | null;
 					goal_type: string;
 					id: string;
+					last_snapshot_at: string | null;
 					period: string;
+					predicted_completion_date: string | null;
 					status: string;
 					target_unit: string;
 					target_value: number;
@@ -1582,10 +1798,13 @@ export type Database = {
 					completed_at?: string | null;
 					created_at?: string;
 					deadline?: string | null;
+					exercise_id?: string | null;
 					exercise_name?: string | null;
 					goal_type: string;
 					id?: string;
+					last_snapshot_at?: string | null;
 					period?: string;
+					predicted_completion_date?: string | null;
 					status?: string;
 					target_unit: string;
 					target_value: number;
@@ -1596,10 +1815,13 @@ export type Database = {
 					completed_at?: string | null;
 					created_at?: string;
 					deadline?: string | null;
+					exercise_id?: string | null;
 					exercise_name?: string | null;
 					goal_type?: string;
 					id?: string;
+					last_snapshot_at?: string | null;
 					period?: string;
+					predicted_completion_date?: string | null;
 					status?: string;
 					target_unit?: string;
 					target_value?: number;
@@ -1752,6 +1974,63 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			wearable_daily_summaries: {
+				Row: {
+					awake_minutes: number | null;
+					body_battery: number | null;
+					created_at: string;
+					deep_sleep_minutes: number | null;
+					hr_zones: Json | null;
+					hrv_ms: number | null;
+					id: string;
+					light_sleep_minutes: number | null;
+					provider: string;
+					rem_sleep_minutes: number | null;
+					resting_hr: number | null;
+					sleep_duration_minutes: number | null;
+					sleep_score: number | null;
+					stress_score: number | null;
+					summary_date: string;
+					user_id: string;
+				};
+				Insert: {
+					awake_minutes?: number | null;
+					body_battery?: number | null;
+					created_at?: string;
+					deep_sleep_minutes?: number | null;
+					hr_zones?: Json | null;
+					hrv_ms?: number | null;
+					id?: string;
+					light_sleep_minutes?: number | null;
+					provider: string;
+					rem_sleep_minutes?: number | null;
+					resting_hr?: number | null;
+					sleep_duration_minutes?: number | null;
+					sleep_score?: number | null;
+					stress_score?: number | null;
+					summary_date: string;
+					user_id: string;
+				};
+				Update: {
+					awake_minutes?: number | null;
+					body_battery?: number | null;
+					created_at?: string;
+					deep_sleep_minutes?: number | null;
+					hr_zones?: Json | null;
+					hrv_ms?: number | null;
+					id?: string;
+					light_sleep_minutes?: number | null;
+					provider?: string;
+					rem_sleep_minutes?: number | null;
+					resting_hr?: number | null;
+					sleep_duration_minutes?: number | null;
+					sleep_score?: number | null;
+					stress_score?: number | null;
+					summary_date?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			workout_sessions: {
 				Row: {
 					avg_asymmetry_pct: number | null;
@@ -1875,6 +2154,15 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			public_profiles: {
+				Row: {
+					avatar_url: string | null;
+					display_name: string | null;
+					id: string | null;
+					user_id: string | null;
+				};
+				Relationships: [];
+			};
 			telemetry_points: {
 				Row: {
 					cable: string | null;
@@ -1883,6 +2171,7 @@ export type Database = {
 					position_mm: number | null;
 					set_id: string | null;
 					timestamp_ms: number | null;
+					user_id: string | null;
 					velocity_mps: number | null;
 				};
 				Insert: {
@@ -1892,6 +2181,7 @@ export type Database = {
 					position_mm?: number | null;
 					set_id?: string | null;
 					timestamp_ms?: number | null;
+					user_id?: string | null;
 					velocity_mps?: number | null;
 				};
 				Update: {
@@ -1901,6 +2191,7 @@ export type Database = {
 					position_mm?: number | null;
 					set_id?: string | null;
 					timestamp_ms?: number | null;
+					user_id?: string | null;
 					velocity_mps?: number | null;
 				};
 				Relationships: [
@@ -1915,6 +2206,370 @@ export type Database = {
 			};
 		};
 		Functions: {
+			check_rate_limit: {
+				Args: {
+					p_key: string;
+					p_max_requests: number;
+					p_user_id: string;
+					p_window_seconds: number;
+				};
+				Returns: {
+					allowed: boolean;
+					remaining: number;
+					retry_after_seconds: number;
+				}[];
+			};
+			detect_plateaus: {
+				Args: {
+					p_profile_id?: string;
+					p_user_id: string;
+					p_variance_threshold?: number;
+					p_window_sessions?: number;
+				};
+				Returns: {
+					coefficient_of_variation: number;
+					exercise_name: string;
+					is_plateau: boolean;
+					recent_avg: number;
+					recent_stddev: number;
+					session_count: number;
+				}[];
+			};
+			get_acwr: {
+				Args: {
+					p_acute_days?: number;
+					p_chronic_days?: number;
+					p_user_id: string;
+				};
+				Returns: {
+					acute_load: number;
+					acwr: number;
+					calc_date: string;
+					chronic_load: number;
+					risk_zone: string;
+				}[];
+			};
+			get_badges_excluding_ids: {
+				Args: {
+					p_cursor_earned_at?: string;
+					p_cursor_id?: number;
+					p_known_ids?: number[];
+					p_limit?: number;
+					p_user_id: string;
+				};
+				Returns: {
+					badge_description: string;
+					badge_id: string;
+					badge_name: string;
+					badge_tier: string;
+					earned_at: string;
+					id: number;
+					user_id: string;
+				}[];
+			};
+			get_cycles_excluding_ids: {
+				Args: {
+					p_cursor_id?: string;
+					p_cursor_updated_at?: string;
+					p_known_ids?: string[];
+					p_limit?: number;
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					current_week: number;
+					deload_settings: Json;
+					description: string;
+					duration_weeks: number;
+					id: string;
+					last_used_at: string;
+					local_profile_id: string;
+					name: string;
+					progression_settings: Json;
+					rest_days: number;
+					started_at: string;
+					status: string;
+					updated_at: string;
+					user_id: string;
+					workout_days: number;
+				}[];
+			};
+			get_exercise_mastery_rankings: {
+				Args: { result_limit?: number };
+				Returns: {
+					mastered_count: number;
+					rank: number;
+					user_id: string;
+				}[];
+			};
+			get_exercise_trend: {
+				Args: {
+					p_exercise_name: string;
+					p_lookback_days?: number;
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					data_points: number;
+					r_squared: number;
+					trend_direction: string;
+					trend_slope: number;
+					weekly_gain: number;
+				}[];
+			};
+			get_goal_progress_cached: {
+				Args: { p_user_id: string };
+				Returns: {
+					current_value: number;
+					deadline: string;
+					exercise_name: string;
+					goal_id: string;
+					goal_type: string;
+					predicted_completion: string;
+					progress_pct: number;
+					snapshotted_at: string;
+					status: string;
+					target_unit: string;
+					target_value: number;
+				}[];
+			};
+			get_muscle_distribution: {
+				Args: { p_profile_id?: string; p_user_id: string };
+				Returns: {
+					name: string;
+					value: number;
+				}[];
+			};
+			get_percentile_rank: {
+				Args: {
+					p_metric_key?: string;
+					p_metric_type: string;
+					p_user_id: string;
+				};
+				Returns: {
+					percentile: number;
+					rank_description: string;
+					user_value: number;
+				}[];
+			};
+			get_personal_records_excluding_ids: {
+				Args: {
+					p_known_ids?: number[];
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					achieved_at: string;
+					exercise_name: string;
+					id: number;
+					local_profile_id: string;
+					muscle_group: string;
+					record_type: string;
+					reps: number;
+					session_id: string;
+					updated_at: string;
+					user_id: string;
+					value: number;
+					weight_kg: number;
+					workout_phase: string;
+				}[];
+			};
+			get_pr_count_rankings: {
+				Args: { result_limit?: number };
+				Returns: {
+					pr_count: number;
+					rank: number;
+					user_id: string;
+				}[];
+			};
+			get_profile_stats: {
+				Args: { p_user_id: string };
+				Returns: {
+					best_streak: number;
+					current_streak: number;
+					longest_streak: number;
+					pr_count: number;
+					total_volume_kg: number;
+					total_workouts: number;
+				}[];
+			};
+			get_routines_excluding_ids: {
+				Args: {
+					p_cursor_id?: string;
+					p_cursor_updated_at?: string;
+					p_known_ids?: string[];
+					p_limit?: number;
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					description: string;
+					estimated_duration: number;
+					exercise_count: number;
+					id: string;
+					is_favorite: boolean;
+					local_profile_id: string;
+					name: string;
+					times_completed: number;
+					updated_at: string;
+					user_id: string;
+				}[];
+			};
+			get_sessions_excluding_ids: {
+				Args: {
+					p_cursor_id?: string;
+					p_cursor_updated_at?: string;
+					p_known_ids?: string[];
+					p_limit?: number;
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					avg_asymmetry_pct: number;
+					avg_velocity_mps: number;
+					deload_warnings: number;
+					dominant_side: string;
+					duration_seconds: number;
+					eccentric_load: number;
+					echo_level: number;
+					estimated_calories: number;
+					exercise_count: number;
+					form_score: number;
+					heaviest_lift_kg: number;
+					id: string;
+					local_profile_id: string;
+					name: string;
+					notes: string;
+					peak_force_n: number;
+					pr_count: number;
+					rom_violations: number;
+					routine_name: string;
+					routine_session_id: string;
+					set_count: number;
+					spotter_activations: number;
+					started_at: string;
+					strength_profile: string;
+					total_volume: number;
+					updated_at: string;
+					user_id: string;
+					velocity_loss_pct: number;
+					warmup_reps: number;
+					working_reps: number;
+					workout_mode: string;
+				}[];
+			};
+			get_user_pr_rank: {
+				Args: { target_user_id: string };
+				Returns: {
+					pr_count: number;
+					rank: number;
+					user_id: string;
+				}[];
+			};
+			get_volume_comparison: {
+				Args: { p_days?: number; p_profile_id?: string; p_user_id: string };
+				Returns: {
+					avg_volume: number;
+					period: string;
+					session_count: number;
+					total_duration: number;
+					total_sets: number;
+					total_volume: number;
+				}[];
+			};
+			get_volume_rolling_avg: {
+				Args: {
+					p_lookback_days?: number;
+					p_profile_id?: string;
+					p_user_id: string;
+					p_window_days?: number;
+				};
+				Returns: {
+					daily_volume: number;
+					rolling_avg: number;
+					workout_date: string;
+				}[];
+			};
+			get_wearable_trends: {
+				Args: { p_lookback_days?: number; p_user_id: string };
+				Returns: {
+					hrv_7d_avg: number;
+					hrv_ms: number;
+					resting_hr: number;
+					resting_hr_7d_avg: number;
+					sleep_score: number;
+					sleep_score_7d_avg: number;
+					summary_date: string;
+				}[];
+			};
+			get_workout_streak: {
+				Args: { p_profile_id?: string; p_user_id: string };
+				Returns: number;
+			};
+			import_shared_cycle: {
+				Args: {
+					p_local_profile_id?: string | null;
+					p_shared_cycle_id: string;
+				};
+				Returns: string;
+			};
+			import_shared_routine: {
+				Args: {
+					p_local_profile_id?: string | null;
+					p_shared_routine_id: string;
+				};
+				Returns: string;
+			};
+			refresh_community_benchmarks: { Args: never; Returns: undefined };
+			refresh_hot_scores: { Args: never; Returns: undefined };
+			upsert_external_activity_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
+			upsert_gamification_stats_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
+			upsert_routine_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
+			upsert_rpg_attributes_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
+			upsert_training_cycle_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
+			upsert_workout_session_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
+			};
 			user_subscription_tier: { Args: never; Returns: string };
 		};
 		Enums: {

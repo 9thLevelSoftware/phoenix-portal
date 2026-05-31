@@ -83,7 +83,7 @@ function groupBy<T>(
  */
 export function parseStrongCSV(
 	csvContent: string,
-	weightUnit: "kg" | "lbs" = "kg",
+	_weightUnit: "kg" | "lbs" = "kg",
 ): NormalizedActivity[] {
 	const result = Papa.parse<StrongCSVRow>(csvContent, {
 		header: true,

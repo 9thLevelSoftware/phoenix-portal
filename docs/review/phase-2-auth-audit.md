@@ -28,26 +28,26 @@ verify_jwt = false
 
 ## Audit Matrix
 
-| # | Function | Auth Method | User ID Source | Service Role | Error Code | Auth Bypass | Verdict |
-|---|----------|-------------|---------------|-------------|-----------|-------------|---------|
-| 1 | `paddle-webhooks` | HMAC-SHA256 signature | `custom_data.user_id` (webhook payload) | Yes -- upsert subscriptions | 401 | None | PASS |
-| 2 | `paddle-cancel-subscription` | JWT via `getUser()` | `user.id` (JWT) | Yes -- read subscription by user_id | 401 | None | PASS |
-| 3 | `paddle-update-subscription` | JWT via `getUser()` | `user.id` (JWT) | Yes -- read subscription by user_id | 401 | None | PASS |
-| 4 | `initiate-oauth` | JWT via `getUser()` | `user.id` (JWT) | Yes -- insert oauth_states | 401 | None | PASS |
-| 5 | `strava-oauth` | CSRF state token | `stateRow.user_id` (DB lookup) | Yes -- write oauth_tokens, user_integrations | Redirect w/ error param | None | PASS |
-| 6 | `fitbit-oauth` | CSRF state token | `stateRow.user_id` (DB lookup) | Yes -- write oauth_tokens, user_integrations | Redirect w/ error param | None | PASS |
-| 7 | `garmin-oauth` | CSRF state token (step 1) / OAuth 1.0a token lookup (step 2) | `stateRow.user_id` / `pendingToken.user_id` (DB) | Yes -- write oauth_tokens, user_integrations | Redirect w/ error param | None | PASS |
-| 8 | `strava-sync` | Dual-path: JWT or body.user_id | JWT preferred; body.user_id fallback | Yes -- read/write tokens, activities | 401 | **YES -- see F-01** | FAIL |
-| 9 | `fitbit-sync` | Dual-path: JWT or body.user_id | JWT preferred; body.user_id fallback | Yes -- read/write tokens, activities | 401 | **YES -- see F-01** | FAIL |
-| 10 | `hevy-sync` | Dual-path: JWT or body.user_id | JWT preferred; body.user_id fallback | Yes -- read/write tokens, activities | 401 | **YES -- see F-01** | FAIL |
-| 11 | `liftosaur-sync` | Dual-path: JWT or body.user_id | JWT preferred; body.user_id fallback | Yes -- read/write tokens, activities | 401 | **YES -- see F-01** | FAIL |
-| 12 | `garmin-webhook` | Conditional shared secret | `integration.user_id` (DB lookup) | Yes -- write activities | 401 (if secret configured) | **YES -- see F-02** | FAIL |
-| 13 | `process-sync-queue` | Supabase gateway JWT (service role) | N/A (reads from sync_queue) | Yes -- full DB access | N/A | None | PASS (with note) |
-| 14 | `mobile-sync-push` | JWT via `getUser()` | `user.id` (JWT) | Yes -- bulk upsert all user data | 401 | None | PASS |
-| 15 | `mobile-sync-pull` | JWT via `getUser()` | `user.id` (JWT) | Yes -- read all user data | 401 | None | PASS |
-| 16 | `delete-account` | JWT via `getUser()` | `user.id` (JWT) | Yes -- delete auth user + cascade | 401 | None | PASS |
-| 17 | `disconnect-integration` | JWT via `getUser()` | `user.id` (JWT) | Yes -- delete oauth_tokens, update integrations | 401 | None | PASS |
-| 18 | `generate-insights` | JWT via `getUser()` | `user.id` (JWT, enforced by guard) | Yes -- read sessions, exercises, PRs, progress | 401/403 | None | PASS |
+| #   | Function                     | Auth Method                                                  | User ID Source                                   | Service Role                                    | Error Code                 | Auth Bypass         | Verdict          |
+| --- | ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------ | ----------------------------------------------- | -------------------------- | ------------------- | ---------------- |
+| 1   | `paddle-webhooks`            | HMAC-SHA256 signature                                        | `custom_data.user_id` (webhook payload)          | Yes -- upsert subscriptions                     | 401                        | None                | PASS             |
+| 2   | `paddle-cancel-subscription` | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- read subscription by user_id             | 401                        | None                | PASS             |
+| 3   | `paddle-update-subscription` | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- read subscription by user_id             | 401                        | None                | PASS             |
+| 4   | `initiate-oauth`             | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- insert oauth_states                      | 401                        | None                | PASS             |
+| 5   | `strava-oauth`               | CSRF state token                                             | `stateRow.user_id` (DB lookup)                   | Yes -- write oauth_tokens, user_integrations    | Redirect w/ error param    | None                | PASS             |
+| 6   | `fitbit-oauth`               | CSRF state token                                             | `stateRow.user_id` (DB lookup)                   | Yes -- write oauth_tokens, user_integrations    | Redirect w/ error param    | None                | PASS             |
+| 7   | `garmin-oauth`               | CSRF state token (step 1) / OAuth 1.0a token lookup (step 2) | `stateRow.user_id` / `pendingToken.user_id` (DB) | Yes -- write oauth_tokens, user_integrations    | Redirect w/ error param    | None                | PASS             |
+| 8   | `strava-sync`                | Dual-path: JWT or body.user_id                               | JWT preferred; body.user_id fallback             | Yes -- read/write tokens, activities            | 401                        | **YES -- see F-01** | FAIL             |
+| 9   | `fitbit-sync`                | Dual-path: JWT or body.user_id                               | JWT preferred; body.user_id fallback             | Yes -- read/write tokens, activities            | 401                        | **YES -- see F-01** | FAIL             |
+| 10  | `hevy-sync`                  | Dual-path: JWT or body.user_id                               | JWT preferred; body.user_id fallback             | Yes -- read/write tokens, activities            | 401                        | **YES -- see F-01** | FAIL             |
+| 11  | `liftosaur-sync`             | Dual-path: JWT or body.user_id                               | JWT preferred; body.user_id fallback             | Yes -- read/write tokens, activities            | 401                        | **YES -- see F-01** | FAIL             |
+| 12  | `garmin-webhook`             | Conditional shared secret                                    | `integration.user_id` (DB lookup)                | Yes -- write activities                         | 401 (if secret configured) | **YES -- see F-02** | FAIL             |
+| 13  | `process-sync-queue`         | Supabase gateway JWT (service role)                          | N/A (reads from sync_queue)                      | Yes -- full DB access                           | N/A                        | None                | PASS (with note) |
+| 14  | `mobile-sync-push`           | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- bulk upsert all user data                | 401                        | None                | PASS             |
+| 15  | `mobile-sync-pull`           | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- read all user data                       | 401                        | None                | PASS             |
+| 16  | `delete-account`             | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- delete auth user + cascade               | 401                        | None                | PASS             |
+| 17  | `disconnect-integration`     | JWT via `getUser()`                                          | `user.id` (JWT)                                  | Yes -- delete oauth_tokens, update integrations | 401                        | None                | PASS             |
+| 18  | `generate-insights`          | JWT via `getUser()`                                          | `user.id` (JWT, enforced by guard)               | Yes -- read sessions, exercises, PRs, progress  | 401/403                    | None                | PASS             |
 
 ---
 
@@ -145,7 +145,7 @@ Even when the secret IS configured, the comparison uses simple string equality (
 verify_jwt = false
 ```
 
-2. Make the secret check mandatory (not conditional):
+1. Make the secret check mandatory (not conditional):
 ```typescript
 const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
 if (!WEBHOOK_SECRET) {
@@ -390,15 +390,15 @@ The shared `getCorsHeaders()` function validates the request `Origin` header aga
 
 ## Findings Summary Table
 
-| ID | Severity | Function(s) | Title | Status |
-|----|----------|-------------|-------|--------|
-| F-01 | HIGH | strava-sync, fitbit-sync, hevy-sync, liftosaur-sync | Dual-path auth trusts body.user_id without verifying service role | OPEN |
-| F-02 | HIGH | garmin-webhook | Missing verify_jwt=false AND conditional secret check | OPEN |
-| F-03 | MEDIUM | process-sync-queue | No function-level auth; any JWT holder can trigger syncs | OPEN |
-| F-04 | MEDIUM | paddle-webhooks | user_id from custom_data -- verify checkout sets it server-side | OPEN |
-| F-05 | MEDIUM | generate-insights | Accepts body.userId (guard works, but anti-pattern) | OPEN |
-| F-06 | LOW | delete-account, paddle-cancel, paddle-update, generate-insights | Non-null assertion on auth header without null check | OPEN |
-| F-07 | LOW | strava-oauth, fitbit-oauth, garmin-oauth | Error params in redirect leak auth mechanism details | OPEN |
+| ID   | Severity | Function(s)                                                     | Title                                                             | Status |
+| ---- | -------- | --------------------------------------------------------------- | ----------------------------------------------------------------- | ------ |
+| F-01 | HIGH     | strava-sync, fitbit-sync, hevy-sync, liftosaur-sync             | Dual-path auth trusts body.user_id without verifying service role | OPEN   |
+| F-02 | HIGH     | garmin-webhook                                                  | Missing verify_jwt=false AND conditional secret check             | OPEN   |
+| F-03 | MEDIUM   | process-sync-queue                                              | No function-level auth; any JWT holder can trigger syncs          | OPEN   |
+| F-04 | MEDIUM   | paddle-webhooks                                                 | user_id from custom_data -- verify checkout sets it server-side   | OPEN   |
+| F-05 | MEDIUM   | generate-insights                                               | Accepts body.userId (guard works, but anti-pattern)               | OPEN   |
+| F-06 | LOW      | delete-account, paddle-cancel, paddle-update, generate-insights | Non-null assertion on auth header without null check              | OPEN   |
+| F-07 | LOW      | strava-oauth, fitbit-oauth, garmin-oauth                        | Error params in redirect leak auth mechanism details              | OPEN   |
 
 ---
 
@@ -410,12 +410,12 @@ The shared `getCorsHeaders()` function validates the request `Origin` header aga
 3. **F-03:** Add service-role-only guard to process-sync-queue
 
 ### Before Beta Launch (verify)
-4. **F-04:** Audit the Paddle checkout flow to confirm custom_data.user_id is set from server-verified JWT
+1. **F-04:** Audit the Paddle checkout flow to confirm custom_data.user_id is set from server-verified JWT
 
 ### Post-Beta (cleanup)
-5. **F-05:** Remove body.userId acceptance from generate-insights
-6. **F-06:** Add explicit null checks on Authorization header across 4 functions
-7. **F-07:** Normalize error redirect parameters to generic values
+1. **F-05:** Remove body.userId acceptance from generate-insights
+2. **F-06:** Add explicit null checks on Authorization header across 4 functions
+3. **F-07:** Normalize error redirect parameters to generic values
 
 ---
 

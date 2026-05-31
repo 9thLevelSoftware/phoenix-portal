@@ -23,7 +23,7 @@ interface CommunityState {
 
 const initialState = {
 	activeTab: "routines" as const,
-	sort: "hot" as const,
+	sort: "top" as const,
 	search: "",
 	filters: {},
 	selectedItemId: null,

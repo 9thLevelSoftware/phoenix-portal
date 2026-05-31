@@ -172,15 +172,15 @@ const session: SessionDto = {
 
 These values MUST match between mobile and portal:
 
-| Transform | Mobile | Portal | Notes |
-|-----------|--------|--------|-------|
-| Weight multiplier | x1 (stores per-cable) | x2 (displays total) | `WEIGHT_MULTIPLIER = 2` |
-| Velocity: EXPLOSIVE | >= 1.0 m/s | >= 1.0 m/s | |
-| Velocity: FAST | >= 0.75 m/s | >= 0.75 m/s | |
-| Velocity: MODERATE | >= 0.5 m/s | >= 0.5 m/s | |
-| Velocity: SLOW | >= 0.25 m/s | >= 0.25 m/s | |
-| Velocity: GRIND | < 0.25 m/s | < 0.25 m/s | |
-| Asymmetry balanced | <= 2% | <= 2% | `ASYMMETRY_BALANCED_THRESHOLD = 2` |
+| Transform           | Mobile                | Portal              | Notes                              |
+| ------------------- | --------------------- | ------------------- | ---------------------------------- |
+| Weight multiplier   | x1 (stores per-cable) | x2 (displays total) | `WEIGHT_MULTIPLIER = 2`            |
+| Velocity: EXPLOSIVE | >= 1.0 m/s            | >= 1.0 m/s          |                                    |
+| Velocity: FAST      | >= 0.75 m/s           | >= 0.75 m/s         |                                    |
+| Velocity: MODERATE  | >= 0.5 m/s            | >= 0.5 m/s          |                                    |
+| Velocity: SLOW      | >= 0.25 m/s           | >= 0.25 m/s         |                                    |
+| Velocity: GRIND     | < 0.25 m/s            | < 0.25 m/s          |                                    |
+| Asymmetry balanced  | <= 2%                 | <= 2%               | `ASYMMETRY_BALANCED_THRESHOLD = 2` |
 
 ## Baseline Documentation
 
@@ -195,5 +195,5 @@ See [BASELINE.md](./BASELINE.md) for:
 
 - [Root CLAUDE.md](../../CLAUDE.md) - Portal architecture
 - [Monorepo CLAUDE.md](../../../CLAUDE.md) - Cross-project parity rules
-- [Edge Functions](../../supabase/functions/) - Sync endpoint implementations
+- [Edge Functions](../../supabase/functions) - Sync endpoint implementations
 - [Transforms](../../src/schemas/transforms.ts) - Portal transform logic

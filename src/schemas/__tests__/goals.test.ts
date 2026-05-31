@@ -27,6 +27,19 @@ describe("createGoalSchema", () => {
 		expect(result.success).toBe(true);
 	});
 
+	it("preserves optional catalog exercise_id", () => {
+		const result = createGoalSchema.safeParse({
+			goal_type: "pr",
+			target_value: 100,
+			exercise_name: "Bench Press",
+			exercise_id: "catalog-bench",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.exercise_id).toBe("catalog-bench");
+		}
+	});
+
 	it("fails PR goal without exercise_name", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "pr",

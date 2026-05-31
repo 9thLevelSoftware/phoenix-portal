@@ -69,6 +69,7 @@ import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
 import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // Lazy-loaded tab components for code splitting (desktop)
@@ -82,9 +83,7 @@ const BodyTab = lazy(() => import("@/app/components/analytics/BodyTab"));
 const PerformanceTab = lazy(
 	() => import("@/app/components/analytics/PerformanceTab"),
 );
-const RecordsTab = lazy(
-	() => import("@/app/components/analytics/RecordsTab"),
-);
+const RecordsTab = lazy(() => import("@/app/components/analytics/RecordsTab"));
 
 // Lazy-loaded tab components for code splitting (mobile)
 const MobileOverviewTab = lazy(
@@ -174,7 +173,9 @@ function periodToInsightPeriod(timePeriod: string): string {
 function bucketByWeek(
 	data: Array<{ started_at: string; total_volume: number }>,
 ) {
-	if (!data || data.length === 0) return [];
+	if (!data || data.length === 0) {
+		return [];
+	}
 	const weeks = new Map<string, { volume: number; workouts: number }>();
 	for (const item of data) {
 		const date = new Date(item.started_at);
@@ -188,7 +189,7 @@ function bucketByWeek(
 			day: "numeric",
 		});
 		const existing = weeks.get(key) ?? { volume: 0, workouts: 0 };
-		existing.volume += item.total_volume;
+		existing.volume += item.total_volume * WEIGHT_MULTIPLIER;
 		existing.workouts += 1;
 		weeks.set(key, existing);
 	}
@@ -201,46 +202,70 @@ function bucketByWeek(
 
 // Group strength progress data by exercise for line chart
 function groupStrengthByExercise(
-	data: Array<{ exercise_name: string; value: number; achieved_at: string }>,
-) {
-	if (!data || data.length === 0) return [];
+	data: Array<{
+		exercise_name: string;
+		exercise_id?: string | null;
+		value: number;
+		achieved_at: string;
+	}>,
+): {
+	points: Record<string, string | number>[];
+	keyToName: Map<string, string>;
+} {
+	if (!data || data.length === 0) {
+		return { points: [], keyToName: new Map<string, string>() };
+	}
 	// Get all unique dates and exercises
 	const dateSet = new Set<string>();
 	const exerciseMap = new Map<string, Map<string, number>>();
+	const latestByKey = new Map<string, { at: number; value: number }>();
+	// Map grouping key back to display name
+	const keyToName = new Map<string, string>();
 
 	for (const item of data) {
+		const key = item.exercise_id ?? item.exercise_name;
+		const achievedAtTs = new Date(item.achieved_at).getTime();
 		const date = new Date(item.achieved_at).toLocaleDateString("en-US", {
 			month: "short",
 		});
 		dateSet.add(date);
-		if (!exerciseMap.has(item.exercise_name)) {
-			exerciseMap.set(item.exercise_name, new Map());
+		if (!keyToName.has(key)) {
+			keyToName.set(key, item.exercise_name);
+		}
+		if (!exerciseMap.has(key)) {
+			exerciseMap.set(key, new Map());
 		}
 		// Keep highest value per exercise per month
-		const existing = exerciseMap.get(item.exercise_name)?.get(date) ?? 0;
+		const existing = exerciseMap.get(key)?.get(date) ?? 0;
 		if (item.value > existing) {
-			exerciseMap.get(item.exercise_name)?.set(date, item.value);
+			exerciseMap.get(key)?.set(date, item.value);
+		}
+		const latest = latestByKey.get(key);
+		if (!latest || achievedAtTs > latest.at) {
+			latestByKey.set(key, { at: achievedAtTs, value: item.value });
 		}
 	}
 
 	const dates = Array.from(dateSet);
 	// Pick top 3 exercises by latest value
-	const exercises = Array.from(exerciseMap.entries())
-		.map(([name, values]) => ({
-			name,
-			latestValue: Array.from(values.values()).pop() ?? 0,
+	const topKeys = Array.from(latestByKey.entries())
+		.map(([key, latest]) => ({
+			key,
+			latestValue: latest.value,
 		}))
 		.sort((a, b) => b.latestValue - a.latestValue)
 		.slice(0, 3)
-		.map((e) => e.name);
+		.map((e) => e.key);
 
-	return dates.map((date) => {
+	const points = dates.map((date) => {
 		const point: Record<string, string | number> = { date };
-		for (const exercise of exercises) {
-			point[exercise] = exerciseMap.get(exercise)?.get(date) ?? 0;
+		for (const key of topKeys) {
+			point[key] = exerciseMap.get(key)?.get(date) ?? 0;
 		}
 		return point;
 	});
+
+	return { points, keyToName };
 }
 
 function convertStrengthSeriesPoint(
@@ -386,7 +411,10 @@ function bucketByWeekMobile(
 		const weekStart = new Date(date);
 		weekStart.setDate(diff);
 		const weekKey = weekStart.toISOString().slice(0, 10);
-		weeks.set(weekKey, (weeks.get(weekKey) ?? 0) + item.total_volume);
+		weeks.set(
+			weekKey,
+			(weeks.get(weekKey) ?? 0) + item.total_volume * WEIGHT_MULTIPLIER,
+		);
 	}
 	let i = 1;
 	return Array.from(weeks.entries()).map(([, volume]) => ({
@@ -658,13 +686,17 @@ export function Analytics() {
 		}));
 	}, [muscleGroupData]);
 
-	const strengthProgressData = groupStrengthByExercise(strengthRaw ?? []).map(
-		(point) => convertStrengthSeriesPoint(point, unit),
+	const strengthSeries = groupStrengthByExercise(strengthRaw ?? []);
+	const strengthProgressData = strengthSeries.points.map((point) =>
+		convertStrengthSeriesPoint(point, unit),
 	);
-	const strengthExercises =
+	const strengthExerciseKeys =
 		strengthProgressData.length > 0
 			? Object.keys(strengthProgressData[0]).filter((k) => k !== "date")
 			: [];
+	const strengthExercises = strengthExerciseKeys.map(
+		(key) => strengthSeries.keyToName.get(key) ?? key,
+	);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
@@ -680,11 +712,11 @@ export function Analytics() {
 	const heroDeltas = useMemo(() => {
 		if (!volumeComparison) return { volume: null, workouts: null };
 		const currentVol = volumeComparison.current.reduce(
-			(s, r) => s + (r.total_volume ?? 0),
+			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			0,
 		);
 		const previousVol = volumeComparison.previous.reduce(
-			(s, r) => s + (r.total_volume ?? 0),
+			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			0,
 		);
 		return {
@@ -699,7 +731,7 @@ export function Analytics() {
 	// --- Training Load from session data ---
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
-			totalVolume: s.total_volume ?? 0,
+			totalVolume: (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));
@@ -900,10 +932,10 @@ export function Analytics() {
 				name: unit,
 				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
 			},
-			series: strengthExercises.map((exercise, i) => ({
-				name: exercise,
+			series: strengthExerciseKeys.map((exerciseKey, i) => ({
+				name: strengthSeries.keyToName.get(exerciseKey) ?? exerciseKey,
 				type: "line",
-				data: strengthProgressData.map((d) => d[exercise] ?? 0),
+				data: strengthProgressData.map((d) => d[exerciseKey] ?? 0),
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
@@ -913,7 +945,13 @@ export function Analytics() {
 				symbolSize: 6,
 			})),
 		};
-	}, [strengthProgressData, strengthExercises, unit]);
+	}, [
+		strengthProgressData,
+		strengthExerciseKeys,
+		strengthExercises,
+		strengthSeries.keyToName,
+		unit,
+	]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {
@@ -1022,19 +1060,27 @@ export function Analytics() {
 		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
 	}));
 	const strengthMap = new Map<string, number>();
+	const strengthNameMap = new Map<string, string>();
 	for (const item of strengthRaw ?? []) {
-		const existing = strengthMap.get(item.exercise_name) ?? 0;
+		const key = item.exercise_id ?? item.exercise_name;
+		if (!strengthNameMap.has(key)) {
+			strengthNameMap.set(key, item.exercise_name);
+		}
+		const existing = strengthMap.get(key) ?? 0;
 		if (item.value > existing) {
-			strengthMap.set(item.exercise_name, item.value);
+			strengthMap.set(key, item.value);
 		}
 	}
 	const mobileStrengthData = Array.from(strengthMap.entries())
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, 5)
-		.map(([exercise, weight]) => ({
-			exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
-			weight: Math.round(convertWeight(weight, unit) * 10) / 10,
-		}));
+		.map(([key, weight]) => {
+			const exercise = strengthNameMap.get(key) ?? key;
+			return {
+				exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
+				weight: Math.round(convertWeight(weight, unit) * 10) / 10,
+			};
+		});
 	const mobileTotalWorkouts = (volumeRaw ?? []).length;
 	const mobileHasData =
 		mobileVolumeData.length > 0 || mobileMusclData.length > 0;
@@ -1049,7 +1095,8 @@ export function Analytics() {
 					</div>
 					<div className="flex overflow-x-auto gap-3 px-4 py-4">
 						{Array.from({ length: 5 }).map((_, i) => (
-							<div key={i} className="min-w-[120px]">
+							// biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders
+							<div key={`skeleton-mobile-${i}`} className="min-w-[120px]">
 								<StatCardSkeleton />
 							</div>
 						))}
@@ -1065,7 +1112,8 @@ export function Analytics() {
 						<Skeleton className="h-4 w-64 mb-8" />
 						<div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
 							{Array.from({ length: 5 }).map((_, i) => (
-								<StatCardSkeleton key={i} />
+								// biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton placeholders
+								<StatCardSkeleton key={`skeleton-desktop-${i}`} />
 							))}
 						</div>
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1104,6 +1152,7 @@ export function Analytics() {
 								</SelectContent>
 							</Select>
 							<button
+								type="button"
 								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
 								onClick={() => {
 									const rows = mobileVolumeData.map((d) =>
@@ -1188,6 +1237,7 @@ export function Analytics() {
 							{ value: "records", label: "Records" },
 						].map((tab) => (
 							<button
+								type="button"
 								key={tab.value}
 								onClick={() => setActiveTab(tab.value)}
 								className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${

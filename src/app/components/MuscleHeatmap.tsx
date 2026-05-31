@@ -248,7 +248,12 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 				</button>
 			</div>
 
-			<svg viewBox="0 0 180 320" className="w-full h-auto">
+			<svg
+				viewBox="0 0 180 320"
+				className="w-full h-auto"
+				role="img"
+				aria-label="Muscle group heatmap body diagram"
+			>
 				{/* Body outline */}
 				<path
 					d={bodyOutline}
@@ -267,8 +272,12 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 					return (
 						<g key={region.name}>
 							{region.paths.map((path, i) => (
+								// biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: SVG path needs role="img" for screen readers while also supporting hover
 								<path
+									// biome-ignore lint/suspicious/noArrayIndexKey: static SVG path list per region never reorders
 									key={i}
+									role="img"
+									aria-label={`${region.name} muscle region`}
 									d={path}
 									fill={volume > 0 ? EMBER : "none"}
 									fillOpacity={volume > 0 ? opacity : 0}

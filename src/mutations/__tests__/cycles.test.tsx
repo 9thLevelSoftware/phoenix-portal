@@ -147,8 +147,8 @@ describe("useSaveCycle", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(capturedInsertPayload).not.toBeNull();
-		expect(capturedInsertPayload!.workout_days).toBe(1);
-		expect(capturedInsertPayload!.rest_days).toBe(1);
+		expect(capturedInsertPayload?.workout_days).toBe(1);
+		expect(capturedInsertPayload?.rest_days).toBe(1);
 	});
 
 	it("shows user-friendly error on failure", async () => {
@@ -281,9 +281,7 @@ describe("useDeleteCycle", () => {
 
 		const eqSecond = vi.fn(() => ({
 			select: vi.fn(() => ({
-				maybeSingle: vi
-					.fn()
-					.mockResolvedValue({ data: null, error: null }),
+				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
 			})),
 		}));
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
@@ -309,9 +307,7 @@ describe("useDeleteCycle", () => {
 
 		const eqSecond = vi.fn(() => ({
 			select: vi.fn(() => ({
-				maybeSingle: vi
-					.fn()
-					.mockResolvedValue({ data: null, error: null }),
+				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
 			})),
 		}));
 		const eqFirst = vi.fn(() => ({ eq: eqSecond }));

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 // =============================================================================
 // Response Types (matching src/queries/leaderboard.ts)
@@ -190,6 +191,30 @@ Deno.serve(async (req) => {
     // 3. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
     const supabase = createClient(supabaseUrl, supabaseServiceKey) as SupabaseAnyClient;
+    const gate = await requireSubscription(supabase, user.id, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
+
+    if (body.type === 'user') {
+      if (!body.userId) {
+        return new Response(
+          JSON.stringify({ error: 'userId is required for user rankings' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (body.userId !== user.id) {
+        const { data: targetProfile } = await supabase
+          .from('profiles')
+          .select('leaderboard_participation')
+          .eq('user_id', body.userId)
+          .maybeSingle();
+        if (!targetProfile?.leaderboard_participation) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+    }
 
     // =========================================================================
     // 4. Handle each request type
@@ -211,20 +236,6 @@ Deno.serve(async (req) => {
     }
 
     if (body.type === 'user') {
-      if (!body.userId) {
-        return new Response(
-          JSON.stringify({ error: 'userId is required for user rankings' }),
-          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (body.userId !== user.id) {
-        return new Response(
-          JSON.stringify({ error: 'Forbidden: cannot access rankings for another user' }),
-          { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
-
       const result = await computeUserRankings(supabase, body.userId);
       return new Response(
         JSON.stringify(result),

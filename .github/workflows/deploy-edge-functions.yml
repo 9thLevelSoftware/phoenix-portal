@@ -1,0 +1,65 @@
+name: Deploy Edge Functions
+
+# Deploys all local Edge Functions to the production Supabase project on merges
+# to main that change function source or function config.
+#
+# This exists alongside the Supabase Branching GitHub App integration (the
+# "Supabase Preview" check) to provide a deterministic merge-to-main deploy
+# path for Edge Functions independent of Branching's preview-branch lifecycle.
+# Database migrations are deployed by the Supabase GitHub App.
+#
+# Required repository secrets:
+#   - SUPABASE_ACCESS_TOKEN         Personal access token from
+#                                   https://supabase.com/dashboard/account/tokens
+#   - SUPABASE_PROD_PROJECT_REF     Project ref of the prod Supabase project
+#                                   (the 20-char string in the dashboard URL)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-edge-functions.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize function deploys; never cancel an in-flight prod upload.
+  group: deploy-edge-functions-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+        with:
+          version: 2.76.9
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+        run: |
+          missing=()
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing+=("SUPABASE_ACCESS_TOKEN")
+          [ -z "$SUPABASE_PROD_PROJECT_REF" ] && missing+=("SUPABASE_PROD_PROJECT_REF")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}. See the header comment in this workflow for provisioning steps."
+            exit 1
+          fi
+
+      - name: Deploy all Edge Functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+        run: |
+          echo "Deploying all local Edge Functions to project $PROJECT_REF"
+          supabase functions deploy --project-ref "$PROJECT_REF"

@@ -30,7 +30,7 @@ export function generateWorkoutCSV(
 		Mode: w.workout_mode ?? "",
 	}));
 
-	return Papa.unparse(data);
+	return Papa.unparse(data, { escapeFormulae: true });
 }
 
 /**
@@ -56,19 +56,20 @@ export function generateRecordsCSV(
 				: (r.previous_value ?? ""),
 	}));
 
-	return Papa.unparse(data);
+	return Papa.unparse(data, { escapeFormulae: true });
 }
 
 function formatRecordType(type: string): string {
 	const types: Record<string, string> = {
-		max_weight: "Max Weight",
-		max_reps: "Max Reps",
-		max_volume: "Max Volume",
-		max_e1rm: "Estimated 1RM",
-		fastest_time: "Fastest Time",
-		longest_distance: "Longest Distance",
+		MAX_WEIGHT: "Max Weight",
+		MAX_REPS: "Max Reps",
+		MAX_VOLUME: "Max Volume",
+		"1RM": "Estimated 1RM",
+		FASTEST_TIME: "Fastest Time",
+		LONGEST_DISTANCE: "Longest Distance",
 	};
-	return types[type] ?? type;
+	// Normalize so legacy lowercase values map too.
+	return types[(type ?? "").toUpperCase()] ?? type ?? "";
 }
 
 /**

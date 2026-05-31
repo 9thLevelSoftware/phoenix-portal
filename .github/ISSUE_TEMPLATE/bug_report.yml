@@ -1,0 +1,107 @@
+name: Bug Report
+description: Report a bug or issue with Phoenix Portal
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where did you encounter this bug?
+      description: Which part of the Phoenix ecosystem is affected?
+      options:
+        - Web Portal only
+        - Mobile App only
+        - Both (Web Portal & Mobile App)
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & Version
+      description: >
+        Which browser are you using on the web portal?
+        Leave blank if this is a Mobile App-only issue.
+      placeholder: "e.g., Chrome 124, Safari 17, Firefox 125"
+    validations:
+      required: false
+
+  - type: input
+    id: os-version
+    attributes:
+      label: Mobile OS Version
+      description: >
+        Required if you selected **Mobile App only** or **Both** above.
+        What version of Android or iOS are you running?
+      placeholder: "e.g., Android 14, iOS 17.4"
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Mobile App Version
+      description: >
+        Required if you selected **Mobile App only** or **Both** above.
+        What version of the Vitruvian Phoenix app are you using?
+      placeholder: "e.g., 1.2.0"
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: Mobile Device Model
+      description: >
+        Required if you selected **Mobile App only** or **Both** above.
+        What device are you using?
+      placeholder: "e.g., Pixel 8, iPhone 15 Pro"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: If applicable, add screenshots, screen recordings, or browser console errors to help explain your problem.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have tested with the latest version of the web portal (hard-refreshed to clear cache)
+          required: false

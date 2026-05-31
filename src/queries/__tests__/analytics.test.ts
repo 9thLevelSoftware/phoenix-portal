@@ -55,7 +55,7 @@ describe("volumeTrendOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toHaveLength(2);
 		expect(result[0].total_volume).toBe(500);
 	});
@@ -67,7 +67,7 @@ describe("volumeTrendOptions", () => {
 		});
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query failed" }),
 		);
 	});
@@ -76,7 +76,7 @@ describe("volumeTrendOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -96,17 +96,19 @@ describe("muscleGroupOptions", () => {
 		);
 	});
 
-	it("groups exercises by muscle group and returns percentages", async () => {
+	it("classifies exercises by NAME, not the raw muscle_group column", async () => {
+		// Regression: production data has muscle_group='General' on 100% of rows
+		// (mobile hardcoded it). Classification must come from the exercise name.
 		const sessionChain = buildChain({
 			data: [{ id: "s1" }, { id: "s2" }],
 			error: null,
 		});
 		const exerciseChain = buildChain({
 			data: [
-				{ muscle_group: "Chest" },
-				{ muscle_group: "Chest" },
-				{ muscle_group: "Back" },
-				{ muscle_group: "Legs" },
+				{ name: "Bench Press", muscle_group: "General" },
+				{ name: "Incline Bench Press", muscle_group: "General" },
+				{ name: "Bent Over Row", muscle_group: "General" },
+				{ name: "Low Bar Squat", muscle_group: "General" },
 			],
 			error: null,
 		});
@@ -119,8 +121,12 @@ describe("muscleGroupOptions", () => {
 
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
+		// Must NOT collapse to a single "General" bucket
+		expect(result.some((r: { name: string }) => r.name === "General")).toBe(
+			false,
+		);
 		expect(result).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ name: "Chest", value: 50 }),
@@ -130,11 +136,38 @@ describe("muscleGroupOptions", () => {
 		);
 	});
 
+	it("keeps a real muscle_group hint for names it cannot classify", async () => {
+		const sessionChain = buildChain({ data: [{ id: "s1" }], error: null });
+		const exerciseChain = buildChain({
+			data: [
+				{ name: "Bicep Curl", muscle_group: "General" },
+				{ name: "Some Proprietary Machine", muscle_group: "Back" },
+			],
+			error: null,
+		});
+		let callCount = 0;
+		fromFn.mockImplementation(() => {
+			callCount++;
+			return callCount === 1 ? sessionChain : exerciseChain;
+		});
+
+		const { muscleGroupOptions } = await import("../analytics");
+		const opts = muscleGroupOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(result).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "Arms", value: 50 }),
+				expect.objectContaining({ name: "Back", value: 50 }),
+			]),
+		);
+	});
+
 	it("returns empty array when user has no sessions", async () => {
 		chain = buildChain({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -165,7 +198,7 @@ describe("strengthProgressOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toHaveLength(1);
 		expect(result[0].exercise_name).toBe("Bench Press");
 	});
@@ -177,7 +210,7 @@ describe("strengthProgressOptions", () => {
 		});
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query error" }),
 		);
 	});
@@ -228,7 +261,7 @@ describe("volumeComparisonOptions", () => {
 
 		const { volumeComparisonOptions } = await import("../analytics");
 		const opts = volumeComparisonOptions("user-1", "4w");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(result.current).toHaveLength(1);
 		expect(result.previous).toHaveLength(1);

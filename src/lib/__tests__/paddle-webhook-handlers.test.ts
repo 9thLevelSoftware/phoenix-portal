@@ -2,30 +2,27 @@ import { describe, expect, it } from "vitest";
 import {
 	buildSubscriptionUpsert,
 	mapPaddleStatusToSubscriptionStatus,
-	mapPriceIdToTier,
-	mapPriceIdToTierServer,
+	mapPriceIdToTierFromEnv,
 	type PaddleWebhookEvent,
 	verifyPaddleSignature,
 } from "../paddle";
 
-// ─── mapPriceIdToTier ─────────────────────────────────────────────────────────
+// ─── mapPriceIdToTierFromEnv (server / test env shape) ───────────────────────
 
-describe("mapPriceIdToTier", () => {
-	it("returns FREE for unknown price IDs (env vars not set in test)", () => {
-		expect(mapPriceIdToTier("pri_unknown_123")).toBe("FREE");
-	});
-
-	it("returns FREE for empty string", () => {
-		expect(mapPriceIdToTier("")).toBe("FREE");
-	});
-});
-
-// ─── mapPriceIdToTierServer (whitespace handling) ────────────────────────────
-
-describe("mapPriceIdToTierServer", () => {
+describe("mapPriceIdToTierFromEnv", () => {
 	function makeEnv(vars: Record<string, string>) {
 		return { get: (key: string) => vars[key] };
 	}
+
+	it("returns FREE for unknown price IDs (env vars not set in test)", () => {
+		expect(mapPriceIdToTierFromEnv("pri_unknown_123", makeEnv({}))).toBe(
+			"FREE",
+		);
+	});
+
+	it("returns FREE for empty string", () => {
+		expect(mapPriceIdToTierFromEnv("", makeEnv({}))).toBe("FREE");
+	});
 
 	it("handles whitespace in comma-separated price ID env vars", () => {
 		const env = makeEnv({
@@ -34,12 +31,12 @@ describe("mapPriceIdToTierServer", () => {
 			PADDLE_EMBER_PRICE_IDS: "pri_ember_m , pri_ember_y ",
 		});
 
-		expect(mapPriceIdToTierServer("pri_inferno_m", env)).toBe("INFERNO");
-		expect(mapPriceIdToTierServer("pri_inferno_y", env)).toBe("INFERNO");
-		expect(mapPriceIdToTierServer("pri_flame_m", env)).toBe("FLAME");
-		expect(mapPriceIdToTierServer("pri_flame_y", env)).toBe("FLAME");
-		expect(mapPriceIdToTierServer("pri_ember_m", env)).toBe("EMBER");
-		expect(mapPriceIdToTierServer("pri_ember_y", env)).toBe("EMBER");
+		expect(mapPriceIdToTierFromEnv("pri_inferno_m", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierFromEnv("pri_inferno_y", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierFromEnv("pri_flame_m", env)).toBe("FLAME");
+		expect(mapPriceIdToTierFromEnv("pri_flame_y", env)).toBe("FLAME");
+		expect(mapPriceIdToTierFromEnv("pri_ember_m", env)).toBe("EMBER");
+		expect(mapPriceIdToTierFromEnv("pri_ember_y", env)).toBe("EMBER");
 	});
 
 	it("returns FREE for unknown price IDs", () => {
@@ -49,23 +46,19 @@ describe("mapPriceIdToTierServer", () => {
 			PADDLE_EMBER_PRICE_IDS: "pri_ember_m",
 		});
 
-		expect(mapPriceIdToTierServer("pri_unknown", env)).toBe("FREE");
-	});
-
-	it("handles empty env vars gracefully", () => {
-		const env = makeEnv({});
-		expect(mapPriceIdToTierServer("pri_anything", env)).toBe("FREE");
+		expect(mapPriceIdToTierFromEnv("pri_unknown", env)).toBe("FREE");
 	});
 
 	it("filters out whitespace-only entries from env vars", () => {
 		const env = makeEnv({
 			PADDLE_INFERNO_PRICE_IDS: "pri_inferno_m, , ,pri_inferno_y",
+			PADDLE_FLAME_PRICE_IDS: "x",
+			PADDLE_EMBER_PRICE_IDS: "y",
 		});
 
-		expect(mapPriceIdToTierServer("pri_inferno_m", env)).toBe("INFERNO");
-		expect(mapPriceIdToTierServer("pri_inferno_y", env)).toBe("INFERNO");
-		// Whitespace-only entries should not match empty string
-		expect(mapPriceIdToTierServer("", env)).toBe("FREE");
+		expect(mapPriceIdToTierFromEnv("pri_inferno_m", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierFromEnv("pri_inferno_y", env)).toBe("INFERNO");
+		expect(mapPriceIdToTierFromEnv("", env)).toBe("FREE");
 	});
 });
 
@@ -141,6 +134,7 @@ describe("buildSubscriptionUpsert", () => {
 		expect(result?.status).toBe("active");
 		expect(result?.price_id).toBe("pri_ember_monthly");
 		expect(result?.last_event_id).toBe("evt_01abc");
+		expect(result?.last_event_occurred_at).toBe("2026-03-15T00:00:00Z");
 	});
 
 	it("extracts billing period dates", () => {
@@ -151,13 +145,19 @@ describe("buildSubscriptionUpsert", () => {
 		expect(result?.current_period_end).toBe("2026-04-01T00:00:00Z");
 	});
 
-	it("sets cancel_at_period_end to true for subscription.canceled", () => {
+	it("clears pending-cancel state and period end for subscription.canceled", () => {
 		const event = makeMockEvent({
 			event_type: "subscription.canceled",
+			data: {
+				...makeMockEvent().data,
+				status: "canceled",
+			},
 		});
 		const result = buildSubscriptionUpsert(event, () => "EMBER");
 
-		expect(result?.cancel_at_period_end).toBe(true);
+		expect(result?.status).toBe("canceled");
+		expect(result?.current_period_end).toBeNull();
+		expect(result?.cancel_at_period_end).toBe(false);
 	});
 
 	it("sets cancel_at_period_end to true when scheduled_change action is cancel", () => {

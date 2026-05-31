@@ -16,51 +16,51 @@ The Vitruvian Trainer has dual cables. All weight values are stored in the datab
 
 ### Primary Sync Entities (Plan Target)
 
-| Entity | Field (DB/snake_case) | Field (DTO/camelCase) | Transform Applied | Location |
-|--------|----------------------|----------------------|------------------|----------|
-| workout_sessions | `total_volume` | `totalVolume` | x2 (weightTransform) | transforms.ts:38 |
-| workout_sessions | `heaviest_lift_kg` | `heaviestLiftKg` | x2 (custom inline) | transforms.ts:57-61 |
-| sets | `weight_kg` | `weightKg` | x2 (weightTransform) | transforms.ts:93 |
-| personal_records | `value` | `value` | x2 (weightTransform) | transforms.ts:116 |
-| personal_records | `previous_value` | `previousValue` | x2 (custom inline) | transforms.ts:119-122 |
-| analytics_summary | `total_volume` | `totalVolume` | x2 (weightTransform) | transforms.ts:193 |
-| routine_exercises | `weight` | `weight` | **NO TRANSFORM** | transforms.ts:211 |
-| routine_exercises | `per_set_weights` | `perSetWeights` | **NO TRANSFORM** | transforms.ts:219 |
+| Entity            | Field (DB/snake_case) | Field (DTO/camelCase) | Transform Applied    | Location              |
+| ----------------- | --------------------- | --------------------- | -------------------- | --------------------- |
+| workout_sessions  | `total_volume`        | `totalVolume`         | x2 (weightTransform) | transforms.ts:38      |
+| workout_sessions  | `heaviest_lift_kg`    | `heaviestLiftKg`      | x2 (custom inline)   | transforms.ts:57-61   |
+| sets              | `weight_kg`           | `weightKg`            | x2 (weightTransform) | transforms.ts:93      |
+| personal_records  | `value`               | `value`               | x2 (weightTransform) | transforms.ts:116     |
+| personal_records  | `previous_value`      | `previousValue`       | x2 (custom inline)   | transforms.ts:119-122 |
+| analytics_summary | `total_volume`        | `totalVolume`         | x2 (weightTransform) | transforms.ts:193     |
+| routine_exercises | `weight`              | `weight`              | **NO TRANSFORM**     | transforms.ts:211     |
+| routine_exercises | `per_set_weights`     | `perSetWeights`       | **NO TRANSFORM**     | transforms.ts:219     |
 
 ### Telemetry Entities (telemetry.ts)
 
-| Entity | Field (DB) | Transform Applied | Location |
-|--------|-----------|------------------|----------|
-| exercise_progress | `max_weight_kg` | x2 (weightTransform) | telemetry.ts:50 |
-| exercise_progress | `total_volume_kg` | x2 (weightTransform) | telemetry.ts:51 |
+| Entity            | Field (DB)         | Transform Applied    | Location        |
+| ----------------- | ------------------ | -------------------- | --------------- |
+| exercise_progress | `max_weight_kg`    | x2 (weightTransform) | telemetry.ts:50 |
+| exercise_progress | `total_volume_kg`  | x2 (weightTransform) | telemetry.ts:51 |
 | exercise_progress | `estimated_1rm_kg` | x2 (weightTransform) | telemetry.ts:52 |
 
 ### Phase Statistics (session_phase_statistics)
 
-| Field | Description | Transform Status |
-|-------|-------------|-----------------|
+| Field               | Description             | Transform Status                 |
+| ------------------- | ----------------------- | -------------------------------- |
 | `concentric_kg_avg` | Average concentric load | **NOT in portal display schema** |
-| `concentric_kg_max` | Max concentric load | **NOT in portal display schema** |
-| `eccentric_kg_avg` | Average eccentric load | **NOT in portal display schema** |
-| `eccentric_kg_max` | Max eccentric load | **NOT in portal display schema** |
+| `concentric_kg_max` | Max concentric load     | **NOT in portal display schema** |
+| `eccentric_kg_avg`  | Average eccentric load  | **NOT in portal display schema** |
+| `eccentric_kg_max`  | Max eccentric load      | **NOT in portal display schema** |
 
 ### VBT Assessments (vbt_assessments)
 
-| Field | Description | Transform Status |
-|-------|-------------|-----------------|
-| `estimated_1rm_kg` | VBT-derived 1RM | **NOT in portal display schema** |
+| Field              | Description         | Transform Status                 |
+| ------------------ | ------------------- | -------------------------------- |
+| `estimated_1rm_kg` | VBT-derived 1RM     | **NOT in portal display schema** |
 | `user_override_kg` | Manual 1RM override | **NOT in portal display schema** |
 
 ### Gamification Stats
 
-| Entity | Field | Transform Status |
-|--------|-------|-----------------|
+| Entity             | Field             | Transform Status                               |
+| ------------------ | ----------------- | ---------------------------------------------- |
 | gamification_stats | `total_volume_kg` | **NO TRANSFORM** (gamificationStatsSchema:283) |
 
 ### Training Cycles
 
-| Entity | Field | Transform Status |
-|--------|-------|-----------------|
+| Entity     | Field               | Transform Status                      |
+| ---------- | ------------------- | ------------------------------------- |
 | cycle_days | `weight_adjustment` | **NO TRANSFORM** (cycleDaySchema:304) |
 
 ## Fields WITHOUT Transform (Design Decision)
@@ -76,48 +76,48 @@ These fields intentionally do NOT apply the x2 multiplier:
 
 ### Push DTOs (mobile -> portal)
 
-| DTO Class | Field | Comment | Line |
-|-----------|-------|---------|------|
-| PortalWorkoutSessionDto | `totalVolume` | per-cable kg | PortalSyncDtos.kt:33 |
-| PortalWorkoutSessionDto | `heaviestLiftKg` | per-cable kg | PortalSyncDtos.kt:56 |
-| PortalSetDto | `weightKg` | per-cable | PortalSyncDtos.kt:94 |
-| PortalSetDto | `prVolume` | weight x reps volume | PortalSyncDtos.kt:99 |
-| PortalRoutineExerciseSyncDto | `weight` | per-cable kg | PortalSyncDtos.kt:173 |
-| PortalRoutineExerciseSyncDto | `perSetWeights` | JSON array | PortalSyncDtos.kt:182 |
-| PortalCycleDaySyncDto | `weightAdjustment` | modifier | PortalSyncDtos.kt:232 |
-| PortalGamificationStatsSyncDto | `totalVolumeKg` | aggregate | PortalSyncDtos.kt:269 |
-| PortalPhaseStatisticsDto | `concentricKgAvg/Max` | per-cable | PortalSyncDtos.kt:285-286 |
-| PortalPhaseStatisticsDto | `eccentricKgAvg/Max` | per-cable | PortalSyncDtos.kt:291-292 |
-| PortalAssessmentResultDto | `estimatedOneRepMaxKg` | per-cable | PortalSyncDtos.kt:329 |
-| PortalAssessmentResultDto | `userOverrideKg` | per-cable | PortalSyncDtos.kt:332 |
+| DTO Class                      | Field                  | Comment              | Line                      |
+| ------------------------------ | ---------------------- | -------------------- | ------------------------- |
+| PortalWorkoutSessionDto        | `totalVolume`          | per-cable kg         | PortalSyncDtos.kt:33      |
+| PortalWorkoutSessionDto        | `heaviestLiftKg`       | per-cable kg         | PortalSyncDtos.kt:56      |
+| PortalSetDto                   | `weightKg`             | per-cable            | PortalSyncDtos.kt:94      |
+| PortalSetDto                   | `prVolume`             | weight x reps volume | PortalSyncDtos.kt:99      |
+| PortalRoutineExerciseSyncDto   | `weight`               | per-cable kg         | PortalSyncDtos.kt:173     |
+| PortalRoutineExerciseSyncDto   | `perSetWeights`        | JSON array           | PortalSyncDtos.kt:182     |
+| PortalCycleDaySyncDto          | `weightAdjustment`     | modifier             | PortalSyncDtos.kt:232     |
+| PortalGamificationStatsSyncDto | `totalVolumeKg`        | aggregate            | PortalSyncDtos.kt:269     |
+| PortalPhaseStatisticsDto       | `concentricKgAvg/Max`  | per-cable            | PortalSyncDtos.kt:285-286 |
+| PortalPhaseStatisticsDto       | `eccentricKgAvg/Max`   | per-cable            | PortalSyncDtos.kt:291-292 |
+| PortalAssessmentResultDto      | `estimatedOneRepMaxKg` | per-cable            | PortalSyncDtos.kt:329     |
+| PortalAssessmentResultDto      | `userOverrideKg`       | per-cable            | PortalSyncDtos.kt:332     |
 
 ### Pull DTOs (portal -> mobile)
 
-| DTO Class | Field | Line |
-|-----------|-------|------|
-| PullSetDto | `weightKg` | PortalSyncDtos.kt:519 |
-| PullRoutineExerciseDto | `weight` | PortalSyncDtos.kt:569 |
-| PullRoutineExerciseDto | `perSetWeights` | PortalSyncDtos.kt:576 |
-| PullCycleDayDto | `weightAdjustment` | PortalSyncDtos.kt:617 |
-| PullGamificationStatsDto | `totalVolumeKg` | PortalSyncDtos.kt:652 |
-| PullPersonalRecordDto | `weightKg` | PortalSyncDtos.kt:670 |
+| DTO Class                | Field              | Line                  |
+| ------------------------ | ------------------ | --------------------- |
+| PullSetDto               | `weightKg`         | PortalSyncDtos.kt:519 |
+| PullRoutineExerciseDto   | `weight`           | PortalSyncDtos.kt:569 |
+| PullRoutineExerciseDto   | `perSetWeights`    | PortalSyncDtos.kt:576 |
+| PullCycleDayDto          | `weightAdjustment` | PortalSyncDtos.kt:617 |
+| PullGamificationStatsDto | `totalVolumeKg`    | PortalSyncDtos.kt:652 |
+| PullPersonalRecordDto    | `weightKg`         | PortalSyncDtos.kt:670 |
 
 ## Edge Function Handling (mobile-sync-push)
 
-| Operation | Field | Line |
-|-----------|-------|------|
-| Session insert | `heaviest_lift_kg` | mobile-sync-push/index.ts:543 |
-| Set insert | `weight_kg` | mobile-sync-push/index.ts:586 |
-| Telemetry compute | `maxWeight = Math.max(sets.weightKg)` | mobile-sync-push/index.ts:669 |
-| Volume compute | `weight * reps` | mobile-sync-push/index.ts:671 |
-| 1RM compute (Brzycki) | `weight * (36 / (37 - reps))` | mobile-sync-push/index.ts:677-681 |
-| Exercise progress | `max_weight_kg`, `total_volume_kg`, `estimated_1rm_kg` | mobile-sync-push/index.ts:692-694 |
-| PR value extract | `recordType === 'MAX_VOLUME' ? prVolume : weightKg` | mobile-sync-push/index.ts:742-743 |
-| Routine exercise | `weight`, `per_set_weights` | mobile-sync-push/index.ts:827, 834 |
-| Cycle day | `weight_adjustment` | mobile-sync-push/index.ts:920 |
-| Gamification stats | `total_volume_kg` | mobile-sync-push/index.ts:1006 |
-| Phase stats | `concentric_kg_avg/max`, `eccentric_kg_avg/max` | mobile-sync-push/index.ts:1024-1031 |
-| VBT assessment | `estimated_1rm_kg`, `user_override_kg` | mobile-sync-push/index.ts:1076, 1079 |
+| Operation             | Field                                                  | Line                                 |
+| --------------------- | ------------------------------------------------------ | ------------------------------------ |
+| Session insert        | `heaviest_lift_kg`                                     | mobile-sync-push/index.ts:543        |
+| Set insert            | `weight_kg`                                            | mobile-sync-push/index.ts:586        |
+| Telemetry compute     | `maxWeight = Math.max(sets.weightKg)`                  | mobile-sync-push/index.ts:669        |
+| Volume compute        | `weight * reps`                                        | mobile-sync-push/index.ts:671        |
+| 1RM compute (Brzycki) | `weight * (36 / (37 - reps))`                          | mobile-sync-push/index.ts:677-681    |
+| Exercise progress     | `max_weight_kg`, `total_volume_kg`, `estimated_1rm_kg` | mobile-sync-push/index.ts:692-694    |
+| PR value extract      | `recordType === 'MAX_VOLUME' ? prVolume : weightKg`    | mobile-sync-push/index.ts:742-743    |
+| Routine exercise      | `weight`, `per_set_weights`                            | mobile-sync-push/index.ts:827, 834   |
+| Cycle day             | `weight_adjustment`                                    | mobile-sync-push/index.ts:920        |
+| Gamification stats    | `total_volume_kg`                                      | mobile-sync-push/index.ts:1006       |
+| Phase stats           | `concentric_kg_avg/max`, `eccentric_kg_avg/max`        | mobile-sync-push/index.ts:1024-1031  |
+| VBT assessment        | `estimated_1rm_kg`, `user_override_kg`                 | mobile-sync-push/index.ts:1076, 1079 |
 
 ## Issues Found
 
@@ -153,25 +153,25 @@ This may be intentional since gamification stats are aggregate values that might
 
 ### Existing Tests (src/schemas/__tests__/transforms.test.ts)
 
-| Entity | Field | Test Status |
-|--------|-------|-------------|
-| workout_sessions | `total_volume` | COVERED (line 34-37) |
-| sets | `weight_kg` | COVERED (line 119-122) |
-| personal_records | `value` | COVERED (line 155-158) |
-| personal_records | `previous_value` | COVERED (line 161-172) |
-| workout_sessions | `heaviest_lift_kg` | **NOT COVERED** |
+| Entity           | Field              | Test Status            |
+| ---------------- | ------------------ | ---------------------- |
+| workout_sessions | `total_volume`     | COVERED (line 34-37)   |
+| sets             | `weight_kg`        | COVERED (line 119-122) |
+| personal_records | `value`            | COVERED (line 155-158) |
+| personal_records | `previous_value`   | COVERED (line 161-172) |
+| workout_sessions | `heaviest_lift_kg` | **NOT COVERED**        |
 
 ### Existing Tests (tests/sync/transforms/weight-transform.test.ts)
 
-| Test Category | Count | Status |
-|--------------|-------|--------|
-| Per-Cable Storage | 2 | Requires network |
-| Display Multiplier | 3 | Pure logic tests |
-| Edge Cases (0, 1, 110) | 3 | Requires network |
-| Sessions | 2 | Requires network |
-| Sets | 1 | Requires network |
-| Routines | 2 | Requires network |
-| Consistency | 2 | Pure logic tests |
+| Test Category          | Count | Status           |
+| ---------------------- | ----- | ---------------- |
+| Per-Cable Storage      | 2     | Requires network |
+| Display Multiplier     | 3     | Pure logic tests |
+| Edge Cases (0, 1, 110) | 3     | Requires network |
+| Sessions               | 2     | Requires network |
+| Sets                   | 1     | Requires network |
+| Routines               | 2     | Requires network |
+| Consistency            | 2     | Pure logic tests |
 
 ### Gaps Identified
 

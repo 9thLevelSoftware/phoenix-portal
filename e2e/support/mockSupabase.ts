@@ -13,6 +13,7 @@ interface SubscriptionRow {
 	user_id: string;
 	tier: MockSubscriptionTier;
 	status: "active" | "trialing" | "past_due" | "canceled" | "incomplete";
+	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
 }
@@ -92,6 +93,14 @@ interface MockSupabaseOptions {
 	sets?: SetRow[];
 }
 
+const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
+	FREE: null,
+	EMBER: process.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "pri_e2e_ember_monthly",
+	FLAME: process.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "pri_e2e_flame_monthly",
+	INFERNO:
+		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ?? "pri_e2e_inferno_monthly",
+};
+
 export async function mockAuthenticatedApp(
 	page: Page,
 	options: MockSupabaseOptions = {},
@@ -110,6 +119,9 @@ export async function installMockSupabase(
 ) {
 	const userId = options.userId ?? "00000000-0000-4000-8000-000000000001";
 	const now = new Date().toISOString();
+	const futureBillingPeriodEnd = new Date(
+		Date.now() + 30 * 24 * 60 * 60 * 1000,
+	).toISOString();
 	let idCounter = 0;
 
 	const state = {
@@ -120,7 +132,8 @@ export async function installMockSupabase(
 						user_id: userId,
 						tier: options.tier,
 						status: options.subscriptionStatus ?? "active",
-						current_period_end: null,
+						price_id: MONTHLY_PRICE_IDS[options.tier],
+						current_period_end: futureBillingPeriodEnd,
 						cancel_at_period_end: false,
 					} satisfies SubscriptionRow)
 				: null,

@@ -11,6 +11,7 @@ interface CreateGoalArgs {
 	target_value: number;
 	target_unit: string;
 	exercise_name?: string | null;
+	exercise_id?: string | null;
 	deadline?: string | null;
 	period?: "weekly" | "monthly";
 }
@@ -31,6 +32,7 @@ export function useCreateGoal() {
 					target_value: args.target_value,
 					target_unit: args.target_unit,
 					exercise_name: args.exercise_name ?? null,
+					exercise_id: args.exercise_id ?? null,
 					deadline: args.deadline ?? null,
 					period: args.period ?? "weekly",
 				})
@@ -71,6 +73,7 @@ interface UpdateGoalArgs {
 		target_value?: number;
 		target_unit?: string;
 		exercise_name?: string | null;
+		exercise_id?: string | null;
 		deadline?: string | null;
 		period?: "weekly" | "monthly";
 		status?: "active" | "completed" | "archived";
@@ -86,9 +89,17 @@ export function useUpdateGoal() {
 		mutationFn: async ({ goalId, updates }: UpdateGoalArgs) => {
 			if (!user) throw new Error("Must be logged in to update goals");
 
+			const payload: UpdateGoalArgs["updates"] & { updated_at: string } = {
+				...updates,
+				updated_at: new Date().toISOString(),
+			};
+			if ("exercise_name" in updates && !("exercise_id" in updates)) {
+				payload.exercise_id = null;
+			}
+
 			const { data, error } = await supabase
 				.from("user_goals")
-				.update({ ...updates, updated_at: new Date().toISOString() })
+				.update(payload)
 				.eq("id", goalId)
 				.eq("user_id", user.id)
 				.select()

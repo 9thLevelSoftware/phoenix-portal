@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 /** Fetch all active challenges */
@@ -62,7 +63,7 @@ export function challengeProgressOptions(
 						.lte("started_at", endDate);
 					if (error) throw error;
 					current = (data ?? []).reduce(
-						(sum, w) => sum + (w.total_volume ?? 0),
+						(sum, w) => sum + (w.total_volume ?? 0) * WEIGHT_MULTIPLIER,
 						0,
 					);
 					break;

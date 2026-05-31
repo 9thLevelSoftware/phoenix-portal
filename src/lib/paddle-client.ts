@@ -3,6 +3,8 @@
 // to comply with GDPR ePrivacy requirements — no third-party scripts are
 // loaded until the user explicitly initiates a billing action.
 
+import { supabase } from "@/lib/supabase";
+
 // ---------------------------------------------------------------------------
 // Global type declarations for the Paddle.js SDK (v2)
 // ---------------------------------------------------------------------------
@@ -14,6 +16,8 @@ interface PaddleCheckoutItem {
 
 interface PaddleCheckoutCustomData {
 	user_id: string;
+	/** HMAC-SHA256 hex from paddle-checkout-custom-data (P1-10) */
+	cd_sig: string;
 }
 
 interface PaddleCheckoutCustomer {
@@ -206,9 +210,26 @@ export async function openCheckout({
 		return;
 	}
 
+	const { data: signedPayload, error: signError } =
+		await supabase.functions.invoke<{
+			custom_data: PaddleCheckoutCustomData;
+		}>("paddle-checkout-custom-data", { method: "POST" });
+	if (signError || !signedPayload?.custom_data) {
+		throw new Error(
+			signError?.message ??
+				"Billing checkout signing is unavailable. Please try again.",
+		);
+	}
+	if (signedPayload.custom_data.user_id !== userId) {
+		throw new Error("Billing checkout signing returned the wrong user.");
+	}
+	if (!signedPayload.custom_data.cd_sig) {
+		throw new Error("Billing checkout signing returned an unsigned payload.");
+	}
+
 	window.Paddle.Checkout.open({
 		items: [{ priceId, quantity: 1 }],
-		customData: { user_id: userId },
+		customData: signedPayload.custom_data,
 		customer: { email: userEmail },
 		settings: {
 			theme: "dark",

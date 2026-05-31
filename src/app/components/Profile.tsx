@@ -73,6 +73,7 @@ import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 const PLAN_LABELS: Record<string, string> = {
 	FREE: "No Active Subscription",
 	EMBER: "Ember Plan",
+	FLAME: "Flame Plan",
 	INFERNO: "Inferno Plan",
 };
 
@@ -99,16 +100,15 @@ function getInitials(name: string | null | undefined): string {
 export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
-	const {
-		tier,
-		status: subStatus,
-		currentPeriodEnd,
-		cancelAtPeriodEnd,
-	} = useSubscription();
+	const { tier, currentPeriodEnd, cancelAtPeriodEnd, isEntitled, isStale } =
+		useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const queryClient = useQueryClient();
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
+	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
+		string | null
+	>(null);
 
 	const handleCancelSubscription = async () => {
 		setIsCanceling(true);
@@ -136,10 +136,28 @@ export function Profile() {
 		}
 	};
 
-	const canCancel =
-		tier !== "FREE" &&
-		!cancelAtPeriodEnd &&
-		(subStatus === "active" || subStatus === "trialing");
+	useEffect(() => {
+		if (!userId || !isStale || refreshAttemptedForUser === userId) {
+			return;
+		}
+
+		setRefreshAttemptedForUser(userId);
+		void supabase.functions
+			.invoke("paddle-refresh-subscription")
+			.then(({ error }) => {
+				if (error) {
+					console.warn("Failed to refresh stale Paddle subscription", error);
+				}
+			})
+			.finally(() => {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(userId),
+				});
+			});
+	}, [userId, isStale, refreshAttemptedForUser, queryClient]);
+
+	const canCancel = isEntitled && !cancelAtPeriodEnd;
+	const subscriptionDisplayTier = isEntitled ? tier : "FREE";
 
 	// Real data queries
 	const { data: profile, isPending: profileLoading } = useQuery({
@@ -397,9 +415,14 @@ export function Profile() {
 								<TierBadge />
 								<div>
 									<div className="text-white font-medium">
-										{PLAN_LABELS[tier]}
+										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
-									{tier !== "FREE" && currentPeriodEnd && (
+									{isStale && (
+										<div className="text-sm text-muted-foreground">
+											Subscription expired. Refreshing billing status...
+										</div>
+									)}
+									{isEntitled && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
 											{cancelAtPeriodEnd ? "Cancels" : "Renews"}{" "}
 											{format(new Date(currentPeriodEnd), "MMM d, yyyy")}
@@ -408,7 +431,7 @@ export function Profile() {
 								</div>
 							</div>
 							<div className="flex gap-2 flex-wrap items-center">
-								{tier === "FREE" ? (
+								{!isEntitled ? (
 									<Button asChild variant="cta">
 										<Link to="/pricing">Subscribe</Link>
 									</Button>
@@ -453,6 +476,7 @@ export function Profile() {
 									<div className="space-y-4">
 										{Array.from({ length: 5 }).map((_, i) => (
 											<div
+												// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 												key={i}
 												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
 											>
@@ -671,6 +695,7 @@ export function Profile() {
 								<div className="space-y-3">
 									{Array.from({ length: 4 }).map((_, i) => (
 										<div
+											// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 											key={i}
 											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 										>
@@ -725,6 +750,7 @@ export function Profile() {
 								<div className="space-y-4">
 									{Array.from({ length: 3 }).map((_, i) => (
 										<div
+											// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 											key={i}
 											className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 										>
