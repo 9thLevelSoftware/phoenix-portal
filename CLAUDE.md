@@ -38,7 +38,7 @@ Copy `.env.example` to `.env.local` and fill in values:
 - **Tailwind CSS v4** with @tailwindcss/vite plugin
 - **shadcn/ui** components (50+ Radix UI primitives in `src/app/components/ui/`)
 - **Zustand 5** for client state (4 stores)
-- **TanStack Query 5** for server state (19 query hooks, 10 mutation hooks)
+- **TanStack Query 5** for server state (25 query files incl. keys.ts, 11 mutation hooks)
 - **Zod 4** for runtime schema validation
 - **React Router v7** with lazy-loaded routes
 - **Recharts 3** + **@visx** for data visualization
@@ -54,8 +54,8 @@ Copy `.env.example` to `.env.local` and fill in values:
 `@` maps to `./src` (configured in vite.config.ts and tsconfig.json)
 
 ### State Management
-- **Client state:** Zustand 5 stores (community, profileFilter, replay, UI) in `src/stores/`
-- **Server state:** TanStack Query with Supabase client, query hooks in `src/queries/`, mutation hooks in `src/mutations/`
+- **Client state:** Zustand 5 stores (5 stores) in `src/stores/`
+- **Server state:** TanStack Query with Supabase client, 25 query files in `src/queries/`, 11 mutation hooks in `src/mutations/`
 - **Auth state:** AuthProvider context with Supabase Auth
 
 ### Component Organization
@@ -73,9 +73,9 @@ src/
 │   │   └── __tests__/             # Component unit tests
 │   ├── routes/                    # Route definitions, AppLayout, ProtectedRoute
 │   └── hooks/                     # useAuth, useIsMobile, usePWAInstall
-├── hooks/                         # 13 hooks: useRealtimeSync, useSubscription, useStreak, etc.
-├── queries/                       # TanStack Query hooks (20 files incl. keys.ts)
-├── mutations/                     # Mutation hooks (10 files)
+├── hooks/                         # 14 hooks: useRealtimeSync, useSubscription, useStreak, etc.
+├── queries/                       # TanStack Query hooks (25 files incl. keys.ts)
+├── mutations/                     # Mutation hooks (11 files)
 ├── schemas/                       # Zod validation schemas (7 files)
 ├── providers/                     # AuthProvider, QueryProvider
 ├── stores/                        # Zustand stores (4 stores)
@@ -105,14 +105,15 @@ src/
 6. UI components re-render with fresh data from cache refetch
 
 ### Edge Functions
-18 Supabase Edge Functions in `supabase/functions/`:
-- **Billing (3):** paddle-webhooks, paddle-cancel-subscription, paddle-update-subscription
+22 Supabase Edge Functions in `supabase/functions/`:
+- **Billing (5):** paddle-webhooks, paddle-cancel-subscription, paddle-update-subscription, paddle-refresh-subscription, paddle-checkout-custom-data
 - **OAuth (4):** initiate-oauth, strava-oauth, fitbit-oauth, garmin-oauth
 - **Sync (6):** strava-sync, fitbit-sync, hevy-sync, liftosaur-sync, garmin-webhook, process-sync-queue
-- **Mobile (2):** mobile-sync-push, mobile-sync-pull
+- **Mobile (3):** mobile-sync-push, mobile-sync-pull, mobile-integration-sync
 - **Account (1):** delete-account
 - **Integrations (1):** disconnect-integration
 - **Analytics (1):** generate-insights
+- **Rankings (1):** compute-rankings
 
 ### Mobile Sync Edge Function Patterns
 
@@ -219,26 +220,3 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 ### CI coverage
 - `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/`. Fails on file-vs-applied count mismatch.
 - Follow-up not yet wired: a scheduled `supabase db diff --linked --schema public` that alerts on prod drift. Requires `SUPABASE_ACCESS_TOKEN` + DB password secrets.
-
-## The Daem0n's Covenant
-
-This project is bound to Daem0n for persistent AI memory. Observe this protocol:
-
-### At Session Dawn
-- Commune with `get_briefing(project_path="C:/Users/dasbl/WebstormProjects/phoenix-portal")` immediately when powers manifest
-- Heed any warnings or failed approaches before beginning work
-
-### Before Alterations
-- Cast `context_check("your intention", project_path="...")` before modifications
-- Cast `recall_for_file("path", project_path="...")` when touching specific scrolls
-- Acknowledge any warnings about past failures
-
-### After Decisions
-- Cast `remember(category, content, rationale, file_path, project_path="...")` to inscribe decisions
-- Use categories: decision, pattern, warning, learning
-
-### After Completion
-- Cast `record_outcome(memory_id, outcome, worked, project_path="...")` to seal the memory
-- ALWAYS record failures (worked=false) - they illuminate future paths
-
-See Summon_Daem0n.md for the complete Grimoire.
