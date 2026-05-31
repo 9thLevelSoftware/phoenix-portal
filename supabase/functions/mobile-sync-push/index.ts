@@ -40,6 +40,28 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const MAX_PUSH_BODY_BYTES = 10 * 1024 * 1024;
 const PUSH_BODY_TOO_LARGE_ERROR = 'Payload too large. Maximum size is 10MB.';
 
+/**
+ * Defense-in-depth: deduplicate rows by a key field before upserting.
+ * PostgreSQL rejects an INSERT ... ON CONFLICT DO UPDATE when two rows in the
+ * same statement hit the same conflict target. The pre-flight
+ * `findPushPayloadDuplicateConflictKeys` check should prevent this, but UUID
+ * case differences (iOS NSUUID = uppercase, Android = lowercase) or edge-case
+ * data corruption can slip through. Last-wins semantics: if duplicates exist,
+ * the later row in the array survives.
+ */
+function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
+  const seen = new Map<string, number>();
+  for (let i = 0; i < rows.length; i++) {
+    // Normalize to lowercase for case-insensitive UUID comparison
+    seen.set(keyFn(rows[i]).toLowerCase(), i);
+  }
+  // Preserve original order, keep only the last occurrence of each key
+  return rows.filter((_, i) => {
+    const key = keyFn(rows[i]).toLowerCase();
+    return seen.get(key) === i;
+  });
+}
+
 type JsonBodyReadResult =
   | { ok: true; value: unknown }
   | { ok: false; status: 400 | 413; error: string };
@@ -1183,11 +1205,17 @@ Deno.serve(async (req) => {
           }))
         );
 
-      if (exerciseRows.length > 0) {
+      // Defense-in-depth: deduplicate by id before upsert. The pre-flight
+      // duplicate check should prevent this, but case-insensitive UUID
+      // collisions (iOS uppercase vs Android lowercase) can slip past the
+      // case-sensitive JS Set check while PostgreSQL treats them as equal.
+      const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
+
+      if (dedupedExerciseRows.length > 0) {
         const exerciseOwnershipResp = await assertRowsOwnedByUser(
           supabase,
           'exercises',
-          exerciseRows.map((r) => r.id),
+          dedupedExerciseRows.map((r) => r.id),
           userId,
           cors,
         );
@@ -1195,9 +1223,9 @@ Deno.serve(async (req) => {
 
         const { error: exErr } = await supabase
           .from('exercises')
-          .upsert(exerciseRows, { onConflict: 'id' });
+          .upsert(dedupedExerciseRows, { onConflict: 'id' });
         if (exErr) throw new Error(`exercises upsert failed: ${exErr.message}`);
-        exercisesInserted = exerciseRows.length;
+        exercisesInserted = dedupedExerciseRows.length;
       }
 
       // --- 4c. Batch upsert sets ---
@@ -1226,11 +1254,13 @@ Deno.serve(async (req) => {
           )
         );
 
-      if (setRows.length > 0) {
+      const dedupedSetRows = deduplicateByKey(setRows, (r) => r.id);
+
+      if (dedupedSetRows.length > 0) {
         const setOwnershipResp = await assertRowsOwnedByUser(
           supabase,
           'sets',
-          setRows.map((r) => r.id),
+          dedupedSetRows.map((r) => r.id),
           userId,
           cors,
         );
@@ -1238,9 +1268,9 @@ Deno.serve(async (req) => {
 
         const { error: setErr } = await supabase
           .from('sets')
-          .upsert(setRows, { onConflict: 'id' });
+          .upsert(dedupedSetRows, { onConflict: 'id' });
         if (setErr) throw new Error(`sets upsert failed: ${setErr.message}`);
-        setsInserted = setRows.length;
+        setsInserted = dedupedSetRows.length;
       }
 
       // --- 4d. Batch upsert rep_summaries ---
@@ -1270,11 +1300,13 @@ Deno.serve(async (req) => {
           )
         );
 
-      if (repRows.length > 0) {
+      const dedupedRepRows = deduplicateByKey(repRows, (r) => r.id);
+
+      if (dedupedRepRows.length > 0) {
         const repOwnershipResp = await assertRowsOwnedByUser(
           supabase,
           'rep_summaries',
-          repRows.map((r) => r.id),
+          dedupedRepRows.map((r) => r.id),
           userId,
           cors,
         );
@@ -1282,9 +1314,9 @@ Deno.serve(async (req) => {
 
         const { error: repErr } = await supabase
           .from('rep_summaries')
-          .upsert(repRows, { onConflict: 'id' });
+          .upsert(dedupedRepRows, { onConflict: 'id' });
         if (repErr) throw new Error(`rep_summaries upsert failed: ${repErr.message}`);
-        repSummariesInserted = repRows.length;
+        repSummariesInserted = dedupedRepRows.length;
       }
 
       // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---

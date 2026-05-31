@@ -379,6 +379,30 @@ describe("pushPayloadSchema", () => {
 		});
 	});
 
+	it("reports case-insensitive duplicate exercise IDs (iOS uppercase vs Android lowercase)", () => {
+		const lowerUuid = "a1b2c3d4-e5f6-4789-abcd-0123456789ab";
+		const upperUuid = "A1B2C3D4-E5F6-4789-ABCD-0123456789AB";
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "ios",
+			sessions: [
+				{
+					id: UUID,
+					userId: "u1",
+					exercises: [
+						{ id: lowerUuid, sessionId: UUID, name: "Squat" },
+						{ id: upperUuid, sessionId: UUID, name: "Squat Again" },
+					],
+				},
+			],
+		});
+
+		const dups = findPushPayloadDuplicateConflictKeys(parsed);
+		const exerciseDups = dups.find((d) => d.table === "exercises");
+		expect(exerciseDups).toBeDefined();
+		expect(exerciseDups?.ids).toContain(upperUuid);
+	});
+
 	it("reports duplicate routine exercise IDs before orphan cleanup", () => {
 		const routineId = "22222222-2222-4222-8222-222222222222";
 		const routineExerciseId = "33333333-3333-4333-8333-333333333333";
