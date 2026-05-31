@@ -6,6 +6,8 @@ import { extractGarminProviderUserId } from '../_shared/garminIdentity.ts';
 const GARMIN_CONSUMER_KEY = Deno.env.get('GARMIN_CONSUMER_KEY')!;
 const GARMIN_CONSUMER_SECRET = Deno.env.get('GARMIN_CONSUMER_SECRET')!;
 const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
+const PUBLIC_SUPABASE_URL =
+  Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
 
 /**
  * Garmin Connect OAuth 1.0a callback handler.
@@ -140,7 +142,7 @@ Deno.serve(async (req) => {
       await supabase.from('oauth_states').delete().eq('state_token', stateParam);
 
       const requestTokenUrl = 'https://connectapi.garmin.com/oauth-service/oauth/request_token';
-      const callbackUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/garmin-oauth`;
+      const callbackUrl = `${PUBLIC_SUPABASE_URL}/functions/v1/garmin-oauth`;
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = generateNonce();
 

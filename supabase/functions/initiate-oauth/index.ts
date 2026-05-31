@@ -1,6 +1,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
+const PUBLIC_SUPABASE_URL =
+  Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
+
 /**
  * Initiate OAuth Edge Function
  *
@@ -88,7 +91,7 @@ Deno.serve(async (req) => {
 
     if (provider === 'strava') {
       const clientId = Deno.env.get('STRAVA_CLIENT_ID');
-      const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/strava-oauth`;
+      const redirectUri = `${PUBLIC_SUPABASE_URL}/functions/v1/strava-oauth`;
       const params = new URLSearchParams({
         client_id: clientId!,
         redirect_uri: redirectUri,
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
       authUrl = `https://www.strava.com/oauth/authorize?${params}`;
     } else if (provider === 'fitbit') {
       const clientId = Deno.env.get('FITBIT_CLIENT_ID');
-      const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/fitbit-oauth`;
+      const redirectUri = `${PUBLIC_SUPABASE_URL}/functions/v1/fitbit-oauth`;
       const params = new URLSearchParams({
         client_id: clientId!,
         redirect_uri: redirectUri,
@@ -111,7 +114,7 @@ Deno.serve(async (req) => {
       authUrl = `https://www.fitbit.com/oauth2/authorize?${params}`;
     } else {
       // Garmin: redirect to garmin-oauth Edge Function with state token
-      authUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/garmin-oauth?state=${stateToken}`;
+      authUrl = `${PUBLIC_SUPABASE_URL}/functions/v1/garmin-oauth?state=${stateToken}`;
     }
 
     return new Response(JSON.stringify({ url: authUrl }), {

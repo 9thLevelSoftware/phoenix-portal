@@ -5,6 +5,8 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
 const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
+const PUBLIC_SUPABASE_URL =
+  Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
 
 /**
  * Fitbit OAuth 2.0 callback handler.
@@ -70,7 +72,7 @@ Deno.serve(async (req) => {
 
     // Fitbit requires Basic auth: base64(client_id:client_secret)
     const basicAuth = btoa(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`);
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/fitbit-oauth`;
+    const redirectUri = `${PUBLIC_SUPABASE_URL}/functions/v1/fitbit-oauth`;
 
     // Exchange authorization code for tokens
     const tokenResponse = await fetch('https://api.fitbit.com/oauth2/token', {
