@@ -434,10 +434,17 @@ function duplicateValues(values: string[]): string[] {
 	const seen = new Set<string>();
 	const duplicates = new Set<string>();
 	for (const value of values) {
-		if (seen.has(value)) {
+		// Normalize to lowercase: PostgreSQL UUID type is case-insensitive, so
+		// "ABC-123" and "abc-123" collide on the same conflict target. iOS
+		// NSUUID.UUIDString() returns uppercase; Android UUID.randomUUID()
+		// returns lowercase. If the same session is synced from both platforms
+		// or if IDs are mixed-case for any reason, the pre-flight check must
+		// catch the collision before the upsert hits PostgreSQL.
+		const normalized = value.toLowerCase();
+		if (seen.has(normalized)) {
 			duplicates.add(value);
 		} else {
-			seen.add(value);
+			seen.add(normalized);
 		}
 	}
 	return [...duplicates].sort();
