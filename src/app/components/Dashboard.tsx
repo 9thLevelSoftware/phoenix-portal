@@ -89,6 +89,21 @@ function deriveWeeklyVolume(
 	}));
 }
 
+function formatWorkoutPhaseLabel(phase: string | null | undefined): string {
+	switch ((phase ?? "Combined").toUpperCase()) {
+		case "CONCENTRIC":
+			return "Concentric";
+		case "ECCENTRIC":
+			return "Eccentric";
+		default:
+			return "Combined";
+	}
+}
+
+function isNonCombinedWorkoutPhase(phase: string | null | undefined): boolean {
+	return formatWorkoutPhaseLabel(phase) !== "Combined";
+}
+
 /** Format a relative time string from a Date */
 function formatRelativeTime(date: Date): string {
 	const now = new Date();
@@ -1343,6 +1358,11 @@ export function Dashboard() {
 															{formatRelativeTime(pr.achieved_at)}
 														</span>
 													</div>
+													{isNonCombinedWorkoutPhase(pr.workout_phase) ? (
+														<Badge className="mt-2 bg-secondary/20 text-secondary-foreground border-secondary/30 text-xs">
+															{formatWorkoutPhaseLabel(pr.workout_phase)}
+														</Badge>
+													) : null}
 												</div>
 											))}
 										</div>

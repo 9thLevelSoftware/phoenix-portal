@@ -2,9 +2,10 @@
  * AES-GCM encryption for oauth_tokens sensitive columns (access_token, refresh_token, api_key).
  *
  * Set OAUTH_TOKEN_ENCRYPTION_KEY to a base64-encoded 32-byte key. When unset:
- *   - In deployed Supabase Edge runtimes (SUPABASE_URL + DENO_DEPLOYMENT_ID
- *     present), this module throws on first use so we fail loud instead of
- *     silently persisting OAuth tokens as plaintext.
+ *   - In deployed Supabase Edge runtimes or self-hosted production
+ *     (SUPABASE_URL plus DENO_DEPLOYMENT_ID, SUPABASE_PUBLIC_URL, or
+ *     ENVIRONMENT=production present), this module throws on first use so we
+ *     fail loud instead of silently persisting OAuth tokens as plaintext.
  *   - In local dev, values pass through unencrypted with a single warning so
  *     contributors can iterate without secrets set.
  */
@@ -15,11 +16,13 @@ let keyCache: CryptoKey | null | undefined;
 let devPlaintextWarned = false;
 
 function isProductionRuntime(): boolean {
-  // Supabase Edge runtimes always set DENO_DEPLOYMENT_ID. Local `supabase
-  // functions serve` does not. We additionally require SUPABASE_URL to avoid
-  // tripping inside pure unit-test environments.
+  // Hosted Supabase sets DENO_DEPLOYMENT_ID. The self-hosted edge runtime does
+  // not, so include the production markers we pass through in Docker Compose.
+  if (!Deno.env.get('SUPABASE_URL')) return false;
   return Boolean(
-    Deno.env.get('DENO_DEPLOYMENT_ID') && Deno.env.get('SUPABASE_URL'),
+    Deno.env.get('DENO_DEPLOYMENT_ID') ||
+      Deno.env.get('SUPABASE_PUBLIC_URL') ||
+      Deno.env.get('ENVIRONMENT') === 'production',
   );
 }
 

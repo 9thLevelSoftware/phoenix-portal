@@ -5,7 +5,7 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
 import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
 import {
-  buildPersonalRecordRows,
+  buildPersonalRecordRowsForPush,
   personalRecordIdentityKey,
 } from '../_shared/personalRecordRow.ts';
 import {
@@ -311,6 +311,25 @@ interface ExternalActivityAckDto {
   updatedAt: string;
 }
 
+interface PersonalRecordDto {
+  id?: string | null;
+  userId?: string | null;
+  exerciseName: string;
+  exerciseId?: string | null;
+  muscleGroup?: string | null;
+  recordType?: string | null;
+  value?: number | null;
+  volume?: number | null;
+  weightKg?: number | null;
+  reps?: number | null;
+  workoutPhase?: string | null;
+  sessionId?: string | null;
+  achievedAt?: string | null;
+  updatedAt?: string | null;
+  localProfileId?: string | null;
+  workoutMode?: string | null;
+}
+
 interface PushPayload {
   deviceId: string;
   platform: string;
@@ -326,6 +345,7 @@ interface PushPayload {
   exerciseSignatures: ExerciseSignatureDto[];
   assessments: AssessmentResultDto[];
   externalActivities?: ExternalActivityDto[] | null;
+  personalRecords: PersonalRecordDto[];
   customExercises?: CustomExerciseDto[];
   profileId?: string | null;
   profileName?: string | null;
@@ -696,6 +716,12 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+    if (payload.personalRecords && payload.personalRecords.length > MAX_ENTITIES_PER_TYPE) {
+      return new Response(
+        JSON.stringify({ error: `Too many personalRecords. Maximum is ${MAX_ENTITIES_PER_TYPE}.` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
     // fix(audit #6): align cycles cap with sessions/routines (10000).
     // Prior 1000 cap was a silent cliff for users with large cycle histories.
     if (payload.cycles && payload.cycles.length > MAX_ENTITIES_PER_TYPE) {
@@ -900,6 +926,9 @@ Deno.serve(async (req) => {
     );
     const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
     const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
+    const allPersonalRecordIds = (payload.personalRecords ?? [])
+      .map((pr) => pr.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
     const sessionIdSet = new Set(allSessionIds);
     const exerciseIdSet = new Set(allExerciseIds);
     const setIdSet = new Set(allSetIds);
@@ -957,6 +986,7 @@ Deno.serve(async (req) => {
       ['rep_telemetry', allTelemetryIds],
       ['routines', allRoutineIds],
       ['training_cycles', allCycleIds],
+      ['personal_records', allPersonalRecordIds],
     ];
     for (const [table, ids] of directOwnerChecks) {
       const blocked = await assertRowsOwnedByUser(supabase, table, ids, userId, cors);
@@ -1060,6 +1090,18 @@ Deno.serve(async (req) => {
       cors,
     );
     if (sessionRoutineBlocked) return sessionRoutineBlocked;
+
+    const personalRecordSessionIdsToVerify = (payload.personalRecords ?? [])
+      .map((pr) => pr.sessionId)
+      .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid));
+    const personalRecordSessionBlocked = await assertRowsOwnedByUser(
+      supabase,
+      'workout_sessions',
+      personalRecordSessionIdsToVerify,
+      userId,
+      cors,
+    );
+    if (personalRecordSessionBlocked) return personalRecordSessionBlocked;
 
     // =========================================================================
     // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
@@ -1400,47 +1442,65 @@ Deno.serve(async (req) => {
         }
       }
 
-      // =====================================================================
-      // 6. Extract personal_records from is_pr sets
-      //
-      // Row construction delegated to _shared/personalRecordRow.ts so the
-      // NOT-NULL-DEFAULT guards (record_type, muscle_group, unit,
-      // workout_phase) are unit-testable in isolation.
-      // =====================================================================
-      const prRows = buildPersonalRecordRows(
-        payload.sessions,
-        userId,
-        localProfileId,
+    }
+
+    // =========================================================================
+    // 6. Persist personal_records.
+    //
+    // Dedicated top-level personalRecords are authoritative for current mobile
+    // clients. Set-derived rows remain the fallback for old clients that only
+    // send isPr/prType/prPhase/prVolume on sets.
+    // =========================================================================
+    const prRows = buildPersonalRecordRowsForPush(
+      payload.sessions ?? [],
+      payload.personalRecords ?? [],
+      userId,
+      localProfileId,
+    );
+
+    if (prRows.length > 0) {
+      const dedicatedPrsPresent = (payload.personalRecords ?? []).length > 0;
+      const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
+      const { data: existingPrs, error: existingPrErr } = await supabase
+        .from('personal_records')
+        .select('id, local_profile_id, exercise_id, exercise_name, achieved_at, record_type, workout_phase')
+        .eq('user_id', userId)
+        .in('achieved_at', achievedAtValues);
+      if (existingPrErr) {
+        throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
+      }
+
+      const existingPrIdsByIdentity = new Map<string, string | null>(
+        (existingPrs ?? []).map((row) => [
+          personalRecordIdentityKey(row),
+          typeof row.id === 'string' ? row.id : null,
+        ])
       );
 
-      if (prRows.length > 0) {
-        const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
-        const { data: existingPrs, error: existingPrErr } = await supabase
-          .from('personal_records')
-          .select('local_profile_id, exercise_id, exercise_name, achieved_at, value, record_type, workout_phase')
-          .eq('user_id', userId)
-          .in('achieved_at', achievedAtValues);
-        if (existingPrErr) {
-          throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
-        }
+      const latestPayloadRowsByIdentity = new Map<string, typeof prRows[number]>();
+      for (const row of prRows) {
+        latestPayloadRowsByIdentity.set(personalRecordIdentityKey(row), row);
+      }
 
-        const existingPrKeys = new Set(
-          (existingPrs ?? []).map((row) => personalRecordIdentityKey(row))
-        );
-        const dedupedPrRows = prRows.filter((row) => {
-          const key = personalRecordIdentityKey(row);
-          if (existingPrKeys.has(key)) return false;
-          existingPrKeys.add(key);
-          return true;
-        });
+      const dedupedPrRows = [...latestPayloadRowsByIdentity.values()].filter((row) => {
+        const key = personalRecordIdentityKey(row);
+        const existingId = existingPrIdsByIdentity.get(key);
+        if (existingId && (!row.id || row.id !== existingId)) return false;
+        existingPrIdsByIdentity.set(key, row.id ?? existingId ?? null);
+        return true;
+      });
 
-        if (dedupedPrRows.length > 0) {
-          const { error: prErr } = await supabase
-            .from('personal_records')
-            .insert(dedupedPrRows);
-          if (prErr) throw new Error(`personal_records insert failed: ${prErr.message}`);
-          personalRecordsInserted = dedupedPrRows.length;
-        }
+      if (dedupedPrRows.length > 0) {
+        const write = dedicatedPrsPresent
+          ? supabase
+              .from('personal_records')
+              .upsert(dedupedPrRows, { onConflict: 'id' })
+          : supabase
+              .from('personal_records')
+              .insert(dedupedPrRows);
+        const { error: prErr } = await write;
+        if (prErr) throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+        personalRecordsInserted = dedupedPrRows.length;
       }
     }
 

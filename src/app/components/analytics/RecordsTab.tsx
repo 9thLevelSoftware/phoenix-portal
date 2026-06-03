@@ -39,6 +39,23 @@ type PhaseFilter = (typeof phaseFilters)[number];
 
 const knownGroups = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
 
+function formatWorkoutPhaseLabel(
+	phase: string | null | undefined,
+): PhaseFilter {
+	switch ((phase ?? "Combined").toUpperCase()) {
+		case "CONCENTRIC":
+			return "Concentric";
+		case "ECCENTRIC":
+			return "Eccentric";
+		default:
+			return "Combined";
+	}
+}
+
+function isNonCombinedWorkoutPhase(phase: string | null | undefined): boolean {
+	return formatWorkoutPhaseLabel(phase) !== "Combined";
+}
+
 function formatRecordTypeLabel(recordType: string): string {
 	const labels: Record<string, string> = {
 		MAX_WEIGHT: "Weight PR",
@@ -144,7 +161,9 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	const phaseFiltered =
 		phaseFilter === "all"
 			? (records ?? [])
-			: (records ?? []).filter((r) => r.workout_phase === phaseFilter);
+			: (records ?? []).filter(
+					(r) => formatWorkoutPhaseLabel(r.workout_phase) === phaseFilter,
+				);
 
 	// Group by exercise (prefer exercise_id for stable grouping, fall back to name)
 	const exerciseMap = new Map<string, PersonalRecord[]>();
@@ -572,13 +591,16 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																		</Badge>
 																	</td>
 																	<td className="py-2.5">
-																		{entry.workout_phase &&
-																		entry.workout_phase !== "Combined" ? (
+																		{isNonCombinedWorkoutPhase(
+																			entry.workout_phase,
+																		) ? (
 																			<Badge
 																				variant="outline"
 																				className="border-accent/40 text-accent text-xs"
 																			>
-																				{entry.workout_phase}
+																				{formatWorkoutPhaseLabel(
+																					entry.workout_phase,
+																				)}
 																			</Badge>
 																		) : (
 																			<span className="text-muted-foreground text-xs">
@@ -657,15 +679,14 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														>
 															{pr.muscle_group}
 														</Badge>
-														{pr.workout_phase &&
-															pr.workout_phase !== "Combined" && (
-																<Badge
-																	variant="outline"
-																	className="border-accent/40 text-accent text-xs flex-shrink-0"
-																>
-																	{pr.workout_phase}
-																</Badge>
-															)}
+														{isNonCombinedWorkoutPhase(pr.workout_phase) && (
+															<Badge
+																variant="outline"
+																className="border-accent/40 text-accent text-xs flex-shrink-0"
+															>
+																{formatWorkoutPhaseLabel(pr.workout_phase)}
+															</Badge>
+														)}
 													</div>
 													<p className="text-xl font-bold text-primary font-data">
 														{formatRecordMeasurement(pr.value, pr.unit, unit)}

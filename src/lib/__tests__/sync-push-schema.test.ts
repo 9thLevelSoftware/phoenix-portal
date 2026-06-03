@@ -103,6 +103,7 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.phaseStatistics).toEqual([]);
 		expect(parsed.exerciseSignatures).toEqual([]);
 		expect(parsed.assessments).toEqual([]);
+		expect(parsed.personalRecords).toEqual([]);
 	});
 
 	it("coerces non-array values in array positions to []", () => {
@@ -256,6 +257,55 @@ describe("pushPayloadSchema", () => {
 				muscleGroup: "Chest",
 				equipment: "HANDLES,BENCH",
 				defaultCableConfig: "DOUBLE",
+			},
+		]);
+	});
+
+	it("preserves top-level mobile personalRecords through validation", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			profileId: "default",
+			personalRecords: [
+				{
+					id: "11111111-1111-4111-8111-111111111111",
+					userId: "u1",
+					exerciseName: "Bench Press",
+					exerciseId: "catalog-bench-press",
+					muscleGroup: "Chest",
+					recordType: "MAX_VOLUME",
+					value: null,
+					volume: 1875,
+					weightKg: 125,
+					reps: 15,
+					workoutPhase: "ECCENTRIC",
+					sessionId: "22222222-2222-4222-8222-222222222222",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					updatedAt: "2026-04-21T12:30:00.000Z",
+					localProfileId: "default",
+					workoutMode: "OLD_SCHOOL",
+				},
+			],
+		});
+
+		expect(parsed.personalRecords).toEqual([
+			{
+				id: "11111111-1111-4111-8111-111111111111",
+				userId: "u1",
+				exerciseName: "Bench Press",
+				exerciseId: "catalog-bench-press",
+				muscleGroup: "Chest",
+				recordType: "MAX_VOLUME",
+				value: null,
+				volume: 1875,
+				weightKg: 125,
+				reps: 15,
+				workoutPhase: "ECCENTRIC",
+				sessionId: "22222222-2222-4222-8222-222222222222",
+				achievedAt: "2026-04-21T12:00:00.000Z",
+				updatedAt: "2026-04-21T12:30:00.000Z",
+				localProfileId: "default",
+				workoutMode: "OLD_SCHOOL",
 			},
 		]);
 	});

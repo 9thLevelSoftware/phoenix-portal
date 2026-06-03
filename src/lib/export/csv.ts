@@ -47,6 +47,7 @@ export function generateRecordsCSV(
 		Exercise: r.exercise_name,
 		"Muscle Group": r.muscle_group,
 		"Record Type": formatRecordType(r.record_type),
+		"Workout Phase": r.workout_phase ?? "Combined",
 		Value: r.unit === "kg" ? convertWeight(r.value, unit) : r.value,
 		Unit: r.unit === "kg" ? getUnitLabel(unit) : r.unit,
 		"Date Achieved": format(r.achieved_at, "yyyy-MM-dd"),
