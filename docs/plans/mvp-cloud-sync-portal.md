@@ -54,7 +54,7 @@ verify_jwt = false
 
 **Fix (optional, not blocking):**
 ```json
-"gen:types": "npx supabase gen types typescript --project-id ${SUPABASE_PROJECT_ID:-ilzlswmatadlnsuxatcv} --schema public > src/types/database.ts"
+"gen:types": "supabase gen types typescript --project-id ${SUPABASE_PROJECT_ID:-ilzlswmatadlnsuxatcv} --schema public > src/types/database.ts"
 ```
 
 ---

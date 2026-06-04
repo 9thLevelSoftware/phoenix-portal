@@ -22,8 +22,8 @@
  * Several tests run against the mock Edge Function harness because the mock
  * already intercepts auth/validation at the same boundaries (see
  * `tests/sync/helpers/mock-edge-functions.ts`). Tests that require live
- * Supabase semantics (rate limit, subscription lookup) are marked
- * `test.skip` with a clear comment pointing at the real Edge Function —
+ * Supabase semantics (rate limit, subscription lookup) use `liveIt` with a
+ * clear comment pointing at the real Edge Function —
  * we do not synthesize passing assertions against behaviour the mock does
  * not implement.
  */
@@ -44,6 +44,7 @@ import {
   type TestUser,
 } from './helpers/edge-function-harness';
 import { resetMockStore } from './helpers/mock-edge-functions';
+import { liveIt } from './setup';
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -57,14 +58,14 @@ vi.setConfig({ testTimeout: 30000 });
  */
 function buildSessions(userId: string, count: number): SessionDto[] {
   return Array.from({ length: count }, () =>
-    createTestSession(userId, { exercises: [] }),
+    createTestSession(userId, { id: crypto.randomUUID(), exercises: [] }),
   );
 }
 
 /** Build N minimal routines referencing the given user. */
 function buildRoutines(userId: string, count: number): RoutineDto[] {
   return Array.from({ length: count }, (_, i) => ({
-    id: generateTestId(),
+    id: crypto.randomUUID(),
     userId,
     name: `Routine ${i}`,
     description: null,
@@ -101,7 +102,7 @@ function buildTelemetry(count: number): RepTelemetryDto[] {
 /** Build N minimal cycles. */
 function buildCycles(userId: string, count: number): CycleDto[] {
   return Array.from({ length: count }, (_, i) => ({
-    id: generateTestId(),
+    id: crypto.randomUUID(),
     userId,
     name: `Cycle ${i}`,
     description: null,
@@ -131,7 +132,7 @@ describe('Server-Side Validation Invariants', () => {
   });
 
   describe('Payload size (>10 MB)', () => {
-    it.skip(
+    liveIt(
       'rejects payloads > 10 MB with 413 — requires live Edge Function',
       async () => {
         // The real Edge Function reads Content-Length and short-circuits at
@@ -140,7 +141,7 @@ describe('Server-Side Validation Invariants', () => {
         // the payload to in-memory JSON before dispatch. Flag as a regression
         // marker for when live mode is enabled.
         //
-        // To execute: set MOCK_EDGE_FUNCTIONS=false and craft a payload that
+        // To execute: run `npm run test:sync:live` and craft a payload that
         // serializes >10MB (e.g., 100k telemetry rows w/ notes padding).
         //
         // Expected: status === 413 with message matching /Payload too large/i.
@@ -156,7 +157,7 @@ describe('Server-Side Validation Invariants', () => {
   });
 
   describe('Array size caps', () => {
-    it.skip(
+    liveIt(
       'rejects sessions.length > 10_000 with 400 — requires live Edge Function',
       async () => {
         // Enforced in mobile-sync-push/index.ts lines 510-516. Mock does
@@ -172,7 +173,7 @@ describe('Server-Side Validation Invariants', () => {
       },
     );
 
-    it.skip(
+    liveIt(
       'rejects telemetry.length > 50_000 with 400 — requires live Edge Function',
       async () => {
         // Enforced in mobile-sync-push/index.ts against MAX_TELEMETRY_POINTS.
@@ -187,7 +188,7 @@ describe('Server-Side Validation Invariants', () => {
       },
     );
 
-    it.skip(
+    liveIt(
       'rejects routines.length > 10_000 with 400 — requires live Edge Function',
       async () => {
         // Enforced in mobile-sync-push/index.ts against MAX_ENTITIES_PER_TYPE.
@@ -199,7 +200,7 @@ describe('Server-Side Validation Invariants', () => {
       },
     );
 
-    it.skip(
+    liveIt(
       'rejects cycles.length > 10_000 with 400 — requires live Edge Function',
       async () => {
         // Enforced in mobile-sync-push/index.ts against MAX_ENTITIES_PER_TYPE.
@@ -315,7 +316,7 @@ describe('Server-Side Validation Invariants', () => {
   });
 
   describe('Rate limit (10 req/min per user on push, 11th → 429)', () => {
-    it.skip(
+    liveIt(
       'returns 429 with Retry-After header on 11th push inside 60s — requires live rate limiter',
       async () => {
         // The real limiter lives in supabase/functions/_shared/rateLimit.ts
@@ -350,7 +351,7 @@ describe('Server-Side Validation Invariants', () => {
   });
 
   describe('Subscription tier gating (EMBER or higher on push)', () => {
-    it.skip(
+    liveIt(
       'rejects FREE tier user with 402/403 on push — requires live subscription lookup',
       async () => {
         // Gate implementation: supabase/functions/_shared/requireSubscription.ts
@@ -368,7 +369,7 @@ describe('Server-Side Validation Invariants', () => {
       },
     );
 
-    it.skip(
+    liveIt(
       'rejects FREE tier user with 402/403 on pull — requires live subscription lookup',
       async () => {
         // mobile-sync-pull/index.ts enforces the same gate with a 20 req/min
@@ -395,7 +396,7 @@ describe('Server-Side Validation Invariants', () => {
       expect(result.error?.code).toBe('UNAUTHORIZED');
     });
 
-    it.skip(
+    liveIt(
       'rejects expired JWT with 401 and AUTH error signal — requires live Supabase auth',
       async () => {
         // Mock mode returns UNAUTHORIZED for any empty token, but does not

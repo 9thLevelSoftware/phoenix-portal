@@ -57,23 +57,30 @@ jobs:
         if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::Required Supabase secrets not configured for live tests. Configure SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in repository secrets."
+            echo "::error::Required staging Supabase secrets not configured for live tests. Configure SYNC_STAGING_SUPABASE_URL, SYNC_STAGING_SUPABASE_ANON_KEY, and SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY in repository secrets."
             exit 1
           fi
-          echo "✅ All required Supabase secrets are configured"
+          case "$SUPABASE_URL" in
+            *"ilzlswmatadlnsuxatcv.supabase.co"*|*"api.phoenix-portal.com"*)
+              echo "::error::Refusing to run live sync tests against production Supabase URL."
+              exit 1
+              ;;
+          esac
+          echo "All required staging Supabase secrets are configured"
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Run sync tests (live mode)
         if: ${{ github.event.inputs.use_mocks == 'false' }}
-        run: npm run test:sync
+        run: npm run test:sync:live
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
           MOCK_EDGE_FUNCTIONS: 'false'
+          SYNC_LIVE_TESTS: 'true'
 
       - name: Upload test results
         uses: actions/upload-artifact@v7

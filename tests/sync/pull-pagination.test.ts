@@ -7,20 +7,20 @@
  *     a3a2aa1 which tightened the parity-based pull path)
  *   - Composite cursor stability when multiple rows share updated_at
  *   - Empty delta behavior (lastSync at/after latest push)
- *   - Large knownEntityIds list (>MAX_PARITY_IDS = 500) fallback semantics
+ *   - Large knownEntityIds list (>MAX_PARITY_IDS = 10_000) rejection semantics
  *   - Entity order enforcement: sessions → routines → cycles → badges → stats
  *
  * Contract reference:
  *   - supabase/functions/mobile-sync-pull/index.ts
  *   - DEFAULT_PAGE_SIZE = 75
  *   - MAX_PAGE_SIZE = 300
- *   - MAX_PARITY_IDS = 500
+ *   - MAX_PARITY_IDS = 10_000
  *
  * CRITICAL: The mock harness (tests/sync/helpers/mock-edge-functions.ts)
  * returns every stored entity on each pull — it does not implement
  * cursor/pageSize semantics. Tests that require true pagination behaviour
- * are marked `test.skip` with a clear pointer to the live Edge Function
- * and a description of how to exercise them in MOCK_EDGE_FUNCTIONS=false.
+ * are marked with `liveIt` or `test.skip` with a clear pointer to the live Edge Function
+ * and a description of how to exercise them via `npm run test:sync:live`.
  * Tests that can be validated via interface assertions (response shape,
  * empty-delta semantics, entity order) run as normal Vitest tests.
  */
@@ -32,21 +32,22 @@ import {
   createTestUser,
   createMinimalPushPayload,
   createTestSession,
-  generateTestId,
   type SessionDto,
   type TestUser,
 } from './helpers/edge-function-harness';
 import { resetMockStore } from './helpers/mock-edge-functions';
+import { liveIt } from './setup';
 
 vi.setConfig({ testTimeout: 30000 });
 
 // Contract constants (keep aligned with mobile-sync-pull/index.ts)
 const DEFAULT_PAGE_SIZE = 75;
-const MAX_PARITY_IDS = 500;
+const MAX_PARITY_IDS = 10_000;
 
 function seedSessions(userId: string, count: number): SessionDto[] {
   return Array.from({ length: count }, (_, i) =>
     createTestSession(userId, {
+      id: crypto.randomUUID(),
       name: `Session ${i}`,
       startedAt: new Date(Date.parse('2026-04-01T00:00:00Z') + i * 1000).toISOString(),
       exercises: [],
@@ -67,7 +68,7 @@ describe('mobile-sync-pull pagination', () => {
   });
 
   describe('Default page size', () => {
-    it.skip(
+    liveIt(
       'returns hasMore=true with nextCursor when >DEFAULT_PAGE_SIZE sessions match — requires live Edge Function',
       async () => {
         // The mock does not honour `pageSize` or emit `nextCursor`. Real
@@ -88,9 +89,7 @@ describe('mobile-sync-pull pagination', () => {
         const page1 = await callPullEndpoint(0, testUser.accessToken);
         expect(page1.success).toBe(true);
         expect(page1.data!.sessions.length).toBe(DEFAULT_PAGE_SIZE);
-        // @ts-expect-error — hasMore/nextCursor are not on the mock's PullResponse type yet
         expect(page1.data!.hasMore).toBe(true);
-        // @ts-expect-error — nextCursor added in live response shape
         expect(typeof page1.data!.nextCursor).toBe('string');
       },
     );
@@ -109,14 +108,14 @@ describe('mobile-sync-pull pagination', () => {
   });
 
   describe('Multi-page traversal (>500 entities)', () => {
-    it.skip(
+    liveIt(
       'union of all pages equals the full set with no duplicates — requires live Edge Function',
       async () => {
         // Regression marker for commit a3a2aa1 which hardened the
         // parity-based pull path. Real behaviour: seed ≥501 sessions,
         // loop pulling with cursor until hasMore === false, union the
         // session IDs, assert size === 501 and no duplicate IDs.
-        const count = 501; // One above MAX_PARITY_IDS to stress the limit
+        const count = 501;
         const sessions = seedSessions(testUser.id, count);
         await callPushEndpoint(
           createMinimalPushPayload(testUser.id, { sessions }),
@@ -128,16 +127,10 @@ describe('mobile-sync-pull pagination', () => {
         let safety = 0;
         do {
           const result = await callPullEndpoint(0, testUser.accessToken, {
-            // The harness currently does not pass a cursor arg. When wired
-            // for live mode, extend callPullEndpoint signature to forward
-            // cursor/pageSize in the POST body per mobile-sync-pull's
-            // PullRequest schema.
-            // @ts-expect-error — cursor field not yet plumbed in the harness
             cursor,
           });
           expect(result.success).toBe(true);
           for (const s of result.data!.sessions) collected.add(s.id);
-          // @ts-expect-error — hasMore/nextCursor in live response
           cursor = result.data!.hasMore ? result.data!.nextCursor : undefined;
           safety++;
         } while (cursor && safety < 20);
@@ -185,53 +178,30 @@ describe('mobile-sync-pull pagination', () => {
       expect(result.data!.gamificationStats).toBeNull();
     });
 
-    it.skip(
-      'asserts hasMore=false and nextCursor is absent/undefined in empty-delta pull — requires live Edge Function',
+    it(
+      'asserts hasMore=false and nextCursor is absent/undefined in empty-delta pull',
       async () => {
-        // Live response includes hasMore: false and omits nextCursor when
-        // no pages remain. Mock does not implement these fields.
         const future = Date.now() + 60_000;
         const result = await callPullEndpoint(future, testUser.accessToken);
-        // @ts-expect-error — hasMore/nextCursor not in mock response type
         expect(result.data!.hasMore).toBe(false);
-        // @ts-expect-error — nextCursor not in mock response type
         expect(result.data!.nextCursor).toBeUndefined();
       },
     );
   });
 
-  describe('Large knownEntityIds list (>MAX_PARITY_IDS = 500)', () => {
-    it.skip(
-      'skips parity filter for entity types exceeding MAX_PARITY_IDS — requires live Edge Function',
+  describe('Large knownEntityIds list (>MAX_PARITY_IDS = 10_000)', () => {
+    liveIt(
+      'rejects entity ID lists exceeding MAX_PARITY_IDS with 413 — requires live Edge Function',
       async () => {
-        // mobile-sync-pull/index.ts MAX_PARITY_IDS = 500. When a client
-        // supplies more than 500 sessionIds in knownEntityIds, the server
-        // skips parity filtering for that entity type (comment: "assuming
-        // the client is already up-to-date").
-        //
-        // Regression marker for commit a3a2aa1. Exercise by seeding 700
-        // sessions, then calling pull with knownEntityIds.sessionIds
-        // containing 600 valid UUIDs. Expect:
-        //   - success === true
-        //   - sessions array is NOT filtered (returns all 700) because the
-        //     parity filter was bypassed.
-        const count = 700;
-        const sessions = seedSessions(testUser.id, count);
-        await callPushEndpoint(
-          createMinimalPushPayload(testUser.id, { sessions }),
-          testUser.accessToken,
-        );
-
-        const knownIds = Array.from({ length: 600 }, () =>
+        const knownIds = Array.from({ length: MAX_PARITY_IDS + 1 }, () =>
           crypto.randomUUID(),
         );
         const result = await callPullEndpoint(0, testUser.accessToken, {
-          // @ts-expect-error — knownEntityIds not yet plumbed through harness
           knownEntityIds: { sessionIds: knownIds },
         });
-        expect(result.success).toBe(true);
-        // When the filter is skipped, every seeded session is returned.
-        expect(result.data!.sessions.length).toBe(count);
+        expect(result.success).toBe(false);
+        expect(result.status).toBe(413);
+        expect(result.error?.message).toMatch(/maximum is 10000/i);
       },
     );
   });

@@ -97,8 +97,12 @@ export function useSubscription(): SubscriptionData {
 	useEffect(() => {
 		if (!user) return;
 
+		const channelSuffix =
+			typeof crypto.randomUUID === "function"
+				? crypto.randomUUID()
+				: Math.random().toString(36).slice(2);
 		const channel = supabase
-			.channel(`subscription:${user.id}`)
+			.channel(`subscription:${user.id}:${channelSuffix}`)
 			.on(
 				"postgres_changes",
 				{
