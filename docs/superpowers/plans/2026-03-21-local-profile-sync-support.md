@@ -275,7 +275,7 @@ CREATE INDEX IF NOT EXISTS idx_exercise_progress_profile
 
 - [ ] **Step 2: Apply the migration**
 
-Run: `cd phoenix-portal && npx supabase migration up` (or apply via Supabase dashboard)
+Run: `cd phoenix-portal && supabase migration up` (or apply via Supabase dashboard)
 Expected: All tables created/altered without errors.
 
 - [ ] **Step 3: Regenerate TypeScript types**

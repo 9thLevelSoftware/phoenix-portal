@@ -13,6 +13,7 @@ export default defineConfig({
       'npm:zod@4.3.6': 'zod',
       'npm:zod@^4.3.6': 'zod',
       'npm:zod': 'zod',
+      'jsr:@supabase/supabase-js@2': '@supabase/supabase-js',
     },
   },
   test: {

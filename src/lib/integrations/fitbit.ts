@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -100,5 +101,5 @@ export async function initiateFitbitConnect(
 	}
 
 	const { url } = await response.json();
-	window.location.href = url;
+	redirectToValidatedOAuthUrl("fitbit", url);
 }

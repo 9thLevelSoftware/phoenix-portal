@@ -14,10 +14,12 @@
     "build": "vite build",
     "dev": "vite",
     "lint": "biome check .",
+    "audit:security": "npm audit --audit-level=moderate",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:sync": "cross-env MOCK_EDGE_FUNCTIONS=true vitest run tests/sync/",
-    "test:sync:live": "vitest run tests/sync/",
+    "test:sync:live": "cross-env MOCK_EDGE_FUNCTIONS=false SYNC_LIVE_TESTS=true vitest run tests/sync/",
+    "check:edge-functions": "deno check --config supabase/functions/deno.json supabase/functions/mobile-sync-push/index.ts supabase/functions/mobile-sync-pull/index.ts",
     "optimize:logo": "node scripts/optimize-logo.mjs",
     "analyze": "cross-env ANALYZE=true vite build",
     "test:e2e": "playwright test",
@@ -25,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run assert:no-sourcemaps",
     "verify:full": "npm run verify && npm run test:e2e",
-    "gen:types": "npx supabase gen types typescript --project-id ilzlswmatadlnsuxatcv --schema public > src/lib/database.types.ts"
+    "gen:types": "supabase gen types typescript --project-id ilzlswmatadlnsuxatcv --schema public > src/lib/database.types.ts"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.3.0",
@@ -59,7 +61,7 @@
     "@radix-ui/react-toggle-group": "1.1.2",
     "@radix-ui/react-tooltip": "1.1.8",
     "@sentry/react": "^10.39.0",
-    "@supabase/supabase-js": "^2.95.3",
+    "@supabase/supabase-js": "^2.107.0",
     "@tanstack/react-query": "^5.90.21",
     "@visx/axis": "^3.12.0",
     "@visx/curve": "^3.12.0",
@@ -95,7 +97,7 @@
     "react-muscle-highlighter": "^1.2.0",
     "react-papaparse": "^4.4.0",
     "react-resizable-panels": "2.1.7",
-    "react-router": "^7.13.0",
+    "react-router": "^7.17.0",
     "recharts": "^3.7.0",
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
@@ -127,11 +129,10 @@
     "jsdom": "^28.1.0",
     "rollup-plugin-visualizer": "^6.0.5",
     "sharp": "^0.34.5",
-    "supabase": "^2.76.9",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.7.0",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.8"
   }
 }

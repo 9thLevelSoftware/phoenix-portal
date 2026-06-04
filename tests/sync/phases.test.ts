@@ -30,13 +30,13 @@ import {
   callPullEndpoint,
   createTestUser,
   createMinimalPushPayload,
-  generateTestId,
   type SessionDto,
   type ExerciseDto,
   type SetDto,
   type TestUser,
 } from './helpers/edge-function-harness';
 import { resetMockStore } from './helpers/mock-edge-functions';
+import { liveIt } from './setup';
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -48,9 +48,9 @@ const ALL_PHASES: WorkoutPhase[] = ['COMBINED', 'CONCENTRIC', 'ECCENTRIC'];
 type SetDtoWithPhase = SetDto & { prPhase?: WorkoutPhase | null };
 
 function buildPrSessionForPhase(userId: string, phase: WorkoutPhase): SessionDto {
-  const sessionId = generateTestId();
-  const exerciseId = generateTestId();
-  const setId = generateTestId();
+  const sessionId = crypto.randomUUID();
+  const exerciseId = crypto.randomUUID();
+  const setId = crypto.randomUUID();
 
   const prSet: SetDtoWithPhase = {
     id: setId,
@@ -127,7 +127,7 @@ describe('WorkoutPhase round-trip', () => {
     });
   }
 
-  it.skip(
+  liveIt(
     'personal_records row is derived with workoutPhase=CONCENTRIC when a CONCENTRIC-phase PR set is pushed — requires live Edge Function',
     async () => {
       // The real push function derives a PersonalRecordDto from SetDto.isPr

@@ -5,7 +5,7 @@
  * and environment variable handling for sync validation tests.
  */
 
-import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, it } from 'vitest';
 import {
   getAnonClient,
   getServiceClient,
@@ -16,6 +16,27 @@ import type { TestUser } from './helpers/edge-function-harness';
 
 // Track test users for cleanup
 const createdTestUsers: TestUser[] = [];
+const PRODUCTION_SYNC_TEST_HOSTS = new Set([
+  'ilzlswmatadlnsuxatcv.supabase.co',
+  'api.phoenix-portal.com',
+]);
+
+export function liveSyncTestsEnabled(): boolean {
+  return (
+    process.env.MOCK_EDGE_FUNCTIONS !== 'true' &&
+    process.env.SYNC_LIVE_TESTS === 'true'
+  );
+}
+
+export const liveIt = liveSyncTestsEnabled() ? it : it.skip;
+
+function isProductionSyncTarget(url: string): boolean {
+  try {
+    return PRODUCTION_SYNC_TEST_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Environment configuration for sync tests
@@ -50,6 +71,9 @@ export function validateEnvVars(): string[] {
 
   // For non-mock mode, we need Supabase credentials
   if (process.env.MOCK_EDGE_FUNCTIONS !== 'true') {
+    if (process.env.SYNC_LIVE_TESTS !== 'true') {
+      missing.push('SYNC_LIVE_TESTS=true');
+    }
     if (!process.env.SUPABASE_URL && !isLocalEnvironment()) {
       missing.push('SUPABASE_URL');
     }
@@ -58,6 +82,9 @@ export function validateEnvVars(): string[] {
     }
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !isLocalEnvironment()) {
       missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    }
+    if (process.env.SUPABASE_URL && isProductionSyncTarget(process.env.SUPABASE_URL)) {
+      missing.push('non-production SUPABASE_URL');
     }
   }
 

@@ -603,7 +603,7 @@ COMMENT ON COLUMN routine_exercises.duration_seconds IS 'For duration-based exer
 
 - [ ] **Step 2: Apply the migration locally**
 
-Run: `npx supabase db push` or apply via Supabase dashboard.
+Run: `supabase db push` or apply via Supabase dashboard.
 
 - [ ] **Step 3: Regenerate TypeScript types**
 

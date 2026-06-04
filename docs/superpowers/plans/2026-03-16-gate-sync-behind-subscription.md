@@ -61,7 +61,7 @@ COMMIT;
 
 - [ ] **Step 2: Verify migration SQL is valid**
 
-Run: `npx supabase db lint`
+Run: `supabase db lint`
 Expected: No errors related to the new migration file.
 
 - [ ] **Step 3: Commit**
@@ -162,7 +162,7 @@ Then delete the duplicate service-role client creation that was on lines 213-216
 
 - [ ] **Step 2: Verify the function still parses**
 
-Run: `npx supabase functions serve mobile-sync-push --no-verify-jwt 2>&1 | head -5`
+Run: `supabase functions serve mobile-sync-push --no-verify-jwt 2>&1 | head -5`
 Expected: Function starts without syntax errors.
 
 - [ ] **Step 3: Commit**

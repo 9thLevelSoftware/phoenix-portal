@@ -2995,7 +2995,7 @@ CREATE POLICY "Admins can manage events"
 
 ```bash
 cd phoenix-portal
-npx supabase db push
+supabase db push
 ```
 
 Expected: Migration applies successfully.

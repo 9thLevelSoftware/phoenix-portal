@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
@@ -130,7 +130,7 @@ async function readJsonBodyWithLimit(
  * Returns a 400 Response on violation, or null when safe to proceed.
  */
 async function assertRowsOwnedByUser(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   table: string,
   ids: string[],
   userId: string,
@@ -168,7 +168,7 @@ async function assertRowsOwnedByUser(
  * table's `user_id` column.
  */
 async function assertChildRowsOwnedViaParent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   childTable: string,
   childFkColumn: string,
   parentTable: string,
@@ -184,7 +184,8 @@ async function assertChildRowsOwnedViaParent(
     const { data: childRows, error: childErr } = await supabase
       .from(childTable)
       .select(`id, ${childFkColumn}`)
-      .in('id', chunk);
+      .in('id', chunk)
+      .returns<Record<string, unknown>[]>();
     if (childErr) {
       throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
     }
@@ -192,7 +193,7 @@ async function assertChildRowsOwnedViaParent(
     const parentIds = [
       ...new Set(
         childRows
-          .map((r) => (r as Record<string, unknown>)[childFkColumn])
+          .map((r) => r[childFkColumn])
           .filter((v): v is string => typeof v === 'string' && v.length > 0),
       ),
     ];
@@ -1983,18 +1984,23 @@ Deno.serve(async (req) => {
       // ExternalActivity.id = generateUUID() default, so any payload missing
       // it indicates a buggy producer. Rejecting up-front prevents the server
       // from generating a UUID the client will never learn about.
-      for (const a of payload.externalActivities) {
-        if (!a.id) {
-          return new Response(
-            JSON.stringify({
-              error: 'external_activity.id is required (mobile must mint UUID before send)',
-            }),
-            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-          );
-        }
+      type ExternalActivityWithId = typeof payload.externalActivities[number] & {
+        id: string;
+      };
+      const activitiesWithIds = payload.externalActivities.filter(
+        (activity): activity is ExternalActivityWithId =>
+          typeof activity.id === 'string' && activity.id.length > 0,
+      );
+      if (activitiesWithIds.length !== payload.externalActivities.length) {
+        return new Response(
+          JSON.stringify({
+            error: 'external_activity.id is required (mobile must mint UUID before send)',
+          }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
       }
 
-      const activityRows = payload.externalActivities.map((a) => ({
+      const activityRows = activitiesWithIds.map((a) => ({
         id: a.id,
         user_id: userId,
         external_id: a.externalId,
@@ -2108,7 +2114,7 @@ Deno.serve(async (req) => {
         setTimeout(resolve, 1500);
       });
 
-      const { error: broadcastError } = await channel.send({
+      const broadcastStatus = await channel.send({
         type: 'broadcast',
         event: 'sync_complete',
         payload: {
@@ -2123,8 +2129,8 @@ Deno.serve(async (req) => {
           badgesUpserted,
         },
       });
-      if (broadcastError) {
-        console.warn('mobile-sync-push broadcast warning:', broadcastError);
+      if (broadcastStatus !== 'ok') {
+        console.warn('mobile-sync-push broadcast warning:', broadcastStatus);
       }
     } catch (broadcastErr) {
       console.warn('mobile-sync-push broadcast failed:', broadcastErr);

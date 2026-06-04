@@ -19,6 +19,31 @@ interface RateLimitResult {
   response?: Response;
 }
 
+const FALLBACK_UPDATE_ATTEMPTS = 3;
+
+function rateLimitUnavailable(
+  corsHeaders: Record<string, string>,
+): RateLimitResult {
+  return {
+    allowed: false,
+    remaining: 0,
+    response: new Response(
+      JSON.stringify({
+        error: 'rate_limit_unavailable',
+        message: 'Rate limit check temporarily unavailable. Please retry shortly.',
+      }),
+      {
+        status: 503,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Retry-After': '30',
+        },
+      },
+    ),
+  };
+}
+
 /**
  * Check and enforce per-user rate limits using the `rate_limit_tracking` table.
  *
@@ -67,47 +92,13 @@ export async function checkRateLimit(
         rpcMissing = true;
       } else {
         console.error('[rateLimit] RPC check_rate_limit failed:', rpcError);
-        return {
-          allowed: false,
-          remaining: 0,
-          response: new Response(
-            JSON.stringify({
-              error: 'rate_limit_unavailable',
-              message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-            }),
-            {
-              status: 503,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                'Retry-After': '30',
-              },
-            },
-          ),
-        };
+        return rateLimitUnavailable(corsHeaders);
       }
     } else if (rpcResult) {
       const normalized = normalizeRateLimitRpcResult(rpcResult);
       if (!normalized) {
         console.error('[rateLimit] check_rate_limit returned unexpected shape:', rpcResult);
-        return {
-          allowed: false,
-          remaining: 0,
-          response: new Response(
-            JSON.stringify({
-              error: 'rate_limit_unavailable',
-              message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-            }),
-            {
-              status: 503,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                'Retry-After': '30',
-              },
-            },
-          ),
-        };
+        return rateLimitUnavailable(corsHeaders);
       }
 
       const { allowed, remaining, retry_after_seconds } = normalized;
@@ -143,48 +134,14 @@ export async function checkRateLimit(
     // fix(audit): C7 — unexpected exception (network / client bug). Fail
     // closed so an outage doesn't disable rate limiting entirely.
     console.error('[rateLimit] unexpected error calling check_rate_limit:', e);
-    return {
-      allowed: false,
-      remaining: 0,
-      response: new Response(
-        JSON.stringify({
-          error: 'rate_limit_unavailable',
-          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-        }),
-        {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '30',
-          },
-        },
-      ),
-    };
+    return rateLimitUnavailable(corsHeaders);
   }
 
   if (!rpcMissing) {
     // We neither got a result nor a "function missing" signal — don't let the
     // fallback implicitly allow traffic.
     console.error('[rateLimit] check_rate_limit returned no result and no error');
-    return {
-      allowed: false,
-      remaining: 0,
-      response: new Response(
-        JSON.stringify({
-          error: 'rate_limit_unavailable',
-          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-        }),
-        {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '30',
-          },
-        },
-      ),
-    };
+    return rateLimitUnavailable(corsHeaders);
   }
 
   // Fallback: Atomic increment with conflict resolution
@@ -215,118 +172,103 @@ export async function checkRateLimit(
   // closed instead of falling through to the update path with stale data.
   if (insertError && (insertError as { code?: string }).code !== '23505') {
     console.error('[rateLimit] insert failed:', insertError);
-    return {
-      allowed: false,
-      remaining: 0,
-      response: new Response(
-        JSON.stringify({
-          error: 'rate_limit_unavailable',
-          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-        }),
-        {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '30',
-          },
-        },
-      ),
-    };
+    return rateLimitUnavailable(corsHeaders);
   }
 
-  // Step 2: Insert conflicted, read current state and update atomically
-  const { data: current, error: fetchError } = await supabase
-    .from('rate_limit_tracking')
-    .select('id, requests_this_window, window_started_at')
-    .eq('key', key)
-    .eq('user_id', userId)
-    .single();
-
-  if (fetchError || !current) {
-    // fix(audit): C7 — fail closed. If we can't read the tracking row after
-    // an insert conflict, something is wrong with the DB; allowing unlimited
-    // traffic until it's fixed would let abuse through.
-    console.error('[rateLimit] fetch failed:', fetchError);
-    return {
-      allowed: false,
-      remaining: 0,
-      response: new Response(
-        JSON.stringify({
-          error: 'rate_limit_unavailable',
-          message: 'Rate limit check temporarily unavailable. Please retry shortly.',
-        }),
-        {
-          status: 503,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '30',
-          },
-        },
-      ),
-    };
-  }
-
-  const windowStart = new Date(current.window_started_at).getTime();
-  const windowExpired = now.getTime() - windowStart > windowMs;
-
-  if (windowExpired) {
-    // Reset window atomically
-    const { data: reset } = await supabase
+  // Step 2: Insert conflicted, read current state and update atomically.
+  // If another request wins the optimistic lock, retry against the latest
+  // counter. Never synthesize success when the update returned no row.
+  for (let attempt = 0; attempt < FALLBACK_UPDATE_ATTEMPTS; attempt++) {
+    const { data: current, error: fetchError } = await supabase
       .from('rate_limit_tracking')
-      .update({
-        requests_this_window: 1,
-        window_started_at: now.toISOString(),
-        last_request_at: now.toISOString(),
-        last_reset_at: now.toISOString(),
-      })
-      .eq('id', current.id)
-      .select('requests_this_window')
+      .select('id, requests_this_window, window_started_at')
+      .eq('key', key)
+      .eq('user_id', userId)
       .single();
 
-    const count = reset?.requests_this_window ?? 1;
-    return { allowed: true, remaining: maxRequests - count };
-  }
+    if (fetchError || !current) {
+      // fix(audit): C7 — fail closed. If we can't read the tracking row after
+      // an insert conflict, something is wrong with the DB; allowing unlimited
+      // traffic until it's fixed would let abuse through.
+      console.error('[rateLimit] fetch failed:', fetchError);
+      return rateLimitUnavailable(corsHeaders);
+    }
 
-  // Check limit before incrementing
-  if (current.requests_this_window >= maxRequests) {
-    const retryAfterMs = windowMs - (now.getTime() - windowStart);
-    const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
+    const windowStart = new Date(current.window_started_at).getTime();
+    const windowExpired = now.getTime() - windowStart > windowMs;
 
-    return {
-      allowed: false,
-      remaining: 0,
-      response: new Response(
-        JSON.stringify({
-          error: 'rate_limit_exceeded',
-          message: `Too many requests. Try again in ${retryAfterSeconds} seconds.`,
-          retryAfterSeconds,
-        }),
-        {
-          status: 429,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': String(retryAfterSeconds),
+    if (windowExpired) {
+      const { data: reset, error: resetError } = await supabase
+        .from('rate_limit_tracking')
+        .update({
+          requests_this_window: 1,
+          window_started_at: now.toISOString(),
+          last_request_at: now.toISOString(),
+          last_reset_at: now.toISOString(),
+        })
+        .eq('id', current.id)
+        .eq('requests_this_window', current.requests_this_window)
+        .select('requests_this_window')
+        .maybeSingle();
+
+      if (resetError) {
+        console.error('[rateLimit] reset failed:', resetError);
+        return rateLimitUnavailable(corsHeaders);
+      }
+      if (reset) {
+        const count = reset.requests_this_window ?? 1;
+        return { allowed: true, remaining: Math.max(maxRequests - count, 0) };
+      }
+      continue;
+    }
+
+    // Check limit before incrementing
+    if (current.requests_this_window >= maxRequests) {
+      const retryAfterMs = windowMs - (now.getTime() - windowStart);
+      const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
+
+      return {
+        allowed: false,
+        remaining: 0,
+        response: new Response(
+          JSON.stringify({
+            error: 'rate_limit_exceeded',
+            message: `Too many requests. Try again in ${retryAfterSeconds} seconds.`,
+            retryAfterSeconds,
+          }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Retry-After': String(retryAfterSeconds),
+            },
           },
-        },
-      ),
-    };
+        ),
+      };
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('rate_limit_tracking')
+      .update({
+        requests_this_window: current.requests_this_window + 1,
+        last_request_at: now.toISOString(),
+      })
+      .eq('id', current.id)
+      .eq('requests_this_window', current.requests_this_window) // Optimistic locking
+      .select('requests_this_window')
+      .maybeSingle();
+
+    if (updateError) {
+      console.error('[rateLimit] update failed:', updateError);
+      return rateLimitUnavailable(corsHeaders);
+    }
+    if (updated) {
+      const newCount = updated.requests_this_window;
+      return { allowed: true, remaining: Math.max(maxRequests - newCount, 0) };
+    }
   }
 
-  // Atomic increment
-  const { data: updated } = await supabase
-    .from('rate_limit_tracking')
-    .update({
-      requests_this_window: current.requests_this_window + 1,
-      last_request_at: now.toISOString(),
-    })
-    .eq('id', current.id)
-    .eq('requests_this_window', current.requests_this_window) // Optimistic locking
-    .select('requests_this_window')
-    .single();
-
-  const newCount = updated?.requests_this_window ?? current.requests_this_window + 1;
-  return { allowed: true, remaining: maxRequests - newCount };
+  console.warn('[rateLimit] optimistic fallback update did not commit after retries');
+  return rateLimitUnavailable(corsHeaders);
 }

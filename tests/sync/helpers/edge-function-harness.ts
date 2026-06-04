@@ -58,6 +58,15 @@ export interface PullRequest {
   deviceId: string;
   lastSync: number;
   profileId?: string;
+  cursor?: string;
+  pageSize?: number;
+  knownEntityIds?: {
+    sessionIds?: string[];
+    routineIds?: string[];
+    cycleIds?: string[];
+    badgeIds?: string[];
+    personalRecordIds?: string[];
+  };
 }
 
 /**
@@ -65,6 +74,8 @@ export interface PullRequest {
  */
 export interface PullResponse {
   syncTime: number;
+  nextCursor?: string;
+  hasMore: boolean;
   sessions: SessionResponseDto[];
   routines: RoutineResponseDto[];
   cycles: CycleResponseDto[];
@@ -652,7 +663,13 @@ export async function callPushEndpoint(
 export async function callPullEndpoint(
   lastSync: number,
   authToken: string,
-  options?: { deviceId?: string; profileId?: string }
+  options?: {
+    deviceId?: string;
+    profileId?: string;
+    cursor?: string;
+    pageSize?: number;
+    knownEntityIds?: PullRequest['knownEntityIds'];
+  }
 ): Promise<EdgeFunctionResult<PullResponse>> {
   if (useMocks()) {
     return mockPullEndpoint(lastSync, authToken, options);
@@ -664,6 +681,9 @@ export async function callPullEndpoint(
     deviceId: options?.deviceId || `test-device-${Date.now()}`,
     lastSync,
     profileId: options?.profileId,
+    cursor: options?.cursor,
+    pageSize: options?.pageSize,
+    knownEntityIds: options?.knownEntityIds,
   };
 
   try {
