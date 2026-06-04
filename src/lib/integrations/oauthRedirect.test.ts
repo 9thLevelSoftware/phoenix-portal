@@ -27,6 +27,16 @@ describe("validateOAuthRedirectUrl", () => {
 		).toBe(url);
 	});
 
+	it("accepts a local Garmin Edge Function URL on the configured local Supabase origin", () => {
+		const url = "http://localhost:54321/functions/v1/garmin-oauth?state=state";
+
+		expect(
+			validateOAuthRedirectUrl("garmin", url, {
+				supabaseUrl: "http://localhost:54321",
+			}),
+		).toBe(url);
+	});
+
 	it("rejects non-HTTPS redirects", () => {
 		expect(() =>
 			validateOAuthRedirectUrl(
@@ -41,6 +51,15 @@ describe("validateOAuthRedirectUrl", () => {
 			validateOAuthRedirectUrl(
 				"fitbit",
 				"https://www.strava.com/oauth/authorize?state=state",
+			),
+		).toThrow(/requested provider/);
+	});
+
+	it("rejects Garmin redirects when no Supabase origin is provided", () => {
+		expect(() =>
+			validateOAuthRedirectUrl(
+				"garmin",
+				"https://staging-project.supabase.co/functions/v1/garmin-oauth?state=state",
 			),
 		).toThrow(/requested provider/);
 	});

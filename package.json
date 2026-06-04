@@ -19,7 +19,7 @@
     "test:watch": "vitest",
     "test:sync": "cross-env MOCK_EDGE_FUNCTIONS=true vitest run tests/sync/",
     "test:sync:live": "cross-env MOCK_EDGE_FUNCTIONS=false SYNC_LIVE_TESTS=true vitest run tests/sync/",
-    "check:edge-functions": "deno check --config supabase/functions/deno.json supabase/functions/mobile-sync-push/index.ts supabase/functions/mobile-sync-pull/index.ts",
+    "check:edge-functions": "node scripts/check-edge-functions.mjs",
     "optimize:logo": "node scripts/optimize-logo.mjs",
     "analyze": "cross-env ANALYZE=true vite build",
     "test:e2e": "playwright test",

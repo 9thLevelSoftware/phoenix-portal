@@ -30,7 +30,7 @@ function matchesGarminRule(
 	parsed: URL,
 	options: OAuthRedirectValidationOptions,
 ): boolean {
-	const supabaseUrl = options.supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+	const supabaseUrl = options.supabaseUrl;
 	if (!supabaseUrl) return false;
 
 	let expectedOrigin: string;
@@ -44,6 +44,10 @@ function matchesGarminRule(
 		parsed.origin === expectedOrigin &&
 		parsed.pathname === "/functions/v1/garmin-oauth"
 	);
+}
+
+function isLocalhostUrl(parsed: URL): boolean {
+	return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
 }
 
 export function validateOAuthRedirectUrl(
@@ -62,7 +66,9 @@ export function validateOAuthRedirectUrl(
 		throw new Error("OAuth redirect URL is invalid.");
 	}
 
-	if (parsed.protocol !== "https:") {
+	const isAllowedLocalHttp =
+		parsed.protocol === "http:" && isLocalhostUrl(parsed);
+	if (parsed.protocol !== "https:" && !isAllowedLocalHttp) {
 		throw new Error("OAuth redirect URL must use HTTPS.");
 	}
 
@@ -83,6 +89,7 @@ export function validateOAuthRedirectUrl(
 export function redirectToValidatedOAuthUrl(
 	provider: OAuthRedirectProvider,
 	value: unknown,
+	options: OAuthRedirectValidationOptions = {},
 ): void {
-	window.location.href = validateOAuthRedirectUrl(provider, value);
+	window.location.href = validateOAuthRedirectUrl(provider, value, options);
 }

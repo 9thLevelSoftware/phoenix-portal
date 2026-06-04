@@ -98,8 +98,8 @@ export function useSubscription(): SubscriptionData {
 		if (!user) return;
 
 		const channelSuffix =
-			typeof crypto.randomUUID === "function"
-				? crypto.randomUUID()
+			typeof globalThis.crypto?.randomUUID === "function"
+				? globalThis.crypto.randomUUID()
 				: Math.random().toString(36).slice(2);
 		const channel = supabase
 			.channel(`subscription:${user.id}:${channelSuffix}`)
