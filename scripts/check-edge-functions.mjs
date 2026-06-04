@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 
+const denoVersion = "2.2.15";
+
 const denoArgs = [
 	"check",
 	"--config",
@@ -16,9 +18,9 @@ let result = run("deno", denoArgs);
 
 if (result.error?.code === "ENOENT") {
 	console.warn(
-		"Deno is not available on PATH; falling back to `npx -y deno`.",
+		`Deno is not available on PATH; falling back to \`npx -y deno@${denoVersion}\`.`,
 	);
-	result = run("npx", ["-y", "deno", ...denoArgs], {
+	result = run("npx", ["-y", `deno@${denoVersion}`, ...denoArgs], {
 		shell: process.platform === "win32",
 	});
 }
