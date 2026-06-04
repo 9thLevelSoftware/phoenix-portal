@@ -1979,19 +1979,20 @@ Deno.serve(async (req) => {
     // =========================================================================
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
-    if (payload.externalActivities && payload.externalActivities.length > 0) {
+    const externalActivities = payload.externalActivities ?? [];
+    if (externalActivities.length > 0) {
       // fix(audit #5): require client-minted id. Mobile already mints via
       // ExternalActivity.id = generateUUID() default, so any payload missing
       // it indicates a buggy producer. Rejecting up-front prevents the server
       // from generating a UUID the client will never learn about.
-      type ExternalActivityWithId = typeof payload.externalActivities[number] & {
+      type ExternalActivityWithId = typeof externalActivities[number] & {
         id: string;
       };
-      const activitiesWithIds = payload.externalActivities.filter(
+      const activitiesWithIds = externalActivities.filter(
         (activity): activity is ExternalActivityWithId =>
           typeof activity.id === 'string' && activity.id.length > 0,
       );
-      if (activitiesWithIds.length !== payload.externalActivities.length) {
+      if (activitiesWithIds.length !== externalActivities.length) {
         return new Response(
           JSON.stringify({
             error: 'external_activity.id is required (mobile must mint UUID before send)',

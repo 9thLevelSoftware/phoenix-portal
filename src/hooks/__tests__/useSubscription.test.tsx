@@ -234,4 +234,22 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.status).toBe("none");
 		expect(result.current.isPremium).toBe(false);
 	});
+
+	it("subscribes without crashing when global crypto is unavailable", async () => {
+		mockSubscriptionRow = null;
+		mockChannel.subscribe.mockClear();
+		vi.stubGlobal("crypto", undefined);
+
+		try {
+			const { result } = renderHook(() => useSubscription(), {
+				wrapper: createWrapper(),
+			});
+
+			await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+			expect(mockChannel.subscribe).toHaveBeenCalled();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });

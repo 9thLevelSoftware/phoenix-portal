@@ -117,5 +117,5 @@ export async function initiateGarminConnect(
 	}
 
 	const { url } = await response.json();
-	redirectToValidatedOAuthUrl("garmin", url);
+	redirectToValidatedOAuthUrl("garmin", url, { supabaseUrl });
 }

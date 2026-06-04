@@ -195,16 +195,18 @@ export async function checkRateLimit(
     }
 
     const windowStart = new Date(current.window_started_at).getTime();
-    const windowExpired = now.getTime() - windowStart > windowMs;
+    const attemptNow = new Date();
+    const attemptNowMs = attemptNow.getTime();
+    const windowExpired = attemptNowMs - windowStart > windowMs;
 
     if (windowExpired) {
       const { data: reset, error: resetError } = await supabase
         .from('rate_limit_tracking')
         .update({
           requests_this_window: 1,
-          window_started_at: now.toISOString(),
-          last_request_at: now.toISOString(),
-          last_reset_at: now.toISOString(),
+          window_started_at: attemptNow.toISOString(),
+          last_request_at: attemptNow.toISOString(),
+          last_reset_at: attemptNow.toISOString(),
         })
         .eq('id', current.id)
         .eq('requests_this_window', current.requests_this_window)
@@ -224,7 +226,7 @@ export async function checkRateLimit(
 
     // Check limit before incrementing
     if (current.requests_this_window >= maxRequests) {
-      const retryAfterMs = windowMs - (now.getTime() - windowStart);
+      const retryAfterMs = windowMs - (attemptNowMs - windowStart);
       const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
 
       return {
@@ -252,7 +254,7 @@ export async function checkRateLimit(
       .from('rate_limit_tracking')
       .update({
         requests_this_window: current.requests_this_window + 1,
-        last_request_at: now.toISOString(),
+        last_request_at: attemptNow.toISOString(),
       })
       .eq('id', current.id)
       .eq('requests_this_window', current.requests_this_window) // Optimistic locking
