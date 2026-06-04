@@ -20,6 +20,12 @@ import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { convertWeight, type WeightUnit } from "@/lib/units";
+import {
+	formatWorkoutPhase,
+	isNonCombinedWorkoutPhase,
+	WORKOUT_PHASE_FILTERS,
+	type WorkoutPhaseFilter,
+} from "@/lib/workout-phases";
 import { personalRecordsOptions } from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -34,27 +40,7 @@ const milestones = [
 
 const TIMELINE_INITIAL_LIMIT = 5;
 
-const phaseFilters = ["all", "Combined", "Concentric", "Eccentric"] as const;
-type PhaseFilter = (typeof phaseFilters)[number];
-
 const knownGroups = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
-
-function formatWorkoutPhaseLabel(
-	phase: string | null | undefined,
-): PhaseFilter {
-	switch ((phase ?? "Combined").toUpperCase()) {
-		case "CONCENTRIC":
-			return "Concentric";
-		case "ECCENTRIC":
-			return "Eccentric";
-		default:
-			return "Combined";
-	}
-}
-
-function isNonCombinedWorkoutPhase(phase: string | null | undefined): boolean {
-	return formatWorkoutPhaseLabel(phase) !== "Combined";
-}
 
 function formatRecordTypeLabel(recordType: string): string {
 	const labels: Record<string, string> = {
@@ -148,7 +134,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	});
 
 	const [activeFilter, setActiveFilter] = useState("All");
-	const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
+	const [phaseFilter, setPhaseFilter] = useState<WorkoutPhaseFilter>("all");
 	const [viewMode, setViewMode] = useState<"grouped" | "timeline">("grouped");
 	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
 	const [showAllTimeline, setShowAllTimeline] = useState(false);
@@ -162,7 +148,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 		phaseFilter === "all"
 			? (records ?? [])
 			: (records ?? []).filter(
-					(r) => formatWorkoutPhaseLabel(r.workout_phase) === phaseFilter,
+					(r) => formatWorkoutPhase(r.workout_phase) === phaseFilter,
 				);
 
 	// Group by exercise (prefer exercise_id for stable grouping, fall back to name)
@@ -318,7 +304,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 				{/* Phase filter row */}
 				<div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
-					{phaseFilters.map((phase) => (
+					{WORKOUT_PHASE_FILTERS.map((phase) => (
 						<Button
 							key={phase}
 							onClick={() => setPhaseFilter(phase)}
@@ -346,7 +332,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 				<Card className="p-4 bg-surface-2 border-secondary">
 					<div className="flex items-center gap-2 mb-1">
 						<Trophy className="w-4 h-4 text-accent" />
-						<span className="text-xs text-muted-foreground">Total PRs</span>
+						<span className="text-xs text-muted-foreground">Phase PRs</span>
 					</div>
 					<div className="text-2xl font-semibold text-white font-data">
 						{totalPRs}
@@ -598,7 +584,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																				variant="outline"
 																				className="border-accent/40 text-accent text-xs"
 																			>
-																				{formatWorkoutPhaseLabel(
+																				{formatWorkoutPhase(
 																					entry.workout_phase,
 																				)}
 																			</Badge>
@@ -684,7 +670,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																variant="outline"
 																className="border-accent/40 text-accent text-xs flex-shrink-0"
 															>
-																{formatWorkoutPhaseLabel(pr.workout_phase)}
+																{formatWorkoutPhase(pr.workout_phase)}
 															</Badge>
 														)}
 													</div>

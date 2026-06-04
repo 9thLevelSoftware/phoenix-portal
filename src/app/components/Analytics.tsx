@@ -60,7 +60,12 @@ import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
 import type { ExerciseSessionData } from "@/lib/volume-landmarks";
 import { computeWeeklyVolume } from "@/lib/volume-landmarks";
 import {
+	WORKOUT_PHASE_FILTERS,
+	type WorkoutPhaseFilter,
+} from "@/lib/workout-phases";
+import {
 	muscleGroupOptions,
+	phaseStatisticsTrendOptions,
 	strengthProgressOptions,
 	volumeComparisonOptions,
 	volumeTrendOptions,
@@ -71,6 +76,11 @@ import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import { buildPhaseMetricSummary } from "./analytics/phaseStatisticsTransforms";
+import {
+	buildMobileStrengthPhaseData,
+	buildStrengthPhaseSeries,
+} from "./analytics/strengthPhaseTransforms";
 
 // Lazy-loaded tab components for code splitting (desktop)
 const OverviewTab = lazy(
@@ -198,74 +208,6 @@ function bucketByWeek(
 		volume: Math.round(volume),
 		workouts,
 	}));
-}
-
-// Group strength progress data by exercise for line chart
-function groupStrengthByExercise(
-	data: Array<{
-		exercise_name: string;
-		exercise_id?: string | null;
-		value: number;
-		achieved_at: string;
-	}>,
-): {
-	points: Record<string, string | number>[];
-	keyToName: Map<string, string>;
-} {
-	if (!data || data.length === 0) {
-		return { points: [], keyToName: new Map<string, string>() };
-	}
-	// Get all unique dates and exercises
-	const dateSet = new Set<string>();
-	const exerciseMap = new Map<string, Map<string, number>>();
-	const latestByKey = new Map<string, { at: number; value: number }>();
-	// Map grouping key back to display name
-	const keyToName = new Map<string, string>();
-
-	for (const item of data) {
-		const key = item.exercise_id ?? item.exercise_name;
-		const achievedAtTs = new Date(item.achieved_at).getTime();
-		const date = new Date(item.achieved_at).toLocaleDateString("en-US", {
-			month: "short",
-		});
-		dateSet.add(date);
-		if (!keyToName.has(key)) {
-			keyToName.set(key, item.exercise_name);
-		}
-		if (!exerciseMap.has(key)) {
-			exerciseMap.set(key, new Map());
-		}
-		// Keep highest value per exercise per month
-		const existing = exerciseMap.get(key)?.get(date) ?? 0;
-		if (item.value > existing) {
-			exerciseMap.get(key)?.set(date, item.value);
-		}
-		const latest = latestByKey.get(key);
-		if (!latest || achievedAtTs > latest.at) {
-			latestByKey.set(key, { at: achievedAtTs, value: item.value });
-		}
-	}
-
-	const dates = Array.from(dateSet);
-	// Pick top 3 exercises by latest value
-	const topKeys = Array.from(latestByKey.entries())
-		.map(([key, latest]) => ({
-			key,
-			latestValue: latest.value,
-		}))
-		.sort((a, b) => b.latestValue - a.latestValue)
-		.slice(0, 3)
-		.map((e) => e.key);
-
-	const points = dates.map((date) => {
-		const point: Record<string, string | number> = { date };
-		for (const key of topKeys) {
-			point[key] = exerciseMap.get(key)?.get(date) ?? 0;
-		}
-		return point;
-	});
-
-	return { points, keyToName };
 }
 
 function convertStrengthSeriesPoint(
@@ -505,7 +447,27 @@ export function Analytics() {
 	const activeTab = VALID_TABS.includes(rawTab)
 		? rawTab
 		: (TAB_MIGRATION[rawTab] ?? "overview");
-	const setActiveTab = (tab: string) => setSearchParams({ tab });
+	const rawPhase = searchParams.get("phase") ?? "all";
+	const phaseFilter: WorkoutPhaseFilter = WORKOUT_PHASE_FILTERS.includes(
+		rawPhase as WorkoutPhaseFilter,
+	)
+		? (rawPhase as WorkoutPhaseFilter)
+		: "all";
+	const setActiveTab = (tab: string) => {
+		const nextParams = new URLSearchParams(searchParams);
+		nextParams.set("tab", tab);
+		setSearchParams(nextParams);
+	};
+	const setPhaseFilter = (phase: WorkoutPhaseFilter) => {
+		const nextParams = new URLSearchParams(searchParams);
+		nextParams.set("tab", "progress");
+		if (phase === "all") {
+			nextParams.delete("phase");
+		} else {
+			nextParams.set("phase", phase);
+		}
+		setSearchParams(nextParams);
+	};
 
 	const queryPeriod = periodToDays(timePeriod);
 	const insightPeriod = periodToInsightPeriod(timePeriod);
@@ -523,6 +485,9 @@ export function Analytics() {
 	);
 	const { data: strengthRaw, isPending: strengthPending } = useQuery(
 		strengthProgressOptions(userId, activeProfileId),
+	);
+	const { data: phaseStatsRaw, isPending: phaseStatsPending } = useQuery(
+		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
 	const { data: externalActivities } = useQuery({
 		...externalActivitiesOptions(userId),
@@ -542,7 +507,8 @@ export function Analytics() {
 	});
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	const isPending = volumePending || musclePending || strengthPending;
+	const isPending =
+		volumePending || musclePending || strengthPending || phaseStatsPending;
 
 	// --- Body Intelligence derived data ---
 
@@ -686,17 +652,26 @@ export function Analytics() {
 		}));
 	}, [muscleGroupData]);
 
-	const strengthSeries = groupStrengthByExercise(strengthRaw ?? []);
+	const strengthSeries = useMemo(
+		() => buildStrengthPhaseSeries(strengthRaw ?? [], phaseFilter),
+		[strengthRaw, phaseFilter],
+	);
 	const strengthProgressData = strengthSeries.points.map((point) =>
 		convertStrengthSeriesPoint(point, unit),
 	);
-	const strengthExerciseKeys =
-		strengthProgressData.length > 0
-			? Object.keys(strengthProgressData[0]).filter((k) => k !== "date")
-			: [];
-	const strengthExercises = strengthExerciseKeys.map(
-		(key) => strengthSeries.keyToName.get(key) ?? key,
-	);
+	const strengthExercises = strengthSeries.series.map((item) => item.name);
+	const phaseMetricSummary = useMemo(() => {
+		const summary = buildPhaseMetricSummary(phaseStatsRaw ?? []);
+		return {
+			...summary,
+			load: {
+				concentricAvg: convertWeight(summary.load.concentricAvg, unit),
+				concentricMax: convertWeight(summary.load.concentricMax, unit),
+				eccentricAvg: convertWeight(summary.load.eccentricAvg, unit),
+				eccentricMax: convertWeight(summary.load.eccentricMax, unit),
+			},
+		};
+	}, [phaseStatsRaw, unit]);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
@@ -932,10 +907,10 @@ export function Analytics() {
 				name: unit,
 				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
 			},
-			series: strengthExerciseKeys.map((exerciseKey, i) => ({
-				name: strengthSeries.keyToName.get(exerciseKey) ?? exerciseKey,
+			series: strengthSeries.series.map((item, i) => ({
+				name: item.name,
 				type: "line",
-				data: strengthProgressData.map((d) => d[exerciseKey] ?? 0),
+				data: strengthProgressData.map((d) => d[item.key] ?? 0),
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
@@ -945,13 +920,7 @@ export function Analytics() {
 				symbolSize: 6,
 			})),
 		};
-	}, [
-		strengthProgressData,
-		strengthExerciseKeys,
-		strengthExercises,
-		strengthSeries.keyToName,
-		unit,
-	]);
+	}, [strengthProgressData, strengthExercises, strengthSeries.series, unit]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {
@@ -1059,28 +1028,17 @@ export function Analytics() {
 		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
 		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
 	}));
-	const strengthMap = new Map<string, number>();
-	const strengthNameMap = new Map<string, string>();
-	for (const item of strengthRaw ?? []) {
-		const key = item.exercise_id ?? item.exercise_name;
-		if (!strengthNameMap.has(key)) {
-			strengthNameMap.set(key, item.exercise_name);
-		}
-		const existing = strengthMap.get(key) ?? 0;
-		if (item.value > existing) {
-			strengthMap.set(key, item.value);
-		}
-	}
-	const mobileStrengthData = Array.from(strengthMap.entries())
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 5)
-		.map(([key, weight]) => {
-			const exercise = strengthNameMap.get(key) ?? key;
-			return {
-				exercise: exercise.length > 8 ? exercise.slice(0, 8) : exercise,
-				weight: Math.round(convertWeight(weight, unit) * 10) / 10,
-			};
-		});
+	const mobileStrengthData = buildMobileStrengthPhaseData(
+		strengthRaw ?? [],
+		phaseFilter,
+	).map((item) => ({
+		...item,
+		exercise:
+			item.exercise.length > 14
+				? `${item.exercise.slice(0, 13)}...`
+				: item.exercise,
+		weight: Math.round(convertWeight(item.weight, unit) * 10) / 10,
+	}));
 	const mobileTotalWorkouts = (volumeRaw ?? []).length;
 	const mobileHasData =
 		mobileVolumeData.length > 0 || mobileMusclData.length > 0;
@@ -1206,7 +1164,7 @@ export function Analytics() {
 							icon: <Flame className="w-5 h-5" />,
 						},
 						{
-							label: "PRs",
+							label: "Phase PRs",
 							value: `${prCount}`,
 							icon: <Target className="w-5 h-5" />,
 						},
@@ -1282,6 +1240,9 @@ export function Analytics() {
 										mobileVolumeData={mobileVolumeData}
 										prCount={prCount}
 										daysSinceLastPR={daysSinceLastPR}
+										phaseFilter={phaseFilter}
+										onPhaseFilterChange={setPhaseFilter}
+										phaseMetricSummary={phaseMetricSummary}
 									/>
 								</Suspense>
 							)}
@@ -1398,7 +1359,7 @@ export function Analytics() {
 										badge: trainingLoad.zone,
 									},
 									{
-										label: "PRs",
+										label: "Phase PRs",
 										value: `${prCount}`,
 										delta: null,
 										icon: <Target className="w-4 h-4" />,
@@ -1506,6 +1467,9 @@ export function Analytics() {
 											daysSinceLastPR={daysSinceLastPR}
 											strengthExercises={strengthExercises}
 											insights={insights}
+											phaseFilter={phaseFilter}
+											onPhaseFilterChange={setPhaseFilter}
+											phaseMetricSummary={phaseMetricSummary}
 										/>
 									</Suspense>
 								</TabsContent>

@@ -1,8 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import { Clock } from "lucide-react";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
+import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import type { WeightUnit } from "@/lib/units";
+import {
+	WORKOUT_PHASE_FILTERS,
+	type WorkoutPhaseFilter,
+} from "@/lib/workout-phases";
+import type {
+	PhaseMetricPair,
+	PhaseMetricSummary,
+} from "./phaseStatisticsTransforms";
 
 type ChartOption = Record<string, unknown>;
 
@@ -21,6 +30,55 @@ export interface ProgressTabProps {
 	daysSinceLastPR: number | null;
 	strengthExercises: string[];
 	insights: Insight[];
+	phaseFilter: WorkoutPhaseFilter;
+	onPhaseFilterChange: (phase: WorkoutPhaseFilter) => void;
+	phaseMetricSummary: PhaseMetricSummary;
+}
+
+function formatMetric(value: number, decimals = 1): string {
+	return value.toFixed(decimals).replace(/\.0$/, "");
+}
+
+function PhaseMetricPanel({
+	title,
+	pair,
+	unit,
+	decimals = 1,
+}: {
+	title: string;
+	pair: PhaseMetricPair;
+	unit: string;
+	decimals?: number;
+}) {
+	return (
+		<div className="rounded-lg border border-secondary bg-muted/10 p-4">
+			<div className="text-sm font-semibold text-white mb-3">{title}</div>
+			<div className="grid grid-cols-2 gap-4">
+				<div>
+					<div className="text-xs uppercase tracking-wide text-muted-foreground">
+						Concentric
+					</div>
+					<div className="mt-1 text-lg font-bold text-primary">
+						{formatMetric(pair.concentricMax, decimals)} {unit}
+					</div>
+					<div className="text-xs text-muted-foreground">
+						avg {formatMetric(pair.concentricAvg, decimals)} {unit}
+					</div>
+				</div>
+				<div>
+					<div className="text-xs uppercase tracking-wide text-muted-foreground">
+						Eccentric
+					</div>
+					<div className="mt-1 text-lg font-bold text-primary">
+						{formatMetric(pair.eccentricMax, decimals)} {unit}
+					</div>
+					<div className="text-xs text-muted-foreground">
+						avg {formatMetric(pair.eccentricAvg, decimals)} {unit}
+					</div>
+				</div>
+			</div>
+		</div>
+	);
 }
 
 export default function ProgressTab({
@@ -31,17 +89,76 @@ export default function ProgressTab({
 	daysSinceLastPR,
 	strengthExercises,
 	insights,
+	phaseFilter,
+	onPhaseFilterChange,
+	phaseMetricSummary,
 }: ProgressTabProps) {
 	return (
 		<>
+			<Card className="p-6 bg-surface-2 border-secondary">
+				<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+					<div>
+						<h3 className="text-xl text-white">Phase Load, Speed & Power</h3>
+						<p className="text-sm text-muted-foreground mt-1">
+							{phaseMetricSummary.rowCount} sessions with phase samples
+						</p>
+					</div>
+					<div className="flex flex-wrap gap-2">
+						{WORKOUT_PHASE_FILTERS.map((phase) => (
+							<Button
+								key={phase}
+								type="button"
+								size="sm"
+								variant={phaseFilter === phase ? "default" : "outline"}
+								onClick={() => onPhaseFilterChange(phase)}
+								className={
+									phaseFilter === phase
+										? ""
+										: "border-secondary text-muted-foreground hover:text-white"
+								}
+							>
+								{phase === "all" ? "All" : phase}
+							</Button>
+						))}
+					</div>
+				</div>
+				{phaseMetricSummary.rowCount > 0 ? (
+					<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+						<PhaseMetricPanel
+							title="Load"
+							pair={phaseMetricSummary.load}
+							unit={unit}
+						/>
+						<PhaseMetricPanel
+							title="Velocity"
+							pair={phaseMetricSummary.velocity}
+							unit="m/s"
+							decimals={2}
+						/>
+						<PhaseMetricPanel
+							title="Power"
+							pair={phaseMetricSummary.power}
+							unit="W"
+							decimals={0}
+						/>
+					</div>
+				) : (
+					<div className="h-[140px] flex items-center justify-center text-muted-foreground">
+						No phase statistics for this period
+					</div>
+				)}
+			</Card>
+
 			{/* 1RM Progression */}
 			<Card className="p-6 bg-surface-2 border-secondary">
-				<h3 className="text-xl text-white mb-6">1RM Progression ({unit})</h3>
+				<h3 className="text-xl text-white mb-6">
+					Phase Strength Progression ({unit})
+				</h3>
 				{strengthEChartsOption ? (
 					<EChartsWrapper option={strengthEChartsOption} height={400} />
 				) : (
 					<div className="h-[400px] flex items-center justify-center text-muted-foreground">
-						No strength progress data yet. Set some PRs to see your progression!
+						No strength progress data for this phase
 					</div>
 				)}
 			</Card>
@@ -67,7 +184,7 @@ export default function ProgressTab({
 						<div className="flex flex-col items-center justify-center rounded-xl bg-primary/10 px-6 py-4">
 							<span className="text-3xl font-bold text-primary">{prCount}</span>
 							<span className="text-xs text-muted-foreground mt-1">
-								total PRs
+								phase PRs
 							</span>
 						</div>
 						{daysSinceLastPR != null && (

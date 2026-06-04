@@ -44,6 +44,10 @@ import {
 	type WeightUnit,
 } from "@/lib/units";
 import {
+	formatWorkoutPhase,
+	isNonCombinedWorkoutPhase,
+} from "@/lib/workout-phases";
+import {
 	challengeProgressOptions,
 	userChallengesOptions,
 } from "@/queries/challenges";
@@ -87,21 +91,6 @@ function deriveWeeklyVolume(
 		day,
 		volume: Math.round(volumeByDay[day]),
 	}));
-}
-
-function formatWorkoutPhaseLabel(phase: string | null | undefined): string {
-	switch ((phase ?? "Combined").toUpperCase()) {
-		case "CONCENTRIC":
-			return "Concentric";
-		case "ECCENTRIC":
-			return "Eccentric";
-		default:
-			return "Combined";
-	}
-}
-
-function isNonCombinedWorkoutPhase(phase: string | null | undefined): boolean {
-	return formatWorkoutPhaseLabel(phase) !== "Combined";
 }
 
 /** Format a relative time string from a Date */
@@ -1000,7 +989,7 @@ export function Dashboard() {
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground mb-1">
-													Personal Records
+													Phase PRs
 												</div>
 												<div className="text-2xl font-semibold text-white font-data">
 													<NumberFlow
@@ -1334,7 +1323,7 @@ export function Dashboard() {
 										<div className="flex flex-col items-center justify-center py-6 text-center">
 											<Trophy className="w-8 h-8 text-secondary mb-2" />
 											<p className="text-sm text-muted-foreground">
-												No personal records yet
+												No phase PRs yet
 											</p>
 										</div>
 									) : (
@@ -1360,7 +1349,7 @@ export function Dashboard() {
 													</div>
 													{isNonCombinedWorkoutPhase(pr.workout_phase) ? (
 														<Badge className="mt-2 bg-secondary/20 text-secondary-foreground border-secondary/30 text-xs">
-															{formatWorkoutPhaseLabel(pr.workout_phase)}
+															{formatWorkoutPhase(pr.workout_phase)}
 														</Badge>
 													) : null}
 												</div>

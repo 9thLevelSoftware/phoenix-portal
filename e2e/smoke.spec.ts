@@ -56,6 +56,47 @@ async function mockAuthedPortal(page: Parameters<typeof mockAuthenticatedApp>[0]
 				notes: null,
 			},
 		],
+		personalRecords: [
+			{
+				id: "00000000-0000-4000-8000-000000000401",
+				user_id: "00000000-0000-4000-8000-000000000001",
+				exercise_name: "Bench Press",
+				exercise_id: SEEDED_EXERCISE_ID,
+				record_type: "MAX_WEIGHT",
+				workout_phase: "CONCENTRIC",
+				value: 100,
+				achieved_at: "2026-03-01T14:00:00.000Z",
+			},
+			{
+				id: "00000000-0000-4000-8000-000000000402",
+				user_id: "00000000-0000-4000-8000-000000000001",
+				exercise_name: "Bench Press",
+				exercise_id: SEEDED_EXERCISE_ID,
+				record_type: "MAX_WEIGHT",
+				workout_phase: "ECCENTRIC",
+				value: 125,
+				achieved_at: "2026-03-01T14:00:00.000Z",
+			},
+		],
+		phaseStatistics: [
+			{
+				session_id: SEEDED_SESSION_ID,
+				user_id: "00000000-0000-4000-8000-000000000001",
+				created_at: "2026-03-01T14:45:00.000Z",
+				concentric_kg_avg: 80,
+				concentric_kg_max: 100,
+				concentric_vel_avg: 0.5,
+				concentric_vel_max: 0.8,
+				concentric_watt_avg: 200,
+				concentric_watt_max: 300,
+				eccentric_kg_avg: 95,
+				eccentric_kg_max: 125,
+				eccentric_vel_avg: 0.4,
+				eccentric_vel_max: 0.7,
+				eccentric_watt_avg: 220,
+				eccentric_watt_max: 340,
+			},
+		],
 	});
 }
 
@@ -94,10 +135,23 @@ test.describe("Authenticated pages", () => {
 	});
 
 	test("analytics page loads", async ({ page }) => {
-			await page.goto("/analytics");
-			await expect(
-				page.getByRole("heading", { name: "Analytics Hub" }),
-			).toBeVisible({ timeout: 10000 });
+		await page.goto("/analytics");
+		await expect(
+			page.getByRole("heading", { name: "Analytics Hub" }),
+		).toBeVisible({ timeout: 10000 });
+	});
+
+	test("analytics progress tab shows phase-aware metrics", async ({ page }) => {
+		await page.goto("/analytics?tab=progress");
+
+		await expect(page.getByText("Phase Load, Speed & Power")).toBeVisible({
+			timeout: 10000,
+		});
+		await expect(page.getByRole("button", { name: "All" })).toBeVisible();
+		await expect(page.getByRole("button", { name: "Concentric" })).toBeVisible();
+		await expect(page.getByRole("button", { name: "Eccentric" })).toBeVisible();
+		await expect(page.getByText("Phase Strength Progression (kg)")).toBeVisible();
+		await expect(page.getByText("125 kg")).toBeVisible();
 	});
 
 	test("community page loads", async ({ page }) => {

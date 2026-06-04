@@ -106,8 +106,9 @@ export function useGoalProgress(
 				);
 				progress = (totalVolume / goal.target_value) * 100;
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
-				// Check if any PR for this exercise meets or exceeds the target
-				// PR values are already Zod-transformed (doubled)
+				// Goals do not persist a target phase yet, so any combined,
+				// concentric, or eccentric PR for the exercise can satisfy the target.
+				// PR values are already Zod-transformed (doubled).
 				const exercisePRs = records.filter((r) => {
 					// Prefer exercise_id match if both sides have it
 					if (goal.exercise_id && r.exercise_id) {
