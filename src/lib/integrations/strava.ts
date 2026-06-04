@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -103,7 +104,7 @@ export async function initiateStravaConnect(
 	}
 
 	const { url } = await response.json();
-	window.location.href = url;
+	redirectToValidatedOAuthUrl("strava", url);
 }
 
 // =============================================================================

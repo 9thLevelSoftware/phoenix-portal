@@ -8,8 +8,8 @@ Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-p
 # Run all sync tests with mocks (CI-safe, no Supabase required)
 npm run test:sync
 
-# Run all sync tests with live Supabase (requires credentials)
-MOCK_EDGE_FUNCTIONS=false npm run test:sync
+# Run all sync tests with live Supabase (local or staging only)
+npm run test:sync:live
 
 # Run specific test file
 npm test -- --run tests/sync/round-trip/workout-roundtrip.test.ts
@@ -65,15 +65,20 @@ Mock limitations:
 ### With Live Supabase
 
 ```bash
-# Set environment variables
-export SUPABASE_URL=http://localhost:54321  # Or production URL
+# Set environment variables for local or staging only
+export SUPABASE_URL=http://localhost:54321
 export SUPABASE_ANON_KEY=your-anon-key
 export SUPABASE_SERVICE_ROLE_KEY=your-service-key
 export MOCK_EDGE_FUNCTIONS=false
+export SYNC_LIVE_TESTS=true
 
 # Run tests
-npm test -- tests/sync/
+npm run test:sync:live
 ```
+
+Live sync tests intentionally refuse the known production Supabase/API hosts.
+Use local Supabase or a disposable staging project with the
+`SYNC_STAGING_SUPABASE_*` GitHub secrets.
 
 Live testing provides:
 - Real database behavior

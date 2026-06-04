@@ -280,6 +280,7 @@ export function mockPullEndpoint(
 
   const response: PullResponse = {
     syncTime,
+    hasMore: false,
     sessions,
     routines,
     cycles,

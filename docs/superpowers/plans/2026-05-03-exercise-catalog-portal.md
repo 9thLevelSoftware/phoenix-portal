@@ -191,12 +191,12 @@ CREATE INDEX IF NOT EXISTS idx_personal_records_exercise_id
 
 - [ ] **Step 2: Verify migration is valid SQL**
 
-Run: `cd phoenix-portal && npx supabase migration list`
+Run: `cd phoenix-portal && supabase migration list`
 
 Confirm the new migration appears in the list. If you have a local Supabase instance, run:
 
 ```bash
-npx supabase db push --local
+supabase db push --local
 ```
 
 Expected: Migration applies without errors.

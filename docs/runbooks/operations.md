@@ -809,7 +809,7 @@ The repo now provides an env-driven command that:
 3. Verifies the public auth settings endpoint afterward
 
 ```bash
-npx supabase login
+supabase login
 npm run auth:social:push
 ```
 

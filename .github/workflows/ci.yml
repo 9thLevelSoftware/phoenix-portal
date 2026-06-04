@@ -14,6 +14,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run audit:security
+
   lint:
     name: Biome Lint & Format
     runs-on: ubuntu-latest
@@ -35,6 +47,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+
+  edge-functions:
+    name: Edge Function Deno Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: npm run check:edge-functions
 
   unit-test:
     name: Vitest Unit Tests
