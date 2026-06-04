@@ -295,19 +295,19 @@ export function ExerciseProgress({
 						animate={{ opacity: 1, y: 0 }}
 					>
 						<StatCard
-							label="Max Weight"
+							label="Overall Max Weight"
 							stat={weightTrend}
 							color={PHOENIX.ember}
 							unit={getUnitLabel(unit)}
 						/>
 						<StatCard
-							label="Total Volume"
+							label="Overall Volume"
 							stat={volumeTrend}
 							color={PHOENIX.gold}
 							unit={getUnitLabel(unit)}
 						/>
 						<StatCard
-							label="Est. 1RM"
+							label="Overall Est. 1RM"
 							stat={oneRmTrend}
 							color={PHOENIX.forgeGreen}
 							unit={getUnitLabel(unit)}
@@ -324,9 +324,9 @@ export function ExerciseProgress({
 						>
 							<Card className="p-4 bg-surface-2 border-secondary">
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
-									Max Weight Trend
+									Overall Max Weight Trend
 								</h4>
-								<div role="img" aria-label="Exercise volume trend over time">
+								<div role="img" aria-label="Overall max weight trend over time">
 									<ResponsiveContainer width="100%" height={250}>
 										<AreaChart data={chartData}>
 											<defs>
@@ -390,11 +390,11 @@ export function ExerciseProgress({
 						>
 							<Card className="p-4 bg-surface-2 border-secondary">
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
-									Total Volume Trend
+									Overall Total Volume Trend
 								</h4>
 								<div
 									role="img"
-									aria-label="Estimated one-rep max trend over time"
+									aria-label="Overall total volume trend over time"
 								>
 									<ResponsiveContainer width="100%" height={250}>
 										<AreaChart data={chartData}>
@@ -459,9 +459,12 @@ export function ExerciseProgress({
 						>
 							<Card className="p-4 bg-surface-2 border-secondary">
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
-									Estimated 1RM Trend
+									Overall Estimated 1RM Trend
 								</h4>
-								<div role="img" aria-label="Average velocity trend over time">
+								<div
+									role="img"
+									aria-label="Overall estimated one-rep max trend over time"
+								>
 									<ResponsiveContainer width="100%" height={250}>
 										<AreaChart data={chartData}>
 											<defs>

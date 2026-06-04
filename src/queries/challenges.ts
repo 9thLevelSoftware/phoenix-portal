@@ -35,7 +35,7 @@ export function userChallengesOptions(userId: string) {
 	});
 }
 
-/** Compute challenge progress from workout_sessions */
+/** Compute challenge progress from workout_sessions or phase-aware PR rows */
 export function challengeProgressOptions(
 	userId: string,
 	challengeId: string,
@@ -92,6 +92,8 @@ export function challengeProgressOptions(
 					break;
 				}
 				case "pr_count": {
+					// Phase-specific records are distinct rows in personal_records and
+					// intentionally count separately for PR-count challenges.
 					const { data, error } = await supabase
 						.from("personal_records")
 						.select("id")

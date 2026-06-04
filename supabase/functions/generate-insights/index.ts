@@ -21,7 +21,12 @@ interface InsightInput {
   avgSessionsPerWeek: number;
   currentStreak: number;
   bestStreak: number;
-  recentPRs: Array<{ exercise: string; value: number; previousValue?: number }>;
+  recentPRs: Array<{
+    exercise: string;
+    displayName: string;
+    value: number;
+    previousValue?: number;
+  }>;
   plateauExercises: string[];
   trainingLoadScore: number;
 }
@@ -29,6 +34,42 @@ interface InsightInput {
 // ── Insight rule engine (duplicate of src/lib/insights.ts) ───────────────────
 
 const STREAK_MILESTONES = [7, 14, 21, 30];
+
+function formatWorkoutPhase(phase: string | null | undefined): string {
+  switch ((phase ?? 'COMBINED').toUpperCase()) {
+    case 'CONCENTRIC':
+      return 'Concentric';
+    case 'ECCENTRIC':
+      return 'Eccentric';
+    default:
+      return 'Combined';
+  }
+}
+
+function formatRecordType(recordType: string | null | undefined): string {
+  switch ((recordType ?? '').toUpperCase()) {
+    case 'MAX_WEIGHT':
+      return 'Max Weight';
+    case 'MAX_VOLUME':
+      return 'Max Volume';
+    case '1RM':
+      return '1RM';
+    default:
+      return 'PR';
+  }
+}
+
+function formatPersonalRecordName(
+  exercise: string,
+  recordType: string | null | undefined,
+  phase: string | null | undefined
+): string {
+  const formattedType = formatRecordType(recordType);
+  const formattedPhase = formatWorkoutPhase(phase);
+  return formattedPhase === 'Combined'
+    ? `${exercise} ${formattedType}`
+    : `${exercise} ${formattedPhase} ${formattedType}`;
+}
 
 function generateInsights(input: InsightInput): TrainingInsight[] {
   const insights: TrainingInsight[] = [];
@@ -125,15 +166,15 @@ function generateInsights(input: InsightInput): TrainingInsight[] {
     const delta =
       pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
     insights.push({
-      id: `pr-${pr.exercise.toLowerCase().replace(/\s+/g, '-')}`,
+      id: `pr-${pr.displayName.toLowerCase().replace(/\s+/g, '-')}`,
       type: 'achievement',
-      title: `New PR: ${pr.exercise}`,
+      title: `New PR: ${pr.displayName}`,
       description:
         delta !== undefined
-          ? `You set a personal record on ${pr.exercise} — ${pr.value} lbs (up ${delta} lbs from ${pr.previousValue} lbs).`
-          : `You set a personal record on ${pr.exercise} — ${pr.value} lbs.`,
+          ? `You set a personal record on ${pr.displayName} — ${pr.value} lbs (up ${delta} lbs from ${pr.previousValue} lbs).`
+          : `You set a personal record on ${pr.displayName} — ${pr.value} lbs.`,
       metric: {
-        name: pr.exercise,
+        name: pr.displayName,
         value: pr.value,
         unit: 'lbs',
         delta,
@@ -352,13 +393,18 @@ Deno.serve(async (req) => {
     // ── 3. Recent personal records ────────────────────────────────────────────
     const { data: prRows } = await supabaseAdmin
       .from('personal_records')
-      .select('exercise_name, value, previous_value')
+      .select('exercise_name, record_type, workout_phase, value, previous_value')
       .eq('user_id', userId)
       .gte('achieved_at', currentStart.toISOString())
       .order('achieved_at', { ascending: false });
 
     const recentPRs = (prRows ?? []).map((r) => ({
       exercise: r.exercise_name,
+      displayName: formatPersonalRecordName(
+        r.exercise_name,
+        r.record_type,
+        r.workout_phase
+      ),
       value: r.value,
       previousValue: r.previous_value ?? undefined,
     }));

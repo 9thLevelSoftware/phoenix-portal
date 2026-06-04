@@ -79,4 +79,27 @@ describe("CSV export formula escaping", () => {
 			expect(rows[index]["Record Type"]).toBe(`'${prefix}record`);
 		}
 	});
+
+	it("includes workout phase in personal record exports", () => {
+		const records: PersonalRecord[] = [
+			{
+				id: "00000000-0000-4000-8000-000000000001",
+				user_id: "00000000-0000-4000-8000-000000000999",
+				exercise_name: "Bench Press",
+				exercise_id: null,
+				muscle_group: "Chest",
+				record_type: "MAX_WEIGHT",
+				value: 125,
+				unit: "kg",
+				achieved_at: new Date("2026-05-17T12:00:00Z"),
+				previous_value: null,
+				workout_phase: "Concentric",
+				local_profile_id: null,
+			},
+		];
+
+		const rows = parseCSV(generateRecordsCSV(records));
+
+		expect(rows[0]["Workout Phase"]).toBe("Concentric");
+	});
 });

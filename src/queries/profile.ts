@@ -65,7 +65,7 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 			// Compute best streak from sessions
 			const bestStreak = computeBestStreak(sessions ?? []);
 
-			// Count personal records
+			// Count personal_records rows. Phase-specific records are distinct PRs.
 			let prQuery = supabase
 				.from("personal_records")
 				.select("id", { count: "exact", head: true })

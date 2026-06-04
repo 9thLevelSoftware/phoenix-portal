@@ -11,15 +11,32 @@ import {
 } from "recharts";
 import { MobileChartCard } from "@/app/components/analytics/MobileChartCard";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
+import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
 import type { WeightUnit } from "@/lib/units";
+import {
+	WORKOUT_PHASE_FILTERS,
+	type WorkoutPhaseFilter,
+} from "@/lib/workout-phases";
+import type { PhaseMetricSummary } from "./phaseStatisticsTransforms";
 
 export interface MobileProgressTabProps {
 	unit: WeightUnit;
-	mobileStrengthData: Array<{ exercise: string; weight: number }>;
+	mobileStrengthData: Array<{
+		exercise: string;
+		weight: number;
+		phase: string;
+	}>;
 	mobileVolumeData: Array<{ date: string; volume: number }>;
 	prCount: number;
 	daysSinceLastPR: number | null;
+	phaseFilter: WorkoutPhaseFilter;
+	onPhaseFilterChange: (phase: WorkoutPhaseFilter) => void;
+	phaseMetricSummary: PhaseMetricSummary;
+}
+
+function formatMetric(value: number, decimals = 1): string {
+	return value.toFixed(decimals).replace(/\.0$/, "");
 }
 
 export default function MobileProgressTab({
@@ -28,10 +45,82 @@ export default function MobileProgressTab({
 	mobileVolumeData,
 	prCount,
 	daysSinceLastPR,
+	phaseFilter,
+	onPhaseFilterChange,
+	phaseMetricSummary,
 }: MobileProgressTabProps) {
+	const titlePhase =
+		phaseFilter === "all" ? "PHASE" : phaseFilter.toUpperCase();
+
 	return (
 		<>
-			<MobileChartCard title={`TOP LIFTS (1RM - ${unit.toUpperCase()})`}>
+			<MobileChartCard title="PHASE METRICS">
+				<div className="flex flex-wrap gap-2 mb-4">
+					{WORKOUT_PHASE_FILTERS.map((phase) => (
+						<Button
+							key={phase}
+							type="button"
+							size="sm"
+							variant={phaseFilter === phase ? "default" : "outline"}
+							onClick={() => onPhaseFilterChange(phase)}
+							className={
+								phaseFilter === phase
+									? "h-8 text-xs"
+									: "h-8 text-xs border-secondary text-muted-foreground"
+							}
+						>
+							{phase === "all" ? "All" : phase}
+						</Button>
+					))}
+				</div>
+				{phaseMetricSummary.rowCount > 0 ? (
+					<div className="grid grid-cols-3 gap-2">
+						{[
+							{
+								label: "Load",
+								value: phaseMetricSummary.load.eccentricMax,
+								unit,
+								decimals: 1,
+							},
+							{
+								label: "Velocity",
+								value: phaseMetricSummary.velocity.concentricMax,
+								unit: "m/s",
+								decimals: 2,
+							},
+							{
+								label: "Power",
+								value: phaseMetricSummary.power.eccentricMax,
+								unit: "W",
+								decimals: 0,
+							},
+						].map((item) => (
+							<div
+								key={item.label}
+								className="rounded-lg border border-secondary bg-muted/10 p-3"
+							>
+								<div className="text-[10px] uppercase text-muted-foreground">
+									{item.label}
+								</div>
+								<div className="mt-1 text-lg font-bold text-primary">
+									{formatMetric(item.value, item.decimals)}
+								</div>
+								<div className="text-[10px] text-muted-foreground">
+									{item.unit}
+								</div>
+							</div>
+						))}
+					</div>
+				) : (
+					<div className="py-8 text-center text-sm text-muted-foreground">
+						No phase statistics for this period
+					</div>
+				)}
+			</MobileChartCard>
+
+			<MobileChartCard
+				title={`TOP LIFTS (${titlePhase} - ${unit.toUpperCase()})`}
+			>
 				{mobileStrengthData.length > 0 ? (
 					<ResponsiveContainer width="100%" height={250}>
 						<BarChart data={mobileStrengthData} layout="vertical">
@@ -152,7 +241,7 @@ export default function MobileProgressTab({
 						<div className="flex flex-col items-center justify-center rounded-lg bg-primary/10 px-4 py-3">
 							<span className="text-2xl font-bold text-primary">{prCount}</span>
 							<span className="text-[10px] text-muted-foreground">
-								total PRs
+								phase PRs
 							</span>
 						</div>
 						{daysSinceLastPR != null && (

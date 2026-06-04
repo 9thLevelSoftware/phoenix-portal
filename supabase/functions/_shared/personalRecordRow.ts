@@ -41,6 +41,7 @@ export interface PrSessionInput {
 }
 
 export interface PersonalRecordRow {
+	id?: string;
 	user_id: string;
 	local_profile_id: string | null;
 	exercise_name: string;
@@ -48,9 +49,32 @@ export interface PersonalRecordRow {
 	muscle_group: string;
 	record_type: string;
 	value: number;
+	weight_kg?: number | null;
+	reps?: number | null;
 	unit: string;
+	session_id?: string | null;
 	achieved_at: string;
+	updated_at?: string;
 	workout_phase: string;
+}
+
+export interface DedicatedPersonalRecordInput {
+	id?: string | null;
+	userId?: string | null;
+	exerciseName: string;
+	exerciseId?: string | null;
+	muscleGroup?: string | null;
+	recordType?: string | null;
+	value?: number | null;
+	volume?: number | null;
+	weightKg?: number | null;
+	reps?: number | null;
+	workoutPhase?: string | null;
+	sessionId?: string | null;
+	achievedAt?: string | null;
+	updatedAt?: string | null;
+	localProfileId?: string | null;
+	workoutMode?: string | null;
 }
 
 export interface PersonalRecordIdentityInput {
@@ -74,10 +98,76 @@ export function personalRecordIdentityKey(
 		profileKey,
 		exerciseKey,
 		row.achieved_at ?? "",
-		String(row.value ?? ""),
 		row.record_type ?? "",
 		row.workout_phase ?? "COMBINED",
 	]);
+}
+
+function unitForRecordType(recordType: string): string {
+	return recordType === "MAX_VOLUME" ? "kg×reps" : "kg";
+}
+
+function valueForDedicatedRecord(
+	record: DedicatedPersonalRecordInput,
+	recordType: string,
+): number {
+	if (record.value != null) return record.value;
+	if (recordType === "MAX_VOLUME") {
+		if (record.volume != null) return record.volume;
+		if (record.weightKg != null && record.reps != null) {
+			return record.weightKg * record.reps;
+		}
+	}
+	return record.weightKg ?? 0;
+}
+
+export function buildDedicatedPersonalRecordRows(
+	records: DedicatedPersonalRecordInput[],
+	userId: string,
+	localProfileId: string | null,
+): PersonalRecordRow[] {
+	return records.map((record) => {
+		const recordType = record.recordType ?? "1RM";
+		const row: PersonalRecordRow = {
+			user_id: userId,
+			local_profile_id:
+				record.localProfileId === undefined
+					? localProfileId
+					: record.localProfileId,
+			exercise_name: record.exerciseName,
+			exercise_id: record.exerciseId ?? null,
+			muscle_group: record.muscleGroup ?? "General",
+			record_type: recordType,
+			value: valueForDedicatedRecord(record, recordType),
+			weight_kg: record.weightKg ?? null,
+			reps: record.reps ?? null,
+			unit: unitForRecordType(recordType),
+			session_id: record.sessionId ?? null,
+			achieved_at: record.achievedAt ?? new Date().toISOString(),
+			workout_phase: record.workoutPhase ?? "COMBINED",
+		};
+
+		if (record.id) row.id = record.id;
+		if (record.updatedAt) row.updated_at = record.updatedAt;
+		return row;
+	});
+}
+
+export function buildPersonalRecordRowsForPush(
+	sessions: PrSessionInput[],
+	personalRecords: DedicatedPersonalRecordInput[],
+	userId: string,
+	localProfileId: string | null,
+): PersonalRecordRow[] {
+	if (personalRecords.length > 0) {
+		return buildDedicatedPersonalRecordRows(
+			personalRecords,
+			userId,
+			localProfileId,
+		);
+	}
+
+	return buildPersonalRecordRows(sessions, userId, localProfileId);
 }
 
 export function buildPersonalRecordRows(
@@ -105,7 +195,9 @@ export function buildPersonalRecordRows(
 					muscle_group: exercise.muscleGroup ?? "General",
 					record_type: recordType,
 					value,
-					unit: recordType === "MAX_VOLUME" ? "kg×reps" : "kg",
+					weight_kg: set.weightKg,
+					reps: set.actualReps,
+					unit: unitForRecordType(recordType),
 					achieved_at: session.startedAt,
 					workout_phase: set.prPhase ?? "COMBINED",
 				});

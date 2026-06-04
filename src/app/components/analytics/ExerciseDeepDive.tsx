@@ -11,6 +11,7 @@ import {
 import { Card } from "@/app/components/ui/card";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
+import { formatWorkoutPhase, WORKOUT_PHASES } from "@/lib/workout-phases";
 import { exerciseProgressOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
 import type { ExerciseProgress } from "@/schemas/telemetry";
@@ -148,8 +149,9 @@ export function ExerciseDeepDive({
 			? filteredProgress[filteredProgress.length - 1].estimated_1rm_kg
 			: null;
 
-	const prsInPeriod = useMemo(() => {
-		if (!records || !selectedExercise) return 0;
+	const prsByPhaseInPeriod = useMemo(() => {
+		const counts = new Map(WORKOUT_PHASES.map((phase) => [phase, 0]));
+		if (!records || !selectedExercise) return counts;
 		const days = TIME_RANGE_DAYS[timeRange];
 		const cutoff =
 			days === Infinity
@@ -159,15 +161,21 @@ export function ExerciseDeepDive({
 						d.setDate(d.getDate() - days);
 						return d;
 					})();
-		return records.filter((r) => {
+		for (const r of records) {
 			const exerciseMatch =
 				r.exercise_name.toLowerCase() === selectedExercise.toLowerCase();
-			if (!exerciseMatch) return false;
-			if (!cutoff) return true;
+			if (!exerciseMatch) continue;
+			if (cutoff && r.achieved_at < cutoff) continue;
 			// achieved_at is already a Date (transformed by schema)
-			return r.achieved_at >= cutoff;
-		}).length;
+			const phase = formatWorkoutPhase(r.workout_phase);
+			counts.set(phase, (counts.get(phase) ?? 0) + 1);
+		}
+		return counts;
 	}, [records, selectedExercise, timeRange]);
+	const prsInPeriod = Array.from(prsByPhaseInPeriod.values()).reduce(
+		(sum, count) => sum + count,
+		0,
+	);
 
 	const sessionCount =
 		sortedExercises.find((e) => e.name === selectedExercise)?.sessionCount ?? 0;
@@ -405,8 +413,27 @@ export function ExerciseDeepDive({
 							}
 						/>
 						<StatCard label="Sessions" value={sessionCount} />
-						<StatCard label="PRs in Period" value={prsInPeriod} />
+						<StatCard label="Phase PRs" value={prsInPeriod} />
 					</div>
+					{prsInPeriod > 0 && (
+						<div
+							className="flex flex-wrap gap-2"
+							data-testid="phase-pr-breakdown"
+						>
+							{WORKOUT_PHASES.map((phase) => {
+								const count = prsByPhaseInPeriod.get(phase) ?? 0;
+								if (count === 0) return null;
+								return (
+									<span
+										key={phase}
+										className="rounded-full border border-secondary bg-muted/10 px-2 py-1 text-[10px] text-muted-foreground"
+									>
+										{phase}: <span className="text-white">{count}</span>
+									</span>
+								);
+							})}
+						</div>
+					)}
 				</div>
 			</div>
 		</Card>

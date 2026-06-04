@@ -285,7 +285,7 @@ export function Profile() {
 			icon: Calendar,
 		},
 		{
-			label: "Personal Records",
+			label: "Phase PRs",
 			value: statsLoading ? "..." : String(stats?.prCount ?? 0),
 			icon: Trophy,
 		},
@@ -543,7 +543,7 @@ export function Profile() {
 									</div>
 									<div className="p-4 bg-gradient-to-br from-accent/10 to-warning/10 border border-accent/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
-											Personal Records
+											Phase PRs
 										</div>
 										<div className="text-3xl text-accent font-data">
 											{statsLoading ? "..." : (stats?.prCount ?? 0)}

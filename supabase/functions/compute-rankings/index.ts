@@ -72,7 +72,7 @@ type SupabaseAnyClient = SupabaseClient<any, 'public', any>;
 const WEEKLY_METRICS = [
   { metric: 'total_volume_kg', label: 'Total Volume (kg)' },
   { metric: 'total_workouts', label: 'Workouts Completed' },
-  { metric: 'pr_count', label: 'Personal Records' },
+  { metric: 'pr_count', label: 'Phase-Aware Personal Records' },
   { metric: 'current_streak', label: 'Current Streak' },
 ] as const;
 
@@ -462,7 +462,8 @@ async function computeWeeklyRankings(
 
     entries = buildRankings(eligibleUserIds, valueGetter, profilesByUserId, LIMIT);
   } else if (metricConfig.metric === 'pr_count') {
-    // Count PRs achieved during the week
+    // Count personal_records rows achieved during the week. Dedicated
+    // concentric/eccentric records count separately from combined records.
     const { data: prs } = await supabase
       .from('personal_records')
       .select('user_id')

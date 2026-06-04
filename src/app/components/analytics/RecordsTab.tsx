@@ -20,6 +20,12 @@ import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { convertWeight, type WeightUnit } from "@/lib/units";
+import {
+	formatWorkoutPhase,
+	isNonCombinedWorkoutPhase,
+	WORKOUT_PHASE_FILTERS,
+	type WorkoutPhaseFilter,
+} from "@/lib/workout-phases";
 import { personalRecordsOptions } from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -33,9 +39,6 @@ const milestones = [
 ];
 
 const TIMELINE_INITIAL_LIMIT = 5;
-
-const phaseFilters = ["all", "Combined", "Concentric", "Eccentric"] as const;
-type PhaseFilter = (typeof phaseFilters)[number];
 
 const knownGroups = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
 
@@ -131,7 +134,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	});
 
 	const [activeFilter, setActiveFilter] = useState("All");
-	const [phaseFilter, setPhaseFilter] = useState<PhaseFilter>("all");
+	const [phaseFilter, setPhaseFilter] = useState<WorkoutPhaseFilter>("all");
 	const [viewMode, setViewMode] = useState<"grouped" | "timeline">("grouped");
 	const [expandedExercises, setExpandedExercises] = useState<string[]>([]);
 	const [showAllTimeline, setShowAllTimeline] = useState(false);
@@ -144,7 +147,9 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	const phaseFiltered =
 		phaseFilter === "all"
 			? (records ?? [])
-			: (records ?? []).filter((r) => r.workout_phase === phaseFilter);
+			: (records ?? []).filter(
+					(r) => formatWorkoutPhase(r.workout_phase) === phaseFilter,
+				);
 
 	// Group by exercise (prefer exercise_id for stable grouping, fall back to name)
 	const exerciseMap = new Map<string, PersonalRecord[]>();
@@ -299,7 +304,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 				{/* Phase filter row */}
 				<div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
-					{phaseFilters.map((phase) => (
+					{WORKOUT_PHASE_FILTERS.map((phase) => (
 						<Button
 							key={phase}
 							onClick={() => setPhaseFilter(phase)}
@@ -327,7 +332,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 				<Card className="p-4 bg-surface-2 border-secondary">
 					<div className="flex items-center gap-2 mb-1">
 						<Trophy className="w-4 h-4 text-accent" />
-						<span className="text-xs text-muted-foreground">Total PRs</span>
+						<span className="text-xs text-muted-foreground">Phase PRs</span>
 					</div>
 					<div className="text-2xl font-semibold text-white font-data">
 						{totalPRs}
@@ -572,13 +577,16 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																		</Badge>
 																	</td>
 																	<td className="py-2.5">
-																		{entry.workout_phase &&
-																		entry.workout_phase !== "Combined" ? (
+																		{isNonCombinedWorkoutPhase(
+																			entry.workout_phase,
+																		) ? (
 																			<Badge
 																				variant="outline"
 																				className="border-accent/40 text-accent text-xs"
 																			>
-																				{entry.workout_phase}
+																				{formatWorkoutPhase(
+																					entry.workout_phase,
+																				)}
 																			</Badge>
 																		) : (
 																			<span className="text-muted-foreground text-xs">
@@ -657,15 +665,14 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														>
 															{pr.muscle_group}
 														</Badge>
-														{pr.workout_phase &&
-															pr.workout_phase !== "Combined" && (
-																<Badge
-																	variant="outline"
-																	className="border-accent/40 text-accent text-xs flex-shrink-0"
-																>
-																	{pr.workout_phase}
-																</Badge>
-															)}
+														{isNonCombinedWorkoutPhase(pr.workout_phase) && (
+															<Badge
+																variant="outline"
+																className="border-accent/40 text-accent text-xs flex-shrink-0"
+															>
+																{formatWorkoutPhase(pr.workout_phase)}
+															</Badge>
+														)}
 													</div>
 													<p className="text-xl font-bold text-primary font-data">
 														{formatRecordMeasurement(pr.value, pr.unit, unit)}

@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { ExerciseDeepDive } from "../analytics/ExerciseDeepDive";
 
@@ -9,6 +9,11 @@ import { ExerciseDeepDive } from "../analytics/ExerciseDeepDive";
 // personalRecords. We intercept at the module boundary.
 // ---------------------------------------------------------------------------
 
+const mockQueryData = vi.hoisted(() => ({
+	progress: [] as unknown[],
+	records: [] as unknown[],
+}));
+
 vi.mock("@/queries/progress", () => ({
 	exerciseProgressOptions: (
 		userId: string,
@@ -16,7 +21,7 @@ vi.mock("@/queries/progress", () => ({
 		profileId?: string | null,
 	) => ({
 		queryKey: ["progress", userId, exerciseName, profileId],
-		queryFn: async () => [],
+		queryFn: async () => mockQueryData.progress,
 	}),
 	exerciseListOptions: (userId: string, profileId?: string | null) => ({
 		queryKey: ["progress-list", userId, profileId],
@@ -27,7 +32,7 @@ vi.mock("@/queries/progress", () => ({
 vi.mock("@/queries/records", () => ({
 	personalRecordsOptions: (userId: string, profileId?: string | null) => ({
 		queryKey: ["records", userId, profileId],
-		queryFn: async () => [],
+		queryFn: async () => mockQueryData.records,
 	}),
 }));
 
@@ -54,6 +59,11 @@ const BASE_PROPS = {
 // ---------------------------------------------------------------------------
 
 describe("ExerciseDeepDive", () => {
+	beforeEach(() => {
+		mockQueryData.progress = [];
+		mockQueryData.records = [];
+	});
+
 	it("renders without crashing with valid props", () => {
 		const { container } = renderWithProviders(
 			<ExerciseDeepDive {...BASE_PROPS} />,
@@ -94,6 +104,38 @@ describe("ExerciseDeepDive", () => {
 	it("shows stats row", () => {
 		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
 		expect(screen.getByTestId("stats-row")).toBeInTheDocument();
+	});
+
+	it("breaks PR counts down by workout phase", async () => {
+		mockQueryData.records = [
+			{
+				exercise_name: "Bench Press",
+				achieved_at: new Date(),
+				workout_phase: "Concentric",
+			},
+			{
+				exercise_name: "Bench Press",
+				achieved_at: new Date(),
+				workout_phase: "Eccentric",
+			},
+			{
+				exercise_name: "Bench Press",
+				achieved_at: new Date(),
+				workout_phase: "Eccentric",
+			},
+			{
+				exercise_name: "Chest Fly",
+				achieved_at: new Date(),
+				workout_phase: "Concentric",
+			},
+		];
+
+		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
+
+		const breakdown = await screen.findByTestId("phase-pr-breakdown");
+		expect(breakdown).toHaveTextContent("Concentric: 1");
+		expect(breakdown).toHaveTextContent("Eccentric: 2");
+		expect(breakdown).not.toHaveTextContent("Chest Fly");
 	});
 
 	it("shows empty state when exercise list is empty", () => {

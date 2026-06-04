@@ -191,6 +191,8 @@ describe("strengthProgressOptions", () => {
 		const raw = [
 			{
 				exercise_name: "Bench Press",
+				record_type: "MAX_WEIGHT",
+				workout_phase: "CONCENTRIC",
 				value: 100,
 				achieved_at: "2026-03-01T00:00:00Z",
 			},
@@ -203,6 +205,16 @@ describe("strengthProgressOptions", () => {
 		expect(result[0].exercise_name).toBe("Bench Press");
 	});
 
+	it("selects record type and workout phase for phase-aware strength charts", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { strengthProgressOptions } = await import("../analytics");
+		const opts = strengthProgressOptions("user-1");
+		await opts.queryFn?.({} as never);
+		expect(chain.select).toHaveBeenCalledWith(
+			"exercise_name, exercise_id, record_type, workout_phase, value, achieved_at",
+		);
+	});
+
 	it("throws on Supabase error", async () => {
 		chain = buildChain({
 			data: null,
@@ -212,6 +224,55 @@ describe("strengthProgressOptions", () => {
 		const opts = strengthProgressOptions("user-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query error" }),
+		);
+	});
+});
+
+describe("phaseStatisticsTrendOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
+	});
+
+	it("uses a user, period, and profile-specific query key", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const opts = phaseStatisticsTrendOptions("user-1", "4w", "profile-1");
+		expect(opts.queryKey).toEqual(
+			queryKeys.analytics.phaseStats("user-1", "4w", "profile-1"),
+		);
+	});
+
+	it("queries session phase statistics with workout session context", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const opts = phaseStatisticsTrendOptions("user-1", "4w", "profile-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(result).toEqual([]);
+		expect(fromFn).toHaveBeenCalledWith("session_phase_statistics");
+		expect(chain.select).toHaveBeenCalledWith(
+			[
+				"session_id",
+				"concentric_kg_avg",
+				"concentric_kg_max",
+				"concentric_vel_avg",
+				"concentric_vel_max",
+				"concentric_watt_avg",
+				"concentric_watt_max",
+				"eccentric_kg_avg",
+				"eccentric_kg_max",
+				"eccentric_vel_avg",
+				"eccentric_vel_max",
+				"eccentric_watt_avg",
+				"eccentric_watt_max",
+				"workout_sessions!inner(started_at, local_profile_id, name)",
+			].join(", "),
+		);
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.eq).toHaveBeenCalledWith(
+			"workout_sessions.local_profile_id",
+			"profile-1",
 		);
 	});
 });

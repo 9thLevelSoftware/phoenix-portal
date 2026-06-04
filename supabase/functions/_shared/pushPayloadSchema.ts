@@ -363,6 +363,30 @@ const externalActivitySchema = z.object({
 	syncedAt: nullableField(z.string()),
 });
 
+const personalRecordSchema = z.object({
+	id: uuid.optional(),
+	userId: nullableField(z.string()),
+	exerciseName: z.string(),
+	exerciseId: nullableField(z.string()),
+	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
+	recordType: z.string().nullish().transform((v) => v ?? "1RM"),
+	value: nullableField(z.number()),
+	volume: nullableField(z.number()),
+	weightKg: nullableField(z.number()),
+	reps: nullableField(z.number().int()),
+	workoutPhase: z.string().nullish().transform((v) => v ?? "COMBINED"),
+	sessionId: nullableField(uuid),
+	achievedAt: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? new Date().toISOString()),
+	updatedAt: nullableField(z.string()),
+	localProfileId: localProfileIdSchema.nullable().optional(),
+	// Accepted for wire compatibility; personal_records has no workout_mode
+	// column, so the push handler can only preserve this through session_id.
+	workoutMode: nullableField(z.string()),
+});
+
 // ─── Top-level ───────────────────────────────────────────────────────────
 
 export const pushPayloadSchema = z.object({
@@ -382,6 +406,7 @@ export const pushPayloadSchema = z.object({
 	exerciseSignatures: arrayOf(exerciseSignatureSchema).default([]),
 	assessments: arrayOf(assessmentResultSchema).default([]),
 	externalActivities: arrayOf(externalActivitySchema).nullable().optional(),
+	personalRecords: arrayOf(personalRecordSchema).default([]),
 	customExercises: arrayOf(customExerciseSchema).default([]),
 	profileId: localProfileIdSchema.nullable().optional(),
 	profileName: nullableField(z.string()),
