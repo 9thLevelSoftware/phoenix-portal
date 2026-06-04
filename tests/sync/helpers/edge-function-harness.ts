@@ -44,6 +44,7 @@ export interface PushPayload {
   exerciseSignatures?: ExerciseSignatureDto[];
   assessments?: AssessmentResultDto[];
   externalActivities?: ExternalActivityDto[] | null;
+  personalRecords?: PersonalRecordDto[];
   customExercises?: CustomExerciseDto[];
   profileId?: string | null;
   profileName?: string | null;
@@ -374,15 +375,19 @@ export interface PersonalRecordDto {
   id: string;
   userId: string;
   exerciseName: string;
+  exerciseId?: string | null;
   muscleGroup: string;
   recordType: string;
   value: number;
+  volume?: number | null;
   weightKg: number | null;
   reps: number | null;
   workoutPhase: string | null;
   sessionId: string | null;
   achievedAt: string;
   updatedAt: string;
+  localProfileId?: string | null;
+  workoutMode?: string | null;
 }
 export interface RpgAttributesResponseDto extends RpgAttributesDto {
   updatedAt: string;

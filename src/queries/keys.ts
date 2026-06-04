@@ -48,6 +48,14 @@ export const queryKeys = {
 			] as const,
 		sessionSetWeights: (sessionId: string) =>
 			[...queryKeys.analytics.all, "session-set-weights", sessionId] as const,
+		phaseStats: (userId: string, period: string, profileId?: string | null) =>
+			[
+				...queryKeys.analytics.all,
+				"phase-stats",
+				userId,
+				period,
+				profileId ?? "all",
+			] as const,
 	},
 	routines: {
 		all: ["routines"] as const,

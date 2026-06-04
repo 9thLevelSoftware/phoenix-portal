@@ -91,6 +91,8 @@ interface MockSupabaseOptions {
 	workoutSessions?: Record<string, unknown>[];
 	exercises?: ExerciseRow[];
 	sets?: SetRow[];
+	personalRecords?: Record<string, unknown>[];
+	phaseStatistics?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
@@ -143,6 +145,8 @@ export async function installMockSupabase(
 		workoutSessions: options.workoutSessions ?? [],
 		exercises: options.exercises ?? [],
 		sets: options.sets ?? [],
+		personalRecords: options.personalRecords ?? [],
+		phaseStatistics: options.phaseStatistics ?? [],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -180,6 +184,9 @@ export async function installMockSupabase(
 		rows.filter((row) => {
 			for (const [key, value] of url.searchParams.entries()) {
 				if (key === "select" || key === "order" || key === "limit" || key === "offset") {
+					continue;
+				}
+				if (key.includes(".")) {
 					continue;
 				}
 
@@ -370,6 +377,21 @@ export async function installMockSupabase(
 			case "sets": {
 				const sets = filterRows(state.sets, url);
 				await respondRows(route, sets, request.headers().accept);
+				return;
+			}
+			case "personal_records": {
+				const records = filterRows(state.personalRecords, url);
+				if (method === "HEAD") {
+					await respondCount(route, records.length);
+					return;
+				}
+
+				await respondRows(route, records, request.headers().accept);
+				return;
+			}
+			case "session_phase_statistics": {
+				const rows = filterRows(state.phaseStatistics, url);
+				await respondRows(route, rows, request.headers().accept);
 				return;
 			}
 			case "challenge_participants": {

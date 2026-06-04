@@ -501,7 +501,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					</Card>
 				</motion.div>
 
-				{/* Card C: Personal Records */}
+				{/* Card C: Overall Progress Records */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
@@ -513,12 +513,12 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<Trophy className="w-4 h-4 text-success" />
 							</div>
 							<span className="text-sm text-muted-foreground">
-								Personal Records
+								Overall Progress Records
 							</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
 							{summary.prs.length}{" "}
-							<span className="text-sm text-muted-foreground">PRs hit</span>
+							<span className="text-sm text-muted-foreground">records hit</span>
 						</div>
 						{summary.prs.length > 0 ? (
 							<div className="space-y-1">
@@ -538,7 +538,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							</div>
 						) : (
 							<div className="text-xs text-muted-foreground">
-								No new PRs this {period}
+								No new aggregate records this {period}
 							</div>
 						)}
 					</Card>

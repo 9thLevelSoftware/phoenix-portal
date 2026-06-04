@@ -112,7 +112,9 @@ export function strengthProgressOptions(
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("exercise_name, exercise_id, value, achieved_at")
+				.select(
+					"exercise_name, exercise_id, record_type, workout_phase, value, achieved_at",
+				)
 				.eq("user_id", userId);
 
 			if (profileId) {
@@ -300,6 +302,54 @@ export function calorieHistoryOptions(
 				.order("started_at", { ascending: true });
 			if (error) throw error;
 			return data;
+		},
+	});
+}
+
+/** Phase statistics over time for concentric/eccentric analytics */
+export function phaseStatisticsTrendOptions(
+	userId: string,
+	period: string = "4w",
+	profileId?: string | null,
+) {
+	return queryOptions({
+		queryKey: queryKeys.analytics.phaseStats(userId, period, profileId),
+		queryFn: async () => {
+			const daysBack = periodToDays(period);
+			const since = new Date();
+			since.setDate(since.getDate() - daysBack);
+
+			let query = supabase
+				.from("session_phase_statistics")
+				.select(
+					[
+						"session_id",
+						"concentric_kg_avg",
+						"concentric_kg_max",
+						"concentric_vel_avg",
+						"concentric_vel_max",
+						"concentric_watt_avg",
+						"concentric_watt_max",
+						"eccentric_kg_avg",
+						"eccentric_kg_max",
+						"eccentric_vel_avg",
+						"eccentric_vel_max",
+						"eccentric_watt_avg",
+						"eccentric_watt_max",
+						"workout_sessions!inner(started_at, local_profile_id, name)",
+					].join(", "),
+				)
+				.eq("user_id", userId)
+				.gte("workout_sessions.started_at", since.toISOString())
+				.order("created_at", { ascending: true });
+
+			if (profileId) {
+				query = query.eq("workout_sessions.local_profile_id", profileId);
+			}
+
+			const { data, error } = await query;
+			if (error) throw error;
+			return data ?? [];
 		},
 	});
 }

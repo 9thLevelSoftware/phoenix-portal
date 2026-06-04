@@ -263,7 +263,7 @@ function GlobalRankings({
 		},
 		{
 			key: "prCount",
-			title: "Personal Records",
+			title: "Phase-Aware PRs",
 			icon: <Medal className="size-4 text-[#9CA3AF]" />,
 			metricLabel: "count",
 		},
@@ -435,7 +435,7 @@ const METRIC_META: Record<
 		unit: "days",
 	},
 	prCount: {
-		label: "Personal Records",
+		label: "Phase-Aware PRs",
 		icon: <Medal className="size-4 text-[#9CA3AF]" />,
 		unit: "PRs",
 	},
