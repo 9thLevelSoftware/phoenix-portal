@@ -1091,9 +1091,13 @@ Deno.serve(async (req) => {
     );
     if (sessionRoutineBlocked) return sessionRoutineBlocked;
 
-    const personalRecordSessionIdsToVerify = (payload.personalRecords ?? [])
-      .map((pr) => pr.sessionId)
-      .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid));
+    const personalRecordSessionIdsToVerify = [
+      ...new Set(
+        (payload.personalRecords ?? [])
+          .map((pr) => pr.sessionId)
+          .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid)),
+      ),
+    ];
     const personalRecordSessionBlocked = await assertRowsOwnedByUser(
       supabase,
       'workout_sessions',

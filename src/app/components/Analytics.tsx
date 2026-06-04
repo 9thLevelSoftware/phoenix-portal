@@ -80,6 +80,7 @@ import { buildPhaseMetricSummary } from "./analytics/phaseStatisticsTransforms";
 import {
 	buildMobileStrengthPhaseData,
 	buildStrengthPhaseSeries,
+	buildStrengthPhaseSummary,
 } from "./analytics/strengthPhaseTransforms";
 
 // Lazy-loaded tab components for code splitting (desktop)
@@ -1004,19 +1005,12 @@ export function Analytics() {
 	}, [muscleGroupData]);
 
 	// --- PR stats ---
-	const prCount = (strengthRaw ?? []).length;
-	const daysSinceLastPR = useMemo(() => {
-		if (!strengthRaw || strengthRaw.length === 0) return null;
-		const sorted = [...strengthRaw].sort(
-			(a, b) =>
-				new Date(b.achieved_at).getTime() - new Date(a.achieved_at).getTime(),
-		);
-		const lastPR = new Date(sorted[0].achieved_at);
-		const now = new Date();
-		return Math.floor(
-			(now.getTime() - lastPR.getTime()) / (1000 * 60 * 60 * 24),
-		);
-	}, [strengthRaw]);
+	const strengthPhaseSummary = useMemo(
+		() => buildStrengthPhaseSummary(strengthRaw ?? [], phaseFilter),
+		[strengthRaw, phaseFilter],
+	);
+	const prCount = strengthPhaseSummary.prCount;
+	const daysSinceLastPR = strengthPhaseSummary.daysSinceLastPR;
 
 	// Mobile-specific derived data
 	const mobileVolumeData = bucketByWeekMobile(volumeRaw ?? []).map((entry) => ({

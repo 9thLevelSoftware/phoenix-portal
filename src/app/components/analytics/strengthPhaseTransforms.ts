@@ -20,6 +20,11 @@ export interface StrengthPhaseSeries {
 	latestValue: number;
 }
 
+export interface StrengthPhaseSummary {
+	prCount: number;
+	daysSinceLastPR: number | null;
+}
+
 const strengthRecordTypes = new Set(["MAX_WEIGHT", "1RM"]);
 const phaseOrder = new Map([
 	["Combined", 0],
@@ -32,6 +37,17 @@ function isStrengthRecord(recordType: string | null | undefined): boolean {
 	return strengthRecordTypes.has(recordType.toUpperCase());
 }
 
+function filterStrengthPhaseRecords(
+	data: StrengthPhaseRecord[],
+	phaseFilter: WorkoutPhaseFilter,
+): StrengthPhaseRecord[] {
+	return data.filter((item) => {
+		if (!isStrengthRecord(item.record_type)) return false;
+		const phase = normalizeWorkoutPhase(item.workout_phase);
+		return phaseFilter === "all" || phase === phaseFilter;
+	});
+}
+
 export function buildStrengthPhaseSeries(
 	data: StrengthPhaseRecord[],
 	phaseFilter: WorkoutPhaseFilter,
@@ -39,11 +55,7 @@ export function buildStrengthPhaseSeries(
 	points: Record<string, string | number>[];
 	series: StrengthPhaseSeries[];
 } {
-	const filtered = data.filter((item) => {
-		if (!isStrengthRecord(item.record_type)) return false;
-		const phase = normalizeWorkoutPhase(item.workout_phase);
-		return phaseFilter === "all" || phase === phaseFilter;
-	});
+	const filtered = filterStrengthPhaseRecords(data, phaseFilter);
 
 	const dateSet = new Set<string>();
 	const dateOrder = new Map<string, number>();
@@ -121,9 +133,35 @@ export function buildMobileStrengthPhaseData(
 	phaseFilter: WorkoutPhaseFilter,
 ): Array<{ exercise: string; weight: number; phase: string }> {
 	const { series } = buildStrengthPhaseSeries(data, phaseFilter);
-	return series.slice(0, 5).map((item) => ({
-		exercise: item.name,
-		weight: item.latestValue,
-		phase: item.phase,
-	}));
+	return [...series]
+		.sort((a, b) => b.latestValue - a.latestValue)
+		.slice(0, 5)
+		.map((item) => ({
+			exercise: item.name,
+			weight: item.latestValue,
+			phase: item.phase,
+		}));
+}
+
+export function buildStrengthPhaseSummary(
+	data: StrengthPhaseRecord[],
+	phaseFilter: WorkoutPhaseFilter,
+	now = new Date(),
+): StrengthPhaseSummary {
+	const filtered = filterStrengthPhaseRecords(data, phaseFilter);
+	if (filtered.length === 0) {
+		return { prCount: 0, daysSinceLastPR: null };
+	}
+
+	const latestTime = filtered.reduce((latest, item) => {
+		const achievedAt = new Date(item.achieved_at).getTime();
+		return Number.isFinite(achievedAt) ? Math.max(latest, achievedAt) : latest;
+	}, Number.NEGATIVE_INFINITY);
+
+	return {
+		prCount: filtered.length,
+		daysSinceLastPR: Number.isFinite(latestTime)
+			? Math.floor((now.getTime() - latestTime) / (1000 * 60 * 60 * 24))
+			: null,
+	};
 }
