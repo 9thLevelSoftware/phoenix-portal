@@ -17,8 +17,14 @@ export function useCommentRealtime(itemId: string) {
 	useEffect(() => {
 		if (!itemId) return;
 
+		const channelSuffix =
+			typeof globalThis.crypto?.randomUUID === "function"
+				? globalThis.crypto.randomUUID()
+				: Math.random().toString(36).slice(2);
+		const channelTopic = `comments:${itemId}:${channelSuffix}`;
+
 		const channel = supabase
-			.channel(`comments:${itemId}`)
+			.channel(channelTopic)
 			.on(
 				"postgres_changes",
 				{
