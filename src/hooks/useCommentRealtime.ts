@@ -4,7 +4,6 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
 const DEBOUNCE_MS = 1000;
-let nextCommentRealtimeChannelId = 0;
 
 /**
  * Subscribes to Supabase Realtime postgres_changes on community_comments,
@@ -18,8 +17,11 @@ export function useCommentRealtime(itemId: string) {
 	useEffect(() => {
 		if (!itemId) return;
 
-		const channelTopic = `comments:${itemId}:${nextCommentRealtimeChannelId}`;
-		nextCommentRealtimeChannelId += 1;
+		const channelSuffix =
+			typeof globalThis.crypto?.randomUUID === "function"
+				? globalThis.crypto.randomUUID()
+				: Math.random().toString(36).slice(2);
+		const channelTopic = `comments:${itemId}:${channelSuffix}`;
 
 		const channel = supabase
 			.channel(channelTopic)
