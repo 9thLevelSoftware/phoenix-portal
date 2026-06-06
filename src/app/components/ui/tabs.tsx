@@ -63,13 +63,6 @@ const tabsTriggerVariants = cva(
 				default:
 					"flex-1 h-[calc(100%-1px)] rounded-md border border-transparent px-2 py-1 text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
 				underline:
-					// Active state: use `text-foreground` (theme's light-on-dark
-					// token, #e0e0e8) rather than `text-white` which in this
-					// codebase was rendering invisible on the dark background
-					// — the Leaderboard tab group was reported with black-on-black
-					// selected text. `font-semibold` on active gives an extra
-					// visual cue so the tab reads as selected even for users who
-					// can't see the thin orange underline.
 					"flex-1 rounded-none border-b-2 border-transparent px-4 py-3 text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:font-semibold",
 			},
 		},

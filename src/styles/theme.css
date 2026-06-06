@@ -298,8 +298,7 @@
 
   /* Keep filled primary controls above WCAG AA contrast thresholds. */
   [data-slot="button"].bg-primary,
-  [data-slot="avatar-fallback"].bg-primary,
-  [data-slot="tabs-trigger"][data-state="active"] {
+  [data-slot="avatar-fallback"].bg-primary {
     color: var(--primary-foreground) !important;
   }
 
