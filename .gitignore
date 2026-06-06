@@ -45,3 +45,17 @@ test-results/
 
 # Git worktrees
 .worktrees/
+
+# Local cleanup/archive artifacts
+/archive/
+/.serena/
+/.hermes/
+
+# Local planning/audit artifacts
+/audit/
+/plans/
+/docs/superpowers/
+
+# Generated analysis/cache outputs
+stats.html
+*.tsbuildinfo
