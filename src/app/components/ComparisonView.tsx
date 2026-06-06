@@ -66,6 +66,14 @@ function formatVelocity(v: number): string {
 	return `${v.toFixed(2)} m/s`;
 }
 
+function formatSessionDate(d: Date): string {
+	return d.toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+}
+
 function SessionSummaryCard({
 	summary,
 	label,
@@ -178,14 +186,14 @@ function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 								<td className="py-3 text-white font-medium">{ex.name}</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInB ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : (
 										`${ex.volumeA.toLocaleString()} kg`
 									)}
 								</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInA ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : (
 										`${ex.volumeB.toLocaleString()} kg`
 									)}
@@ -205,23 +213,23 @@ function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 								</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInB ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : (
 										formatVelocity(ex.velocityA)
 									)}
 								</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInA ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : (
 										formatVelocity(ex.velocityB)
 									)}
 								</td>
 								<td className="py-3 text-right">
 									{ex.onlyInA || ex.onlyInB ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : ex.velocityA === 0 && ex.velocityB === 0 ? (
-										<span className="text-muted-foreground">\u2014</span>
+										<span className="text-muted-foreground">—</span>
 									) : (
 										<DeltaIndicator value={ex.velocityDeltaPct} />
 									)}
@@ -519,10 +527,30 @@ export function ComparisonView() {
 								Session Comparison
 							</h1>
 						</FeatureHint>
-						<div className="flex items-center gap-3">
-							<p className="text-muted-foreground">
-								{summaryA.name} vs {summaryB.name}
-							</p>
+						<div className="flex items-center gap-3 flex-wrap text-sm">
+							<span className="text-muted-foreground">
+								<span className="font-medium text-white">A</span> ·{" "}
+								{summaryA.name} ·{" "}
+								<time
+									dateTime={summaryA.startedAt.toISOString()}
+									className="text-muted-foreground/80"
+									suppressHydrationWarning
+								>
+									{formatSessionDate(summaryA.startedAt)}
+								</time>
+							</span>
+							<span className="text-muted-foreground/60">vs</span>
+							<span className="text-muted-foreground">
+								<span className="font-medium text-white">B</span> ·{" "}
+								{summaryB.name} ·{" "}
+								<time
+									dateTime={summaryB.startedAt.toISOString()}
+									className="text-muted-foreground/80"
+									suppressHydrationWarning
+								>
+									{formatSessionDate(summaryB.startedAt)}
+								</time>
+							</span>
 							<Button
 								variant="outline"
 								size="sm"
