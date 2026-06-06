@@ -11,6 +11,7 @@ export interface RankingItem {
 	totalUsers: number;
 	color: string;
 	percentiles: Record<string, number>;
+	estimated?: boolean;
 }
 
 export interface CommunityRankingsProps {
@@ -82,7 +83,8 @@ export function CommunityRankings({
 
 						{/* Value + rank */}
 						<p className="text-xs text-muted-foreground">
-							{item.value} {item.unit}&nbsp;&middot;&nbsp;Rank #{item.rank}
+							{item.value} {item.unit}&nbsp;&middot;&nbsp;
+							{item.estimated ? "Est. rank" : "Rank"} #{item.rank}
 						</p>
 
 						{/* Distribution chart */}

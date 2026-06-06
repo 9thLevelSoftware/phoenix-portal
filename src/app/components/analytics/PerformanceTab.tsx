@@ -1,8 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { CommunityPercentileAtlas } from "@/app/components/analytics/CommunityPercentileAtlas";
 import { BiomechanicsContent } from "@/app/components/Biomechanics";
-import { CommunityRankings } from "@/app/components/CommunityRankings";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Card } from "@/app/components/ui/card";
+import {
+	buildCommunityPercentileRankings,
+	buildEstimatedCommunityPercentileRankings,
+} from "@/lib/community-atlas";
 import { convertWeight, type WeightUnit } from "@/lib/units";
+import { communityBenchmarksOptions } from "@/queries/benchmarks";
+import { userRankingOptions } from "@/queries/leaderboard";
+import { gamificationStatsOptions } from "@/queries/profile";
 
 interface VolumeComparisonData {
 	current: Array<{
@@ -20,27 +29,78 @@ interface VolumeComparisonData {
 export interface PerformanceTabProps {
 	volumeComparison: VolumeComparisonData | undefined;
 	unit: WeightUnit;
+	userId: string;
 }
 
 export default function PerformanceTab({
 	volumeComparison,
 	unit,
+	userId,
 }: PerformanceTabProps) {
-	return (
-		<SubscriptionGate
-			requiredTier="INFERNO"
-			featureName="Performance Analytics"
-		>
-			{/* Community Rankings -- populated once benchmark Edge Function is scheduled */}
-			<div className="space-y-6">
-				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-4">Community Rankings</h3>
-					<p className="text-sm text-muted-foreground mb-4">
-						Rankings update daily based on all participating Phoenix users.
-					</p>
-					<CommunityRankings rankings={[]} loading={false} />
-				</Card>
+	const {
+		data: benchmarks,
+		isPending: benchmarksPending,
+		error: benchmarksError,
+	} = useQuery(communityBenchmarksOptions());
+	const {
+		data: userRankings,
+		isPending: rankingsPending,
+		error: rankingsError,
+	} = useQuery({
+		...userRankingOptions(userId),
+		enabled: !!userId,
+	});
+	const {
+		data: gamificationStats,
+		isPending: statsPending,
+		error: statsError,
+	} = useQuery({
+		...gamificationStatsOptions(userId),
+		enabled: !!userId,
+	});
+	const exactPercentileRankings = useMemo(
+		() =>
+			buildCommunityPercentileRankings({
+				benchmarks: benchmarks ?? [],
+				userRankings: userRankings ?? [],
+				unit,
+			}),
+		[benchmarks, userRankings, unit],
+	);
+	const estimatedPercentileRankings = useMemo(
+		() =>
+			buildEstimatedCommunityPercentileRankings({
+				benchmarks: benchmarks ?? [],
+				userStats: gamificationStats,
+				unit,
+			}),
+		[benchmarks, gamificationStats, unit],
+	);
+	const percentileRankings =
+		exactPercentileRankings.length > 0
+			? exactPercentileRankings
+			: estimatedPercentileRankings;
+	const atlasLoading =
+		benchmarksPending ||
+		((rankingsPending || statsPending) && percentileRankings.length === 0);
+	const atlasError =
+		benchmarksError != null ||
+		(rankingsError != null &&
+			statsError != null &&
+			percentileRankings.length === 0);
 
+	return (
+		<div className="space-y-6">
+			<CommunityPercentileAtlas
+				rankings={percentileRankings}
+				loading={atlasLoading}
+				error={atlasError}
+			/>
+
+			<SubscriptionGate
+				requiredTier="INFERNO"
+				featureName="Performance Analytics"
+			>
 				{/* Performance Metrics (Velocity, Power, TUT) */}
 				<BiomechanicsContent view="performance" />
 
@@ -90,7 +150,7 @@ export default function PerformanceTab({
 						</div>
 					</div>
 				</Card>
-			</div>
-		</SubscriptionGate>
+			</SubscriptionGate>
+		</div>
 	);
 }
