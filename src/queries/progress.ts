@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { exerciseProgressSchema } from "@/schemas/telemetry";
+import { personalRecordListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 /** Fetch distinct exercise names for the user */
@@ -51,6 +52,45 @@ export function exerciseProgressOptions(
 			if (error) throw error;
 			return z.array(exerciseProgressSchema).parse(data);
 		},
+	});
+}
+
+/** Fetch the read-only data needed for the customer progression workbench. */
+export function progressionWorkbenchOptions(
+	userId: string,
+	profileId?: string | null,
+) {
+	return queryOptions({
+		queryKey: queryKeys.progress.summary(userId, "workbench", profileId),
+		queryFn: async () => {
+			let progressQuery = supabase
+				.from("exercise_progress")
+				.select("*")
+				.eq("user_id", userId);
+			let recordsQuery = supabase
+				.from("personal_records")
+				.select("*")
+				.eq("user_id", userId);
+
+			if (profileId) {
+				progressQuery = progressQuery.eq("local_profile_id", profileId);
+				recordsQuery = recordsQuery.eq("local_profile_id", profileId);
+			}
+
+			const [progressRes, recordsRes] = await Promise.all([
+				progressQuery.order("recorded_at", { ascending: true }),
+				recordsQuery.order("achieved_at", { ascending: true }),
+			]);
+
+			if (progressRes.error) throw progressRes.error;
+			if (recordsRes.error) throw recordsRes.error;
+
+			return {
+				progressRows: z.array(exerciseProgressSchema).parse(progressRes.data),
+				records: personalRecordListSchema.parse(recordsRes.data),
+			};
+		},
+		staleTime: 5 * 60 * 1000,
 	});
 }
 

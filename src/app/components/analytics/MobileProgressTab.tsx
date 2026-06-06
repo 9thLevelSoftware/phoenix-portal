@@ -13,11 +13,13 @@ import { MobileChartCard } from "@/app/components/analytics/MobileChartCard";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
+import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { WeightUnit } from "@/lib/units";
 import {
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
 } from "@/lib/workout-phases";
+import { ProgressionWorkbench } from "./ProgressionWorkbench";
 import type { PhaseMetricSummary } from "./phaseStatisticsTransforms";
 
 export interface MobileProgressTabProps {
@@ -33,6 +35,8 @@ export interface MobileProgressTabProps {
 	phaseFilter: WorkoutPhaseFilter;
 	onPhaseFilterChange: (phase: WorkoutPhaseFilter) => void;
 	phaseMetricSummary: PhaseMetricSummary;
+	progressionModel: ProgressionWorkbenchModel;
+	onSelectProgressionExercise: (exerciseName: string) => void;
 }
 
 function formatMetric(value: number, decimals = 1): string {
@@ -48,6 +52,8 @@ export default function MobileProgressTab({
 	phaseFilter,
 	onPhaseFilterChange,
 	phaseMetricSummary,
+	progressionModel,
+	onSelectProgressionExercise,
 }: MobileProgressTabProps) {
 	const titlePhase =
 		phaseFilter === "all" ? "PHASE" : phaseFilter.toUpperCase();
@@ -117,6 +123,12 @@ export default function MobileProgressTab({
 					</div>
 				)}
 			</MobileChartCard>
+
+			<ProgressionWorkbench
+				model={progressionModel}
+				unit={unit}
+				onSelectExercise={onSelectProgressionExercise}
+			/>
 
 			<MobileChartCard
 				title={`TOP LIFTS (${titlePhase} - ${unit.toUpperCase()})`}
