@@ -534,6 +534,7 @@ export function ComparisonView() {
 								<time
 									dateTime={summaryA.startedAt.toISOString()}
 									className="text-muted-foreground/80"
+									suppressHydrationWarning
 								>
 									{formatSessionDate(summaryA.startedAt)}
 								</time>
@@ -545,6 +546,7 @@ export function ComparisonView() {
 								<time
 									dateTime={summaryB.startedAt.toISOString()}
 									className="text-muted-foreground/80"
+									suppressHydrationWarning
 								>
 									{formatSessionDate(summaryB.startedAt)}
 								</time>
