@@ -1,4 +1,5 @@
 import type { TelemetryPointRow } from "@/schemas/telemetry";
+import type { ReplayIntelligence } from "./replay-intelligence";
 
 interface RenderOptions {
 	width: number;
@@ -6,6 +7,7 @@ interface RenderOptions {
 	data: TelemetryPointRow[];
 	currentTimeMs: number;
 	repBoundaries: number[];
+	intelligence?: ReplayIntelligence | null;
 }
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
@@ -13,6 +15,8 @@ const BACKGROUND_COLOR = "#0D0D0D";
 const EMBER_COLOR = "#FF6B35";
 const REP_BAND_COLOR = "rgba(255, 107, 53, 0.08)";
 const PLAYHEAD_COLOR = "rgba(255, 255, 255, 0.7)";
+const VELOCITY_LOSS_COLOR = "rgba(220, 38, 38, 0.08)";
+const STICKING_POINT_COLOR = "#F59E0B";
 
 function getPlotArea(width: number, height: number) {
 	return {
@@ -66,11 +70,41 @@ function drawPlayhead(
 	ctx.setLineDash([]);
 }
 
+function drawReplayIntelligence(
+	ctx: CanvasRenderingContext2D,
+	plotArea: ReturnType<typeof getPlotArea>,
+	intelligence: ReplayIntelligence | null | undefined,
+	maxTime: number,
+	currentTimeMs: number,
+) {
+	if (!intelligence || intelligence.status === "empty" || maxTime === 0) return;
+
+	const xScale = plotArea.width / maxTime;
+
+	for (const rep of intelligence.repInsights) {
+		if (rep.velocityLossPct < 20) continue;
+		const startX = plotArea.x + rep.startMs * xScale;
+		const endX = plotArea.x + rep.endMs * xScale;
+		ctx.fillStyle = VELOCITY_LOSS_COLOR;
+		ctx.fillRect(startX, plotArea.y, endX - startX, plotArea.height);
+	}
+
+	for (const point of intelligence.stickingPoints) {
+		if (point.timestampMs > currentTimeMs) continue;
+		const x = plotArea.x + point.timestampMs * xScale;
+		ctx.fillStyle = STICKING_POINT_COLOR;
+		ctx.beginPath();
+		ctx.arc(x, plotArea.y + 12, 4, 0, Math.PI * 2);
+		ctx.fill();
+	}
+}
+
 export function renderForceCurve(
 	ctx: CanvasRenderingContext2D,
 	options: RenderOptions,
 ): void {
-	const { width, height, data, currentTimeMs, repBoundaries } = options;
+	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
+		options;
 	const plotArea = getPlotArea(width, height);
 
 	// Clear canvas with dark background
@@ -90,6 +124,7 @@ export function renderForceCurve(
 
 	// Draw rep background bands
 	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
+	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
 
 	// Filter data up to currentTimeMs
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
@@ -143,7 +178,8 @@ export function renderVelocityBars(
 	ctx: CanvasRenderingContext2D,
 	options: RenderOptions,
 ): void {
-	const { width, height, data, currentTimeMs, repBoundaries } = options;
+	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
+		options;
 	const plotArea = getPlotArea(width, height);
 
 	// Clear canvas with dark background
@@ -163,6 +199,7 @@ export function renderVelocityBars(
 
 	// Draw rep background bands
 	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
+	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
 
 	// Filter data up to currentTimeMs
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);

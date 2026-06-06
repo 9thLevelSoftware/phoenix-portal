@@ -15,6 +15,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import type { ExtendedBodyPart, Slug } from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import {
 	CHART_COLORS,
 	ECHARTS_GRID,
@@ -47,6 +48,8 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
+import { buildFreshnessState } from "@/lib/freshness";
+import { buildProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { Recommendation } from "@/lib/recommendations";
 import {
 	generateSraRecommendations,
@@ -71,9 +74,11 @@ import {
 	volumeTrendOptions,
 } from "@/queries/analytics";
 import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
+import { dashboardFreshnessOptions } from "@/queries/freshness";
 import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
+import { progressionWorkbenchOptions } from "@/queries/progress";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { buildPhaseMetricSummary } from "./analytics/phaseStatisticsTransforms";
@@ -441,6 +446,8 @@ const muscleSlugToGroup: Record<string, string> = {
 export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
+	const [selectedProgressionExercise, setSelectedProgressionExercise] =
+		useState<string | null>(null);
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	// Map old tab names to new ones for backward compatibility
@@ -478,16 +485,34 @@ export function Analytics() {
 		...profileOptions(userId),
 		enabled: !!userId,
 	});
-	const { data: volumeRaw, isPending: volumePending } = useQuery(
-		volumeTrendOptions(userId, queryPeriod, activeProfileId),
-	);
-	const { data: muscleGroupRaw, isPending: musclePending } = useQuery(
-		muscleGroupOptions(userId, activeProfileId),
-	);
-	const { data: strengthRaw, isPending: strengthPending } = useQuery(
-		strengthProgressOptions(userId, activeProfileId),
-	);
-	const { data: phaseStatsRaw, isPending: phaseStatsPending } = useQuery(
+	const {
+		data: volumeRaw,
+		isPending: volumePending,
+		isFetching: volumeFetching,
+		dataUpdatedAt: volumeUpdatedAt,
+		error: volumeError,
+	} = useQuery(volumeTrendOptions(userId, queryPeriod, activeProfileId));
+	const {
+		data: muscleGroupRaw,
+		isPending: musclePending,
+		isFetching: muscleFetching,
+		dataUpdatedAt: muscleUpdatedAt,
+		error: muscleError,
+	} = useQuery(muscleGroupOptions(userId, activeProfileId));
+	const {
+		data: strengthRaw,
+		isPending: strengthPending,
+		isFetching: strengthFetching,
+		dataUpdatedAt: strengthUpdatedAt,
+		error: strengthError,
+	} = useQuery(strengthProgressOptions(userId, activeProfileId));
+	const {
+		data: phaseStatsRaw,
+		isPending: phaseStatsPending,
+		isFetching: phaseStatsFetching,
+		dataUpdatedAt: phaseStatsUpdatedAt,
+		error: phaseStatsError,
+	} = useQuery(
 		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
 	const { data: externalActivities } = useQuery({
@@ -504,6 +529,24 @@ export function Analytics() {
 	});
 	const { data: bodyIntelData } = useQuery({
 		...bodyIntelligenceOptions(userId, 7, activeProfileId),
+		enabled: !!userId,
+	});
+	const {
+		data: progressionWorkbenchData,
+		isFetching: progressionFetching,
+		dataUpdatedAt: progressionUpdatedAt,
+		error: progressionError,
+	} = useQuery({
+		...progressionWorkbenchOptions(userId, activeProfileId),
+		enabled: !!userId,
+	});
+	const {
+		data: dashboardFreshness,
+		isFetching: freshnessFetching,
+		dataUpdatedAt: freshnessUpdatedAt,
+		error: freshnessError,
+	} = useQuery({
+		...dashboardFreshnessOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
@@ -1012,6 +1055,71 @@ export function Analytics() {
 	const prCount = strengthPhaseSummary.prCount;
 	const daysSinceLastPR = strengthPhaseSummary.daysSinceLastPR;
 
+	const progressionModel = useMemo(
+		() =>
+			buildProgressionWorkbenchModel({
+				progressRows: progressionWorkbenchData?.progressRows ?? [],
+				records: progressionWorkbenchData?.records ?? [],
+				selectedExercise: selectedProgressionExercise,
+				phaseFilter,
+				unit,
+			}),
+		[progressionWorkbenchData, selectedProgressionExercise, phaseFilter, unit],
+	);
+
+	const analyticsFreshness = useMemo(() => {
+		const queryUpdatedAt = Math.max(
+			volumeUpdatedAt,
+			muscleUpdatedAt,
+			strengthUpdatedAt,
+			phaseStatsUpdatedAt,
+			progressionUpdatedAt,
+			freshnessUpdatedAt,
+		);
+		const serverUpdatedAt = dashboardFreshness?.lastWorkoutUpdatedAt
+			? Date.parse(dashboardFreshness.lastWorkoutUpdatedAt)
+			: null;
+
+		return buildFreshnessState({
+			dataUpdatedAt: serverUpdatedAt || queryUpdatedAt || null,
+			staleAfterMs: 30 * 60 * 1000,
+			isFetching:
+				volumeFetching ||
+				muscleFetching ||
+				strengthFetching ||
+				phaseStatsFetching ||
+				progressionFetching ||
+				freshnessFetching,
+			hasError:
+				volumeError != null ||
+				muscleError != null ||
+				strengthError != null ||
+				phaseStatsError != null ||
+				progressionError != null ||
+				freshnessError != null,
+		});
+	}, [
+		dashboardFreshness,
+		freshnessError,
+		freshnessFetching,
+		freshnessUpdatedAt,
+		muscleError,
+		muscleFetching,
+		muscleUpdatedAt,
+		phaseStatsError,
+		phaseStatsFetching,
+		phaseStatsUpdatedAt,
+		progressionError,
+		progressionFetching,
+		progressionUpdatedAt,
+		strengthError,
+		strengthFetching,
+		strengthUpdatedAt,
+		volumeError,
+		volumeFetching,
+		volumeUpdatedAt,
+	]);
+
 	// Mobile-specific derived data
 	const mobileVolumeData = bucketByWeekMobile(volumeRaw ?? []).map((entry) => ({
 		...entry,
@@ -1123,6 +1231,10 @@ export function Analytics() {
 							</button>
 						</div>
 					</div>
+				</div>
+
+				<div className="px-4 pb-3">
+					<DataFreshnessStrip state={analyticsFreshness} />
 				</div>
 
 				{/* Horizontal Scroll Stats */}
@@ -1237,6 +1349,8 @@ export function Analytics() {
 										phaseFilter={phaseFilter}
 										onPhaseFilterChange={setPhaseFilter}
 										phaseMetricSummary={phaseMetricSummary}
+										progressionModel={progressionModel}
+										onSelectProgressionExercise={setSelectedProgressionExercise}
 									/>
 								</Suspense>
 							)}
@@ -1261,7 +1375,7 @@ export function Analytics() {
 
 							{activeTab === "performance" && (
 								<Suspense fallback={<AnalyticsTabSkeleton />}>
-									<MobilePerformanceTab />
+									<MobilePerformanceTab userId={userId} unit={unit} />
 								</Suspense>
 							)}
 
@@ -1321,6 +1435,8 @@ export function Analytics() {
 							</Button>
 						</div>
 					</div>
+
+					<DataFreshnessStrip state={analyticsFreshness} className="mb-8" />
 
 					{!hasData ? (
 						<EmptyState
@@ -1464,6 +1580,10 @@ export function Analytics() {
 											phaseFilter={phaseFilter}
 											onPhaseFilterChange={setPhaseFilter}
 											phaseMetricSummary={phaseMetricSummary}
+											progressionModel={progressionModel}
+											onSelectProgressionExercise={
+												setSelectedProgressionExercise
+											}
 										/>
 									</Suspense>
 								</TabsContent>
@@ -1495,6 +1615,7 @@ export function Analytics() {
 										<PerformanceTab
 											volumeComparison={volumeComparison}
 											unit={unit}
+											userId={userId}
 										/>
 									</Suspense>
 								</TabsContent>

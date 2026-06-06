@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { ReplayIntelligence } from "@/lib/replay-intelligence";
 import { renderForceCurve, renderVelocityBars } from "@/lib/replay-renderer";
 import type { TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -8,6 +9,7 @@ interface ReplayCanvasProps {
 	repBoundaries: number[];
 	width: number;
 	height: number;
+	intelligence?: ReplayIntelligence | null;
 }
 
 export function ReplayCanvas({
@@ -15,6 +17,7 @@ export function ReplayCanvas({
 	repBoundaries,
 	width,
 	height,
+	intelligence,
 }: ReplayCanvasProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const currentTimeMs = useReplayStore((state) => state.currentTimeMs);
@@ -40,6 +43,7 @@ export function ReplayCanvas({
 			data,
 			currentTimeMs,
 			repBoundaries,
+			intelligence,
 		};
 
 		if (activeChart === "force") {
@@ -47,7 +51,15 @@ export function ReplayCanvas({
 		} else {
 			renderVelocityBars(ctx, renderOptions);
 		}
-	}, [data, currentTimeMs, width, height, activeChart, repBoundaries]);
+	}, [
+		data,
+		currentTimeMs,
+		width,
+		height,
+		activeChart,
+		repBoundaries,
+		intelligence,
+	]);
 
 	return (
 		<canvas

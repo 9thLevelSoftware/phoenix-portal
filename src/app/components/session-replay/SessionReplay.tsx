@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -11,14 +12,18 @@ import { usePlayback } from "@/hooks/usePlayback";
 import { useSubscription } from "@/hooks/useSubscription";
 import { displayExerciseName } from "@/lib/exercise-display";
 import { detectFatigue } from "@/lib/fatigue-detection";
+import { buildFreshnessState } from "@/lib/freshness";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
+import { buildReplayIntelligence } from "@/lib/replay-intelligence";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
 import { FatigueSummary } from "./FatigueSummary";
 import { PlaybackControls } from "./PlaybackControls";
 import { QualityBadge } from "./QualityBadge";
+import { ReplayAnnotationOverlay } from "./ReplayAnnotationOverlay";
 import { ReplayCanvas } from "./ReplayCanvas";
+import { ReplayIntelligencePanel } from "./ReplayIntelligencePanel";
 import { SetNavigation } from "./SetNavigation";
 import { TimelineBar } from "./TimelineBar";
 
@@ -94,6 +99,11 @@ export function SessionReplay() {
 
 		// Detect fatigue
 		const fatigue = detectFatigue(repSummaries);
+		const intelligence = buildReplayIntelligence({
+			telemetry,
+			repSummaries,
+			repBoundaries,
+		});
 
 		return {
 			telemetry,
@@ -101,6 +111,7 @@ export function SessionReplay() {
 			durationMs,
 			repBoundaries,
 			fatigue,
+			intelligence,
 		};
 	}, [telemetryQuery.data]);
 
@@ -124,6 +135,28 @@ export function SessionReplay() {
 
 	// Playback hook
 	usePlayback(telemetryData?.durationMs ?? 0);
+
+	const replayFreshness = useMemo(
+		() =>
+			buildFreshnessState({
+				dataUpdatedAt:
+					Math.max(sessionQuery.dataUpdatedAt, telemetryQuery.dataUpdatedAt) ||
+					null,
+				staleAfterMs: 15 * 60 * 1000,
+				isFetching: sessionQuery.isFetching || telemetryQuery.isFetching,
+				hasError: sessionQuery.error != null || telemetryQuery.error != null,
+				partialTelemetry: telemetryData?.intelligence.status === "partial",
+			}),
+		[
+			sessionQuery.dataUpdatedAt,
+			sessionQuery.error,
+			sessionQuery.isFetching,
+			telemetryData?.intelligence.status,
+			telemetryQuery.dataUpdatedAt,
+			telemetryQuery.error,
+			telemetryQuery.isFetching,
+		],
+	);
 
 	// Responsive canvas dimensions via resize observer
 	const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -180,6 +213,8 @@ export function SessionReplay() {
 					</div>
 				</div>
 
+				<DataFreshnessStrip state={replayFreshness} />
+
 				{/* Loading state */}
 				{(sessionQuery.isLoading || telemetryQuery.isLoading) && (
 					<div className="space-y-4">
@@ -202,6 +237,11 @@ export function SessionReplay() {
 						{/* Fatigue summary */}
 						<FatigueSummary fatigue={telemetryData.fatigue} />
 
+						<ReplayIntelligencePanel
+							intelligence={telemetryData.intelligence}
+							currentRepIndex={currentRepIndex}
+						/>
+
 						{/* Chart type toggle */}
 						<Tabs
 							value={activeChart}
@@ -218,6 +258,13 @@ export function SessionReplay() {
 							<ReplayCanvas
 								data={telemetryData.telemetry}
 								repBoundaries={telemetryData.repBoundaries}
+								width={canvasWidth}
+								height={canvasHeight}
+								intelligence={telemetryData.intelligence}
+							/>
+							<ReplayAnnotationOverlay
+								intelligence={telemetryData.intelligence}
+								currentRepIndex={currentRepIndex}
 								width={canvasWidth}
 								height={canvasHeight}
 							/>
@@ -276,14 +323,37 @@ export function SessionReplay() {
 					</>
 				)}
 
+				{/* Rep-summary fallback for sets that synced summaries before dense telemetry */}
+				{telemetryData &&
+					telemetryData.telemetry.length === 0 &&
+					telemetryData.repSummaries.length > 0 && (
+						<div className="space-y-4">
+							<FatigueSummary fatigue={telemetryData.fatigue} />
+							<ReplayIntelligencePanel
+								intelligence={telemetryData.intelligence}
+								currentRepIndex={currentRepIndex}
+							/>
+							<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
+								Dense telemetry is not available for this set yet. Showing
+								rep-summary intelligence until the next sync completes.
+							</div>
+							<SetNavigation
+								currentSetIndex={currentSetIndex}
+								totalSets={allSets.length}
+							/>
+						</div>
+					)}
+
 				{/* Empty state */}
-				{telemetryData && telemetryData.telemetry.length === 0 && (
-					<div className="p-8 text-center">
-						<p className="text-muted-foreground">
-							No telemetry data available for this set
-						</p>
-					</div>
-				)}
+				{telemetryData &&
+					telemetryData.telemetry.length === 0 &&
+					telemetryData.repSummaries.length === 0 && (
+						<div className="p-8 text-center">
+							<p className="text-muted-foreground">
+								No telemetry data available for this set
+							</p>
+						</div>
+					)}
 			</div>
 		</SubscriptionGate>
 	);

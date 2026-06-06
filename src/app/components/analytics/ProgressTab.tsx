@@ -3,11 +3,13 @@ import { Clock } from "lucide-react";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { WeightUnit } from "@/lib/units";
 import {
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
 } from "@/lib/workout-phases";
+import { ProgressionWorkbench } from "./ProgressionWorkbench";
 import type {
 	PhaseMetricPair,
 	PhaseMetricSummary,
@@ -33,6 +35,8 @@ export interface ProgressTabProps {
 	phaseFilter: WorkoutPhaseFilter;
 	onPhaseFilterChange: (phase: WorkoutPhaseFilter) => void;
 	phaseMetricSummary: PhaseMetricSummary;
+	progressionModel: ProgressionWorkbenchModel;
+	onSelectProgressionExercise: (exerciseName: string) => void;
 }
 
 function formatMetric(value: number, decimals = 1): string {
@@ -92,6 +96,8 @@ export default function ProgressTab({
 	phaseFilter,
 	onPhaseFilterChange,
 	phaseMetricSummary,
+	progressionModel,
+	onSelectProgressionExercise,
 }: ProgressTabProps) {
 	return (
 		<>
@@ -148,6 +154,12 @@ export default function ProgressTab({
 					</div>
 				)}
 			</Card>
+
+			<ProgressionWorkbench
+				model={progressionModel}
+				unit={unit}
+				onSelectExercise={onSelectProgressionExercise}
+			/>
 
 			{/* 1RM Progression */}
 			<Card className="p-6 bg-surface-2 border-secondary">
