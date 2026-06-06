@@ -519,6 +519,12 @@
   }
 }
 
+/* Underline tabs: guarantee light active text on transparent background.
+   Unlayered so it beats any @layer utilities cascade edge case. */
+[data-slot="tabs-trigger"][data-variant="underline"][data-state="active"] {
+  color: var(--foreground);
+}
+
 /* ---- Reduced motion: respect user preference for ALL CSS animations ---- */
 @media (prefers-reduced-motion: reduce) {
   .animate-signal-pulse {

@@ -81,6 +81,7 @@ function TabsTrigger({
 	return (
 		<TabsPrimitive.Trigger
 			data-slot="tabs-trigger"
+			data-variant={variant ?? "default"}
 			className={cn(tabsTriggerVariants({ variant }), className)}
 			{...props}
 		/>
