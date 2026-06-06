@@ -16,7 +16,8 @@ function xForTime(
 ): number {
 	if (durationMs <= 0) return MARGIN.left;
 	const plotWidth = Math.max(1, width - MARGIN.left - MARGIN.right);
-	return MARGIN.left + (timestampMs / durationMs) * plotWidth;
+	const clampedTime = Math.max(0, Math.min(timestampMs, durationMs));
+	return MARGIN.left + (clampedTime / durationMs) * plotWidth;
 }
 
 export function ReplayAnnotationOverlay({

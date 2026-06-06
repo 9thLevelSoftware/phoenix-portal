@@ -204,4 +204,30 @@ describe("buildReplayIntelligence", () => {
 		expect(result.partialReason).toContain("rep summaries");
 		expect(result.repInsights).toHaveLength(4);
 	});
+
+	it("does not extend missing intermediate rep windows to the full telemetry duration", () => {
+		const result = buildReplayIntelligence({
+			telemetry: [
+				...telemetry,
+				{
+					timestamp_ms: 10_000,
+					force_n: 500,
+					velocity_mps: 0.2,
+					position_mm: 10,
+					cable: "A",
+				},
+			],
+			repSummaries: repSummaries.slice(0, 2),
+			repBoundaries: [0],
+		});
+
+		expect(result.repInsights[0]).toMatchObject({
+			startMs: 0,
+			endMs: 1700,
+		});
+		expect(result.repInsights[1]).toMatchObject({
+			startMs: 1700,
+			endMs: 10_000,
+		});
+	});
 });

@@ -5,6 +5,7 @@ import { CommunityPercentileAtlas } from "@/app/components/analytics/CommunityPe
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import { ProgressionWorkbench } from "@/app/components/analytics/ProgressionWorkbench";
 import type { RankingItem } from "@/app/components/CommunityRankings";
+import { ReplayAnnotationOverlay } from "@/app/components/session-replay/ReplayAnnotationOverlay";
 import { ReplayIntelligencePanel } from "@/app/components/session-replay/ReplayIntelligencePanel";
 import type { FreshnessState } from "@/lib/freshness";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
@@ -213,6 +214,39 @@ describe("ReplayIntelligencePanel", () => {
 		);
 
 		expect(screen.getByText(/using rep summaries/i)).toBeInTheDocument();
+	});
+});
+
+describe("ReplayAnnotationOverlay", () => {
+	it("clamps rep and sticking-point annotations to the plot width", () => {
+		const { container } = renderWithProviders(
+			<ReplayAnnotationOverlay
+				intelligence={{
+					...replayIntelligence,
+					durationMs: 1000,
+					repInsights: [
+						{
+							...replayIntelligence.repInsights[0],
+							startMs: 0,
+							endMs: 2000,
+						},
+					],
+					stickingPoints: [
+						{
+							...replayIntelligence.stickingPoints[0],
+							timestampMs: 2000,
+						},
+					],
+				}}
+				currentRepIndex={0}
+				width={200}
+				height={120}
+			/>,
+		);
+
+		expect(container.querySelector("rect")?.getAttribute("width")).toBe("130");
+		expect(container.querySelector("line")?.getAttribute("x1")).toBe("180");
+		expect(container.querySelector("circle")?.getAttribute("cx")).toBe("180");
 	});
 });
 

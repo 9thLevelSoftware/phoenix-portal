@@ -73,7 +73,9 @@ function getRepWindow(
 			: startMs + (repSummaries[index]?.tut_ms ?? 0);
 	const endMs =
 		repBoundaries[index + 1] ??
-		Math.max(startMs + (repSummaries[index]?.tut_ms ?? 0), maxTelemetryMs);
+		(index < repSummaries.length - 1
+			? startMs + (repSummaries[index]?.tut_ms ?? 0) + 500
+			: Math.max(startMs + (repSummaries[index]?.tut_ms ?? 0), maxTelemetryMs));
 	return { startMs, endMs };
 }
 

@@ -80,18 +80,21 @@ function drawReplayIntelligence(
 	if (!intelligence || intelligence.status === "empty" || maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
+	const clampTime = (timestampMs: number) =>
+		Math.max(0, Math.min(timestampMs, maxTime));
 
 	for (const rep of intelligence.repInsights) {
 		if (rep.velocityLossPct < 20) continue;
-		const startX = plotArea.x + rep.startMs * xScale;
-		const endX = plotArea.x + rep.endMs * xScale;
+		const startX = plotArea.x + clampTime(rep.startMs) * xScale;
+		const endX = plotArea.x + clampTime(rep.endMs) * xScale;
+		if (endX <= startX) continue;
 		ctx.fillStyle = VELOCITY_LOSS_COLOR;
 		ctx.fillRect(startX, plotArea.y, endX - startX, plotArea.height);
 	}
 
 	for (const point of intelligence.stickingPoints) {
 		if (point.timestampMs > currentTimeMs) continue;
-		const x = plotArea.x + point.timestampMs * xScale;
+		const x = plotArea.x + clampTime(point.timestampMs) * xScale;
 		ctx.fillStyle = STICKING_POINT_COLOR;
 		ctx.beginPath();
 		ctx.arc(x, plotArea.y + 12, 4, 0, Math.PI * 2);

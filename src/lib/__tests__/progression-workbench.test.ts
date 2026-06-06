@@ -147,4 +147,31 @@ describe("buildProgressionWorkbenchModel", () => {
 		expect(model.selectedExercise).toBeNull();
 		expect(model.emptyReason).toContain("No exercise progress");
 	});
+
+	it("keeps single-session exercises at low plateau risk", () => {
+		const model = buildProgressionWorkbenchModel({
+			progressRows: [
+				{
+					id: "p6",
+					user_id: "u1",
+					exercise_name: "Deadlift",
+					session_id: "s6",
+					recorded_at: new Date("2026-04-01T00:00:00Z"),
+					max_weight_kg: 140,
+					total_volume_kg: 2800,
+					estimated_1rm_kg: 170,
+					max_reps: 5,
+					set_count: 4,
+				},
+			],
+			records: [],
+			selectedExercise: "Deadlift",
+			phaseFilter: "all",
+			unit: "kg",
+			now: new Date("2026-06-05T00:00:00Z"),
+		});
+
+		expect(model.selectedExercise?.plateauRisk).toBe("low");
+		expect(model.selectedExercise?.recommendation.kind).toBe("load");
+	});
 });

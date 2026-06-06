@@ -114,6 +114,10 @@ function detectPlateauRisk({
 	lastPrAt: Date | null;
 	now: Date;
 }): "low" | "medium" | "high" {
+	if (rows.length < 2) {
+		return "low";
+	}
+
 	const lastThree = rows.slice(-3).map((row) => row.estimated_1rm_kg);
 	const lastThreeRangePct =
 		lastThree.length >= 3
