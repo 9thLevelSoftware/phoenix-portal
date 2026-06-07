@@ -794,7 +794,7 @@ Optional:
 
 ```bash
 # Override project ref if it cannot be inferred from VITE_SUPABASE_URL
-SUPABASE_PROJECT_REF=ilzlswmatadlnsuxatcv
+SUPABASE_PROJECT_REF=abcdefghijklmnopqrst
 
 # Additional exact redirect URLs, comma-separated
 SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
@@ -843,6 +843,32 @@ Apple client secret first and rerun:
 ```bash
 npm run auth:social:push
 ```
+
+### Stale Supabase project ref guard (issue #68)
+
+The build refuses to ship a known-dead Supabase project ref (currently
+`ilzlswmatadlnsuxatcv`) in executable scripts, `public/_headers`, or
+`dist/`. The check is wired into `npm run verify` as
+`assert:supabase-config` and can also be run standalone:
+
+```bash
+npm run assert:supabase-config
+```
+
+If the guard fails on a ref you believe is live, override the denylist via
+`STALE_SUPABASE_REFS` (comma-separated) and re-run, or replace the
+hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
+(see `public/_headers`).
+
+To regenerate `src/lib/database.types.ts` against a live project ref,
+set `SUPABASE_PROJECT_REF` in `.env` and run:
+
+```bash
+npm run gen:types
+```
+
+The script will refuse to run with a hardcoded fallback, so the build
+never accidentally targets a deleted project.
 
 ---
 
