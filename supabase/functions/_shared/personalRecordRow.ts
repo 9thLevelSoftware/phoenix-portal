@@ -77,6 +77,69 @@ export interface DedicatedPersonalRecordInput {
 	workoutMode?: string | null;
 }
 
+export interface LocalProfileRepairRow {
+	user_id: string;
+	id: string;
+	name: string;
+	color_index: number;
+	device_id: string;
+	updated_at: string;
+}
+
+interface PersonalRecordProfileReference {
+	localProfileId?: string | null;
+}
+
+export function collectDedicatedRecordLocalProfileIds(
+	records: readonly PersonalRecordProfileReference[],
+): string[] {
+	const ids: string[] = [];
+	const seen = new Set<string>();
+	for (const record of records) {
+		const id = record.localProfileId;
+		if (typeof id !== "string" || id.length === 0 || seen.has(id)) continue;
+		seen.add(id);
+		ids.push(id);
+	}
+	return ids;
+}
+
+export function shouldValidatePersonalRecordProfileIdsForPush(input: {
+	allProfiles?: readonly unknown[] | null;
+	localProfileId?: string | null;
+	personalRecords?: readonly PersonalRecordProfileReference[] | null;
+}): boolean {
+	if (input.allProfiles && input.allProfiles.length > 0) return true;
+	if (input.localProfileId !== null && input.localProfileId !== undefined) {
+		return true;
+	}
+	return collectDedicatedRecordLocalProfileIds(input.personalRecords ?? [])
+		.length > 0;
+}
+
+export function buildLocalProfileRepairRowsForDedicatedRecords(
+	profileIds: readonly string[],
+	userId: string,
+	deviceId: string,
+	updatedAt: string,
+): LocalProfileRepairRow[] {
+	const rows: LocalProfileRepairRow[] = [];
+	const seen = new Set<string>();
+	for (const id of profileIds) {
+		if (!id || seen.has(id)) continue;
+		seen.add(id);
+		rows.push({
+			user_id: userId,
+			id,
+			name: id === "default" ? "Default" : "Profile",
+			color_index: 0,
+			device_id: deviceId,
+			updated_at: updatedAt,
+		});
+	}
+	return rows;
+}
+
 export interface PersonalRecordIdentityInput {
 	local_profile_id?: string | null;
 	exercise_name?: string | null;

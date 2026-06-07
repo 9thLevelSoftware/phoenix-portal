@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildDedicatedPersonalRecordRows,
+	buildLocalProfileRepairRowsForDedicatedRecords,
 	buildPersonalRecordRows,
 	buildPersonalRecordRowsForPush,
+	collectDedicatedRecordLocalProfileIds,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
+	shouldValidatePersonalRecordProfileIdsForPush,
 } from "../../../supabase/functions/_shared/personalRecordRow.ts";
 
 /**
@@ -611,6 +614,61 @@ describe("Issue #507: per-record localProfileId validation", () => {
 
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.local_profile_id).toBe("default");
+	});
+
+	it("enables validation when dedicated records carry profile IDs without top-level profile context", () => {
+		expect(
+			shouldValidatePersonalRecordProfileIdsForPush({
+				allProfiles: null,
+				localProfileId: null,
+				personalRecords: [
+					{
+						exerciseName: "Squat",
+						localProfileId: "default",
+					},
+				],
+			}),
+		).toBe(true);
+	});
+
+	it("collects unique dedicated-record localProfileIds for repair lookup", () => {
+		expect(
+			collectDedicatedRecordLocalProfileIds([
+				{ exerciseName: "Squat", localProfileId: "default" },
+				{ exerciseName: "Bench", localProfileId: "default" },
+				{ exerciseName: "Deadlift", localProfileId: null },
+				{ exerciseName: "Press" },
+				{ exerciseName: "Row", localProfileId: "secondary" },
+			]),
+		).toEqual(["default", "secondary"]);
+	});
+
+	it("builds placeholder local profile rows for legacy dedicated records that only carry per-record IDs", () => {
+		const rows = buildLocalProfileRepairRowsForDedicatedRecords(
+			["default", "11111111-1111-4111-8111-111111111111"],
+			USER_ID,
+			"device-1",
+			"2026-06-07T12:00:00.000Z",
+		);
+
+		expect(rows).toEqual([
+			{
+				user_id: USER_ID,
+				id: "default",
+				name: "Default",
+				color_index: 0,
+				device_id: "device-1",
+				updated_at: "2026-06-07T12:00:00.000Z",
+			},
+			{
+				user_id: USER_ID,
+				id: "11111111-1111-4111-8111-111111111111",
+				name: "Profile",
+				color_index: 0,
+				device_id: "device-1",
+				updated_at: "2026-06-07T12:00:00.000Z",
+			},
+		]);
 	});
 });
 

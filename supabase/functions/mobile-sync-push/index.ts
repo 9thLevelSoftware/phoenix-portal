@@ -5,8 +5,11 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
 import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
 import {
+  buildLocalProfileRepairRowsForDedicatedRecords,
   buildPersonalRecordRowsForPush,
+  collectDedicatedRecordLocalProfileIds,
   personalRecordIdentityKey,
+  shouldValidatePersonalRecordProfileIdsForPush,
 } from '../_shared/personalRecordRow.ts';
 import {
   findPushPayloadDuplicateConflictKeys,
@@ -812,14 +815,19 @@ Deno.serve(async (req) => {
     // Use `let` so we can clear it to null if the profile upsert fails.
     let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
+    const dedicatedRecordLocalProfileIds = collectDedicatedRecordLocalProfileIds(
+      payload.personalRecords ?? [],
+    );
     // Tracks profile IDs that are safe to reference in FK-protected rows for
     // this push. Dedicated personalRecords can carry their own localProfileId;
     // validating against this set prevents stale per-record IDs from bypassing
-    // the sanitized handler-level fallback (Issue #507). Keep validation
-    // opt-out for legacy payloads that provide only per-record profile IDs and
-    // no top-level/allProfiles data to validate against.
+    // the sanitized handler-level fallback (Issue #507).
     const shouldValidatePersonalRecordProfileIds =
-      (allProfiles && allProfiles.length > 0) || localProfileId !== null;
+      shouldValidatePersonalRecordProfileIdsForPush({
+        allProfiles,
+        localProfileId,
+        personalRecords: payload.personalRecords ?? [],
+      });
     const validLocalProfileIdsForPush = new Set<string>();
 
     if (allProfiles && allProfiles.length > 0) {
@@ -899,6 +907,63 @@ Deno.serve(async (req) => {
         localProfileId = null;
       } else if (localProfileId) {
         validLocalProfileIdsForPush.add(localProfileId);
+      }
+    }
+
+    if (
+      (!allProfiles || allProfiles.length === 0) &&
+      dedicatedRecordLocalProfileIds.length > 0
+    ) {
+      const candidateIds = dedicatedRecordLocalProfileIds.filter(
+        (id) => !validLocalProfileIdsForPush.has(id),
+      );
+
+      if (candidateIds.length > 0) {
+        const { data: existingProfiles, error: lookupError } = await supabase
+          .from('local_profiles')
+          .select('id')
+          .eq('user_id', userId)
+          .in('id', candidateIds)
+          .returns<Array<{ id: string }>>();
+
+        if (lookupError) {
+          console.warn(
+            'Failed to look up local profiles for dedicated personal records:',
+            lookupError.message,
+          );
+        } else {
+          for (const profile of existingProfiles ?? []) {
+            validLocalProfileIdsForPush.add(profile.id);
+          }
+        }
+      }
+
+      const missingIds = candidateIds.filter(
+        (id) => !validLocalProfileIdsForPush.has(id),
+      );
+      if (missingIds.length > 0) {
+        const repairRows = buildLocalProfileRepairRowsForDedicatedRecords(
+          missingIds,
+          userId,
+          payload.deviceId,
+          new Date().toISOString(),
+        );
+        const { data: repairedProfiles, error: repairError } = await supabase
+          .from('local_profiles')
+          .upsert(repairRows, { onConflict: 'user_id,id' })
+          .select('id')
+          .returns<Array<{ id: string }>>();
+
+        if (repairError) {
+          console.warn(
+            'Failed to repair local profiles for dedicated personal records:',
+            repairError.message,
+          );
+        } else {
+          for (const profile of repairedProfiles ?? []) {
+            validLocalProfileIdsForPush.add(profile.id);
+          }
+        }
       }
     }
 
