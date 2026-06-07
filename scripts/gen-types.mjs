@@ -24,10 +24,13 @@ const repoRoot = path.resolve(__dirname, "..");
 // Best-effort .env loading so local developers don't need to export the
 // variable manually. We deliberately do NOT add a default here: the only
 // safe behavior when SUPABASE_PROJECT_REF is missing is to refuse to run.
-for (const relativePath of [".env", ".env.local"]) {
+for (const { relativePath, override } of [
+	{ relativePath: ".env", override: false },
+	{ relativePath: ".env.local", override: true },
+]) {
 	const dotenvPath = path.join(repoRoot, relativePath);
 	if (existsSync(dotenvPath)) {
-		loadDotenv({ path: dotenvPath, override: relativePath === ".env.local" });
+		loadDotenv({ path: dotenvPath, override });
 	}
 }
 
