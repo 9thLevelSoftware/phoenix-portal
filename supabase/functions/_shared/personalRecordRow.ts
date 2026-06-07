@@ -110,11 +110,38 @@ export function shouldValidatePersonalRecordProfileIdsForPush(input: {
 	personalRecords?: readonly PersonalRecordProfileReference[] | null;
 }): boolean {
 	if (input.allProfiles && input.allProfiles.length > 0) return true;
-	if (input.localProfileId !== null && input.localProfileId !== undefined) {
+	if (input.localProfileId != null) {
 		return true;
 	}
 	return collectDedicatedRecordLocalProfileIds(input.personalRecords ?? [])
 		.length > 0;
+}
+
+export function shouldRepairDedicatedRecordLocalProfilesForPush(input: {
+	allProfiles?: readonly unknown[] | null;
+	localProfileId?: string | null;
+	validLocalProfileIds: ReadonlySet<string>;
+	missingLocalProfileIds: readonly string[];
+}): boolean {
+	if (input.missingLocalProfileIds.length === 0) return false;
+	if (input.allProfiles && input.allProfiles.length > 0) return false;
+	if (input.localProfileId == null) return true;
+	return !input.validLocalProfileIds.has(input.localProfileId);
+}
+
+export function chunkLocalProfileIdsForRepair(
+	profileIds: readonly string[],
+	chunkSize = 100,
+): string[][] {
+	if (chunkSize <= 0) {
+		throw new Error("chunkSize must be greater than 0");
+	}
+
+	const chunks: string[][] = [];
+	for (let i = 0; i < profileIds.length; i += chunkSize) {
+		chunks.push(profileIds.slice(i, i + chunkSize));
+	}
+	return chunks;
 }
 
 export function buildLocalProfileRepairRowsForDedicatedRecords(

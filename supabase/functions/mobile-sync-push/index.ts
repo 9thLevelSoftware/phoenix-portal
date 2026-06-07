@@ -7,8 +7,10 @@ import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
 import {
   buildLocalProfileRepairRowsForDedicatedRecords,
   buildPersonalRecordRowsForPush,
+  chunkLocalProfileIdsForRepair,
   collectDedicatedRecordLocalProfileIds,
   personalRecordIdentityKey,
+  shouldRepairDedicatedRecordLocalProfilesForPush,
   shouldValidatePersonalRecordProfileIdsForPush,
 } from '../_shared/personalRecordRow.ts';
 import {
@@ -919,21 +921,23 @@ Deno.serve(async (req) => {
       );
 
       if (candidateIds.length > 0) {
-        const { data: existingProfiles, error: lookupError } = await supabase
-          .from('local_profiles')
-          .select('id')
-          .eq('user_id', userId)
-          .in('id', candidateIds)
-          .returns<Array<{ id: string }>>();
+        for (const chunk of chunkLocalProfileIdsForRepair(candidateIds)) {
+          const { data: existingProfiles, error: lookupError } = await supabase
+            .from('local_profiles')
+            .select('id')
+            .eq('user_id', userId)
+            .in('id', chunk)
+            .returns<Array<{ id: string }>>();
 
-        if (lookupError) {
-          console.warn(
-            'Failed to look up local profiles for dedicated personal records:',
-            lookupError.message,
-          );
-        } else {
-          for (const profile of existingProfiles ?? []) {
-            validLocalProfileIdsForPush.add(profile.id);
+          if (lookupError) {
+            console.warn(
+              'Failed to look up local profiles for dedicated personal records:',
+              lookupError.message,
+            );
+          } else {
+            for (const profile of existingProfiles ?? []) {
+              validLocalProfileIdsForPush.add(profile.id);
+            }
           }
         }
       }
@@ -941,27 +945,37 @@ Deno.serve(async (req) => {
       const missingIds = candidateIds.filter(
         (id) => !validLocalProfileIdsForPush.has(id),
       );
-      if (missingIds.length > 0) {
-        const repairRows = buildLocalProfileRepairRowsForDedicatedRecords(
-          missingIds,
-          userId,
-          payload.deviceId,
-          new Date().toISOString(),
-        );
-        const { data: repairedProfiles, error: repairError } = await supabase
-          .from('local_profiles')
-          .upsert(repairRows, { onConflict: 'user_id,id' })
-          .select('id')
-          .returns<Array<{ id: string }>>();
-
-        if (repairError) {
-          console.warn(
-            'Failed to repair local profiles for dedicated personal records:',
-            repairError.message,
+      if (
+        shouldRepairDedicatedRecordLocalProfilesForPush({
+          allProfiles,
+          localProfileId,
+          validLocalProfileIds: validLocalProfileIdsForPush,
+          missingLocalProfileIds: missingIds,
+        })
+      ) {
+        const repairUpdatedAt = new Date().toISOString();
+        for (const chunk of chunkLocalProfileIdsForRepair(missingIds)) {
+          const repairRows = buildLocalProfileRepairRowsForDedicatedRecords(
+            chunk,
+            userId,
+            payload.deviceId,
+            repairUpdatedAt,
           );
-        } else {
-          for (const profile of repairedProfiles ?? []) {
-            validLocalProfileIdsForPush.add(profile.id);
+          const { data: repairedProfiles, error: repairError } = await supabase
+            .from('local_profiles')
+            .upsert(repairRows, { onConflict: 'user_id,id' })
+            .select('id')
+            .returns<Array<{ id: string }>>();
+
+          if (repairError) {
+            console.warn(
+              'Failed to repair local profiles for dedicated personal records:',
+              repairError.message,
+            );
+          } else {
+            for (const profile of repairedProfiles ?? []) {
+              validLocalProfileIdsForPush.add(profile.id);
+            }
           }
         }
       }

@@ -4,9 +4,11 @@ import {
 	buildLocalProfileRepairRowsForDedicatedRecords,
 	buildPersonalRecordRows,
 	buildPersonalRecordRowsForPush,
+	chunkLocalProfileIdsForRepair,
 	collectDedicatedRecordLocalProfileIds,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
+	shouldRepairDedicatedRecordLocalProfilesForPush,
 	shouldValidatePersonalRecordProfileIdsForPush,
 } from "../../../supabase/functions/_shared/personalRecordRow.ts";
 
@@ -669,6 +671,63 @@ describe("Issue #507: per-record localProfileId validation", () => {
 				updated_at: "2026-06-07T12:00:00.000Z",
 			},
 		]);
+	});
+
+	it("does not repair stale per-record IDs when the top-level fallback profile is valid", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: "default",
+				validLocalProfileIds: new Set(["default"]),
+				missingLocalProfileIds: ["deleted-profile-uuid"],
+			}),
+		).toBe(false);
+	});
+
+	it("repairs missing per-record IDs when there is no top-level fallback profile", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: null,
+				validLocalProfileIds: new Set(),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(true);
+	});
+
+	it("repairs missing per-record IDs when the handler fallback is no longer valid", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: "default",
+				validLocalProfileIds: new Set(),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(true);
+	});
+
+	it("does not repair per-record IDs when allProfiles supplies profile context", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: [{ id: "default" }],
+				localProfileId: null,
+				validLocalProfileIds: new Set(["default"]),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(false);
+	});
+
+	it("chunks dedicated-record profile lookups and repairs into 100-id batches", () => {
+		const profileIds = Array.from(
+			{ length: 205 },
+			(_, index) => `profile-${index + 1}`,
+		);
+
+		const chunks = chunkLocalProfileIdsForRepair(profileIds);
+
+		expect(chunks.map((chunk) => chunk.length)).toEqual([100, 100, 5]);
+		expect(chunks[0]?.[0]).toBe("profile-1");
+		expect(chunks[2]?.[4]).toBe("profile-205");
 	});
 });
 
