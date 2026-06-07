@@ -121,19 +121,76 @@ function valueForDedicatedRecord(
 	return record.weightKg ?? 0;
 }
 
+/**
+ * Resolve a per-record `localProfileId` against a caller-supplied set of
+ * valid local profile IDs for the current push.
+ *
+ * Background (Issue #507): mobile-sync-push sanitizes the top-level
+ * `localProfileId` when a local profile upsert fails, but dedicated
+ * `personalRecords` can carry their own `record.localProfileId`. A stale
+ * or invalid per-record ID bypasses the sanitized handler fallback and
+ * trips the `fk_personal_records_profile` foreign key on upsert.
+ *
+ * Rules:
+ *  - `undefined` → fall back to the handler-sanitized `localProfileId`.
+ *  - Explicit `null` → preserved as `null` (caller intentionally has no
+ *    profile; the FK is satisfied when `local_profile_id` is nullable).
+ *  - String ID present in `validLocalProfileIds` → preserved.
+ *  - String ID absent from `validLocalProfileIds` → fall back to the
+ *    handler-sanitized `localProfileId` when that fallback is also valid,
+ *    otherwise null it out. This is the FK-safe behavior.
+ *
+ * When `validLocalProfileIds` is `null` the helper preserves the
+ * historical behavior: any defined string ID is trusted. This keeps
+ * call sites that don't yet know about the current push's profile set
+ * working unchanged.
+ */
+export function resolveDedicatedRecordLocalProfileId(
+	recordLocalProfileId: string | null | undefined,
+	handlerLocalProfileId: string | null,
+	validLocalProfileIds: ReadonlySet<string> | null,
+): string | null {
+	if (recordLocalProfileId === undefined) {
+		if (validLocalProfileIds === null || handlerLocalProfileId === null) {
+			return handlerLocalProfileId;
+		}
+		return validLocalProfileIds.has(handlerLocalProfileId)
+			? handlerLocalProfileId
+			: null;
+	}
+	if (recordLocalProfileId === null) {
+		return null;
+	}
+	if (validLocalProfileIds === null) {
+		return recordLocalProfileId;
+	}
+	if (validLocalProfileIds.has(recordLocalProfileId)) {
+		return recordLocalProfileId;
+	}
+	if (
+		handlerLocalProfileId !== null &&
+		validLocalProfileIds.has(handlerLocalProfileId)
+	) {
+		return handlerLocalProfileId;
+	}
+	return null;
+}
+
 export function buildDedicatedPersonalRecordRows(
 	records: DedicatedPersonalRecordInput[],
 	userId: string,
 	localProfileId: string | null,
+	validLocalProfileIds: ReadonlySet<string> | null = null,
 ): PersonalRecordRow[] {
 	return records.map((record) => {
 		const recordType = record.recordType ?? "1RM";
 		const row: PersonalRecordRow = {
 			user_id: userId,
-			local_profile_id:
-				record.localProfileId === undefined
-					? localProfileId
-					: record.localProfileId,
+			local_profile_id: resolveDedicatedRecordLocalProfileId(
+				record.localProfileId,
+				localProfileId,
+				validLocalProfileIds,
+			),
 			exercise_name: record.exerciseName,
 			exercise_id: record.exerciseId ?? null,
 			muscle_group: record.muscleGroup ?? "General",
@@ -158,12 +215,14 @@ export function buildPersonalRecordRowsForPush(
 	personalRecords: DedicatedPersonalRecordInput[],
 	userId: string,
 	localProfileId: string | null,
+	validLocalProfileIds: ReadonlySet<string> | null = null,
 ): PersonalRecordRow[] {
 	if (personalRecords.length > 0) {
 		return buildDedicatedPersonalRecordRows(
 			personalRecords,
 			userId,
 			localProfileId,
+			validLocalProfileIds,
 		);
 	}
 
