@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+	assertNoDeadSupabaseRefs,
+	extractSupabaseRefs,
+	findDeadSupabaseRefs,
+} from "../../../scripts/assert-live-supabase-config.mjs";
+import {
 	buildAllowedRedirectUrls,
 	buildManagedConfig,
 	buildPortalCallbackUrl,
@@ -16,6 +21,12 @@ describe("sync-social-auth", () => {
 				supabaseUrl: "https://ilzlswmatadlnsuxatcv.supabase.co",
 			}),
 		).toBe("ilzlswmatadlnsuxatcv");
+	});
+
+	it("rejects inference when both projectRef and supabaseUrl are missing", () => {
+		expect(() => inferProjectRef({ projectRef: "", supabaseUrl: "" })).toThrow(
+			/Missing SUPABASE_PROJECT_REF and VITE_SUPABASE_URL/,
+		);
 	});
 
 	it("builds exact callback allow-list entries and deduplicates extras", () => {
@@ -63,5 +74,51 @@ verify_jwt = false
 		expect(managedConfig).toContain('client_id = "google-client-id"');
 		expect(managedConfig).toContain('secret = "apple-secret"');
 		expect(managedConfig).toContain("[functions.example]");
+	});
+});
+
+describe("assert-live-supabase-config helpers", () => {
+	it("extracts distinct Supabase project refs from arbitrary content", () => {
+		expect(
+			extractSupabaseRefs(
+				"connect-src https://abcdefghijklmnopqrst.supabase.co wss://zyxwvutsrqponmlkjihg.supabase.co abcdefghijklmnopqrst.supabase.co",
+			),
+		).toEqual(["abcdefghijklmnopqrst", "zyxwvutsrqponmlkjihg"]);
+	});
+
+	it("returns no refs for content without any Supabase hostnames", () => {
+		expect(extractSupabaseRefs("hello world https://example.com")).toEqual([]);
+	});
+
+	it("flags the known-dead Phoenix project ref (issue #68)", () => {
+		expect(
+			findDeadSupabaseRefs(
+				"const url = 'https://ilzlswmatadlnsuxatcv.supabase.co/auth/v1/settings';",
+			),
+		).toEqual(["ilzlswmatadlnsuxatcv"]);
+	});
+
+	it("does not flag live refs against the default denylist", () => {
+		expect(
+			findDeadSupabaseRefs("https://abcdefghijklmnopqrst.supabase.co"),
+		).toEqual([]);
+	});
+
+	it("throws an actionable error pointing at the offending file", () => {
+		expect(() =>
+			assertNoDeadSupabaseRefs(
+				"https://ilzlswmatadlnsuxatcv.supabase.co",
+				"dist/assets/index.js",
+			),
+		).toThrow(/dist\/assets\/index\.js contains dead Supabase project ref/);
+	});
+
+	it("is a no-op when content is clean", () => {
+		expect(() =>
+			assertNoDeadSupabaseRefs(
+				"https://abcdefghijklmnopqrst.supabase.co",
+				"public/_headers",
+			),
+		).not.toThrow();
 	});
 });
