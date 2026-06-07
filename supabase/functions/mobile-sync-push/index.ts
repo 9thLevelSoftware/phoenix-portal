@@ -812,6 +812,11 @@ Deno.serve(async (req) => {
     // Use `let` so we can clear it to null if the profile upsert fails.
     let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
+    // Tracks profile IDs that are safe to reference in FK-protected rows for
+    // this push. Dedicated personalRecords can carry their own localProfileId;
+    // validating against this set prevents stale per-record IDs from bypassing
+    // the sanitized handler-level fallback (Issue #507).
+    const validLocalProfileIdsForPush = new Set<string>();
 
     if (allProfiles && allProfiles.length > 0) {
       // Schema already validated each allProfiles[].id is "default" or a UUID
@@ -839,8 +844,14 @@ Deno.serve(async (req) => {
           localProfileId = null;
         }
       } else {
-        // Delete profiles that no longer exist on the device (from this device only)
         const activeIds = allProfiles.map((p) => p.id);
+        for (const id of activeIds) validLocalProfileIdsForPush.add(id);
+        if (localProfileId && !validLocalProfileIdsForPush.has(localProfileId)) {
+          console.warn('Clearing localProfileId because it is absent from allProfiles');
+          localProfileId = null;
+        }
+
+        // Delete profiles that no longer exist on the device (from this device only)
         const { error: deleteError } = await supabase
           .from('local_profiles')
           .delete()
@@ -882,6 +893,8 @@ Deno.serve(async (req) => {
         console.warn('Failed to upsert local profile:', profileError.message);
         console.warn('Clearing localProfileId to avoid FK violation on session insert');
         localProfileId = null;
+      } else if (localProfileId) {
+        validLocalProfileIdsForPush.add(localProfileId);
       }
     }
 
@@ -1461,6 +1474,7 @@ Deno.serve(async (req) => {
       payload.personalRecords ?? [],
       userId,
       localProfileId,
+      validLocalProfileIdsForPush,
     );
 
     if (prRows.length > 0) {

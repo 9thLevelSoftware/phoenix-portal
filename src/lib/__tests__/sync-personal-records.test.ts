@@ -4,6 +4,7 @@ import {
 	buildPersonalRecordRows,
 	buildPersonalRecordRowsForPush,
 	personalRecordIdentityKey,
+	resolveDedicatedRecordLocalProfileId,
 } from "../../../supabase/functions/_shared/personalRecordRow.ts";
 
 /**
@@ -389,5 +390,272 @@ describe("personalRecordIdentityKey", () => {
 				exercise_name: "id:curl",
 			}),
 		);
+	});
+});
+
+describe("Issue #507: per-record localProfileId validation", () => {
+	// These tests lock in the fix for Cloud Sync personal_records upsert
+	// failing the `fk_personal_records_profile` foreign key when a dedicated
+	// personalRecord carries a stale/invalid per-record `localProfileId` that
+	// bypasses the handler-sanitized top-level `localProfileId`.
+
+	const VALID_IDS = new Set(["default", "secondary"]);
+
+	it("preserves a per-record localProfileId that is in the valid set", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Bench Press",
+					muscleGroup: "Chest",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					weightKg: 125,
+					reps: 3,
+					workoutPhase: "CONCENTRIC",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "secondary",
+				},
+			],
+			USER_ID,
+			PROFILE_ID, // sanitized handler fallback = "default"
+			VALID_IDS,
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.local_profile_id).toBe("secondary");
+	});
+
+	it("falls back to the sanitized handler localProfileId when the per-record ID is invalid and the handler has one", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Squat",
+					muscleGroup: "Legs",
+					recordType: "MAX_WEIGHT",
+					value: 200,
+					weightKg: 200,
+					reps: 1,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					// Stale/invalid ID not present in the current push's valid set.
+					localProfileId: "deleted-profile-uuid",
+				},
+			],
+			USER_ID,
+			PROFILE_ID, // sanitized handler fallback = "default"
+			VALID_IDS,
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.local_profile_id).toBe("default");
+	});
+
+	it("nulls the per-record localProfileId when it is invalid and the sanitized handler fallback is null", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Deadlift",
+					muscleGroup: "Back",
+					recordType: "MAX_WEIGHT",
+					value: 250,
+					weightKg: 250,
+					reps: 1,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "stale-profile-uuid",
+				},
+			],
+			USER_ID,
+			null, // sanitized handler fallback = null (pre-multi-profile clients)
+			VALID_IDS,
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.local_profile_id).toBeNull();
+	});
+
+	it("uses the sanitized handler fallback when the per-record localProfileId is undefined", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Overhead Press",
+					muscleGroup: "Shoulders",
+					recordType: "MAX_WEIGHT",
+					value: 80,
+					weightKg: 80,
+					reps: 5,
+					workoutPhase: "CONCENTRIC",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					// localProfileId deliberately omitted (undefined).
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+			VALID_IDS,
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.local_profile_id).toBe("default");
+	});
+
+	it("preserves the historical behavior when no valid set is supplied", () => {
+		// Call sites that don't yet know about the current push's profile
+		// set should keep the old semantics: any defined string ID is
+		// trusted. This guarantees the new parameter is opt-in.
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Bench Press",
+					muscleGroup: "Chest",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					weightKg: 125,
+					reps: 3,
+					workoutPhase: "CONCENTRIC",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "any-stale-id",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+			null, // no valid set supplied
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]?.local_profile_id).toBe("any-stale-id");
+	});
+
+	it("normalizes a mix of valid and invalid per-record IDs in the same batch", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Squat",
+					recordType: "MAX_WEIGHT",
+					value: 200,
+					weightKg: 200,
+					reps: 1,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "default", // valid
+				},
+				{
+					exerciseName: "Bench Press",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					weightKg: 125,
+					reps: 3,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "stale-id", // invalid
+				},
+				{
+					exerciseName: "Deadlift",
+					recordType: "MAX_WEIGHT",
+					value: 250,
+					weightKg: 250,
+					reps: 1,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					// undefined -> fallback
+				},
+			],
+			USER_ID,
+			"secondary", // sanitized handler fallback
+			new Set(["default", "secondary"]),
+		);
+
+		expect(out.map((r) => r.local_profile_id)).toEqual([
+			"default",
+			"secondary",
+			"secondary",
+		]);
+	});
+
+	it("propagates the valid set through buildPersonalRecordRowsForPush for dedicated records", () => {
+		const rows = buildPersonalRecordRowsForPush(
+			[baseSession({ prType: "MAX_VOLUME", prPhase: "CONCENTRIC" })], // ignored when dedicated present
+			[
+				{
+					exerciseName: "Bench Press",
+					muscleGroup: "Chest",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					weightKg: 125,
+					reps: 3,
+					workoutPhase: "CONCENTRIC",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					localProfileId: "stale-id", // invalid
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+			VALID_IDS,
+		);
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.local_profile_id).toBe("default");
+	});
+
+	it("propagates the valid set through buildPersonalRecordRowsForPush for set-derived records when no dedicated records are present", () => {
+		// Set-derived path uses the handler fallback directly, not
+		// per-record IDs, so the valid-set parameter is irrelevant here.
+		// The set is still accepted (and ignored) to keep the signature
+		// uniform across both branches.
+		const rows = buildPersonalRecordRowsForPush(
+			[baseSession()],
+			[],
+			USER_ID,
+			PROFILE_ID,
+			VALID_IDS,
+		);
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.local_profile_id).toBe("default");
+	});
+});
+
+describe("resolveDedicatedRecordLocalProfileId", () => {
+	const VALID_IDS = new Set(["default", "secondary"]);
+
+	it("returns the handler fallback for undefined per-record ID", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId(undefined, "default", VALID_IDS),
+		).toBe("default");
+	});
+
+	it("returns null for undefined per-record ID when handler fallback is null", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId(undefined, null, VALID_IDS),
+		).toBeNull();
+	});
+
+	it("preserves an explicit null per-record ID as null", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId(null, "default", VALID_IDS),
+		).toBeNull();
+	});
+
+	it("preserves a per-record ID that is in the valid set", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId("secondary", "default", VALID_IDS),
+		).toBe("secondary");
+	});
+
+	it("falls back to the handler fallback for a per-record ID absent from the valid set", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId("stale-uuid", "default", VALID_IDS),
+		).toBe("default");
+	});
+
+	it("falls back to null when the per-record ID is invalid and the handler fallback is null", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId("stale-uuid", null, VALID_IDS),
+		).toBeNull();
+	});
+
+	it("preserves the historical behavior when the valid set is null", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId("any-id", "default", null),
+		).toBe("any-id");
 	});
 });
