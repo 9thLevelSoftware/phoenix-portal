@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildDedicatedPersonalRecordRows,
+	buildLocalProfileRepairRowsForDedicatedRecords,
 	buildPersonalRecordRows,
 	buildPersonalRecordRowsForPush,
+	chunkLocalProfileIdsForRepair,
+	collectDedicatedRecordLocalProfileIds,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
+	shouldRepairDedicatedRecordLocalProfilesForPush,
+	shouldValidatePersonalRecordProfileIdsForPush,
 } from "../../../supabase/functions/_shared/personalRecordRow.ts";
 
 /**
@@ -611,6 +616,118 @@ describe("Issue #507: per-record localProfileId validation", () => {
 
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.local_profile_id).toBe("default");
+	});
+
+	it("enables validation when dedicated records carry profile IDs without top-level profile context", () => {
+		expect(
+			shouldValidatePersonalRecordProfileIdsForPush({
+				allProfiles: null,
+				localProfileId: null,
+				personalRecords: [
+					{
+						exerciseName: "Squat",
+						localProfileId: "default",
+					},
+				],
+			}),
+		).toBe(true);
+	});
+
+	it("collects unique dedicated-record localProfileIds for repair lookup", () => {
+		expect(
+			collectDedicatedRecordLocalProfileIds([
+				{ exerciseName: "Squat", localProfileId: "default" },
+				{ exerciseName: "Bench", localProfileId: "default" },
+				{ exerciseName: "Deadlift", localProfileId: null },
+				{ exerciseName: "Press" },
+				{ exerciseName: "Row", localProfileId: "secondary" },
+			]),
+		).toEqual(["default", "secondary"]);
+	});
+
+	it("builds placeholder local profile rows for legacy dedicated records that only carry per-record IDs", () => {
+		const rows = buildLocalProfileRepairRowsForDedicatedRecords(
+			["default", "11111111-1111-4111-8111-111111111111"],
+			USER_ID,
+			"device-1",
+			"2026-06-07T12:00:00.000Z",
+		);
+
+		expect(rows).toEqual([
+			{
+				user_id: USER_ID,
+				id: "default",
+				name: "Default",
+				color_index: 0,
+				device_id: "device-1",
+				updated_at: "2026-06-07T12:00:00.000Z",
+			},
+			{
+				user_id: USER_ID,
+				id: "11111111-1111-4111-8111-111111111111",
+				name: "Profile",
+				color_index: 0,
+				device_id: "device-1",
+				updated_at: "2026-06-07T12:00:00.000Z",
+			},
+		]);
+	});
+
+	it("does not repair stale per-record IDs when the top-level fallback profile is valid", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: "default",
+				validLocalProfileIds: new Set(["default"]),
+				missingLocalProfileIds: ["deleted-profile-uuid"],
+			}),
+		).toBe(false);
+	});
+
+	it("repairs missing per-record IDs when there is no top-level fallback profile", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: null,
+				validLocalProfileIds: new Set(),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(true);
+	});
+
+	it("repairs missing per-record IDs when the handler fallback is no longer valid", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: null,
+				localProfileId: "default",
+				validLocalProfileIds: new Set(),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(true);
+	});
+
+	it("does not repair per-record IDs when allProfiles supplies profile context", () => {
+		expect(
+			shouldRepairDedicatedRecordLocalProfilesForPush({
+				allProfiles: [{ id: "default" }],
+				localProfileId: null,
+				validLocalProfileIds: new Set(["default"]),
+				missingLocalProfileIds: ["legacy-profile-uuid"],
+			}),
+		).toBe(false);
+	});
+
+	it("chunks dedicated-record profile lookups and repairs into 100-id batches", () => {
+		const profileIds = Array.from(
+			{ length: 205 },
+			(_, index) => `profile-${index + 1}`,
+		);
+
+		const chunks = chunkLocalProfileIdsForRepair(profileIds);
+
+		expect(chunks.map((chunk) => chunk.length)).toEqual([100, 100, 5]);
+		expect(chunks[0]?.[0]).toBe("profile-1");
+		expect(chunks[2]?.[4]).toBe("profile-205");
 	});
 });
 
