@@ -38,13 +38,40 @@ const DEFAULT_STALE_REFS = ["ilzlswmatadlnsuxatcv"];
 
 function loadStaleRefs() {
 	const fromEnv = process.env.STALE_SUPABASE_REFS?.split(",")
-		.map((entry) => entry.trim())
+		.map((entry) => entry.trim().toLowerCase())
 		.filter(Boolean);
-	return fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_STALE_REFS;
+	const refs = fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_STALE_REFS;
+	const invalidRefs = refs.filter((ref) => !/^[a-z0-9]{20}$/i.test(ref));
+	if (invalidRefs.length > 0) {
+		throw new Error(
+			`STALE_SUPABASE_REFS entries must be 20-character Supabase project refs; invalid value(s): ${invalidRefs.join(", ")}`,
+		);
+	}
+	return refs;
 }
 
 /** Matches a Supabase project ref of the form `<20 alnum chars>.supabase.co`. */
 const SUPABASE_HOSTNAME_PATTERN = /[a-z0-9]{20}\.supabase\.co/gi;
+const BINARY_EXTENSIONS = new Set([
+	".avif",
+	".eot",
+	".gif",
+	".gz",
+	".ico",
+	".jpeg",
+	".jpg",
+	".mp3",
+	".mp4",
+	".otf",
+	".pdf",
+	".png",
+	".ttf",
+	".wav",
+	".webp",
+	".woff",
+	".woff2",
+	".zip",
+]);
 
 /**
  * Extract all Supabase project refs referenced in `content`. Useful for
@@ -123,11 +150,9 @@ export function findStaleRefMatches(content, staleRefs) {
 	const lines = content.split(/\r?\n/);
 	for (let index = 0; index < lines.length; index += 1) {
 		const line = lines[index];
-		for (const ref of staleRefs) {
-			if (line.includes(ref)) {
-				matches.push({ lineNumber: index + 1, ref, line });
-				break; // one match per line is enough
-			}
+		const refsOnLine = findDeadSupabaseRefs(line, staleRefs);
+		for (const ref of refsOnLine) {
+			matches.push({ lineNumber: index + 1, ref, line });
 		}
 	}
 	return matches;
@@ -171,8 +196,13 @@ function walkDirectory(absoluteDir, rootRelative, staleRefs, collected) {
 		if (entry.isDirectory()) {
 			walkDirectory(fullPath, relativePath, staleRefs, collected);
 		} else if (entry.isFile()) {
-			// Skip sourcemaps (those are caught by assert:no-sourcemaps).
+			// Skip sourcemaps (those are caught by assert:no-sourcemaps) and
+			// binary assets copied into dist/; stale Supabase hostnames can only
+			// affect shipped text config, HTML, CSS, or JS.
 			if (entry.name.endsWith(".map")) continue;
+			if (BINARY_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+				continue;
+			}
 			const matches = scanFile(
 				fullPath,
 				{ relativePath: formatDistRelative(relativePath), description: "built artifacts" },
@@ -184,7 +214,17 @@ function walkDirectory(absoluteDir, rootRelative, staleRefs, collected) {
 }
 
 function main() {
-	const staleRefs = loadStaleRefs();
+	let staleRefs;
+	try {
+		staleRefs = loadStaleRefs();
+	} catch (error) {
+		console.error(
+			`assert-live-supabase-config: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+		process.exit(1);
+	}
 	const distTargets = maybeScanDist(staleRefs);
 	const allTargets = [...SCAN_TARGETS, ...distTargets];
 

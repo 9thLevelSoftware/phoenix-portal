@@ -3,6 +3,7 @@ import {
 	assertNoDeadSupabaseRefs,
 	extractSupabaseRefs,
 	findDeadSupabaseRefs,
+	findStaleRefMatches,
 } from "../../../scripts/assert-live-supabase-config.mjs";
 import {
 	buildAllowedRedirectUrls,
@@ -111,6 +112,27 @@ describe("assert-live-supabase-config helpers", () => {
 				"dist/assets/index.js",
 			),
 		).toThrow(/dist\/assets\/index\.js contains dead Supabase project ref/);
+	});
+
+	it("only reports stale refs when they appear as Supabase hostnames", () => {
+		expect(
+			findStaleRefMatches(
+				"stale ref ilzlswmatadlnsuxatcv in prose, not a hostname",
+				["ilzlswmatadlnsuxatcv"],
+			),
+		).toEqual([]);
+		expect(
+			findStaleRefMatches(
+				"connect-src https://ilzlswmatadlnsuxatcv.supabase.co",
+				["ilzlswmatadlnsuxatcv"],
+			),
+		).toEqual([
+			{
+				line: "connect-src https://ilzlswmatadlnsuxatcv.supabase.co",
+				lineNumber: 1,
+				ref: "ilzlswmatadlnsuxatcv",
+			},
+		]);
 	});
 
 	it("is a no-op when content is clean", () => {

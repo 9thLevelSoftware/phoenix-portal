@@ -27,7 +27,7 @@ const repoRoot = path.resolve(__dirname, "..");
 for (const relativePath of [".env", ".env.local"]) {
 	const dotenvPath = path.join(repoRoot, relativePath);
 	if (existsSync(dotenvPath)) {
-		loadDotenv({ path: dotenvPath, override: false });
+		loadDotenv({ path: dotenvPath, override: relativePath === ".env.local" });
 	}
 }
 
@@ -66,7 +66,7 @@ console.log(
 );
 
 const child = spawn("npx", args, {
-	stdio: ["ignore", "pipe", "inherit"],
+	stdio: ["ignore", "pipe", "pipe"],
 	env: process.env,
 	// Windows requires shell: true to resolve .cmd shims for the npx stub
 	// (Node 20+ security default). macOS/Linux resolve via PATH normally.
