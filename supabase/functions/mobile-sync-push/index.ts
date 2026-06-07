@@ -815,7 +815,11 @@ Deno.serve(async (req) => {
     // Tracks profile IDs that are safe to reference in FK-protected rows for
     // this push. Dedicated personalRecords can carry their own localProfileId;
     // validating against this set prevents stale per-record IDs from bypassing
-    // the sanitized handler-level fallback (Issue #507).
+    // the sanitized handler-level fallback (Issue #507). Keep validation
+    // opt-out for legacy payloads that provide only per-record profile IDs and
+    // no top-level/allProfiles data to validate against.
+    const shouldValidatePersonalRecordProfileIds =
+      (allProfiles && allProfiles.length > 0) || localProfileId !== null;
     const validLocalProfileIdsForPush = new Set<string>();
 
     if (allProfiles && allProfiles.length > 0) {
@@ -1474,7 +1478,7 @@ Deno.serve(async (req) => {
       payload.personalRecords ?? [],
       userId,
       localProfileId,
-      validLocalProfileIdsForPush,
+      shouldValidatePersonalRecordProfileIds ? validLocalProfileIdsForPush : null,
     );
 
     if (prRows.length > 0) {

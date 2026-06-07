@@ -151,7 +151,12 @@ export function resolveDedicatedRecordLocalProfileId(
 	validLocalProfileIds: ReadonlySet<string> | null,
 ): string | null {
 	if (recordLocalProfileId === undefined) {
-		return handlerLocalProfileId;
+		if (validLocalProfileIds === null || handlerLocalProfileId === null) {
+			return handlerLocalProfileId;
+		}
+		return validLocalProfileIds.has(handlerLocalProfileId)
+			? handlerLocalProfileId
+			: null;
 	}
 	if (recordLocalProfileId === null) {
 		return null;

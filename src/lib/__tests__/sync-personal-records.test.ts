@@ -629,6 +629,16 @@ describe("resolveDedicatedRecordLocalProfileId", () => {
 		).toBeNull();
 	});
 
+	it("returns null for undefined per-record ID when handler fallback is absent from the valid set", () => {
+		expect(
+			resolveDedicatedRecordLocalProfileId(
+				undefined,
+				"stale-handler-id",
+				VALID_IDS,
+			),
+		).toBeNull();
+	});
+
 	it("preserves an explicit null per-record ID as null", () => {
 		expect(
 			resolveDedicatedRecordLocalProfileId(null, "default", VALID_IDS),
