@@ -47,7 +47,7 @@ export function ProgressionRules({
 
 	const adjustFixedIncrement = (valueKg: number | undefined, delta: number) => {
 		const displayValue = Number(weightInputValue(valueKg ?? 0, unit));
-		return weightInputToKg(String(Math.max(0, displayValue + delta)), unit);
+		return weightInputToKg(Math.max(0, displayValue + delta), unit);
 	};
 
 	return (

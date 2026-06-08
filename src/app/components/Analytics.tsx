@@ -303,7 +303,7 @@ function mapServerInsight(
 			: description;
 
 	return {
-		id: (item.id as string) ?? `${title}-${description}`,
+		id: (item.id as string) ?? `${title}-${normalizedDescription}`,
 		type: normalizeInsightType(item.insight_type ?? item.type),
 		title,
 		description: normalizedDescription,

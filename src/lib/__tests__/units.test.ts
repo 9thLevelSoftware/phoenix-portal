@@ -69,6 +69,14 @@ describe("units", () => {
 		it("converts and abbreviates lbs volume from canonical kg", () => {
 			expect(formatVolume(1000, "lbs")).toBe("2.2K lbs");
 		});
+
+		it("formats million-scale volumes with an M suffix", () => {
+			expect(formatVolume(1_200_000, "kg")).toBe("1.2M kg");
+		});
+
+		it("uses absolute magnitude when abbreviating negative volume deltas", () => {
+			expect(formatVolume(-2300, "kg")).toBe("-2.3K kg");
+		});
 	});
 
 	describe("getUnitLabel", () => {

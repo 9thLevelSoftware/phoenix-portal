@@ -31,7 +31,8 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
-import { formatVolume, type WeightUnit } from "@/lib/units";
+import { formatChallengeValue } from "@/lib/challenges";
+import type { WeightUnit } from "@/lib/units";
 import { useJoinChallenge, useLeaveChallenge } from "@/mutations/challenges";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -65,18 +66,6 @@ function getDaysRemaining(endDate: string) {
 		(end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
 	);
 	return Math.max(0, diff);
-}
-
-function formatChallengeValue(
-	value: number,
-	challengeType: string,
-	unit: WeightUnit,
-	targetUnit?: string | null,
-): string {
-	if (challengeType === "volume") {
-		return formatVolume(value, unit);
-	}
-	return `${value.toLocaleString()}${targetUnit ? ` ${targetUnit}` : ""}`;
 }
 
 // ---- Shared progress bar component ----

@@ -36,6 +36,7 @@ import {
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { fadeUp, hover, staggerContainer } from "@/lib/animations";
+import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
 import {
 	convertWeight,
@@ -189,18 +190,6 @@ function MobileRecentActivityCard({
 			</div>
 		</Card>
 	);
-}
-
-function formatChallengeValue(
-	value: number,
-	challengeType: string,
-	unit: WeightUnit,
-	targetUnit?: string | null,
-): string {
-	if (challengeType === "volume") {
-		return formatVolume(value, unit);
-	}
-	return `${value.toLocaleString()}${targetUnit ? ` ${targetUnit}` : ""}`;
 }
 
 function ActiveChallengesSection({

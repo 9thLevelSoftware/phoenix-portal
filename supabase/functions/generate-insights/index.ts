@@ -57,8 +57,13 @@ function formatWeight(valueKg: number, unit: WeightUnit): string {
 
 function formatVolume(valueKg: number, unit: WeightUnit): string {
   const converted = convertWeight(valueKg, unit);
-  if (converted >= 1000) {
-    return `${(converted / 1000).toFixed(1)}K ${unit}`;
+  const absValue = Math.abs(converted);
+
+  if (absValue >= 1_000_000) {
+    return `${(converted / 1_000_000).toFixed(1)}M ${unit}`;
+  }
+  if (absValue >= 1_000) {
+    return `${(converted / 1_000).toFixed(1)}K ${unit}`;
   }
   return unit === 'lbs'
     ? `${converted.toFixed(1)} lbs`
