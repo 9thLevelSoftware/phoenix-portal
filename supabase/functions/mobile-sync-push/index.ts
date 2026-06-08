@@ -9,6 +9,8 @@ import {
   buildPersonalRecordRowsForPush,
   chunkLocalProfileIdsForRepair,
   collectDedicatedRecordLocalProfileIds,
+  isPostgresForeignKeyViolation,
+  partitionPersonalRecordRowsByLocalProfileValidity,
   personalRecordIdentityKey,
   shouldRepairDedicatedRecordLocalProfilesForPush,
   shouldValidatePersonalRecordProfileIdsForPush,
@@ -1593,16 +1595,51 @@ Deno.serve(async (req) => {
       });
 
       if (dedupedPrRows.length > 0) {
-        const write = dedicatedPrsPresent
+        const writePersonalRecords = (rows: typeof dedupedPrRows) => dedicatedPrsPresent
           ? supabase
               .from('personal_records')
-              .upsert(dedupedPrRows, { onConflict: 'id' })
+              .upsert(rows, { onConflict: 'id' })
           : supabase
               .from('personal_records')
-              .insert(dedupedPrRows);
-        const { error: prErr } = await write;
-        if (prErr) throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
-        personalRecordsInserted = dedupedPrRows.length;
+              .insert(rows);
+
+        const { error: prErr } = await writePersonalRecords(dedupedPrRows);
+        if (prErr && isPostgresForeignKeyViolation(prErr)) {
+          const partition = shouldValidatePersonalRecordProfileIds
+            ? partitionPersonalRecordRowsByLocalProfileValidity(
+                dedupedPrRows,
+                validLocalProfileIdsForPush,
+              )
+            : {
+                invalidProfileRows: [],
+                rowsWithInvalidProfilesNulled: dedupedPrRows,
+              };
+
+          if (partition.invalidProfileRows.length === 0) {
+            throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+          }
+
+          const invalidLocalProfileIds = [
+            ...new Set(
+              partition.invalidProfileRows
+                .map((row) => row.local_profile_id)
+                .filter((id): id is string => id !== null),
+            ),
+          ];
+          console.warn(
+            'FK violation on personal_records local_profile_id — retrying only invalid profile references with NULL profile scope:',
+            invalidLocalProfileIds,
+          );
+          const { error: retryErr } = await writePersonalRecords(
+            partition.rowsWithInvalidProfilesNulled,
+          );
+          if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
+          personalRecordsInserted = partition.rowsWithInvalidProfilesNulled.length;
+        } else if (prErr) {
+          throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+        } else {
+          personalRecordsInserted = dedupedPrRows.length;
+        }
       }
     }
 

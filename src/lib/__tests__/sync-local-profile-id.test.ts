@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildLocalProfileOrNullPostgrestFilter,
 	DEFAULT_PROFILE_ID,
 	isValidLocalProfileId,
 } from "../../../supabase/functions/_shared/localProfileId.ts";
@@ -38,5 +39,29 @@ describe("isValidLocalProfileId", () => {
 		expect(isValidLocalProfileId("default' OR 1=1 --")).toBe(false);
 		expect(isValidLocalProfileId(" default")).toBe(false);
 		expect(isValidLocalProfileId("default\n")).toBe(false);
+	});
+});
+
+describe("buildLocalProfileOrNullPostgrestFilter", () => {
+	it("includes both 'default' and legacy NULL profile scopes", () => {
+		expect(buildLocalProfileOrNullPostgrestFilter(DEFAULT_PROFILE_ID)).toBe(
+			"local_profile_id.eq.default,local_profile_id.is.null",
+		);
+	});
+
+	it("includes both explicit profile and legacy NULL profile scopes", () => {
+		expect(
+			buildLocalProfileOrNullPostgrestFilter(
+				"0f8fad5b-d9cb-469f-a165-70867728950e",
+			),
+		).toBe(
+			"local_profile_id.eq.0f8fad5b-d9cb-469f-a165-70867728950e,local_profile_id.is.null",
+		);
+	});
+
+	it("rejects invalid ids before building a PostgREST filter", () => {
+		expect(() =>
+			buildLocalProfileOrNullPostgrestFilter("default' OR 1=1 --"),
+		).toThrow("Invalid local profile id");
 	});
 });

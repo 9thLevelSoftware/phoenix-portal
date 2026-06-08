@@ -6,6 +6,8 @@ import {
 	buildPersonalRecordRowsForPush,
 	chunkLocalProfileIdsForRepair,
 	collectDedicatedRecordLocalProfileIds,
+	isPostgresForeignKeyViolation,
+	partitionPersonalRecordRowsByLocalProfileValidity,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
 	shouldRepairDedicatedRecordLocalProfilesForPush,
@@ -62,6 +64,24 @@ function baseSession(overrides: Overrides = {}) {
 				],
 			},
 		],
+	};
+}
+
+function basePersonalRecordRow(exerciseName: string) {
+	return {
+		user_id: USER_ID,
+		local_profile_id: PROFILE_ID,
+		exercise_name: exerciseName,
+		exercise_id: null,
+		muscle_group: "General",
+		record_type: "1RM",
+		value: 100,
+		weight_kg: 100,
+		reps: 1,
+		unit: "kg",
+		session_id: null,
+		achieved_at: "2026-04-20T12:00:00.000Z",
+		workout_phase: "COMBINED",
 	};
 }
 
@@ -728,6 +748,51 @@ describe("Issue #507: per-record localProfileId validation", () => {
 		expect(chunks.map((chunk) => chunk.length)).toEqual([100, 100, 5]);
 		expect(chunks[0]?.[0]).toBe("profile-1");
 		expect(chunks[2]?.[4]).toBe("profile-205");
+	});
+
+	it("classifies foreign-key failures by PostgreSQL error code", () => {
+		expect(isPostgresForeignKeyViolation({ code: "23503" })).toBe(true);
+		expect(
+			isPostgresForeignKeyViolation({
+				code: "23505",
+				message: "duplicate key",
+			}),
+		).toBe(false);
+		expect(
+			isPostgresForeignKeyViolation({
+				message:
+					'violates foreign key constraint "fk_personal_records_profile"',
+			}),
+		).toBe(false);
+		expect(isPostgresForeignKeyViolation(null)).toBe(false);
+	});
+
+	it("partitions only invalid profile-scoped personal records for null-profile retry", () => {
+		const validDefaultRow = {
+			...basePersonalRecordRow("Squat"),
+			local_profile_id: "default",
+		};
+		const unscopedRow = {
+			...basePersonalRecordRow("Bench Press"),
+			local_profile_id: null,
+		};
+		const staleProfileRow = {
+			...basePersonalRecordRow("Deadlift"),
+			local_profile_id: "stale-profile",
+		};
+
+		const partition = partitionPersonalRecordRowsByLocalProfileValidity(
+			[validDefaultRow, unscopedRow, staleProfileRow],
+			new Set(["default"]),
+		);
+
+		expect(partition.validRows).toEqual([validDefaultRow, unscopedRow]);
+		expect(partition.invalidProfileRows).toEqual([staleProfileRow]);
+		expect(partition.rowsWithInvalidProfilesNulled).toEqual([
+			validDefaultRow,
+			unscopedRow,
+			{ ...staleProfileRow, local_profile_id: null },
+		]);
 	});
 });
 
