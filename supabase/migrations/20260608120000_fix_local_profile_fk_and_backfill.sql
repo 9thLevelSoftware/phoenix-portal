@@ -90,7 +90,7 @@ SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO public.profiles (id, display_name)
-  VALUES (NEW.id, split_part(NEW.email, '@', 1))
+  VALUES (NEW.id, COALESCE(NULLIF(split_part(NEW.email, '@', 1), ''), 'User'))
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.local_profiles (user_id, id, name, device_id)
