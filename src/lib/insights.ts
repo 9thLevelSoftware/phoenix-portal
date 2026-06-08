@@ -1,6 +1,7 @@
 // Canonical source for insight generation rules.
 // IMPORTANT: The Edge Function at supabase/functions/generate-insights/index.ts
 // duplicates these rules. Changes here must be synced there.
+import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
 
 export interface TrainingInsight {
 	id: string;
@@ -25,11 +26,19 @@ export interface InsightInput {
 
 const STREAK_MILESTONES = [7, 14, 21, 30];
 
+function roundWeightMetric(valueKg: number, unit: WeightUnit): number {
+	const converted = convertWeight(valueKg, unit);
+	return Number(converted.toFixed(unit === "lbs" ? 1 : 0));
+}
+
 /**
  * Applies rule-based logic to an InsightInput and returns a list of
  * TrainingInsight objects. Pure function — no async, no side effects.
  */
-export function generateInsights(input: InsightInput): TrainingInsight[] {
+export function generateInsights(
+	input: InsightInput,
+	unit: WeightUnit = "kg",
+): TrainingInsight[] {
 	const insights: TrainingInsight[] = [];
 
 	// ── Volume Trend ──────────────────────────────────────────────────────────
@@ -124,19 +133,26 @@ export function generateInsights(input: InsightInput): TrainingInsight[] {
 	for (const pr of input.recentPRs) {
 		const delta =
 			pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
+		const formattedValue = formatWeight(pr.value, unit);
+		const formattedDelta =
+			delta !== undefined ? formatWeight(delta, unit) : undefined;
+		const formattedPrevious =
+			pr.previousValue !== undefined
+				? formatWeight(pr.previousValue, unit)
+				: undefined;
 		insights.push({
 			id: `pr-${pr.exercise.toLowerCase().replace(/\s+/g, "-")}`,
 			type: "achievement",
 			title: `New PR: ${pr.exercise}`,
 			description:
-				delta !== undefined
-					? `You set a personal record on ${pr.exercise} — ${pr.value} lbs (up ${delta} lbs from ${pr.previousValue} lbs).`
-					: `You set a personal record on ${pr.exercise} — ${pr.value} lbs.`,
+				delta !== undefined && formattedDelta && formattedPrevious
+					? `You set a personal record on ${pr.exercise} — ${formattedValue} (up ${formattedDelta} from ${formattedPrevious}).`
+					: `You set a personal record on ${pr.exercise} — ${formattedValue}.`,
 			metric: {
 				name: pr.exercise,
-				value: pr.value,
-				unit: "lbs",
-				delta,
+				value: roundWeightMetric(pr.value, unit),
+				unit,
+				delta: delta !== undefined ? roundWeightMetric(delta, unit) : undefined,
 			},
 		});
 	}

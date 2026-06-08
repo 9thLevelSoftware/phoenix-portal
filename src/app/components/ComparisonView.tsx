@@ -22,12 +22,14 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
 	type ComparisonResult,
 	compareSessions,
 	type SessionSummary,
 } from "@/lib/comparison";
+import { formatVolume, type WeightUnit } from "@/lib/units";
 import { comparisonDetailOptions } from "@/queries/workouts";
 
 function DeltaIndicator({
@@ -77,9 +79,11 @@ function formatSessionDate(d: Date): string {
 function SessionSummaryCard({
 	summary,
 	label,
+	unit,
 }: {
 	summary: SessionSummary;
 	label: string;
+	unit: WeightUnit;
 }) {
 	return (
 		<Card className="bg-surface-2 border-secondary p-5">
@@ -99,7 +103,7 @@ function SessionSummaryCard({
 				<div>
 					<div className="text-muted-foreground">Volume</div>
 					<div className="text-white font-semibold font-data">
-						{summary.totalVolume.toLocaleString()} kg
+						{formatVolume(summary.totalVolume, unit)}
 					</div>
 				</div>
 				<div>
@@ -149,7 +153,13 @@ function OverallDeltas({ result }: { result: ComparisonResult }) {
 	);
 }
 
-function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
+function ExerciseBreakdownTable({
+	result,
+	unit,
+}: {
+	result: ComparisonResult;
+	unit: WeightUnit;
+}) {
 	return (
 		<Card className="bg-surface-2 border-secondary p-5">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider mb-4">
@@ -188,14 +198,14 @@ function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 									{ex.onlyInB ? (
 										<span className="text-muted-foreground">—</span>
 									) : (
-										`${ex.volumeA.toLocaleString()} kg`
+										formatVolume(ex.volumeA, unit)
 									)}
 								</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInA ? (
 										<span className="text-muted-foreground">—</span>
 									) : (
-										`${ex.volumeB.toLocaleString()} kg`
+										formatVolume(ex.volumeB, unit)
 									)}
 								</td>
 								<td className="py-3 text-right">
@@ -243,7 +253,13 @@ function ExerciseBreakdownTable({ result }: { result: ComparisonResult }) {
 	);
 }
 
-function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
+function ExerciseBreakdownMobile({
+	result,
+	unit,
+}: {
+	result: ComparisonResult;
+	unit: WeightUnit;
+}) {
 	return (
 		<div className="space-y-3">
 			<h3 className="text-sm text-muted-foreground uppercase tracking-wider">
@@ -264,7 +280,8 @@ function ExerciseBreakdownMobile({ result }: { result: ComparisonResult }) {
 
 							<div className="text-secondary-foreground">Volume</div>
 							<div className="text-center text-secondary-foreground font-data">
-								{ex.volumeA.toLocaleString()} / {ex.volumeB.toLocaleString()}
+								{formatVolume(ex.volumeA, unit)} /{" "}
+								{formatVolume(ex.volumeB, unit)}
 							</div>
 							<div className="text-right">
 								<DeltaIndicator value={ex.deltaPct} />
@@ -294,6 +311,7 @@ export function ComparisonView() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
+	const unit = usePreferredWeightUnit();
 	const { isPremium, isLoading: subLoading } = useSubscription();
 
 	const sessionAId = searchParams.get("a") ?? "";
@@ -597,10 +615,18 @@ export function ComparisonView() {
 								<TabsTrigger value="b">Session B</TabsTrigger>
 							</TabsList>
 							<TabsContent value="a">
-								<SessionSummaryCard summary={summaryA} label="Session A" />
+								<SessionSummaryCard
+									summary={summaryA}
+									label="Session A"
+									unit={unit}
+								/>
 							</TabsContent>
 							<TabsContent value="b">
-								<SessionSummaryCard summary={summaryB} label="Session B" />
+								<SessionSummaryCard
+									summary={summaryB}
+									label="Session B"
+									unit={unit}
+								/>
 							</TabsContent>
 						</Tabs>
 					</motion.div>
@@ -611,8 +637,16 @@ export function ComparisonView() {
 						transition={{ delay: 0.1 }}
 						className="grid grid-cols-2 gap-4"
 					>
-						<SessionSummaryCard summary={summaryA} label="Session A" />
-						<SessionSummaryCard summary={summaryB} label="Session B" />
+						<SessionSummaryCard
+							summary={summaryA}
+							label="Session A"
+							unit={unit}
+						/>
+						<SessionSummaryCard
+							summary={summaryB}
+							label="Session B"
+							unit={unit}
+						/>
 					</motion.div>
 				)}
 
@@ -632,9 +666,9 @@ export function ComparisonView() {
 					transition={{ delay: 0.3 }}
 				>
 					{isMobile ? (
-						<ExerciseBreakdownMobile result={result} />
+						<ExerciseBreakdownMobile result={result} unit={unit} />
 					) : (
-						<ExerciseBreakdownTable result={result} />
+						<ExerciseBreakdownTable result={result} unit={unit} />
 					)}
 				</motion.div>
 			</div>

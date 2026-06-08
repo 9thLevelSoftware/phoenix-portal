@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { formatWeight, type WeightUnit } from "@/lib/units";
 import type { RoutineExercise } from "./superset-types";
 
 interface ExerciseCardProps {
@@ -12,6 +13,7 @@ interface ExerciseCardProps {
 	isDragging?: boolean;
 	isSelectionMode?: boolean;
 	isSelected?: boolean;
+	unit?: WeightUnit;
 	onToggleSelect?: () => void;
 }
 
@@ -22,6 +24,7 @@ export function ExerciseCard({
 	isDragging = false,
 	isSelectionMode = false,
 	isSelected = false,
+	unit = "kg",
 	onToggleSelect,
 }: ExerciseCardProps) {
 	const handleCardClick = () => {
@@ -81,7 +84,8 @@ export function ExerciseCard({
 							</div>
 							<div className="text-sm text-muted-foreground">
 								{exercise.sets.length} sets • {exercise.sets[0]?.reps || 0} reps
-								• {exercise.sets[0]?.weight || 0} kg • {exercise.programMode}
+								• {formatWeight(exercise.sets[0]?.weight ?? 0, unit)} •{" "}
+								{exercise.programMode}
 							</div>
 						</div>
 					</div>

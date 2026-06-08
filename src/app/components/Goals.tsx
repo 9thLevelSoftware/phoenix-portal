@@ -47,7 +47,15 @@ import {
 } from "@/app/components/ui/tabs";
 import { cn } from "@/app/components/ui/utils";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
+import {
+	formatVolume,
+	formatWeight,
+	type WeightUnit,
+	weightInputToKg,
+	weightInputValue,
+} from "@/lib/units";
 import {
 	useArchiveGoal,
 	useCreateGoal,
@@ -155,26 +163,30 @@ const goalTypeIcons = {
 	pr: Award,
 };
 
-function getGoalDescription(goal: Goal): string {
+function getGoalDescription(goal: Goal, unit: WeightUnit): string {
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${goal.target_value} workouts per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${goal.target_value.toLocaleString()} kg per ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(goal.target_value, unit)} per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
-			return `${goal.exercise_name}: ${goal.target_value} kg`;
+			return `${goal.exercise_name}: ${formatWeight(goal.target_value, unit)}`;
 		default:
 			return "Goal";
 	}
 }
 
-function getProgressText(goal: Goal, progress: number): string {
+function getProgressText(
+	goal: Goal,
+	progress: number,
+	unit: WeightUnit,
+): string {
 	const achieved = Math.round((progress / 100) * goal.target_value);
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${achieved}/${goal.target_value} workouts this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${achieved.toLocaleString()}/${goal.target_value.toLocaleString()} kg this ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
 			return progress >= 100
 				? "Target reached!"
@@ -275,6 +287,7 @@ function ExerciseNameCombobox({
 
 export function Goals() {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { isPremium, isInferno } = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
@@ -508,11 +521,11 @@ export function Goals() {
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
 													<h3 className="text-lg font-semibold text-white">
-														{getGoalDescription(goal)}
+														{getGoalDescription(goal, unit)}
 													</h3>
 												</div>
 												<p className="text-sm text-muted-foreground font-data">
-													{getProgressText(goal, progress)}
+													{getProgressText(goal, progress, unit)}
 												</p>
 												{goal.deadline && (
 													<p className="text-xs text-muted-foreground mt-1">
@@ -583,7 +596,7 @@ export function Goals() {
 											</div>
 											<div>
 												<p className="text-sm text-white">
-													{getGoalDescription(goal)}
+													{getGoalDescription(goal, unit)}
 												</p>
 												<p className="text-xs text-muted-foreground">
 													Completed{" "}
@@ -636,7 +649,7 @@ export function Goals() {
 												</div>
 												<div>
 													<p className="text-sm text-muted-foreground">
-														{getGoalDescription(goal)}
+														{getGoalDescription(goal, unit)}
 													</p>
 													<p className="text-xs text-muted-foreground mt-0.5">
 														Archived {goal.updated_at.toLocaleDateString()}
@@ -687,6 +700,7 @@ export function Goals() {
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 				title="Create Goal"
+				unit={unit}
 				exerciseNames={knownExerciseNames}
 				onSubmit={(data) => {
 					createGoal.mutate({
@@ -706,6 +720,7 @@ export function Goals() {
 					}}
 					title="Edit Goal"
 					isEdit
+					unit={unit}
 					exerciseNames={knownExerciseNames}
 					defaultValues={{
 						goal_type: editGoal.goal_type,
@@ -742,6 +757,7 @@ interface GoalFormDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	title: string;
+	unit: WeightUnit;
 	/** When true, goal type tabs are hidden (type cannot change after creation). */
 	isEdit?: boolean;
 	/** Known exercise names for PR goal autocomplete. */
@@ -768,6 +784,7 @@ function GoalFormDialog({
 	open,
 	onOpenChange,
 	title,
+	unit,
 	isEdit = false,
 	exerciseNames = [],
 	defaultValues,
@@ -776,9 +793,11 @@ function GoalFormDialog({
 	const [goalType, setGoalType] = useState<"frequency" | "volume" | "pr">(
 		defaultValues?.goal_type ?? "frequency",
 	);
-	const [targetValue, setTargetValue] = useState(
-		defaultValues?.target_value?.toString() ?? "",
-	);
+	const initialTargetValue =
+		defaultValues?.goal_type === "volume" || defaultValues?.goal_type === "pr"
+			? weightInputValue(defaultValues.target_value, unit)
+			: (defaultValues?.target_value?.toString() ?? "");
+	const [targetValue, setTargetValue] = useState(initialTargetValue);
 	const [exerciseName, setExerciseName] = useState(
 		defaultValues?.exercise_name ?? "",
 	);
@@ -791,7 +810,12 @@ function GoalFormDialog({
 	useEffect(() => {
 		if (open) {
 			setGoalType(defaultValues?.goal_type ?? "frequency");
-			setTargetValue(defaultValues?.target_value?.toString() ?? "");
+			setTargetValue(
+				defaultValues?.goal_type === "volume" ||
+					defaultValues?.goal_type === "pr"
+					? weightInputValue(defaultValues.target_value, unit)
+					: (defaultValues?.target_value?.toString() ?? ""),
+			);
 			setExerciseName(defaultValues?.exercise_name ?? "");
 			setDeadline(defaultValues?.deadline ?? "");
 			setPeriod(defaultValues?.period ?? "weekly");
@@ -800,6 +824,7 @@ function GoalFormDialog({
 		open,
 		defaultValues?.goal_type,
 		defaultValues?.target_value,
+		unit,
 		defaultValues?.exercise_name,
 		defaultValues?.deadline,
 		defaultValues?.period,
@@ -817,7 +842,11 @@ function GoalFormDialog({
 	};
 
 	const handleSubmit = () => {
-		const value = parseFloat(targetValue);
+		const parsedValue = parseFloat(targetValue);
+		const value =
+			goalType === "volume" || goalType === "pr"
+				? weightInputToKg(targetValue, unit)
+				: parsedValue;
 		if (Number.isNaN(value) || value <= 0) return;
 		if (goalType === "pr" && !exerciseName.trim()) return;
 
@@ -933,14 +962,14 @@ function GoalFormDialog({
 						<TabsContent value="volume" className="space-y-4 mt-4">
 							<div>
 								<Label htmlFor="vol-target">
-									Target volume (kg) per{" "}
+									Target volume ({unit}) per{" "}
 									{period === "monthly" ? "month" : "week"}
 								</Label>
 								<Input
 									id="vol-target"
 									type="number"
 									min={1}
-									placeholder="e.g. 10000"
+									placeholder={unit === "lbs" ? "e.g. 22000" : "e.g. 10000"}
 									value={targetValue}
 									onChange={(e) => setTargetValue(e.target.value)}
 									className="mt-1 bg-input/30"
@@ -990,7 +1019,7 @@ function GoalFormDialog({
 								/>
 							</div>
 							<div>
-								<Label htmlFor="pr-target">Target Weight (kg)</Label>
+								<Label htmlFor="pr-target">Target Weight ({unit})</Label>
 								<Input
 									id="pr-target"
 									type="number"

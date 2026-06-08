@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import { formatWeight, type WeightUnit } from "@/lib/units";
 import {
 	getSupersetColorHex,
 	getSupersetLabel,
@@ -20,6 +21,7 @@ interface SupersetContainerProps {
 	onEditExercise: (exerciseId: string) => void;
 	onAddExercise: () => void;
 	isDragging?: boolean;
+	unit?: WeightUnit;
 }
 
 export function SupersetContainer({
@@ -32,6 +34,7 @@ export function SupersetContainer({
 	onEditExercise,
 	onAddExercise,
 	isDragging = false,
+	unit = "kg",
 }: SupersetContainerProps) {
 	const supersetExercises = exercises
 		.filter((ex) => superset.exerciseIds.includes(ex.id))
@@ -104,7 +107,7 @@ export function SupersetContainer({
 										<div className="text-sm text-muted-foreground">
 											{exercise.sets.length} sets •{" "}
 											{exercise.sets[0]?.reps || 0} reps •{" "}
-											{exercise.sets[0]?.weight || 0} kg •{" "}
+											{formatWeight(exercise.sets[0]?.weight ?? 0, unit)} •{" "}
 											{exercise.programMode}
 										</div>
 									</div>

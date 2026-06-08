@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, TrendingUp, Trophy } from "lucide-react";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { isWeightUnit } from "@/lib/units";
 
 export interface InsightItem {
 	id: string;
@@ -34,6 +35,13 @@ const TYPE_CONFIG = {
 		Icon: Trophy,
 	},
 } as const;
+
+function formatMetric(value: number, unit: string): string {
+	const formattedValue = value.toLocaleString();
+	return isWeightUnit(unit)
+		? `${formattedValue} ${unit}`
+		: `${formattedValue}${unit}`;
+}
 
 function InsightSkeleton() {
 	return (
@@ -109,8 +117,7 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 											{insight.metric.name}:
 										</span>
 										<span className="text-xs font-medium text-foreground">
-											{insight.metric.value}
-											{insight.metric.unit}
+											{formatMetric(insight.metric.value, insight.metric.unit)}
 										</span>
 										{insight.metric.delta !== undefined && (
 											<span
@@ -121,8 +128,10 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 												}}
 											>
 												{insight.metric.delta >= 0 ? "+" : ""}
-												{insight.metric.delta}
-												{insight.metric.unit}
+												{formatMetric(
+													insight.metric.delta,
+													insight.metric.unit,
+												)}
 											</span>
 										)}
 									</div>
