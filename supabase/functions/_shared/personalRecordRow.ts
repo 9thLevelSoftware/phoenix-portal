@@ -180,7 +180,7 @@ export interface PersonalRecordIdentityInput {
 export function personalRecordIdentityKey(
 	row: PersonalRecordIdentityInput,
 ): string {
-	const profileKey = row.local_profile_id ?? "__no_profile__";
+	const profileKey = row.local_profile_id ?? "default";
 	const exerciseKey = row.exercise_id
 		? `id:${row.exercise_id}`
 		: `name:${row.exercise_name ?? ""}`;

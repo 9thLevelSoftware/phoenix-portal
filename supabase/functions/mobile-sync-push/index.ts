@@ -1601,8 +1601,27 @@ Deno.serve(async (req) => {
               .from('personal_records')
               .insert(dedupedPrRows);
         const { error: prErr } = await write;
-        if (prErr) throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
-        personalRecordsInserted = dedupedPrRows.length;
+        if (prErr?.message?.includes('fk_personal_records_profile')) {
+          console.warn(
+            'FK violation on personal_records local_profile_id — retrying with NULL profile scope:',
+            prErr.message,
+          );
+          const nulledRows = dedupedPrRows.map((r) => ({ ...r, local_profile_id: null }));
+          const retryWrite = dedicatedPrsPresent
+            ? supabase
+                .from('personal_records')
+                .upsert(nulledRows, { onConflict: 'id' })
+            : supabase
+                .from('personal_records')
+                .insert(nulledRows);
+          const { error: retryErr } = await retryWrite;
+          if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
+          personalRecordsInserted = nulledRows.length;
+        } else if (prErr) {
+          throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+        } else {
+          personalRecordsInserted = dedupedPrRows.length;
+        }
       }
     }
 
