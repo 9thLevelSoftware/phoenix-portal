@@ -86,8 +86,18 @@ export interface LocalProfileRepairRow {
 	updated_at: string;
 }
 
+interface PostgresErrorLike {
+	code?: string | null;
+}
+
 interface PersonalRecordProfileReference {
 	localProfileId?: string | null;
+}
+
+export function isPostgresForeignKeyViolation(
+	error: PostgresErrorLike | null | undefined,
+): boolean {
+	return error?.code === "23503";
 }
 
 export function collectDedicatedRecordLocalProfileIds(
@@ -167,6 +177,32 @@ export function buildLocalProfileRepairRowsForDedicatedRecords(
 	return rows;
 }
 
+export function partitionPersonalRecordRowsByLocalProfileValidity(
+	rows: readonly PersonalRecordRow[],
+	validLocalProfileIds: ReadonlySet<string>,
+): {
+	validRows: PersonalRecordRow[];
+	invalidProfileRows: PersonalRecordRow[];
+	rowsWithInvalidProfilesNulled: PersonalRecordRow[];
+} {
+	const validRows: PersonalRecordRow[] = [];
+	const invalidProfileRows: PersonalRecordRow[] = [];
+	const rowsWithInvalidProfilesNulled: PersonalRecordRow[] = [];
+
+	for (const row of rows) {
+		const localProfileId = row.local_profile_id;
+		if (localProfileId !== null && !validLocalProfileIds.has(localProfileId)) {
+			invalidProfileRows.push(row);
+			rowsWithInvalidProfilesNulled.push({ ...row, local_profile_id: null });
+		} else {
+			validRows.push(row);
+			rowsWithInvalidProfilesNulled.push(row);
+		}
+	}
+
+	return { validRows, invalidProfileRows, rowsWithInvalidProfilesNulled };
+}
+
 export interface PersonalRecordIdentityInput {
 	local_profile_id?: string | null;
 	exercise_name?: string | null;
@@ -180,7 +216,7 @@ export interface PersonalRecordIdentityInput {
 export function personalRecordIdentityKey(
 	row: PersonalRecordIdentityInput,
 ): string {
-	const profileKey = row.local_profile_id ?? "__no_profile__";
+	const profileKey = row.local_profile_id ?? "default";
 	const exerciseKey = row.exercise_id
 		? `id:${row.exercise_id}`
 		: `name:${row.exercise_name ?? ""}`;

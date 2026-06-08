@@ -23,4 +23,12 @@ export function isValidLocalProfileId(value: unknown): value is string {
 	return UUID_REGEX.test(value);
 }
 
+export function buildLocalProfileOrNullPostgrestFilter(profileId: string): string {
+	if (!isValidLocalProfileId(profileId)) {
+		throw new Error("Invalid local profile id");
+	}
+
+	return `local_profile_id.eq.${profileId},local_profile_id.is.null`;
+}
+
 export { DEFAULT_PROFILE_ID };
