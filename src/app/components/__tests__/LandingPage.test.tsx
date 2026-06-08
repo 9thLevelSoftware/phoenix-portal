@@ -59,6 +59,10 @@ function mockAuthSettingsFailure() {
 	fetchMock.mockRejectedValue(new Error("settings unavailable"));
 }
 
+function mockAuthSettingsPending() {
+	fetchMock.mockReturnValue(new Promise(() => undefined));
+}
+
 async function renderLandingPage({
 	apple = false,
 	google = false,
@@ -158,6 +162,25 @@ describe("LandingPage", () => {
 		});
 	});
 
+	it("keeps social sign-in buttons hidden while provider settings are still loading", async () => {
+		const user = userEvent.setup();
+		mockAuthSettingsPending();
+		renderWithProviders(<LandingPage />);
+		await waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+		expect(
+			screen.queryByRole("button", { name: /sign in with google/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /sign in with apple/i }),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(/or continue with/i)).not.toBeInTheDocument();
+	});
+
 	it("keeps social sign-in buttons available when provider settings cannot be loaded", async () => {
 		const user = userEvent.setup();
 		await renderLandingPageWithAuthSettingsFailure();
@@ -165,7 +188,7 @@ describe("LandingPage", () => {
 		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
 		expect(
-			screen.getByRole("button", { name: /sign in with google/i }),
+			await screen.findByRole("button", { name: /sign in with google/i }),
 		).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /sign in with apple/i }),

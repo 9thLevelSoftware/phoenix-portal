@@ -73,6 +73,7 @@ const signUpSchema = z
 
 type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
+type SocialAuthAvailabilityStatus = "pending" | "loaded" | "failed";
 
 const TIER_BADGE_STYLES: Record<string, string> = {
 	EMBER: "bg-primary/20 text-primary border-primary/30",
@@ -91,6 +92,8 @@ export function LandingPage() {
 	const [scrolled, setScrolled] = useState(false);
 	const [socialAuthAvailability, setSocialAuthAvailability] =
 		useState<SocialAuthAvailability | null>(null);
+	const [socialAuthAvailabilityStatus, setSocialAuthAvailabilityStatus] =
+		useState<SocialAuthAvailabilityStatus>("pending");
 	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
 		isInAppBrowser: false,
 		browser: null,
@@ -98,7 +101,8 @@ export function LandingPage() {
 	});
 
 	const isSocialAuthProviderVisible = (provider: SocialAuthProvider) =>
-		socialAuthAvailability?.[provider] !== false;
+		socialAuthAvailabilityStatus === "failed" ||
+		socialAuthAvailability?.[provider] === true;
 	const hasSocialAuthOptions =
 		isSocialAuthProviderVisible("google") ||
 		isSocialAuthProviderVisible("apple");
@@ -140,11 +144,13 @@ export function LandingPage() {
 			.then((availability) => {
 				if (isActive) {
 					setSocialAuthAvailability(availability);
+					setSocialAuthAvailabilityStatus("loaded");
 				}
 			})
 			.catch(() => {
 				if (isActive) {
 					setSocialAuthAvailability(null);
+					setSocialAuthAvailabilityStatus("failed");
 				}
 			});
 
@@ -236,7 +242,10 @@ export function LandingPage() {
 	};
 
 	const handleOAuthSignIn = async (provider: SocialAuthProvider) => {
-		if (socialAuthAvailability?.[provider] === false) {
+		if (
+			socialAuthAvailabilityStatus !== "failed" &&
+			socialAuthAvailability?.[provider] !== true
+		) {
 			const providerLabel = provider === "apple" ? "Apple" : "Google";
 			const msg = `${providerLabel} sign-in is not configured right now.`;
 			setAuthAlertMessage(msg);

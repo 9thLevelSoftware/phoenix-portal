@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 /**
- * Build-time guard for Issue #68: refuse to ship known-stale Supabase
- * project refs in the Portal repo.
- *
- * The Portal previously hardcoded the project ref `ilzlswmatadlnsuxatcv`
- * (now deleted) in executable scripts (`package.json`) and in shipped
- * headers (`public/_headers`). That stale ref caused /auth/v1/settings to
- * NXDOMAIN, which in turn hid the Portal's social-auth buttons.
+ * Build-time guard for refusing to ship known-stale Supabase project refs in
+ * the Portal repo.
  *
  * This script scans the surface that ships to production -- `package.json`
  * (executable scripts), `public/_headers` (Cloudflare Pages CSP), and the
  * built `dist/` directory if present -- and fails the build if any of those
- * files still reference a stale ref. The denylist can be overridden via
- * the `STALE_SUPABASE_REFS` env var (comma-separated).
+ * files reference a ref listed in `STALE_SUPABASE_REFS` (comma-separated).
  *
  * Scope notes:
  *   - Test fixtures under `src/lib/__tests__/` and `tests/sync/` are
@@ -34,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
 /** Default denylist of known-dead Supabase project refs. */
-const DEFAULT_STALE_REFS = ["ilzlswmatadlnsuxatcv"];
+const DEFAULT_STALE_REFS = [];
 
 function loadStaleRefs() {
 	const fromEnv = process.env.STALE_SUPABASE_REFS?.split(",")
@@ -48,6 +42,10 @@ function loadStaleRefs() {
 		);
 	}
 	return refs;
+}
+
+function formatStaleRefs(staleRefs) {
+	return staleRefs.length > 0 ? staleRefs.join(", ") : "none configured";
 }
 
 /** Matches a Supabase project ref of the form `<20 alnum chars>.supabase.co`. */
@@ -105,8 +103,12 @@ export function findDeadSupabaseRefs(content, staleRefs = DEFAULT_STALE_REFS) {
  * project ref. `fileLabel` is included in the error message so callers
  * (e.g. the dist walker) can point operators at the offending artifact.
  */
-export function assertNoDeadSupabaseRefs(content, fileLabel) {
-	const dead = findDeadSupabaseRefs(content);
+export function assertNoDeadSupabaseRefs(
+	content,
+	fileLabel,
+	staleRefs = DEFAULT_STALE_REFS,
+) {
+	const dead = findDeadSupabaseRefs(content, staleRefs);
 	if (dead.length === 0) return;
 	const refsList = dead.map((ref) => `"${ref}"`).join(", ");
 	throw new Error(
@@ -253,7 +255,7 @@ function main() {
 	if (allMatches.length === 0) {
 		const scannedCount = allTargets.length;
 		console.log(
-			`assert-live-supabase-config: no stale Supabase refs (${staleRefs.join(", ")}) found in ${scannedCount} target(s).`,
+			`assert-live-supabase-config: no stale Supabase refs (${formatStaleRefs(staleRefs)}) found in ${scannedCount} target(s).`,
 		);
 		return;
 	}
@@ -262,7 +264,7 @@ function main() {
 		`assert-live-supabase-config: FAILED -- found ${allMatches.length} stale Supabase ref occurrence(s).`,
 	);
 	console.error(
-		"This usually means a deleted Supabase project ref (e.g. ilzlswmatadlnsuxatcv) was reintroduced into",
+		"This means a Supabase project ref listed in STALE_SUPABASE_REFS was found in",
 	);
 	console.error(
 		"an executable script or shipped header. Re-check the following lines and update or remove them:",
@@ -276,8 +278,8 @@ function main() {
 	console.error("     or use a real ref loaded from VITE_SUPABASE_URL at build time.");
 	console.error("  2. Move the literal hostname into a test fixture under src/lib/__tests__/");
 	console.error("     or tests/sync/ (those are not scanned by this guard).");
-	console.error("  3. If the ref is intentional, override the denylist via STALE_SUPABASE_REFS");
-	console.error("     (comma-separated) and re-run.");
+	console.error("  3. If the ref is intentional, remove it from STALE_SUPABASE_REFS");
+	console.error("     and re-run.");
 	process.exit(1);
 }
 

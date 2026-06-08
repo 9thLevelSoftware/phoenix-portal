@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
 	assertNoDeadSupabaseRefs,
@@ -17,7 +19,13 @@ import {
 
 describe("Cloudflare Pages build guard", () => {
 	it("runs the stale Supabase config guard after building deploy artifacts", () => {
-		const wranglerConfig = readFileSync("wrangler.toml", "utf8");
+		const wranglerConfig = readFileSync(
+			resolve(
+				dirname(fileURLToPath(import.meta.url)),
+				"../../../wrangler.toml",
+			),
+			"utf8",
+		);
 
 		const buildCommand = wranglerConfig.match(
 			/^\s*command\s*=\s*"(?<command>[^"]+)"/m,
@@ -108,17 +116,18 @@ describe("assert-live-supabase-config helpers", () => {
 		expect(extractSupabaseRefs("hello world https://example.com")).toEqual([]);
 	});
 
-	it("flags the known-dead Phoenix project ref (issue #68)", () => {
+	it("flags project refs from an explicit stale-ref denylist", () => {
 		expect(
 			findDeadSupabaseRefs(
 				"const url = 'https://ilzlswmatadlnsuxatcv.supabase.co/auth/v1/settings';",
+				["ilzlswmatadlnsuxatcv"],
 			),
 		).toEqual(["ilzlswmatadlnsuxatcv"]);
 	});
 
-	it("does not flag live refs against the default denylist", () => {
+	it("does not flag active project refs against the default denylist", () => {
 		expect(
-			findDeadSupabaseRefs("https://abcdefghijklmnopqrst.supabase.co"),
+			findDeadSupabaseRefs("https://ilzlswmatadlnsuxatcv.supabase.co"),
 		).toEqual([]);
 	});
 
@@ -127,6 +136,7 @@ describe("assert-live-supabase-config helpers", () => {
 			assertNoDeadSupabaseRefs(
 				"https://ilzlswmatadlnsuxatcv.supabase.co",
 				"dist/assets/index.js",
+				["ilzlswmatadlnsuxatcv"],
 			),
 		).toThrow(/dist\/assets\/index\.js contains dead Supabase project ref/);
 	});
