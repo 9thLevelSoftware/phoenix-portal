@@ -41,7 +41,6 @@ import {
 import { TIER_PRICING } from "@/lib/pricing";
 import {
 	buildSocialAuthRedirectUrl,
-	DEFAULT_SOCIAL_AUTH_AVAILABILITY,
 	GOOGLE_OAUTH_SCOPES,
 	getSocialAuthAvailability,
 	type SocialAuthAvailability,
@@ -91,15 +90,18 @@ export function LandingPage() {
 	const [authAlertMessage, setAuthAlertMessage] = useState<string | null>(null);
 	const [scrolled, setScrolled] = useState(false);
 	const [socialAuthAvailability, setSocialAuthAvailability] =
-		useState<SocialAuthAvailability>(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+		useState<SocialAuthAvailability | null>(null);
 	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
 		isInAppBrowser: false,
 		browser: null,
 		platform: "other",
 	});
 
+	const isSocialAuthProviderVisible = (provider: SocialAuthProvider) =>
+		socialAuthAvailability?.[provider] !== false;
 	const hasSocialAuthOptions =
-		socialAuthAvailability.google || socialAuthAvailability.apple;
+		isSocialAuthProviderVisible("google") ||
+		isSocialAuthProviderVisible("apple");
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -142,7 +144,7 @@ export function LandingPage() {
 			})
 			.catch(() => {
 				if (isActive) {
-					setSocialAuthAvailability(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+					setSocialAuthAvailability(null);
 				}
 			});
 
@@ -234,7 +236,7 @@ export function LandingPage() {
 	};
 
 	const handleOAuthSignIn = async (provider: SocialAuthProvider) => {
-		if (!socialAuthAvailability[provider]) {
+		if (socialAuthAvailability?.[provider] === false) {
 			const providerLabel = provider === "apple" ? "Apple" : "Google";
 			const msg = `${providerLabel} sign-in is not configured right now.`;
 			setAuthAlertMessage(msg);
@@ -630,7 +632,7 @@ export function LandingPage() {
 
 								{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
 								<div className="flex flex-col gap-3">
-									{socialAuthAvailability.google ? (
+									{isSocialAuthProviderVisible("google") ? (
 										<button
 											type="button"
 											disabled={authLoading}
@@ -665,7 +667,7 @@ export function LandingPage() {
 											</span>
 										</button>
 									) : null}
-									{socialAuthAvailability.apple ? (
+									{isSocialAuthProviderVisible("apple") ? (
 										<button
 											type="button"
 											disabled={authLoading}

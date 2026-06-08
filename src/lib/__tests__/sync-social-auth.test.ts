@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
 	assertNoDeadSupabaseRefs,
@@ -13,6 +14,22 @@ import {
 	MANAGED_BLOCK_END,
 	MANAGED_BLOCK_START,
 } from "../../../scripts/sync-social-auth.mjs";
+
+describe("Cloudflare Pages build guard", () => {
+	it("runs the stale Supabase config guard after building deploy artifacts", () => {
+		const wranglerConfig = readFileSync("wrangler.toml", "utf8");
+
+		const buildCommand = wranglerConfig.match(
+			/^\s*command\s*=\s*"(?<command>[^"]+)"/m,
+		)?.groups?.command;
+
+		expect(buildCommand).toContain("npm run build");
+		expect(buildCommand).toContain("npm run assert:supabase-config");
+		expect(
+			buildCommand?.indexOf("npm run assert:supabase-config"),
+		).toBeGreaterThan(buildCommand?.indexOf("npm run build") ?? -1);
+	});
+});
 
 describe("sync-social-auth", () => {
 	it("infers the project ref from the public Supabase URL", () => {
