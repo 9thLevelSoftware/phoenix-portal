@@ -1,6 +1,6 @@
 import { Calendar, Clock, Dumbbell, Repeat } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
-import { formatWeight } from "@/lib/units";
+import { formatWeight, type WeightUnit } from "@/lib/units";
 import type {
 	CycleSnapshot,
 	EmbeddedRoutineSnapshot,
@@ -25,13 +25,16 @@ function formatStoredDurationMinutes(duration: number | null | undefined) {
 	return `${Math.round(duration / 60)} min`;
 }
 
-function formatLoad(exercise: RoutineExerciseSnapshot) {
+function formatLoad(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	if (exercise.is_bodyweight) return "Bodyweight";
-	return formatWeight((exercise.weight ?? 0) * WEIGHT_MULTIPLIER, "kg");
+	return formatWeight((exercise.weight ?? 0) * WEIGHT_MULTIPLIER, unit);
 }
 
-function formatPrescription(exercise: RoutineExerciseSnapshot) {
-	const load = formatLoad(exercise);
+function formatPrescription(
+	exercise: RoutineExerciseSnapshot,
+	unit: WeightUnit,
+) {
+	const load = formatLoad(exercise, unit);
 	if (exercise.duration_seconds) {
 		return `${exercise.sets} sets / ${exercise.duration_seconds}s / ${load}`;
 	}
@@ -54,10 +57,10 @@ function exerciseBadges(exercise: RoutineExerciseSnapshot) {
 	].filter(Boolean) as string[];
 }
 
-function perSetRows(exercise: RoutineExerciseSnapshot) {
+function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const weights = asPrimitiveArray(exercise.per_set_weights).map((value) =>
 		typeof value === "number"
-			? formatWeight(value * WEIGHT_MULTIPLIER, "kg")
+			? formatWeight(value * WEIGHT_MULTIPLIER, unit)
 			: String(value),
 	);
 	const reps = asPrimitiveArray(exercise.per_set_reps).map(String);
@@ -77,11 +80,13 @@ function perSetRows(exercise: RoutineExerciseSnapshot) {
 function RoutineExerciseCard({
 	exercise,
 	index,
+	unit,
 }: {
 	exercise: RoutineExerciseSnapshot;
 	index: number;
+	unit: WeightUnit;
 }) {
-	const perSet = perSetRows(exercise);
+	const perSet = perSetRows(exercise, unit);
 
 	return (
 		<div className="rounded-lg border border-secondary bg-surface-2 p-3">
@@ -99,7 +104,7 @@ function RoutineExerciseCard({
 						</Badge>
 					</div>
 					<p className="text-sm text-secondary-foreground">
-						{formatPrescription(exercise)}
+						{formatPrescription(exercise, unit)}
 					</p>
 					<p className="mt-1 text-xs text-muted-foreground">
 						Rest: {exercise.rest_seconds}s between sets
@@ -131,9 +136,11 @@ function RoutineExerciseCard({
 export function RoutineSnapshotPreview({
 	exercises,
 	title = "Routine Details",
+	unit = "kg",
 }: {
 	exercises: RoutineExerciseSnapshot[] | null | undefined;
 	title?: string;
+	unit?: WeightUnit;
 }) {
 	if (!exercises || exercises.length === 0) {
 		return (
@@ -205,6 +212,7 @@ export function RoutineSnapshotPreview({
 							key={`${item.exercise.name}-${item.exercise.order_index}`}
 							exercise={item.exercise}
 							index={item.index}
+							unit={unit}
 						/>
 					) : (
 						<div
@@ -232,6 +240,7 @@ export function RoutineSnapshotPreview({
 										key={`${exercise.name}-${exercise.order_index}`}
 										exercise={exercise}
 										index={index}
+										unit={unit}
 									/>
 								))}
 							</div>
@@ -271,8 +280,10 @@ function SettingList({ title, value }: { title: string; value: unknown }) {
 
 function CycleRoutineDetails({
 	routine,
+	unit,
 }: {
 	routine: EmbeddedRoutineSnapshot | null | undefined;
+	unit: WeightUnit;
 }) {
 	if (!routine) {
 		return (
@@ -291,6 +302,7 @@ function CycleRoutineDetails({
 				<RoutineSnapshotPreview
 					exercises={routine.exercises}
 					title={`${routine.name} Exercises`}
+					unit={unit}
 				/>
 			</div>
 		</details>
@@ -299,8 +311,10 @@ function CycleRoutineDetails({
 
 export function CycleSnapshotPreview({
 	snapshot,
+	unit = "kg",
 }: {
 	snapshot: CycleSnapshot | null | undefined;
+	unit?: WeightUnit;
 }) {
 	if (!snapshot) {
 		return (
@@ -419,7 +433,9 @@ export function CycleSnapshotPreview({
 									{day.notes}
 								</p>
 							)}
-							{isWorkout && <CycleRoutineDetails routine={routine} />}
+							{isWorkout && (
+								<CycleRoutineDetails routine={routine} unit={unit} />
+							)}
 						</div>
 					);
 				})}

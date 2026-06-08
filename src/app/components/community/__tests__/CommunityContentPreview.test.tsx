@@ -32,9 +32,42 @@ describe("CommunityContentPreview", () => {
 		);
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
-		expect(screen.getByText(/3 sets \/ 8 reps/i)).toBeInTheDocument();
+		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
 		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
+	});
+
+	it("renders routine loads in lbs when requested", () => {
+		render(
+			<RoutineSnapshotPreview
+				unit="lbs"
+				exercises={[
+					{
+						name: "Bench Press",
+						muscle_group: "Chest",
+						sets: 3,
+						reps: 8,
+						weight: 40,
+						rest_seconds: 90,
+						duration_seconds: null,
+						mode: "OLD_SCHOOL",
+						order_index: 0,
+						per_set_weights: [40, 45],
+						per_set_reps: [8, 6],
+						per_set_rest: [90, 120],
+						is_amrap: false,
+						is_bodyweight: false,
+					},
+				]}
+			/>,
+		);
+
+		expect(
+			screen.getByText(/3 sets \/ 8 reps \/ 176.4 lbs/),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Weights: 176.4 lbs, 198.4 lbs/),
+		).toBeInTheDocument();
 	});
 
 	it("keeps exercise numbering sequential when supersets are rendered", () => {

@@ -191,7 +191,25 @@ function MobileRecentActivityCard({
 	);
 }
 
-function ActiveChallengesSection({ userId }: { userId: string }) {
+function formatChallengeValue(
+	value: number,
+	challengeType: string,
+	unit: WeightUnit,
+	targetUnit?: string | null,
+): string {
+	if (challengeType === "volume") {
+		return formatVolume(value, unit);
+	}
+	return `${value.toLocaleString()}${targetUnit ? ` ${targetUnit}` : ""}`;
+}
+
+function ActiveChallengesSection({
+	userId,
+	unit,
+}: {
+	userId: string;
+	unit: WeightUnit;
+}) {
 	const {
 		data: userChallenges,
 		isPending,
@@ -289,8 +307,12 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 									{challenge.name}
 								</h4>
 								<p className="text-xs text-muted-foreground">
-									{challenge.target_value.toLocaleString()}
-									{challenge.target_unit ? ` ${challenge.target_unit}` : ""}{" "}
+									{formatChallengeValue(
+										challenge.target_value,
+										challenge.challenge_type,
+										unit,
+										challenge.target_unit,
+									)}{" "}
 									target
 								</p>
 							</div>
@@ -310,7 +332,15 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 						<Progress value={progress?.percentage ?? 0} className="h-2" />
 						<p className="mt-2 text-xs text-muted-foreground">
 							{progress
-								? `${Math.round(progress.current).toLocaleString()} / ${Math.round(progress.target).toLocaleString()}`
+								? `${formatChallengeValue(
+										Math.round(progress.current),
+										challenge.challenge_type,
+										unit,
+									)} / ${formatChallengeValue(
+										Math.round(progress.target),
+										challenge.challenge_type,
+										unit,
+									)}`
 								: "Calculating progress..."}
 						</p>
 					</div>
@@ -1363,7 +1393,10 @@ export function Dashboard() {
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
-									<ActiveChallengesSection userId={user?.id ?? ""} />
+									<ActiveChallengesSection
+										userId={user?.id ?? ""}
+										unit={unit}
+									/>
 								</Card>
 							</motion.div>
 

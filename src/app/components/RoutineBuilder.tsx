@@ -10,6 +10,7 @@ import {
 	Eye,
 	GripVertical,
 	Loader2,
+	PlayCircle,
 	Plus,
 	Save,
 	Search,
@@ -39,6 +40,7 @@ import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
+import { getPrimaryExerciseDemoMedia } from "@/lib/exercise-demo-media";
 import {
 	convertWeight,
 	formatWeight,
@@ -1303,15 +1305,21 @@ function ExercisePickerModal({
 
 	// Fetch exercises from the exercise_catalog table
 	const { data: catalogExercises, isLoading: catalogLoading } =
-		useExerciseCatalog();
+		useExerciseCatalog({ includeArchived: true });
 
 	const allExercises = useMemo(() => {
-		return (catalogExercises ?? []).map((ex) => ({
-			name: ex.display_name,
-			muscleGroup: ex.muscle_group,
-			exerciseId: ex.id,
-			equipment: ex.equipment,
-		}));
+		return (catalogExercises ?? []).map((ex) => {
+			const demoMedia = getPrimaryExerciseDemoMedia(ex.id);
+
+			return {
+				name: ex.display_name,
+				muscleGroup: ex.muscle_group,
+				exerciseId: ex.id,
+				equipment: ex.equipment,
+				demoThumbnailUrl: ex.thumbnail_url ?? demoMedia?.thumbnailUrl ?? null,
+				demoVideoUrl: demoMedia?.videoUrl ?? null,
+			};
+		});
 	}, [catalogExercises]);
 
 	// Get unique muscle groups for filter buttons
@@ -1418,22 +1426,40 @@ function ExercisePickerModal({
 									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
 								>
 									<div className="flex items-center justify-between">
-										<div>
-											<h4 className="font-semibold text-white mb-1">
-												{exercise.name}
-											</h4>
-											<div className="flex gap-1.5 flex-wrap">
-												<Badge className="bg-primary text-white border-0 text-xs">
-													{exercise.muscleGroup}
-												</Badge>
-												{exercise.equipment.length > 0 && (
-													<Badge className="bg-secondary text-muted-foreground border-0 text-xs">
-														{formatEquipment(exercise.equipment)}
+										<div className="flex min-w-0 items-center gap-3">
+											{exercise.demoThumbnailUrl && (
+												<div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-secondary bg-background">
+													<img
+														src={exercise.demoThumbnailUrl}
+														alt={`Demo preview for ${exercise.name}`}
+														loading="lazy"
+														className="h-full w-full object-cover"
+													/>
+													<div
+														aria-hidden="true"
+														className="absolute inset-0 flex items-center justify-center bg-black/20"
+													>
+														<PlayCircle className="h-5 w-5 text-white drop-shadow" />
+													</div>
+												</div>
+											)}
+											<div className="min-w-0">
+												<h4 className="mb-1 truncate font-semibold text-white">
+													{exercise.name}
+												</h4>
+												<div className="flex flex-wrap gap-1.5">
+													<Badge className="bg-primary text-white border-0 text-xs">
+														{exercise.muscleGroup}
 													</Badge>
-												)}
+													{exercise.equipment.length > 0 && (
+														<Badge className="bg-secondary text-muted-foreground border-0 text-xs">
+															{formatEquipment(exercise.equipment)}
+														</Badge>
+													)}
+												</div>
 											</div>
 										</div>
-										<Plus className="w-5 h-5 text-muted-foreground" />
+										<Plus className="ml-3 h-5 w-5 flex-shrink-0 text-muted-foreground" />
 									</div>
 								</button>
 							))}

@@ -36,6 +36,7 @@ import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { PHOENIX } from "@/lib/colors";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
@@ -115,6 +116,7 @@ export function BiomechanicsContent({
 }: BiomechanicsContentProps) {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const unit = usePreferredWeightUnit();
 	const showBiomechanics = view === "all" || view === "biomechanics";
 	const showPerformance = view === "all" || view === "performance";
 	const showExpandedSections = view === "all";
@@ -453,7 +455,7 @@ export function BiomechanicsContent({
 								</Section>
 
 								<Section title="Body Overview" icon={Activity}>
-									<MuscleHeatmap muscleVolumes={muscleVolumes} />
+									<MuscleHeatmap muscleVolumes={muscleVolumes} unit={unit} />
 								</Section>
 							</div>
 						</>
@@ -565,7 +567,7 @@ export function BiomechanicsContent({
 								icon={Activity}
 								className="col-span-full"
 							>
-								<SummaryReport userId={userId} />
+								<SummaryReport userId={userId} unit={unit} />
 							</Section>
 
 							<Section

@@ -24,6 +24,7 @@ interface InsightInput {
   recentPRs: Array<{
     exercise: string;
     displayName: string;
+    recordType: string | null;
     value: number;
     previousValue?: number;
   }>;
@@ -34,6 +35,40 @@ interface InsightInput {
 // ── Insight rule engine (duplicate of src/lib/insights.ts) ───────────────────
 
 const STREAK_MILESTONES = [7, 14, 21, 30];
+const KG_TO_LBS = 2.20462;
+const WEIGHT_MULTIPLIER = 2;
+
+type WeightUnit = 'kg' | 'lbs';
+
+function normalizeWeightUnit(unit: unknown): WeightUnit {
+  return unit === 'lbs' ? 'lbs' : 'kg';
+}
+
+function convertWeight(valueKg: number, unit: WeightUnit): number {
+  return unit === 'lbs' ? valueKg * KG_TO_LBS : valueKg;
+}
+
+function formatWeight(valueKg: number, unit: WeightUnit): string {
+  const converted = convertWeight(valueKg, unit);
+  return unit === 'lbs'
+    ? `${converted.toFixed(1)} lbs`
+    : `${Math.round(converted)} kg`;
+}
+
+function formatVolume(valueKg: number, unit: WeightUnit): string {
+  const converted = convertWeight(valueKg, unit);
+  if (converted >= 1000) {
+    return `${(converted / 1000).toFixed(1)}K ${unit}`;
+  }
+  return unit === 'lbs'
+    ? `${converted.toFixed(1)} lbs`
+    : `${Math.round(converted)} kg`;
+}
+
+function roundWeightMetric(valueKg: number, unit: WeightUnit): number {
+  const converted = convertWeight(valueKg, unit);
+  return Number(converted.toFixed(unit === 'lbs' ? 1 : 0));
+}
 
 function formatWorkoutPhase(phase: string | null | undefined): string {
   switch ((phase ?? 'COMBINED').toUpperCase()) {
@@ -71,7 +106,10 @@ function formatPersonalRecordName(
     : `${exercise} ${formattedPhase} ${formattedType}`;
 }
 
-function generateInsights(input: InsightInput): TrainingInsight[] {
+function generateInsights(
+  input: InsightInput,
+  unit: WeightUnit = 'kg'
+): TrainingInsight[] {
   const insights: TrainingInsight[] = [];
 
   // ── Volume Trend ────────────────────────────────────────────────────────────
@@ -165,19 +203,33 @@ function generateInsights(input: InsightInput): TrainingInsight[] {
   for (const pr of input.recentPRs) {
     const delta =
       pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
+    const isVolumeRecord = (pr.recordType ?? '').toUpperCase() === 'MAX_VOLUME';
+    const formattedValue = isVolumeRecord
+      ? formatVolume(pr.value, unit)
+      : formatWeight(pr.value, unit);
+    const formattedDelta = delta !== undefined
+      ? isVolumeRecord
+        ? formatVolume(delta, unit)
+        : formatWeight(delta, unit)
+      : undefined;
+    const formattedPrevious = pr.previousValue !== undefined
+      ? isVolumeRecord
+        ? formatVolume(pr.previousValue, unit)
+        : formatWeight(pr.previousValue, unit)
+      : undefined;
     insights.push({
       id: `pr-${pr.displayName.toLowerCase().replace(/\s+/g, '-')}`,
       type: 'achievement',
       title: `New PR: ${pr.displayName}`,
       description:
-        delta !== undefined
-          ? `You set a personal record on ${pr.displayName} — ${pr.value} lbs (up ${delta} lbs from ${pr.previousValue} lbs).`
-          : `You set a personal record on ${pr.displayName} — ${pr.value} lbs.`,
+        delta !== undefined && formattedDelta && formattedPrevious
+          ? `You set a personal record on ${pr.displayName} — ${formattedValue} (up ${formattedDelta} from ${formattedPrevious}).`
+          : `You set a personal record on ${pr.displayName} — ${formattedValue}.`,
       metric: {
         name: pr.displayName,
-        value: pr.value,
-        unit: 'lbs',
-        delta,
+        value: roundWeightMetric(pr.value, unit),
+        unit,
+        delta: delta !== undefined ? roundWeightMetric(delta, unit) : undefined,
       },
     });
   }
@@ -326,6 +378,18 @@ Deno.serve(async (req) => {
     const currentStart = new Date(now.getTime() - periodDays * 86400_000);
     const previousStart = new Date(currentStart.getTime() - periodDays * 86400_000);
 
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('weight_unit')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.warn('Failed to fetch profile weight unit; defaulting to kg:', profileError);
+    }
+
+    const weightUnit = normalizeWeightUnit(profile?.weight_unit);
+
     // ── 1. Fetch workout sessions (current + previous period) ─────────────────
     const { data: allSessions, error: sessionsError } = await supabaseAdmin
       .from('workout_sessions')
@@ -405,8 +469,12 @@ Deno.serve(async (req) => {
         r.record_type,
         r.workout_phase
       ),
-      value: r.value,
-      previousValue: r.previous_value ?? undefined,
+      recordType: r.record_type,
+      value: r.value * WEIGHT_MULTIPLIER,
+      previousValue:
+        r.previous_value !== null && r.previous_value !== undefined
+          ? r.previous_value * WEIGHT_MULTIPLIER
+          : undefined,
     }));
 
     // ── 4. Plateau detection (exercise_progress: 1RM flat for 3+ weeks) ───────
@@ -535,7 +603,7 @@ Deno.serve(async (req) => {
       trainingLoadScore,
     };
 
-    const insights = generateInsights(insightInput);
+    const insights = generateInsights(insightInput, weightUnit);
 
     // ── 8. Persist: delete old, insert new ────────────────────────────────────
     const { error: deleteError } = await supabaseAdmin

@@ -43,6 +43,37 @@ describe("generateInsights", () => {
 		expect(pr).toBeDefined();
 	});
 
+	it("formats PR descriptions and metric badges in kg by default", () => {
+		const insights = generateInsights(baseInput);
+		const pr = insights.find(
+			(i) => i.type === "achievement" && i.title.includes("PR"),
+		);
+		expect(pr?.description).toContain("225 kg");
+		expect(pr?.description).toContain("up 10 kg from 215 kg");
+		expect(pr?.description).not.toContain("lbs");
+		expect(pr?.metric).toMatchObject({
+			name: "Bench Press",
+			value: 225,
+			unit: "kg",
+			delta: 10,
+		});
+	});
+
+	it("formats PR descriptions and metric badges in lbs when requested", () => {
+		const insights = generateInsights(baseInput, "lbs");
+		const pr = insights.find(
+			(i) => i.type === "achievement" && i.title.includes("PR"),
+		);
+		expect(pr?.description).toContain("496.0 lbs");
+		expect(pr?.description).toContain("up 22.0 lbs from 474.0 lbs");
+		expect(pr?.metric).toMatchObject({
+			name: "Bench Press",
+			value: 496,
+			unit: "lbs",
+			delta: 22,
+		});
+	});
+
 	it("flags plateau exercises", () => {
 		const insights = generateInsights(baseInput);
 		const plateau = insights.find((i) => i.title.includes("Plateau"));
