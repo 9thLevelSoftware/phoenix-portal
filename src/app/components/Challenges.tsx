@@ -30,6 +30,9 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { formatChallengeValue } from "@/lib/challenges";
+import type { WeightUnit } from "@/lib/units";
 import { useJoinChallenge, useLeaveChallenge } from "@/mutations/challenges";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -74,6 +77,7 @@ function ChallengeProgressBar({
 	targetValue,
 	startDate,
 	endDate,
+	unit,
 	compact = false,
 }: {
 	userId: string;
@@ -82,6 +86,7 @@ function ChallengeProgressBar({
 	targetValue: number;
 	startDate: string;
 	endDate: string;
+	unit: WeightUnit;
 	compact?: boolean;
 }) {
 	const { data: progress } = useQuery(
@@ -120,8 +125,8 @@ function ChallengeProgressBar({
 			<Progress value={percentage} className="h-3" />
 			{progress && (
 				<div className="text-xs text-muted-foreground mt-1 font-data">
-					{progress.current.toLocaleString()} /{" "}
-					{progress.target.toLocaleString()}
+					{formatChallengeValue(progress.current, challengeType, unit)} /{" "}
+					{formatChallengeValue(progress.target, challengeType, unit)}
 				</div>
 			)}
 		</div>
@@ -137,6 +142,7 @@ function ChallengeCard({
 	isExpanded,
 	daysRemaining: _daysRemaining,
 	userId,
+	unit,
 	onToggleExpand,
 	onJoin,
 	onLeave,
@@ -149,6 +155,7 @@ function ChallengeCard({
 	isExpanded: boolean;
 	daysRemaining: number;
 	userId: string;
+	unit: WeightUnit;
 	onToggleExpand: () => void;
 	onJoin: () => void;
 	onLeave: () => void;
@@ -199,6 +206,7 @@ function ChallengeCard({
 								targetValue={challenge.target_value}
 								startDate={challenge.start_date}
 								endDate={challenge.end_date}
+								unit={unit}
 							/>
 						)}
 
@@ -207,8 +215,12 @@ function ChallengeCard({
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Target</div>
 								<div className="text-xl text-white font-data">
-									{challenge.target_value.toLocaleString()}{" "}
-									{challenge.target_unit}
+									{formatChallengeValue(
+										challenge.target_value,
+										challenge.challenge_type,
+										unit,
+										challenge.target_unit,
+									)}
 								</div>
 							</div>
 							<div>
@@ -294,8 +306,12 @@ function ChallengeCard({
 							<div className="flex items-center gap-1">
 								<Target className="w-4 h-4" />
 								<span>
-									{challenge.target_value.toLocaleString()}{" "}
-									{challenge.target_unit}
+									{formatChallengeValue(
+										challenge.target_value,
+										challenge.challenge_type,
+										unit,
+										challenge.target_unit,
+									)}
 								</span>
 							</div>
 						</div>
@@ -395,10 +411,12 @@ function MobileChallengeCard({
 	challenge,
 	isJoined,
 	userId,
+	unit,
 }: {
 	challenge: Challenge;
 	isJoined: boolean;
 	userId: string;
+	unit: WeightUnit;
 }) {
 	return (
 		<Card className="p-4 bg-surface-2 border-secondary">
@@ -425,6 +443,7 @@ function MobileChallengeCard({
 							targetValue={challenge.target_value}
 							startDate={challenge.start_date}
 							endDate={challenge.end_date}
+							unit={unit}
 							compact
 						/>
 					)}
@@ -448,6 +467,7 @@ function MobileChallengeCard({
 
 export function Challenges() {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const userId = user?.id ?? "";
 
 	const { data: challenges, isPending: challengesLoading } = useQuery(
@@ -580,6 +600,7 @@ export function Challenges() {
 													challenge={challenge}
 													isJoined={true}
 													userId={userId}
+													unit={unit}
 												/>
 											</SwipeableCard>
 											{mobileExpandedId === challenge.id && (
@@ -591,7 +612,15 @@ export function Challenges() {
 														<span className="capitalize">
 															{challenge.challenge_type}
 														</span>
-														<span>Target: {challenge.target_value}</span>
+														<span>
+															Target:{" "}
+															{formatChallengeValue(
+																challenge.target_value,
+																challenge.challenge_type,
+																unit,
+																challenge.target_unit,
+															)}
+														</span>
 														{challenge.prize && (
 															<span className="text-accent">
 																{challenge.prize}
@@ -759,6 +788,7 @@ export function Challenges() {
 										isExpanded={expandedId === challenge.id}
 										daysRemaining={getDaysRemaining(challenge.end_date)}
 										userId={userId}
+										unit={unit}
 										onToggleExpand={() =>
 											setExpandedId(
 												expandedId === challenge.id ? null : challenge.id,

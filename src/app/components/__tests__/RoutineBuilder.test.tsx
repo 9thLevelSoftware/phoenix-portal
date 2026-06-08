@@ -44,6 +44,29 @@ vi.mock("@/mutations/routines", () => ({
 	}),
 }));
 
+const mockCatalog = vi.hoisted(() => {
+	const state = {
+		exercises: [] as Array<Record<string, unknown>>,
+		filters: [] as unknown[],
+	};
+	return {
+		state,
+		useExerciseCatalog: vi.fn((filters?: { includeArchived?: boolean }) => {
+			state.filters.push(filters);
+			return {
+				data: filters?.includeArchived
+					? state.exercises
+					: state.exercises.filter((exercise) => !exercise.archived),
+				isLoading: false,
+			};
+		}),
+	};
+});
+
+vi.mock("@/hooks/useExerciseCatalog", () => ({
+	useExerciseCatalog: mockCatalog.useExerciseCatalog,
+}));
+
 // --- Supabase mock ---
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
@@ -86,10 +109,37 @@ vi.mock("sonner", () => ({
 	toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+function tricepPushdownCatalogRow() {
+	return {
+		id: "BUxuV42l6oolZVde",
+		name: "Tricep Pushdown",
+		display_name: "Tricep Pushdown",
+		description: null,
+		muscle_group: "ARMS",
+		muscle_groups: ["ARMS"],
+		muscles: ["triceps"],
+		equipment: ["SHORT_BAR"],
+		movement: "tricep_extension",
+		sidedness: "bilateral",
+		grip: "pronated",
+		grip_width: null,
+		default_cable_config: "DOUBLE",
+		min_rep_range: 5,
+		popularity: 0,
+		aliases: [],
+		thumbnail_url:
+			"https://example.invalid/XMK02bqNtt76JAbEvjknvG69J01KKPVYaDp6FWOPV9La8/thumbnail.jpg",
+		archived: true,
+		is_custom: false,
+	};
+}
+
 describe("RoutineBuilder", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockParams.current = {};
+		mockCatalog.state.exercises = [];
+		mockCatalog.state.filters = [];
 	});
 
 	// ---------------------------------------------------------------
@@ -221,6 +271,65 @@ describe("RoutineBuilder", () => {
 		await waitFor(() => {
 			expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
 		});
+	});
+
+	it("requests archived catalog exercises for routine creation parity with mobile", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+
+		await waitFor(() => {
+			expect(mockCatalog.useExerciseCatalog).toHaveBeenCalledWith({
+				includeArchived: true,
+			});
+		});
+	});
+
+	it("allows selecting archived catalog exercises and preserves the catalog ID in the saved routine", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.type(
+			await screen.findByPlaceholderText(/search exercises/i),
+			"tricep pushdown",
+		);
+		await user.click(
+			await screen.findByRole("button", { name: /tricep pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockSaveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						name: "Tricep Pushdown",
+						muscle_group: "ARMS",
+						exercise_id: "BUxuV42l6oolZVde",
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
+	it("renders a demo thumbnail affordance for catalog exercises with media", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+
+		expect(
+			await screen.findByRole("img", {
+				name: /demo preview for tricep pushdown/i,
+			}),
+		).toHaveAttribute(
+			"src",
+			"https://example.invalid/XMK02bqNtt76JAbEvjknvG69J01KKPVYaDp6FWOPV9La8/thumbnail.jpg",
+		);
 	});
 
 	// ---------------------------------------------------------------

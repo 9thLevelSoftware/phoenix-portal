@@ -5,6 +5,12 @@ import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
+import {
+	formatWeight,
+	type WeightUnit,
+	weightInputToKg,
+	weightInputValue,
+} from "@/lib/units";
 import type { DeloadConfig, ProgressionConfig } from "./types";
 
 interface ProgressionRulesProps {
@@ -16,6 +22,7 @@ interface ProgressionRulesProps {
 	onProgressionConfigChange: (config: ProgressionConfig) => void;
 	onDeloadEnabledChange: (enabled: boolean) => void;
 	onDeloadConfigChange: (config: DeloadConfig) => void;
+	unit?: WeightUnit;
 }
 
 export function ProgressionRules({
@@ -27,13 +34,20 @@ export function ProgressionRules({
 	onProgressionConfigChange,
 	onDeloadEnabledChange,
 	onDeloadConfigChange,
+	unit = "kg",
 }: ProgressionRulesProps) {
 	const [isExpanded, setIsExpanded] = useState(true);
+	const fixedStep = 0.5;
 
 	const currentDeload = deloadConfig || {
 		frequencyWeeks: 4,
 		intensityPercent: 60,
 		volumePercent: 50,
+	};
+
+	const adjustFixedIncrement = (valueKg: number | undefined, delta: number) => {
+		const displayValue = Number(weightInputValue(valueKg ?? 0, unit));
+		return weightInputToKg(Math.max(0, displayValue + delta), unit);
 	};
 
 	return (
@@ -231,8 +245,15 @@ export function ProgressionRules({
 									<div className="text-sm text-muted-foreground">
 										<span className="text-accent">💡 EXAMPLE</span>
 										<br />
-										If you're lifting 80kg and complete the cycle successfully,
-										next cycle will use 82kg (+
+										If you're lifting {formatWeight(80, unit)} and complete the
+										cycle successfully, next cycle will use{" "}
+										{formatWeight(
+											80 *
+												(1 +
+													(progressionConfig.percentageIncrease || 2.5) / 100),
+											unit,
+										)}{" "}
+										(+
 										{progressionConfig.percentageIncrease || 2.5}%)
 									</div>
 								</div>
@@ -259,7 +280,10 @@ export function ProgressionRules({
 													...progressionConfig,
 													upperBodyIncrement: Math.max(
 														0,
-														(progressionConfig.upperBodyIncrement || 2.5) - 0.5,
+														adjustFixedIncrement(
+															progressionConfig.upperBodyIncrement ?? 2.5,
+															-fixedStep,
+														),
 													),
 												})
 											}
@@ -270,25 +294,35 @@ export function ProgressionRules({
 										<span className="text-muted-foreground">+</span>
 										<Input
 											type="number"
-											step="0.5"
-											value={progressionConfig.upperBodyIncrement || 2.5}
+											step={fixedStep}
+											value={weightInputValue(
+												progressionConfig.upperBodyIncrement ?? 2.5,
+												unit,
+											)}
 											onChange={(e) =>
 												onProgressionConfigChange({
 													...progressionConfig,
-													upperBodyIncrement: parseFloat(e.target.value) || 2.5,
+													upperBodyIncrement: weightInputToKg(
+														e.target.value,
+														unit,
+													),
 												})
 											}
 											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-muted-foreground">kg per cycle</span>
+										<span className="text-muted-foreground">
+											{unit} per cycle
+										</span>
 										<Button
 											size="sm"
 											variant="outline"
 											onClick={() =>
 												onProgressionConfigChange({
 													...progressionConfig,
-													upperBodyIncrement:
-														(progressionConfig.upperBodyIncrement || 2.5) + 0.5,
+													upperBodyIncrement: adjustFixedIncrement(
+														progressionConfig.upperBodyIncrement ?? 2.5,
+														fixedStep,
+													),
 												})
 											}
 											className="border-secondary"
@@ -311,7 +345,10 @@ export function ProgressionRules({
 													...progressionConfig,
 													lowerBodyIncrement: Math.max(
 														0,
-														(progressionConfig.lowerBodyIncrement || 5.0) - 0.5,
+														adjustFixedIncrement(
+															progressionConfig.lowerBodyIncrement ?? 5.0,
+															-fixedStep,
+														),
 													),
 												})
 											}
@@ -322,25 +359,35 @@ export function ProgressionRules({
 										<span className="text-muted-foreground">+</span>
 										<Input
 											type="number"
-											step="0.5"
-											value={progressionConfig.lowerBodyIncrement || 5.0}
+											step={fixedStep}
+											value={weightInputValue(
+												progressionConfig.lowerBodyIncrement ?? 5.0,
+												unit,
+											)}
 											onChange={(e) =>
 												onProgressionConfigChange({
 													...progressionConfig,
-													lowerBodyIncrement: parseFloat(e.target.value) || 5.0,
+													lowerBodyIncrement: weightInputToKg(
+														e.target.value,
+														unit,
+													),
 												})
 											}
 											className="text-center bg-background border-secondary"
 										/>
-										<span className="text-muted-foreground">kg per cycle</span>
+										<span className="text-muted-foreground">
+											{unit} per cycle
+										</span>
 										<Button
 											size="sm"
 											variant="outline"
 											onClick={() =>
 												onProgressionConfigChange({
 													...progressionConfig,
-													lowerBodyIncrement:
-														(progressionConfig.lowerBodyIncrement || 5.0) + 0.5,
+													lowerBodyIncrement: adjustFixedIncrement(
+														progressionConfig.lowerBodyIncrement ?? 5.0,
+														fixedStep,
+													),
 												})
 											}
 											className="border-secondary"

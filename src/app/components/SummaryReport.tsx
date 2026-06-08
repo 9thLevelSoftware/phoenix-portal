@@ -16,12 +16,19 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { PHOENIX } from "@/lib/colors";
+import {
+	convertWeight,
+	formatVolume,
+	formatWeight,
+	type WeightUnit,
+} from "@/lib/units";
 import { weeklySummaryOptions } from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 export interface SummaryReportProps {
 	userId: string;
+	unit?: WeightUnit;
 }
 
 /** Reasonable default workout targets per period.
@@ -309,7 +316,7 @@ function SkeletonCards() {
 	);
 }
 
-export function SummaryReport({ userId }: SummaryReportProps) {
+export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
 	const [period, setPeriod] = useState<"week" | "month">("week");
 	const { activeProfileId } = useProfileFilterStore();
 
@@ -320,6 +327,14 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 	const summary = useMemo(
 		() => computeSummary(rawData ?? [], period),
 		[rawData, period],
+	);
+	const displayDailyVolume = useMemo(
+		() =>
+			summary.dailyVolume.map((entry) => ({
+				...entry,
+				volume: Math.round(convertWeight(entry.volume, unit)),
+			})),
+		[summary.dailyVolume, unit],
 	);
 
 	const volumeChange = percentChange(
@@ -406,16 +421,13 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							</span>
 						</div>
 						<div className="text-2xl font-semibold text-white mb-2">
-							{summary.totalVolume > 1000
-								? `${(summary.totalVolume / 1000).toFixed(1)}K`
-								: summary.totalVolume}{" "}
-							<span className="text-sm text-muted-foreground">kg</span>
+							{formatVolume(summary.totalVolume, unit)}
 						</div>
-						{summary.dailyVolume.length > 0 && (
+						{displayDailyVolume.length > 0 && (
 							<div className="mb-2">
 								<div role="img" aria-label="Daily volume sparkline">
 									<ResponsiveContainer width="100%" height={40}>
-										<LineChart data={summary.dailyVolume}>
+										<LineChart data={displayDailyVolume}>
 											<Line
 												type="monotone"
 												dataKey="volume"
@@ -530,8 +542,8 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										{pr.exercise}{" "}
 										<span className="text-success">
 											{pr.isFirstPR
-												? `${pr.improvement}kg (first!)`
-												: `+${pr.improvement}kg`}
+												? `${formatWeight(pr.improvement, unit)} (first!)`
+												: `+${formatWeight(pr.improvement, unit)}`}
 										</span>
 									</div>
 								))}
@@ -605,7 +617,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 											Best session by volume:{" "}
 										</span>
 										<span className="text-primary text-sm font-medium">
-											{summary.bestSessionVolume} kg
+											{formatVolume(summary.bestSessionVolume, unit)}
 										</span>
 										{summary.bestSessionDate && (
 											<span className="text-muted-foreground text-xs ml-1">
@@ -622,7 +634,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										<span className="text-white text-sm">Most improved: </span>
 										<span className="text-success text-sm font-medium">
 											{summary.mostImprovedExercise} (+
-											{summary.mostImprovedAmount}kg)
+											{formatWeight(summary.mostImprovedAmount, unit)})
 										</span>
 									</div>
 								</div>

@@ -37,7 +37,14 @@ import { Switch } from "@/app/components/ui/switch";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import type { Json } from "@/lib/database.types";
+import {
+	formatWeight,
+	type WeightUnit,
+	weightInputToKg,
+	weightInputValue,
+} from "@/lib/units";
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
@@ -106,6 +113,7 @@ export function CycleBuilder() {
 
 	// Fetch real routines from Supabase
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { data: routinesRaw } = useQuery({
 		...routineListOptions(user?.id ?? ""),
 		enabled: !!user?.id,
@@ -624,6 +632,7 @@ export function CycleBuilder() {
 							setDeloadVolume(v);
 							setHasUnsavedChanges(true);
 						}}
+						unit={unit}
 					/>
 				</motion.div>
 
@@ -728,6 +737,7 @@ export function CycleBuilder() {
 							}
 						: null,
 				}}
+				unit={unit}
 			/>
 
 			{/* Unsaved Changes Dialog */}
@@ -1072,6 +1082,7 @@ function ProgressionRules({
 	onDeloadIntensityChange,
 	deloadVolume,
 	onDeloadVolumeChange,
+	unit,
 }: {
 	progressionType: "percentage" | "fixed" | "manual";
 	onProgressionTypeChange: (v: "percentage" | "fixed" | "manual") => void;
@@ -1095,7 +1106,14 @@ function ProgressionRules({
 	onDeloadIntensityChange: (v: number) => void;
 	deloadVolume: number;
 	onDeloadVolumeChange: (v: number) => void;
+	unit: WeightUnit;
 }) {
+	const progressionAmountDisplay =
+		progressionType === "fixed"
+			? weightInputValue(progressionAmount, unit)
+			: progressionAmount;
+	const fixedStep = unit === "lbs" ? 0.5 : 0.25;
+
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
@@ -1139,16 +1157,20 @@ function ProgressionRules({
 							<Label className="text-secondary-foreground mb-2">
 								{progressionType === "percentage"
 									? "Increase (%)"
-									: "Increase (kg)"}
+									: `Increase (${unit})`}
 							</Label>
 							<Input
 								type="number"
-								value={progressionAmount}
+								value={progressionAmountDisplay}
 								onChange={(e) =>
-									onProgressionAmountChange(parseFloat(e.target.value) || 0)
+									onProgressionAmountChange(
+										progressionType === "fixed"
+											? weightInputToKg(e.target.value, unit)
+											: parseFloat(e.target.value) || 0,
+									)
 								}
 								className="bg-background border-secondary"
-								step={progressionType === "percentage" ? 0.5 : 0.25}
+								step={progressionType === "percentage" ? 0.5 : fixedStep}
 								min={0}
 							/>
 						</div>
@@ -1206,31 +1228,35 @@ function ProgressionRules({
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
 						<Label className="text-secondary-foreground mb-2">
-							Upper Body Increment (kg)
+							Upper Body Increment ({unit})
 						</Label>
 						<Input
 							type="number"
-							value={upperBodyIncrement}
+							value={weightInputValue(upperBodyIncrement, unit)}
 							onChange={(e) =>
-								onUpperBodyIncrementChange(parseFloat(e.target.value) || 0)
+								onUpperBodyIncrementChange(
+									weightInputToKg(e.target.value, unit),
+								)
 							}
 							className="bg-background border-secondary"
-							step={0.25}
+							step={fixedStep}
 							min={0}
 						/>
 					</div>
 					<div>
 						<Label className="text-secondary-foreground mb-2">
-							Lower Body Increment (kg)
+							Lower Body Increment ({unit})
 						</Label>
 						<Input
 							type="number"
-							value={lowerBodyIncrement}
+							value={weightInputValue(lowerBodyIncrement, unit)}
 							onChange={(e) =>
-								onLowerBodyIncrementChange(parseFloat(e.target.value) || 0)
+								onLowerBodyIncrementChange(
+									weightInputToKg(e.target.value, unit),
+								)
 							}
 							className="bg-background border-secondary"
-							step={0.5}
+							step={fixedStep}
 							min={0}
 						/>
 					</div>
@@ -1310,6 +1336,7 @@ function PreviewModal({
 	isOpen,
 	onClose,
 	cycle,
+	unit,
 }: {
 	isOpen: boolean;
 	onClose: () => void;
@@ -1326,6 +1353,7 @@ function PreviewModal({
 		};
 		deload: { frequency: number; intensity: number; volume: number } | null;
 	};
+	unit: WeightUnit;
 }) {
 	const workoutDays = cycle.days.filter((d) => d.type === "workout").length;
 	const restDays = cycle.days.filter((d) => d.type === "rest").length;
@@ -1417,8 +1445,9 @@ function PreviewModal({
 								<div className="text-sm text-white">
 									Amount:{" "}
 									<span className="text-primary">
-										{cycle.progression.amount}
-										{cycle.progression.type === "percentage" ? "%" : "kg"}
+										{cycle.progression.type === "percentage"
+											? `${cycle.progression.amount}%`
+											: formatWeight(cycle.progression.amount, unit)}
 									</span>
 								</div>
 							)}

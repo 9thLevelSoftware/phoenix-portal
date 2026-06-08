@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { PHOENIX } from "@/lib/colors";
+import { formatVolume, type WeightUnit } from "@/lib/units";
 
 export interface MuscleHeatmapProps {
 	muscleVolumes: Record<string, number>;
+	unit?: WeightUnit;
 }
 
 interface MuscleRegion {
@@ -191,13 +193,10 @@ const BODY_OUTLINE_BACK =
 
 const EMBER = PHOENIX.ember;
 
-function formatVolume(value: number): string {
-	return value >= 1000
-		? `${(value / 1000).toFixed(1)}K kg`
-		: `${Math.round(value)} kg`;
-}
-
-export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
+export function MuscleHeatmap({
+	muscleVolumes,
+	unit = "kg",
+}: MuscleHeatmapProps) {
 	const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 	const [hoveredDataKey, setHoveredDataKey] = useState<string | null>(null);
 	const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -346,7 +345,7 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 					</span>
 					:{" "}
 					{(muscleVolumes[hoveredDataKey] ?? 0) > 0
-						? formatVolume(muscleVolumes[hoveredDataKey])
+						? formatVolume(muscleVolumes[hoveredDataKey], unit)
 						: "No data"}
 				</div>
 			)}

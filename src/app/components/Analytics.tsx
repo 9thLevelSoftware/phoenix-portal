@@ -59,7 +59,13 @@ import {
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { computeSraStatus } from "@/lib/sra-recovery";
 import { calculateRTL, classifyTrainingLoad } from "@/lib/training-load";
-import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import {
+	convertWeight,
+	convertWeightFromUnit,
+	formatVolume,
+	isWeightUnit,
+	type WeightUnit,
+} from "@/lib/units";
 import type { ExerciseSessionData } from "@/lib/volume-landmarks";
 import { computeWeeklyVolume } from "@/lib/volume-landmarks";
 import {
@@ -226,6 +232,84 @@ function convertStrengthSeriesPoint(
 			key === "date" ? value : convertWeight(Number(value), unit),
 		]),
 	) as Record<string, string | number>;
+}
+
+function toNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
+}
+
+function roundDisplayMetric(value: number, unit: string): number {
+	if (isWeightUnit(unit)) {
+		return Number(value.toFixed(unit === "lbs" ? 1 : 0));
+	}
+	return value;
+}
+
+function formatMetricText(value: number, unit: string): string {
+	if (isWeightUnit(unit)) {
+		return `${roundDisplayMetric(value, unit).toLocaleString()} ${unit}`;
+	}
+	return `${value.toLocaleString()}${unit}`;
+}
+
+function normalizeInsightType(value: unknown): InsightItem["type"] {
+	return value === "success" ||
+		value === "warning" ||
+		value === "info" ||
+		value === "achievement"
+		? value
+		: "info";
+}
+
+function mapServerInsight(
+	item: Record<string, unknown>,
+	unit: WeightUnit,
+): InsightItem {
+	const sourceUnit = item.metric_unit;
+	const rawValue = toNumber(item.metric_value);
+	const rawDelta = toNumber(item.metric_delta);
+	const metricName = item.metric_name;
+	const metric =
+		typeof metricName === "string" && rawValue !== undefined
+			? {
+					name: metricName,
+					value: isWeightUnit(sourceUnit)
+						? roundDisplayMetric(
+								convertWeightFromUnit(rawValue, sourceUnit, unit),
+								unit,
+							)
+						: rawValue,
+					unit: isWeightUnit(sourceUnit) ? unit : String(sourceUnit ?? ""),
+					delta:
+						rawDelta !== undefined
+							? isWeightUnit(sourceUnit)
+								? roundDisplayMetric(
+										convertWeightFromUnit(rawDelta, sourceUnit, unit),
+										unit,
+									)
+								: rawDelta
+							: undefined,
+				}
+			: undefined;
+	const title = (item.title as string) ?? "";
+	const description = (item.description as string) ?? "";
+	const normalizedDescription =
+		metric && isWeightUnit(metric.unit) && title.startsWith("New PR:")
+			? metric.delta !== undefined
+				? `You set a personal record on ${metric.name} -- ${formatMetricText(metric.value, metric.unit)} (up ${formatMetricText(metric.delta, metric.unit)} from ${formatMetricText(metric.value - metric.delta, metric.unit)}).`
+				: `You set a personal record on ${metric.name} -- ${formatMetricText(metric.value, metric.unit)}.`
+			: description;
+
+	return {
+		id: (item.id as string) ?? `${title}-${normalizedDescription}`,
+		type: normalizeInsightType(item.insight_type ?? item.type),
+		title,
+		description: normalizedDescription,
+		recommendation: item.recommendation as string | undefined,
+		metric,
+	};
 }
 
 const EXERCISE_COLORS = [PHOENIX.ember, PHOENIX.flameRed, PHOENIX.gold];
@@ -1015,14 +1099,9 @@ export function Analytics() {
 			Array.isArray(insightsData) &&
 			insightsData.length > 0
 		) {
-			return insightsData.map((item: Record<string, unknown>) => ({
-				id: (item.id as string) ?? String(Math.random()),
-				type: ((item.type as string) ?? "info") as InsightItem["type"],
-				title: (item.title as string) ?? "",
-				description: (item.description as string) ?? "",
-				recommendation: item.recommendation as string | undefined,
-				metric: item.metric as InsightItem["metric"],
-			}));
+			return insightsData.map((item: Record<string, unknown>) =>
+				mapServerInsight(item, unit),
+			);
 		}
 		// Fallback: convert local insights to InsightsFeed format
 		return insights.map((i, idx) => ({
@@ -1036,7 +1115,7 @@ export function Analytics() {
 			title: i.title,
 			description: i.description,
 		}));
-	}, [insightsData, insights]);
+	}, [insightsData, insights, unit]);
 
 	// --- Muscle radar data ---
 	const muscleRadarData = useMemo(() => {
