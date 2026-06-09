@@ -41,7 +41,6 @@ import {
 import { TIER_PRICING } from "@/lib/pricing";
 import {
 	buildSocialAuthRedirectUrl,
-	DEFAULT_SOCIAL_AUTH_AVAILABILITY,
 	GOOGLE_OAUTH_SCOPES,
 	getSocialAuthAvailability,
 	type SocialAuthAvailability,
@@ -74,6 +73,7 @@ const signUpSchema = z
 
 type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
+type SocialAuthAvailabilityStatus = "pending" | "loaded" | "failed";
 
 const TIER_BADGE_STYLES: Record<string, string> = {
 	EMBER: "bg-primary/20 text-primary border-primary/30",
@@ -91,15 +91,21 @@ export function LandingPage() {
 	const [authAlertMessage, setAuthAlertMessage] = useState<string | null>(null);
 	const [scrolled, setScrolled] = useState(false);
 	const [socialAuthAvailability, setSocialAuthAvailability] =
-		useState<SocialAuthAvailability>(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+		useState<SocialAuthAvailability | null>(null);
+	const [socialAuthAvailabilityStatus, setSocialAuthAvailabilityStatus] =
+		useState<SocialAuthAvailabilityStatus>("pending");
 	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
 		isInAppBrowser: false,
 		browser: null,
 		platform: "other",
 	});
 
+	const isSocialAuthProviderVisible = (provider: SocialAuthProvider) =>
+		socialAuthAvailabilityStatus === "failed" ||
+		socialAuthAvailability?.[provider] === true;
 	const hasSocialAuthOptions =
-		socialAuthAvailability.google || socialAuthAvailability.apple;
+		isSocialAuthProviderVisible("google") ||
+		isSocialAuthProviderVisible("apple");
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -138,11 +144,13 @@ export function LandingPage() {
 			.then((availability) => {
 				if (isActive) {
 					setSocialAuthAvailability(availability);
+					setSocialAuthAvailabilityStatus("loaded");
 				}
 			})
 			.catch(() => {
 				if (isActive) {
-					setSocialAuthAvailability(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+					setSocialAuthAvailability(null);
+					setSocialAuthAvailabilityStatus("failed");
 				}
 			});
 
@@ -234,7 +242,10 @@ export function LandingPage() {
 	};
 
 	const handleOAuthSignIn = async (provider: SocialAuthProvider) => {
-		if (!socialAuthAvailability[provider]) {
+		if (
+			socialAuthAvailabilityStatus !== "failed" &&
+			socialAuthAvailability?.[provider] !== true
+		) {
 			const providerLabel = provider === "apple" ? "Apple" : "Google";
 			const msg = `${providerLabel} sign-in is not configured right now.`;
 			setAuthAlertMessage(msg);
@@ -630,7 +641,7 @@ export function LandingPage() {
 
 								{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
 								<div className="flex flex-col gap-3">
-									{socialAuthAvailability.google ? (
+									{isSocialAuthProviderVisible("google") ? (
 										<button
 											type="button"
 											disabled={authLoading}
@@ -665,7 +676,7 @@ export function LandingPage() {
 											</span>
 										</button>
 									) : null}
-									{socialAuthAvailability.apple ? (
+									{isSocialAuthProviderVisible("apple") ? (
 										<button
 											type="button"
 											disabled={authLoading}

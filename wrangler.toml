@@ -9,7 +9,7 @@ directory = "./dist"
 not_found_handling = "single-page-application"
 
 [build]
-command = "npm run build && npm run assert:no-sourcemaps"
+command = "npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config"
 
 # Client-side env vars (VITE_*) are set in Cloudflare Dashboard,
 # not here — they are embedded in the bundle at build time.

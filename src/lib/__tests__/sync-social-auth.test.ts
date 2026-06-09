@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
 	assertNoDeadSupabaseRefs,
@@ -13,6 +16,28 @@ import {
 	MANAGED_BLOCK_END,
 	MANAGED_BLOCK_START,
 } from "../../../scripts/sync-social-auth.mjs";
+
+describe("Cloudflare Pages build guard", () => {
+	it("runs the stale Supabase config guard after building deploy artifacts", () => {
+		const wranglerConfig = readFileSync(
+			resolve(
+				dirname(fileURLToPath(import.meta.url)),
+				"../../../wrangler.toml",
+			),
+			"utf8",
+		);
+
+		const buildCommand = wranglerConfig.match(
+			/^\s*command\s*=\s*"(?<command>[^"]+)"/m,
+		)?.groups?.command;
+
+		expect(buildCommand).toContain("npm run build");
+		expect(buildCommand).toContain("npm run assert:supabase-config");
+		expect(
+			buildCommand?.indexOf("npm run assert:supabase-config"),
+		).toBeGreaterThan(buildCommand?.indexOf("npm run build") ?? -1);
+	});
+});
 
 describe("sync-social-auth", () => {
 	it("infers the project ref from the public Supabase URL", () => {
@@ -91,17 +116,18 @@ describe("assert-live-supabase-config helpers", () => {
 		expect(extractSupabaseRefs("hello world https://example.com")).toEqual([]);
 	});
 
-	it("flags the known-dead Phoenix project ref (issue #68)", () => {
+	it("flags project refs from an explicit stale-ref denylist", () => {
 		expect(
 			findDeadSupabaseRefs(
 				"const url = 'https://ilzlswmatadlnsuxatcv.supabase.co/auth/v1/settings';",
+				["ilzlswmatadlnsuxatcv"],
 			),
 		).toEqual(["ilzlswmatadlnsuxatcv"]);
 	});
 
-	it("does not flag live refs against the default denylist", () => {
+	it("does not flag active project refs against the default denylist", () => {
 		expect(
-			findDeadSupabaseRefs("https://abcdefghijklmnopqrst.supabase.co"),
+			findDeadSupabaseRefs("https://ilzlswmatadlnsuxatcv.supabase.co"),
 		).toEqual([]);
 	});
 
@@ -110,6 +136,7 @@ describe("assert-live-supabase-config helpers", () => {
 			assertNoDeadSupabaseRefs(
 				"https://ilzlswmatadlnsuxatcv.supabase.co",
 				"dist/assets/index.js",
+				["ilzlswmatadlnsuxatcv"],
 			),
 		).toThrow(/dist\/assets\/index\.js contains dead Supabase project ref/);
 	});
