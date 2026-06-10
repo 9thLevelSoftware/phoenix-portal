@@ -8,6 +8,7 @@ import {
 	collectDedicatedRecordLocalProfileIds,
 	isPostgresForeignKeyViolation,
 	partitionPersonalRecordRowsByLocalProfileValidity,
+	partitionPersonalRecordRowsBySessionValidity,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
 	shouldRepairDedicatedRecordLocalProfilesForPush,
@@ -849,5 +850,84 @@ describe("resolveDedicatedRecordLocalProfileId", () => {
 		expect(
 			resolveDedicatedRecordLocalProfileId("any-id", "default", null),
 		).toBe("any-id");
+	});
+});
+
+describe("Issue #532: personal_records session_id partition", () => {
+	const VALID_SESSION_IDS = new Set(["session-1", "session-2"]);
+
+	function prRowWithSession(
+		exerciseName: string,
+		sessionId: string | null,
+	): ReturnType<typeof basePersonalRecordRow> {
+		return { ...basePersonalRecordRow(exerciseName), session_id: sessionId };
+	}
+
+	it("preserves rows whose session_id is in the valid set", () => {
+		const validRow = prRowWithSession("Squat", "session-1");
+		const anotherValidRow = prRowWithSession("Bench Press", "session-2");
+
+		const partition = partitionPersonalRecordRowsBySessionValidity(
+			[validRow, anotherValidRow],
+			VALID_SESSION_IDS,
+		);
+
+		expect(partition.validRows).toEqual([validRow, anotherValidRow]);
+		expect(partition.invalidSessionRows).toEqual([]);
+		expect(partition.rowsWithInvalidSessionsNulled).toEqual([
+			validRow,
+			anotherValidRow,
+		]);
+	});
+
+	it("preserves rows whose session_id is null", () => {
+		const unscopedRow = prRowWithSession("Deadlift", null);
+
+		const partition = partitionPersonalRecordRowsBySessionValidity(
+			[unscopedRow],
+			VALID_SESSION_IDS,
+		);
+
+		expect(partition.validRows).toEqual([unscopedRow]);
+		expect(partition.invalidSessionRows).toEqual([]);
+		expect(partition.rowsWithInvalidSessionsNulled).toEqual([unscopedRow]);
+	});
+
+	it("places a stale session_id row in invalidSessionRows and returns it with session_id: null", () => {
+		const validRow = prRowWithSession("Squat", "session-1");
+		const staleRow = prRowWithSession("Bench Press", "stale-session-uuid");
+
+		const partition = partitionPersonalRecordRowsBySessionValidity(
+			[validRow, staleRow],
+			VALID_SESSION_IDS,
+		);
+
+		expect(partition.validRows).toEqual([validRow]);
+		expect(partition.invalidSessionRows).toEqual([staleRow]);
+		expect(partition.rowsWithInvalidSessionsNulled).toEqual([
+			validRow,
+			{ ...staleRow, session_id: null },
+		]);
+	});
+
+	it("handles multiple stale session_id references in a single partition call", () => {
+		const validRow = prRowWithSession("Squat", "session-1");
+		const staleA = prRowWithSession("Bench Press", "stale-A");
+		const staleB = prRowWithSession("Deadlift", "stale-B");
+		const staleC = prRowWithSession("Overhead Press", "stale-C");
+
+		const partition = partitionPersonalRecordRowsBySessionValidity(
+			[validRow, staleA, staleB, staleC],
+			VALID_SESSION_IDS,
+		);
+
+		expect(partition.validRows).toEqual([validRow]);
+		expect(partition.invalidSessionRows).toEqual([staleA, staleB, staleC]);
+		expect(partition.rowsWithInvalidSessionsNulled).toEqual([
+			validRow,
+			{ ...staleA, session_id: null },
+			{ ...staleB, session_id: null },
+			{ ...staleC, session_id: null },
+		]);
 	});
 });

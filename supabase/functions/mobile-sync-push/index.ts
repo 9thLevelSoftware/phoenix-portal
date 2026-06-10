@@ -11,6 +11,7 @@ import {
   collectDedicatedRecordLocalProfileIds,
   isPostgresForeignKeyViolation,
   partitionPersonalRecordRowsByLocalProfileValidity,
+  partitionPersonalRecordRowsBySessionValidity,
   personalRecordIdentityKey,
   shouldRepairDedicatedRecordLocalProfilesForPush,
   shouldValidatePersonalRecordProfileIdsForPush,
@@ -166,6 +167,74 @@ async function assertRowsOwnedByUser(
     }
   }
   return null;
+}
+
+/**
+ * Parent-reference variant of `assertRowsOwnedByUser`. Unlike
+ * `assertRowsOwnedByUser` (used for primary-key upsert checks where
+ * absent rows are allowed because the upsert may be inserting them), this
+ * helper is used to probe IDs that the caller asserts MUST already
+ * exist (e.g. cross-payload parent FKs). Any id that is missing OR owned
+ * by another user is a 400. The set of ids that exist AND are owned by
+ * `userId` is returned so the caller can reuse it for downstream FK
+ * partitions (Issue #532: personal_records.session_id retry).
+ */
+async function assertParentRowsExistAndOwnedByUser(
+  supabase: SupabaseClient,
+  table: string,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+  options: { allowMissing?: boolean } = {},
+): Promise<{ response: Response | null; validIds: Set<string> }> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const validIds = new Set<string>();
+  if (unique.length === 0) return { response: null, validIds };
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('id, user_id')
+      .in('id', chunk);
+    if (error) {
+      throw new Error(`Parent reference check on ${table} failed: ${error.message}`);
+    }
+    const seen = new Set<string>();
+    for (const row of rows ?? []) {
+      const id = (row as { id?: unknown }).id;
+      if (typeof id !== 'string' || seen.has(id)) continue;
+      seen.add(id);
+      if ((row as { user_id?: unknown }).user_id === userId) {
+        validIds.add(id);
+      } else {
+        return {
+          response: new Response(
+            JSON.stringify({
+              error: `Refused: ${table} parent ${id} belongs to another user`,
+            }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+          ),
+          validIds,
+        };
+      }
+    }
+    for (const id of chunk) {
+      if (!seen.has(id)) {
+        if (options.allowMissing) continue;
+        return {
+          response: new Response(
+            JSON.stringify({
+              error: `Refused: ${table} parent ${id} does not exist`,
+            }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+          ),
+          validIds,
+        };
+      }
+    }
+  }
+  return { response: null, validIds };
 }
 
 /**
@@ -1118,78 +1187,88 @@ Deno.serve(async (req) => {
     // Telemetry, phase stats, signatures and assessments may reference parent
     // rows from previous pushes, not this payload. Validate those cross-payload
     // parent references against the authoritative user_id column on each parent.
+    // Issue #532: previously these probes used `assertRowsOwnedByUser`, which
+    // silently allowed absent rows and would only catch cross-user references.
+    // A missing parent then surfaced as a Postgres FK violation at insert time.
+    // Use the strict parent-reference variant (missing → 400) for all of these.
     const telemetrySetIdsToVerify = (payload.telemetry ?? [])
       .map((t) => t.setId)
       .filter((sid) => !setIdSet.has(sid));
-    const telParentBlocked = await assertRowsOwnedByUser(
+    const telParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'sets',
       telemetrySetIdsToVerify,
       userId,
       cors,
     );
-    if (telParentBlocked) return telParentBlocked;
+    if (telParentProbe.response) return telParentProbe.response;
 
     const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
       .map((p) => p.sessionId)
       .filter((sid) => !sessionIdSet.has(sid));
-    const phaseParentBlocked = await assertRowsOwnedByUser(
+    const phaseParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'workout_sessions',
       phaseSessionIdsToVerify,
       userId,
       cors,
     );
-    if (phaseParentBlocked) return phaseParentBlocked;
+    if (phaseParentProbe.response) return phaseParentProbe.response;
 
     const sigExerciseIdsToVerify = (payload.exerciseSignatures ?? [])
       .map((es) => es.exerciseId)
       .filter((eid) => !exerciseIdSet.has(eid));
-    const sigParentBlocked = await assertRowsOwnedByUser(
+    const sigParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'exercises',
       sigExerciseIdsToVerify,
       userId,
       cors,
     );
-    if (sigParentBlocked) return sigParentBlocked;
+    if (sigParentProbe.response) return sigParentProbe.response;
 
     const assessExerciseIdsToVerify = (payload.assessments ?? [])
       .map((a) => a.exerciseId)
       .filter((eid) => !exerciseIdSet.has(eid));
-    const assessParentBlocked = await assertRowsOwnedByUser(
+    const assessParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'exercises',
       assessExerciseIdsToVerify,
       userId,
       cors,
     );
-    if (assessParentBlocked) return assessParentBlocked;
+    if (assessParentProbe.response) return assessParentProbe.response;
 
     const dayRoutineIdsToVerify = (payload.cycles ?? [])
       .flatMap((c) => c.days.map((d) => d.routineId))
       .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
-    const dayRoutineBlocked = await assertRowsOwnedByUser(
+    const dayRoutineProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'routines',
       dayRoutineIdsToVerify,
       userId,
       cors,
     );
-    if (dayRoutineBlocked) return dayRoutineBlocked;
+    if (dayRoutineProbe.response) return dayRoutineProbe.response;
 
     const sessionRoutineIdsToVerify = (payload.sessions ?? [])
       .map((s) => s.routineSessionId)
       .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
-    const sessionRoutineBlocked = await assertRowsOwnedByUser(
+    const sessionRoutineProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'routines',
       sessionRoutineIdsToVerify,
       userId,
       cors,
     );
-    if (sessionRoutineBlocked) return sessionRoutineBlocked;
+    if (sessionRoutineProbe.response) return sessionRoutineProbe.response;
 
+    // Personal records reference workout_sessions. Sessions present in the
+    // current payload are inserted in step 4a, so they don't need probing
+    // here. Sessions NOT in the current payload are probed for ownership; a
+    // foreign-user row is rejected, while a missing row is intentionally left
+    // out of the valid set so the personal_records FK retry below can null
+    // stale session_id references instead of throwing the FK error (Issue #532).
     const personalRecordSessionIdsToVerify = [
       ...new Set(
         (payload.personalRecords ?? [])
@@ -1197,14 +1276,22 @@ Deno.serve(async (req) => {
           .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid)),
       ),
     ];
-    const personalRecordSessionBlocked = await assertRowsOwnedByUser(
+    const personalRecordSessionProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'workout_sessions',
       personalRecordSessionIdsToVerify,
       userId,
       cors,
+      { allowMissing: true },
     );
-    if (personalRecordSessionBlocked) return personalRecordSessionBlocked;
+    if (personalRecordSessionProbe.response) return personalRecordSessionProbe.response;
+    // Sessions present in the current payload are also "valid" — they get
+    // upserted just above, before the personal_records write, so by the time
+    // the FK retry runs they exist on the server.
+    const validPersonalRecordSessionIds = new Set<string>(sessionIdSet);
+    for (const id of personalRecordSessionProbe.validIds) {
+      validPersonalRecordSessionIds.add(id);
+    }
 
     // =========================================================================
     // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
@@ -1306,6 +1393,16 @@ Deno.serve(async (req) => {
           else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
         }
         sessionsInserted = acceptedSessionIds.size;
+        // Issue #532: when LWW rejects a session, the personal_records rows
+        // that referenced it are no longer pointing at a real parent.
+        // Intersect the payload-session subset of `validPersonalRecordSessionIds`
+        // with the LWW-accepted set so those references get nulled out by the
+        // retry partition instead of failing the FK. The probe-validated IDs
+        // (sessions already on the server) are left alone — LWW only applies
+        // to incoming sessions.
+        for (const id of sessionIdSet) {
+          if (!acceptedSessionIds.has(id)) validPersonalRecordSessionIds.delete(id);
+        }
       } else {
         const { error: sessErr } = await supabase
           .from('workout_sessions')
@@ -1605,7 +1702,7 @@ Deno.serve(async (req) => {
 
         const { error: prErr } = await writePersonalRecords(dedupedPrRows);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {
-          const partition = shouldValidatePersonalRecordProfileIds
+          const profilePartition = shouldValidatePersonalRecordProfileIds
             ? partitionPersonalRecordRowsByLocalProfileValidity(
                 dedupedPrRows,
                 validLocalProfileIdsForPush,
@@ -1615,26 +1712,55 @@ Deno.serve(async (req) => {
                 rowsWithInvalidProfilesNulled: dedupedPrRows,
               };
 
-          if (partition.invalidProfileRows.length === 0) {
+          // Issue #532: if the local_profile_id partition is a no-op (no
+          // invalid profile IDs to null out), the FK violation must be on
+          // a different column — most likely session_id. Run a session_id
+          // partition on the same input set so the retry can null out
+          // stale session_id references instead of bubbling the FK error.
+          const sessionPartition = partitionPersonalRecordRowsBySessionValidity(
+            profilePartition.rowsWithInvalidProfilesNulled,
+            validPersonalRecordSessionIds,
+          );
+
+          if (
+            profilePartition.invalidProfileRows.length === 0 &&
+            sessionPartition.invalidSessionRows.length === 0
+          ) {
             throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
           }
 
-          const invalidLocalProfileIds = [
-            ...new Set(
-              partition.invalidProfileRows
-                .map((row) => row.local_profile_id)
-                .filter((id): id is string => id !== null),
-            ),
-          ];
-          console.warn(
-            'FK violation on personal_records local_profile_id — retrying only invalid profile references with NULL profile scope:',
-            invalidLocalProfileIds,
-          );
+          if (profilePartition.invalidProfileRows.length > 0) {
+            const invalidLocalProfileIds = [
+              ...new Set(
+                profilePartition.invalidProfileRows
+                  .map((row) => row.local_profile_id)
+                  .filter((id): id is string => id !== null),
+              ),
+            ];
+            console.warn(
+              'FK violation on personal_records local_profile_id — retrying only invalid profile references with NULL profile scope:',
+              invalidLocalProfileIds,
+            );
+          }
+          if (sessionPartition.invalidSessionRows.length > 0) {
+            const invalidSessionIds = [
+              ...new Set(
+                sessionPartition.invalidSessionRows
+                  .map((row) => row.session_id)
+                  .filter((id): id is string => typeof id === 'string' && id.length > 0),
+              ),
+            ];
+            console.warn(
+              'FK violation on personal_records session_id — retrying only invalid session references with NULL session_id:',
+              invalidSessionIds,
+            );
+          }
+
           const { error: retryErr } = await writePersonalRecords(
-            partition.rowsWithInvalidProfilesNulled,
+            sessionPartition.rowsWithInvalidSessionsNulled,
           );
           if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
-          personalRecordsInserted = partition.rowsWithInvalidProfilesNulled.length;
+          personalRecordsInserted = sessionPartition.rowsWithInvalidSessionsNulled.length;
         } else if (prErr) {
           throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
         } else {
