@@ -1184,10 +1184,9 @@ Deno.serve(async (req) => {
     );
     if (cdBlocked) return cdBlocked;
 
-    // Telemetry, phase stats, signatures, assessments and cycle days may
-    // reference parent rows from previous pushes, not this payload. Validate
-    // those cross-payload parent references against the authoritative user_id
-    // column on each parent.
+    // Telemetry, phase stats and cycle days may reference parent rows from
+    // previous pushes, not this payload. Validate those cross-payload parent
+    // references against the authoritative user_id column on each parent.
     // Issue #532: previously these probes used `assertRowsOwnedByUser`, which
     // silently allowed absent rows and would only catch cross-user references.
     // A missing parent then surfaced as a Postgres FK violation at insert time.
@@ -1216,29 +1215,10 @@ Deno.serve(async (req) => {
     );
     if (phaseParentProbe.response) return phaseParentProbe.response;
 
-    const sigExerciseIdsToVerify = (payload.exerciseSignatures ?? [])
-      .map((es) => es.exerciseId)
-      .filter((eid) => !exerciseIdSet.has(eid));
-    const sigParentProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
-      'exercises',
-      sigExerciseIdsToVerify,
-      userId,
-      cors,
-    );
-    if (sigParentProbe.response) return sigParentProbe.response;
-
-    const assessExerciseIdsToVerify = (payload.assessments ?? [])
-      .map((a) => a.exerciseId)
-      .filter((eid) => !exerciseIdSet.has(eid));
-    const assessParentProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
-      'exercises',
-      assessExerciseIdsToVerify,
-      userId,
-      cors,
-    );
-    if (assessParentProbe.response) return assessParentProbe.response;
+    // exercise_signatures.exercise_id and vbt_assessments.exercise_id are
+    // domain identifiers stored as TEXT/unique-by-user, not FKs to workout
+    // exercises rows. Do not parent-probe them against the exercises table:
+    // catalog/custom identifiers can be valid without a workout exercise row.
 
     const dayRoutineIdsToVerify = (payload.cycles ?? [])
       .flatMap((c) => c.days.map((d) => d.routineId))
