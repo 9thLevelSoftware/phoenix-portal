@@ -1184,9 +1184,10 @@ Deno.serve(async (req) => {
     );
     if (cdBlocked) return cdBlocked;
 
-    // Telemetry, phase stats, signatures and assessments may reference parent
-    // rows from previous pushes, not this payload. Validate those cross-payload
-    // parent references against the authoritative user_id column on each parent.
+    // Telemetry, phase stats, signatures, assessments and cycle days may
+    // reference parent rows from previous pushes, not this payload. Validate
+    // those cross-payload parent references against the authoritative user_id
+    // column on each parent.
     // Issue #532: previously these probes used `assertRowsOwnedByUser`, which
     // silently allowed absent rows and would only catch cross-user references.
     // A missing parent then surfaced as a Postgres FK violation at insert time.
@@ -1251,17 +1252,10 @@ Deno.serve(async (req) => {
     );
     if (dayRoutineProbe.response) return dayRoutineProbe.response;
 
-    const sessionRoutineIdsToVerify = (payload.sessions ?? [])
-      .map((s) => s.routineSessionId)
-      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
-    const sessionRoutineProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
-      'routines',
-      sessionRoutineIdsToVerify,
-      userId,
-      cors,
-    );
-    if (sessionRoutineProbe.response) return sessionRoutineProbe.response;
+    // workout_sessions.routine_session_id is an informational TEXT field from
+    // the mobile DTO, not a routines FK. Do not strict-probe it against
+    // routines: mobile-generated routine-session identifiers are valid to store
+    // even when no routines row exists on the portal.
 
     // Personal records reference workout_sessions. Sessions present in the
     // current payload are inserted in step 4a, so they don't need probing
@@ -1393,16 +1387,10 @@ Deno.serve(async (req) => {
           else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
         }
         sessionsInserted = acceptedSessionIds.size;
-        // Issue #532: when LWW rejects a session, the personal_records rows
-        // that referenced it are no longer pointing at a real parent.
-        // Intersect the payload-session subset of `validPersonalRecordSessionIds`
-        // with the LWW-accepted set so those references get nulled out by the
-        // retry partition instead of failing the FK. The probe-validated IDs
-        // (sessions already on the server) are left alone — LWW only applies
-        // to incoming sessions.
-        for (const id of sessionIdSet) {
-          if (!acceptedSessionIds.has(id)) validPersonalRecordSessionIds.delete(id);
-        }
+        // LWW-rejected workout_sessions still exist on the server with newer
+        // timestamps, so they remain valid personal_records.session_id FK
+        // parents. Keep every payload session id in validPersonalRecordSessionIds;
+        // acceptedSessionIds only gates child-row rewrites below.
       } else {
         const { error: sessErr } = await supabase
           .from('workout_sessions')
