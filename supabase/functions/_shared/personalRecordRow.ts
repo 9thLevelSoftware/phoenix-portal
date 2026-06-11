@@ -251,6 +251,36 @@ export function partitionPersonalRecordRowsBySessionValidity(
 	return { validRows, invalidSessionRows, rowsWithInvalidSessionsNulled };
 }
 
+export function partitionPersonalRecordRowsByExerciseCatalogValidity(
+	rows: readonly PersonalRecordRow[],
+	validExerciseIds: ReadonlySet<string>,
+): {
+	validRows: PersonalRecordRow[];
+	invalidExerciseRows: PersonalRecordRow[];
+	rowsWithInvalidExercisesNulled: PersonalRecordRow[];
+} {
+	const validRows: PersonalRecordRow[] = [];
+	const invalidExerciseRows: PersonalRecordRow[] = [];
+	const rowsWithInvalidExercisesNulled: PersonalRecordRow[] = [];
+
+	for (const row of rows) {
+		const exerciseId = row.exercise_id;
+		if (exerciseId !== null && !validExerciseIds.has(exerciseId)) {
+			invalidExerciseRows.push(row);
+			rowsWithInvalidExercisesNulled.push({ ...row, exercise_id: null });
+		} else {
+			validRows.push(row);
+			rowsWithInvalidExercisesNulled.push(row);
+		}
+	}
+
+	return {
+		validRows,
+		invalidExerciseRows,
+		rowsWithInvalidExercisesNulled,
+	};
+}
+
 export interface PersonalRecordIdentityInput {
 	local_profile_id?: string | null;
 	exercise_name?: string | null;
