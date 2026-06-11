@@ -12,7 +12,6 @@
     "auth:social:check": "node scripts/sync-social-auth.mjs check",
     "auth:social:push": "node scripts/sync-social-auth.mjs push",
     "auth:apple:rotate": "node scripts/generate-apple-client-secret.mjs --write-env",
-    "billing:paddle:correct-discount": "node scripts/paddle-correct-beta-discount.mjs",
     "build": "vite build",
     "dev": "vite",
     "lint": "biome check .",
