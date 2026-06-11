@@ -7,6 +7,7 @@ import {
 	chunkLocalProfileIdsForRepair,
 	collectDedicatedRecordLocalProfileIds,
 	isPostgresForeignKeyViolation,
+	partitionPersonalRecordRowsByExerciseCatalogValidity,
 	partitionPersonalRecordRowsByLocalProfileValidity,
 	partitionPersonalRecordRowsBySessionValidity,
 	personalRecordIdentityKey,
@@ -928,6 +929,64 @@ describe("Issue #532: personal_records session_id partition", () => {
 			{ ...staleA, session_id: null },
 			{ ...staleB, session_id: null },
 			{ ...staleC, session_id: null },
+		]);
+	});
+});
+
+describe("personal_records exercise_id catalog partition", () => {
+	const VALID_EXERCISE_IDS = new Set(["catalog-bench", "custom-curl"]);
+
+	function prRowWithExercise(
+		exerciseName: string,
+		exerciseId: string | null,
+	): ReturnType<typeof basePersonalRecordRow> {
+		return { ...basePersonalRecordRow(exerciseName), exercise_id: exerciseId };
+	}
+
+	it("preserves rows whose exercise_id is in the catalog valid set", () => {
+		const validRow = prRowWithExercise("Bench Press", "catalog-bench");
+		const customRow = prRowWithExercise("Cable Curl", "custom-curl");
+
+		const partition = partitionPersonalRecordRowsByExerciseCatalogValidity(
+			[validRow, customRow],
+			VALID_EXERCISE_IDS,
+		);
+
+		expect(partition.validRows).toEqual([validRow, customRow]);
+		expect(partition.invalidExerciseRows).toEqual([]);
+		expect(partition.rowsWithInvalidExercisesNulled).toEqual([
+			validRow,
+			customRow,
+		]);
+	});
+
+	it("preserves rows whose exercise_id is null", () => {
+		const nameOnlyRow = prRowWithExercise("Legacy Bench Press", null);
+
+		const partition = partitionPersonalRecordRowsByExerciseCatalogValidity(
+			[nameOnlyRow],
+			VALID_EXERCISE_IDS,
+		);
+
+		expect(partition.validRows).toEqual([nameOnlyRow]);
+		expect(partition.invalidExerciseRows).toEqual([]);
+		expect(partition.rowsWithInvalidExercisesNulled).toEqual([nameOnlyRow]);
+	});
+
+	it("nulls stale exercise_id values while preserving exercise_name", () => {
+		const validRow = prRowWithExercise("Bench Press", "catalog-bench");
+		const staleRow = prRowWithExercise("Deleted Custom Curl", "deleted-custom");
+
+		const partition = partitionPersonalRecordRowsByExerciseCatalogValidity(
+			[validRow, staleRow],
+			VALID_EXERCISE_IDS,
+		);
+
+		expect(partition.validRows).toEqual([validRow]);
+		expect(partition.invalidExerciseRows).toEqual([staleRow]);
+		expect(partition.rowsWithInvalidExercisesNulled).toEqual([
+			validRow,
+			{ ...staleRow, exercise_id: null },
 		]);
 	});
 });

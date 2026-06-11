@@ -10,6 +10,7 @@ import {
   chunkLocalProfileIdsForRepair,
   collectDedicatedRecordLocalProfileIds,
   isPostgresForeignKeyViolation,
+  partitionPersonalRecordRowsByExerciseCatalogValidity,
   partitionPersonalRecordRowsByLocalProfileValidity,
   partitionPersonalRecordRowsBySessionValidity,
   personalRecordIdentityKey,
@@ -1619,7 +1620,7 @@ Deno.serve(async (req) => {
     // clients. Set-derived rows remain the fallback for old clients that only
     // send isPr/prType/prPhase/prVolume on sets.
     // =========================================================================
-    const prRows = buildPersonalRecordRowsForPush(
+    let prRows = buildPersonalRecordRowsForPush(
       payload.sessions ?? [],
       payload.personalRecords ?? [],
       userId,
@@ -1628,6 +1629,58 @@ Deno.serve(async (req) => {
     );
 
     if (prRows.length > 0) {
+      const personalRecordExerciseIdsToVerify = [
+        ...new Set(
+          prRows
+            .map((row) => row.exercise_id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0),
+        ),
+      ];
+
+      if (personalRecordExerciseIdsToVerify.length > 0) {
+        const validPersonalRecordExerciseIds = new Set<string>();
+        const chunkSize = 100;
+        for (let i = 0; i < personalRecordExerciseIdsToVerify.length; i += chunkSize) {
+          const chunk = personalRecordExerciseIdsToVerify.slice(i, i + chunkSize);
+          const { data: catalogRows, error: catalogLookupErr } = await supabase
+            .from('exercise_catalog')
+            .select('id, user_id')
+            .in('id', chunk);
+          if (catalogLookupErr) {
+            throw new Error(`personal_records exercise catalog lookup failed: ${catalogLookupErr.message}`);
+          }
+          for (const row of catalogRows ?? []) {
+            const id = (row as { id?: unknown }).id;
+            const ownerId = (row as { user_id?: unknown }).user_id;
+            if (
+              typeof id === 'string' &&
+              (ownerId === null || ownerId === undefined || ownerId === userId)
+            ) {
+              validPersonalRecordExerciseIds.add(id);
+            }
+          }
+        }
+
+        const exercisePartition = partitionPersonalRecordRowsByExerciseCatalogValidity(
+          prRows,
+          validPersonalRecordExerciseIds,
+        );
+        if (exercisePartition.invalidExerciseRows.length > 0) {
+          const invalidExerciseIds = [
+            ...new Set(
+              exercisePartition.invalidExerciseRows
+                .map((row) => row.exercise_id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0),
+            ),
+          ];
+          console.warn(
+            'personal_records exercise_id references missing or inaccessible exercise_catalog rows — storing PRs by exercise_name:',
+            invalidExerciseIds,
+          );
+          prRows = exercisePartition.rowsWithInvalidExercisesNulled;
+        }
+      }
+
       const dedicatedPrsPresent = (payload.personalRecords ?? []).length > 0;
       const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
       const { data: existingPrs, error: existingPrErr } = await supabase
