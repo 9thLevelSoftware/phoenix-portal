@@ -203,6 +203,54 @@ export function partitionPersonalRecordRowsByLocalProfileValidity(
 	return { validRows, invalidProfileRows, rowsWithInvalidProfilesNulled };
 }
 
+/**
+ * Partition personal_records rows by whether their `session_id` references a
+ * row that is valid/owned for the current push.
+ *
+ * Background (Issue #532): `personal_records.session_id` is a foreign key
+ * to `workout_sessions.id`. A mobile push can carry personal_records that
+ * reference a `workout_session` owned by a different user, or that simply
+ * does not exist on the server (e.g. the parent sync was rejected, the row
+ * was deleted, or the device is replaying an old payload). The existing
+ * local_profile_id FK retry partition was not paralleled for `session_id`,
+ * so an FK violation on `session_id` was raised to the caller and the whole
+ * push failed.
+ *
+ * Rules (mirroring partitionPersonalRecordRowsByLocalProfileValidity):
+ *  - `session_id === null` → preserved (the FK is satisfied when the column
+ *    is nullable; the row is treated as valid).
+ *  - `session_id` in `validSessionIds` → preserved.
+ *  - `session_id` absent from `validSessionIds` → placed in
+ *    `invalidSessionRows` and returned in
+ *    `rowsWithInvalidSessionsNulled` with `session_id: null`. This is the
+ *    FK-safe retry payload.
+ */
+export function partitionPersonalRecordRowsBySessionValidity(
+	rows: readonly PersonalRecordRow[],
+	validSessionIds: ReadonlySet<string>,
+): {
+	validRows: PersonalRecordRow[];
+	invalidSessionRows: PersonalRecordRow[];
+	rowsWithInvalidSessionsNulled: PersonalRecordRow[];
+} {
+	const validRows: PersonalRecordRow[] = [];
+	const invalidSessionRows: PersonalRecordRow[] = [];
+	const rowsWithInvalidSessionsNulled: PersonalRecordRow[] = [];
+
+	for (const row of rows) {
+		const sessionId = row.session_id;
+		if (sessionId !== null && sessionId !== undefined && !validSessionIds.has(sessionId)) {
+			invalidSessionRows.push(row);
+			rowsWithInvalidSessionsNulled.push({ ...row, session_id: null });
+		} else {
+			validRows.push(row);
+			rowsWithInvalidSessionsNulled.push(row);
+		}
+	}
+
+	return { validRows, invalidSessionRows, rowsWithInvalidSessionsNulled };
+}
+
 export interface PersonalRecordIdentityInput {
 	local_profile_id?: string | null;
 	exercise_name?: string | null;
