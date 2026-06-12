@@ -4,6 +4,13 @@ import "@testing-library/jest-dom";
 vi.stubEnv("VITE_SUPABASE_URL", "https://test-project.supabase.co");
 vi.stubEnv("VITE_SUPABASE_ANON_KEY", "test-anon-key");
 
+// Node 25 exposes an experimental global localStorage that warns without a
+// persistence file. Component tests should use jsdom's browser storage instead.
+Object.defineProperty(globalThis, "localStorage", {
+	configurable: true,
+	value: window.localStorage,
+});
+
 // Mock window.matchMedia for components using useIsMobile and responsive queries
 Object.defineProperty(window, "matchMedia", {
 	writable: true,

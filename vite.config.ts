@@ -8,6 +8,7 @@ import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { stripBodyMusclesSourcemapsPlugin } from "./src/lib/build/body-muscles-sourcemaps";
 import {
 	productionSourcemapSetting,
 	shouldUploadSourcemaps,
@@ -18,6 +19,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	plugins: [
+		stripBodyMusclesSourcemapsPlugin(),
 		// The React and Tailwind plugins are both required for Make, even if
 		// Tailwind is not being actively used – do not remove them
 		react(),
@@ -87,6 +89,9 @@ export default defineConfig({
 			// Alias @ to the src directory
 			"@": path.resolve(configDir, "./src"),
 		},
+	},
+	optimizeDeps: {
+		exclude: ["body-muscles"],
 	},
 	build: {
 		sourcemap: productionSourcemapSetting(process.env),

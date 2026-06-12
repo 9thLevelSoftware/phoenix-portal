@@ -1,14 +1,17 @@
 import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useState } from "react";
-import MuscleHighlighter, {
-	type ExtendedBodyPart,
-} from "react-muscle-highlighter";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
+import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
+import type {
+	BodyMuscleContribution,
+	BodyMuscleFocusModel,
+} from "@/lib/body-muscle-analytics";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
-import type { WeightUnit } from "@/lib/units";
+import { formatVolume, type WeightUnit } from "@/lib/units";
+import { BodyMuscleHeatmap } from "./BodyMuscleHeatmap";
 
 const ExerciseDeepDive = lazy(() =>
 	import("./ExerciseDeepDive").then((m) => ({ default: m.ExerciseDeepDive })),
@@ -39,8 +42,7 @@ export interface BodyTabProps {
 	muscleGroupData: MuscleGroupEntry[];
 	muscleDonutOption: ChartOption | null;
 	muscleRadarData: Record<string, number>;
-	muscleHighlighterData: ExtendedBodyPart[];
-	muscleSlugToGroup: Record<string, string>;
+	bodyMuscleModel: BodyMuscleFocusModel;
 	weeklyVolume: Record<string, number>;
 	totalSessions: number;
 	muscleRecoveries: MuscleRecovery[];
@@ -58,8 +60,7 @@ export default function BodyTab({
 	muscleGroupData,
 	muscleDonutOption,
 	muscleRadarData,
-	muscleHighlighterData,
-	muscleSlugToGroup,
+	bodyMuscleModel,
 	weeklyVolume,
 	totalSessions,
 	muscleRecoveries,
@@ -70,9 +71,13 @@ export default function BodyTab({
 	profileId,
 }: BodyTabProps) {
 	const [bodySide, setBodySide] = useState<"front" | "back">("front");
-	const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string | null>(
-		null,
-	);
+	const [selectedMuscleId, setSelectedMuscleId] = useState<string | null>(null);
+	const selectedMuscle = selectedMuscleId
+		? (bodyMuscleModel.muscleById[selectedMuscleId] ?? null)
+		: null;
+	const selectedMuscleGroup = selectedMuscle
+		? toCanonicalMuscleGroup(selectedMuscle.group)
+		: null;
 
 	return (
 		<>
@@ -176,7 +181,7 @@ export default function BodyTab({
 							<button
 								type="button"
 								className="text-xs text-primary hover:text-white transition-colors"
-								onClick={() => setSelectedMuscleGroup(null)}
+								onClick={() => setSelectedMuscleId(null)}
 							>
 								Clear selection
 							</button>
@@ -199,47 +204,56 @@ export default function BodyTab({
 						</div>
 					</div>
 				</div>
-				<div className="flex justify-center">
-					<MuscleHighlighter
-						data={muscleHighlighterData}
-						side={bodySide}
-						gender="male"
-						scale={1.5}
-						border="none"
-						defaultFill="#2a2a2a"
-						defaultStroke="#444"
-						defaultStrokeWidth={0.5}
-						colors={[
-							"#FF6B3520",
-							"#FF6B3550",
-							"#FF6B3580",
-							"#FF6B35B0",
-							"#FF6B35",
-						]}
-						onBodyPartPress={(part) => {
-							if (part.slug) {
-								const group = muscleSlugToGroup[part.slug] ?? null;
-								setSelectedMuscleGroup((prev) =>
-									prev === group ? null : group,
-								);
-							}
-						}}
-					/>
-				</div>
-				<div className="flex justify-center gap-1 mt-4">
-					{["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"].map(
-						(c) => (
-							<div
-								key={c}
-								className="w-10 h-2 rounded"
-								style={{ backgroundColor: c }}
+				<div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
+					<div>
+						{bodyMuscleModel.muscles.length > 0 ? (
+							<BodyMuscleHeatmap
+								model={bodyMuscleModel}
+								side={bodySide}
+								selectedMuscleId={selectedMuscleId}
+								onSelectMuscle={(muscleId) =>
+									setSelectedMuscleId((prev) =>
+										prev === muscleId ? null : muscleId,
+									)
+								}
 							/>
-						),
-					)}
-				</div>
-				<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
-					<span>Low volume</span>
-					<span>High volume</span>
+						) : (
+							<div className="h-[420px] flex items-center justify-center text-muted-foreground">
+								No detailed body data yet
+							</div>
+						)}
+						<div className="flex justify-center gap-1 mt-4">
+							{["#334155", "#FACC15", "#FB923C", "#F97316", "#DC2626"].map(
+								(c) => (
+									<div
+										key={c}
+										className="w-10 h-2 rounded"
+										style={{ backgroundColor: c }}
+									/>
+								),
+							)}
+						</div>
+						<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
+							<span>Low contribution</span>
+							<span>High contribution</span>
+						</div>
+						{bodyMuscleModel.estimatedExerciseCount > 0 && (
+							<p className="mt-3 text-xs text-muted-foreground text-center">
+								{bodyMuscleModel.estimatedExerciseCount} custom or unmatched{" "}
+								{bodyMuscleModel.estimatedExerciseCount === 1
+									? "exercise uses"
+									: "exercises use"}{" "}
+								estimated six-group mapping.
+							</p>
+						)}
+					</div>
+
+					<SelectedMuscleContribution
+						muscle={selectedMuscle}
+						topMuscles={bodyMuscleModel.muscles.slice(0, 8)}
+						unit={unit}
+						onSelectMuscle={setSelectedMuscleId}
+					/>
 				</div>
 			</Card>
 
@@ -305,5 +319,157 @@ export default function BodyTab({
 				<RecommendationsPanel recommendations={recommendations} />
 			</Suspense>
 		</>
+	);
+}
+
+function toCanonicalMuscleGroup(group: string): string | null {
+	const map: Record<string, string> = {
+		Chest: "Chest",
+		Back: "Back",
+		Shoulders: "Shoulders",
+		Arms: "Arms",
+		Legs: "Legs",
+		Abdominals: "Core",
+	};
+	return map[group] ?? null;
+}
+
+function formatLoad(valueKg: number, fallbackSets: number, unit: WeightUnit) {
+	if (valueKg > 0) return formatVolume(valueKg, unit);
+	return `${fallbackSets.toFixed(1)} set-load`;
+}
+
+function SelectedMuscleContribution({
+	muscle,
+	topMuscles,
+	unit,
+	onSelectMuscle,
+}: {
+	muscle: BodyMuscleContribution | null;
+	topMuscles: BodyMuscleContribution[];
+	unit: WeightUnit;
+	onSelectMuscle: (muscleId: string) => void;
+}) {
+	if (!muscle) {
+		return (
+			<div className="rounded-lg border border-secondary bg-muted/10 p-4">
+				<p className="text-sm font-medium text-white mb-3">
+					Ranked muscle contributions
+				</p>
+				<div className="space-y-2">
+					{topMuscles.length > 0 ? (
+						topMuscles.map((item) => (
+							<button
+								type="button"
+								key={item.muscleId}
+								onClick={() => onSelectMuscle(item.muscleId)}
+								className="w-full rounded-md border border-secondary/60 bg-surface-2 px-3 py-2 text-left transition-colors hover:border-primary/60"
+							>
+								<div className="flex items-center justify-between gap-3">
+									<span className="text-sm text-white">{item.muscleName}</span>
+									<span className="text-xs text-primary tabular-nums">
+										{item.loadShare}%
+									</span>
+								</div>
+								<div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted/20">
+									<div
+										className="h-full rounded-full bg-primary"
+										style={{ width: `${Math.min(100, item.loadShare)}%` }}
+									/>
+								</div>
+							</button>
+						))
+					) : (
+						<p className="py-8 text-center text-sm text-muted-foreground">
+							Complete a workout to populate detailed muscle contributions.
+						</p>
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div
+			className="rounded-lg border border-secondary bg-muted/10 p-4"
+			data-testid="selected-muscle-contribution"
+		>
+			<div className="flex items-start justify-between gap-3">
+				<div>
+					<p className="text-sm text-muted-foreground">Selected muscle</p>
+					<h4 className="text-lg font-semibold text-white">
+						{muscle.muscleName}
+					</h4>
+				</div>
+				{muscle.estimated && (
+					<Badge variant="outline" className="text-[10px]">
+						Estimated
+					</Badge>
+				)}
+			</div>
+
+			<div className="grid grid-cols-3 gap-2 my-4">
+				<div className="rounded-md bg-surface-2 p-2">
+					<p className="text-[10px] uppercase text-muted-foreground">Load</p>
+					<p className="text-sm font-semibold text-white">
+						{formatLoad(muscle.totalVolumeKg, muscle.totalSets, unit)}
+					</p>
+				</div>
+				<div className="rounded-md bg-surface-2 p-2">
+					<p className="text-[10px] uppercase text-muted-foreground">Reps</p>
+					<p className="text-sm font-semibold text-white">
+						{muscle.totalReps.toFixed(0)}
+					</p>
+				</div>
+				<div className="rounded-md bg-surface-2 p-2">
+					<p className="text-[10px] uppercase text-muted-foreground">Share</p>
+					<p className="text-sm font-semibold text-white">
+						{muscle.loadShare}%
+					</p>
+				</div>
+			</div>
+
+			<div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+				{muscle.exercises.map((exercise) => (
+					<div
+						key={`${exercise.sessionId}-${exercise.exerciseId}`}
+						className="rounded-md border border-secondary/50 bg-surface-2 p-3"
+					>
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0">
+								<p className="truncate text-sm font-medium text-white">
+									{exercise.exerciseName}
+								</p>
+								<p className="text-[11px] text-muted-foreground">
+									{exercise.date
+										? exercise.date.toLocaleDateString("en-US", {
+												month: "short",
+												day: "numeric",
+											})
+										: "Date unavailable"}
+								</p>
+							</div>
+							<span className="text-xs text-primary tabular-nums">
+								{exercise.shareOfMuscleLoad}%
+							</span>
+						</div>
+						<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+							<span>{exercise.allocatedSets.toFixed(1)} sets</span>
+							<span>{exercise.allocatedReps.toFixed(0)} reps</span>
+							<span>
+								{formatLoad(
+									exercise.allocatedVolumeKg,
+									exercise.allocatedSets,
+									unit,
+								)}
+							</span>
+							{exercise.estimated && (
+								<span className="text-amber-300">estimated mapping</span>
+							)}
+						</div>
+					</div>
+				))}
+			</div>
+		</div>
 	);
 }

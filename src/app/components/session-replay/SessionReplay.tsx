@@ -15,6 +15,7 @@ import { detectFatigue } from "@/lib/fatigue-detection";
 import { buildFreshnessState } from "@/lib/freshness";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { buildReplayIntelligence } from "@/lib/replay-intelligence";
+import { buildReplayPhaseAnalytics } from "@/lib/replay-phase-analytics";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -24,6 +25,7 @@ import { QualityBadge } from "./QualityBadge";
 import { ReplayAnnotationOverlay } from "./ReplayAnnotationOverlay";
 import { ReplayCanvas } from "./ReplayCanvas";
 import { ReplayIntelligencePanel } from "./ReplayIntelligencePanel";
+import { ReplayPhaseAnalyticsPanel } from "./ReplayPhaseAnalyticsPanel";
 import { SetNavigation } from "./SetNavigation";
 import { TimelineBar } from "./TimelineBar";
 
@@ -104,6 +106,11 @@ export function SessionReplay() {
 			repSummaries,
 			repBoundaries,
 		});
+		const phaseAnalytics = buildReplayPhaseAnalytics({
+			telemetry,
+			repSummaries,
+			repBoundaries,
+		});
 
 		return {
 			telemetry,
@@ -112,6 +119,7 @@ export function SessionReplay() {
 			repBoundaries,
 			fatigue,
 			intelligence,
+			phaseAnalytics,
 		};
 	}, [telemetryQuery.data]);
 
@@ -305,6 +313,10 @@ export function SessionReplay() {
 							)}
 						</div>
 
+						<ReplayPhaseAnalyticsPanel
+							analytics={telemetryData.phaseAnalytics}
+						/>
+
 						{/* Timeline */}
 						<TimelineBar
 							durationMs={telemetryData.durationMs}
@@ -332,6 +344,9 @@ export function SessionReplay() {
 							<ReplayIntelligencePanel
 								intelligence={telemetryData.intelligence}
 								currentRepIndex={currentRepIndex}
+							/>
+							<ReplayPhaseAnalyticsPanel
+								analytics={telemetryData.phaseAnalytics}
 							/>
 							<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
 								Dense telemetry is not available for this set yet. Showing
