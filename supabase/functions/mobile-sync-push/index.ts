@@ -9,6 +9,8 @@ import {
   buildPersonalRecordRowsForPush,
   chunkLocalProfileIdsForRepair,
   collectDedicatedRecordLocalProfileIds,
+  hydratePersonalRecordExerciseNamesFromCatalog,
+  hydratePersonalRecordExerciseNamesFromSessionExercises,
   isPostgresForeignKeyViolation,
   partitionPersonalRecordRowsByExerciseCatalogValidity,
   partitionPersonalRecordRowsByLocalProfileValidity,
@@ -1629,22 +1631,47 @@ Deno.serve(async (req) => {
     );
 
     if (prRows.length > 0) {
-      const personalRecordExerciseIdsToVerify = [
+      prRows = hydratePersonalRecordExerciseNamesFromSessionExercises(
+        prRows,
+        (payload.sessions ?? []).flatMap((session) =>
+          (session.exercises ?? []).map((exercise) => ({
+            id: exercise.id,
+            session_id: session.id,
+            name: exercise.name,
+            exercise_id: exercise.exerciseId ?? null,
+          }))
+        ),
+      );
+
+      const personalRecordExerciseCatalogIdsToLookup = [
         ...new Set(
-          prRows
-            .map((row) => row.exercise_id)
-            .filter((id): id is string => typeof id === 'string' && id.length > 0),
+          prRows.flatMap((row) => {
+            const candidates: string[] = [];
+            if (typeof row.exercise_id === 'string' && row.exercise_id.length > 0) {
+              candidates.push(row.exercise_id);
+            }
+            const exerciseName = row.exercise_name.trim();
+            if (exerciseName.length > 0 && !/\s/.test(exerciseName)) {
+              candidates.push(exerciseName);
+            }
+            return candidates;
+          }),
         ),
       ];
 
-      if (personalRecordExerciseIdsToVerify.length > 0) {
+      if (personalRecordExerciseCatalogIdsToLookup.length > 0) {
         const validPersonalRecordExerciseIds = new Set<string>();
+        const personalRecordCatalogRows: {
+          id: string;
+          name?: string | null;
+          display_name?: string | null;
+        }[] = [];
         const chunkSize = 100;
-        for (let i = 0; i < personalRecordExerciseIdsToVerify.length; i += chunkSize) {
-          const chunk = personalRecordExerciseIdsToVerify.slice(i, i + chunkSize);
+        for (let i = 0; i < personalRecordExerciseCatalogIdsToLookup.length; i += chunkSize) {
+          const chunk = personalRecordExerciseCatalogIdsToLookup.slice(i, i + chunkSize);
           const { data: catalogRows, error: catalogLookupErr } = await supabase
             .from('exercise_catalog')
-            .select('id, user_id')
+            .select('id, user_id, name, display_name')
             .in('id', chunk);
           if (catalogLookupErr) {
             throw new Error(`personal_records exercise catalog lookup failed: ${catalogLookupErr.message}`);
@@ -1652,11 +1679,18 @@ Deno.serve(async (req) => {
           for (const row of catalogRows ?? []) {
             const id = (row as { id?: unknown }).id;
             const ownerId = (row as { user_id?: unknown }).user_id;
+            const name = (row as { name?: unknown }).name;
+            const displayName = (row as { display_name?: unknown }).display_name;
             if (
               typeof id === 'string' &&
               (ownerId === null || ownerId === undefined || ownerId === userId)
             ) {
               validPersonalRecordExerciseIds.add(id);
+              personalRecordCatalogRows.push({
+                id,
+                name: typeof name === 'string' ? name : null,
+                display_name: typeof displayName === 'string' ? displayName : null,
+              });
             }
           }
         }
@@ -1679,6 +1713,11 @@ Deno.serve(async (req) => {
           );
           prRows = exercisePartition.rowsWithInvalidExercisesNulled;
         }
+
+        prRows = hydratePersonalRecordExerciseNamesFromCatalog(
+          prRows,
+          personalRecordCatalogRows,
+        );
       }
 
       const dedicatedPrsPresent = (payload.personalRecords ?? []).length > 0;

@@ -205,13 +205,37 @@ describe("strengthProgressOptions", () => {
 		expect(result[0].exercise_name).toBe("Bench Press");
 	});
 
+	it("uses catalog display names for strength PR rows whose exercise_name is a catalog ID", async () => {
+		const raw = [
+			{
+				exercise_name: "1vS7ZNfrz2qF6KId",
+				exercise_id: "1vS7ZNfrz2qF6KId",
+				record_type: "MAX_WEIGHT",
+				workout_phase: "CONCENTRIC",
+				value: 40,
+				achieved_at: "2026-03-01T00:00:00Z",
+				catalog: {
+					id: "1vS7ZNfrz2qF6KId",
+					name: "Bayesian Curl",
+					display_name: "Bayesian Curl (Handles)",
+				},
+			},
+		];
+		chain = buildChain({ data: raw, error: null });
+		const { strengthProgressOptions } = await import("../analytics");
+		const opts = strengthProgressOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
+	});
+
 	it("selects record type and workout phase for phase-aware strength charts", async () => {
 		chain = buildChain({ data: [], error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		await opts.queryFn?.({} as never);
 		expect(chain.select).toHaveBeenCalledWith(
-			"exercise_name, exercise_id, record_type, workout_phase, value, achieved_at",
+			"exercise_name, exercise_id, session_id, record_type, workout_phase, value, achieved_at, catalog:exercise_catalog(id, name, display_name)",
 		);
 	});
 

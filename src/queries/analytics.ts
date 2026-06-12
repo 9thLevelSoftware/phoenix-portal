@@ -2,6 +2,10 @@ import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
+import {
+	resolvePersonalRecordDisplayNames,
+	STRENGTH_PROGRESS_WITH_CATALOG_SELECT,
+} from "./personal-record-normalization";
 
 /** Volume trend over time (for area/bar chart) */
 export function volumeTrendOptions(
@@ -112,9 +116,7 @@ export function strengthProgressOptions(
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select(
-					"exercise_name, exercise_id, record_type, workout_phase, value, achieved_at",
-				)
+				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT)
 				.eq("user_id", userId);
 
 			if (profileId) {
@@ -125,7 +127,7 @@ export function strengthProgressOptions(
 				ascending: true,
 			});
 			if (error) throw error;
-			return data;
+			return resolvePersonalRecordDisplayNames(data);
 		},
 	});
 }
