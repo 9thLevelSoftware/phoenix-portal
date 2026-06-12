@@ -411,6 +411,7 @@ export type ChallengeParticipant = z.infer<typeof challengeParticipantSchema>;
 
 export const bodyIntelligenceRowSchema = z.object({
 	id: z.string().uuid(),
+	exercise_id: z.string().nullable().optional(),
 	name: z.string(),
 	muscle_group: z.string().nullable(),
 	session_id: z.string().uuid(),

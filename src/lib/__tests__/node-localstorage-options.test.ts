@@ -43,6 +43,7 @@ describe("Node localStorage options", () => {
 
 	it("keeps the web storage disable flag for Node versions that allow it in NODE_OPTIONS", () => {
 		expect(nodeAllowsWebStorageDisableInNodeOptions("22.21.1")).toBe(true);
+		expect(nodeAllowsWebStorageDisableInNodeOptions("v22.21.1")).toBe(true);
 		expect(nodeAllowsWebStorageDisableInNodeOptions("25.2.1")).toBe(true);
 		expect(
 			buildNodeOptionsWithoutNodeWebStorage("--trace-warnings", {

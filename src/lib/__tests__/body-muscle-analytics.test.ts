@@ -131,27 +131,49 @@ describe("body muscle mapping", () => {
 		expect(chest?.loadShare).toBeGreaterThan(0);
 	});
 
-	it("accepts nullable nested set loads in body-intelligence rows", () => {
-		expect(() =>
-			bodyIntelligenceRowSchema.parse({
+	it("uses catalog exercise IDs before falling back to logged exercise names", () => {
+		const model = buildBodyMuscleFocusModel([
+			{
 				id: crypto.randomUUID(),
-				name: "Custom Movement",
+				exercise_id: "1vS7ZNfrz2qF6KId",
+				name: "Unmapped Session Exercise",
 				muscle_group: "Chest",
 				session_id: crypto.randomUUID(),
-				setCount: 1,
-				sets: [
-					{
-						id: crypto.randomUUID(),
-						actual_reps: null,
-						weight_kg: null,
-					},
-				],
-				workout_sessions: {
+				sets: [{ id: crypto.randomUUID(), actual_reps: 8, weight_kg: 10 }],
+				workout_sessions: { started_at: "2026-06-01T12:00:00Z" },
+			} as BodyMuscleFocusRow & { exercise_id: string },
+		]);
+
+		expect(model.estimatedExerciseCount).toBe(0);
+		expect(model.muscleById["biceps-left"]?.exercises[0]).toMatchObject({
+			exerciseName: "Unmapped Session Exercise",
+			estimated: false,
+		});
+		expect(model.muscleById["chest-upper-left"]).toBeUndefined();
+	});
+
+	it("accepts nullable nested set loads in body-intelligence rows", () => {
+		const parsed = bodyIntelligenceRowSchema.parse({
+			id: crypto.randomUUID(),
+			exercise_id: "1vS7ZNfrz2qF6KId",
+			name: "Custom Movement",
+			muscle_group: "Chest",
+			session_id: crypto.randomUUID(),
+			setCount: 1,
+			sets: [
+				{
 					id: crypto.randomUUID(),
-					started_at: "2026-06-01T12:00:00Z",
-					user_id: crypto.randomUUID(),
+					actual_reps: null,
+					weight_kg: null,
 				},
-			}),
-		).not.toThrow();
+			],
+			workout_sessions: {
+				id: crypto.randomUUID(),
+				started_at: "2026-06-01T12:00:00Z",
+				user_id: crypto.randomUUID(),
+			},
+		});
+
+		expect(parsed.exercise_id).toBe("1vS7ZNfrz2qF6KId");
 	});
 });

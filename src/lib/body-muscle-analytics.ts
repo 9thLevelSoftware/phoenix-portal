@@ -64,6 +64,7 @@ export interface BodyMuscleFocusModel {
 
 export interface BodyMuscleFocusRow {
 	id: string;
+	exercise_id?: string | null;
 	name: string;
 	muscle_group?: string | null;
 	session_id: string;
@@ -334,7 +335,7 @@ export function buildBodyMuscleFocusModel(
 		if (setCount <= 0 && reps <= 0 && contributionLoad <= 0) continue;
 
 		const resolved = resolveBodyMuscleMapping(
-			row.id,
+			row.exercise_id ?? row.id,
 			row.name,
 			row.muscle_group,
 		);
