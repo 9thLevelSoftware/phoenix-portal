@@ -4,6 +4,7 @@ import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import {
 	type AnalyticsRepSummaryRow,
 	type AnalyticsWorkoutExerciseSummaryRow,
+	buildWorkoutExerciseSummaryRows,
 	generateDailyExerciseSummaryCsv,
 	generateMuscleContributionCsv,
 	generateRepSummaryCsv,
@@ -82,6 +83,41 @@ describe("analytics table CSV generators", () => {
 			Sets: "3",
 			Reps: "15",
 			"Volume (kg)": "1500",
+		});
+	});
+
+	it("builds workout summaries from raw per-cable set weights", () => {
+		const rows = buildWorkoutExerciseSummaryRows(
+			[
+				{
+					id: "session-1",
+					name: "Push",
+					started_at: "2026-06-01T12:00:00Z",
+				},
+			],
+			[
+				{
+					id: "exercise-1",
+					name: "Bench Press",
+					muscle_group: "Chest",
+					session_id: "session-1",
+				},
+			],
+			[
+				{
+					id: "set-1",
+					exercise_id: "exercise-1",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 50,
+				},
+			],
+		);
+
+		expect(rows[0]).toMatchObject({
+			reps: 5,
+			volumeKg: 500,
+			maxWeightKg: 100,
 		});
 	});
 

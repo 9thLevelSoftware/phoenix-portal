@@ -8,6 +8,7 @@ import {
 } from "@/lib/body-muscle-analytics";
 import { supabase } from "@/lib/supabase";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
 
@@ -40,26 +41,26 @@ export interface AnalyticsRepSummaryRow {
 	vbtZone: string | null;
 }
 
-interface WorkoutRow {
+export interface AnalyticsRawWorkoutRow {
 	id: string;
 	name: string | null;
 	started_at: string;
 	duration_seconds?: number | null;
 }
 
-interface ExerciseRow {
+export interface AnalyticsRawExerciseRow {
 	id: string;
 	name: string;
 	muscle_group: string | null;
 	session_id: string;
 }
 
-interface SetRow {
+export interface AnalyticsRawSetRow {
 	id: string;
 	exercise_id: string;
 	set_number: number;
-	actual_reps: number;
-	weight_kg: number;
+	actual_reps: number | null;
+	weight_kg: number | null;
 }
 
 interface RepSummaryRow {
@@ -93,6 +94,10 @@ function dateKey(value: string | Date | null): string {
 function round(value: number, digits = 2): number {
 	const factor = 10 ** digits;
 	return Math.round(value * factor) / factor;
+}
+
+function toTotalWeightKg(weightKg: number | null | undefined): number {
+	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
 }
 
 export function generateWorkoutExerciseSummaryCsv(
@@ -230,10 +235,10 @@ export function generateRepSummaryCsv(rows: AnalyticsRepSummaryRow[]): string {
 	return csv(fields, data);
 }
 
-function buildWorkoutExerciseRows(
-	workouts: WorkoutRow[],
-	exercises: ExerciseRow[],
-	sets: SetRow[],
+export function buildWorkoutExerciseSummaryRows(
+	workouts: AnalyticsRawWorkoutRow[],
+	exercises: AnalyticsRawExerciseRow[],
+	sets: AnalyticsRawSetRow[],
 ): AnalyticsWorkoutExerciseSummaryRow[] {
 	const workoutById = new Map(workouts.map((workout) => [workout.id, workout]));
 	const setsByExercise = new Map<string, SetRow[]>();
@@ -253,20 +258,24 @@ function buildWorkoutExerciseRows(
 			exerciseName: exercise.name,
 			muscleGroup: exercise.muscle_group,
 			sets: exerciseSets.length,
-			reps: exerciseSets.reduce((sum, set) => sum + set.actual_reps, 0),
+			reps: exerciseSets.reduce((sum, set) => sum + (set.actual_reps ?? 0), 0),
 			volumeKg: exerciseSets.reduce(
-				(sum, set) => sum + set.actual_reps * set.weight_kg,
+				(sum, set) =>
+					sum + (set.actual_reps ?? 0) * toTotalWeightKg(set.weight_kg),
 				0,
 			),
-			maxWeightKg: Math.max(0, ...exerciseSets.map((set) => set.weight_kg)),
+			maxWeightKg: Math.max(
+				0,
+				...exerciseSets.map((set) => toTotalWeightKg(set.weight_kg)),
+			),
 		};
 	});
 }
 
 function buildBodyFocusRows(
-	workouts: WorkoutRow[],
-	exercises: ExerciseRow[],
-	sets: SetRow[],
+	workouts: AnalyticsRawWorkoutRow[],
+	exercises: AnalyticsRawExerciseRow[],
+	sets: AnalyticsRawSetRow[],
 ): BodyMuscleFocusRow[] {
 	const workoutById = new Map(workouts.map((workout) => [workout.id, workout]));
 	const setsByExercise = new Map<string, SetRow[]>();
@@ -294,9 +303,9 @@ function buildBodyFocusRows(
 }
 
 function buildRepRows(
-	workouts: WorkoutRow[],
-	exercises: ExerciseRow[],
-	sets: SetRow[],
+	workouts: AnalyticsRawWorkoutRow[],
+	exercises: AnalyticsRawExerciseRow[],
+	sets: AnalyticsRawSetRow[],
 	repSummaries: RepSummaryRow[],
 ): AnalyticsRepSummaryRow[] {
 	const exerciseById = new Map(
@@ -336,7 +345,7 @@ async function fetchUserAnalyticsRows(userId: string) {
 		.order("started_at", { ascending: false });
 
 	if (workoutResult.error) throw workoutResult.error;
-	const workouts = (workoutResult.data ?? []) as WorkoutRow[];
+	const workouts = (workoutResult.data ?? []) as AnalyticsRawWorkoutRow[];
 	const workoutIds = workouts.map((workout) => workout.id);
 
 	const exerciseResult =
@@ -347,14 +356,14 @@ async function fetchUserAnalyticsRows(userId: string) {
 					.in("session_id", workoutIds)
 			: { data: [], error: null };
 	if (exerciseResult.error) throw exerciseResult.error;
-	const exercises = (exerciseResult.data ?? []) as ExerciseRow[];
+	const exercises = (exerciseResult.data ?? []) as AnalyticsRawExerciseRow[];
 
 	const setResult = await supabase
 		.from("sets")
 		.select("id, exercise_id, set_number, actual_reps, weight_kg")
 		.eq("user_id", userId);
 	if (setResult.error) throw setResult.error;
-	const sets = (setResult.data ?? []) as SetRow[];
+	const sets = (setResult.data ?? []) as AnalyticsRawSetRow[];
 
 	const repResult = await supabase
 		.from("rep_summaries")
@@ -386,7 +395,11 @@ export async function exportAnalyticsTablesZip(
 			await fetchUserAnalyticsRows(userId);
 
 		progress("Building workout summaries...");
-		const workoutRows = buildWorkoutExerciseRows(workouts, exercises, sets);
+		const workoutRows = buildWorkoutExerciseSummaryRows(
+			workouts,
+			exercises,
+			sets,
+		);
 		const bodyFocusModel = buildBodyMuscleFocusModel(
 			buildBodyFocusRows(workouts, exercises, sets),
 		);

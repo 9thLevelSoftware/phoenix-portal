@@ -3,6 +3,7 @@ import {
 	getExerciseProfile,
 	normalizeExerciseName,
 } from "@/lib/exercise-muscles";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { BODY_MUSCLE_MAP } from "./body-muscle-map.generated";
 
 export interface BodyMuscleWeight {
@@ -31,6 +32,7 @@ export interface BodyMuscleContributionExercise {
 	allocatedSets: number;
 	allocatedReps: number;
 	allocatedVolumeKg: number;
+	allocatedLoad: number;
 	shareOfMuscleLoad: number;
 	estimated: boolean;
 }
@@ -42,6 +44,7 @@ export interface BodyMuscleContribution {
 	totalSets: number;
 	totalReps: number;
 	totalVolumeKg: number;
+	totalLoad: number;
 	loadShare: number;
 	intensity: number;
 	estimated: boolean;
@@ -54,6 +57,7 @@ export interface BodyMuscleFocusModel {
 	totalSets: number;
 	totalReps: number;
 	totalVolumeKg: number;
+	totalLoad: number;
 	estimatedExerciseCount: number;
 	unmatchedExerciseCount: number;
 }
@@ -182,6 +186,10 @@ function resolveDate(value: string | Date | null | undefined): Date | null {
 	if (value instanceof Date) return value;
 	const date = new Date(value);
 	return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toTotalWeightKg(weightKg: number | null | undefined): number {
+	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
 }
 
 function normalizeWeights(weights: BodyMuscleWeight[]): BodyMuscleWeight[] {
@@ -318,10 +326,11 @@ export function buildBodyMuscleFocusModel(
 		const setCount = sets.length > 0 ? sets.length : (row.setCount ?? 0);
 		const reps = sets.reduce((sum, set) => sum + (set.actual_reps ?? 0), 0);
 		const volumeKg = sets.reduce(
-			(sum, set) => sum + (set.actual_reps ?? 0) * (set.weight_kg ?? 0),
+			(sum, set) =>
+				sum + (set.actual_reps ?? 0) * toTotalWeightKg(set.weight_kg),
 			0,
 		);
-		const contributionLoad = volumeKg > 0 ? volumeKg : setCount;
+		const contributionLoad = Math.max(volumeKg, setCount);
 		if (setCount <= 0 && reps <= 0 && contributionLoad <= 0) continue;
 
 		const resolved = resolveBodyMuscleMapping(
@@ -344,14 +353,17 @@ export function buildBodyMuscleFocusModel(
 				totalSets: 0,
 				totalReps: 0,
 				totalVolumeKg: 0,
+				totalLoad: 0,
 				estimated: false,
 			};
 			const allocatedSets = setCount * muscle.weight;
 			const allocatedReps = reps * muscle.weight;
 			const allocatedVolumeKg = volumeKg * muscle.weight;
+			const allocatedLoad = contributionLoad * muscle.weight;
 			current.totalSets += allocatedSets;
 			current.totalReps += allocatedReps;
 			current.totalVolumeKg += allocatedVolumeKg;
+			current.totalLoad += allocatedLoad;
 			current.estimated = current.estimated || resolved.estimated;
 			muscleAccumulator.set(muscle.id, current);
 
@@ -367,6 +379,7 @@ export function buildBodyMuscleFocusModel(
 				allocatedSets,
 				allocatedReps,
 				allocatedVolumeKg,
+				allocatedLoad,
 				shareOfMuscleLoad: 0,
 				estimated: resolved.estimated,
 			});
@@ -376,42 +389,30 @@ export function buildBodyMuscleFocusModel(
 
 	const maxLoad = Math.max(
 		0,
-		...[...muscleAccumulator.values()].map((item) =>
-			item.totalVolumeKg > 0 ? item.totalVolumeKg : item.totalSets,
-		),
+		...[...muscleAccumulator.values()].map((item) => item.totalLoad),
 	);
 	const totalLoad = [...muscleAccumulator.values()].reduce(
-		(sum, item) =>
-			sum + (item.totalVolumeKg > 0 ? item.totalVolumeKg : item.totalSets),
+		(sum, item) => sum + item.totalLoad,
 		0,
 	);
 
 	const muscles = [...muscleAccumulator.values()]
 		.map((item): BodyMuscleContribution => {
-			const muscleLoad =
-				item.totalVolumeKg > 0 ? item.totalVolumeKg : item.totalSets;
+			const muscleLoad = item.totalLoad;
 			const exercises = (contributionRows.get(item.muscleId) ?? [])
 				.map((exercise) => ({
 					...exercise,
 					allocatedSets: round(exercise.allocatedSets, 2),
 					allocatedReps: round(exercise.allocatedReps, 1),
 					allocatedVolumeKg: round(exercise.allocatedVolumeKg, 1),
+					allocatedLoad: round(exercise.allocatedLoad, 2),
 					shareOfMuscleLoad:
 						muscleLoad > 0
-							? round(
-									((exercise.allocatedVolumeKg > 0
-										? exercise.allocatedVolumeKg
-										: exercise.allocatedSets) /
-										muscleLoad) *
-										100,
-									1,
-								)
+							? round((exercise.allocatedLoad / muscleLoad) * 100, 1)
 							: 0,
 				}))
 				.sort((a, b) => {
-					const loadDelta =
-						(b.allocatedVolumeKg > 0 ? b.allocatedVolumeKg : b.allocatedSets) -
-						(a.allocatedVolumeKg > 0 ? a.allocatedVolumeKg : a.allocatedSets);
+					const loadDelta = b.allocatedLoad - a.allocatedLoad;
 					if (loadDelta !== 0) return loadDelta;
 					return (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0);
 				});
@@ -420,6 +421,7 @@ export function buildBodyMuscleFocusModel(
 				totalSets: item.totalSets,
 				totalReps: item.totalReps,
 				totalVolumeKg: item.totalVolumeKg,
+				totalLoad: item.totalLoad,
 				loadShare: totalLoad > 0 ? round((muscleLoad / totalLoad) * 100, 1) : 0,
 				intensity:
 					maxLoad > 0
@@ -429,9 +431,7 @@ export function buildBodyMuscleFocusModel(
 			};
 		})
 		.sort((a, b) => {
-			const loadDelta =
-				(b.totalVolumeKg > 0 ? b.totalVolumeKg : b.totalSets) -
-				(a.totalVolumeKg > 0 ? a.totalVolumeKg : a.totalSets);
+			const loadDelta = b.totalLoad - a.totalLoad;
 			if (loadDelta !== 0) return loadDelta;
 			return a.muscleName.localeCompare(b.muscleName);
 		});
@@ -444,6 +444,7 @@ export function buildBodyMuscleFocusModel(
 		totalSets,
 		totalReps,
 		totalVolumeKg: round(totalVolumeKg, 1),
+		totalLoad: round(totalLoad, 2),
 		estimatedExerciseCount,
 		unmatchedExerciseCount,
 	};

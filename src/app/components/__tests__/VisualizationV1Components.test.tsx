@@ -221,6 +221,7 @@ const bodyMuscleModel: BodyMuscleFocusModel = {
 			totalSets: 2,
 			totalReps: 10,
 			totalVolumeKg: 1000,
+			totalLoad: 1000,
 			loadShare: 100,
 			intensity: 10,
 			estimated: true,
@@ -236,6 +237,7 @@ const bodyMuscleModel: BodyMuscleFocusModel = {
 					allocatedSets: 2,
 					allocatedReps: 10,
 					allocatedVolumeKg: 1000,
+					allocatedLoad: 1000,
 					shareOfMuscleLoad: 100,
 					estimated: true,
 				},
@@ -246,6 +248,7 @@ const bodyMuscleModel: BodyMuscleFocusModel = {
 	totalSets: 2,
 	totalReps: 10,
 	totalVolumeKg: 1000,
+	totalLoad: 1000,
 	estimatedExerciseCount: 1,
 	unmatchedExerciseCount: 0,
 };

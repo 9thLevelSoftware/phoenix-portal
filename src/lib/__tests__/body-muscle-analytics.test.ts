@@ -4,6 +4,7 @@ import {
 	buildBodyMuscleFocusModel,
 	getBodyMuscleMappingForExercise,
 } from "@/lib/body-muscle-analytics";
+import { bodyIntelligenceRowSchema } from "@/schemas/transforms";
 
 function row(
 	overrides: Partial<BodyMuscleFocusRow> & Pick<BodyMuscleFocusRow, "name">,
@@ -76,8 +77,8 @@ describe("body muscle mapping", () => {
 			0,
 		);
 
-		expect(model.totalVolumeKg).toBe(2000);
-		expect(Math.round(allocatedVolume)).toBe(2000);
+		expect(model.totalVolumeKg).toBe(4000);
+		expect(Math.round(allocatedVolume)).toBe(4000);
 		expect(Math.round(allocatedReps)).toBe(20);
 		expect(model.muscleById["chest-upper-left"]?.exercises[0]).toMatchObject({
 			exerciseName: "Bench Press",
@@ -111,5 +112,46 @@ describe("body muscle mapping", () => {
 		expect(model.totalVolumeKg).toBe(0);
 		expect(model.muscleById["chest-upper-left"]?.totalSets).toBeGreaterThan(0);
 		expect(model.muscleById["chest-upper-left"]?.loadShare).toBeGreaterThan(0);
+	});
+
+	it("uses a stable load metric when bodyweight and weighted sets are mixed", () => {
+		const bodyweight = row({
+			name: "Bench Press",
+			sets: Array.from({ length: 10 }, (_, index) => ({
+				id: crypto.randomUUID(),
+				actual_reps: 10,
+				weight_kg: index === 0 ? 0.05 : 0,
+			})),
+		});
+		const model = buildBodyMuscleFocusModel([bodyweight]);
+
+		const chest = model.muscleById["chest-upper-left"];
+		expect(chest?.totalVolumeKg).toBeCloseTo(0.125);
+		expect(chest?.totalLoad).toBeGreaterThan(chest?.totalVolumeKg ?? 0);
+		expect(chest?.loadShare).toBeGreaterThan(0);
+	});
+
+	it("accepts nullable nested set loads in body-intelligence rows", () => {
+		expect(() =>
+			bodyIntelligenceRowSchema.parse({
+				id: crypto.randomUUID(),
+				name: "Custom Movement",
+				muscle_group: "Chest",
+				session_id: crypto.randomUUID(),
+				setCount: 1,
+				sets: [
+					{
+						id: crypto.randomUUID(),
+						actual_reps: null,
+						weight_kg: null,
+					},
+				],
+				workout_sessions: {
+					id: crypto.randomUUID(),
+					started_at: "2026-06-01T12:00:00Z",
+					user_id: crypto.randomUUID(),
+				},
+			}),
+		).not.toThrow();
 	});
 });

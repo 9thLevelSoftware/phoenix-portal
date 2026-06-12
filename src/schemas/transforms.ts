@@ -419,8 +419,8 @@ export const bodyIntelligenceRowSchema = z.object({
 		.array(
 			z.object({
 				id: z.string().uuid(),
-				actual_reps: z.number(),
-				weight_kg: z.number(),
+				actual_reps: z.number().nullable(),
+				weight_kg: z.number().nullable(),
 			}),
 		)
 		.optional(),

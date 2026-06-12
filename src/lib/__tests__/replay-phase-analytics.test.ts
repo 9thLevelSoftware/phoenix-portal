@@ -89,7 +89,27 @@ describe("buildReplayPhaseAnalytics", () => {
 		});
 
 		expect(analytics.segments).toHaveLength(1);
-		expect(analytics.segments[0]?.deltaMm).toBe(1.5);
+		expect(analytics.segments[0]?.deltaMm).toBe(2);
+	});
+
+	it("accumulates gradual sub-millimeter samples until real movement is present", () => {
+		const analytics = buildReplayPhaseAnalytics({
+			telemetry: [
+				point(0, 0, 100, 0.1),
+				point(25, 0.5, 100, 0.1),
+				point(50, 1, 100, 0.1),
+				point(75, 1.5, 100, 0.1),
+				point(100, 2, 100, 0.1),
+			],
+			repSummaries: [],
+			repBoundaries: [],
+		});
+
+		expect(analytics.segments).toHaveLength(2);
+		expect(analytics.segments.map((segment) => segment.deltaMm)).toEqual([
+			1, 1,
+		]);
+		expect(analytics.summary.totalEnergyJ).toBe(0.2);
 	});
 
 	it("marks phase analytics partial when summaries exist without enough telemetry", () => {

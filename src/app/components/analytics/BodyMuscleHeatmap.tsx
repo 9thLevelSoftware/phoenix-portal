@@ -39,23 +39,26 @@ export function BodyMuscleHeatmap({
 		const container = containerRef.current;
 		if (!container) return;
 
-		chartRef.current = new BodyChart(container, {
-			view: ViewSide.FRONT,
-			bodyState: {},
-			ariaLabel: "Detailed muscle contribution body map",
-			showViewLabel: false,
-			onMuscleClick: (muscleId) => selectRef.current(muscleId),
-		});
+		if (!chartRef.current) {
+			chartRef.current = new BodyChart(container, {
+				view,
+				bodyState,
+				ariaLabel: "Detailed muscle contribution body map",
+				showViewLabel: false,
+				onMuscleClick: (muscleId) => selectRef.current(muscleId),
+			});
+			return;
+		}
 
+		chartRef.current.update({ view, bodyState });
+	}, [bodyState, view]);
+
+	useEffect(() => {
 		return () => {
 			chartRef.current?.destroy();
 			chartRef.current = null;
 		};
 	}, []);
-
-	useEffect(() => {
-		chartRef.current?.update({ view, bodyState });
-	}, [bodyState, view]);
 
 	return (
 		<div

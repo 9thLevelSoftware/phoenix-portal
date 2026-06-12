@@ -121,32 +121,36 @@ export function buildReplayPhaseAnalytics({
 	const samples = groupTelemetryByTimestamp(telemetry);
 	const segments: ReplayPhaseSegment[] = [];
 
+	let lastProcessed = samples[0];
 	for (let index = 1; index < samples.length; index++) {
-		const previous = samples[index - 1];
 		const current = samples[index];
-		const deltaMm = current.positionMm - previous.positionMm;
+		const deltaMm = current.positionMm - lastProcessed.positionMm;
 		if (Math.abs(deltaMm) < MIN_POSITION_DELTA_MM) continue;
 
-		const avgForceN = mean([previous.forceN, current.forceN]);
-		const avgVelocityMps = mean([previous.velocityMps, current.velocityMps]);
+		const avgForceN = mean([lastProcessed.forceN, current.forceN]);
+		const avgVelocityMps = mean([
+			lastProcessed.velocityMps,
+			current.velocityMps,
+		]);
 		const energyJ = avgForceN * (Math.abs(deltaMm) / 1000);
 
 		segments.push({
 			phase: deltaMm > 0 ? "concentric" : "eccentric",
-			startMs: previous.timestampMs,
+			startMs: lastProcessed.timestampMs,
 			endMs: current.timestampMs,
-			startPositionMm: round(previous.positionMm, 1),
+			startPositionMm: round(lastProcessed.positionMm, 1),
 			endPositionMm: round(current.positionMm, 1),
 			deltaMm: round(deltaMm, 1),
 			avgForceN: round(avgForceN, 1),
 			avgVelocityMps: round(avgVelocityMps, 3),
 			energyJ: round(energyJ, 2),
 			repNumber: repNumberForTimestamp(
-				previous.timestampMs,
+				lastProcessed.timestampMs,
 				repBoundaries,
 				repSummaries,
 			),
 		});
+		lastProcessed = current;
 	}
 
 	const concentricEnergyJ = segments
