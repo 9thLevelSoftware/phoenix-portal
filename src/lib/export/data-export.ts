@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase";
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
 
+export { exportAnalyticsTablesZip } from "./analytics-tables";
+
 /**
  * Export all user-owned data as a downloadable ZIP file containing JSON files.
  * Implements GDPR Article 20 data portability requirements.

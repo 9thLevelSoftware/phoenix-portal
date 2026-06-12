@@ -1,19 +1,31 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import BodyTab from "@/app/components/analytics/BodyTab";
 import { CommunityPercentileAtlas } from "@/app/components/analytics/CommunityPercentileAtlas";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import { ProgressionWorkbench } from "@/app/components/analytics/ProgressionWorkbench";
 import type { RankingItem } from "@/app/components/CommunityRankings";
 import { ReplayAnnotationOverlay } from "@/app/components/session-replay/ReplayAnnotationOverlay";
 import { ReplayIntelligencePanel } from "@/app/components/session-replay/ReplayIntelligencePanel";
+import { ReplayPhaseAnalyticsPanel } from "@/app/components/session-replay/ReplayPhaseAnalyticsPanel";
+import type { BodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import type { FreshnessState } from "@/lib/freshness";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { ReplayIntelligence } from "@/lib/replay-intelligence";
+import type { ReplayPhaseAnalytics } from "@/lib/replay-phase-analytics";
 import { renderWithProviders } from "@/test/test-utils";
 
 vi.mock("@/app/components/charts/CommunityDistribution", () => ({
 	CommunityDistribution: () => <div data-testid="distribution-chart" />,
+}));
+
+vi.mock("@/app/components/charts/MuscleRadar", () => ({
+	MuscleRadar: () => <div data-testid="muscle-radar" />,
+}));
+
+vi.mock("@/app/components/charts/shared/EChartsWrapper", () => ({
+	EChartsWrapper: () => <div data-testid="echarts-wrapper" />,
 }));
 
 const freshState: FreshnessState = {
@@ -93,6 +105,45 @@ const replayIntelligence: ReplayIntelligence = {
 	durationMs: 4300,
 };
 
+const replayPhaseAnalytics: ReplayPhaseAnalytics = {
+	status: "ready",
+	partialReason: null,
+	segments: [
+		{
+			phase: "concentric",
+			startMs: 0,
+			endMs: 100,
+			startPositionMm: 0,
+			endPositionMm: 100,
+			deltaMm: 100,
+			avgForceN: 130,
+			avgVelocityMps: 0.5,
+			energyJ: 13,
+			repNumber: 1,
+		},
+		{
+			phase: "eccentric",
+			startMs: 100,
+			endMs: 200,
+			startPositionMm: 100,
+			endPositionMm: 40,
+			deltaMm: -60,
+			avgForceN: 180,
+			avgVelocityMps: -0.4,
+			energyJ: 10.8,
+			repNumber: 1,
+		},
+	],
+	summary: {
+		totalEnergyJ: 23.8,
+		concentricEnergyJ: 13,
+		eccentricEnergyJ: 10.8,
+		concentricSharePct: 54.6,
+		eccentricSharePct: 45.4,
+		segmentCount: 2,
+	},
+};
+
 const percentileRankings: RankingItem[] = [
 	{
 		label: "Total Volume",
@@ -161,6 +212,50 @@ const progressionModel: ProgressionWorkbenchModel = {
 };
 progressionModel.selectedExercise = progressionModel.exercises[0];
 
+const bodyMuscleModel: BodyMuscleFocusModel = {
+	muscles: [
+		{
+			muscleId: "chest-upper-left",
+			muscleName: "Left Upper Chest",
+			group: "Chest",
+			totalSets: 2,
+			totalReps: 10,
+			totalVolumeKg: 1000,
+			totalLoad: 1000,
+			loadShare: 100,
+			intensity: 10,
+			estimated: true,
+			exercises: [
+				{
+					exerciseId: "exercise-1",
+					exerciseName: "Custom Press",
+					sessionId: "session-1",
+					date: new Date("2026-06-01T12:00:00Z"),
+					sets: 2,
+					reps: 10,
+					volumeKg: 1000,
+					allocatedSets: 2,
+					allocatedReps: 10,
+					allocatedVolumeKg: 1000,
+					allocatedLoad: 1000,
+					shareOfMuscleLoad: 100,
+					estimated: true,
+				},
+			],
+		},
+	],
+	muscleById: {},
+	totalSets: 2,
+	totalReps: 10,
+	totalVolumeKg: 1000,
+	totalLoad: 1000,
+	estimatedExerciseCount: 1,
+	unmatchedExerciseCount: 0,
+};
+bodyMuscleModel.muscleById = {
+	"chest-upper-left": bodyMuscleModel.muscles[0],
+};
+
 describe("DataFreshnessStrip", () => {
 	it("renders live and partial freshness states", () => {
 		const { rerender } = renderWithProviders(
@@ -174,6 +269,41 @@ describe("DataFreshnessStrip", () => {
 
 		expect(screen.getByText("Partial data")).toBeInTheDocument();
 		expect(screen.getByText("Processing unavailable")).toBeInTheDocument();
+	});
+});
+
+describe("BodyTab detailed muscle map", () => {
+	it("renders the detailed map, ranked rows, selected contribution state, and estimated messaging", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(
+			<BodyTab
+				muscleGroupData={[{ name: "Chest", value: 100, color: "#FF6B35" }]}
+				muscleDonutOption={{ series: [] }}
+				muscleRadarData={{ Chest: 100 }}
+				bodyMuscleModel={bodyMuscleModel}
+				weeklyVolume={{ Chest: 2 }}
+				totalSessions={1}
+				muscleRecoveries={[]}
+				recommendations={[]}
+				exercisesByMuscle={{}}
+				userId="user-1"
+				unit="kg"
+			/>,
+		);
+
+		expect(screen.getByTestId("body-muscle-heatmap")).toBeInTheDocument();
+		expect(screen.getByText("Ranked muscle contributions")).toBeInTheDocument();
+		expect(
+			screen.getByText(/estimated six-group mapping/i),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /left upper chest/i }));
+
+		expect(
+			screen.getByTestId("selected-muscle-contribution"),
+		).toBeInTheDocument();
+		expect(screen.getByText("Custom Press")).toBeInTheDocument();
+		expect(screen.getByText(/estimated mapping/i)).toBeInTheDocument();
 	});
 });
 
@@ -247,6 +377,43 @@ describe("ReplayAnnotationOverlay", () => {
 		expect(container.querySelector("rect")?.getAttribute("width")).toBe("130");
 		expect(container.querySelector("line")?.getAttribute("x1")).toBe("180");
 		expect(container.querySelector("circle")?.getAttribute("cx")).toBe("180");
+	});
+});
+
+describe("ReplayPhaseAnalyticsPanel", () => {
+	it("renders energy cards and partial unavailable state", () => {
+		const { rerender } = renderWithProviders(
+			<ReplayPhaseAnalyticsPanel analytics={replayPhaseAnalytics} />,
+		);
+
+		expect(screen.getByText("Phase Analytics")).toBeInTheDocument();
+		expect(screen.getByText("23.8 J")).toBeInTheDocument();
+		expect(screen.getByText("Concentric")).toBeInTheDocument();
+		expect(screen.getByText("Eccentric")).toBeInTheDocument();
+
+		rerender(
+			<ReplayPhaseAnalyticsPanel
+				analytics={{
+					...replayPhaseAnalytics,
+					status: "partial",
+					partialReason: "Dense position telemetry is unavailable.",
+					segments: [],
+					summary: {
+						totalEnergyJ: 0,
+						concentricEnergyJ: 0,
+						eccentricEnergyJ: 0,
+						concentricSharePct: 0,
+						eccentricSharePct: 0,
+						segmentCount: 0,
+					},
+				}}
+			/>,
+		);
+
+		expect(
+			screen.getByText(/phase analytics unavailable/i),
+		).toBeInTheDocument();
+		expect(screen.getByText("Partial")).toBeInTheDocument();
 	});
 });
 

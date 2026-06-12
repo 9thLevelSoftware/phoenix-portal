@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
-import type { ExtendedBodyPart, Slug } from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
@@ -45,6 +44,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
@@ -508,25 +508,6 @@ function percentDelta(current: number, previous: number): number | null {
 	return Math.round(((current - previous) / previous) * 100);
 }
 
-// Map muscle group names → react-muscle-highlighter slugs for body heatmap
-const muscleSlugToGroup: Record<string, string> = {
-	chest: "Chest",
-	deltoids: "Shoulders",
-	trapezius: "Shoulders",
-	biceps: "Arms",
-	triceps: "Arms",
-	forearm: "Arms",
-	abs: "Core",
-	obliques: "Core",
-	quadriceps: "Legs",
-	hamstring: "Legs",
-	calves: "Legs",
-	adductors: "Legs",
-	gluteal: "Legs",
-	"upper-back": "Back",
-	"lower-back": "Back",
-};
-
 export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
@@ -653,6 +634,10 @@ export function Analytics() {
 		() => computeWeeklyVolume(exerciseSessionData),
 		[exerciseSessionData],
 	);
+	const bodyMuscleModel = useMemo(
+		() => buildBodyMuscleFocusModel(bodyIntelData ?? []),
+		[bodyIntelData],
+	);
 
 	// Group exercises by primary muscle group for ExerciseDeepDive
 	const exercisesByMuscle = useMemo(() => {
@@ -763,22 +748,6 @@ export function Analytics() {
 		...m,
 		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
 	}));
-
-	const muscleHighlighterData: ExtendedBodyPart[] = useMemo(() => {
-		if (muscleGroupData.length === 0) return [];
-		const maxVal = Math.max(...muscleGroupData.map((m) => m.value), 1);
-		const groupToIntensity: Record<string, number> = {};
-		for (const m of muscleGroupData) {
-			groupToIntensity[m.name] = Math.max(
-				1,
-				Math.round((m.value / maxVal) * 5),
-			);
-		}
-		return Object.entries(muscleSlugToGroup).map(([slug, group]) => ({
-			slug: slug as Slug,
-			intensity: groupToIntensity[group] ?? 0,
-		}));
-	}, [muscleGroupData]);
 
 	const strengthSeries = useMemo(
 		() => buildStrengthPhaseSeries(strengthRaw ?? [], phaseFilter),
@@ -1441,6 +1410,7 @@ export function Analytics() {
 										muscleRadarData={muscleRadarData}
 										mobileMusclData={mobileMusclData}
 										weeklyVolume={weeklyVolume}
+										bodyMuscleModel={bodyMuscleModel}
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
@@ -1674,8 +1644,7 @@ export function Analytics() {
 											muscleGroupData={muscleGroupData}
 											muscleDonutOption={muscleDonutOption}
 											muscleRadarData={muscleRadarData}
-											muscleHighlighterData={muscleHighlighterData}
-											muscleSlugToGroup={muscleSlugToGroup}
+											bodyMuscleModel={bodyMuscleModel}
 											weeklyVolume={weeklyVolume}
 											totalSessions={totalSessions}
 											muscleRecoveries={muscleRecoveries}
