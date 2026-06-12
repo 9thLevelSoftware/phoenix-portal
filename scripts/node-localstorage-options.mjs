@@ -6,7 +6,7 @@ const NODE_WEBSTORAGE_DISABLE_FLAG = "--no-experimental-webstorage";
 export function nodeAllowsWebStorageDisableInNodeOptions(
 	nodeVersion = process.versions.node,
 ) {
-	const [majorText] = nodeVersion.split(".");
+	const [majorText] = nodeVersion.replace(/^v/, "").split(".");
 	const major = Number.parseInt(majorText ?? "", 10);
 	return Number.isFinite(major) && major >= 22;
 }

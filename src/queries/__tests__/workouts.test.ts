@@ -286,4 +286,32 @@ describe("recentPRsOptions", () => {
 		expect(result[0].previous_value).toBe(180); // doubled
 		expect(result[0].achieved_at).toBeInstanceOf(Date);
 	});
+
+	it("uses the catalog display name when a recent PR name contains a catalog ID", async () => {
+		const raw = [
+			{
+				id: "11111111-1111-4111-8111-111111111111",
+				user_id: "22222222-2222-4222-8222-222222222222",
+				exercise_name: "1vS7ZNfrz2qF6KId",
+				exercise_id: "1vS7ZNfrz2qF6KId",
+				muscle_group: "Arms",
+				record_type: "MAX_WEIGHT",
+				value: 40,
+				unit: "kg",
+				achieved_at: "2026-03-15T10:00:00Z",
+				previous_value: null,
+				catalog: {
+					id: "1vS7ZNfrz2qF6KId",
+					name: "Bayesian Curl",
+					display_name: "Bayesian Curl (Handles)",
+				},
+			},
+		];
+		chain = buildChain({ data: raw, error: null });
+		const { recentPRsOptions } = await import("../workouts");
+		const opts = recentPRsOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
+	});
 });

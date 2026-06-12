@@ -6,6 +6,8 @@ import {
 	buildPersonalRecordRowsForPush,
 	chunkLocalProfileIdsForRepair,
 	collectDedicatedRecordLocalProfileIds,
+	hydratePersonalRecordExerciseNamesFromCatalog,
+	hydratePersonalRecordExerciseNamesFromSessionExercises,
 	isPostgresForeignKeyViolation,
 	partitionPersonalRecordRowsByExerciseCatalogValidity,
 	partitionPersonalRecordRowsByLocalProfileValidity,
@@ -988,5 +990,116 @@ describe("personal_records exercise_id catalog partition", () => {
 			validRow,
 			{ ...staleRow, exercise_id: null },
 		]);
+	});
+});
+
+describe("personal_records catalog display-name hydration", () => {
+	const catalogRows = [
+		{
+			id: "1vS7ZNfrz2qF6KId",
+			name: "Bayesian Curl",
+			display_name: "Bayesian Curl (Handles)",
+		},
+	];
+	function rowWithExercise(exerciseName: string, exerciseId: string | null) {
+		return { ...basePersonalRecordRow(exerciseName), exercise_id: exerciseId };
+	}
+
+	it("replaces leaked catalog IDs in exercise_name when exercise_id is valid", () => {
+		const row = rowWithExercise("1vS7ZNfrz2qF6KId", "1vS7ZNfrz2qF6KId");
+
+		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
+			[row],
+			catalogRows,
+		);
+
+		expect(hydrated[0]).toMatchObject({
+			exercise_name: "Bayesian Curl (Handles)",
+			exercise_id: "1vS7ZNfrz2qF6KId",
+		});
+	});
+
+	it("recovers exercise_id when the catalog ID landed only in exercise_name", () => {
+		const row = rowWithExercise("1vS7ZNfrz2qF6KId", null);
+
+		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
+			[row],
+			catalogRows,
+		);
+
+		expect(hydrated[0]).toMatchObject({
+			exercise_name: "Bayesian Curl (Handles)",
+			exercise_id: "1vS7ZNfrz2qF6KId",
+		});
+	});
+
+	it("preserves explicit exercise names even when a catalog row is available", () => {
+		const row = rowWithExercise("Bayesian Curl", "1vS7ZNfrz2qF6KId");
+
+		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
+			[row],
+			catalogRows,
+		);
+
+		expect(hydrated[0]).toMatchObject({
+			exercise_name: "Bayesian Curl",
+			exercise_id: "1vS7ZNfrz2qF6KId",
+		});
+	});
+});
+
+describe("personal_records session exercise display-name hydration", () => {
+	function rowWithExercise(
+		exerciseName: string,
+		exerciseId: string | null,
+		sessionId = "33333333-3333-4333-8333-333333333333",
+	) {
+		return {
+			...basePersonalRecordRow(exerciseName),
+			exercise_id: exerciseId,
+			session_id: sessionId,
+		};
+	}
+
+	it("replaces leaked session exercise row IDs in exercise_name", () => {
+		const row = rowWithExercise("77f8d4e5-d97c-43ac-b4fc-d5ff35f67f8d", null);
+
+		const hydrated = hydratePersonalRecordExerciseNamesFromSessionExercises(
+			[row],
+			[
+				{
+					id: "77f8d4e5-d97c-43ac-b4fc-d5ff35f67f8d",
+					session_id: "33333333-3333-4333-8333-333333333333",
+					name: "Cable Curl",
+					exercise_id: "catalog-cable-curl",
+				},
+			],
+		);
+
+		expect(hydrated[0]).toMatchObject({
+			exercise_name: "Cable Curl",
+			exercise_id: "catalog-cable-curl",
+		});
+	});
+
+	it("preserves explicit exercise names for matching session exercises", () => {
+		const row = rowWithExercise("Cable Curl", "catalog-cable-curl");
+
+		const hydrated = hydratePersonalRecordExerciseNamesFromSessionExercises(
+			[row],
+			[
+				{
+					id: "77f8d4e5-d97c-43ac-b4fc-d5ff35f67f8d",
+					session_id: "33333333-3333-4333-8333-333333333333",
+					name: "Cable Curl",
+					exercise_id: "catalog-cable-curl",
+				},
+			],
+		);
+
+		expect(hydrated[0]).toMatchObject({
+			exercise_name: "Cable Curl",
+			exercise_id: "catalog-cable-curl",
+		});
 	});
 });

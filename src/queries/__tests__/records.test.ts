@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order"];
+	const methods = ["select", "eq", "in", "order"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -41,6 +41,7 @@ const recordRow = {
 describe("personalRecordsOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses records.byUser query key", async () => {
@@ -64,6 +65,72 @@ describe("personalRecordsOptions", () => {
 		// achieved_at should be a Date
 		expect(result[0].achieved_at).toBeInstanceOf(Date);
 		expect(result[0].exercise_name).toBe("Bench Press");
+	});
+
+	it("normalizes leaked catalog IDs to catalog display names", async () => {
+		chain = buildChain({
+			data: [
+				{
+					...recordRow,
+					exercise_name: "1vS7ZNfrz2qF6KId",
+					exercise_id: "1vS7ZNfrz2qF6KId",
+					catalog: {
+						id: "1vS7ZNfrz2qF6KId",
+						name: "Bayesian Curl",
+						display_name: "Bayesian Curl (Handles)",
+					},
+				},
+			],
+			error: null,
+		});
+		const { personalRecordsOptions } = await import("../records");
+		const opts = personalRecordsOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
+	});
+
+	it("normalizes leaked session exercise row IDs to exercise names", async () => {
+		const recordsChain = buildChain({
+			data: [
+				{
+					...recordRow,
+					exercise_name: "77f8d4e5-d97c-43ac-b4fc-d5ff35f67f8d",
+					exercise_id: null,
+					session_id: "33333333-3333-4333-8333-333333333333",
+					catalog: null,
+				},
+			],
+			error: null,
+		});
+		const exercisesChain = buildChain({
+			data: [
+				{
+					id: "77f8d4e5-d97c-43ac-b4fc-d5ff35f67f8d",
+					session_id: "33333333-3333-4333-8333-333333333333",
+					name: "Cable Curl",
+					exercise_id: "catalog-cable-curl",
+					catalog: {
+						id: "catalog-cable-curl",
+						name: "Cable Curl",
+						display_name: "Cable Curl (Handles)",
+					},
+				},
+			],
+			error: null,
+		});
+		fromFn.mockImplementation((table) =>
+			table === "exercises" ? exercisesChain : recordsChain,
+		);
+
+		const { personalRecordsOptions } = await import("../records");
+		const opts = personalRecordsOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(exercisesChain.in).toHaveBeenCalledWith("session_id", [
+			"33333333-3333-4333-8333-333333333333",
+		]);
+		expect(result[0].exercise_name).toBe("Cable Curl (Handles)");
 	});
 
 	it("handles null previous_value", async () => {

@@ -2,6 +2,10 @@ import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { personalRecordListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
+import {
+	PERSONAL_RECORD_WITH_CATALOG_SELECT,
+	resolvePersonalRecordDisplayNames,
+} from "./personal-record-normalization";
 
 export function personalRecordsOptions(
 	userId: string,
@@ -12,7 +16,7 @@ export function personalRecordsOptions(
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("*")
+				.select(PERSONAL_RECORD_WITH_CATALOG_SELECT)
 				.eq("user_id", userId);
 
 			if (profileId) {
@@ -23,7 +27,9 @@ export function personalRecordsOptions(
 				ascending: false,
 			});
 			if (error) throw error;
-			return personalRecordListSchema.parse(data);
+			return personalRecordListSchema.parse(
+				await resolvePersonalRecordDisplayNames(data),
+			);
 		},
 	});
 }

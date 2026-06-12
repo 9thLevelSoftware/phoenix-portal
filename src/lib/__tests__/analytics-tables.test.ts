@@ -6,6 +6,7 @@ import {
 	type AnalyticsWorkoutExerciseSummaryRow,
 	buildWorkoutExerciseSummaryRows,
 	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
 	generateDailyExerciseSummaryCsv,
 	generateMuscleContributionCsv,
 	generateRepSummaryCsv,
@@ -195,5 +196,34 @@ describe("analytics table CSV generators", () => {
 				error: new Error("range failed"),
 			})),
 		).rejects.toThrow("range failed");
+	});
+
+	it("paginates Supabase reads separately for each chunked filter value set", async () => {
+		const calls: Array<{ ids: string[]; range: [number, number] }> = [];
+		const rows = await fetchAllSupabasePagesForChunks(
+			["session-1", "session-2", "session-3"],
+			async (ids, from, to) => {
+				calls.push({ ids, range: [from, to] });
+				return {
+					data:
+						from === 0
+							? [
+									{ id: `${ids.join("+")}-${from}` },
+									{ id: `${ids.join("+")}-${to}` },
+								]
+							: [],
+					error: null,
+				};
+			},
+			{ chunkSize: 2, pageSize: 2 },
+		);
+
+		expect(calls).toEqual([
+			{ ids: ["session-1", "session-2"], range: [0, 1] },
+			{ ids: ["session-1", "session-2"], range: [2, 3] },
+			{ ids: ["session-3"], range: [0, 1] },
+			{ ids: ["session-3"], range: [2, 3] },
+		]);
+		expect(rows).toHaveLength(4);
 	});
 });
