@@ -10,7 +10,17 @@ import { supabase } from "@/lib/supabase";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
+const SUPABASE_PAGE_SIZE = 1000;
+
 type ProgressCallback = (step: string, current: number, total: number) => void;
+type SupabasePageResult<T> = {
+	data: T[] | null;
+	error: unknown;
+};
+type FetchSupabasePage<T> = (
+	from: number,
+	to: number,
+) => PromiseLike<SupabasePageResult<T>>;
 
 export interface AnalyticsWorkoutExerciseSummaryRow {
 	date: string | Date;
@@ -98,6 +108,26 @@ function round(value: number, digits = 2): number {
 
 function toTotalWeightKg(weightKg: number | null | undefined): number {
 	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
+}
+
+export async function fetchAllSupabasePages<T>(
+	fetchPage: FetchSupabasePage<T>,
+	pageSize = SUPABASE_PAGE_SIZE,
+): Promise<T[]> {
+	const rows: T[] = [];
+
+	for (let offset = 0; ; offset += pageSize) {
+		const { data, error } = await fetchPage(offset, offset + pageSize - 1);
+		if (error) {
+			throw error;
+		}
+
+		const page = data ?? [];
+		rows.push(...page);
+		if (page.length < pageSize) {
+			return rows;
+		}
+	}
 }
 
 export function generateWorkoutExerciseSummaryCsv(
@@ -338,41 +368,45 @@ function buildRepRows(
 }
 
 async function fetchUserAnalyticsRows(userId: string) {
-	const workoutResult = await supabase
-		.from("workout_sessions")
-		.select("id, name, started_at, duration_seconds")
-		.eq("user_id", userId)
-		.order("started_at", { ascending: false });
-
-	if (workoutResult.error) throw workoutResult.error;
-	const workouts = (workoutResult.data ?? []) as AnalyticsRawWorkoutRow[];
+	const workouts = await fetchAllSupabasePages<AnalyticsRawWorkoutRow>(
+		(from, to) =>
+			supabase
+				.from("workout_sessions")
+				.select("id, name, started_at, duration_seconds")
+				.eq("user_id", userId)
+				.order("started_at", { ascending: false })
+				.range(from, to),
+	);
 	const workoutIds = workouts.map((workout) => workout.id);
 
-	const exerciseResult =
+	const exercises =
 		workoutIds.length > 0
-			? await supabase
-					.from("exercises")
-					.select("id, name, muscle_group, session_id")
-					.in("session_id", workoutIds)
-			: { data: [], error: null };
-	if (exerciseResult.error) throw exerciseResult.error;
-	const exercises = (exerciseResult.data ?? []) as AnalyticsRawExerciseRow[];
+			? await fetchAllSupabasePages<AnalyticsRawExerciseRow>((from, to) =>
+					supabase
+						.from("exercises")
+						.select("id, name, muscle_group, session_id")
+						.in("session_id", workoutIds)
+						.range(from, to),
+				)
+			: [];
 
-	const setResult = await supabase
-		.from("sets")
-		.select("id, exercise_id, set_number, actual_reps, weight_kg")
-		.eq("user_id", userId);
-	if (setResult.error) throw setResult.error;
-	const sets = (setResult.data ?? []) as AnalyticsRawSetRow[];
+	const sets = await fetchAllSupabasePages<AnalyticsRawSetRow>((from, to) =>
+		supabase
+			.from("sets")
+			.select("id, exercise_id, set_number, actual_reps, weight_kg")
+			.eq("user_id", userId)
+			.range(from, to),
+	);
 
-	const repResult = await supabase
-		.from("rep_summaries")
-		.select(
-			"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
-		)
-		.eq("user_id", userId);
-	if (repResult.error) throw repResult.error;
-	const repSummaries = (repResult.data ?? []) as RepSummaryRow[];
+	const repSummaries = await fetchAllSupabasePages<RepSummaryRow>((from, to) =>
+		supabase
+			.from("rep_summaries")
+			.select(
+				"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
+			)
+			.eq("user_id", userId)
+			.range(from, to),
+	);
 
 	return { workouts, exercises, sets, repSummaries };
 }

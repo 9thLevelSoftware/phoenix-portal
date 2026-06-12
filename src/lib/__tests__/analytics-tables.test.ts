@@ -5,6 +5,7 @@ import {
 	type AnalyticsRepSummaryRow,
 	type AnalyticsWorkoutExerciseSummaryRow,
 	buildWorkoutExerciseSummaryRows,
+	fetchAllSupabasePages,
 	generateDailyExerciseSummaryCsv,
 	generateMuscleContributionCsv,
 	generateRepSummaryCsv,
@@ -163,5 +164,36 @@ describe("analytics table CSV generators", () => {
 			generateMuscleContributionCsv(buildBodyMuscleFocusModel([])),
 		).toContain("Muscle ID,Muscle,Body Group");
 		expect(generateRepSummaryCsv([])).toContain("Date,Workout,Exercise");
+	});
+
+	it("paginates Supabase analytics reads until a short page is returned", async () => {
+		const pages = [
+			Array.from({ length: 1000 }, (_, index) => ({ id: index })),
+			Array.from({ length: 1000 }, (_, index) => ({ id: index + 1000 })),
+			[{ id: 2000 }],
+		];
+		const ranges: Array<[number, number]> = [];
+
+		const rows = await fetchAllSupabasePages(async (from, to) => {
+			ranges.push([from, to]);
+			return { data: pages.shift() ?? [], error: null };
+		});
+
+		expect(rows).toHaveLength(2001);
+		expect(rows.at(-1)).toEqual({ id: 2000 });
+		expect(ranges).toEqual([
+			[0, 999],
+			[1000, 1999],
+			[2000, 2999],
+		]);
+	});
+
+	it("surfaces Supabase pagination errors", async () => {
+		await expect(
+			fetchAllSupabasePages(async () => ({
+				data: null,
+				error: new Error("range failed"),
+			})),
+		).rejects.toThrow("range failed");
 	});
 });
