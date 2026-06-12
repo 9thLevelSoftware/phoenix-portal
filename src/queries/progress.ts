@@ -4,6 +4,10 @@ import { supabase } from "@/lib/supabase";
 import { exerciseProgressSchema } from "@/schemas/telemetry";
 import { personalRecordListSchema } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
+import {
+	PERSONAL_RECORD_WITH_CATALOG_SELECT,
+	resolvePersonalRecordDisplayNames,
+} from "./personal-record-normalization";
 
 /** Fetch distinct exercise names for the user */
 export function exerciseListOptions(userId: string, profileId?: string | null) {
@@ -69,7 +73,7 @@ export function progressionWorkbenchOptions(
 				.eq("user_id", userId);
 			let recordsQuery = supabase
 				.from("personal_records")
-				.select("*")
+				.select(PERSONAL_RECORD_WITH_CATALOG_SELECT)
 				.eq("user_id", userId);
 
 			if (profileId) {
@@ -87,7 +91,9 @@ export function progressionWorkbenchOptions(
 
 			return {
 				progressRows: z.array(exerciseProgressSchema).parse(progressRes.data),
-				records: personalRecordListSchema.parse(recordsRes.data),
+				records: personalRecordListSchema.parse(
+					await resolvePersonalRecordDisplayNames(recordsRes.data),
+				),
 			};
 		},
 		staleTime: 5 * 60 * 1000,

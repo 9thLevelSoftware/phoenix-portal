@@ -10,6 +10,10 @@ import {
 	workoutSessionSchema,
 } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
+import {
+	PERSONAL_RECORD_WITH_CATALOG_SELECT,
+	resolvePersonalRecordDisplayNames,
+} from "./personal-record-normalization";
 
 /**
  * Paginated workout session list for a user.
@@ -126,7 +130,7 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("*")
+				.select(PERSONAL_RECORD_WITH_CATALOG_SELECT)
 				.eq("user_id", userId);
 
 			if (profileId) {
@@ -137,7 +141,9 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 				.order("achieved_at", { ascending: false })
 				.limit(5);
 			if (error) throw error;
-			return personalRecordListSchema.parse(data);
+			return personalRecordListSchema.parse(
+				await resolvePersonalRecordDisplayNames(data),
+			);
 		},
 	});
 }

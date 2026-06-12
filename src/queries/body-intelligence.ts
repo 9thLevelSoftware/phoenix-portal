@@ -21,7 +21,7 @@ export function bodyIntelligenceOptions(
 			let query = supabase
 				.from("exercises")
 				.select(
-					"id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
+					"id, exercise_id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
 				)
 				.eq("workout_sessions.user_id", userId)
 				.gte("workout_sessions.started_at", since.toISOString());

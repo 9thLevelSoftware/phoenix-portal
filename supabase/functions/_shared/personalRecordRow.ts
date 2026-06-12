@@ -281,6 +281,113 @@ export function partitionPersonalRecordRowsByExerciseCatalogValidity(
 	};
 }
 
+export interface ExerciseCatalogDisplayRow {
+	id: string;
+	name?: string | null;
+	display_name?: string | null;
+}
+
+function catalogExerciseLabel(
+	catalog: ExerciseCatalogDisplayRow,
+): string | null {
+	const displayName = catalog.display_name?.trim();
+	if (displayName) return displayName;
+	const name = catalog.name?.trim();
+	return name || null;
+}
+
+export function hydratePersonalRecordExerciseNamesFromCatalog(
+	rows: readonly PersonalRecordRow[],
+	catalogRows: readonly ExerciseCatalogDisplayRow[],
+): PersonalRecordRow[] {
+	const catalogById = new Map<string, ExerciseCatalogDisplayRow>();
+	for (const catalog of catalogRows) {
+		if (catalog.id) {
+			catalogById.set(catalog.id, catalog);
+		}
+	}
+
+	return rows.map((row) => {
+		const rawName = row.exercise_name.trim();
+		const explicitExerciseId = row.exercise_id?.trim() || null;
+		const catalog =
+			(explicitExerciseId ? catalogById.get(explicitExerciseId) : undefined) ??
+			catalogById.get(rawName);
+		if (!catalog) return row;
+
+		const label = catalogExerciseLabel(catalog);
+		if (!label) return row;
+
+		const nameIsCatalogId =
+			rawName.length === 0 ||
+			rawName === catalog.id ||
+			(explicitExerciseId !== null && rawName === explicitExerciseId);
+		if (!nameIsCatalogId) return row;
+
+		return {
+			...row,
+			exercise_name: label,
+			exercise_id: explicitExerciseId ?? catalog.id,
+		};
+	});
+}
+
+export interface PersonalRecordSessionExerciseDisplayRow {
+	id: string;
+	session_id: string;
+	name?: string | null;
+	exercise_id?: string | null;
+}
+
+function isIdentifierShaped(value: string): boolean {
+	return (
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+			value,
+		) ||
+		(/^[A-Za-z0-9_-]{12,}$/.test(value) && /\d/.test(value))
+	);
+}
+
+export function hydratePersonalRecordExerciseNamesFromSessionExercises(
+	rows: readonly PersonalRecordRow[],
+	exerciseRows: readonly PersonalRecordSessionExerciseDisplayRow[],
+): PersonalRecordRow[] {
+	const exerciseBySessionAndId = new Map<
+		string,
+		PersonalRecordSessionExerciseDisplayRow
+	>();
+
+	for (const exercise of exerciseRows) {
+		if (!exercise.session_id || !exercise.id) continue;
+		exerciseBySessionAndId.set(
+			`${exercise.session_id}:${exercise.id}`,
+			exercise,
+		);
+		if (exercise.exercise_id) {
+			exerciseBySessionAndId.set(
+				`${exercise.session_id}:${exercise.exercise_id}`,
+				exercise,
+			);
+		}
+	}
+
+	return rows.map((row) => {
+		const rawName = row.exercise_name.trim();
+		const sessionId = row.session_id ?? null;
+		if (!sessionId || !isIdentifierShaped(rawName)) return row;
+
+		const exercise = exerciseBySessionAndId.get(`${sessionId}:${rawName}`);
+		const exerciseName = exercise?.name?.trim();
+		if (!exercise || !exerciseName) return row;
+
+		return {
+			...row,
+			exercise_name: exerciseName,
+			exercise_id: row.exercise_id ?? exercise.exercise_id ?? null,
+		};
+	});
+}
+
 export interface PersonalRecordIdentityInput {
 	local_profile_id?: string | null;
 	exercise_name?: string | null;

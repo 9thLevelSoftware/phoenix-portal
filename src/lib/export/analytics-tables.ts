@@ -11,6 +11,7 @@ import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 
 const SUPABASE_PAGE_SIZE = 1000;
+const SUPABASE_FILTER_CHUNK_SIZE = 100;
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
 type SupabasePageResult<T> = {
@@ -18,6 +19,11 @@ type SupabasePageResult<T> = {
 	error: unknown;
 };
 type FetchSupabasePage<T> = (
+	from: number,
+	to: number,
+) => PromiseLike<SupabasePageResult<T>>;
+type FetchSupabaseChunkPage<T, V> = (
+	values: V[],
 	from: number,
 	to: number,
 ) => PromiseLike<SupabasePageResult<T>>;
@@ -60,6 +66,7 @@ export interface AnalyticsRawWorkoutRow {
 
 export interface AnalyticsRawExerciseRow {
 	id: string;
+	exercise_id?: string | null;
 	name: string;
 	muscle_group: string | null;
 	session_id: string;
@@ -128,6 +135,31 @@ export async function fetchAllSupabasePages<T>(
 			return rows;
 		}
 	}
+}
+
+export async function fetchAllSupabasePagesForChunks<T, V>(
+	values: V[],
+	fetchPage: FetchSupabaseChunkPage<T, V>,
+	options: {
+		chunkSize?: number;
+		pageSize?: number;
+	} = {},
+): Promise<T[]> {
+	const chunkSize = options.chunkSize ?? SUPABASE_FILTER_CHUNK_SIZE;
+	const pageSize = options.pageSize ?? SUPABASE_PAGE_SIZE;
+	const rows: T[] = [];
+
+	for (let offset = 0; offset < values.length; offset += chunkSize) {
+		const chunk = values.slice(offset, offset + chunkSize);
+		rows.push(
+			...(await fetchAllSupabasePages(
+				(from, to) => fetchPage(chunk, from, to),
+				pageSize,
+			)),
+		);
+	}
+
+	return rows;
 }
 
 export function generateWorkoutExerciseSummaryCsv(
@@ -317,6 +349,7 @@ function buildBodyFocusRows(
 
 	return exercises.map((exercise) => ({
 		id: exercise.id,
+		exercise_id: exercise.exercise_id,
 		name: exercise.name,
 		muscle_group: exercise.muscle_group,
 		session_id: exercise.session_id,
@@ -381,12 +414,14 @@ async function fetchUserAnalyticsRows(userId: string) {
 
 	const exercises =
 		workoutIds.length > 0
-			? await fetchAllSupabasePages<AnalyticsRawExerciseRow>((from, to) =>
-					supabase
-						.from("exercises")
-						.select("id, name, muscle_group, session_id")
-						.in("session_id", workoutIds)
-						.range(from, to),
+			? await fetchAllSupabasePagesForChunks<AnalyticsRawExerciseRow, string>(
+					workoutIds,
+					(ids, from, to) =>
+						supabase
+							.from("exercises")
+							.select("id, exercise_id, name, muscle_group, session_id")
+							.in("session_id", ids)
+							.range(from, to),
 				)
 			: [];
 
