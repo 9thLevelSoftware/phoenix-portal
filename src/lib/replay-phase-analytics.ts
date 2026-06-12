@@ -70,7 +70,7 @@ function groupTelemetryByTimestamp(
 	return [...grouped.entries()]
 		.map(([timestampMs, rows]) => ({
 			timestampMs,
-			forceN: mean(rows.map((row) => row.force_n)),
+			forceN: rows.reduce((sum, row) => sum + row.force_n, 0),
 			velocityMps: mean(rows.map((row) => row.velocity_mps)),
 			positionMm: mean(rows.map((row) => row.position_mm)),
 		}))

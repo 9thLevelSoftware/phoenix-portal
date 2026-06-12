@@ -40,7 +40,7 @@ function rep(repNumber: number): RepSummary {
 }
 
 describe("buildReplayPhaseAnalytics", () => {
-	it("segments concentric and eccentric phases and calculates energy in joules", () => {
+	it("segments phases and calculates energy from summed dual-cable force", () => {
 		const analytics = buildReplayPhaseAnalytics({
 			telemetry: [
 				point(0, 0, 100, 0.2, "A"),
@@ -60,19 +60,19 @@ describe("buildReplayPhaseAnalytics", () => {
 			"eccentric",
 		]);
 		expect(analytics.segments[0]).toMatchObject({
-			avgForceN: 130,
+			avgForceN: 260,
 			avgVelocityMps: 0.5,
-			energyJ: 13,
+			energyJ: 26,
 			repNumber: 1,
 		});
 		expect(analytics.segments[1]).toMatchObject({
-			avgForceN: 180,
-			energyJ: 10.8,
+			avgForceN: 360,
+			energyJ: 21.6,
 		});
 		expect(analytics.summary).toMatchObject({
-			totalEnergyJ: 23.8,
-			concentricEnergyJ: 13,
-			eccentricEnergyJ: 10.8,
+			totalEnergyJ: 47.6,
+			concentricEnergyJ: 26,
+			eccentricEnergyJ: 21.6,
 			segmentCount: 2,
 		});
 	});

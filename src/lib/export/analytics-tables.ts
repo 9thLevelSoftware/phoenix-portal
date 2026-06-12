@@ -241,7 +241,7 @@ export function buildWorkoutExerciseSummaryRows(
 	sets: AnalyticsRawSetRow[],
 ): AnalyticsWorkoutExerciseSummaryRow[] {
 	const workoutById = new Map(workouts.map((workout) => [workout.id, workout]));
-	const setsByExercise = new Map<string, SetRow[]>();
+	const setsByExercise = new Map<string, AnalyticsRawSetRow[]>();
 	for (const set of sets) {
 		const rows = setsByExercise.get(set.exercise_id) ?? [];
 		rows.push(set);
@@ -278,7 +278,7 @@ function buildBodyFocusRows(
 	sets: AnalyticsRawSetRow[],
 ): BodyMuscleFocusRow[] {
 	const workoutById = new Map(workouts.map((workout) => [workout.id, workout]));
-	const setsByExercise = new Map<string, SetRow[]>();
+	const setsByExercise = new Map<string, AnalyticsRawSetRow[]>();
 	for (const set of sets) {
 		const rows = setsByExercise.get(set.exercise_id) ?? [];
 		rows.push(set);
