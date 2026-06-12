@@ -415,6 +415,15 @@ export const bodyIntelligenceRowSchema = z.object({
 	muscle_group: z.string().nullable(),
 	session_id: z.string().uuid(),
 	setCount: z.number(),
+	sets: z
+		.array(
+			z.object({
+				id: z.string().uuid(),
+				actual_reps: z.number(),
+				weight_kg: z.number(),
+			}),
+		)
+		.optional(),
 	workout_sessions: z.object({
 		id: z.string().uuid(),
 		started_at: z.coerce.date(),

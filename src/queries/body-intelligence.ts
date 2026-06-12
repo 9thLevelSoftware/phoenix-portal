@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 /**
- * Fetches exercises with set counts for sessions in the last N days.
+ * Fetches exercises with set details for sessions in the last N days.
  * Used by: Volume Landmarks, SRA Recovery, Exercise Deep-Dive.
  */
 export function bodyIntelligenceOptions(
@@ -21,7 +21,7 @@ export function bodyIntelligenceOptions(
 			let query = supabase
 				.from("exercises")
 				.select(
-					"id, name, muscle_group, session_id, sets(count), workout_sessions!inner(id, started_at, user_id)",
+					"id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
 				)
 				.eq("workout_sessions.user_id", userId)
 				.gte("workout_sessions.started_at", since.toISOString());
@@ -32,11 +32,9 @@ export function bodyIntelligenceOptions(
 
 			const { data, error } = await query;
 			if (error) throw error;
-			// Supabase PostgREST returns sets(count) as [{ count: N }]
-			// Transform to flat shape for consumers
 			return (data ?? []).map((row) => ({
 				...row,
-				setCount: Array.isArray(row.sets) ? (row.sets[0]?.count ?? 0) : 0,
+				setCount: Array.isArray(row.sets) ? row.sets.length : 0,
 			}));
 		},
 	});

@@ -16,7 +16,10 @@ import {
 	generateRecordsCSV,
 	generateWorkoutCSV,
 } from "@/lib/export/csv";
-import { exportAllUserData } from "@/lib/export/data-export";
+import {
+	exportAllUserData,
+	exportAnalyticsTablesZip,
+} from "@/lib/export/data-export";
 import { profileOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
@@ -38,6 +41,7 @@ export function ExportSection() {
 		null,
 	);
 	const [fullExporting, setFullExporting] = useState(false);
+	const [analyticsExporting, setAnalyticsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<{
 		step: string;
 		percent: number;
@@ -81,6 +85,27 @@ export function ExportSection() {
 			console.error("Full export error:", error);
 		} finally {
 			setFullExporting(false);
+			setExportProgress(null);
+		}
+	};
+
+	const handleAnalyticsExport = async () => {
+		if (!user?.id) return;
+		setAnalyticsExporting(true);
+		setExportProgress({ step: "Starting analytics export...", percent: 0 });
+		try {
+			await exportAnalyticsTablesZip(user.id, unit, (step, current, total) => {
+				setExportProgress({
+					step,
+					percent: Math.round((current / total) * 100),
+				});
+			});
+			toast.success("Analytics tables export complete");
+		} catch (error) {
+			toast.error("Failed to export analytics tables");
+			console.error("Analytics export error:", error);
+		} finally {
+			setAnalyticsExporting(false);
 			setExportProgress(null);
 		}
 	};
@@ -154,6 +179,45 @@ export function ExportSection() {
 					application.
 				</p>
 
+				{exportProgress && (
+					<div className="space-y-1 rounded-md border border-secondary bg-muted/10 p-3">
+						<p className="text-xs text-muted-foreground">
+							{exportProgress.step}
+						</p>
+						<div className="w-full bg-secondary/30 rounded-full h-2">
+							<div
+								className="bg-primary h-2 rounded-full transition-all duration-300"
+								style={{ width: `${exportProgress.percent}%` }}
+							/>
+						</div>
+					</div>
+				)}
+
+				<div className="border-t border-secondary pt-4 mt-4">
+					<p className="text-sm font-medium text-white mb-2">
+						Analytics Tables
+					</p>
+					<p className="text-xs text-muted-foreground mb-3">
+						Download cleaned CSV tables for workout-exercise summaries, daily
+						summaries, muscle contributions, and rep summaries.
+					</p>
+					<Button
+						variant="outline"
+						onClick={handleAnalyticsExport}
+						disabled={analyticsExporting || fullExporting || !user?.id}
+						className="w-full border-secondary text-white hover:bg-secondary/50"
+					>
+						{analyticsExporting ? (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						) : (
+							<Archive className="mr-2 h-4 w-4" />
+						)}
+						{analyticsExporting
+							? "Exporting Analytics..."
+							: "Export Analytics Tables (ZIP)"}
+					</Button>
+				</div>
+
 				<div className="border-t border-secondary pt-4 mt-4">
 					<p className="text-sm font-medium text-white mb-2">
 						Complete Data Export
@@ -163,23 +227,10 @@ export function ExportSection() {
 						includes your complete workout history, telemetry, records,
 						routines, goals, comments, and account information.
 					</p>
-					{exportProgress && (
-						<div className="mb-3 space-y-1">
-							<p className="text-xs text-muted-foreground">
-								{exportProgress.step}
-							</p>
-							<div className="w-full bg-secondary/30 rounded-full h-2">
-								<div
-									className="bg-primary h-2 rounded-full transition-all duration-300"
-									style={{ width: `${exportProgress.percent}%` }}
-								/>
-							</div>
-						</div>
-					)}
 					<Button
 						variant="outline"
 						onClick={handleFullExport}
-						disabled={fullExporting}
+						disabled={fullExporting || analyticsExporting}
 						className="w-full border-primary text-primary hover:bg-primary/10"
 					>
 						{fullExporting ? (
