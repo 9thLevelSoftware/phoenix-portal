@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-7-purple)](https://vite.dev)
 
-Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP) — the community rescue project keeping Vitruvian Trainer workout machines alive after company bankruptcy.
+Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP) — the community rescue project keeping Vitruvian Trainer workout machines alive after company bankruptcy. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
 
 ![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-0D0D0D?style=flat&labelColor=FF6B35)
 
@@ -72,10 +72,10 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 | **Components**     | shadcn/ui (50+ Radix primitives)               |
 | **State**          | Zustand 5 (client), TanStack Query 5 (server)  |
 | **Visualization**  | Recharts 3, @visx, ECharts 6                   |
-| **Animation**      | Framer Motion (reduced-motion support)         |
+| **Animation**      | Motion (formerly Framer Motion, reduced-motion) |
 | **Validation**     | Zod 4                                          |
 | **Backend**        | Supabase (PostgreSQL, Auth, Realtime, Storage) |
-| **Edge Functions** | 20 Deno functions                              |
+| **Edge Functions** | 22 Deno functions                              |
 | **Payments**       | Paddle (Merchant of Record)                    |
 | **Monitoring**     | Sentry (cookie-consent-gated)                  |
 | **Testing**        | Vitest 4, Playwright 1.58                      |
