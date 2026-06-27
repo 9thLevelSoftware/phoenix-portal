@@ -278,7 +278,11 @@ export function ExerciseProgress({
 	const velocity1RM = useMemo(() => {
 		for (let i = filteredData.length - 1; i >= 0; i--) {
 			const v = filteredData[i].velocity_estimated_1rm_kg;
-			if (v != null) return convertWeight(v, unit);
+			if (v != null) {
+				// Round to 1 decimal to match the rep-based stat (computeTrend rounds
+				// current the same way); avoids long lbs decimal trails.
+				return Math.round(convertWeight(v, unit) * 10) / 10;
+			}
 		}
 		return null;
 	}, [filteredData, unit]);
