@@ -131,6 +131,10 @@ const exerciseSchema = z.object({
 	// Mobile-provided canonical estimated 1RM (per-cable kg). Optional for
 	// backward compat; absent → server recomputes (see exerciseProgressRows).
 	estimatedOneRepMaxKg: nullableField(z.number()),
+	// Velocity-based (VBT) estimated 1RM (per-cable kg). Brand-new, optional,
+	// stored verbatim alongside estimatedOneRepMaxKg (never recomputed). Absent
+	// on legacy payloads → null column. Issue #517 Phase 6.
+	velocityEstimatedOneRepMaxKg: nullableField(z.number()),
 	sets: arrayOf(setSchema).default([]),
 });
 
