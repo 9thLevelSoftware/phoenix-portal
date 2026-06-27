@@ -368,6 +368,7 @@ export type Database = {
 					set_count: number;
 					total_volume_kg: number;
 					user_id: string;
+					velocity_estimated_1rm_kg: number | null;
 				};
 				Insert: {
 					estimated_1rm_kg?: number;
@@ -381,6 +382,7 @@ export type Database = {
 					set_count?: number;
 					total_volume_kg?: number;
 					user_id: string;
+					velocity_estimated_1rm_kg?: number | null;
 				};
 				Update: {
 					estimated_1rm_kg?: number;
@@ -394,6 +396,7 @@ export type Database = {
 					set_count?: number;
 					total_volume_kg?: number;
 					user_id?: string;
+					velocity_estimated_1rm_kg?: number | null;
 				};
 				Relationships: [
 					{
