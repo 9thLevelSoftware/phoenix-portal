@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
@@ -258,19 +259,20 @@ Deno.serve(async (req) => {
 			}
 		} catch (fetchError) {
 			console.error("Liftosaur API fetch error:", fetchError);
+			const fetchMessage = errorMessage(fetchError);
 
 			await supabase
 				.from("user_integrations")
 				.update({
 					status: "error",
-					error_message: `Sync failed: ${fetchError.message}`,
+					error_message: `Sync failed: ${fetchMessage}`,
 				})
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
 			return new Response(
 				JSON.stringify({
-					error: `Liftosaur API error: ${fetchError.message}`,
+					error: `Liftosaur API error: ${fetchMessage}`,
 				}),
 				{
 					status: 502,
@@ -353,7 +355,7 @@ Deno.serve(async (req) => {
 		);
 	} catch (err) {
 		console.error("Liftosaur sync error:", err);
-		return new Response(JSON.stringify({ error: err.message }), {
+		return new Response(JSON.stringify({ error: errorMessage(err) }), {
 			status: 500,
 			headers: { ...cors, "Content-Type": "application/json" },
 		});

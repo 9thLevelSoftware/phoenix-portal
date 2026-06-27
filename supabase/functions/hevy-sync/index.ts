@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
@@ -199,18 +200,19 @@ Deno.serve(async (req) => {
       workouts = data.workouts ?? data ?? [];
     } catch (fetchError) {
       console.error('Hevy API fetch error:', fetchError);
+      const fetchMessage = errorMessage(fetchError);
 
       await supabase
         .from('user_integrations')
         .update({
           status: 'error',
-          error_message: `Sync failed: ${fetchError.message}`,
+          error_message: `Sync failed: ${fetchMessage}`,
         })
         .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
-        JSON.stringify({ error: `Hevy API error: ${fetchError.message}` }),
+        JSON.stringify({ error: `Hevy API error: ${fetchMessage}` }),
         {
           status: 502,
           headers: { ...cors, 'Content-Type': 'application/json' },
@@ -284,7 +286,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Hevy sync error:', err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: errorMessage(err) }),
       {
         status: 500,
         headers: { ...cors, 'Content-Type': 'application/json' },

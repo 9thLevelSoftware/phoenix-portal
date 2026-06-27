@@ -1,13 +1,27 @@
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 
 const denoVersion = "2.2.15";
+const functionsDir = "supabase/functions";
+
+// Type-check every edge function entrypoint, not just a hand-picked subset, so
+// type regressions (e.g. `never` payload collapse, unsafe casts) are caught in
+// CI before deployment. Entrypoints are `supabase/functions/<name>/index.ts`.
+function discoverEntrypoints() {
+	const entries = readdirSync(functionsDir, { withFileTypes: true });
+	return entries
+		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+		.map((entry) => join(functionsDir, entry.name, "index.ts"))
+		.sort();
+}
 
 const denoArgs = [
 	"check",
+	"--node-modules-dir=auto",
 	"--config",
-	"supabase/functions/deno.json",
-	"supabase/functions/mobile-sync-push/index.ts",
-	"supabase/functions/mobile-sync-pull/index.ts",
+	`${functionsDir}/deno.json`,
+	...discoverEntrypoints(),
 ];
 
 function run(command, args, options = {}) {

@@ -1,8 +1,14 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Mobile Integration Sync Edge Function
@@ -552,7 +558,7 @@ Deno.serve(async (req) => {
  * Maps ActivityDto camelCase fields to snake_case columns.
  */
 async function persistActivities(
-  supabase: ReturnType<typeof createClient>,
+  supabase: DbClient,
   userId: string,
   provider: string,
   activities: ActivityDto[]

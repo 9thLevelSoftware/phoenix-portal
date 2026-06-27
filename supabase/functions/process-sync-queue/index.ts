@@ -1,7 +1,13 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Scheduled sync queue processor.
@@ -243,7 +249,7 @@ async function callSyncFunction(provider: string, userId: string) {
 /**
  * Increment the rate limit counter for a provider, resetting the window if expired.
  */
-async function incrementRateLimit(supabase: ReturnType<typeof createClient>, provider: string) {
+async function incrementRateLimit(supabase: DbClient, provider: string) {
   const now = new Date();
   const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
   if (!limit) return;
