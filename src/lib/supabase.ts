@@ -39,8 +39,15 @@ function requestUrl(input: RequestInfo | URL): string {
 	return input.url;
 }
 
-/** Guards against re-entrant refresh: refreshSession() routes through this fetch. */
-let refreshInFlight = false;
+/**
+ * Single in-flight refresh shared across concurrent 401s. React Query commonly
+ * fires several requests at once when an idle tab resumes; without coalescing,
+ * the first would refresh while the rest surfaced auth errors. Sharing the
+ * promise also bounds refreshes to one at a time (no re-entrant storm).
+ */
+let refreshPromise: ReturnType<
+	NonNullable<typeof supabaseRef.current>["auth"]["refreshSession"]
+> | null = null;
 
 /**
  * One-shot retry on 401 after `refreshSession()` so idle sessions recover when
@@ -50,7 +57,8 @@ let refreshInFlight = false;
  */
 const fetchWithAuthRetry: typeof fetch = async (input, init) => {
 	const response = await fetch(input, init);
-	if (response.status !== 401 || !supabaseRef.current) {
+	const client = supabaseRef.current;
+	if (response.status !== 401 || !client) {
 		return response;
 	}
 
@@ -58,21 +66,21 @@ const fetchWithAuthRetry: typeof fetch = async (input, init) => {
 	// `refreshSession()` call below issues a request through this same custom
 	// fetch; if that auth request (or a failed refresh) returns 401, retrying it
 	// would recursively call `refreshSession()` and loop until resource
-	// exhaustion. Also bail out if a refresh is already in flight.
+	// exhaustion.
 	const url = requestUrl(input);
-	if (refreshInFlight || url.includes("/auth/v1/")) {
+	if (url.includes("/auth/v1/")) {
 		return response;
 	}
 
-	refreshInFlight = true;
-	let refreshed: Awaited<
-		ReturnType<typeof supabaseRef.current.auth.refreshSession>
-	>;
-	try {
-		refreshed = await supabaseRef.current.auth.refreshSession();
-	} finally {
-		refreshInFlight = false;
+	// Coalesce concurrent 401s onto a single refresh, then all retry with the
+	// freshly minted token.
+	if (!refreshPromise) {
+		refreshPromise = client.auth.refreshSession();
+		refreshPromise.finally(() => {
+			refreshPromise = null;
+		});
 	}
+	const refreshed = await refreshPromise;
 	if (refreshed.error || !refreshed.data.session) {
 		return response;
 	}

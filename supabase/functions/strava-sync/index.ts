@@ -237,9 +237,12 @@ Deno.serve(async (req) => {
 
       if (tokenUpdateError) {
         console.error('Failed to persist rotated Strava tokens:', tokenUpdateError);
+        // Keep status 'connected' (do NOT downgrade): this handler refuses to
+        // sync unless status === 'connected', and the 500 below is requeued for
+        // retry. Downgrading would make the retry return a non-retryable 404.
         await supabase
           .from('user_integrations')
-          .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
+          .update({ error_message: 'Failed to persist refreshed tokens' })
           .eq('user_id', userId)
           .eq('provider', 'strava');
 
@@ -347,9 +350,12 @@ Deno.serve(async (req) => {
     // ---------------------------------------------------------------
     if (errors.length > 0) {
       const failMessage = `Failed to persist ${errors.length} of ${rawActivities.length} activities`;
+      // Keep status 'connected' so the queued 502 retry can re-enter this
+      // handler (it rejects any non-connected integration with a 404). We only
+      // record the error and withhold the last_sync_at advance.
       await supabase
         .from('user_integrations')
-        .update({ status: 'error', error_message: failMessage })
+        .update({ error_message: failMessage })
         .eq('user_id', userId)
         .eq('provider', 'strava');
 
