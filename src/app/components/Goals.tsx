@@ -432,7 +432,7 @@ export function Goals() {
 						<EmptyState
 							icon={Target}
 							title="Upgrade to set goals"
-							description="Goal tracking is available for Phoenix and Elite subscribers. Set workout frequency, volume, and PR targets to stay motivated."
+							description="Goal tracking is available for Flame and Inferno subscribers. Set workout frequency, volume, and PR targets to stay motivated."
 							actionLabel="View Plans"
 							actionHref="/pricing"
 						/>

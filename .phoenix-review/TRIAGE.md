@@ -105,3 +105,13 @@ already used in `comments.ts`/`goals.ts`.
 
 Remaining in theme (deferred): F264 (atomic Paddle webhook ordering — needs conditional-upsert
 RPC), F343 (push exercise delete+replace transaction), F303/F311/F359.
+
+---
+
+## PR-11 — UI resilience & copy (started: stale tier copy)
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F420 (FAQ stale tiers) | CONFIRMED | Rewrote FAQ to the three current tiers (Ember $5 / Flame $15 / Inferno $25) from `pricing.ts`. |
+| F410 (legacy "Phoenix and Elite") | CONFIRMED | Goals + ComparisonView now say "Flame and Inferno". |
+| F368 (FREE goal-limit gate) | CONFIRMED but **NEEDS PRODUCT DECISION** | `maxGoals` grants FREE=1 (Goals.tsx:313) yet the gate at :413 blocks ALL non-premium users, so the 1 free goal is unreachable. Fix depends on intent (FREE=1 vs FREE=0); not changing gating behavior on a guess. |
