@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { Info, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -22,6 +22,12 @@ import {
 } from "@/app/components/ui/select";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+	Tooltip as UiTooltip,
+} from "@/app/components/ui/tooltip";
 import { estimateOneRepMax } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
 import { convertWeight, getUnitLabel } from "@/lib/units";
@@ -91,20 +97,76 @@ function DirectionIcon({ direction }: { direction: "up" | "down" | "flat" }) {
 	return <Minus className="w-4 h-4 text-muted-foreground" />;
 }
 
+// Distinct hue for the velocity (VBT) estimate so it never reads as the same
+// metric as the green rep-based estimate.
+const VELOCITY_COLOR = "#8B7CF6";
+
+const VELOCITY_HELP =
+	"Velocity-based (VBT) estimate from cable speed (mean concentric velocity) captured by the trainer — distinct from the rep-based formula estimate.";
+
+/** Small info icon with a hover/focus tooltip. Reuses the shared Radix tooltip. */
+function InfoTooltip({ text }: { text: string }) {
+	return (
+		<TooltipProvider delayDuration={150}>
+			<UiTooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="More info"
+						className="text-muted-foreground hover:text-white focus:outline-none"
+					>
+						<Info className="w-3.5 h-3.5" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs text-xs">{text}</TooltipContent>
+			</UiTooltip>
+		</TooltipProvider>
+	);
+}
+
+/**
+ * Current-value stat for the velocity-based (VBT) 1RM. Rendered only when a
+ * value is present, visually distinct from the rep-based estimate.
+ */
+function VelocityStatCard({ value, unit }: { value: number; unit: string }) {
+	return (
+		<Card className="p-4 bg-surface-2 border-secondary">
+			<div className="flex items-center gap-1 mb-1">
+				<span className="text-sm text-muted-foreground">
+					Velocity 1RM (VBT)
+				</span>
+				<InfoTooltip text={VELOCITY_HELP} />
+			</div>
+			<div
+				className="text-4xl font-bold tabular-nums"
+				style={{ color: VELOCITY_COLOR }}
+			>
+				{value} {unit}
+			</div>
+			<div className="mt-2 text-xs text-muted-foreground">Latest estimate</div>
+		</Card>
+	);
+}
+
 function StatCard({
 	label,
 	stat,
 	color,
 	unit,
+	info,
 }: {
 	label: string;
 	stat: TrendStat;
 	color: string;
 	unit: string;
+	info?: string;
 }) {
 	return (
 		<Card className="p-4 bg-surface-2 border-secondary">
-			<div className="text-sm text-muted-foreground mb-1">{label}</div>
+			<div className="flex items-center gap-1 mb-1">
+				<span className="text-sm text-muted-foreground">{label}</span>
+				{info && <InfoTooltip text={info} />}
+			</div>
 			<div className="text-4xl font-bold tabular-nums" style={{ color }}>
 				{stat.current} {unit}
 			</div>
@@ -209,6 +271,22 @@ export function ExerciseProgress({
 		[chartData],
 	);
 
+	// Velocity-based (VBT) 1RM is a rolling CURRENT value (not as-of-session), so
+	// we surface the most-recent non-null reading as a single current-value stat
+	// rather than a trend series. Hidden entirely when there is no VBT data.
+	// Already x2 (per-cable → total) via the schema; convertWeight only does kg↔lbs.
+	const velocity1RM = useMemo(() => {
+		for (let i = filteredData.length - 1; i >= 0; i--) {
+			const v = filteredData[i].velocity_estimated_1rm_kg;
+			if (v != null) {
+				// Round to 1 decimal to match the rep-based stat (computeTrend rounds
+				// current the same way); avoids long lbs decimal trails.
+				return Math.round(convertWeight(v, unit) * 10) / 10;
+			}
+		}
+		return null;
+	}, [filteredData, unit]);
+
 	if (exercisesPending) {
 		return (
 			<div className="space-y-6">
@@ -290,7 +368,9 @@ export function ExerciseProgress({
 				<>
 					{/* Summary stats */}
 					<motion.div
-						className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+						className={`grid grid-cols-1 sm:grid-cols-3 gap-4${
+							velocity1RM != null ? " lg:grid-cols-4" : ""
+						}`}
 						initial={{ opacity: 0, y: 10 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
@@ -307,11 +387,15 @@ export function ExerciseProgress({
 							unit={getUnitLabel(unit)}
 						/>
 						<StatCard
-							label="Overall Est. 1RM"
+							label="Rep-based 1RM (formula)"
 							stat={oneRmTrend}
 							color={PHOENIX.forgeGreen}
 							unit={getUnitLabel(unit)}
+							info="Estimated from weight × reps via a formula (Brzycki / Epley)."
 						/>
+						{velocity1RM != null && (
+							<VelocityStatCard value={velocity1RM} unit={getUnitLabel(unit)} />
+						)}
 					</motion.div>
 
 					{/* Three trend chart panels */}

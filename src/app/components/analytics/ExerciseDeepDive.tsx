@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Info } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
 	Area,
@@ -9,6 +10,12 @@ import {
 	YAxis,
 } from "recharts";
 import { Card } from "@/app/components/ui/card";
+import {
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+	Tooltip as UiTooltip,
+} from "@/app/components/ui/tooltip";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
 import { formatWorkoutPhase, WORKOUT_PHASES } from "@/lib/workout-phases";
@@ -73,18 +80,50 @@ function computeDelta(values: number[]): number | null {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+// Velocity (VBT) accent + help copy, kept distinct from the rep-based estimate.
+const VELOCITY_VALUE_CLASS = "text-[#8B7CF6]";
+const REP_BASED_HELP =
+	"Estimated from weight × reps via a formula (Brzycki / Epley).";
+const VELOCITY_HELP =
+	"Velocity-based (VBT) estimate from cable speed (mean concentric velocity) captured by the trainer — distinct from the rep-based formula estimate.";
+
+/** Small info icon with a hover/focus tooltip. Reuses the shared Radix tooltip. */
+function InfoTooltip({ text }: { text: string }) {
+	return (
+		<TooltipProvider delayDuration={150}>
+			<UiTooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="More info"
+						className="text-muted-foreground hover:text-white focus:outline-none"
+					>
+						<Info className="w-3 h-3" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs text-xs">{text}</TooltipContent>
+			</UiTooltip>
+		</TooltipProvider>
+	);
+}
+
 function StatCard({
 	label,
 	value,
 	valueClass,
+	info,
 }: {
 	label: string;
 	value: string | number;
 	valueClass?: string;
+	info?: string;
 }) {
 	return (
 		<div className="bg-surface-2 rounded-lg p-3 flex flex-col gap-1">
-			<span className="text-[11px] text-muted-foreground">{label}</span>
+			<span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+				{label}
+				{info && <InfoTooltip text={info} />}
+			</span>
 			<span
 				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-white"}`}
 			>
@@ -148,6 +187,16 @@ export function ExerciseDeepDive({
 		filteredProgress.length > 0
 			? filteredProgress[filteredProgress.length - 1].estimated_1rm_kg
 			: null;
+
+	// Velocity-based (VBT) 1RM: most-recent non-null reading (rolling current
+	// value, not a trend). Null when this exercise has no VBT history → hidden.
+	const currentVelocity1RM = useMemo(() => {
+		for (let i = filteredProgress.length - 1; i >= 0; i--) {
+			const v = filteredProgress[i].velocity_estimated_1rm_kg;
+			if (v != null) return v;
+		}
+		return null;
+	}, [filteredProgress]);
 
 	const prsByPhaseInPeriod = useMemo(() => {
 		const counts = new Map(WORKOUT_PHASES.map((phase) => [phase, 0]));
@@ -394,13 +443,27 @@ export function ExerciseDeepDive({
 					</div>
 
 					{/* Stats Row */}
-					<div className="grid grid-cols-4 gap-2" data-testid="stats-row">
+					<div
+						className={`grid gap-2 ${
+							currentVelocity1RM != null ? "grid-cols-5" : "grid-cols-4"
+						}`}
+						data-testid="stats-row"
+					>
 						<StatCard
-							label="Current 1RM"
+							label="Rep-based 1RM"
 							value={
 								currentOneRM != null ? formatWeight(currentOneRM, unit) : "—"
 							}
+							info={REP_BASED_HELP}
 						/>
+						{currentVelocity1RM != null && (
+							<StatCard
+								label="Velocity 1RM (VBT)"
+								value={formatWeight(currentVelocity1RM, unit)}
+								valueClass={VELOCITY_VALUE_CLASS}
+								info={VELOCITY_HELP}
+							/>
+						)}
 						<StatCard
 							label="Period Change"
 							value={delta !== null ? `${delta > 0 ? "+" : ""}${delta}%` : "—"}

@@ -6,6 +6,17 @@ const weightTransform = z
 	.number()
 	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
 
+// Nullable per-cable weight: applies the same x2 display multiplier, but
+// preserves null/absent (legacy rows with no velocity-based 1RM) as null so the
+// UI can hide the metric entirely.
+const nullableWeightTransform = z
+	.number()
+	.nullable()
+	.optional()
+	.transform((perCable) =>
+		perCable == null ? null : perCable * WEIGHT_MULTIPLIER,
+	);
+
 // --- Telemetry Point ---
 
 // Cable canonical wire format: "A" | "B" (BLE convention, mobile authoritative).
@@ -54,6 +65,9 @@ export const exerciseProgressSchema = z.object({
 	max_weight_kg: weightTransform,
 	total_volume_kg: weightTransform,
 	estimated_1rm_kg: weightTransform,
+	// Velocity-based (VBT) 1RM — distinct from the rep-based estimated_1rm_kg.
+	// Nullable; null when the row predates VBT capture. Issue #517 Phase 6.
+	velocity_estimated_1rm_kg: nullableWeightTransform,
 	max_reps: z.number(),
 	set_count: z.number(),
 });

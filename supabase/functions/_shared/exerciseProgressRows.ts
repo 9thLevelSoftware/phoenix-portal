@@ -19,6 +19,13 @@ export interface ProgressExerciseInput {
 	name: string;
 	exerciseId?: string | null;
 	estimatedOneRepMaxKg?: number | null;
+	/**
+	 * Velocity-based (VBT) estimated 1RM (per-cable kg), computed on-device by the
+	 * mobile app from BLE mean concentric velocity. SEPARATE from the rep-based
+	 * estimatedOneRepMaxKg; stored verbatim (no recompute, no fallback) and null
+	 * when absent. Issue #517 Phase 6.
+	 */
+	velocityEstimatedOneRepMaxKg?: number | null;
 	sets: ProgressSetInput[];
 }
 
@@ -38,6 +45,7 @@ export interface ExerciseProgressRow {
 	max_weight_kg: number;
 	total_volume_kg: number;
 	estimated_1rm_kg: number;
+	velocity_estimated_1rm_kg: number | null;
 	max_reps: number;
 	set_count: number;
 }
@@ -92,6 +100,10 @@ export function buildExerciseProgressRows(
 				max_weight_kg: maxWeight,
 				total_volume_kg: totalVolume,
 				estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
+				// Velocity-based estimate stored verbatim — never recomputed, no
+				// fallback. Null when the mobile payload omits it (legacy / no
+				// passing VBT estimate). Distinct from estimated_1rm_kg above.
+				velocity_estimated_1rm_kg: exercise.velocityEstimatedOneRepMaxKg ?? null,
 				max_reps: maxReps,
 				set_count: setCount,
 			});
