@@ -131,7 +131,8 @@ export function useSaveRoutine() {
 
 			if (routineError) throw routineError;
 
-			// Insert exercises
+			// Insert exercises. If this fails, roll back the orphaned parent so we
+			// don't leave a routine whose exercise_count has no matching children.
 			if (input.exercises.length > 0) {
 				const routineExercises = toRoutineExerciseRows(
 					routine.id,
@@ -140,7 +141,14 @@ export function useSaveRoutine() {
 				const { error: exError } = await supabase
 					.from("routine_exercises")
 					.insert(routineExercises);
-				if (exError) throw exError;
+				if (exError) {
+					await supabase
+						.from("routines")
+						.delete()
+						.eq("id", routine.id)
+						.eq("user_id", user.id);
+					throw exError;
+				}
 			}
 
 			return routine;

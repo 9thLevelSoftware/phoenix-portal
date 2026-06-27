@@ -80,7 +80,8 @@ export function useSaveCycle() {
 
 			if (cycleError) throw cycleError;
 
-			// Insert cycle days
+			// Insert cycle days. If this fails, roll back the orphaned parent so we
+			// don't leave a draft cycle with no schedule.
 			if (input.days.length > 0) {
 				const { error: daysError } = await supabase.from("cycle_days").insert(
 					input.days.map((day) => ({
@@ -95,7 +96,14 @@ export function useSaveCycle() {
 						rest_type: day.rest_type ?? null,
 					})),
 				);
-				if (daysError) throw daysError;
+				if (daysError) {
+					await supabase
+						.from("training_cycles")
+						.delete()
+						.eq("id", cycle.id)
+						.eq("user_id", user.id);
+					throw daysError;
+				}
 			}
 
 			return cycle;

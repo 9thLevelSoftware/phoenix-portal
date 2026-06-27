@@ -105,8 +105,13 @@ All confirmed; each mutation now `.select(...).maybeSingle()` and throws when no
 
 Test mocks updated in account/comments/community/goals test files for the new chains (59 pass).
 
-Remaining in theme (heavier, deferred): atomic multi-entity mutations via RPC/transaction
-(F148, F149, F150, F156, F158) — next.
+### PR-3 batch 3 — atomic mutations
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F148 (useSaveCycle) | CONFIRMED | Parent-cleanup: delete the orphaned `training_cycles` row if `cycle_days` insert fails. |
+| F156 (useSaveRoutine) | CONFIRMED | Parent-cleanup: delete the orphaned `routines` row if `routine_exercises` insert fails. |
+| F149/F150 (useUpdateCycle), F158 (useUpdateRoutine) | CONFIRMED — pending | UPDATE delete+reinsert is not recoverable by cleanup (old children already gone); needs a transactional Postgres RPC. Next: a migration with `replace_cycle_days`/`replace_routine_exercises` (or parent+children upsert) RPCs, idempotent per CLAUDE.md. |
 
 ---
 
