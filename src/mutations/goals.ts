@@ -131,15 +131,21 @@ export function useArchiveGoal() {
 		mutationFn: async (goalId: string) => {
 			if (!user) throw new Error("Must be logged in to archive goals");
 
-			const { error } = await supabase
+			const { data: archived, error } = await supabase
 				.from("user_goals")
 				.update({
 					status: "archived" as const,
 					updated_at: new Date().toISOString(),
 				})
 				.eq("id", goalId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!archived)
+				throw new Error(
+					"Goal not found or you don't have permission to archive it.",
+				);
 		},
 
 		onSuccess: () => {

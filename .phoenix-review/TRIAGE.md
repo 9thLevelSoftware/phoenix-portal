@@ -89,10 +89,24 @@ queued as a follow-up batch in this theme.
 
 Test mocks in `routines.test.tsx` updated for the new ownership-checked update chain.
 
-Remaining in theme (heavier, deferred to follow-up commits): atomic multi-entity mutations via
-RPC/transaction (F148, F149, F150, F156, F158) and the zero-row-update-success batch (F136, F138,
-F141, F142, F147, F152, F155) — to be done with the `.select().maybeSingle()` + count template
-already used in `comments.ts`/`goals.ts`.
+### PR-3 batch 2 — zero-row-update-success (DONE)
+
+All confirmed; each mutation now `.select(...).maybeSingle()` and throws when no row matched.
+
+| ID | Mutation | Resolution |
+|----|----------|-----------|
+| F136 | `useCancelDeletion` (account.ts) | Throw "No pending deletion request to cancel." |
+| F138 | `useLeaveChallenge` / `useCompleteChallenge` (challenges.ts) | Throw when not a participant. |
+| F141 | `useUpdateComment` (comments.ts) | `count` was always null (no `.select()`), so the edit-window guard never fired; now `.select().maybeSingle()`. |
+| F142 | `useDeleteComment` (comments.ts) | Throw when no comment matched id+user. |
+| F147 | `useDeleteSharedContent` (community.ts) | Throw when no shared row matched; also collapsed the routine/cycle branches. |
+| F152 | `useArchiveGoal` (goals.ts) | Throw when no goal matched id+user. |
+| F155 | `useUpdateProfile` (profile.ts) | Throw "Profile not found for this user." |
+
+Test mocks updated in account/comments/community/goals test files for the new chains (59 pass).
+
+Remaining in theme (heavier, deferred): atomic multi-entity mutations via RPC/transaction
+(F148, F149, F150, F156, F158) — next.
 
 ---
 

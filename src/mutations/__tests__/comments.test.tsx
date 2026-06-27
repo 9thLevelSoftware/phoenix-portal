@@ -159,7 +159,11 @@ describe("useUpdateComment", () => {
 	it("updates comment within edit window and invalidates cache", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() => Promise.resolve({ error: null, count: 1 }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -207,9 +211,11 @@ describe("useUpdateComment", () => {
 	it("shows generic error when Supabase update fails", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() =>
-			Promise.resolve({ error: { message: "permission denied" }, count: null }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: null, error: { message: "permission denied" } }),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -244,7 +250,11 @@ describe("useDeleteComment", () => {
 	it("soft-deletes comment via update and invalidates caches", async () => {
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() => Promise.resolve({ error: null }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
 
@@ -272,9 +282,14 @@ describe("useDeleteComment", () => {
 	it("shows user-friendly error on delete failure", async () => {
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() =>
-			Promise.resolve({ error: { message: "row-level security violation" } }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({
+				data: null,
+				error: { message: "row-level security violation" },
+			}),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
 

@@ -126,7 +126,11 @@ describe("useCancelDeletion", () => {
 	it("cancels a pending deletion and invalidates cache", async () => {
 		const { useCancelDeletion } = await import("../account");
 
-		const eqStatus = vi.fn(() => Promise.resolve({ error: null }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "del-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqStatus = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ eq: eqStatus }));
 		mockChain.update.mockImplementation(() => ({ eq: eqUserId }));
 
@@ -153,9 +157,14 @@ describe("useCancelDeletion", () => {
 	it("shows user-friendly error on cancel failure", async () => {
 		const { useCancelDeletion } = await import("../account");
 
-		const eqStatus = vi.fn(() =>
-			Promise.resolve({ error: { message: "no pending request found" } }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({
+				data: null,
+				error: { message: "no pending request found" },
+			}),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqStatus = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ eq: eqStatus }));
 		mockChain.update.mockImplementation(() => ({ eq: eqUserId }));
 

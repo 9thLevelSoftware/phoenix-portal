@@ -59,15 +59,18 @@ export function useCancelDeletion(userId: string) {
 
 	return useMutation({
 		mutationFn: async () => {
-			const { error } = await supabase
+			const { data: cancelled, error } = await supabase
 				.from("deletion_requests")
 				.update({
 					status: "cancelled",
 					cancelled_at: new Date().toISOString(),
 				})
 				.eq("user_id", userId)
-				.eq("status", "pending");
+				.eq("status", "pending")
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!cancelled) throw new Error("No pending deletion request to cancel.");
 		},
 		onSuccess: () => {
 			toast.success("Account deletion cancelled. Your account is safe.");

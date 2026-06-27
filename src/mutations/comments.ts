@@ -92,7 +92,10 @@ export function useUpdateComment() {
 			// check was bypassed.
 			const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-			const { error, count } = await supabase
+			// `.select()` is required for the row check: a bare `.update()` does
+			// not populate `count`, so the previous `count === 0` guard never
+			// fired and the server-side edit-window check was a no-op.
+			const { data: updated, error } = await supabase
 				.from("community_comments")
 				.update({
 					body,
@@ -100,10 +103,12 @@ export function useUpdateComment() {
 				})
 				.eq("id", commentId)
 				.eq("user_id", user.id)
-				.gte("created_at", fiveMinutesAgo);
+				.gte("created_at", fiveMinutesAgo)
+				.select("id")
+				.maybeSingle();
 
 			if (error) throw error;
-			if (count === 0) {
+			if (!updated) {
 				throw new Error("Edit window has expired");
 			}
 		},
@@ -143,13 +148,19 @@ export function useDeleteComment() {
 			if (!user) throw new Error("Must be logged in to delete");
 
 			// Soft delete: set deleted_at timestamp
-			const { error } = await supabase
+			const { data: deleted, error } = await supabase
 				.from("community_comments")
 				.update({ deleted_at: new Date().toISOString() })
 				.eq("id", commentId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 
 			if (error) throw error;
+			if (!deleted)
+				throw new Error(
+					"Comment not found or you don't have permission to delete it.",
+				);
 		},
 
 		onSuccess: (_data, variables) => {

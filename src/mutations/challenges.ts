@@ -40,12 +40,16 @@ export function useLeaveChallenge() {
 		mutationFn: async (challengeId: string) => {
 			if (!user) throw new Error("Must be logged in to leave a challenge");
 
-			const { error } = await supabase
+			const { data: left, error } = await supabase
 				.from("challenge_participants")
 				.delete()
 				.eq("challenge_id", challengeId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("challenge_id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!left)
+				throw new Error("You are not participating in this challenge.");
 		},
 		onSuccess: () => {
 			toast.success("Challenge left");
@@ -69,12 +73,16 @@ export function useCompleteChallenge() {
 		mutationFn: async (challengeId: string) => {
 			if (!user) throw new Error("Must be logged in to complete a challenge");
 
-			const { error } = await supabase
+			const { data: completed, error } = await supabase
 				.from("challenge_participants")
 				.update({ completed_at: new Date().toISOString() })
 				.eq("challenge_id", challengeId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("challenge_id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!completed)
+				throw new Error("You are not participating in this challenge.");
 		},
 		onSuccess: () => {
 			toast.success("Challenge completed!");
