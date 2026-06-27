@@ -17,6 +17,11 @@ type DbClient = SupabaseClient<any, any, any>;
 
 const MAX_RETRIES = 10;
 
+// A task that has sat in `processing` longer than this lease is assumed to have
+// crashed mid-run (the worker died before marking it completed/failed) and is
+// reclaimed back to `pending` so it can be retried.
+const PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
 const RETRYABLE_STATUSES = [429, 502, 503, 504];
@@ -101,6 +106,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Reclaim tasks stuck in `processing` past the lease (crashed workers) so
+    // they are retried instead of being stranded forever.
+    const leaseExpiry = new Date(Date.now() - PROCESSING_LEASE_MS).toISOString();
+    await supabase
+      .from('sync_queue')
+      .update({ status: 'pending' })
+      .eq('provider', provider)
+      .eq('status', 'processing')
+      .lt('started_at', leaseExpiry);
+
     // Fetch pending tasks for this provider only
     const { data: tasks } = await supabase
       .from('sync_queue')
@@ -126,11 +141,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Mark as processing
-      await supabase
+      // Atomically claim the task: only transition pending -> processing, and
+      // proceed only if THIS invocation won the row. Two concurrent cron runs
+      // can read the same pending rows, so an unconditional update would let
+      // both call the provider sync (duplicate external API calls/writes).
+      const { data: claimed } = await supabase
         .from('sync_queue')
         .update({ status: 'processing', started_at: new Date().toISOString() })
-        .eq('id', task.id);
+        .eq('id', task.id)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle();
+
+      if (!claimed) {
+        // Another concurrent invocation already claimed this task — skip it.
+        continue;
+      }
 
       // Check subscription before calling sync function
       const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
