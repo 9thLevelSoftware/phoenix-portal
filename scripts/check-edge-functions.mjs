@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const denoVersion = "2.2.15";
@@ -13,6 +13,7 @@ function discoverEntrypoints() {
 	return entries
 		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
 		.map((entry) => join(functionsDir, entry.name, "index.ts"))
+		.filter((path) => existsSync(path))
 		.sort();
 }
 

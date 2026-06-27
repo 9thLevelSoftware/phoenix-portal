@@ -220,8 +220,11 @@ Deno.serve(async (req) => {
       // invocation uses the rotated value, not the now-revoked original.
       refreshToken = refreshed.refresh_token ?? refreshToken;
 
-      // Persist new tokens in oauth_tokens (server-only table)
-      await supabase
+      // Persist new tokens in oauth_tokens (server-only table). Strava revokes
+      // the previous refresh token on rotation, so if this write fails the stored
+      // refresh token is now stale and every future sync would fail to refresh.
+      // Fail the sync instead of continuing with an unpersisted rotated token.
+      const { error: tokenUpdateError } = await supabase
         .from('oauth_tokens')
         .update({
           access_token: await encryptOAuthSecret(refreshed.access_token),
@@ -231,6 +234,20 @@ Deno.serve(async (req) => {
         })
         .eq('user_id', userId)
         .eq('provider', 'strava');
+
+      if (tokenUpdateError) {
+        console.error('Failed to persist rotated Strava tokens:', tokenUpdateError);
+        await supabase
+          .from('user_integrations')
+          .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
+          .eq('user_id', userId)
+          .eq('provider', 'strava');
+
+        return new Response(
+          JSON.stringify({ error: 'Failed to persist refreshed Strava tokens' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // ---------------------------------------------------------------
@@ -323,11 +340,31 @@ Deno.serve(async (req) => {
     }
 
     // ---------------------------------------------------------------
-    // Update last_sync_at
+    // If any activity failed to persist, do NOT advance last_sync_at: it is the
+    // `after` cutoff for the next incremental sync, so advancing it would skip
+    // the failed activities permanently. Leave the queue entry pending so the
+    // processor retries (upserts are idempotent), and surface a 502.
+    // ---------------------------------------------------------------
+    if (errors.length > 0) {
+      const failMessage = `Failed to persist ${errors.length} of ${rawActivities.length} activities`;
+      await supabase
+        .from('user_integrations')
+        .update({ status: 'error', error_message: failMessage })
+        .eq('user_id', userId)
+        .eq('provider', 'strava');
+
+      return new Response(
+        JSON.stringify({ error: failMessage, synced_count: syncedCount, errors }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ---------------------------------------------------------------
+    // Update last_sync_at (all activities persisted)
     // ---------------------------------------------------------------
     await supabase
       .from('user_integrations')
-      .update({ last_sync_at: new Date().toISOString(), error_message: null })
+      .update({ last_sync_at: new Date().toISOString(), status: 'connected', error_message: null })
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
@@ -335,7 +372,7 @@ Deno.serve(async (req) => {
     await supabase
       .from('sync_queue')
       .update({
-        status: errors.length > 0 ? 'completed_with_errors' : 'completed',
+        status: 'completed',
         completed_at: new Date().toISOString(),
       })
       .eq('user_id', userId)

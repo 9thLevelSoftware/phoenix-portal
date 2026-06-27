@@ -283,6 +283,7 @@ Deno.serve(async (req) => {
 
 		// Normalize and upsert records to external_activities
 		let importedCount = 0;
+		let failedCount = 0;
 		for (const record of allRecords) {
 			const meta = parseLiftoscriptMetadata(record.text);
 
@@ -314,12 +315,32 @@ Deno.serve(async (req) => {
 					{ onConflict: "user_id,provider,external_id" }
 				);
 
-			if (!activityError) {
+			if (activityError) {
+				failedCount++;
+				console.error(`Failed to persist Liftosaur record ${record.id}:`, activityError);
+			} else {
 				importedCount++;
 			}
 		}
 
-		// Update last sync timestamp and status
+		// If any record failed to persist, do NOT advance last_sync_at (it is the
+		// incremental cutoff and would skip the dropped rows). Returning non-2xx
+		// lets the queue processor retry; upserts are idempotent.
+		if (failedCount > 0) {
+			const failMessage = `Failed to persist ${failedCount} of ${allRecords.length} records`;
+			await supabase
+				.from("user_integrations")
+				.update({ status: "error", error_message: failMessage })
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+			return new Response(
+				JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
+			);
+		}
+
+		// Update last sync timestamp and status (all records persisted)
 		await supabase
 			.from("user_integrations")
 			.update({

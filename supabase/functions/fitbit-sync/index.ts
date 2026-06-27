@@ -70,8 +70,10 @@ async function refreshTokenIfNeeded(
   const refreshed = await response.json();
   const newTokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
-  // Update stored tokens in oauth_tokens (server-only table)
-  await supabase
+  // Update stored tokens in oauth_tokens (server-only table). Fitbit rotates the
+  // refresh token on every refresh, so if this write fails the stored refresh
+  // token is stale and future syncs cannot refresh. Fail instead of continuing.
+  const { error: tokenPersistError } = await supabase
     .from('oauth_tokens')
     .update({
       access_token: await encryptOAuthSecret(refreshed.access_token),
@@ -81,6 +83,16 @@ async function refreshTokenIfNeeded(
     })
     .eq('user_id', userId)
     .eq('provider', 'fitbit');
+
+  if (tokenPersistError) {
+    console.error('Failed to persist refreshed Fitbit tokens:', tokenPersistError);
+    await supabase
+      .from('user_integrations')
+      .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
+      .eq('user_id', userId)
+      .eq('provider', 'fitbit');
+    throw new Error('Failed to persist refreshed Fitbit tokens');
+  }
 
   return {
     access_token: refreshed.access_token,

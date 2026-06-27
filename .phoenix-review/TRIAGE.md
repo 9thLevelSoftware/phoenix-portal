@@ -49,3 +49,30 @@ gate only type-checked 2 of 22 functions, so this never surfaced in CI.
 
 New shared util: `supabase/functions/_shared/errorMessage.ts` (`errorMessage(unknown): string`).
 Verification: `node scripts/check-edge-functions.mjs` → exit 0 across all 22 functions.
+
+Post-review tweaks (gemini-code-assist on PR #80, both valid): `errorMessage()` now reads
+`.message` off plain objects (PostgrestError); `discoverEntrypoints()` filters with `existsSync`.
+
+---
+
+## PR-2 — Silent persistence failures & sync data-loss (DONE, first batch)
+
+Root cause: provider sync functions advanced `last_sync_at` (the incremental cutoff) and/or marked
+the queue completed even when per-row upserts failed, so the next delta sync skipped the dropped
+rows permanently. Token rotations were persisted without checking the write. Fix pattern: track a
+`failedCount`, and on any failure set `status='error'` + return non-2xx WITHOUT advancing
+`last_sync_at` — the queue processor retries and upserts are idempotent (`onConflict`).
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F297 (hevy) | CONFIRMED | Track failures; 502 + no `last_sync_at` advance on partial failure. |
+| F302 (liftosaur) | CONFIRMED | Same pattern. |
+| F279 (strava per-activity) | CONFIRMED | Don't advance `last_sync_at` when `errors.length>0`; 502. |
+| F278 (strava token rotation) | CONFIRMED | Capture `oauth_tokens` update error; mark error + 500 instead of continuing with unpersisted rotated token. |
+| F292 (fitbit token rotation) | CONFIRMED | Capture token persist error in `refreshTokenIfNeeded`; throw. |
+| F354 (mobile-integration) | CONFIRMED | `persistActivities` returns failure count; callers skip `last_sync_at` advance + 502. |
+| F263 (paddle-webhooks) | CONFIRMED | Capture `.maybeSingle()` error; return 500 so Paddle retries with full ordering context. |
+
+Remaining in theme (read-error propagation, lower data-loss risk): F350 (mobile-sync-pull child
+reads), F310/F315 (rankings), F328 (shared subscription lookup), F355 (stored-token lookup) —
+queued as a follow-up batch in this theme.

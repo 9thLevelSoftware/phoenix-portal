@@ -442,7 +442,12 @@ Deno.serve(async (req) => {
       }
 
       if (activities.length > 0) {
-        await persistActivities(supabase, userId, provider, activities);
+        const failedCount = await persistActivities(supabase, userId, provider, activities);
+        if (failedCount > 0) {
+          return await partialPersistFailureResponse(
+            supabase, userId, provider, failedCount, activities.length, cors,
+          );
+        }
       }
 
       // Update last sync timestamp
@@ -519,7 +524,12 @@ Deno.serve(async (req) => {
     }
 
     if (activities.length > 0) {
-      await persistActivities(supabase, userId, provider, activities);
+      const failedCount = await persistActivities(supabase, userId, provider, activities);
+      if (failedCount > 0) {
+        return await partialPersistFailureResponse(
+          supabase, userId, provider, failedCount, activities.length, cors,
+        );
+      }
     }
 
     // Update last sync timestamp
@@ -556,13 +566,18 @@ Deno.serve(async (req) => {
 /**
  * Persist normalized activities to external_activities table.
  * Maps ActivityDto camelCase fields to snake_case columns.
+ *
+ * Returns the number of activities that failed to persist so callers can avoid
+ * advancing `last_sync_at` past data that was never written (which would skip
+ * those activities permanently on the next incremental sync).
  */
 async function persistActivities(
   supabase: DbClient,
   userId: string,
   provider: string,
   activities: ActivityDto[]
-): Promise<void> {
+): Promise<number> {
+  let failedCount = 0;
   for (const activity of activities) {
     const { error } = await supabase
       .from('external_activities')
@@ -587,7 +602,34 @@ async function persistActivities(
       );
 
     if (error) {
-      console.warn(`Failed to persist activity ${activity.externalId}:`, error.message);
+      failedCount++;
+      console.error(`Failed to persist activity ${activity.externalId}:`, error.message);
     }
   }
+  return failedCount;
+}
+
+/**
+ * Mark the integration as a partial-persistence failure and build the 502 the
+ * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
+ */
+async function partialPersistFailureResponse(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  failedCount: number,
+  total: number,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const failMessage = `Failed to persist ${failedCount} of ${total} activities`;
+  await supabase
+    .from('user_integrations')
+    .update({ status: 'error', error_message: failMessage })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({ status: 'error', error: failMessage }),
+    { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+  );
 }

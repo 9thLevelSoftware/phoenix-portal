@@ -222,6 +222,7 @@ Deno.serve(async (req) => {
 
     // Normalize and upsert workouts to external_activities
     let importedCount = 0;
+    let failedCount = 0;
     for (const workout of workouts) {
       const startTime = new Date(workout.start_time);
       const endTime = new Date(workout.end_time);
@@ -244,12 +245,32 @@ Deno.serve(async (req) => {
           { onConflict: 'user_id,provider,external_id' }
         );
 
-      if (!activityError) {
+      if (activityError) {
+        failedCount++;
+        console.error(`Failed to persist Hevy workout ${workout.id}:`, activityError);
+      } else {
         importedCount++;
       }
     }
 
-    // Update last sync timestamp and status
+    // If any activity failed to persist, do NOT advance last_sync_at: the next
+    // incremental sync uses it as the cutoff and would skip the dropped rows.
+    // Returning non-2xx lets the queue processor retry (upserts are idempotent).
+    if (failedCount > 0) {
+      const failMessage = `Failed to persist ${failedCount} of ${workouts.length} workouts`;
+      await supabase
+        .from('user_integrations')
+        .update({ status: 'error', error_message: failMessage })
+        .eq('user_id', userId)
+        .eq('provider', 'hevy');
+
+      return new Response(
+        JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Update last sync timestamp and status (all activities persisted)
     await supabase
       .from('user_integrations')
       .update({

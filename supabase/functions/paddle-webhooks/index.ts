@@ -204,11 +204,27 @@ Deno.serve(async (req) => {
     // Load the existing row before custom_data trust checks. New checkouts must
     // carry cd_sig; legacy subscriptions may omit it only when the Paddle
     // subscription ID already matches the stored row for the same user.
-    const { data: existingSubscription } = await supabase
+    const { data: existingSubscription, error: existingSubscriptionError } = await supabase
       .from("subscriptions")
       .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
       .eq("user_id", userId)
       .maybeSingle();
+
+    // A failed lookup (DB outage, schema drift, multiple rows) must NOT be
+    // treated as "no existing subscription" — that silently disables duplicate
+    // and stale-event detection and rejects legacy unsigned events for the wrong
+    // reason. Return 500 so Paddle retries with full ordering/trust context.
+    if (existingSubscriptionError) {
+      console.error(
+        "[BILLING_ALERT] Failed to load existing subscription:",
+        event.event_id,
+        existingSubscriptionError,
+      );
+      return new Response(
+        JSON.stringify({ error: "Failed to load subscription state" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
 
     // Verify the signed user_id handed out by paddle-checkout-custom-data so
     // a client can't forge another user's user_id in custom_data (P1-10).
