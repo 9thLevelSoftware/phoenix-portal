@@ -201,6 +201,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Reject a present-but-malformed user_id BEFORE any DB lookup.
+    // `subscriptions.user_id` is a UUID column, so a non-UUID value (e.g. forged
+    // custom_data) makes the lookup error; without this guard that error would
+    // be misclassified as a retryable 500 and Paddle would redeliver forever.
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(userId)) {
+      console.error(
+        "[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:",
+        event.event_id,
+      );
+      return new Response(
+        JSON.stringify({ error: "Invalid user_id in custom_data" }),
+        { status: 400, headers: responseHeaders },
+      );
+    }
+
     // Load the existing row before custom_data trust checks. New checkouts must
     // carry cd_sig; legacy subscriptions may omit it only when the Paddle
     // subscription ID already matches the stored row for the same user.
