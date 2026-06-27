@@ -76,3 +76,20 @@ rows permanently. Token rotations were persisted without checking the write. Fix
 Remaining in theme (read-error propagation, lower data-loss risk): F350 (mobile-sync-pull child
 reads), F310/F315 (rankings), F328 (shared subscription lookup), F355 (stored-token lookup) —
 queued as a follow-up batch in this theme.
+
+---
+
+## PR-3 — Data-layer integrity & auth (DONE, first batch: security/stability)
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F157 (useUpdateRoutine ownership) | CONFIRMED | Added `.eq("user_id", user.id)` + `.select("id").maybeSingle()` row check (mirrors delete/favorite). |
+| F160 (useSaveSessionNotes ownership) | CONFIRMED | Added `useAuth`, `.eq("user_id", user.id)`, and a matched-row check. |
+| F455 (fetchWithAuthRetry recursion) | CONFIRMED | Skip retry for `/auth/v1/` endpoints + `refreshInFlight` re-entrancy guard. |
+
+Test mocks in `routines.test.tsx` updated for the new ownership-checked update chain.
+
+Remaining in theme (heavier, deferred to follow-up commits): atomic multi-entity mutations via
+RPC/transaction (F148, F149, F150, F156, F158) and the zero-row-update-success batch (F136, F138,
+F141, F142, F147, F152, F155) — to be done with the `.select().maybeSingle()` + count template
+already used in `comments.ts`/`goals.ts`.

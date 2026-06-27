@@ -204,8 +204,18 @@ describe("useUpdateRoutine", () => {
 	it("updates routine, deletes old exercises, and inserts new ones", async () => {
 		const { useUpdateRoutine } = await import("../routines");
 
+		// update now scopes by id + user_id and confirms the row via
+		// .select("id").maybeSingle() (ownership check).
 		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
+			eq: vi.fn(() => ({
+				eq: vi.fn(() => ({
+					select: vi.fn(() => ({
+						maybeSingle: vi.fn(() =>
+							Promise.resolve({ data: { id: "routine-1" }, error: null }),
+						),
+					})),
+				})),
+			})),
 		}));
 		mockChain.delete.mockImplementation(() => ({
 			eq: vi.fn(() => Promise.resolve({ error: null })),
@@ -245,7 +255,15 @@ describe("useUpdateRoutine", () => {
 		let insertedExerciseRows: Array<Record<string, unknown>> = [];
 
 		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
+			eq: vi.fn(() => ({
+				eq: vi.fn(() => ({
+					select: vi.fn(() => ({
+						maybeSingle: vi.fn(() =>
+							Promise.resolve({ data: { id: "routine-1" }, error: null }),
+						),
+					})),
+				})),
+			})),
 		}));
 		mockChain.delete.mockImplementation(() => ({
 			eq: vi.fn(() => Promise.resolve({ error: null })),
@@ -282,14 +300,21 @@ describe("useUpdateRoutine", () => {
 		const { useUpdateRoutine } = await import("../routines");
 
 		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() =>
-				Promise.resolve({
-					error: {
-						message: "new row violates check constraint",
-						code: "23514",
-					},
-				}),
-			),
+			eq: vi.fn(() => ({
+				eq: vi.fn(() => ({
+					select: vi.fn(() => ({
+						maybeSingle: vi.fn(() =>
+							Promise.resolve({
+								data: null,
+								error: {
+									message: "new row violates check constraint",
+									code: "23514",
+								},
+							}),
+						),
+					})),
+				})),
+			})),
 		}));
 
 		const { wrapper } = createWrapper();

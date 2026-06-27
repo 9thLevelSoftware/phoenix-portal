@@ -195,8 +195,10 @@ export function useUpdateRoutine() {
 		mutationFn: async (input: UpdateRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to update routines");
 
-			// Update routine row
-			const { error: routineError } = await supabase
+			// Update routine row. Scope by user_id (like delete/favorite) so a
+			// user cannot update another user's routine by id, and confirm a row
+			// actually matched before mutating its child exercises.
+			const { data: updated, error: routineError } = await supabase
 				.from("routines")
 				.update({
 					name: input.name,
@@ -204,9 +206,16 @@ export function useUpdateRoutine() {
 					exercise_count: input.exercises.length,
 					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
 				})
-				.eq("id", input.routineId);
+				.eq("id", input.routineId)
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 
 			if (routineError) throw routineError;
+			if (!updated)
+				throw new Error(
+					"Routine not found or you don't have permission to update it",
+				);
 
 			// Delete old exercises, insert new ones
 			const { error: deleteError } = await supabase

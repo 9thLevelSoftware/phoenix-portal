@@ -33,6 +33,15 @@ const supabaseRef: {
 	current: ReturnType<typeof createClient<Database>> | null;
 } = { current: null };
 
+function requestUrl(input: RequestInfo | URL): string {
+	if (typeof input === "string") return input;
+	if (input instanceof URL) return input.toString();
+	return input.url;
+}
+
+/** Guards against re-entrant refresh: refreshSession() routes through this fetch. */
+let refreshInFlight = false;
+
 /**
  * One-shot retry on 401 after `refreshSession()` so idle sessions recover when
  * a stale JWT reaches PostgREST before the client-side auto-refresh runs.
@@ -45,15 +54,33 @@ const fetchWithAuthRetry: typeof fetch = async (input, init) => {
 		return response;
 	}
 
-	const { data, error } = await supabaseRef.current.auth.refreshSession();
-	if (error || !data.session) {
+	// Never refresh-and-retry for Supabase auth endpoints themselves. The
+	// `refreshSession()` call below issues a request through this same custom
+	// fetch; if that auth request (or a failed refresh) returns 401, retrying it
+	// would recursively call `refreshSession()` and loop until resource
+	// exhaustion. Also bail out if a refresh is already in flight.
+	const url = requestUrl(input);
+	if (refreshInFlight || url.includes("/auth/v1/")) {
+		return response;
+	}
+
+	refreshInFlight = true;
+	let refreshed: Awaited<
+		ReturnType<typeof supabaseRef.current.auth.refreshSession>
+	>;
+	try {
+		refreshed = await supabaseRef.current.auth.refreshSession();
+	} finally {
+		refreshInFlight = false;
+	}
+	if (refreshed.error || !refreshed.data.session) {
 		return response;
 	}
 
 	const headers = new Headers(
 		init?.headers ?? (input instanceof Request ? input.headers : undefined),
 	);
-	headers.set("Authorization", `Bearer ${data.session.access_token}`);
+	headers.set("Authorization", `Bearer ${refreshed.data.session.access_token}`);
 
 	return fetch(input, { ...init, headers });
 };
