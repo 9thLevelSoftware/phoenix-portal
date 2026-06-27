@@ -107,14 +107,43 @@ Deno.serve(async (req) => {
     }
 
     // Reclaim tasks stuck in `processing` past the lease (crashed workers) so
-    // they are retried instead of being stranded forever.
+    // they are retried instead of being stranded forever. Increment retry_count
+    // on each reclaim and mark `permanently_failed` at the cap; otherwise a task
+    // whose sync deterministically times out/crashes would be requeued every
+    // lease interval forever and never reach a terminal state.
     const leaseExpiry = new Date(Date.now() - PROCESSING_LEASE_MS).toISOString();
-    await supabase
+    const { data: staleTasks } = await supabase
       .from('sync_queue')
-      .update({ status: 'pending' })
+      .select('id, retry_count')
       .eq('provider', provider)
       .eq('status', 'processing')
       .lt('started_at', leaseExpiry);
+
+    for (const stale of staleTasks ?? []) {
+      const nextRetryCount = (stale.retry_count ?? 0) + 1;
+      if (nextRetryCount >= MAX_RETRIES) {
+        await supabase
+          .from('sync_queue')
+          .update({
+            status: 'permanently_failed',
+            retry_count: nextRetryCount,
+            error_message: `Max retries (${MAX_RETRIES}) exceeded: processing lease expired repeatedly`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', stale.id)
+          .eq('status', 'processing');
+      } else {
+        await supabase
+          .from('sync_queue')
+          .update({
+            status: 'pending',
+            retry_count: nextRetryCount,
+            error_message: 'Reclaimed after processing lease expired',
+          })
+          .eq('id', stale.id)
+          .eq('status', 'processing');
+      }
+    }
 
     // Fetch pending tasks for this provider only
     const { data: tasks } = await supabase

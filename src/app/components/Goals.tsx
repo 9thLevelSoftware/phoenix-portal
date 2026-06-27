@@ -309,8 +309,9 @@ export function Goals() {
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
 	const archivedGoals = goals?.filter((g) => g.status === "archived") ?? [];
 
-	// M24: INFERNO = unlimited goals, EMBER = 3, FREE = 1
-	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 1;
+	// M24: INFERNO = unlimited goals, paid (EMBER/FLAME) = 3. There is no free
+	// tier, so users without a subscription get 0 (and are gated out below).
+	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 0;
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
@@ -432,7 +433,7 @@ export function Goals() {
 						<EmptyState
 							icon={Target}
 							title="Upgrade to set goals"
-							description="Goal tracking is available for Flame and Inferno subscribers. Set workout frequency, volume, and PR targets to stay motivated."
+							description="Goal tracking is available to subscribers. Set workout frequency, volume, and PR targets to stay motivated."
 							actionLabel="View Plans"
 							actionHref="/pricing"
 						/>

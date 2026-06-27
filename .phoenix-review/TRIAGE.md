@@ -114,4 +114,6 @@ RPC), F343 (push exercise delete+replace transaction), F303/F311/F359.
 |----|---------|-----------|
 | F420 (FAQ stale tiers) | CONFIRMED | Rewrote FAQ to the three current tiers (Ember $5 / Flame $15 / Inferno $25) from `pricing.ts`. |
 | F410 (legacy "Phoenix and Elite") | CONFIRMED | Goals + ComparisonView now say "Flame and Inferno". |
-| F368 (FREE goal-limit gate) | CONFIRMED but **NEEDS PRODUCT DECISION** | `maxGoals` grants FREE=1 (Goals.tsx:313) yet the gate at :413 blocks ALL non-premium users, so the 1 free goal is unreachable. Fix depends on intent (FREE=1 vs FREE=0); not changing gating behavior on a guess. |
+| F368 (FREE goal-limit gate) | CONFIRMED — RESOLVED | User: no free tier exists, so the phantom free goal must not exist. `maxGoals` non-subscriber branch `: 1` → `: 0`; gate unchanged. |
+| F410 copy (re-correction) | CONFIRMED | Goal tracking + workout comparison gate on `isPremium = isEntitled` = ANY paid tier (Ember+), so copy now says "available to subscribers", not "Flame and Inferno". |
+| F358 retry_count (Codex P2) | CONFIRMED | Stale-task reclaim now increments `retry_count` and marks `permanently_failed` at `MAX_RETRIES` instead of requeuing a deterministically-crashing task forever. |
