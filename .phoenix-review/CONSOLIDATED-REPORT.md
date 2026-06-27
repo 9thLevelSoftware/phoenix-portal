@@ -1,0 +1,2915 @@
+# Consolidated Portal Review Report
+
+## Executive summary
+
+- Source review reports synthesized: 29
+- Total findings: 568
+- Severity breakdown: Critical 9, High 95, Medium 315, Low 149
+- Broad category breakdown: Bugs 170, Errors 36, Failure Points 334 (includes 2 race-condition findings), Stubs 28
+- Area breakdown: UI 194, Data 139, Edge Functions 104, Migrations 23, Tests 56, CI/CD 31
+
+### Primary themes
+- Edge Function sync/auth paths contain the highest concentration of release-blocking errors, silent persistence failures, and token/state handling risks.
+- Database migrations include multiple critical privilege and drift issues that affect security boundaries and data integrity.
+- Test and CI/CD coverage still allow mocked paths, ignored config files, and incomplete deployment gates to hide production regressions.
+- UI, data-layer, and shared library findings are mostly medium/low severity but still include state drift, accessibility, and stale-cache failure modes.
+
+## Findings by severity
+
+### Critical (9)
+
+- F291 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-sync/index.ts` | 20-24, 139-159, 261, 294, 354, 373-377 | category=error | severity=critical
+  - Description: `deno check --node-modules-dir=auto` fails for this file. The helper signatures using `ReturnType<typeof createClient>` collapse table types to `never`, producing errors on `.update()`, `.insert()`, and calls that pass the real Supabase client into those helpers. The catch block also accesses `err.message` while `err` is `unknown`. A type-checking deployment gate would reject this function.
+  - Fix direction: Use the concrete Supabase client type expected by the project, a local structural type for the subset of methods used, or loosen helper parameters to the actual inferred client type. Narrow catch values with `err instanceof Error ? err.message : String(err)`.
+- F294 | Edge Functions | `edge-functions---integrations.md / supabase/functions/hevy-sync/index.ts` | 200-218, 284-288 | category=error | severity=critical
+  - Description: `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`. A type-checking deployment gate would reject this function.
+  - Fix direction: Narrow catch values before reading `.message`, for example `const message = fetchError instanceof Error ? fetchError.message : String(fetchError)`.
+- F298 | Edge Functions | `edge-functions---integrations.md / supabase/functions/liftosaur-sync/index.ts` | 259-279, 354-359 | category=error | severity=critical
+  - Description: `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`. A type-checking deployment gate would reject this function.
+  - Fix direction: Narrow catch values before reading `.message`, using an `instanceof Error` guard or a shared error-to-message helper.
+- F357 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/process-sync-queue/index.ts` | 98-127 | category=bug | severity=critical
+  - Description: Pending tasks are selected and then updated to `processing` in separate non-conditional statements. Two cron invocations can read the same pending rows, both mark them processing, and both call the provider sync function, duplicating external API calls and writes.
+  - Fix direction: Claim tasks atomically with a database RPC using `FOR UPDATE SKIP LOCKED`, or update with `WHERE id = ... AND status = 'pending'` and proceed only if one row was changed.
+- F221 | Migrations | `database-migrations.md / supabase/migrations/20260420234500_parity_sync_rpc_functions.sql` | 12-111, 120-174, 183-247, 256-297, 306-357 | category=failure-point | severity=critical
+  - Description: All five parity sync RPCs are `SECURITY DEFINER`, accept `p_user_id`, and filter rows by `p_user_id` without checking `p_user_id = auth.uid()` or restricting execution to `service_role`. PostgreSQL grants EXECUTE on new functions to PUBLIC by default unless revoked, so any exposed authenticated/anon RPC caller could request another user's sessions, routines, cycles, badges, or personal records.
+  - Fix direction: Revoke EXECUTE from PUBLIC/anon/authenticated in the same migration, grant only `service_role`, or add explicit `auth.uid() = p_user_id` authorization checks if these RPCs are meant for direct client use. Also use `SET search_path = ''` with schema-qualified names.
+- F223 | Migrations | `database-migrations.md / supabase/migrations/20260421000100_fix_sessions_rpc_routine_session_id_type.sql` | 8-104 | category=failure-point | severity=critical
+  - Description: The replacement `get_sessions_excluding_ids` remains `SECURITY DEFINER`, still accepts arbitrary `p_user_id`, and has no `auth.uid()`/role check or immediate EXECUTE revoke. This reintroduces the cross-user session read vulnerability while fixing the return type.
+  - Fix direction: Restrict EXECUTE to `service_role` in this migration or enforce `p_user_id = auth.uid()` inside the function before returning rows.
+- F224 | Migrations | `database-migrations.md / supabase/migrations/20260421001000_fix_sessions_rpc_column_types.sql` | 7-103 | category=failure-point | severity=critical
+  - Description: The second replacement `get_sessions_excluding_ids` again preserves the unauthenticated `SECURITY DEFINER`/arbitrary `p_user_id` pattern. It fixes column types but leaves the function callable in a way that can bypass RLS and read another user's workout sessions.
+  - Fix direction: Pair the type fix with explicit EXECUTE revokes/grants or in-function authorization.
+- F225 | Migrations | `database-migrations.md / supabase/migrations/20260427200000_fix_parity_sync_stale_routines_cycles.sql` | 26-86, 95-165 | category=failure-point | severity=critical
+  - Description: The new stale-aware routines/cycles RPC overloads are also `SECURITY DEFINER`, accept arbitrary `p_user_id`, and do not restrict execution or compare against `auth.uid()`. They can bypass RLS for another user's routines and training cycles.
+  - Fix direction: Restrict the overloads to service-role callers or add explicit caller/user authorization checks before querying.
+- F226 | Migrations | `database-migrations.md / supabase/migrations/20260428234500_fix_parity_sync_uuid_badges_prs.sql` | 7-48, 53-104 | category=failure-point | severity=critical
+  - Description: The UUID-corrected badge and personal-record RPCs keep the same `SECURITY DEFINER` plus arbitrary `p_user_id` pattern and do not revoke public/authenticated EXECUTE in the migration. This leaves cross-user badge and PR reads possible until a later security-scan migration revokes these functions.
+  - Fix direction: Revoke EXECUTE from PUBLIC/anon/authenticated and grant only service_role, or check `auth.uid() = p_user_id` inside the function.
+
+### High (95)
+
+- F263 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-webhooks/index.ts` | 207-211, 246-276 | category=error | severity=high
+  - Description: The existing subscription lookup ignores the `error` returned by `.maybeSingle()`. A database outage, duplicate-row error, schema drift, or service-role failure is treated as “no existing subscription,” disabling duplicate/stale event detection and rejecting legacy unsigned events for the wrong reason. A stale but validly signed event can then proceed to upsert because the previous `last_event_occurred_at` was not loaded.
+  - Fix direction: Capture `{ data, error }`, log unexpected errors, and return a 500 so Paddle retries instead of processing with missing ordering/trust context. Only treat `data === null` as no existing subscription when the query succeeded.
+- F282 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-oauth/index.ts` | 184-190 | category=error | severity=high
+  - Description: The temporary Garmin OAuth request token and request token secret are stored directly in `oauth_tokens.access_token` and `oauth_tokens.refresh_token` without encryption. This bypasses the encrypted-token pattern used for permanent OAuth secrets and exposes sensitive OAuth material if the server-only table is logged, dumped, or queried by an over-privileged path.
+  - Fix direction: Encrypt temporary request tokens/secrets before storage, or use a dedicated short-lived encrypted pending OAuth table with TTL cleanup.
+- F354 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-integration-sync/index.ts` | 438-451, 515-528, 554-587 | category=error | severity=high
+  - Description: `persistActivities()` logs per-row upsert failures but does not propagate them. Both `connect` and `sync` then update `last_sync_at` and return success even if activities failed to persist, causing imported workout data to be skipped on future syncs.
+  - Fix direction: Make `persistActivities()` return failure details or throw when any row fails, and only advance `last_sync_at` after persistence succeeds.
+- F350 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-pull/index.ts` | 482-507, 646-675, 780-809, 892-913, 997-1021, 1040-1072 | category=error | severity=high
+  - Description: Multiple database read errors are only logged or ignored while the function continues and returns success. Child session reads (`exercises`, `sets`, `rep_summaries`), routines, cycles, badges, personal records, local profiles, external activities, RPG stats, and gamification stats can be omitted from the response without failing the pull. In sync code this is a data-loss risk because clients may treat the pull as authoritative.
+  - Fix direction: Check every Supabase query's `error` and fail the pull with a retryable 5xx or explicit partial-failure response. Do not return successful sync data when required child/entity reads failed.
+- F222 | Migrations | `database-migrations.md / supabase/migrations/20260420234500_parity_sync_rpc_functions.sql` | 256-265, 306-314 | category=error | severity=high
+  - Description: `get_badges_excluding_ids` and `get_personal_records_excluding_ids` declare `BIGINT` IDs and `BIGINT[]` known-id parameters even though `earned_badges.id` and `personal_records.id` are UUIDs in earlier migrations. The function result shape does not match the table schema and will fail at runtime.
+  - Fix direction: Use UUID return and parameter types for both RPCs and drop incompatible overloads.
+- F148 | Data | `data-layer---mutations-&-schemas.md / src/mutations/cycles.ts` | 62-99 | category=error | severity=high
+  - Description: `useSaveCycle` creates the `training_cycles` parent row and then inserts `cycle_days` in a separate request. If the day insert fails, the database is left with a draft cycle missing its intended schedule.
+  - Fix direction: Use a Supabase RPC/database transaction that inserts the cycle and all days atomically, or clean up the parent row on child-insert failure.
+- F150 | Data | `data-layer---mutations-&-schemas.md / src/mutations/cycles.ts` | 146-167 | category=error | severity=high
+  - Description: Cycle day replacement is not atomic. After deleting existing `cycle_days`, an insert failure leaves the cycle with no schedule or a partial replacement failure state.
+  - Fix direction: Replace the delete+insert sequence with a transaction/RPC or restore the prior days on failure.
+- F156 | Data | `data-layer---mutations-&-schemas.md / src/mutations/routines.ts` | 116-143 | category=error | severity=high
+  - Description: `useSaveRoutine` inserts the routine row and routine exercises in separate requests. If exercise insertion fails, the user is left with a saved routine shell whose `exercise_count` no longer matches its missing children.
+  - Fix direction: Use an RPC/database transaction for routine + exercises creation, or delete the parent routine on child-insert failure.
+- F158 | Data | `data-layer---mutations-&-schemas.md / src/mutations/routines.ts` | 211-227 | category=error | severity=high
+  - Description: Updating a routine deletes all existing exercises and reinserts the replacement set in separate requests. If the insert fails after deletion, the routine is left with no exercises even though the parent row was already updated.
+  - Fix direction: Replace the delete+insert sequence with a transaction/RPC or restore the old exercises on failure.
+- F455 | Data | `lib---core-utilities.md / src/lib/supabase.ts` | 42-58 | category=error | severity=high
+  - Description: `fetchWithAuthRetry` calls `supabaseRef.current.auth.refreshSession()` from inside the Supabase client's global custom fetch. If the request that receives a 401 is itself an auth refresh request, or if refresh fails with a 401, the same custom fetch can recursively call `refreshSession()` again and loop until repeated network calls or stack/resource exhaustion.
+  - Fix direction: Add a re-entrancy guard and/or skip retry logic for Supabase auth endpoints such as `/auth/v1/token` and `/auth/v1/logout`. Only retry PostgREST/storage/function requests that can safely use the refreshed access token.
+- F499 | Data | `lib---replay-&-export.md / src/lib/export/data-export.ts` | 267-270 | category=error | severity=high
+  - Description: A `rep_telemetry` page failure is logged with `console.warn` and then the loop breaks, allowing the export to continue and download a partial `telemetry.json` without surfacing the data-loss error to the caller/user. This undermines the GDPR data-portability export because the operation can appear successful while omitting an arbitrary tail of telemetry rows.
+  - Fix direction: Treat paginated telemetry failures like other table failures: throw an export error, or mark the ZIP/report as explicitly partial and surface that state in the UI. Prefer retrying transient page failures before failing the export.
+- F391 | UI | `feature-components-part-2.md / src/app/components/integrations/ExternalActivityList.tsx` | 23-39 | category=error | severity=high
+  - Description: `PROVIDER_ICON` and `PROVIDER_LABEL` are typed as `Record<IntegrationProvider, ...>` but omit the `strong` and `liftosaur` providers that are part of `IntegrationProvider`. A real app typecheck (`npx tsc -p tsconfig.app.json`) reports TS2739 errors for this file.
+  - Fix direction: Add `strong` and `liftosaur` entries to both maps, or derive labels/icons from the shared `PROVIDER_METADATA` to keep the UI in sync with the provider union.
+- F259 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddleSubscriptionUpdate.ts` | 24-29 | category=bug | severity=high
+  - Description: `buildPaddleSubscriptionPatch` sends `items: [{ price_id: newPriceId, quantity: 1 }]` for every plan switch. Paddle's update API treats the `items` array as the complete desired subscription item list, so omitted existing items are removed and any non-1 quantity is reset. If subscriptions ever include add-ons, metered items, or multiple quantities, a plan change will unintentionally drop or rewrite them.
+  - Fix direction: Fetch or carry forward the current Paddle subscription items, replace only the base plan item, preserve unrelated items and quantities, and send the full intended item list. Add tests for a subscription with at least one add-on item.
+- F264 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-webhooks/index.ts` | 207-315 | category=bug | severity=high
+  - Description: Webhook idempotency and ordering are implemented as a read-then-upsert sequence outside a transaction or conditional update. Concurrent deliveries can both read the same old `last_event_occurred_at`, both classify as accepted, and then commit out of order; the older event can overwrite the newer subscription state and `last_event_id`.
+  - Fix direction: Move ordering into an atomic database operation, such as an RPC/upsert that updates only when `last_event_occurred_at IS NULL OR incoming_occurred_at > last_event_occurred_at`, or record events in a separate table with a unique event ID and process them serially per subscription/user.
+- F292 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-sync/index.ts` | 62-75 | category=bug | severity=high
+  - Description: Fitbit refresh token persistence is not checked. Fitbit refresh responses can rotate refresh tokens; if the database update fails, the function continues and returns the new tokens in memory while the old stored refresh token remains. Future syncs may then fail refresh and mark the integration expired.
+  - Fix direction: Capture the token update error and fail the sync if the rotated tokens cannot be persisted. Mark integration state accordingly.
+- F293 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-sync/index.ts` | 239-246 | category=bug | severity=high
+  - Description: The function fetches `user_integrations.last_sync_at` and `status` but never checks that the integration status is `connected`. If a token row still exists after an error/disconnect state, the sync can continue importing data for an integration that the application considers inactive.
+  - Fix direction: Require `integration?.status === 'connected'` before syncing, matching the Strava path. Return 404/409 when the integration is absent or not connected.
+- F285 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-webhook/index.ts` | 85-88 | category=bug | severity=high
+  - Description: `started_at` is calculated as `(startTimeInSeconds + startTimeOffsetInSeconds) * 1000`. Garmin's `startTimeInSeconds` is already an epoch timestamp; the offset describes local timezone offset. Adding it stores local wall-clock time as UTC and shifts activities by hours for non-UTC users.
+  - Fix direction: Store `new Date(activity.startTimeInSeconds * 1000).toISOString()` for the absolute event time. Preserve `startTimeOffsetInSeconds` in `raw_data` or a separate timezone field if local display is needed.
+- F297 | Edge Functions | `edge-functions---integrations.md / supabase/functions/hevy-sync/index.ts` | 221-259, 261-272 | category=bug | severity=high
+  - Description: Per-workout upsert errors are silently swallowed. `importedCount` is incremented only on success, but failures are not logged, returned, or used to fail the sync. The function then updates `last_sync_at` and marks pending queue entries completed, creating silent data loss.
+  - Fix direction: Collect and log upsert errors. Fail or complete-with-errors without advancing `last_sync_at` past failed records, and keep/retry the sync queue entry when persistence fails.
+- F302 | Edge Functions | `edge-functions---integrations.md / supabase/functions/liftosaur-sync/index.ts` | 282-329, 331-342 | category=bug | severity=high
+  - Description: Per-record upsert errors are ignored. The function only increments `importedCount` on success, but still updates `last_sync_at`, sets status `connected`, and marks pending queue entries completed even when some or all records failed to persist.
+  - Fix direction: Collect upsert errors and fail or complete-with-errors without advancing sync state past failed records. Return the error count and keep retryable queue entries pending/failed as appropriate.
+- F278 | Edge Functions | `edge-functions---integrations.md / supabase/functions/strava-sync/index.ts` | 213-233 | category=bug | severity=high
+  - Description: Strava refresh token rotation is persisted without checking the update result. Strava can rotate refresh tokens on every refresh; if the database update at lines 224-233 fails, the invocation continues with the new in-memory access token but the old refresh token remains stored. The next sync may then be unable to refresh and the integration can become permanently token-expired.
+  - Fix direction: Capture and handle the token update error. If persistence fails after a successful refresh, mark the integration error/token_expired and fail the sync instead of continuing with an unpersisted rotated token.
+- F279 | Edge Functions | `edge-functions---integrations.md / supabase/functions/strava-sync/index.ts` | 296-345 | category=bug | severity=high
+  - Description: Per-activity upsert failures are collected in `errors`, but `last_sync_at` is still advanced and the sync queue entry is marked `completed_with_errors`/`completed`. On the next incremental sync, the function uses `last_sync_at` as the `after` cutoff, so activities that failed to persist in this run can be skipped permanently.
+  - Fix direction: Do not advance `last_sync_at` past failed records. Either fail/retry the sync when any upsert fails, or track a safe high-water mark based only on successfully persisted activity timestamps.
+- F338 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/pushPayloadSchema.ts` | 71-77, 396-418 | category=bug | severity=high
+  - Description: `arrayOf()` converts any non-array value to `[]`. If a buggy client sends `sessions`, `routines`, `personalRecords`, or other sync sections as an object/string instead of an array, the handler accepts the payload, silently drops that section, and can return a successful sync response. That is dangerous for a sync endpoint because clients may advance their local sync timestamp after the server discarded data.
+  - Fix direction: Coerce only `undefined`/`null` to `[]` for backward compatibility, but reject non-array non-null values with a 400 and a field path.
+- F351 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-pull/index.ts` | 1024-1037 | category=bug | severity=high
+  - Description: `personalRecordDtos` omits `exerciseId` and `localProfileId` even though the RPC/query returns `exercise_id` and `local_profile_id` and push accepts those fields. Pulling a personal record can therefore lose its catalog exercise linkage and profile scope on the mobile side.
+  - Fix direction: Include `exerciseId: pr.exercise_id ?? null` and `localProfileId: pr.local_profile_id ?? null` in the DTO, with corresponding mobile DTO handling/tests.
+- F343 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 1385-1400, 1403-1614 | category=bug | severity=high
+  - Description: Existing exercises for accepted sessions are deleted before replacement child rows and progress rows are inserted, but the sequence is not transactional. Any later failure in exercise/set/rep summary/telemetry/progress writes returns an error after prior workout details have already been deleted.
+  - Fix direction: Replace the hierarchy inside a single SQL transaction/RPC, or use a safe upsert-then-cleanup pattern where stale child rows are removed only after all replacement rows have been written successfully.
+- F344 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 1294-1296, 1541-1564, 2211-2233 | category=bug | severity=high
+  - Description: LWW rejection filtering is applied to exercises/sets/rep summaries, but not to top-level telemetry or phase statistics. When a session is rejected by the LWW gate, telemetry whose `setId` belongs to the rejected payload is still upserted and can hit FK errors; phase statistics for rejected sessions are also still written because `sessionIdSet` treats payload sessions as valid even when the LWW RPC declined the parent update.
+  - Fix direction: Build accepted set/session ID sets after LWW filtering and skip telemetry/phase statistics whose parents were rejected. Return those skips in the LWW rejection metadata so mobile can repair on pull.
+- F212 | Migrations | `database-migrations.md / supabase/migrations/20260218_phase11_comments.sql` | 42-49, 112-131 | category=bug | severity=high
+  - Description: The comment update policy allows owners to update any column on their own comment within five minutes, including `item_id` and `item_type`. The count trigger then decrements using `NEW.item_id`/`NEW.item_type` on soft delete, so a user can retarget a comment and corrupt `comment_count` on the original and new shared item.
+  - Fix direction: Make `item_id` and `item_type` immutable after insert with a `BEFORE UPDATE` trigger, and use `OLD.item_id`/`OLD.item_type` when decrementing counters on soft delete.
+- F219 | Migrations | `database-migrations.md / supabase/migrations/20260412_leaderboard_functions.sql` | 9-35, 45-82, 92-124 | category=bug | severity=high
+  - Description: The leaderboard RPCs are `SECURITY INVOKER`, but they query RLS-protected `personal_records`, `exercises`, and `profiles`. Under an authenticated caller, RLS will generally restrict these tables to the caller's own rows, so global leaderboards and arbitrary `target_user_id` rank lookups cannot see the full participant population.
+  - Fix direction: Use a carefully audited `SECURITY DEFINER` function with `SET search_path = ''` and explicit filtering on public leaderboard participation, or maintain a server-computed leaderboard table that is safe for authenticated users to read.
+- F047 | CI/CD | `build-&-config.md / package.json` | package.json:21-22`, `vitest.config.ts:34-36 | category=bug | severity=high
+  - Description: `test:sync:live` sets `MOCK_EDGE_FUNCTIONS=false` and `SYNC_LIVE_TESTS=true`, but `vitest.config.ts` unconditionally injects `MOCK_EDGE_FUNCTIONS: "true"` into every Vitest run. A temporary probe run with `MOCK_EDGE_FUNCTIONS=false` printed `MOCK_EDGE_FUNCTIONS=true`, confirming that the live-sync script still runs mocked. This creates false confidence around the only script intended to hit live Edge Functions/Supabase behavior.
+  - Fix direction: Make the Vitest default conditional, for example `MOCK_EDGE_FUNCTIONS: process.env.MOCK_EDGE_FUNCTIONS ?? "true"`, or move the default into the non-live npm scripts so explicit caller environment wins.
+- F088 | CI/CD | `ci-cd-&-workflows.md / WORKFLOW.md` | 41-44, 150-159 | category=bug | severity=high
+  - Description: The Codex turn sandbox disables network access, but the documented execution flow requires `git fetch origin main --prune`, branch pushes, PR creation/update, and Linear handoff activity. Workers following this workflow can be blocked from performing the very network operations required to complete an issue.
+  - Fix direction: Enable network access for the phases that require git/Linear/GitHub operations, or move fetch/push/PR/Linear writes into trusted hooks/tools outside the network-disabled turn sandbox and update the workflow accordingly.
+- F247 | Tests | `e2e-tests.md / e2e/realtime-cross-tab.spec.ts` | 96-181 | category=bug | severity=high
+  - Description: The mocked cross-tab test does not actually simulate a cross-tab broadcast. It creates two isolated browser contexts, never triggers any action from tab A, mutates only page B's mocked REST response, and directly dispatches the development-only `phoenix:e2e-sync-complete` event inside page B. A broken cross-tab communication path would still pass.
+  - Fix direction: Use two pages in the same browser context when testing browser-tab behavior, trigger the broadcast/source action from one page, and observe invalidation in the other. Keep direct custom-event dispatch in lower-level component tests rather than labeling it cross-tab E2E.
+- F521 | Tests | `sync-tests-&-security-tests.md / tests/sync/conflicts/conflict-resolution.test.ts` | 420-477 | category=bug | severity=high
+  - Description: The active-cycle conflict test computes `activeCycles` but never asserts it. The test name says only one cycle should be active, while the actual assertions only require a successful pull and at least one cycle.
+  - Fix direction: Assert `activeCycles` has length 1 and that the last-activated cycle is the active one, or rename/document the test if the product intentionally allows multiple active cycles.
+- F141 | Data | `data-layer---mutations-&-schemas.md / src/mutations/comments.ts` | 95-107 | category=bug | severity=high
+  - Description: The expired-edit guard relies on `count === 0`, but the Supabase update does not request a count or select a row. In real Supabase responses, `count` is commonly `null` unless requested, so a zero-row update caused by the `.gte("created_at", fiveMinutesAgo)` filter can be treated as success and silently fail to update the comment.
+  - Fix direction: Use `.select("id").maybeSingle()` after the update or request `{ count: "exact" }`; throw the edit-window error when no row is returned/affected.
+- F149 | Data | `data-layer---mutations-&-schemas.md / src/mutations/cycles.ts` | 129-167 | category=bug | severity=high
+  - Description: `useUpdateCycle` updates the parent with an ownership filter, but then deletes and reinserts `cycle_days` by `cycle_id` only. It does not confirm the parent update matched the current user before deleting children, so stale/unauthorized cycle IDs can still trigger destructive child-table writes if RLS is incomplete or misconfigured.
+  - Fix direction: Return the updated cycle ID before touching `cycle_days`, abort when no parent row matched, and perform the parent/day replacement in a server-side transaction with ownership checks.
+- F157 | Data | `data-layer---mutations-&-schemas.md / src/mutations/routines.ts` | 199-207 | category=bug | severity=high
+  - Description: `useUpdateRoutine` updates `routines` by `id` only and does not include `.eq("user_id", user.id)`, unlike delete and favorite mutations. This weakens ownership enforcement and can update another user's routine if RLS is absent, incomplete, or bypassed in tests/admin contexts.
+  - Fix direction: Add the same user ownership filter used elsewhere, return the updated row, and abort child replacement when no row matched.
+- F176 | Data | `data-layer---queries.md / src/queries/analytics.ts` | 377-394 | category=bug | severity=high
+  - Description: `vbtAssessmentsOptions(userId, exerciseId)` filters by `user_id` in the query function but the query key only contains `exerciseId`. If a user signs out/in or a shared component asks for the same exercise under a different user, TanStack Query can serve the previous user's cached VBT assessments. The query is also enabled with only `!!exerciseId`, so it can run with an empty `userId`.
+  - Fix direction: Include `userId` in the query key and gate with `enabled: !!userId && !!exerciseId`; preferably add a dedicated `queryKeys.analytics.vbtAssessments(userId, exerciseId)` factory.
+- F203 | Data | `data-layer---stores.md / src/stores/useProfileFilterStore.ts` | 19-20 | category=bug | severity=high
+  - Description: The persisted key `phoenix-profile-filter` is global and not scoped to the authenticated user. If a user signs out and another user signs in in the same browser tab/session, the previous user's `activeProfileId` can be rehydrated and then used by query filters and mutations that read `useProfileFilterStore.getState().activeProfileId` when creating routines, cycles, or importing community items. That can cause failed RLS/database writes at best, and incorrect local-profile attribution if IDs ever overlap or permissions change.
+  - Fix direction: Scope the persisted value by user id, clear it on sign-out/user change, and validate the rehydrated profile id against `localProfilesOptions(userId)` before exposing it to mutations. Another safe option is to keep this store unpersisted and initialize it from an auth-scoped profile preference.
+- F205 | Data | `data-layer---stores.md / src/stores/useReplayStore.ts` | 28-35, 54 | category=bug | severity=high
+  - Description: `reset()` only clears `isPlaying`, `currentTimeMs`, and `currentRepIndex`; it preserves `currentSetIndex`, `viewMode`, `speed`, and `activeChart`. `SessionReplay` calls `reset()` on mount as a playback reset, so navigating from a session where `currentSetIndex` is 3 to a session with fewer sets leaves `currentSet` undefined, disables the telemetry query, and can render no replay content rather than starting at set 1.
+  - Fix direction: Split the action into explicit `resetPlaybackPosition()` and `resetSession()` semantics, or make `reset()` restore the full `initialState` including `currentSetIndex: 0` for page/session mounts. Add a regression test that changes to a high set index, mounts/initializes a new shorter session, and verifies the replay starts at set 0.
+- F451 | Data | `lib---analytics-&-science.md / src/lib/computeNextWorkout.ts` | 20-26, 48-52 | category=bug | severity=high
+  - Description: The next workout is selected with `cycleDays[daysSinceStart % cycleDays.length]`, assuming the input array is already sorted by `day_number`. The `CycleDay` schema does not guarantee ordering, and database/API results can arrive unsorted; an unsorted array assigns the wrong workout/rest day for the current date.
+  - Fix direction: Sort a copy of `cycleDays` by `day_number` before indexing, or require the caller/query layer to guarantee ordering and assert it here.
+- F457 | Data | `lib---core-utilities.md / src/lib/paddle.ts` | 18-28, 59-64, 133-146 | category=bug | severity=high
+  - Description: `PaddleEventType` includes `transaction.completed` and `transaction.payment_failed`, but `PaddleWebhookEvent.data` is always typed as `PaddleSubscriptionData`. If transaction webhook events are passed to `buildSubscriptionUpsert`, fields such as `data.id`, `customer_id`, `status`, and `items[0].price.id` are interpreted as subscription data even though Paddle transaction payloads have a different shape. This can write incorrect subscription/customer IDs or silently downgrade tier resolution.
+  - Fix direction: Use a discriminated union keyed by `event_type`, and make `buildSubscriptionUpsert` accept only subscription events. Handle transaction events in a separate mapper that resolves the related subscription explicitly.
+- F460 | Data | `lib---core-utilities.md / src/lib/paddle.ts` | 154-170 | category=bug | severity=high
+  - Description: The upsert payload records `last_event_id` and `last_event_occurred_at`, but this builder does not encode any stale-event protection. If the downstream upsert is unconditional, older Paddle webhooks can arrive after newer ones and overwrite current status/tier/period data.
+  - Fix direction: Ensure the write path compares `event.occurred_at` with the stored `last_event_occurred_at` and ignores older or duplicate events. Keep the comparison in the same database statement/RPC as the update to avoid races.
+- F481 | Data | `lib---integrations.md / src/lib/integrations/garmin.ts` | 14-15, 66-69 | category=bug | severity=high
+  - Description: The code comments `startTimeInSeconds` as Unix epoch seconds, but then adds `startTimeOffsetInSeconds` before converting to ISO. If `startTimeInSeconds` is already an absolute epoch timestamp, applying the timezone offset shifts every Garmin activity by the local offset and stores the wrong `started_at` time.
+  - Fix direction: Store `new Date(activity.startTimeInSeconds * 1000).toISOString()` as the canonical UTC timestamp. Keep `startTimeOffsetInSeconds` only for optional local-time display if needed.
+- F476 | Data | `lib---integrations.md / src/lib/integrations/normalize.ts` | 18-37 | category=bug | severity=high
+  - Description: `IntegrationProvider` includes `strong` and `liftosaur`, but `normalizeActivity()` has no cases for either provider. Passing either valid provider falls through to the default branch and throws `Unknown integration provider`, so shared code cannot safely dispatch all declared integration providers.
+  - Fix direction: Add provider-specific handling for `strong` and `liftosaur`, or narrow this dispatcher's accepted type to only providers that actually support web normalization. Consider an exhaustive `never` check so future provider additions fail at compile time until dispatch support is added.
+- F001 | UI | `analytics-dashboard.md / src/app/components/Analytics.tsx` | 760-771, 1397-1400, 1629-1632 | category=bug | severity=high
+  - Description: The phase filter is presented as controlling the Progress tab phase metrics, but `phaseMetricSummary` is always built from all `phaseStatsRaw` rows and does not depend on `phaseFilter`. Changing Concentric/Eccentric/Combined only affects strength PRs/workbench, while the "Phase Load, Speed & Power" values remain aggregated across all phase statistics.
+  - Fix direction: Include the workout phase in `phaseStatisticsTrendOptions`, filter phase statistics before calling `buildPhaseMetricSummary`, and include `phaseFilter` in the memo dependencies. If `session_phase_statistics` cannot be phase-specific, remove or relabel the phase filter for this panel.
+- F007 | UI | `analytics-dashboard.md / src/app/components/analytics/PerformanceTab.tsx` | 116-128 | category=bug | severity=high
+  - Description: Training Efficiency computes `totalVol` from `volumeComparison.current.total_volume` and passes `totalVol / totalMin` directly to `convertWeight`. Elsewhere in Analytics, the same `total_volume` values are multiplied by `WEIGHT_MULTIPLIER` before unit conversion. This makes Volume / Minute inconsistent with the rest of the dashboard and likely underreports/overreports load by the configured multiplier.
+  - Fix direction: Apply the same canonical conversion used in `Analytics.tsx` (`total_volume * WEIGHT_MULTIPLIER`) before calling `convertWeight`, or ensure the query returns already-normalized kg and remove the multiplier from all consumers consistently.
+- F009 | UI | `analytics-dashboard.md / src/app/components/analytics/RecordsTab.tsx` | 154-190, 415-423, 453-460, 549-577 | category=bug | severity=high
+  - Description: Records are grouped only by exercise (`exercise_id ?? exercise_name`) and the latest record of any type becomes the current value. The history and bar chart can mix `MAX_WEIGHT`, `1RM`, `MAX_VOLUME`, `MAX_REPS`, and other units in the same exercise card, scaling raw values against each other and displaying a single "current" measurement that may be a different metric from older bars.
+  - Fix direction: Group records by exercise plus `record_type` (and unit where relevant), or render separate metric subgroups within each exercise. Compute progression bars only from comparable values.
+- F012 | UI | `analytics-dashboard.md / src/app/components/analytics/strengthPhaseTransforms.ts` | 68-90, 106-128, 131-143 | category=bug | severity=high
+  - Description: Strength phase series combine all strength record types (`MAX_WEIGHT` and `1RM`) into the same exercise/phase key and use raw `item.value` for chart points and latest values. A max-weight PR and an estimated-1RM PR are different metrics, but they can overwrite each other in the same monthly bucket and be ranked together in desktop and mobile charts.
+  - Fix direction: Either filter to a single metric for the chart or include `record_type` in the series key/name and label axes accordingly.
+- F013 | UI | `analytics-dashboard.md / src/app/components/analytics/strengthPhaseTransforms.ts` | 73-82, 118-126 | category=bug | severity=high
+  - Description: Date buckets are formatted as month name only (`"Jan"`, `"Feb"`, etc.). Histories spanning more than one year collapse records from the same month across different years into one bucket, causing old and new PRs to overwrite each other and making the chart chronology incorrect.
+  - Fix direction: Bucket by a stable year-month key (for example `YYYY-MM`) and use a separate display label that includes the year when needed.
+- F023 | UI | `app-entry-&-routing.md / src/providers/AuthProvider.tsx` | 40-58 | category=bug | severity=high
+  - Description: Initial session loading and auth-state subscription can race. `getSession()` is started, then `onAuthStateChange()` is registered; if an auth event such as `SIGNED_OUT` or a fresh `SIGNED_IN` is applied before the initial `getSession()` promise resolves, the later `getSession()` result can overwrite the newer auth state with stale data.
+  - Fix direction: Rely on Supabase's `INITIAL_SESSION` event instead of a separate `getSession()` call, or track a monotonically increasing auth-state version and ignore the initial session result after any auth event has fired.
+- F028 | UI | `app-shell-&-layout.md / src/app/components/BottomSheet.tsx` | 56-75, 99-100 | category=bug | severity=high
+  - Description: Drag dismissal compares the absolute motion value `y` with `150`, but the open position itself is usually a positive translate value (`containerHeight - currentSnapPoint`; 320px on an 800px viewport with the default 60% snap). As a result, ending even a small drag from the default snap can satisfy `currentY > 150` and close the sheet immediately instead of snapping.
+  - Fix direction: Compare drag offset/delta from the current snap point rather than absolute `y`, or compute the dismiss threshold relative to the open snap position. Add interaction tests for short drags at each snap point.
+- F038 | UI | `app-shell-&-layout.md / src/app/components/DeleteConfirmDialog.tsx` | 58-61 | category=bug | severity=high
+  - Description: `AlertDialogAction` closes the controlled dialog as part of its default action. The callers start async delete mutations and only explicitly close on success, but this component will still request close immediately when Delete is clicked. If deletion fails, the confirmation dialog has already disappeared, hiding the pending/error state and forcing the user to re-open context.
+  - Fix direction: Prevent the default close in the action click handler while starting the mutation, or use a plain button inside the footer and let callers close the dialog only after successful deletion.
+- F062 | UI | `charts-&-visualization.md / src/app/components/charts/ForceCurve.tsx` | 105-110, 178-179, 216-229 | category=bug | severity=high
+  - Description: Non-normalized curves use an x-domain of `[0, maxTimestamp]` and render each point at its raw `timestamp_ms`. If telemetry timestamps are absolute or set-relative values that do not start near zero, all points are compressed into the far right of the chart because the minimum timestamp is ignored. The normalization helper already treats the first timestamp as the rep start, so this raw mode is inconsistent with normalized mode.
+  - Fix direction: Use `[minX, maxX]` as the domain and render elapsed time (`timestamp_ms - minX`) when the desired label is time within the rep/set. If absolute timestamps are intentional, format the axis accordingly and include the min bound.
+- F094 | UI | `community-features.md / src/app/components/Community.tsx` | 82-96, 249-250, 392-394 | category=bug | severity=high
+  - Description: The same `sentinelRef` is attached to both the mobile and desktop infinite-scroll sentinels while both layouts remain mounted and are only hidden with CSS. React will ultimately assign the ref to one DOM node, so the observer can watch the hidden desktop sentinel on mobile instead of the visible mobile sentinel. This can prevent mobile users from loading pages beyond the first feed page.
+  - Fix direction: Use separate refs/observers for mobile and desktop, or render only the active layout so the observed sentinel is always the visible one.
+- F095 | UI | `community-features.md / src/app/components/Community.tsx` | 108-117, 151-158, 293-299 | category=bug | severity=high
+  - Description: Creator-profile interactions pass only an item id back to `Community`, while `Community` resolves the selected item only from the main feed's `allItems` and infers vote `itemType` from the current global tab. `CreatorProfile` displays both routines and cycles, so selecting an item not present in the main feed can open no drawer, and voting a creator cycle while the main tab is `routines` can submit the vote as a routine vote.
+  - Fix direction: Pass the full feed item, or at least both `{ id, itemType }`, from `CreatorProfile`; resolve selected detail against the creator-profile item source instead of only the main feed; make vote handlers accept an explicit item type.
+- F096 | UI | `community-features.md / src/app/components/Community.tsx` | 378-387 | category=bug | severity=high
+  - Description: Desktop feed cards do not pass `contentType` to `CommunityFeedCard`, so `CommunityFeedCard` defaults action-menu operations to `routine`. Cycle cards on desktop can therefore report/delete/use action metadata as routines, while the mobile branch correctly passes `contentType`.
+  - Fix direction: Pass `contentType={activeTab === "routines" ? "routine" : "cycle"}` in the desktop `CommunityFeedCard` mapping as well.
+- F104 | UI | `community-features.md / src/app/components/community/CreatorProfile.tsx` | 49, 104-107, 271-278 | category=bug | severity=high
+  - Description: `CreatorProfile` combines routine and cycle items into `allItems`, but card vote/select callbacks only receive an id. The parent `Community` vote handler uses the active global tab to decide item type, so votes on mixed creator-profile results can target the wrong table/type. This is the child-side contributor to the high-severity mixed-content bug also noted in `Community.tsx`.
+  - Fix direction: Include item type in `CreatorProfile` callbacks, e.g. `onVote(item.id, isRoutine(item) ? "routine" : "cycle")` and `onSelectItem(item)`, and update callers accordingly.
+- F108 | UI | `cycle-&-routine-builders.md / src/app/components/CycleBuilder.tsx` | 139, 237, 431-444 | category=bug | severity=high
+  - Description: The builder treats `duration` as a number of schedule days in the UI (`Duration (Days)`) but loads and saves the same value as `duration_weeks`. Existing cycles will display week counts as day counts, and new cycles with a 7-day template are saved as 7-week cycles by default. The training cycle list renders `duration_weeks` as weeks, so this produces persisted data that contradicts the UI.
+  - Fix direction: Split cycle length in weeks from weekly/day-template length. Bind the schedule day count to the `days` array, and bind a separate `durationWeeks` field to `duration_weeks` with week-specific labels and validation.
+- F109 | UI | `cycle-&-routine-builders.md / src/app/components/CycleBuilder.tsx` | 316-333, 438-454, 532-540, 239-248 | category=bug | severity=high
+  - Description: Changing the duration input or preset buttons updates only the `duration` state. It does not add/remove entries in `days`, but saving persists `days.map(...)`. Users can set a 3/5/6-day cycle while the stale 7-day schedule is still saved, or set a custom length that does not match the actual schedule.
+  - Fix direction: Make duration changes reconcile the `days` array atomically, or remove the independent duration control and derive the displayed day-template length from `days.length`.
+- F365 | UI | `feature-components-part-1.md / src/app/components/SummaryReport.tsx` | 80-87, 323-329, and src/queries/progress.ts lines 115-130 | category=bug | severity=high
+  - Description: `weeklySummaryOptions` fetches only the selected current window (`7` or `30` days), but `computeSummary` tries to split that data at `now - daysInPeriod`. As a result `previous` is always empty for normal query results, so percent-change comparisons show misleading `100%` jumps and all current PRs can be treated as first-time records.
+  - Fix direction: Fetch two periods of data for comparisons (14 days for week, 60 days for month), or pass separate current/previous datasets into `computeSummary`.
+- F380 | UI | `feature-components-part-1.md / src/app/components/profile/ExportSection.tsx` | 29-30, 51-62, and src/queries/workouts.ts lines 22-39 | category=bug | severity=high
+  - Description: "Export Workout History" uses `workoutListOptions`, which is the paginated list query limited to `WORKOUTS_PAGE_SIZE` (50). Users with more than 50 workouts receive an incomplete CSV while the success toast reports only the loaded page count.
+  - Fix direction: Use an export-specific query/function that pages through all workout sessions, or call the complete data export path for workout CSV generation.
+- F384 | UI | `feature-components-part-2.md / src/app/components/Biomechanics.tsx` | 193-210 | category=bug | severity=high
+  - Description: Rep force curves are split by evenly slicing the telemetry array across `repSummaries.length`. The comment notes this is an approximation because telemetry has no `rep_number`. If real reps have different durations, pauses, or dropped telemetry samples, points are assigned to the wrong rep and the force-curve analysis becomes misleading.
+  - Fix direction: Use explicit rep boundary data from telemetry/rep summaries, or keep the data as a single trace until reliable per-rep boundaries are available. Avoid labeling approximate slices as actual reps.
+- F397 | UI | `feature-components-part-2.md / src/app/components/integrations/StrongConnect.tsx` | 63-64, 74-114, 116-139, 334-338, 386-395 | category=bug | severity=high
+  - Description: Strong CSV rows are parsed immediately using the current `importWeightUnit`, but the user can change the weight-unit toggle after the preview is generated. The preview remains visible and `handleImport` imports the already-parsed values, so changing the unit after file selection does not reparse and can import weights in the wrong unit.
+  - Fix direction: Clear the parsed preview when `importWeightUnit` changes, or store the raw CSV and reparse whenever the selected import unit changes before enabling import.
+- F431 | UI | `hooks-&-providers.md / src/hooks/usePlayback.ts` | 7-18 | category=bug | severity=high
+  - Description: `useAnimationFrame` from `motion/react` passes `delta` in milliseconds, but the hook comments that it is seconds and multiplies it by `1000`. With `currentTimeMs` also stored in milliseconds, playback advances roughly 1000x too fast and will immediately seek to `maxTimeMs`/pause for normal frame deltas.
+  - Fix direction: Treat `delta` as milliseconds: `const deltaMs = delta * speed`. Add a unit test with a mocked animation-frame delta (e.g. 16 ms at speed 1 should advance about 16 ms, not 16,000 ms).
+- F505 | UI | `session-replay.md / src/app/components/session-replay/ReplayCanvas.tsx` | 40-52 | category=bug | severity=high
+  - Description: The canvas renderers receive raw `TelemetryPointRow[]` data even though telemetry rows are per-cable (`cable: "A" | "B"`). A force chart drawn as a single series over raw cable rows can under-report total force and draw duplicate/sawtooth points at the same timestamp instead of the combined force for the rep. This conflicts with phase analytics, which groups rows by timestamp and sums force before calculating energy.
+  - Fix direction: Aggregate telemetry by timestamp before rendering total force, or render separate clearly-labeled cable series. Keep force/velocity aggregation semantics consistent between replay canvas, intelligence, and phase analytics.
+- F509 | UI | `session-replay.md / src/app/components/session-replay/SessionReplay.tsx` | 53-56, 76-83, 201-371 | category=bug | severity=high
+  - Description: Playback reset on mount does not reset or clamp `currentSetIndex`, and the component directly indexes `allSets[currentSetIndex]`. If the Zustand store retains an index from a prior session with more sets, or if the current session has fewer sets, `currentSet` becomes `undefined`, the telemetry query is disabled, and none of the main, fallback, empty, or error states render. The user can see only the header/freshness strip with no recovery path.
+  - Fix direction: Reset `currentSetIndex` when `sessionId` changes, add a store action to set/clamp the set index, and clamp the selected index after `allSets` loads. Render an explicit empty/out-of-range state if no current set exists.
+- F565 | Other | `ui-primitives-shadcn.md / src/app/components/ui/slider.tsx` | 16-23, 52-59 | category=bug | severity=high
+  - Description: When neither `value` nor `defaultValue` is supplied, `_values` falls back to `[min, max]`, so the wrapper renders two thumbs by default. A consumer expecting the Radix/default single-value slider can get a range-style slider with two thumbs and ambiguous initial state.
+  - Fix direction: Default to a single thumb (for example `[min]` or Radix's own default) unless the caller explicitly supplies a multi-value `value`/`defaultValue`, or document and rename the component as a range slider if two thumbs are intended.
+- F567 | Other | `ui-primitives-shadcn.md / src/app/components/ui/unsaved-changes-dialog.tsx` | 26, 37-54 | category=bug | severity=high
+  - Description: `onOpenChange={(o) => !o && onCancel()}` calls `onCancel` whenever the alert dialog closes. `AlertDialogAction` normally closes the dialog after Save or Discard, so `onSave`/`onDiscard` can be followed by `onCancel`. Clicking Cancel can also invoke `onCancel` from both the button `onClick` and `onOpenChange`.
+  - Fix direction: Track the action that initiated close, or avoid mapping every close event to cancel. Invoke `onCancel` only from the explicit Cancel path and let Save/Discard close without firing the cancel callback.
+- F304 | Edge Functions | `edge-functions---integrations.md / supabase/functions/disconnect-integration/index.ts` | 81-107 | category=failure-point | severity=high
+  - Description: Disconnect only deletes local tokens and marks local queue rows failed. It does not revoke provider-side OAuth tokens for providers such as Strava or Fitbit. A user may reasonably expect disconnect/account deletion to revoke third-party access, but the provider grant can remain active until manually revoked at the provider.
+  - Fix direction: For providers with revocation endpoints, decrypt the stored token and call the provider revocation API before deleting local credentials. If revocation fails, surface a warning and retry path.
+- F283 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-oauth/index.ts` | 185-206, 278-301 | category=failure-point | severity=high
+  - Description: All Garmin token/integration upserts ignore their returned errors. The function can redirect the user to Garmin without a stored pending token, or later redirect `connected=garmin` even if permanent tokens or `user_integrations` failed to persist.
+  - Fix direction: Check every Supabase write. Abort with a provider-specific error redirect if any pending-token, permanent-token, or integration-state write fails.
+- F317 | Edge Functions | `edge-functions---misc.md / supabase/functions/delete-account/index.ts` | 46-56, 149-209 | category=failure-point | severity=high
+  - Description: The destructive account-deletion handler has no method guard. Any authenticated non-OPTIONS request can execute the deletion flow once the grace period has expired, which is inconsistent with `compute-rankings` and increases the blast radius of accidental invocation or unexpected client/proxy behavior.
+  - Fix direction: Require a deliberate method such as `POST` or `DELETE`, return 405 for all other methods, and consider requiring a confirmation token/body value tied to the pending deletion request.
+- F318 | Edge Functions | `edge-functions---misc.md / supabase/functions/delete-account/index.ts` | 112-125 | category=failure-point | severity=high
+  - Description: Avatar storage cleanup is treated as non-critical and both list/remove errors are allowed to continue. The `remove()` result is also not checked. A failed storage delete can therefore leave user-owned avatar objects behind after the auth user and database rows are deleted, undermining account-erasure expectations.
+  - Fix direction: Check both `.list()` and `.remove()` errors. Either fail and retry before deleting the auth user, or enqueue durable storage-cleanup work with enough metadata to remove the objects after the database row is gone.
+- F319 | Edge Functions | `edge-functions---misc.md / supabase/functions/delete-account/index.ts` | 130-139, 173-204 | category=failure-point | severity=high
+  - Description: Paddle cancellation happens only after `auth.admin.deleteUser(userId)` succeeds, and failures are only logged plus returned as `billingCancellationPending`. Because the subscription row is cascade-deleted with the user and no retry job is persisted, a transient Paddle/API failure can leave a paid subscription active with no durable in-app record to retry from.
+  - Fix direction: Cancel or schedule cancellation before deleting the auth user, or persist a service-owned billing-cancellation job/audit row outside the user cascade path before the auth delete. Retry failures asynchronously until Paddle confirms cancellation.
+- F323 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/oauthTokenCrypto.ts` | 119-124 | category=failure-point | severity=high
+  - Description: `decryptOAuthSecret` returns any stored value without the `enc:v1:` prefix as plaintext, even in deployed production with `OAUTH_TOKEN_ENCRYPTION_KEY` configured. Legacy or accidentally written plaintext OAuth tokens therefore continue to be accepted indefinitely, so the encryption layer does not detect or remediate sensitive columns that are still unencrypted at rest.
+  - Fix direction: In production, reject non-prefixed values for sensitive token columns or add an explicit migration/rehydration path that reads legacy plaintext once, rewrites it encrypted, and records telemetry until no plaintext rows remain.
+- F358 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/process-sync-queue/index.ts` | 123-127, 144-200 | category=failure-point | severity=high
+  - Description: A task marked `processing` has no lease/timeout recovery. If the function crashes, times out, or the process is killed after line 126 and before the catch updates the row, that task remains `processing` forever and will not be picked up by later runs that only query `status = 'pending'`.
+  - Fix direction: Add a stale-processing reclaim query based on `started_at`, or use leased claims with `locked_until` and retry expired leases.
+- F211 | Migrations | `database-migrations.md / supabase/migrations/20260216_integrations.sql` | 14-17, 27-41 | category=failure-point | severity=high
+  - Description: `user_integrations` stores `access_token`, `refresh_token`, `token_expires_at`, and `api_key`, while the RLS policies allow the owning authenticated user to select, insert, update, and delete the whole row. In a browser/PostgREST client, this exposes long-lived provider credentials to client-side JavaScript and lets clients write untrusted provider credential material.
+  - Fix direction: Keep OAuth/API credentials in a server-only table with no authenticated role privileges, expose only non-secret connection metadata to clients, and perform token writes from service-role Edge Functions.
+- F215 | Migrations | `database-migrations.md / supabase/migrations/20260221_exercise_progress_and_creator_stats.sql` | 43-70 | category=failure-point | severity=high
+  - Description: `creator_stats` is created as a normal view, which is security-definer by default in Postgres. It reads `profiles`, `shared_routines`, and `shared_cycles` through the view owner rather than the caller, which can bypass table RLS/profile visibility assumptions and is explicitly the class of issue later addressed by security-invoker view migrations.
+  - Fix direction: Create the view with `WITH (security_invoker = true)` or expose only a deliberately public, security-barrier profile surface and grant the view narrowly.
+- F216 | Migrations | `database-migrations.md / supabase/migrations/20260302120000_sync_compat_rpg_gamification.sql` | 40-61 | category=failure-point | severity=high
+  - Description: `earned_badges` allows authenticated users to insert and delete their own badges directly. If badges are achievement/entitlement signals, a client can self-award or remove achievements without server-side validation.
+  - Fix direction: Move badge awarding/deletion behind service-role RPCs or Edge Functions that validate achievement criteria. Authenticated clients should normally have SELECT-only access.
+- F217 | Migrations | `database-migrations.md / supabase/migrations/20260302120000_sync_compat_rpg_gamification.sql` | 8-33, 68-91 | category=failure-point | severity=high
+  - Description: `rpg_attributes` and `gamification_stats` allow authenticated users to insert/update their own progression and aggregate statistics directly. That makes server-derived progression, level, XP, streak, and volume counters client-authoritative and tamperable.
+  - Fix direction: Restrict direct writes for server-derived fields; accept raw workout/sync inputs from clients and compute progression/statistics in trusted service-role code or validated RPCs.
+- F073 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/ci.yml` | 51-59 | category=failure-point | severity=high
+  - Description: The CI job is named `Edge Function Deno Check`, but it delegates to `npm run check:edge-functions`, whose script currently runs `deno check` only for `mobile-sync-push/index.ts` and `mobile-sync-pull/index.ts`. The repository contains many other Edge Functions, and `deploy-edge-functions.yml` deploys all local functions to production, so syntax/type/import breakage in unlisted functions can pass CI and be deployed.
+  - Fix direction: Expand `scripts/check-edge-functions.mjs` or the workflow to discover/check every `supabase/functions/*/index.ts` entrypoint, preferably using the same function set that production deploys. Add an explicit exclusion list only for intentional skips.
+- F075 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/deploy-edge-functions.yml` | 17-24, 59-65 | category=failure-point | severity=high
+  - Description: `workflow_dispatch` can deploy whichever ref the operator selects, but the job has no `environment`, branch assertion, or ref guard before deploying all functions to the production Supabase project. A manual run from a feature branch or stale commit could push unreviewed Edge Function code directly to prod.
+  - Fix direction: Add a protected production environment with required reviewers and an explicit shell or job-level guard such as `github.ref == 'refs/heads/main'` before the deploy step. If non-main hotfix deploys are ever needed, make that a separate audited input with a confirmation gate.
+- F080 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/sync-tests.yml` | 56-83 | category=failure-point | severity=high
+  - Description: Live sync tests protect production by denying only two hard-coded URL patterns (`ilzlswmatadlnsuxatcv.supabase.co` and `api.phoenix-portal.com`). If production moves to a new Supabase ref or another custom domain, a misconfigured `SYNC_STAGING_SUPABASE_URL` could still point at prod and the live test suite would run against it.
+  - Fix direction: Use an allowlist for known staging project refs/hosts, or require a separate `SYNC_STAGING_PROJECT_REF` secret and compare it to the parsed URL. Fail closed for unknown hosts instead of only blocking a small denylist.
+- F253 | Tests | `e2e-tests.md / e2e/support/mockSupabase.ts` | 180-208, 362-395, 453-487 | category=failure-point | severity=high
+  - Description: The generic row filter only implements `eq` and `in`, ignoring common PostgREST query operators such as `gte`, `lte`, `range`, `limit`, and ordering semantics. Production queries for dashboard stats, lists, pagination, and ordered detail data can be wrong while mocked E2E still returns all seeded rows in insertion order.
+  - Fix direction: Extend the mock to model the PostgREST operators used by the app, especially date ranges, limits/ranges, and ordering, or assert request URLs exactly in tests that depend on those query contracts.
+- F254 | Tests | `e2e-tests.md / e2e/support/mockSupabase.ts` | 330-335, 489-495 | category=failure-point | severity=high
+  - Description: Unknown Edge Functions and unknown REST tables are fulfilled with successful generic responses. This masks missing mock coverage and allows new or misspelled production requests to pass E2E with empty/success data instead of surfacing the unmodeled dependency.
+  - Fix direction: Fail closed for unknown functions/tables with an explanatory test error. Add explicit cases for every endpoint the app is expected to call.
+- F517 | Tests | `sync-tests-&-security-tests.md / tests/sync/batch/batch-failure.test.ts` | 157-189, 192-224, 228-270 | category=failure-point | severity=high
+  - Description: The file header says the batch behavior should defer `lastSync` until all batches succeed, but the failure tests only verify partial mock-store persistence (`50` or `100` sessions remain). They never assert that a mobile `lastSync` value stays unchanged, and they normalize partial server persistence as expected behavior.
+  - Fix direction: Add a test seam that models the mobile batch controller state and asserts `lastSync` is not advanced until every batch succeeds. If server writes are expected to be partial, name that explicitly and separately test idempotent full retry reconciliation.
+- F544 | Tests | `sync-tests-&-security-tests.md / tests/sync/helpers/edge-function-harness.ts` | 733-738, 768-831, 837-852 | category=failure-point | severity=high
+  - Description: `generateTestId()` returns strings like `test-${Date.now()}-...`, and the builder helpers use it for session/exercise/set/routine IDs. The production `pushPayloadSchema` uses a strict UUID regex for these entity IDs, so many mock-mode tests pass with IDs that real Edge Functions would reject.
+  - Fix direction: Change `generateTestId()` to return `crypto.randomUUID()` for entity IDs, or introduce separate helpers for human-readable labels versus UUID primary keys.
+- F545 | Tests | `sync-tests-&-security-tests.md / tests/sync/helpers/mock-edge-functions.ts` | 80-150, 395-427 | category=failure-point | severity=high
+  - Description: `mockPushEndpoint()` does not call `checkMockError()` and does not validate via the full production `pushPayloadSchema`; it only checks auth presence, `deviceId`, `platform`, duplicate keys, and incomplete routines. This hides invalid UUIDs, array caps, many schema errors, and injected error modes.
+  - Fix direction: Call `checkMockError()` at the top of push and pull mocks, then parse/coerce the payload with the production schema before mutating mock state.
+- F546 | Tests | `sync-tests-&-security-tests.md / tests/sync/helpers/mock-edge-functions.ts` | 233-294 | category=failure-point | severity=high
+  - Description: `mockPullEndpoint()` accepts `deviceId`, `profileId`, `cursor`, `pageSize`, and `knownEntityIds`, but ignores all of them. It returns all stored entities based only on a global `lastPushTime`, which makes profile isolation, pagination, parity, and per-row delta tests pass without exercising real behavior.
+  - Fix direction: Store per-entity timestamps/profile IDs and implement filtering, cursor/page-size semantics, and `knownEntityIds` limits in the mock, or force these tests into live mode.
+- F525 | Tests | `sync-tests-&-security-tests.md / tests/sync/hierarchy.test.ts` | 741-792 | category=failure-point | severity=high
+  - Description: The profile-isolation pull test pushes data for profile A and profile B, then only asserts both pulls succeeded and returned defined data. It does not assert profile A excludes profile B data or vice versa.
+  - Fix direction: Assert returned session IDs for each profile exactly match the requested profile plus any intended null-profile legacy rows. The mock pull path must implement profile filtering or this test should be live-only.
+- F530 | Tests | `sync-tests-&-security-tests.md / tests/sync/multi-device.test.ts` | 613-689 | category=failure-point | severity=high
+  - Description: The profile no-cross-contamination test only asserts both profile pulls succeeded. It does not check that profile 1 excludes profile 2's session, or that profile 2 excludes profile 1's session.
+  - Fix direction: Assert the exact session IDs returned for each profile. Add mock profile filtering or mark this scenario live-only.
+- F542 | Tests | `sync-tests-&-security-tests.md / tests/sync/validation.test.ts` | 134-216, 318-380, 399-419 | category=failure-point | severity=high
+  - Description: Most high-value server invariants are `liveIt` and therefore skipped in the default `npm run test:sync` path: payload size, array caps, rate limits, subscription gating, and expired JWT behavior. The default CI mock run exercises only positive controls and missing-auth checks.
+  - Fix direction: Add unit-level tests for the production validation helpers where possible, and add mock enforcement for array caps / known error responses so default CI catches regressions. Keep live tests as integration confirmation, not the only coverage.
+- F160 | Data | `data-layer---mutations-&-schemas.md / src/mutations/workouts.ts` | 20-24 | category=failure-point | severity=high
+  - Description: `useSaveSessionNotes` updates `workout_sessions` by `sessionId` only, with no current-user filter and no affected-row check. If RLS is incomplete or an admin/test client is used, any known session ID could have its notes modified; even with RLS, zero-row updates can be reported as success.
+  - Fix direction: Require the current user, add `.eq("user_id", user.id)`, and select/count the updated row before showing success.
+- F459 | Data | `lib---core-utilities.md / src/lib/paddle.ts` | 184-235 | category=failure-point | severity=high
+  - Description: `verifyPaddleSignature` validates the HMAC but never checks freshness of the `ts=` value. Any previously captured valid webhook body/signature pair can be replayed indefinitely.
+  - Fix direction: Parse `ts` as a Unix timestamp and reject signatures outside a short tolerance window, for example 5 minutes, before or after HMAC validation.
+- F398 | UI | `feature-components-part-2.md / src/app/components/integrations/SyncStatus.tsx` | 25-35, 74-79 | category=failure-point | severity=high
+  - Description: The sync-queue query ignores the Supabase `error` return value and falls back to `data ?? []`. A database/RLS/network failure is rendered as `All synced`, which is the opposite of the real state.
+  - Fix direction: Destructure `{ data, error }`, throw on `error`, and render an explicit error/retry state from `useQuery` instead of reporting success.
+- F406 | UI | `feature-components-part-3.md / src/app/components/Challenges.tsx` | 260-264, 797-798 | category=failure-point | severity=high
+  - Description: On desktop, clicking "Leave Challenge" immediately calls `leaveMutation.mutate(challenge.id)` with no confirmation, while mobile requires an AlertDialog that warns progress will be lost. This is a destructive action and is easy to trigger accidentally from the desktop card.
+  - Fix direction: Reuse the `leaveConfirmId` confirmation flow for desktop leave actions and disable the confirm button while `leaveMutation.isPending`.
+- F228 | Migrations | `database-migrations.md / supabase/migrations/20260420203522_creator_stats_security_invoker.sql` | 1-3 | category=stub | severity=high
+  - Description: This stub documents a remote conversion of `creator_stats` to `security_invoker = true` but does not perform it locally. Fresh databases will retain the earlier security-definer view behavior.
+  - Fix direction: Add the actual `CREATE OR REPLACE VIEW ... WITH (security_invoker = true)` migration to local history.
+- F246 | Tests | `e2e-tests.md / e2e/realtime-cross-tab.spec.ts` | 81-94 | category=stub | severity=high
+  - Description: The only real Supabase Realtime broadcast test is `test.skip`, leaving the actual WebSocket/channel path unexecuted in automated E2E. The file documents the manual path but does not enforce it, so regressions in channel subscription, auth, or Supabase broadcast payloads will not fail CI.
+  - Fix direction: Add a separate live-realtime project/tag gated by required credentials, or implement a local WebSocket/realtime test double that exercises the Supabase channel API instead of skipping the path entirely.
+
+### Medium (315)
+
+- F272 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-refresh-subscription/index.ts` | 294-302, 358-363 | category=error | severity=medium
+  - Description: The successful Paddle subscription response is parsed with `await paddleResponse.json()` outside a response-specific `try/catch`. If Paddle or an intermediary returns a 2xx non-JSON body, the broad catch maps it to a generic 500 instead of a 502 invalid-provider-response error, which makes provider response corruption look like an internal application failure.
+  - Fix direction: Wrap provider JSON parsing separately, return a 502 `Invalid Paddle response`, and include the Paddle request/status metadata in server logs.
+- F315 | Edge Functions | `edge-functions---misc.md / supabase/functions/compute-rankings/index.ts` | 414-499, 521-646 | category=error | severity=medium
+  - Description: Many weekly and user-ranking queries drop the `error` field from Supabase responses. Profile, session, PR, gamification stats, user PR rank, and exercise mastery failures can all be converted into empty maps or zero values, returning misleading rankings with HTTP 200.
+  - Fix direction: Capture and handle errors for every query/RPC. Return a 5xx response for infrastructure/schema failures instead of producing partial leaderboards that look authoritative.
+- F309 | Edge Functions | `edge-functions---misc.md / supabase/functions/generate-insights/index.ts` | 334-343 | category=error | severity=medium
+  - Description: `req.headers.get('Authorization')!` uses a non-null assertion without a runtime guard. If the header is missing, `null` is passed into the Supabase client headers and the request can fall into an internal/auth-client error path rather than returning the intended 401 response.
+  - Fix direction: Check `if (!authHeader)` before creating the client and return a 401 `Missing Authorization header` response consistently with the other Edge Functions.
+- F310 | Edge Functions | `edge-functions---misc.md / supabase/functions/generate-insights/index.ts` | 443-468, 487-543 | category=error | severity=medium
+  - Description: Several data queries ignore their `error` fields. Failures while fetching exercise rows, personal records, exercise progress, or streak sessions are treated as empty datasets, so the function can persist an apparently successful insight set that silently omits imbalance, PR, plateau, or streak insights.
+  - Fix direction: Capture `{ data, error }` for every Supabase query. Log and return a 500/503 when required insight inputs cannot be fetched, or explicitly mark optional sections degraded without deleting and replacing the previous cached insights.
+- F328 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/requireSubscription.ts` | 39-48 | category=error | severity=medium
+  - Description: The subscription query ignores the `error` field from `.maybeSingle()`. A database outage, RLS/service-role misconfiguration, schema drift, or duplicate-row error is treated the same as “no subscription”: the user is downgraded to `FREE` and receives a 402 `subscription_required` response. Paying users can be locked out while operators see a billing denial instead of the real infrastructure failure.
+  - Fix direction: Capture `{ data, error }`, log unexpected errors, and fail closed with a 503/configuration response rather than converting query failures to `FREE`. Keep the 402 path only for a successful query that returns no entitled subscription.
+- F355 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-integration-sync/index.ts` | 467-483 | category=error | severity=medium
+  - Description: The stored-token lookup ignores the Supabase `error` field. A database error is indistinguishable from a missing API key and returns a 400 "Connect first" response, which is misleading and non-retryable.
+  - Fix direction: Capture `{ data, error }`, return a 5xx/retryable response for DB errors, and reserve the 400 missing-key response for a successful lookup with no token.
+- F348 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-pull/index.ts` | 312, 337, 1163-1168 | category=error | severity=medium
+  - Description: Request JSON parsing and `lastSync` date conversion are not validated locally. Invalid JSON or a malformed/non-numeric `lastSync` falls into the broad catch and returns a 500 instead of a precise 400.
+  - Fix direction: Wrap `req.json()` separately and validate `lastSync` as a finite epoch milliseconds number before calling `toISOString()`.
+- F347 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 2492-2506 | category=error | severity=medium
+  - Description: The catch block returns raw internal error messages to clients and maps any message containing `upsert failed` or `insert failed` to HTTP 400. Transient DB/service failures can therefore be misclassified as client errors, and internal table/function details are exposed in the response body.
+  - Fix direction: Return sanitized error codes/messages, distinguish validation/FK conflict errors from transient server failures, and keep detailed DB messages only in server logs.
+- F153 | Data | `data-layer---mutations-&-schemas.md / src/mutations/integrations.ts` | 92-101 | category=error | severity=medium
+  - Description: When provider Edge Function invocation fails, `useManualSync` attempts to mark the queued sync as failed but ignores any error from that update. If the failure-status update also fails, the queue can remain stuck as `pending` while the UI only sees the original invoke error.
+  - Fix direction: Capture and log/throw the status-update error, or use a server-side function that queues and invokes/marks failure atomically.
+- F154 | Data | `data-layer---mutations-&-schemas.md / src/mutations/integrations.ts` | 153-159 | category=error | severity=medium
+  - Description: `useConnectIntegration` ignores errors from the initial `sync_queue` insert. A provider can be marked `connected` while no initial sync was queued, leaving the integration looking connected but with no data import starting.
+  - Fix direction: Check the queue insert error and either roll back/disconnect the integration row or surface a partial-connect state that prompts a retry.
+- F470 | Data | `lib---core-utilities.md / src/lib/consent.ts` | 5-15 | category=error | severity=medium
+  - Description: `getConsentStatus` and `setConsentStatus` access `localStorage` directly with no `typeof window` check or `try/catch`. Browsers can throw `SecurityError` when storage is disabled, blocked, or unavailable, and `main.tsx` calls `getConsentStatus()` during startup before React renders.
+  - Fix direction: Wrap localStorage reads/writes in `try/catch`, return `null` when reads fail, and ignore or surface write failures without crashing app startup.
+- F462 | Data | `lib---core-utilities.md / src/lib/paddle-client.ts` | 128-145, 201-210 | category=error | severity=medium
+  - Description: Missing token or missing `window.Paddle` causes `initializePaddle` to return without throwing, and `openCheckout` then logs an error and returns normally. Callers awaiting `openCheckout` cannot distinguish a successfully opened checkout from a no-op, so UI loading/state and user feedback can become incorrect.
+  - Fix direction: Make initialization failures throw typed errors and let callers show the same error path used for signing failures. Alternatively return an explicit success/failure result instead of `Promise<void>`.
+- F472 | Data | `lib---core-utilities.md / src/lib/toast-undo.ts` | 51-57 | category=error | severity=medium
+  - Description: If the delayed `action` fails, the catch block only shows a generic toast and swallows the error. Callers cannot roll back optimistic UI state, invalidate queries, log the actual failure, or react differently to expected failures.
+  - Fix direction: Add an `onError(error)` callback and/or rethrow after showing the toast. Preserve the original error for telemetry/logging.
+- F021 | UI | `app-entry-&-routing.md / src/app/components/AuthCallback.tsx` | 65-96 | category=error | severity=medium
+  - Description: `resolveSession()` awaits `supabase.auth.getSession()` inside a loop, but the async function has no `try/catch`. If `getSession()` throws instead of returning an `{ error }` result, the promise rejection is only discarded by `void resolveSession()`, leaving the user on the loading screen indefinitely.
+  - Fix direction: Wrap the polling loop in `try/catch`, check `isActive` before setting state, and surface a recoverable error message with a retry/back-to-sign-in option.
+- F017 | UI | `app-entry-&-routing.md / src/app/routes/index.tsx` | 157-220 | category=error | severity=medium
+  - Description: The top-level route tree has a `Suspense` fallback but no error boundary around public routes. `AppLayout` adds an `ErrorBoundary` only for authenticated outlet content, so errors in public pages such as landing, privacy, terms, FAQ, auth callback, reset password, or lazy import failures after the reload throttle can unmount the whole React tree and leave users with a blank screen.
+  - Fix direction: Add a route-level or app-level `ErrorBoundary` around the whole `Routes` tree, or wrap public routes with the same `PageErrorFallback` pattern used by `AppLayout`.
+- F024 | UI | `app-entry-&-routing.md / src/providers/AuthProvider.tsx` | 66-69 | category=error | severity=medium
+  - Description: `handleSignOut()` ignores the `{ error }` returned by `supabase.auth.signOut()` and still clears the React Query cache. If sign-out fails, callers get a resolved `Promise<void>` and cannot show an error, while cached app data may already be cleared and UI state may be inconsistent.
+  - Fix direction: Inspect the sign-out result, throw or return a typed error when sign-out fails, and only clear the query cache once local auth state is actually cleared or the failure has been handled deliberately.
+- F399 | UI | `feature-components-part-2.md / src/app/components/integrations/SyncStatus.tsx` | 37-45, 86-97 | category=error | severity=medium
+  - Description: The generated sync queue row type allows `status: string | null`, but the component assumes non-null status in `some((q: { status: string }) => ...)` and in `STATUS_BADGE_CLASS[item.status]`. A real app typecheck reports TS2345 and TS2538 errors for these lines.
+  - Fix direction: Normalize nullable statuses before use, e.g. `const status = item.status ?? "unknown"`, and type predicates against the actual row type.
+- F427 | UI | `hooks-&-providers.md / src/hooks/useNotificationSync.ts` | 47-57, 59-76, 82-87 | category=error | severity=medium
+  - Description: The community notification query ignores `error` from the `shared_routines` and `shared_cycles` lookups. If either query fails, its `data` is treated as an empty array, which can silently undercount notifications and then write `community: 0` or a partial count to the UI store. Because only the final comments query throws, upstream failures are hidden from React Query.
+  - Fix direction: Destructure and check `error` for both shared-content lookups before building `itemIds`. Throw the first error so React Query can retry/report it, and avoid updating the UI store from partial data.
+- F258 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddleSubscriptionState.ts` | 13-18, 74, 77-90 | category=bug | severity=medium
+  - Description: Subscription state is derived only from `subscription.items?.[0]?.price?.id`. Paddle subscriptions can contain multiple items, and Paddle's update API requires callers to send the complete item list. If a non-plan item or add-on appears first, the upsert records the wrong `price_id`/tier or `null` even though the plan item is present elsewhere in the response.
+  - Fix direction: Identify the base plan item explicitly, for example by matching all subscription items against the configured paid price ID allowlist and requiring exactly one recognized plan item. Reject or alert on zero/multiple plan items rather than relying on response ordering.
+- F261 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddleWebhookSecurity.ts` | 35-42 | category=bug | severity=medium
+  - Description: `classifyPaddleEventOrder` marks any distinct event with `incomingTime <= lastTime` as stale. Paddle may deliver multiple valid events for the same subscription with identical `occurred_at` timestamps, especially when events are only second-level distinct or generated in the same billing transition. A later distinct event at the same timestamp can therefore be acknowledged and dropped without updating local billing state.
+  - Fix direction: Treat only `incomingTime < lastTime` as stale, or store/process a deterministic secondary ordering key. If equal timestamps must be suppressed, fetch the authoritative Paddle subscription state before acknowledging the event.
+- F267 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-cancel-subscription/index.ts` | 54-81 | category=bug | severity=medium
+  - Description: Cancellation is allowed only for local statuses `active` and `trialing`. Paddle subscriptions in `past_due` or `paused` states can still need user-initiated cancellation, but this function returns “No active subscription found” before calling Paddle. Users with failed payments or paused subscriptions may be unable to cancel from the portal.
+  - Fix direction: Align the allowed local statuses with Paddle's cancellable statuses, or call Paddle for any row with a `paddle_subscription_id` and translate Paddle's response if the subscription is not cancellable. Include `cancel_at_period_end` in the query so already-scheduled cancellations can return an idempotent success.
+- F307 | Edge Functions | `edge-functions---integrations.md / supabase/functions/_shared/garminIdentity.ts` | 65-70 | category=bug | severity=medium
+  - Description: Identity resolution rejects `matches.length > 1` as ambiguous, but there is no repair path. If duplicate encrypted access tokens exist because of a previous partial OAuth write or failed disconnect, every webhook for that token will be rejected indefinitely.
+  - Fix direction: Add operational handling for ambiguity: log enough metadata to repair the duplicate rows, prefer an exact `provider_user_id` match when available, or quarantine duplicate token rows during OAuth/disconnect cleanup.
+- F286 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-webhook/index.ts` | 171-172 | category=bug | severity=medium
+  - Description: The handler uses `payload.activities ?? payload.activityDetails ?? []`. If Garmin sends both arrays, `activityDetails` is ignored entirely whenever `activities` exists, potentially dropping detailed records configured for delivery.
+  - Fix direction: Merge and de-duplicate both arrays by `activityId`, or explicitly prefer details while falling back to summaries for IDs without details.
+- F296 | Edge Functions | `edge-functions---integrations.md / supabase/functions/hevy-sync/index.ts` | 161-199 | category=bug | severity=medium
+  - Description: The Hevy sync fetches only `${HEVY_API_BASE}/workouts` once and does not implement pagination or date-window traversal. If the API returns a default page, older workouts are silently omitted while the function reports success.
+  - Fix direction: Follow the Hevy API pagination contract, requesting all pages until exhaustion or a safe cursor/date cutoff. Report truncation if the API cannot provide all workouts.
+- F300 | Edge Functions | `edge-functions---integrations.md / supabase/functions/liftosaur-sync/index.ts` | 199-258 | category=bug | severity=medium
+  - Description: Pagination has a hard `MAX_PAGES = 10` safety cap, but if `hasMore` is still true at page 10 the function silently stops and reports success. Users with more than 2,000 records can have history truncated without any error or retry path.
+  - Fix direction: If the page cap is reached while `hasMore` remains true, return a partial/truncated status and avoid advancing sync state as if complete. Prefer a cursor checkpoint so the next sync continues from `nextCursor`.
+- F301 | Edge Functions | `edge-functions---integrations.md / supabase/functions/liftosaur-sync/index.ts` | 294-296 | category=bug | severity=medium
+  - Description: When Liftoscript timestamp parsing fails, `started_at` falls back to `new Date().toISOString()`. Because upserts use the same external ID, each later sync can overwrite the activity with the current sync time, corrupting historical ordering.
+  - Fix direction: Treat missing/unparseable timestamps as a record-level validation error, or store a stable fallback derived from provider metadata rather than the current time.
+- F316 | Edge Functions | `edge-functions---misc.md / supabase/functions/compute-rankings/index.ts` | 410-499 | category=bug | severity=medium
+  - Description: Special event metrics from `leaderboard_events.metric` are not validated against the metrics implemented by the TypeScript switch. If an active event is configured with an unsupported metric, the function still returns the event metadata but leaves `entries` empty, making the competition appear to have no participants.
+  - Fix direction: Validate event metrics against an allowlist before accepting them, or add an explicit default branch that logs and returns a configuration error instead of silently returning an empty leaderboard.
+- F321 | Edge Functions | `edge-functions---misc.md / supabase/functions/delete-account/index.ts` | 74-107, 141-163 | category=bug | severity=medium
+  - Description: The one-per-hour rate limit is consumed before validating that a pending deletion request exists, that the grace period has expired, that Paddle is configured, or that the deletion request can be marked executed. A user or client that calls too early or hits a transient configuration/database error can be blocked from retrying the real deletion for an hour.
+  - Fix direction: Move rate limiting after cheap eligibility/configuration checks, or use separate rate-limit keys for validation failures versus the actual destructive execution path so legitimate retries are not throttled by precondition failures.
+- F311 | Edge Functions | `edge-functions---misc.md / supabase/functions/generate-insights/index.ts` | 613-644 | category=bug | severity=medium
+  - Description: Refreshing cached insights is implemented as `delete()` followed by `insert()` outside a transaction. Concurrent requests for the same user/period can interleave so one request deletes rows inserted by another, and an insert failure after delete leaves the cache empty.
+  - Fix direction: Move the refresh into a database RPC/transaction, or upsert rows under a stable unique key and remove stale rows only after the replacement set has been written successfully.
+- F325 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/rateLimit.ts` | 61-77, 147-167, 227-270 | category=bug | severity=medium
+  - Description: `checkRateLimit` does not validate `key`, `userId`, `maxRequests`, or `windowSeconds` before invoking the RPC/fallback logic. The SQL RPC rejects invalid limits, but if the RPC is missing and the TypeScript fallback runs, `maxRequests <= 0` can still allow the first inserted request with a negative `remaining` value, and `windowSeconds <= 0` causes every request to appear expired/resettable.
+  - Fix direction: Validate the config in TypeScript before the RPC call. Fail closed with a 500/503 for invalid internal configuration, and reject blank keys, invalid user IDs, `maxRequests < 1`, and `windowSeconds < 1` consistently across both RPC and fallback paths.
+- F329 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/requireSubscription.ts` | 45-50, 68 | category=bug | severity=medium
+  - Description: `subscription?.tier` and `subscription?.status` are cast directly to `SubscriptionTier`/`SubscriptionStatus` without runtime validation. If production has old tier values such as `PHOENIX`/`ELITE`, a new Paddle status, or any schema drift, the helper silently maps unknown tiers to level 0 or can return an invalid `tier` value from the `allowed: true` branch when the required tier is `FREE`.
+  - Fix direction: Validate database values against explicit tier/status sets before computing entitlement. For known legacy tier names, migrate or map them deliberately; for unknown values, log and return a 503/configuration error instead of silently downgrading or returning invalid typed data.
+- F335 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/personalRecordRow.ts` | 401-414 | category=bug | severity=medium
+  - Description: `personalRecordIdentityKey()` excludes `id`, `value`, `weight_kg`, and `reps`. The push handler later dedupes by this identity, so two distinct records for the same profile/exercise/timestamp/type/phase but different value or ID collapse into one. This can drop legitimate PR rows from a dense workout or from dedicated mobile records.
+  - Fix direction: Deduplicate dedicated PRs by stable `id` first when present, and only use the derived identity as a fallback for legacy set-derived rows. Include enough fields to distinguish legitimate same-timestamp records if fallback dedupe is retained.
+- F339 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/pushPayloadSchema.ts` | 273-282 | category=bug | severity=medium
+  - Description: RPG attributes use `z.number().int()`, so payloads containing finite floats are rejected before `mobile-sync-push` can run its documented RPG rounding logic. This contradicts `_shared/rpgSchema.ts`, which says float rounding at push write is the defensive boundary.
+  - Fix direction: Accept finite numbers in the schema and transform with `Math.round`, or remove the rounding contract and make strict integer rejection explicit everywhere.
+- F331 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/syncPayloadShape.ts` | 33-68 | category=bug | severity=medium
+  - Description: `toArr()` only verifies that the container is an array, then casts every element to `UnknownRecord`. If an array contains `null` or `undefined` elements, `normalizeSession`, `normalizeExercise`, `normalizeSet`, etc. dereference properties such as `raw.exercises` and can throw before the normalizer produces a safe shape. This undermines the stated defensive-ingress contract for malformed third-party or truncated payloads.
+  - Fix direction: Filter array items to non-null objects before passing them to normalizers, or coerce non-object elements to `{}` / reject them consistently at schema validation.
+- F346 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 2343-2383 | category=bug | severity=medium
+  - Description: In the LWW external activity path, returned rows are mapped back to request metadata by `r.id`. The RPC returns `existing_id` for updates to an existing `(user_id, provider, external_id)` row. If the existing server ID differs from the client-supplied local ID, `byIdx.get(r.id)` misses and the acknowledgement returns empty `externalId`/`provider`, with `localId` set to the server ID rather than the client local ID.
+  - Fix direction: Have the RPC return provider/external_id and client-submitted ID, or map acknowledgements by `(provider, external_id)` instead of returned physical ID.
+- F359 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/process-sync-queue/index.ts` | 83-96, 164-165, 246-277 | category=bug | severity=medium
+  - Description: Provider-level rate limiting is non-atomic. The processor reads the current counter, processes tasks, then increments with a separate read/update path. Concurrent processors can all pass `isRateLimited()` and then overrun provider limits. New inserts also omit the `key` column introduced by the per-user rate-limit migration, increasing schema drift risk.
+  - Fix direction: Replace the read/update sequence with a single SQL RPC that checks and increments the provider counter under row lock, and populate `key = provider` for provider-level rows.
+- F214 | Migrations | `database-migrations.md / supabase/migrations/20260219_phase11_goals.sql` | 29-31, 44-62 | category=bug | severity=medium
+  - Description: The insert policy is named `Premium users can create goals`, but it only checks `user_id = auth.uid()`. The trigger enforces count limits by tier, but it does not prevent FREE users from creating goals; it allows one active goal for FREE users.
+  - Fix direction: Decide whether FREE users should be allowed one goal. If not, add an explicit tier check in the insert policy or trigger; if yes, rename the policy/comment to match the actual behavior.
+- F078 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/sync-tests.yml` | 3-18 | category=bug | severity=medium
+  - Description: The workflow is path-filtered but does not include `.github/workflows/sync-tests.yml` in either the push or pull-request paths. Changes to this workflow can therefore merge without running the workflow they modify, unlike the migrations and deploy workflows that include their own files in their path filters.
+  - Fix direction: Add `.github/workflows/sync-tests.yml` to both path lists, and consider also including `package.json`, `package-lock.json`, and relevant Vitest config files because dependency/test-runner changes can break sync tests without touching `tests/sync/**`.
+- F237 | Tests | `e2e-tests.md / e2e/critical-paths.spec.ts` | 32-37 | category=bug | severity=medium
+  - Description: The routine builder test conditionally fills the routine-name input only if it is visible. If the input disappears, is hidden by a regression, or the selector stops matching, the test skips the assertion and can still pass as long as the Add Exercise button is present.
+  - Fix direction: Treat the routine name input as required for the critical path: assert it is visible/editable before filling, or use a stable accessible label/test id and fail when it is absent.
+- F251 | Tests | `e2e-tests.md / e2e/fixtures/auth.ts` | 5-9, 16-34, 60-67 | category=bug | severity=medium
+  - Description: `loadEnvFile()` runs after importing constants from `../support/supabase`. If `e2e/.env` is intended to provide `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY`, those constants have already been initialized to process env/default values before the file is loaded. Live auth fixtures can silently target the wrong Supabase URL/key.
+  - Fix direction: Load the e2e env file before importing/initializing Supabase constants, or centralize env loading in Playwright config/global setup before any E2E support modules are imported.
+- F248 | Tests | `e2e-tests.md / e2e/signup-onboarding.spec.ts` | 134-144 | category=bug | severity=medium
+  - Description: The test calls `page.addInitScript` after the landing page and dialog are already loaded. `addInitScript` affects future navigations/documents, not the current page, so this localStorage seed does not hydrate the active AuthProvider before the submit click. The test currently relies on Supabase client side effects instead of the stated setup.
+  - Fix direction: Seed storage before `page.goto("/")`, or remove the misleading init script and explicitly assert that the mocked signup response causes the Supabase client/AuthProvider to store the session.
+- F143 | Data | `data-layer---mutations-&-schemas.md / src/mutations/community.ts` | 24-50 | category=bug | severity=medium
+  - Description: `useVote` implements toggle via check-then-insert/delete. Concurrent clicks, multiple tabs, or another device can change the row between the existence check and the write, causing unique-constraint failures or deleting the wrong toggle state.
+  - Fix direction: Move vote toggling into an RPC/transaction or use idempotent upsert/delete semantics keyed by `(user_id, item_id, item_type)`.
+- F145 | Data | `data-layer---mutations-&-schemas.md / src/mutations/community.ts` | 315-337 | category=bug | severity=medium
+  - Description: `useFollowCreator` uses the same check-then-insert/delete toggle pattern as votes. Concurrent follow/unfollow actions can race into duplicate inserts or stale deletes.
+  - Fix direction: Replace with an atomic RPC or database upsert/delete operation that returns the final follow state.
+- F162 | Data | `data-layer---mutations-&-schemas.md / src/schemas/comments.ts` | 30-34 | category=bug | severity=medium
+  - Description: `createCommentSchema` accepts whitespace-only comments because `.min(1)` is applied before trimming. The current component trims before calling the mutation, but the shared schema itself does not enforce the intended non-empty-after-trim rule.
+  - Fix direction: Add `.trim().min(1)` or a refine that rejects `body.trim().length === 0`.
+- F165 | Data | `data-layer---mutations-&-schemas.md / src/schemas/goals.ts` | 33-41 | category=bug | severity=medium
+  - Description: `createGoalSchema` omits `target_unit`, but `useCreateGoal` requires and inserts `target_unit`. Form data validated by this schema can still be incomplete for the mutation/database contract.
+  - Fix direction: Add `target_unit` with an enum or constrained string to the create schema and keep the mutation argument type derived from the schema.
+- F172 | Data | `data-layer---mutations-&-schemas.md / src/schemas/transforms.ts` | 254-255 | category=bug | severity=medium
+  - Description: `routineExerciseSchema.is_amrap` is `z.boolean().optional().default(false)`, but the generated database type shows `routine_exercises.is_amrap` is `boolean | null`. Rows containing `null` will fail parsing even though this schema already handles `stall_detection` nulls correctly.
+  - Fix direction: Change to `.boolean().nullish().transform((v) => v ?? false)` to match the database contract.
+- F173 | Data | `data-layer---mutations-&-schemas.md / src/schemas/transforms.ts` | 225-266 | category=bug | severity=medium
+  - Description: `routineExerciseSchema` omits `per_set_echo_levels` and `warmup_sets` even though those columns exist and are included in community snapshots/imports. Zod object parsing strips unknown keys by default, so routine detail parsing drops these fields before the UI can use them.
+  - Fix direction: Add both fields to the schema with appropriate nullable JSON/string handling, or intentionally `.passthrough()` if unknown exercise metadata should survive parsing.
+- F177 | Data | `data-layer---queries.md / src/queries/analytics.ts` | 148-152, 189-194, 210-212, 246-248, 288-290, 320-322 | category=bug | severity=medium
+  - Description: `periodToDays("all")` returns `3650`, so several analytics options labeled as `all` actually fetch only the last ten years. `volumeTrendOptions` treats `period === "all"` as truly unbounded, making the semantics inconsistent across analytics widgets and silently dropping older history.
+  - Fix direction: Treat `all` as a sentinel that skips the date filter for every period-aware analytics query, or rename/limit the UI period so it is explicit that it means ten years.
+- F178 | Data | `data-layer---queries.md / src/queries/benchmarks.ts` | 20-30 | category=bug | severity=medium
+  - Description: `benchmarkOptions(metricType, metricKey?)` accepts an optional `metricKey`, but when it is omitted the Supabase query only filters by `metric_type` and still calls `.single()`. The schema has a unique key on `(metric_type, metric_key)`, not on `metric_type` alone, so metric types with multiple keys will return multiple rows and `.single()` will fail.
+  - Fix direction: Either require `metricKey` for this detail query, use `.maybeSingle()` only when the full unique key is supplied, or return a list when `metricKey` is omitted.
+- F181 | Data | `data-layer---queries.md / src/queries/challenges.ts` | 39-52 | category=bug | severity=medium
+  - Description: The progress query key only includes `challengeId` and `userId`, but the result also depends on `challengeType`, `targetValue`, `startDate`, and `endDate`. If challenge metadata changes while the id remains stable, React Query can serve stale progress computed with old dates/type/target.
+  - Fix direction: Include every parameter that affects the query function in the query key, or key by a version/updated timestamp from the challenge row.
+- F183 | Data | `data-layer---queries.md / src/queries/community.ts` | 23-24, 101-108 | category=bug | severity=medium
+  - Description: `FeedSort` supports `"hot"`, but the implementation only special-cases `"new"`; both `"hot"` and `"top"` are ordered by `vote_count` then `shared_at`. The `hot_score` column is selected but never used, so the hot feed is not actually hot-ranked.
+  - Fix direction: Sort `"hot"` by `hot_score` (with a deterministic tie-breaker), keep `"top"` on `vote_count`, and keep `"new"` on `shared_at`.
+- F188 | Data | `data-layer---queries.md / src/queries/freshness.ts` | 27-36 | category=bug | severity=medium
+  - Description: The query orders by `updated_at` and then reports that row's `started_at` as `lastWorkoutStartedAt`. Editing or resyncing an older workout makes the freshness strip report that older workout as the last started workout, even if newer sessions exist.
+  - Fix direction: Fetch latest `updated_at` and latest `started_at` separately, or order by `started_at` when deriving `lastWorkoutStartedAt`.
+- F196 | Data | `data-layer---queries.md / src/queries/recovery.ts` | 62-76 | category=bug | severity=medium
+  - Description: `activeCyclePositionOptions` is user-scoped only and has no `profileId` parameter, while adjacent cycle/routine/workout queries are local-profile aware. In multi-profile accounts, recovery can show an active cycle position from another local profile.
+  - Fix direction: Accept optional `profileId`, include it in the query key, and filter `training_cycles.local_profile_id` when provided.
+- F200 | Data | `data-layer---queries.md / src/queries/workouts.ts` | 176-183 | category=bug | severity=medium
+  - Description: `sessionDetailOptions` passes `exerciseIds` directly to `.in("exercise_id", exerciseIds)`. Unlike `comparisonDetailOptions`, it does not handle the empty-exercise case. A valid session with zero exercises can produce an invalid/fragile PostgREST `in ()` filter instead of returning the session with an empty exercise list.
+  - Fix direction: Mirror the comparison query's guard (`exerciseIds.length > 0 ? exerciseIds : ["_none_"]`) or skip the sets query and use `[]` when there are no exercises.
+- F450 | Data | `lib---analytics-&-science.md / src/lib/comparison.ts` | 60-75, 80-105 | category=bug | severity=medium
+  - Description: Per-session exercise maps are keyed by lowercased name, so duplicate exercises in the same session overwrite earlier entries. If an athlete performs the same exercise in multiple blocks, only the last block contributes to the comparison delta and shared-exercise counts.
+  - Fix direction: Aggregate duplicate exercise names before comparison by summing volume/sets and computing a weighted average velocity, or preserve repeated blocks as separate rows with unique keys.
+- F439 | Data | `lib---analytics-&-science.md / src/lib/form-analysis.ts` | 45-53, 56-69 | category=bug | severity=medium
+  - Description: `normalizedDecayRate` uses `Math.abs(slope / values[0])`, so an improving set where force, velocity, or ROM trends upward is treated as decay and penalized in `calculateFatigueResistance`. This can lower fatigue-resistance scores for athletes whose later reps improve rather than deteriorate.
+  - Fix direction: Only count negative slopes as decay, e.g. return `Math.max(0, -slope / baseline)` after validating the baseline, so upward trends do not reduce the fatigue-resistance score.
+- F444 | Data | `lib---analytics-&-science.md / src/lib/progression-workbench.ts` | 260-265, 284-287 | category=bug | severity=medium
+  - Description: Progress rows are grouped by the raw `exercise_name` string and selected with a case-sensitive equality check. The same exercise recorded as `Bench Press`, `bench press`, or with incidental whitespace becomes separate summary cards, while the PR lookup later compares names case-insensitively.
+  - Fix direction: Normalize exercise names consistently for grouping and selection, preserve a display name from the newest/canonical row, and reuse the same normalization when matching phase PR records.
+- F442 | Data | `lib---analytics-&-science.md / src/lib/recovery.ts` | 197-236 | category=bug | severity=medium
+  - Description: Once `daysSinceFirstSession >= 14`, an empty `sessions` array is treated as a normal recovery input. `computeACWR([])` returns 1.0, rest days score high, and the function can return a moderate/elevated readiness score despite having no session evidence.
+  - Fix direction: Add a no-session guard after the 14-day gate, or derive the gate from actual session count/coverage so empty data returns an unavailable/gated result instead of a positive readiness score.
+- F471 | Data | `lib---core-utilities.md / src/lib/in-app-browser.ts` | 74-88 | category=bug | severity=medium
+  - Description: `buildAndroidChromeIntentUrl` includes the original URL hash inside `rest` and then appends another `#Intent` separator. For URLs with fragments, the result contains two hash markers, e.g. `...#top#Intent;...`, which can prevent Android from parsing the intent metadata correctly.
+  - Fix direction: Exclude the source fragment from the `intent://` path or encode it according to Android intent URI rules before appending the single `#Intent` block. Update the existing test that currently asserts the malformed double-hash output.
+- F463 | Data | `lib---core-utilities.md / src/lib/paddle-client.ts` | 110-120, 156-165, 197-199 | category=bug | severity=medium
+  - Description: Checkout callbacks are stored in a single module-level `activeCallbacks` object. A double click, two components opening checkout, or any overlapping checkout attempt overwrites callbacks for the prior checkout. Completion/close events can then notify the wrong caller, or a stale callback can run for a later checkout.
+  - Fix direction: Prevent concurrent checkout opens, clear callbacks on close/success, and correlate events to a checkout/session identifier where Paddle exposes one.
+- F458 | Data | `lib---core-utilities.md / src/lib/paddle.ts` | 72-94, 144-160 | category=bug | severity=medium
+  - Description: Unknown or missing Paddle price IDs map to `FREE`, and `buildSubscriptionUpsert` writes that tier. A missing env var, renamed Paddle price, or empty `items` array can therefore downgrade a paying user to `FREE` instead of failing closed.
+  - Fix direction: Return `null`/throw for unknown non-empty price IDs in production webhook handling, log the unmapped price, and avoid updating `tier` until a known price mapping is available. Reserve `FREE` for explicit free/no-subscription states, not mapper failures.
+- F468 | Data | `lib---core-utilities.md / src/lib/telemetry.ts` | 46-62 | category=bug | severity=medium
+  - Description: `normalizeRepTime` assumes points are already sorted by `timestamp_ms`, using the first point as min and the last point as max. If Supabase or another caller provides unsorted telemetry, normalized times can be negative, greater than 100, or inverted.
+  - Fix direction: Sort by `timestamp_ms` or compute `min`/`max` across all points before normalizing. If order matters for rendering, return a sorted copy rather than mutating the input.
+- F465 | Data | `lib---core-utilities.md / src/lib/units.ts` | 52-64 | category=bug | severity=medium
+  - Description: `weightInputToKg` converts blank, invalid, null, and undefined input to `0`. In forms that call this on every `onChange`, temporarily clearing a field or typing an invalid intermediate value can overwrite existing persisted settings with zero.
+  - Fix direction: Return `null`/`undefined`/`NaN` for invalid or blank input and let callers decide whether to preserve the previous value, reject submission, or intentionally store zero.
+- F483 | Data | `lib---integrations.md / src/lib/integrations/fitbit.ts` | 16-17, 63-65 | category=bug | severity=medium
+  - Description: The schema captures `distanceUnit`, but normalization always treats `distance` as kilometers and multiplies by 1000. Fitbit responses can carry unit information, so mile-based or other-unit distances would be imported as the wrong number of meters.
+  - Fix direction: Convert based on `distanceUnit` (`Kilometer`/`km`, `Mile`/`mi`, meters if applicable) and return `null` or fail validation for unsupported units rather than assuming kilometers.
+- F495 | Data | `lib---replay-&-export.md / src/lib/exercise-demo-media-manifest.ts` | 964-978, 1070-1084 | category=bug | severity=medium
+  - Description: Two exercise entries contain duplicate `angle: "FRONT"` media variants: `wgiwmR1yt3QJtiWs` (`Concentration Curl`) and `z70P8xJtRTKpAUbr` (`Crossover Lateral Raise`). Consumers that key tabs/buttons by angle or assume one media item per angle can render duplicate keys, overwrite one item, or show ambiguous primary media.
+  - Fix direction: Deduplicate generated media per `(exerciseId, angle)` or preserve a distinct angle/label for each variant before writing the manifest. Add a generation-time assertion that angles are unique per exercise.
+- F493 | Data | `lib---replay-&-export.md / src/lib/replay-intelligence.ts` | 88-93 | category=bug | severity=medium
+  - Description: `findStickingPoint` flags any point whose velocity is below `mean_velocity * 0.45` and force is high. Negative/eccentric velocity values always satisfy the `<= velocityThreshold` check, so high-force eccentric lowering samples can be mislabeled as sticking points even though sticking points should generally be constrained to the concentric/working phase.
+  - Fix direction: Filter candidates to the intended phase, e.g. positive/concentric velocity or a phase segment supplied by `replay-phase-analytics`, and handle signed velocity explicitly.
+- F490 | Data | `lib---replay-&-export.md / src/lib/replay-renderer.ts` | 195-201, 216-218 | category=bug | severity=medium
+  - Description: `renderVelocityBars` scales the y-axis from `Math.max(...velocity_mps) * 1.1` and assumes all velocity values are positive. Signed replay telemetry is used elsewhere (`replay-phase-analytics.ts` treats negative velocity as eccentric), so a set with eccentric/negative samples can either use a negative scale or draw negative samples below the plot with no zero baseline. An all-zero velocity stream also returns early and hides the replay frame/playhead entirely.
+  - Fix direction: Compute velocity scale from both min and max, include a zero baseline, and map signed values into the plot range. Only skip the series when the velocity domain has no range after normalization, while still drawing annotations/playhead.
+- F004 | UI | `analytics-dashboard.md / src/app/components/analytics/BodyTab.tsx` | 78-80, 262-281, 325-334 | category=bug | severity=medium
+  - Description: `toCanonicalMuscleGroup` maps `Abdominals` to `Core` but does not accept `Core` itself. If the heatmap model returns a selected muscle with group `Core`, the selected muscle still appears in the side panel, but `selectedMuscleGroup` becomes `null`, hiding the clear-selection shortcut, `ExerciseDeepDive`, and selected-group highlighting in volume landmarks.
+  - Fix direction: Add `Core: "Core"` to the canonical map and consider normalizing all known six-group names as pass-through values.
+- F005 | UI | `analytics-dashboard.md / src/app/components/analytics/ExerciseDeepDive.tsx` | 147-155, 159-162, 229-233 | category=bug | severity=medium
+  - Description: `selectedExercise` is initialized from the first exercise only once. When the parent changes to a different muscle group/exercise list, the previous exercise can remain selected even if it is not in the new list; the component then queries progress for the stale exercise, shows an activation profile using the new muscle group hint, and reports `0` sessions from the new list.
+  - Fix direction: Add an effect that resets `selectedExercise` to `sortedExercises[0]?.name ?? ""` whenever `muscleGroup` or the exercise list changes, or make selection controlled by the parent.
+- F010 | UI | `analytics-dashboard.md / src/app/components/analytics/RecordsTab.tsx` | 146-152, 200-209, 325-364, 610-715 | category=bug | severity=medium
+  - Description: The phase filter is applied to grouped exercise records, but timeline mode, milestones, total PR count, and "This Month" summary all continue to use unfiltered `records`. Users selecting a phase see counts and timeline entries that contradict the active phase filter.
+  - Fix direction: Base timeline, milestone, and summary computations on `phaseFiltered` when a phase is selected, or visually label those widgets as all-phase totals.
+- F008 | UI | `analytics-dashboard.md / src/app/components/analytics/phaseStatisticsTransforms.ts` | 41-70, 74-98 | category=bug | severity=medium
+  - Description: The transform averages per-row average metrics with equal weight. If `session_phase_statistics` rows represent sessions with different sample counts, set counts, or rep counts, a one-sample session contributes as much as a high-volume session, skewing load/velocity/power averages.
+  - Fix direction: Include sample counts or set counts in `PhaseStatisticsTrendRow` and compute weighted averages. If weighted data is unavailable, label the output as an unweighted session average.
+- F018 | UI | `app-entry-&-routing.md / src/app/routes/AppLayout.tsx` | 71-83 | category=bug | severity=medium
+  - Description: The page `ErrorBoundary` does not reset on route changes. Once a protected page throws, `react-error-boundary` remains in fallback state, and navigation to another protected route can keep showing the previous error instead of rendering the new outlet.
+  - Fix direction: Pass `resetKeys={[location.pathname]}` (or include search params if needed) to the boundary, or key the boundary by the current location so page-level errors are cleared on navigation.
+- F014 | UI | `app-entry-&-routing.md / src/main.tsx` | 12-20 | category=bug | severity=medium
+  - Description: React 19 root error hooks forward to `sentryHandler`, but that handler is only assigned during startup when consent was already accepted. If a first-time user accepts cookies after the app has mounted, `CookieConsentBanner` initializes Sentry but never updates this module-level handler, so `onUncaughtError`, `onCaughtError`, and `onRecoverableError` continue to no-op until the page is reloaded.
+  - Fix direction: Move Sentry consent handling behind a shared module/API that both `main.tsx` and the banner use, or have the consent-accept path import both `initSentry` and `sentryErrorHandler` and update the root error proxy handler.
+- F025 | UI | `app-shell-&-layout.md / src/app/components/AppSidebar.tsx` | 103-147 | category=bug | severity=medium
+  - Description: `useAutoCollapse` tries to avoid persisting viewport-driven sidebar changes by toggling `isAutoCollapsingRef` around `setOpen`, but `setOpen` updates state asynchronously. By the time the `open` persistence effect runs, the ref has already been set back to `false`, so auto-collapse below 1280px can write `phoenix-sidebar-preferred-open=false` and overwrite the user's real desktop preference.
+  - Fix direction: Track auto-collapse state through the resulting render, or store user-initiated preference only from the sidebar trigger path instead of every `open` state change. Verify shrinking the viewport does not mutate the saved desktop preference.
+- F026 | UI | `app-shell-&-layout.md / src/app/components/MobileBottomNav.tsx` | 61-69, 247-250 | category=bug | severity=medium
+  - Description: More-menu active state uses exact path equality. Routes such as `/routines/new`, `/routines/:routineId`, `/routines/:routineId/view`, `/cycles/new`, and `/cycles/:cycleId` exist in the app but will not mark the More tab or the matching drawer item active on mobile.
+  - Fix direction: Use the same segment-aware prefix matching as the desktop sidebar, e.g. exact match or `pathname.startsWith(path + "/")`, and apply it both to `isMoreActive` and drawer item highlighting.
+- F027 | UI | `app-shell-&-layout.md / src/app/components/MobileBottomNav.tsx` | 71-83, 96, 251-254 | category=bug | severity=medium
+  - Description: Opening the More drawer pushes a synthetic history entry, but selecting a drawer link closes the drawer with `setMoreOpen(false)` directly. That bypasses the cleanup path in `handleDrawerChange(false)`, leaving the synthetic `moreDrawer` entry in the browser history. After navigating from the drawer, Back can land on a stale same-URL entry and require an extra press.
+  - Fix direction: Centralize drawer closing through a helper that removes/replaces the synthetic history state before navigation, or avoid manual `pushState` and rely on the drawer's normal close behavior for link selection.
+- F041 | UI | `app-shell-&-layout.md / src/app/components/figma/ImageWithFallback.tsx` | 10, 16-40 | category=bug | severity=medium
+  - Description: Once `didError` is set, it is never reset when the `src` prop changes. Reusing this component for a different image after one failed load will keep showing the fallback even if the new URL is valid.
+  - Fix direction: Add an effect that resets `didError` when `src` changes, or key the image state by `src`.
+- F057 | UI | `charts-&-visualization.md / src/app/components/charts/AsymmetryGauge.tsx` | 298-342 | category=bug | severity=medium
+  - Description: Summary mode converts signed asymmetry directly into left/right CSS widths with `50 +/- avgAsymmetry / 2` and never clamps the result. The asymmetry formula can legitimately produce values up to +/-200% when one side contributes nearly all force, so the split bar can emit negative widths or widths above 100% (for example, 200% asymmetry yields left -50% and right 150%). That can produce invalid/overflowing visual output for severe but valid imbalances.
+  - Fix direction: Clamp `leftPct` and `rightPct` into `[0, 100]` before using them as widths, or derive the split from bounded left/right force totals rather than raw asymmetry.
+- F058 | UI | `charts-&-visualization.md / src/app/components/charts/CommunityDistribution.tsx` | 37-43 | category=bug | severity=medium
+  - Description: `valueToPercentile` divides by `(val1 - val0)` without guarding equal adjacent percentile values. Flat or tied percentile buckets are common in sparse community datasets; when two neighboring percentiles have the same value, the interpolation denominator is zero and can produce `NaN` density points, which then get passed directly into ECharts.
+  - Fix direction: Detect `val1 === val0` before interpolation and return a stable percentile (for example the midpoint percentile, `pct0`, or `pct1`) instead of dividing by zero.
+- F065 | UI | `charts-&-visualization.md / src/app/components/charts/PowerOutput.tsx` | 44-56, 259-267 | category=bug | severity=medium
+  - Description: The chart and hidden accessibility table label reps by array position (`i + 1`) instead of the source `rep.rep_number`. If summaries are filtered, sorted differently, or have skipped rep numbers, the displayed bars/tooltips/table rows can identify the wrong rep.
+  - Fix direction: Use `rep.rep_number` consistently for `PowerRep.repNumber`, x-axis labels, tooltip labels, and the screen-reader table, falling back to `i + 1` only when the source value is absent.
+- F066 | UI | `charts-&-visualization.md / src/app/components/charts/PowerOutput.tsx` | 85-97, 120-125 | category=bug | severity=medium
+  - Description: `maxWatts` is computed as `Math.max(...watts) * 1.2` and can be `0` or negative when data is zero, missing, or represents negative/eccentric velocity. That creates a degenerate or inverted y-domain (`[0, 0]` or `[0, negative]`) and can produce NaN positions or negative bar heights.
+  - Fix direction: Clamp the y-domain upper bound to a positive minimum (for example `Math.max(100, maxWatts)`) and decide explicitly how negative power should be displayed (separate baseline, absolute value, or filtered empty state).
+- F069 | UI | `charts-&-visualization.md / src/app/components/charts/VelocityProfile.tsx` | 73-92, 150-165, 172-178 | category=bug | severity=medium
+  - Description: When all rep velocities are zero, `maxVelocity` becomes `0`, so the y-scale domain is `[0, 0]`. A degenerate scale can produce invalid tick/bar positioning, and the same code path can invert the chart if negative velocities are present.
+  - Fix direction: Clamp the y-axis upper bound to a positive minimum (for example `Math.max(1, peak * 1.15)`) and handle negative velocity data explicitly if eccentric movement is possible.
+- F071 | UI | `charts-&-visualization.md / src/app/components/charts/shared/EChartsWrapper.tsx` | 8-15, 22-36 | category=bug | severity=medium
+  - Description: The wrapper uses tree-shakeable ECharts registration but does not register `MarkLineComponent`. `CommunityDistribution` relies on a `markLine` for its "YOU" indicator, so that indicator can fail to render or warn at runtime under modular ECharts builds even though the line-series chart itself is registered.
+  - Fix direction: Import and register `MarkLineComponent` from `echarts/components` alongside the other required components, or remove the markLine dependency from the consumer.
+- F100 | UI | `community-features.md / src/app/components/community/CommunitySearch.tsx` | 11-16 | category=bug | severity=medium
+  - Description: `CommunitySearch` owns its own `localValue` and only writes the debounced value to the shared community store; it never reads the current store value back. Because `Community` mounts separate mobile and desktop search boxes, the hidden instance can diverge from the visible query state, and responsive layout changes can show an empty input while the feed is still filtered by the previous search.
+  - Fix direction: Initialize/synchronize `localValue` from `useCommunityStore((s) => s.search)`, or make the input controlled directly by the store with debounced query usage handled at the feed-query layer.
+- F101 | UI | `community-features.md / src/app/components/community/ContentActionMenu.tsx` | 25-31, 80-95 | category=bug | severity=medium
+  - Description: The component's public props allow `contentType="comment"`, but the own-content delete path always casts `contentType` to `"routine" | "cycle"` and labels anything other than routine as `Cycle`. If this menu is used for an owned comment or an edit/delete-enabled comment flow, it will attempt to delete a shared cycle with the comment id instead of deleting the comment.
+  - Fix direction: Split comment actions from routine/cycle actions, or branch explicitly for `contentType === "comment"` and call a comment-specific delete mutation. Avoid casting away the union member.
+- F111 | UI | `cycle-&-routine-builders.md / src/app/components/CycleBuilder.tsx` | 326-337, 552-571 | category=bug | severity=medium
+  - Description: Removing a day reindexes the remaining days but does not clear or remap `selectedDay`. If the selected day is deleted, the editor can immediately point at a different reindexed day, making subsequent edits apply to the wrong day.
+  - Fix direction: When deleting the selected day, close the editor or explicitly select a predictable adjacent day after reindexing. If deleting a day before the selected one, remap the selected day number to the same logical day.
+- F123 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 351-355 | category=bug | severity=medium
+  - Description: Saving a routine always sends `description: ""`. Editing and saving an existing routine will erase its description even if the user did not intend to change it, and there is no field in this builder to preserve or edit the description.
+  - Fix direction: Initialize and persist a `description` state from `existingRoutine.description`, or omit `description` from update payloads unless the builder exposes a description field.
+- F124 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 283-301 | category=bug | severity=medium
+  - Description: Superset creation overwrites the selected exercises' `supersetId` without checking whether any are already members of other supersets. Selecting exercises from existing groups can split those groups and leave orphaned one-exercise supersets behind.
+  - Fix direction: Prevent selecting already-supersetted exercises for a new group, or explicitly ungroup/rebalance affected source groups before applying the new superset.
+- F126 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 284, 290-299 | category=bug | severity=medium
+  - Description: `supersetOrder` is assigned from the order in which exercises were selected, not from their order in the routine. Users who click exercises out of list order get a superset execution order that differs from the displayed routine order.
+  - Fix direction: Sort selected IDs by their current index in `exercises` before assigning `supersetOrder`, unless the UI explicitly supports manual ordering within the selected set.
+- F114 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/DayEditor.tsx` | 108-115 | category=bug | severity=medium
+  - Description: The `+ Create New Routine` action calls the same `onAssignRoutine` callback as Assign/Change. It opens the routine assignment flow instead of creating a new routine, so the button label and behavior are inconsistent.
+  - Fix direction: Add a separate `onCreateRoutine` callback that navigates to or opens routine creation, or relabel this button if it is only meant to assign an existing routine.
+- F115 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/DayEditor.tsx` | 40-42, 267-275 | category=bug | severity=medium
+  - Description: Rest-time override state and parsing treat `0` as absent. `restTimeEnabled` is initialized with `!!overrides.restTimeOverride`, and manual input uses `parseInt(...) || 90`, so an explicit 0-second override cannot be displayed or entered even though the decrement button allows `Math.max(0, ...)`.
+  - Fix direction: Test `overrides.restTimeOverride != null` instead of truthiness, and use `Number.isFinite`/nullish fallback rather than `||` defaults so `0` remains valid.
+- F117 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/ProgressionRules.tsx` | 116-133, 454-507 | category=bug | severity=medium
+  - Description: Several numeric fields use `parseFloat(...) || default` or `parseInt(...) || default`, which makes valid zero values impossible to enter. This conflicts with UI controls/minimums that allow 0 for percentage increases and deload intensity/volume.
+  - Fix direction: Replace truthy fallbacks with explicit finite-number checks and clamp to allowed ranges. Preserve `0` as a valid value where the UI permits it.
+- F119 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/RoutinePicker.tsx` | 208-241, 233-237 | category=bug | severity=medium
+  - Description: `RoutineItem` renders a `<button>` that contains a shadcn `<Button>` for Select. This creates invalid nested interactive elements and the inner Select click can bubble to the outer button, invoking `onSelect` twice.
+  - Fix direction: Make the outer container a non-button element with one explicit button, or remove the inner Select button and rely on the outer button only.
+- F122 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/WeekOverview.tsx` | 24, 35-36 | category=bug | severity=medium
+  - Description: The week grid uses `dayNames.slice(0, days.length)`, but `dayNames` has only seven entries. Any cycle/day template longer than seven days silently omits days beyond the first week.
+  - Fix direction: Iterate over `days` directly and derive labels with modulo weekdays or `Day N` labels for schedules longer than seven days.
+- F134 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/SupersetContainer.tsx` | 175-180, 221-225 | category=bug | severity=medium
+  - Description: Rest-after and transition inputs use `parseInt(...) || default`, so users cannot type an explicit `0` even though the decrement buttons clamp down to 0. Clearing or entering 0 jumps back to 90s/10s.
+  - Fix direction: Preserve zero by using explicit parse validation and nullish/default handling instead of truthy `||` fallbacks.
+- F131 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/superset-helpers.ts` | 62-70 | category=bug | severity=medium
+  - Description: `addExerciseToSuperset` blindly appends `exerciseId` to the target group. It does not prevent duplicates and does not remove the exercise from any existing superset, so callers can create duplicate membership or cross-superset membership.
+  - Fix direction: Make the helper idempotent, reject duplicates, and clear the exercise from other groups before adding it to the target group.
+- F368 | UI | `feature-components-part-1.md / src/app/components/Goals.tsx` | 312-314, 412-443 | category=bug | severity=medium
+  - Description: The comment and limit logic say `FREE = 1`, but the page returns an upgrade gate for every non-premium user before the one-goal free limit can ever be used. This makes the free-tier goal limit dead code and creates inconsistent product behavior.
+  - Fix direction: Align the gate with the intended product rule: either allow free users through with `maxGoals = 1`, or remove the free-limit logic/comment if goals are truly paid-only.
+- F376 | UI | `feature-components-part-1.md / src/app/components/Profile.tsx` | 171, 193, 293-295 | category=bug | severity=medium
+  - Description: The header streak uses `useStreak(workouts)` where `workouts` comes from `workoutListOptions(userId)` with no active profile filter and only the first paginated page. Meanwhile other profile stats use `activeProfileId`. The displayed streak can include other profiles and can be wrong when the streak depends on workouts beyond the first page.
+  - Fix direction: Use a dedicated streak query that supports `activeProfileId` and fetches enough history for streak computation, rather than the first workout-list page.
+- F363 | UI | `feature-components-part-1.md / src/app/components/SessionDetail.tsx` | 498-543 | category=bug | severity=medium
+  - Description: The Session Config card is only rendered when `eccentric_load` or `echo_level` is non-null, but the card also contains `warmup_reps` and `working_reps`. Sessions that only have warmup/working rep configuration silently hide those values.
+  - Fix direction: Include `warmup_reps != null || working_reps != null` in the outer render condition, or compute a single `hasSessionConfig` boolean covering all fields rendered in the card.
+- F366 | UI | `feature-components-part-1.md / src/app/components/SummaryReport.tsx` | 151-162, 481-492 | category=bug | severity=medium
+  - Description: `dailyWorkoutMap` increments once per `ExerciseProgress` row, not once per workout/session. Days with multiple exercises in one session are displayed as multiple workouts in the frequency sparkline.
+  - Fix direction: Count unique `session_id`s per day (for example, map day -> `Set<session_id>`) and chart the size of each set.
+- F362 | UI | `feature-components-part-1.md / src/app/components/WorkoutHistory.tsx` | 246-266 | category=bug | severity=medium
+  - Description: `handleLoadMore` calls `workoutListPageOptions(user.id, nextOffset)` without passing `activeProfileId`. The initial list is profile-filtered, but additional pages are fetched across all profiles, so using a profile filter can append unrelated workouts and corrupt stats, calendar markers, and history contents.
+  - Fix direction: Pass `activeProfileId` into `workoutListPageOptions`, include it in the callback dependencies, and reset `loadedPages`/`extraWorkouts` when the active profile filter changes.
+- F388 | UI | `feature-components-part-2.md / src/app/components/ExerciseProgress.tsx` | 206-234 | category=bug | severity=medium
+  - Description: `selectedExercise` is initialized from `initialExercise` once, but never updates if the prop changes later. `BiomechanicsContent` passes the selected exercise name into this component, so changing the parent exercise can leave the progress charts showing the old exercise.
+  - Fix direction: Add an effect that synchronizes `selectedExercise` when `initialExercise` changes, while preserving manual user selection intentionally if needed.
+- F396 | UI | `feature-components-part-2.md / src/app/components/integrations/StravaConnect.tsx` | 28-38 | category=bug | severity=medium
+  - Description: `handleConnect` awaits `initiateStravaConnect(accessToken)` without `try/catch/finally`. If the OAuth initiation rejects, the button remains in the `Connecting...` state and the user gets no toast or recoverable error UI.
+  - Fix direction: Wrap the call in `try/catch/finally`, show a user-facing error, and reset `isRedirecting` if the browser does not redirect.
+- F405 | UI | `feature-components-part-3.md / src/app/components/Challenges.tsx` | 497-505, 770-803 | category=bug | severity=medium
+  - Description: `activeChallenges` means every active challenge that is not completed, regardless of whether the user joined it. The desktop "Active Challenges" tab maps this entire list, so unjoined discoverable challenges appear as active challenges with a Join button. The mobile active tab filters to `joinedIds`, and mobile has a separate Discover tab, so desktop and mobile show different challenge states.
+  - Fix direction: Split desktop the same way as mobile: active/joined challenges should be `joinedIds.has(c.id) && !completedIds.has(c.id)`, and unjoined challenges should be displayed in a Discover tab/section.
+- F410 | UI | `feature-components-part-3.md / src/app/components/ComparisonView.tsx` | 359-361 | category=bug | severity=medium
+  - Description: The premium upgrade copy refers to "Phoenix and Elite plans", but the app's pricing source of truth defines Ember, Flame, and Inferno tiers. Users blocked by the comparison gate are pointed at nonexistent plan names.
+  - Fix direction: Import tier names/capability metadata from the pricing/subscription source of truth, or update the copy to the current tier names.
+- F416 | UI | `feature-components-part-3.md / src/app/components/ConsistencyCalendar.tsx` | 41-45, 121-123, 136-137 | category=bug | severity=medium
+  - Description: Workout days are keyed with `toISOString().slice(0, 10)`, which groups by UTC date, while the calendar grid, labels, and streak computations otherwise use local calendar days. Workouts near local midnight can be counted on the wrong day for users outside UTC, causing incorrect heatmap cells and streaks.
+  - Fix direction: Use a local-date key such as `format(d, "yyyy-MM-dd")` consistently for unique days, countMap keys, and grid lookup keys.
+- F420 | UI | `feature-components-part-3.md / src/app/components/FAQ.tsx` | 72-83 | category=bug | severity=medium
+  - Description: The FAQ hardcodes stale subscription information: it says there are two tiers and prices Ember at $15/mo, while the pricing source of truth defines Ember at $5/mo, Flame at $15/mo, and Inferno at $25/mo. This can mislead users evaluating plans.
+  - Fix direction: Import tier data from `TIER_PRICING` or rewrite the FAQ copy to avoid hardcoded prices/tier counts that can drift from the pricing module.
+- F421 | UI | `feature-components-part-3.md / src/app/components/PrivacyPolicy.tsx` | 135-144, 185-189, 301-304 | category=bug | severity=medium
+  - Description: The policy states that performance metrics such as velocity/load/power are collected and stored on cloud servers, but the Bluetooth section later says relevant metrics are stored locally and no Bluetooth data is transmitted to external parties. These statements conflict for the same sensor-derived workout data and can create a compliance/support issue.
+  - Fix direction: Clarify the data flow: distinguish transient BLE control traffic from workout metrics uploaded/synced to Supabase, and make the storage/transmission statements consistent.
+- F422 | UI | `hooks-&-providers.md / src/app/hooks/useButtonSuccess.ts` | 18-23, 26-28 | category=bug | severity=medium
+  - Description: `trigger()` schedules a timeout that calls `setIsSuccess(false)`, but the hook never clears that timeout on unmount. The comment says the timer is cleaned up and `cleanupRef` is assigned, but no `useEffect` cleanup uses it. If a component unmounts while the success state is active, the timer can fire after unmount and cause a stale state update. Changing `durationMs` while a timer is active also leaves the old timer running until `trigger()` is called again.
+  - Fix direction: Add a `useEffect` cleanup that clears `timerRef.current` and sets it to `undefined`/`null` on unmount. Remove the unused `cleanupRef` placeholder. Optionally validate/clamp `durationMs` to non-negative values.
+- F425 | UI | `hooks-&-providers.md / src/hooks/useBlockedUsers.ts` | 7, 31-44, 46-63 | category=bug | severity=medium
+  - Description: Blocked user IDs are hydrated from and persisted to a single global `phoenix-blocked-users` localStorage key. The hook does not scope the cache by authenticated user and does not clear the Zustand store when `user` is null or changes. On shared browsers or account switches, one user's blocked list can be applied to another user until the server query completes; if the new user is logged out or the query fails, stale IDs can remain indefinitely.
+  - Fix direction: Include `user.id` in the storage key, clear the community store when there is no authenticated user, and consider ignoring cached data until it matches the current user. Handle query errors explicitly so stale local state is not mistaken for authoritative server state.
+- F426 | UI | `hooks-&-providers.md / src/hooks/useCommunityRealtime.ts` | 16-18, 41-49 | category=bug | severity=medium
+  - Description: The hook uses the fixed Supabase realtime channel topic `community-votes-realtime`. Other realtime hooks in this review use a random suffix to avoid remount races while `removeChannel` cleanup is still in progress. If this hook remounts quickly, is mounted in React StrictMode, or two components accidentally mount it, Supabase can reuse/collide with an existing subscribed channel and fail to register callbacks correctly.
+  - Fix direction: Generate a unique channel topic per mount, e.g. `community-votes-realtime:${crypto.randomUUID()}`, and keep the existing cleanup. Add a remount-before-cleanup test similar to `useCommentRealtime`.
+- F429 | UI | `hooks-&-providers.md / src/hooks/useOnboarding.ts` | 8, 41-55 | category=bug | severity=medium
+  - Description: Onboarding version comparisons use raw string comparison (`onboarding.version_seen < CURRENT_VERSION`) and `showHints` requires exact equality with `CURRENT_VERSION`. This is brittle for semantic versions: values such as `1.10` and `1.2` do not sort correctly lexicographically, and a future version greater than `CURRENT_VERSION` would suppress feature hints because it is not exactly equal.
+  - Fix direction: Parse versions into numeric semver components or store a monotonically increasing schema/version number. Use `>= CURRENT_VERSION` semantics for already-seen/current-or-newer rows when deciding whether to show hints.
+- F503 | UI | `session-replay.md / src/app/components/session-replay/ReplayAnnotationOverlay.tsx` | 59-83 | category=bug | severity=medium
+  - Description: The overlay renders every sticking point from `intelligence.stickingPoints` regardless of playback time. The canvas renderer hides future sticking points until `point.timestampMs <= currentTimeMs`, but this SVG overlay has no `currentTimeMs` prop and exposes future annotations immediately. That can reveal later-rep events before the playhead reaches them and clutter the replay with annotations unrelated to the current moment.
+  - Fix direction: Pass `currentTimeMs` into `ReplayAnnotationOverlay` and filter or dim annotations with timestamps after the current playhead. Keep the SVG overlay behavior consistent with the canvas renderer.
+- F513 | UI | `session-replay.md / src/app/components/session-replay/SetNavigation.tsx` | 28-46 | category=bug | severity=medium
+  - Description: Previous/Next only call `prevSet`/`nextSet`; they do not pause playback or reset the playhead for the newly selected set. If the user switches from a long set to a shorter set, `currentTimeMs` can be outside the new set's duration, causing the timeline and chart to open at the end or immediately pause on the next animation frame.
+  - Fix direction: On set changes, pause playback and seek to 0, or provide a single store action that atomically changes the set index and resets playback-derived state.
+- F514 | UI | `session-replay.md / src/app/components/session-replay/TimelineBar.tsx` | 29-35, 64-72, 82-89 | category=bug | severity=medium
+  - Description: `fatigueStartPercent` divides by `durationMs` without checking that duration is positive or that `fatigueStartRepIndex` exists in `repBoundaries`. Zero-duration telemetry or mismatched summary/boundary data can produce `Infinity%`, `NaN%`, or an invalid slider max, leading to broken timeline styling and seek behavior.
+  - Fix direction: Require `durationMs > 0`, validate the boundary index, clamp the computed percent to `[0, 100]`, and render a disabled/empty timeline when duration is not usable.
+- F552 | Other | `ui-primitives-shadcn.md / src/app/components/ui/carousel.tsx` | 95-103 | category=bug | severity=medium
+  - Description: The effect registers both `reInit` and `select` listeners on the Embla API, but cleanup removes only the `select` listener. Repeated API changes/remounts can leave stale `reInit` callbacks registered and update state after the component path has changed.
+  - Fix direction: In the cleanup callback, call both `api.off("select", onSelect)` and `api.off("reInit", onSelect)`.
+- F554 | Other | `ui-primitives-shadcn.md / src/app/components/ui/carousel.tsx` | 195-197, 225-227 | category=bug | severity=medium
+  - Description: `CarouselPrevious` and `CarouselNext` set internal `disabled` and `onClick` props before spreading caller props. A caller-supplied `onClick` can replace the scroll handler, and a caller-supplied `disabled` can re-enable controls when Embla says scrolling is unavailable.
+  - Fix direction: Spread caller props before invariant props, or explicitly compose `onClick` handlers while preserving the internal disabled state, for example `disabled={props.disabled ?? !canScrollPrev}` depending on the intended API.
+- F557 | Other | `ui-primitives-shadcn.md / src/app/components/ui/form-error-summary.tsx` | 30-37 | category=bug | severity=medium
+  - Description: `scrollToFirstError` searches the entire document for the first `[aria-invalid="true"]`. On pages with multiple forms or unrelated invalid widgets, the summary can scroll/focus a control outside the form that owns this summary.
+  - Fix direction: Scope the query to the nearest form/summary container via a ref, or accept a form ref/id prop and query within that root.
+- F558 | Other | `ui-primitives-shadcn.md / src/app/components/ui/form.tsx` | 27-29, 44-55, 71-73 | category=bug | severity=medium
+  - Description: `FormFieldContext` and `FormItemContext` are initialized with cast empty objects, so the guard `if (!fieldContext)` is unreachable. `useFormField` also calls `useFormContext`, `useFormState`, and `getFieldState` before validating that it is inside a `FormField`. If `FormLabel`, `FormControl`, or `FormMessage` is used outside the expected wrappers, the code can produce `undefined-form-item` ids or fail with a less useful provider error.
+  - Fix direction: Initialize both contexts as `null`, check for missing `FormField` and `FormItem` before calling field-state helpers or building ids, and throw targeted errors for each missing wrapper.
+- F257 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddlePriceIds.ts` | 73-94, 106-114 | category=failure-point | severity=medium
+  - Description: Price IDs are collected into independent tier sets and `mapPriceIdToTier` resolves duplicates by fixed precedence (`INFERNO` before `FLAME` before `EMBER`). A duplicated or copied-into-the-wrong-secret Paddle price ID will silently map customers to the wrong paid tier rather than failing configuration validation.
+  - Fix direction: Validate the configured price IDs at cold start or before use: trim/dedupe globally, reject any price ID that appears in more than one tier, and log a fatal configuration error instead of silently choosing a tier by precedence.
+- F260 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddleSubscriptionUpdate.ts` | 18-21 | category=failure-point | severity=medium
+  - Description: The no-op/uncancel decision compares only the locally stored `currentPriceId` against the requested price. If the local `subscriptions.price_id` is stale, missing, or failed to update after a webhook/refresh problem, the function may call Paddle for a change that is already current or fail to take the intended `uncancel` path for a same-plan subscription with a scheduled cancellation.
+  - Fix direction: For subscription updates, either refresh the current Paddle subscription before building the patch or treat the local price as a cache and reconcile after Paddle returns the authoritative subscription. Keep the same-plan uncancel case based on Paddle's current item state when possible.
+- F268 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-cancel-subscription/index.ts` | 98-125 | category=failure-point | severity=medium
+  - Description: After Paddle successfully schedules cancellation, the function returns `{ success: true }` without persisting the returned subscription state. Until the webhook arrives, local `cancel_at_period_end` remains stale, and if the webhook is delayed or permanently failing the user sees an active non-canceling subscription even though Paddle has scheduled cancellation.
+  - Fix direction: Parse the successful Paddle response, validate the returned subscription ID, and upsert the local subscription state using the shared Paddle state builder (or at least set `cancel_at_period_end: true` from `scheduled_change`) while still allowing the webhook to reconcile later.
+- F269 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-cancel-subscription/index.ts` | 110-118 | category=failure-point | severity=medium
+  - Description: Raw Paddle API error text is returned to the authenticated client in `details`. Paddle error bodies can include provider request IDs, object IDs, or operational details that are useful for logs but not necessary in client responses.
+  - Fix direction: Log the full Paddle error server-side with request/user context, return a stable public error code/message to the client, and expose detailed diagnostics only through server logs or an internal support correlation ID.
+- F271 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-refresh-subscription/index.ts` | 248-282 | category=failure-point | severity=medium
+  - Description: When Paddle returns 404 for a stored subscription ID, the function marks the local row `canceled` but leaves `paddle_subscription_id` and `price_id` intact. Future diagnostics and reconciliation still point at a missing Paddle object, and stale price data remains attached to a terminal cancellation path.
+  - Fix direction: Decide whether a 404 should clear provider identifiers/price data or move them to an audit/history field. At minimum, log the missing subscription ID and update enough local state to prevent future refresh/cancel/update paths from repeatedly targeting the same missing Paddle subscription.
+- F273 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-update-subscription/index.ts` | 212-220 | category=failure-point | severity=medium
+  - Description: Raw Paddle API error text is returned to the authenticated client in `details`. As with cancellation, provider error bodies may expose request IDs, object IDs, or operational details that should remain in server logs rather than the browser response.
+  - Fix direction: Return a stable public error code/message and log the full Paddle error text server-side with a correlation ID.
+- F274 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-update-subscription/index.ts` | 277-284 | category=failure-point | severity=medium
+  - Description: The function immediately upserts the local subscription from the Paddle PATCH response, but the shared builder still derives `price_id` from `updatedSubscription.items?.[0]`. If Paddle's update response shape omits items, returns items in a different order, or includes add-ons before the plan item, the local row can be written with the correct `tier` passed in but an incorrect/null `price_id`, breaking future no-op and plan-change decisions.
+  - Fix direction: Reuse the explicitly resolved `updatedPriceId` when building the upsert, or enhance the shared builder to resolve the configured plan item from the full item array. Add a regression test where the Paddle response contains multiple items or omits the price on the first item.
+- F265 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-webhooks/index.ts` | 189-220 | category=failure-point | severity=medium
+  - Description: `custom_data.user_id` is checked only for truthiness before being used in a Supabase equality filter and as the HMAC message. A malformed signed event with a non-string `user_id` can coerce to an unexpected string for signature verification or cause the database client to error in a path currently handled as a generic 500.
+  - Fix direction: Require `typeof userId === "string"`, trim and validate it as the expected Supabase user ID format before querying or signing, and return a 400/401 billing alert for malformed custom data.
+- F306 | Edge Functions | `edge-functions---integrations.md / supabase/functions/_shared/garminIdentity.ts` | 57-63 | category=failure-point | severity=medium
+  - Description: If decrypting any candidate token throws, `resolveGarminWebhookIdentity` rejects the entire identity resolution. A single corrupt/stale token row can cause otherwise valid webhook activities for other users to fail and be retried as transient webhook errors.
+  - Fix direction: Catch decrypt errors per candidate, log the affected candidate user ID, skip that candidate, and continue checking the remaining candidates.
+- F303 | Edge Functions | `edge-functions---integrations.md / supabase/functions/disconnect-integration/index.ts` | 81-112 | category=failure-point | severity=medium
+  - Description: Token deletion, integration-state update, and sync-queue update run concurrently outside a transaction. If one write succeeds and another fails, the function throws a 500 after partially disconnecting the integration. For example, tokens can be deleted while `user_integrations.status` remains connected.
+  - Fix direction: Move disconnect into a database RPC/transaction, or sequence writes with compensating error handling so the persisted state cannot be left half-disconnected.
+- F288 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-oauth/index.ts` | 70-93 | category=failure-point | severity=medium
+  - Description: The OAuth state token is deleted before the Fitbit token exchange succeeds. A transient Fitbit failure consumes the state and forces the user to restart the OAuth flow, even though the callback request could otherwise be retried.
+  - Fix direction: Consume the state only after token exchange and token persistence succeed, or mark it as used in a transaction-like flow with a retry-safe intermediate status.
+- F289 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-oauth/index.ts` | 96-100 | category=failure-point | severity=medium
+  - Description: The Fitbit token response is trusted without validating `access_token`, `refresh_token`, `user_id`, and `expires_in`. Missing or malformed fields can produce invalid expiry timestamps or attempt to encrypt undefined secrets.
+  - Fix direction: Validate the response schema and reject/redirect with a specific token payload error when required fields are absent or invalid.
+- F281 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-oauth/index.ts` | 141-176 | category=failure-point | severity=medium
+  - Description: The CSRF state token is deleted before the Garmin request-token call succeeds. A transient Garmin/API/network failure after line 142 invalidates the user's OAuth start state, and the callback cannot be retried without beginning the whole flow again.
+  - Fix direction: Consume the state only after successfully storing the request token, or mark it as in-progress with a short TTL so transient provider failures do not strand the flow.
+- F295 | Edge Functions | `edge-functions---integrations.md / supabase/functions/hevy-sync/index.ts` | 124-135 | category=failure-point | severity=medium
+  - Description: After successfully storing a Hevy API key, the `user_integrations` upsert result is ignored. A database failure can leave the encrypted API key stored while the integration row remains absent/stale, causing confusing UI state and later sync behavior.
+  - Fix direction: Capture and handle the integration upsert error. If the state update fails, return an error or roll back/delete the newly stored key.
+- F275 | Edge Functions | `edge-functions---integrations.md / supabase/functions/initiate-oauth/index.ts` | 82-87 | category=failure-point | severity=medium
+  - Description: The `oauth_states` insert result is not checked. If the insert fails because of RLS, schema drift, database outage, or a uniqueness issue, the function still returns a provider authorization URL containing a state token that was never persisted. The callback will later fail as `invalid_state`, which makes the real cause difficult to diagnose and forces the user through a broken OAuth flow.
+  - Fix direction: Capture `{ error }` from the insert and return a 500/structured error before building or returning the provider authorization URL when state persistence fails.
+- F276 | Edge Functions | `edge-functions---integrations.md / supabase/functions/initiate-oauth/index.ts` | 92-117 | category=failure-point | severity=medium
+  - Description: Provider client IDs and the public Supabase URL are assumed to exist. If `STRAVA_CLIENT_ID`, `FITBIT_CLIENT_ID`, `SUPABASE_PUBLIC_URL`, or `SUPABASE_URL` are missing/misconfigured, the function can return malformed authorization URLs such as `client_id=undefined` or a callback rooted at an invalid URL. The state row has already been inserted, so users receive a broken redirect rather than a clear configuration error.
+  - Fix direction: Validate all provider-specific environment variables before inserting state or returning the URL. Return a clear 503/configuration error if required OAuth configuration is missing.
+- F299 | Edge Functions | `edge-functions---integrations.md / supabase/functions/liftosaur-sync/index.ts` | 164-173 | category=failure-point | severity=medium
+  - Description: After successfully storing a Liftosaur API key, the `user_integrations` upsert result is ignored. A failed integration-state write can leave credentials stored with no corresponding connected row.
+  - Fix direction: Capture and handle the upsert error. Return a storage error or roll back the stored API key if the visible integration state cannot be persisted.
+- F277 | Edge Functions | `edge-functions---integrations.md / supabase/functions/strava-oauth/index.ts` | 106-112 | category=failure-point | severity=medium
+  - Description: The Strava token response shape is trusted without validation. `tokens.athlete.id`, `tokens.access_token`, `tokens.refresh_token`, and `tokens.expires_at` are dereferenced directly. A malformed or partial response can throw after the OAuth state has been consumed, or can attempt to encrypt/store undefined token fields.
+  - Fix direction: Validate the token response schema before using it. If required fields are absent or have unexpected types, log the upstream response status/body safely and redirect with a specific token payload error.
+- F313 | Edge Functions | `edge-functions---misc.md / supabase/functions/compute-rankings/index.ts` | 222-239, 263-370, 386-499, 517-663 | category=failure-point | severity=medium
+  - Description: Ranking endpoints have no rate limit even though they run service-role queries across all leaderboard participants and call aggregate RPCs. A subscribed client can repeatedly request global, weekly, or arbitrary user rankings and force expensive scans/aggregations.
+  - Fix direction: Apply `checkRateLimit` per user and request type, cache global/weekly results for short intervals, and consider precomputing leaderboard snapshots instead of recomputing full rankings on every request.
+- F314 | Edge Functions | `edge-functions---misc.md / supabase/functions/compute-rankings/index.ts` | 89-98, 230-231 | category=failure-point | severity=medium
+  - Description: `weekStart` is accepted directly from the request and converted with `new Date(weekStart)` before calling `toISOString()`. Invalid strings throw a `RangeError` and return a generic 500, while arbitrary valid dates can request unbounded historical/future weekly windows.
+  - Fix direction: Validate `weekStart` as an ISO `YYYY-MM-DD` date, reject invalid dates with 400, normalize to that week’s Monday, and clamp requests to an allowed historical/future range.
+- F320 | Edge Functions | `edge-functions---misc.md / supabase/functions/delete-account/index.ts` | 22-33, 188-204 | category=failure-point | severity=medium
+  - Description: The Paddle cancellation fetch has no explicit timeout or abort signal. If Paddle stalls, the Edge Function can sit until the platform timeout after the auth user is already deleted, increasing the chance of an ambiguous deletion response and uncancelled billing.
+  - Fix direction: Wrap the Paddle request in an `AbortController` timeout and treat timeout as a durable retry condition before or alongside the billing follow-up record.
+- F308 | Edge Functions | `edge-functions---misc.md / supabase/functions/generate-insights/index.ts` | 326-363, 613-644 | category=failure-point | severity=medium
+  - Description: The handler accepts every non-OPTIONS method and defaults an unparsable or absent body to `{}`. Because this function deletes and reinserts cached `user_insights`, an authenticated GET/HEAD or malformed request can trigger a state-changing insight regeneration instead of being rejected as an invalid method/body.
+  - Fix direction: Require `POST` before authentication or parsing, return 405 for other methods, and reject malformed JSON with 400 instead of silently replacing it with an empty object.
+- F324 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/oauthTokenCrypto.ts` | 13, 53-99, 110-116, 131-139 | category=failure-point | severity=medium
+  - Description: The ciphertext prefix contains only an algorithm version (`enc:v1:`) and `getAesKey` loads exactly one key from `OAUTH_TOKEN_ENCRYPTION_KEY`. Any key rotation immediately makes existing encrypted tokens undecryptable for isolates that only know the new key, while long-lived isolates may keep using the old cached key until cold restart. There is no key id, previous-key fallback, or planned re-encryption path.
+  - Fix direction: Use a keyring format such as `enc:v1:<key_id>:...`, allow decrypt with current and previous keys during rotation, and re-encrypt on successful decrypt with the active key before retiring old keys.
+- F326 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/rateLimit.ts` | 147-181, 253-275 | category=failure-point | severity=medium
+  - Description: The fallback path is described as atomic, but it is a multi-query read/update loop outside a database transaction. Under contention, repeated optimistic-lock misses return `rate_limit_unavailable` after three attempts, so if the RPC is not deployed or temporarily unavailable, legitimate high-traffic endpoints can start returning 503s instead of enforcing the limit reliably.
+  - Fix direction: Treat the SQL RPC as a required migration for production and remove or demote the fallback, or move the fallback behavior into a transactional database function/advisory lock. If the fallback remains, add backoff/jitter and monitor fallback usage so contention does not become an outage mode.
+- F330 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/subscriptionEntitlement.ts` | 9, 16-21 | category=failure-point | severity=medium
+  - Description: Only `active` and `trialing` statuses are entitlement-bearing. A `past_due` subscription with a future `current_period_end` immediately loses paid Edge Function access, even though payment processors commonly use `past_due` during a retry/grace period while the billing period is still current. This can create a server/client policy mismatch if the product intends grace-period access.
+  - Fix direction: Confirm the billing policy for `past_due`. If users should retain access until `current_period_end`, include `past_due` in the entitlement check while the period end is future and surface separate UI/telemetry for billing-risk state.
+- F334 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/exerciseProgressRows.ts` | 70-109 | category=failure-point | severity=medium
+  - Description: The row builder stores negative or otherwise nonsensical set metrics if they pass through validation. `max_weight_kg`, `total_volume_kg`, and `max_reps` are calculated directly from `weightKg` and `actualReps`; the shared push schema currently accepts negative numbers, so a malformed client can write negative volume/progress snapshots.
+  - Fix direction: Enforce non-negative finite bounds in `pushPayloadSchema` for weights, reps, durations, volumes, and set counts before calling this builder; optionally defensively clamp/reject in the builder for testability.
+- F336 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/personalRecordRow.ts` | 421-432, 490-520 | category=failure-point | severity=medium
+  - Description: Dedicated personal records with missing `value` are silently converted to `weightKg ?? 0` (or computed volume only for `MAX_VOLUME`). A malformed dedicated record can therefore insert a zero-value PR instead of failing validation, and non-volume record types ignore `reps` even when the intended value is not raw weight.
+  - Fix direction: Require `value` for dedicated records, or validate record-type-specific inputs in `pushPayloadSchema` before row construction. Reject records that cannot produce a meaningful positive PR value.
+- F340 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/pushPayloadSchema.ts` | 141-178, 229-271, 291-294, 337-345, 353-368, 370-392 | category=failure-point | severity=medium
+  - Description: Timestamp fields are validated as plain strings rather than datetime strings. Invalid dates can pass schema parsing and fail later as Postgres timestamp errors or produce inconsistent sync/cursor behavior.
+  - Fix direction: Use a shared ISO-8601/datetime validator or transform for all wire timestamps (`startedAt`, `updatedAt`, `earnedAt`, `createdAt`, `syncedAt`, etc.) and return a 400 with the field path before any writes begin.
+- F341 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/pushPayloadSchema.ts` | 104-178, 190-218, 242-271, 273-345, 353-368 | category=failure-point | severity=medium
+  - Description: Many numeric fields accept any number with no non-negative/domain bounds: reps, weights, durations, counts, RPG level/XP, sample counts, confidence, heart rates, etc. Negative or out-of-range values can be persisted and then propagated back to mobile.
+  - Fix direction: Add schema-level `.nonnegative()`, `.positive()`, `.min()`, `.max()`, and finite-value checks matching the mobile DTO/domain constraints.
+- F337 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/rpgSchema.ts` | 8-10, 32-40 | category=failure-point | severity=medium
+  - Description: The file documents `roundRpgFloats()` as the boundary guard for both push and pull, but repository search found no production import. Push duplicates rounding inline after schema parsing, while pull duplicates `Math.round(...)` inline. Worse, push schema currently rejects non-integer RPG numbers before the inline rounding can run.
+  - Fix direction: Use `roundRpgFloats()` directly in both push and pull projections, and adjust schema validation to accept finite numbers before rounding if float repair is the intended contract.
+- F353 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-integration-sync/index.ts` | 374-436 | category=failure-point | severity=medium
+  - Description: The `connect` path stores the encrypted API key and marks the integration connected before validating the key against the provider. If provider validation then fails, the invalid secret remains in `oauth_tokens` and the integration status is set to `error`.
+  - Fix direction: Fetch/validate provider activities first, then persist the API key and connected status only after validation succeeds. If persistence-before-validation is required, delete the token on validation failure.
+- F356 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-integration-sync/index.ts` | 537-542 | category=failure-point | severity=medium
+  - Description: The top-level catch returns `(err as Error).message` directly to the mobile client. Internal crypto, database, provider, or parsing errors can leak implementation details and produce inconsistent client-facing errors.
+  - Fix direction: Log detailed errors server-side and return sanitized error codes/messages by class (`invalid_api_key`, `provider_unavailable`, `internal_error`, etc.).
+- F349 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-pull/index.ts` | 354-365 | category=failure-point | severity=medium
+  - Description: `pageSize` is capped only with `Math.min`; zero or negative values are accepted. That can produce an empty successful response with `hasMore: false`, allowing a client to update sync state while receiving no data.
+  - Fix direction: Clamp `pageSize` to `[1, MAX_PAGE_SIZE]` or reject values outside the supported range with a 400.
+- F352 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-pull/index.ts` | 937-1073 | category=failure-point | severity=medium
+  - Description: `personalRecords`, `localProfiles`, and `externalActivities` are fetched wholesale on the final `stats` page and do not consume `remainingPageSize`. Large accounts can receive responses far beyond the configured page size, reintroducing timeout/body-size risk and making pagination semantics misleading.
+  - Fix direction: Add these entity types to `ENTITY_ORDER` with cursors/limits, or enforce separate caps and cursors for the final-page collections.
+- F342 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 830-880, 1075-1271 | category=failure-point | severity=medium
+  - Description: Custom exercises are upserted before the later cross-user ownership and parent-reference validation block. If a later validation rejects the payload, the function can still leave custom catalog rows committed from an otherwise failed push.
+  - Fix direction: Move all pure validation/ownership checks before any writes, or wrap the entire push in a database RPC transaction so partial writes roll back on later rejection.
+- F345 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/mobile-sync-push/index.ts` | 2229-2233, 2253-2257, 2288-2293 | category=failure-point | severity=medium
+  - Description: `session_phase_statistics`, `exercise_signatures`, and `vbt_assessments` write errors are logged as warnings while the overall push still succeeds. A client can believe these entities synced and move on even though the server dropped them.
+  - Fix direction: Treat these writes like the core sync writes: fail the request with a retryable response or return explicit per-entity rejection/error details that the client uses to retry.
+- F210 | Migrations | `database-migrations.md / supabase/migrations/00001_create_subscriptions.sql` | 61-74 | category=failure-point | severity=medium
+  - Description: `public.user_subscription_tier()` is declared `SECURITY DEFINER` without a fixed `search_path`. Because it references `public.subscriptions` but does not set `search_path`, the function is vulnerable to search-path hijacking/linter failures until a later migration rewrites it.
+  - Fix direction: Define the function with `SET search_path = ''` and schema-qualify every referenced object, including `public.subscriptions` and `auth.uid()`.
+- F213 | Migrations | `database-migrations.md / supabase/migrations/20260218_phase11_comments.sql` | 60-75, 112-131 | category=failure-point | severity=medium
+  - Description: `check_comment_rate_limit()` and `update_comment_count()` are `SECURITY DEFINER` functions without an explicit safe `search_path`, and they reference unqualified tables. This is a search-path hijack and Supabase security-linter failure point.
+  - Fix direction: Add `SET search_path = ''` to both functions and schema-qualify all table/function references.
+- F218 | Migrations | `database-migrations.md / supabase/migrations/20260318150000_insights_benchmarks.sql` | 39-45 | category=failure-point | severity=medium
+  - Description: `community_benchmarks` uses `FOR SELECT USING (true)` without `TO authenticated`, so the policy applies to PUBLIC, including anon, on an aggregate benchmark table. A later migration restricts this to authenticated users, but this file creates an anon-readable policy.
+  - Fix direction: Add `TO authenticated` to the benchmark read policy unless anonymous benchmark access is explicitly intended and documented.
+- F220 | Migrations | `database-migrations.md / supabase/migrations/20260412_leaderboard_functions.sql` | 179-189 | category=failure-point | severity=medium
+  - Description: `update_leaderboard_events_updated_at()` is `SECURITY DEFINER` with `SET search_path = public`. Including a mutable schema in a definer function's search path is a Supabase linter/security issue.
+  - Fix direction: Use `SET search_path = ''` and schema-qualify `now()`/objects where needed, or make the trigger function `SECURITY INVOKER` if definer privileges are unnecessary.
+- F232 | Migrations | `database-migrations.md / supabase/migrations/20260526120000_community_snapshots_and_imports.sql` | 469-473, 516-517, 549-554 | category=failure-point | severity=medium
+  - Description: `import_shared_cycle()` casts JSON snapshot fields directly to `INT`/`NUMERIC` (for example `(v_snapshot ->> 'duration_weeks')::INT` and `(v_day ->> 'weight_adjustment')::NUMERIC`). Shared snapshots can be creator-controlled data; malformed numeric strings will throw and make imports fail for every viewer of that shared item.
+  - Fix direction: Validate JSON field types before casting, use guarded regex/type checks, or normalize snapshots at write time so import RPCs fail gracefully with a clear validation error.
+- F051 | CI/CD | `build-&-config.md / biome.json` | biome.json:8-10 | category=failure-point | severity=medium
+  - Description: The Biome file set is restricted to `src/**/*.ts`, `src/**/*.tsx`, and `vite.config.ts`. Running Biome directly against the assigned build/config files processed 0 files and reported that `vitest.config.ts`, `playwright.config.ts`, `postcss.config.mjs`, `wrangler.toml`, `package.json`, `tsconfig*.json`, and `index.html` were ignored. As a result, the `npm run lint` gate does not actually lint or format most build, test, deployment, and HTML configuration reviewed here.
+  - Fix direction: Expand `files.includes` to cover all lintable config files, for example `*.config.ts`, `*.config.mjs`, `package.json`, `tsconfig*.json`, `index.html`, and any supported deployment config files. If some files must remain unlinted, document the exclusion explicitly.
+- F049 | CI/CD | `build-&-config.md / tsconfig.app.json` | tsconfig.app.json:23 | category=failure-point | severity=medium
+  - Description: Application source is compiled with `"types": ["vitest/globals", "vite-plugin-pwa/react"]`. This makes test globals such as `describe`, `it`, `expect`, and `vi` visible to all production `src` files. A mistaken test-only global reference in application code can typecheck successfully even though it is not a runtime browser global.
+  - Fix direction: Remove `vitest/globals` from the application tsconfig and place it in a dedicated test tsconfig or Vitest-only type setup. Keep production app types limited to browser/Vite/PWA runtime types.
+- F048 | CI/CD | `build-&-config.md / tsconfig.json` | tsconfig.json:2-5`, `tsconfig.app.json:25 | category=failure-point | severity=medium
+  - Description: The root TypeScript project references only `tsconfig.app.json`, and the app config includes only `src`. Build/test/deployment config files such as `vite.config.ts`, `vitest.config.ts`, and `playwright.config.ts` are therefore outside the normal `npm run typecheck` coverage. Since these files control production build, tests, and E2E execution, type errors or stale API usage in them can evade the standard typecheck gate.
+  - Fix direction: Add a separate Node/config TypeScript project such as `tsconfig.node.json` covering `vite.config.ts`, `vitest.config.ts`, `playwright.config.ts`, and relevant scripts, then reference it from the root `tsconfig.json` or run it in `npm run typecheck`.
+- F052 | CI/CD | `build-&-config.md / wrangler.toml` | wrangler.toml:1`, `wrangler.toml:7-12 | category=failure-point | severity=medium
+  - Description: The file is labeled as Cloudflare Pages configuration, but it uses Workers/static-assets keys (`[assets] directory = "./dist"`) and does not declare the Pages-specific `pages_build_output_dir = "./dist"`. Cloudflare Pages documentation says Pages Wrangler configuration uses `pages_build_output_dir`; without it, a Pages project can continue relying on dashboard-only settings or treat the file as local-only, creating deployment drift between source control and production.
+  - Fix direction: If this is intended to be a Pages project config, replace the Workers assets block with `pages_build_output_dir = "./dist"` and migrate the full Pages config into source control. If this is intended for Workers static assets, update comments/naming so operators do not assume it governs Pages Git deployments.
+- F053 | CI/CD | `build-&-config.md / wrangler.toml` | wrangler.toml:11-12 | category=failure-point | severity=medium
+  - Description: The configured deployment build command runs `npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config`, but it skips `npm run typecheck` and `npm run lint`. Vite production builds transpile TypeScript but do not provide the same type-safety gate as `tsc --noEmit`, so a direct Wrangler deployment can ship code that would fail the repository's stronger `verify` script.
+  - Fix direction: Use the same quality gate for deploy builds, for example `npm run lint && npm run typecheck && npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config`, or delegate to a deploy-safe variant of `npm run verify`.
+- F082 | CI/CD | `ci-cd-&-workflows.md / .github/ISSUE_TEMPLATE/bug_report.yml` | 29-60 | category=failure-point | severity=medium
+  - Description: The Mobile OS Version, Mobile App Version, and Mobile Device Model fields say they are required for Mobile App-only or Both reports, but GitHub Issue Forms cannot enforce that conditional requirement and these fields are configured with `required: false`. Mobile bugs can be filed without the device/app data needed for triage.
+  - Fix direction: Split web and mobile bug templates, make the mobile fields required unconditionally when platform includes mobile, or replace the conditional copy with a required textarea that asks reporters to enter `N/A` for web-only issues.
+- F074 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/ci.yml` | 97-111 | category=failure-point | severity=medium
+  - Description: The production build job runs `npm run build` with placeholder Supabase values and then only checks for sourcemaps. It does not run the repository's full `npm run verify` / `assert:supabase-config` guard, so CI can pass even when shipped config/CSP/build artifacts contain stale or wrong Supabase project refs that the local verify command is supposed to catch.
+  - Fix direction: Run `npm run verify` or at least `npm run assert:supabase-config` after the build step, and provide the same stale-ref denylist/build-time environment that production uses. Keep placeholders only for compileability checks that are clearly separate from deploy readiness.
+- F077 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/migrations.yml` | 55-59, 77-79 | category=failure-point | severity=medium
+  - Description: The clean-apply job has no job-level or step-level timeout. `supabase start`, Docker image pulls, health checks, or `supabase db reset` can hang until GitHub's default maximum timeout, consuming CI capacity and delaying feedback for migration PRs.
+  - Fix direction: Add `timeout-minutes` to the job and/or the Supabase start/reset steps, and keep the `if: always()` cleanup step so the local stack is still stopped after failures.
+- F079 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/sync-tests.yml` | 3-18 | category=failure-point | severity=medium
+  - Description: This workflow omits an explicit top-level `permissions` block. It does not need repository write access, but will inherit whatever default `GITHUB_TOKEN` permissions the repository or organization has configured, increasing blast radius for a workflow that runs on pull requests.
+  - Fix direction: Add `permissions: contents: read` at the workflow or job level, matching the other CI workflows unless a future step genuinely requires broader permissions.
+- F085 | CI/CD | `ci-cd-&-workflows.md / AGENTS.md` | 36-39 | category=failure-point | severity=medium
+  - Description: The guidance tells agents to run `npm run test:sync` for migration-adjacent work and to commit idempotent migration files, but it does not direct them to run the migration clean-apply gate or an equivalent Supabase migration validation when `supabase/migrations/**` changes. Agents following only this short guide can miss the workflow's primary migration failure mode.
+  - Fix direction: Add a migration-specific validation bullet that mirrors `.github/workflows/migrations.yml` (local clean apply / `supabase db reset --no-seed` where available) and require documenting any missing Supabase/Docker prerequisites.
+- F093 | CI/CD | `ci-cd-&-workflows.md / README.md` | 161-167 | category=failure-point | severity=medium
+  - Description: The deployment section lists GitHub Pages as a static-host option without warning that the app uses `BrowserRouter`. Deep links and refreshes on nested routes will 404 on GitHub Pages unless a SPA fallback/404 rewrite or a hash-router/base-path strategy is configured.
+  - Fix direction: Add host-specific SPA fallback requirements, document a supported GitHub Pages configuration, or remove GitHub Pages from the quick deploy list if it is not tested.
+- F089 | CI/CD | `ci-cd-&-workflows.md / WORKFLOW.md` | 22-30 | category=failure-point | severity=medium
+  - Description: The `after_create` hook performs both a fresh clone and `npm ci`, but the hook timeout is only 600,000 ms (10 minutes). Cold npm installs, registry slowness, or native optional dependency downloads can exceed this and leave newly created workspaces half-provisioned.
+  - Fix direction: Increase the hook timeout, add retry/cache support, or split clone and dependency installation into separately reported steps so failures are diagnosable and retryable.
+- F233 | Tests | `e2e-tests.md / e2e/a11y.spec.ts` | 52-60, 93-100 | category=failure-point | severity=medium
+  - Description: The axe audit collects WCAG A/AA violations but only fails on `critical` and `serious` impact violations. Moderate WCAG failures (for example many color contrast, landmark, label, or focus-order regressions) are logged but allowed to pass, so this is not a full WCAG A/AA regression gate despite the file/test naming.
+  - Fix direction: Decide whether this test is only a smoke gate or a WCAG conformance gate. If it is intended as WCAG coverage, fail on all violations for the selected WCAG tags or maintain an explicit reviewed allowlist for known moderate/minor issues.
+- F234 | Tests | `e2e-tests.md / e2e/a11y.spec.ts` | 65-75 | category=failure-point | severity=medium
+  - Description: Authenticated page accessibility tests use the generic mock harness without seeding realistic page data for most routes. Several pages can render empty states, placeholders, or simplified mocked content, so accessibility regressions in populated cards, charts, forms, dialogs, and table/list states can be missed.
+  - Fix direction: Add representative fixtures per authenticated route, or split a11y tests into empty-state and populated-state audits for pages with materially different DOMs.
+- F235 | Tests | `e2e-tests.md / e2e/account-deletion.spec.ts` | 264-270, 291-302 | category=failure-point | severity=medium
+  - Description: The destructive-delete success path verifies sign-out/localStorage clearing, but it does not assert the documented redirect to `/`. A regression where the token is cleared but the user remains on `/profile` or an error screen would pass this spec.
+  - Fix direction: After confirming deletion and sign-out, assert `page.waitForURL("/"...)` or an equivalent landing-page visible state in addition to token clearing.
+- F236 | Tests | `e2e-tests.md / e2e/account-deletion.spec.ts` | 94-123 | category=failure-point | severity=medium
+  - Description: The deletion_requests mock responds based only on path and method; it does not validate the `user_id` and `status` filters on GET or the POST payload shape. The production query is security-sensitive because it must read/write only the current user's pending deletion request, but the mock would still pass if those filters were accidentally dropped or changed.
+  - Fix direction: Parse query parameters for `user_id=eq.<id>` and `status=eq.pending`, validate POST body includes the expected `user_id`, and return an error or empty result when the request does not match the production contract.
+- F238 | Tests | `e2e-tests.md / e2e/critical-paths.spec.ts` | 73-104 | category=failure-point | severity=medium
+  - Description: The subscription-gate checks only visible copy/buttons and never verifies that gated integration-management controls are absent for FREE users or that FLAME-only network actions are unreachable. A page that displays the upgrade prompt while also leaking connect/sync controls could pass.
+  - Fix direction: Add negative assertions for provider connect/sync/disconnect controls and, where possible, assert no gated integration requests are made for FREE users.
+- F252 | Tests | `e2e-tests.md / e2e/fixtures/auth.ts` | 14, 41-52, 83-91 | category=failure-point | severity=medium
+  - Description: The live session cache is a single `.session-cache.json` beside the fixture, keyed only by timestamp and not by Supabase URL, test email, or user. Switching test accounts/projects within 30 minutes can reuse the wrong user's session; parallel workers can also race on the same cache file.
+  - Fix direction: Include Supabase URL/project ref and test email in the cache key/filename, validate `expires_at`, and write cache files atomically (write temp then rename) or disable shared cache when workers run in parallel.
+- F239 | Tests | `e2e-tests.md / e2e/integrations.spec.ts` | 43-50 | category=failure-point | severity=medium
+  - Description: The manual sync/disconnect test asserts generic text (`Recent Activity`, `completed`, `Connect Strava`) but does not verify the request contract for sync queue creation, provider argument, or edge-function invocation. Because the support mock auto-completes sync state, this can miss regressions where the UI calls the wrong endpoint/payload but still transitions under the mock.
+  - Fix direction: Track and assert the intercepted `/rest/v1/sync_queue` POST body and `/functions/v1/strava-sync` request, including provider and sync type, before asserting UI state.
+- F241 | Tests | `e2e-tests.md / e2e/navigation.spec.ts` | 61-79 | category=failure-point | severity=medium
+  - Description: The test named `privacy page back-navigation to landing` uses `page.goto("/")` rather than exercising an in-page back/home link, browser back behavior, or an app navigation element. It therefore verifies direct routing, not the user-facing back-navigation path.
+  - Fix direction: Click the actual back/home control from the privacy page, or use browser back if that is the intended behavior, and assert the landing page renders afterward.
+- F243 | Tests | `e2e-tests.md / e2e/pricing-gates.spec.ts` | 36-43 | category=failure-point | severity=medium
+  - Description: The FLAME downgrade test only checks for a `Downgrade` button and absence of `Included in your plan`. It does not assert which tier/card the downgrade action belongs to, so a mislabeled button on the wrong plan or multiple plan-card state regression could pass.
+  - Fix direction: Scope assertions to each pricing card and verify current FLAME state separately from EMBER/other lower-tier downgrade CTAs.
+- F244 | Tests | `e2e-tests.md / e2e/public-pages.spec.ts` | 117-121, 138-142 | category=failure-point | severity=medium
+  - Description: Privacy and Terms content checks use only body text length greater than 200. This can pass with unrelated boilerplate, duplicated navigation text, or an error page that contains enough text.
+  - Fix direction: Assert stable page-specific legal sections/headings and at least one expected policy/terms clause rather than only total body length.
+- F249 | Tests | `e2e-tests.md / e2e/signup-onboarding.spec.ts` | 83-105 | category=failure-point | severity=medium
+  - Description: The signup auth mock returns `[]` or `{ success: true }` for broad REST/functions/auth fallthroughs, including endpoints not explicitly modeled for the signup flow. This can hide wrong endpoint calls or invalid response-shape handling during post-signup dashboard hydration.
+  - Fix direction: Fulfill only the specific endpoints expected by the signup flow with realistic shapes, and fail unexpected Supabase paths with a clear 500/error in test output.
+- F250 | Tests | `e2e-tests.md / e2e/smoke.spec.ts` | 199-203 | category=failure-point | severity=medium
+  - Description: The compare-page smoke test accepts `Missing Session IDs` as a passing state. That verifies the route can render an empty/error prompt, but not that the comparison critical path works with selected sessions.
+  - Fix direction: Add a seeded comparison test that navigates with valid session IDs and asserts comparison metrics/content, leaving the missing-IDs assertion as a separate empty-state test.
+- F256 | Tests | `e2e-tests.md / e2e/support/supabase.ts` | 3-15 | category=failure-point | severity=medium
+  - Description: The default Supabase URL is a real-looking hosted domain (`https://test-project.supabase.co`). Any unmocked request or test that accidentally bypasses route interception may attempt external network access instead of failing locally and deterministically.
+  - Fix direction: Use a non-routable/local default URL for mocked E2E, or configure Playwright to fail unexpected network calls to Supabase unless a live-test project is explicitly enabled.
+- F518 | Tests | `sync-tests-&-security-tests.md / tests/sync/broadcast.test.ts` | 49-66 | category=failure-point | severity=medium
+  - Description: The main successful-broadcast test pushes an empty sessions payload and then accepts any channel matching `/^sync:/`. The mock falls back to `sync:mock-user` when it cannot derive a user from a session, so this test would still pass if successful empty pushes broadcast to the wrong user channel.
+  - Fix direction: Assert the channel is exactly `sync:${testUser.id}` for all successful pushes, including empty payloads. The mock should derive channel identity from the authenticated user context, not from the first session row.
+- F519 | Tests | `sync-tests-&-security-tests.md / tests/sync/conflicts/conflict-resolution.test.ts` | 230-279 | category=failure-point | severity=medium
+  - Description: The delta-sync scenario records a `syncTime`, pushes a second routine, and comments that only the second routine should be returned, but it never performs a delta assertion. It only checks that a full pull contains at least two routines and that the mock pattern exists.
+  - Fix direction: Assert the delta pull excludes the first routine and includes the second routine when running against a fidelity mock or live function. If the mock cannot do this, mark the test live-only and add a mock unit test for the cursor/filter builder.
+- F520 | Tests | `sync-tests-&-security-tests.md / tests/sync/conflicts/conflict-resolution.test.ts` | 289-349 | category=failure-point | severity=medium
+  - Description: The badge union-merge test describes an expected 3-badge union but only asserts `pullResult.success === true`. It never checks uniqueness, count, or the presence of `FIRST_WORKOUT`, `WEEK_WARRIOR`, and `PR_KING`.
+  - Fix direction: Pull badges and assert exactly one `FIRST_WORKOUT` plus the two non-overlapping badge IDs. Use a unique key assertion on `(userId, badgeId)` semantics.
+- F524 | Tests | `sync-tests-&-security-tests.md / tests/sync/error-classes.test.ts` | 62-85, 139-147 | category=failure-point | severity=medium
+  - Description: `setMockErrorMode('server')` and `setMockErrorMode('network')` are acknowledged as unwired. One test expects a successful 200 after setting server-error mode, which cements the mock defect as a passing regression marker.
+  - Fix direction: Wire `checkMockError()` into both mock push and mock pull, then flip assertions to require status 500 / code `SERVER_ERROR` and status 0 / code `NETWORK_ERROR`.
+- F547 | Tests | `sync-tests-&-security-tests.md / tests/sync/helpers/mock-edge-functions.ts` | 184-195, 201-215 | category=failure-point | severity=medium
+  - Description: Badge and broadcast identity are derived from payload data or hardcoded `mock-user` instead of authenticated user context. Badge keys use `mock-user:${badge.badgeId}` and broadcasts use `payload.sessions?.[0]?.userId ?? 'mock-user'`, so tests cannot detect cross-user badge/channel leakage.
+  - Fix direction: Represent auth context in the mock token/test user and key all user-scoped state and broadcasts from that authenticated user ID.
+- F526 | Tests | `sync-tests-&-security-tests.md / tests/sync/hierarchy.test.ts` | 794-814 | category=failure-point | severity=medium
+  - Description: The `local_profiles` test pushes `allProfiles` but only asserts `localProfiles` is an array. The current mock returns an empty array unconditionally, so the test passes without proving profile rows round-trip.
+  - Fix direction: Assert both profile IDs, names, and color indexes are returned, and update the mock to store/pull local profile payloads.
+- F527 | Tests | `sync-tests-&-security-tests.md / tests/sync/hierarchy.test.ts` | 991-1028 | category=failure-point | severity=medium
+  - Description: The delta-sync test named “should return only records modified since lastSync” does not assert which records are returned. It only checks `syncTime` is greater than `lastSyncTime`.
+  - Fix direction: Assert the first session is absent and the second session is present for delta pulls, or move the behavioral assertion to a live-only test until the mock supports per-row timestamps.
+- F528 | Tests | `sync-tests-&-security-tests.md / tests/sync/hierarchy.test.ts` | 1031-1057 | category=failure-point | severity=medium
+  - Description: The empty-delta test performs a future-timestamp pull but never asserts returned entity arrays are empty. It only asserts success.
+  - Fix direction: Assert `sessions`, `routines`, `cycles`, `badges`, and other delta-controlled buckets are empty/null as appropriate.
+- F531 | Tests | `sync-tests-&-security-tests.md / tests/sync/multi-device.test.ts` | 700-814 | category=failure-point | severity=medium
+  - Description: The personal-record preservation test creates two PR-producing sessions and pulls, but only asserts that at least two sessions exist. It never inspects `personalRecords`, even though the scenario is about `INSERT OR IGNORE` PR behavior.
+  - Fix direction: Assert the expected PR records are present and not overwritten. If the mock cannot derive PRs, run the test live or extend the mock to derive/store personal records from `isPr` sets.
+- F532 | Tests | `sync-tests-&-security-tests.md / tests/sync/multi-device.test.ts` | 821-894 | category=failure-point | severity=medium
+  - Description: The delta-sync accuracy test records a post-first-push sync time and comments that only session 2 should be returned, but only asserts delta pull success.
+  - Fix direction: Assert `deltaPull` contains session 2 and excludes session 1.
+- F537 | Tests | `sync-tests-&-security-tests.md / tests/sync/round-trip/entity-roundtrip.test.ts` | 649-699 | category=failure-point | severity=medium
+  - Description: The personal-record round-trip tests only build local `expectedRecord` / `record` objects and assert their own fields. They do not push or pull personal records, so they cannot catch sync regressions.
+  - Fix direction: Push data that should create/preserve PRs and assert `pullResult.data.personalRecords` contains the expected phases and record types.
+- F538 | Tests | `sync-tests-&-security-tests.md / tests/sync/round-trip/entity-roundtrip.test.ts` | 703-732 | category=failure-point | severity=medium
+  - Description: The RPG attributes “round-trip” test only checks push success and then reasserts the local object values. The mock does not store RPG attributes, so no round-trip is validated.
+  - Fix direction: Assert pulled `rpgAttributes` matches the pushed object, and update the mock to store it or run this test live.
+- F539 | Tests | `sync-tests-&-security-tests.md / tests/sync/round-trip/entity-roundtrip.test.ts` | 753-793 | category=failure-point | severity=medium
+  - Description: The badge round-trip test pushes badges but never pulls and asserts returned badge rows. It only verifies the input badge array structure.
+  - Fix direction: Pull after push and assert badge IDs, names, tiers, and deduplication behavior.
+- F543 | Tests | `sync-tests-&-security-tests.md / tests/sync/validation.test.ts` | 399-418 | category=failure-point | severity=medium
+  - Description: The expired-JWT live test uses a placeholder-looking token string and only expects status 401. That verifies invalid-token rejection at best, not specifically expired-token classification.
+  - Fix direction: Generate a signed JWT with an expired `exp` using the configured local JWT secret, then assert the expected AUTH-class response shape.
+- F136 | Data | `data-layer---mutations-&-schemas.md / src/mutations/account.ts` | 62-70, 72-76 | category=failure-point | severity=medium
+  - Description: `useCancelDeletion` treats a zero-row update as success. If there is no pending deletion request, the request belongs to a different user, or RLS blocks it, Supabase can return `error: null` with no rows affected, and the UI still toasts that account deletion was cancelled.
+  - Fix direction: Return the updated row with `.select("id").maybeSingle()` or request an exact count and throw a specific error when no pending request was updated.
+- F138 | Data | `data-layer---mutations-&-schemas.md / src/mutations/challenges.ts` | 43-48, 50-54, 72-77, 79-83 | category=failure-point | severity=medium
+  - Description: `useLeaveChallenge` and `useCompleteChallenge` do not verify that any participant row was actually deleted/updated. Invalid challenge IDs, not-yet-joined challenges, or RLS misses can still flow to `onSuccess`, producing "Challenge left" or "Challenge completed!" despite no persisted change.
+  - Fix direction: Select/count the affected participant row and throw a not-found/not-participant error when the mutation affects zero rows.
+- F139 | Data | `data-layer---mutations-&-schemas.md / src/mutations/challenges.ts` | 16-19, 21-30 | category=failure-point | severity=medium
+  - Description: `useJoinChallenge` does not handle duplicate participation explicitly. A rapid double-click or pre-existing participant row will surface as a generic failure rather than an idempotent "already joined" success or a clear duplicate message.
+  - Fix direction: Use an upsert with the challenge/user unique key or map unique-constraint errors to an idempotent result/user-friendly toast.
+- F140 | Data | `data-layer---mutations-&-schemas.md / src/mutations/comments.ts` | 23-30 | category=failure-point | severity=medium
+  - Description: `useCreateComment` accepts and inserts the raw `body` argument without applying the `createCommentSchema` constraints. Callers outside the current UI path, tampered clients, or future forms can submit whitespace-only or over-500-character bodies and rely on the database to reject them.
+  - Fix direction: Parse `{ body }` with the shared schema in the mutation, trim before insert, and surface validation errors distinctly from transport errors.
+- F142 | Data | `data-layer---mutations-&-schemas.md / src/mutations/comments.ts` | 146-152, 155-162 | category=failure-point | severity=medium
+  - Description: `useDeleteComment` soft-deletes without verifying that a row matched the comment ID and current user. Unauthorized, already-deleted, or stale comment IDs can produce a success toast and cache invalidation with no persisted deletion.
+  - Fix direction: Return/count the updated row and throw a specific not-found/not-owner error when no row is affected.
+- F144 | Data | `data-layer---mutations-&-schemas.md / src/mutations/community.ts` | 53-64 | category=failure-point | severity=medium
+  - Description: `useVote` has no `onError` handler. Auth failures, RLS failures, duplicate-key races, or network errors leave the user with no toast and no local recovery path.
+  - Fix direction: Add `onError` logging/toast behavior consistent with the other mutations and consider disabling repeated clicks while pending.
+- F146 | Data | `data-layer---mutations-&-schemas.md / src/mutations/community.ts` | 424-429, 432-449 | category=failure-point | severity=medium
+  - Description: `useBlockUser` does not distinguish duplicate blocks from real failures and does not make blocking idempotent. A previously blocked user can trigger a duplicate-key error and show "Failed to block user" even though the intended blocked state already exists.
+  - Fix direction: Use upsert/on-conflict-do-nothing semantics or map unique-constraint errors to a successful/idempotent blocked state.
+- F147 | Data | `data-layer---mutations-&-schemas.md / src/mutations/community.ts` | 515-527, 531-539 | category=failure-point | severity=medium
+  - Description: `useDeleteSharedContent` does not verify that a shared routine/cycle row was actually deleted. Stale IDs, ownership mismatches, or RLS denials can still be reported as "Content removed from community" if the delete affects zero rows without an error.
+  - Fix direction: Delete with `.select("id").maybeSingle()` or count affected rows and throw a clear not-found/not-owner error when nothing was deleted.
+- F151 | Data | `data-layer---mutations-&-schemas.md / src/mutations/goals.ts` | 27-47 | category=failure-point | severity=medium
+  - Description: `useCreateGoal` inserts caller-supplied values directly and does not parse the shared create-goal schema. Negative targets, missing PR exercise information, invalid deadlines, or unsupported periods can be sent to Supabase and only fail at database time if constraints happen to exist.
+  - Fix direction: Reuse `createGoalSchema` (after adding all required fields) inside the mutation and show validation-specific errors before making the network call.
+- F152 | Data | `data-layer---mutations-&-schemas.md / src/mutations/goals.ts` | 134-142, 145-149 | category=failure-point | severity=medium
+  - Description: `useArchiveGoal` does not verify that a goal row was actually archived. A stale goal ID or ownership mismatch can produce "Goal archived" even when zero rows were updated.
+  - Fix direction: Select/count the updated row and throw a not-found/not-owner error when no row is affected.
+- F155 | Data | `data-layer---mutations-&-schemas.md / src/mutations/profile.ts` | 29-33, 35-41 | category=failure-point | severity=medium
+  - Description: `useUpdateProfile` does not verify that a profile row exists for `userId`. If the row is missing, the ID is stale, or RLS blocks the update without an error, the hook still toasts "Settings saved" and invalidates the cache.
+  - Fix direction: Return/count the updated row and throw a specific not-found/not-authenticated error when no profile was updated.
+- F159 | Data | `data-layer---mutations-&-schemas.md / src/mutations/routines.ts` | 10-17, 64-94 | category=failure-point | severity=medium
+  - Description: Routine inputs are not validated in the mutation before duration and storage transforms run. Invalid values such as zero/negative `sets`, negative `rest_seconds`, or non-finite weights can produce negative durations or invalid stored per-cable weights before the database rejects them.
+  - Fix direction: Add and reuse a Zod input schema for routine mutations, including non-negative/int constraints and finite-number checks.
+- F163 | Data | `data-layer---mutations-&-schemas.md / src/schemas/community.ts` | 16-43, 67-86 | category=failure-point | severity=medium
+  - Description: Community routine/cycle snapshot schemas accept arbitrary numeric values for counts, reps, weights, durations, day numbers, and adjustments. Negative/decimal counts or nonsensical schedule values can pass validation and later be imported into user routines/cycles.
+  - Fix direction: Add domain constraints such as `.int().nonnegative()` for counts/order/day numbers, positive duration/week bounds, and finite numeric checks.
+- F164 | Data | `data-layer---mutations-&-schemas.md / src/schemas/community.ts` | 90-99, 124-154 | category=failure-point | severity=medium
+  - Description: Malformed `exercises_snapshot` or `cycle_snapshot` values are swallowed with `.catch(null)`. Corrupt shared content will silently lose its preview/detail data instead of surfacing a validation error or quarantine state.
+  - Fix direction: Log/report parse failures and expose an explicit invalid-snapshot state, or only catch known legacy-null cases rather than every validation error.
+- F166 | Data | `data-layer---mutations-&-schemas.md / src/schemas/goals.ts` | 37-52 | category=failure-point | severity=medium
+  - Description: PR goal validation only checks truthiness of `exercise_name` and `deadline` is any string. Whitespace-only exercise names and invalid date strings pass schema validation.
+  - Fix direction: Trim `exercise_name` before validating and validate/coerce deadlines as dates, optionally rejecting past deadlines if the product expects future targets.
+- F168 | Data | `data-layer---mutations-&-schemas.md / src/schemas/recovery.ts` | 8-11 | category=failure-point | severity=medium
+  - Description: Recovery session data accepts any numeric `total_volume`, including negative or non-finite values. Bad rows can skew ACWR/recovery calculations instead of being rejected at parse time.
+  - Fix direction: Use `.finite().nonnegative()` for volume and validate `started_at` as a real date.
+- F169 | Data | `data-layer---mutations-&-schemas.md / src/schemas/recovery.ts` | 32-36 | category=failure-point | severity=medium
+  - Description: `wearableRecoverySchema` leaves `raw_data` as unrestricted `z.any()`. Downstream extraction must defensively handle every possible shape, and malformed provider payloads can move past the schema boundary undetected.
+  - Fix direction: Define provider-specific raw-data schemas or a minimal normalized recovery payload schema; use `z.unknown()` plus safe narrowing instead of `z.any()`.
+- F170 | Data | `data-layer---mutations-&-schemas.md / src/schemas/telemetry.ts` | 26-32, 38-53 | category=failure-point | severity=medium
+  - Description: Telemetry and rep summary schemas do not enforce non-negative/finite constraints for timestamp, force, velocity, position, power, ROM, or time-under-tension values. Physically impossible or `Infinity`/`NaN` values can pass `z.number()` and poison charts/calculations.
+  - Fix direction: Add `.finite()` and domain-specific bounds/non-negative constraints to telemetry metrics.
+- F174 | Data | `data-layer---mutations-&-schemas.md / src/schemas/transforms.ts` | 54-56, 75-80, 112-142, 164-169, 191-199, 218-219, 265, 287, 305-309, 323-327, 373-380, 397-401 | category=failure-point | severity=medium
+  - Description: Many date transforms use `new Date(s)` without validating the result. Invalid or malformed timestamps pass schema parsing as `Invalid Date`, causing later UI formatting, comparisons, and sorting to behave unpredictably.
+  - Fix direction: Centralize an ISO date schema using `z.coerce.date()` or a transform+refine helper and reuse it across this file.
+- F175 | Data | `data-layer---mutations-&-schemas.md / src/schemas/transforms.ts` | 243-253, 358-359 | category=failure-point | severity=medium
+  - Description: Several JSON fields use `z.any()` and are accepted without shape validation (`per_set_weights`, `per_set_rest`, `per_set_reps`, `progression_settings`, `deload_settings`). Invalid shapes can pass the data layer and fail later in UI rendering or import/export paths.
+  - Fix direction: Replace `z.any()` with `z.unknown()` plus explicit array/object schemas for each expected shape, and reject or quarantine malformed values.
+- F182 | Data | `data-layer---queries.md / src/queries/challenges.ts` | 56-113 | category=failure-point | severity=medium
+  - Description: `challengeType` is a plain string and the switch has no default/error path. Unknown or newly added challenge types silently return `current = 0` and a valid-looking 0% progress result.
+  - Fix direction: Narrow `challengeType` to a union/schema enum and throw or return an explicit unsupported-state result in the default case.
+- F187 | Data | `data-layer---queries.md / src/queries/exercises.ts` | 36-40 | category=failure-point | severity=medium
+  - Description: Search text is interpolated directly into a PostgREST `.or()` expression. `%`, `_`, and backslash are escaped, but `.or()` syntax is also sensitive to delimiters such as commas and parentheses. User search strings containing those characters can produce malformed filters or unintended conditions.
+  - Fix direction: Use a Postgres RPC/full-text search helper, encode/sanitize all PostgREST operator delimiters, or split into safer individual filters where possible.
+- F193 | Data | `data-layer---queries.md / src/queries/profile.ts` | 43-66, 98-132 | category=failure-point | severity=medium
+  - Description: `profileStatsOptions` and `topExercisesOptions` fetch all workout sessions/exercises and aggregate client-side with no limit or server-side aggregation. Long-lived users can pull very large histories into the browser just to compute counts, streaks, and top five exercises.
+  - Fix direction: Move counts/sums/top-exercise aggregation into SQL/RPC/views with profile filtering, and keep query results bounded.
+- F201 | Data | `data-layer---stores.md / src/stores/useCommunityStore.ts` | 14, 30, 40-41 | category=failure-point | severity=medium
+  - Description: `blockedUserIds` is kept as a mutable `Set` and `setBlockedUserIds` stores the caller-provided `Set` by reference. Any code that later mutates that `Set` instance, or mutates the `Set` returned from the store, can change store contents without going through Zustand `set`, so subscribers will not be notified. `resetAll` also restores the module-level `initialState` object, including the same reusable empty `Set` instance.
+  - Fix direction: Keep store state immutable/serializable. Prefer `string[]` or `ReadonlySet<string>` plus dedicated `addBlockedUser`, `removeBlockedUser`, and `replaceBlockedUsers` actions that always create a fresh `Set`. Have `resetAll` build a fresh initial object instead of reusing the module-level `initialState` reference.
+- F204 | Data | `data-layer---stores.md / src/stores/useProfileFilterStore.ts` | 20 | category=failure-point | severity=medium
+  - Description: The store persists to `sessionStorage`, which is per-tab and does not emit useful cross-tab synchronization for other tabs. A user changing the active local profile in one tab leaves other open tabs on the previous profile, so reads and new routine/cycle mutations can be attributed to different profiles depending on which tab the user acts in.
+  - Fix direction: If profile selection is intended to be a global user preference, use user-scoped `localStorage` plus a `storage` event/BroadcastChannel listener, or persist the preference server-side. If per-tab behavior is intentional, document it and avoid using the per-tab filter implicitly for create/import mutations without an explicit profile choice.
+- F206 | Data | `data-layer---stores.md / src/stores/useReplayStore.ts` | 44, 46-53 | category=failure-point | severity=medium
+  - Description: Navigation and seek actions accept unbounded values. `seek` can store negative, `NaN`, or beyond-duration times; `nextSet` increments forever with no knowledge of `totalSets`; and `setCurrentRepIndex` accepts negative/out-of-range indexes. The current UI disables some buttons, but the store API itself can still enter invalid states through tests, keyboard/imperative callers, race conditions when set counts change, or future components.
+  - Fix direction: Clamp at the store boundary. Consider `seek(timeMs, durationMs)` or a dedicated `setDuration` in store, `nextSet(totalSets)`, and `setCurrentRepIndex(index, repCount)`, with `Number.isFinite` checks and non-negative integer normalization.
+- F208 | Data | `data-layer---stores.md / src/stores/useUIStore.ts` | 13-23 | category=failure-point | severity=medium
+  - Description: The UI store is global and has no reset action or user scoping. Streak and notification badges are user-specific, but they remain in memory until `useStreakSync`/`useNotificationSync` overwrite them. During sign-out, account switches, offline query failures, or before the sync hooks run, navigation can briefly show stale counts from a previous user/session.
+  - Fix direction: Add a `reset()` action and invoke it on sign-out/auth-user changes before new queries resolve. Alternatively store counts under a `userId` key and have selectors return zero when the current authenticated user does not match the stored owner.
+- F437 | Data | `lib---analytics-&-science.md / src/lib/body-muscle-analytics.ts` | 325-335, 345-347, 371-386 | category=failure-point | severity=medium
+  - Description: `buildBodyMuscleFocusModel` permits rows with only `setCount`, but reps and volume are computed only from the nested `sets` array. If a query omits nested sets or they fail to hydrate, the model still counts set load through `contributionLoad = Math.max(volumeKg, setCount)` but reports `totalReps`, `totalVolumeKg`, and per-exercise `volumeKg` as zero.
+  - Fix direction: Either require hydrated sets for this model and treat missing sets as incomplete data, or add explicit fallback fields for reps/volume so the aggregate totals and contribution rows stay consistent when `sets` is absent.
+- F452 | Data | `lib---analytics-&-science.md / src/lib/computeNextWorkout.ts` | 54-59 | category=failure-point | severity=medium
+  - Description: `day.day_type` is cast to `"workout" | "rest"` even though the schema exposes it as a plain string. Unexpected values such as `"deload"`, `"mobility"`, or misspellings leak into `dayType` while `isRestDay` is false, breaking the advertised return type and potentially routing users into a workout flow for non-workout days.
+  - Fix direction: Validate `day_type` before returning; map known aliases explicitly and return `null` or an unknown/rest-safe state for unsupported values.
+- F438 | Data | `lib---analytics-&-science.md / src/lib/fatigue-detection.ts` | 38-58, 81-90 | category=failure-point | severity=medium
+  - Description: The fatigue calculation never validates that velocities are finite. A `NaN` first rep bypasses the `<= 0` guard, then every per-rep drop becomes `NaN`; `findIndex` returns `-1` and `createNoFatigueResult` can return `velocityDropPercent: NaN`. A later `NaN` velocity similarly poisons `Math.max(...perRepDrops)`.
+  - Fix direction: Filter or reject non-finite `mean_velocity_mps` values before computing drops; return a safe no-data result when the baseline is not finite, and avoid propagating `NaN` into UI-facing percentages.
+- F440 | Data | `lib---analytics-&-science.md / src/lib/freshness.ts` | 50-65, 67-90 | category=failure-point | severity=medium
+  - Description: `partialTelemetry` is handled before refresh errors. When telemetry is partial and the refresh also failed, the function returns `status: "partial"` and never exposes the reconnecting/stale error state, so users can see a benign partial-data badge while the data source is actually failing.
+  - Fix direction: Prioritize `hasError`/`isFetching` states over `partialTelemetry`, or combine them explicitly with a status/flag that communicates both partial data and refresh failure.
+- F474 | Data | `lib---core-utilities.md / src/lib/database.types.ts` | 1576-1627 | category=failure-point | severity=medium
+  - Description: The `subscriptions` table exposes `status` and `tier` as unrestricted `string` types even though the application expects narrow unions (`FREE`/`EMBER`/`FLAME`/`INFERNO` and known subscription statuses). This weakens compile-time protection and allows invalid writes to type-check.
+  - Fix direction: Back the database columns with enums or generated check-constraint-aware types where possible. At minimum, centralize typed insert/update helpers that validate tier/status before writing.
+- F475 | Data | `lib---core-utilities.md / src/lib/database.types.ts` | 1036-1066, 2169-2199 | category=failure-point | severity=medium
+  - Description: Telemetry rows/views allow nullable `cable`, `force_n`, `velocity_mps`, and `position_mm`, while `src/lib/telemetry.ts` chart helpers require non-null numbers and a strict `"A" | "B"` cable. Directly passing query results into chart code can produce runtime failures or incorrect display after casts.
+  - Fix direction: Add a normalization layer for telemetry query results that drops or defaults incomplete samples and validates cable identifiers before constructing `TelemetryPoint` objects.
+- F461 | Data | `lib---core-utilities.md / src/lib/paddle-client.ts` | 78-103 | category=failure-point | severity=medium
+  - Description: `scriptLoadPromise` is cached even when the Paddle script load rejects. A transient CDN/network/ad-block failure leaves the module permanently stuck with the rejected promise, so later checkout attempts cannot retry without a full page reload.
+  - Fix direction: Clear `scriptLoadPromise` in the rejection path or wrap the promise with `.catch()` that resets the cache before rethrowing. Optionally remove the failed script element.
+- F464 | Data | `lib---core-utilities.md / src/lib/subscription-entitlement.ts` | 11-30, 33-42 | category=failure-point | severity=medium
+  - Description: Only `active` and `trialing` are treated as entitlement-bearing statuses. A `past_due` subscription with a future `current_period_end` immediately loses paid access, even though payment processors commonly allow a grace/retry window while the billing period is still current.
+  - Fix direction: Confirm the billing policy. If grace access is intended, include `past_due` while `current_period_end` is still future, possibly with separate UI messaging and stale-refresh behavior.
+- F456 | Data | `lib---core-utilities.md / src/lib/supabase.ts` | 42-58 | category=failure-point | severity=medium
+  - Description: The retry path reuses the original `input` and `init` after the first `fetch`. If `input` is a `Request` with a body, the first fetch consumes the body stream and the retry can fail with an unusable body. Retrying non-idempotent requests also risks duplicating side effects if the server partially processed the first request before returning 401.
+  - Fix direction: Restrict retries to safe request shapes or clone the `Request` before the first fetch. Consider only retrying idempotent methods by default and documenting/handling function calls separately.
+- F467 | Data | `lib---core-utilities.md / src/lib/telemetry.ts` | 32-40 | category=failure-point | severity=medium
+  - Description: `downsampleTelemetry` accepts any `targetPoints` value. Values such as `0`, `1`, `2`, negative numbers, or non-finite numbers are passed directly into the LTTB implementation and can throw or return unusable chart data.
+  - Fix direction: Validate `targetPoints` before calling LTTB. Clamp to a documented minimum, or return an empty/original array for unsupported values.
+- F488 | Data | `lib---integrations.md / src/lib/integrations/export-csv.ts` | 117-124 | category=failure-point | severity=medium
+  - Description: Export batches set lookup by exercise IDs, but it does not batch the earlier `.in("session_id", sessionIds)` exercise query. Large accounts with many sessions can exceed PostgREST URL/query-size limits or practical `.in()` limits before reaching the batched set query.
+  - Fix direction: Batch the exercise lookup by `sessionIds` as well, using the same chunking pattern as the set lookup, then merge the results before building maps.
+- F484 | Data | `lib---integrations.md / src/lib/integrations/hevy.ts` | 89-115, 246-260 | category=failure-point | severity=medium
+  - Description: CSV and API normalization build `Date` objects and call `toISOString()` without validating that `start_time`/`end_time` parsed successfully. A malformed date in one row or workout throws `RangeError: Invalid time value` and can abort the entire import instead of skipping/reporting the bad item.
+  - Fix direction: Validate parsed dates with `Number.isFinite(date.getTime())` before generating IDs or ISO strings. Skip invalid workouts with a user-visible parse error summary, or return structured per-row errors from the parser.
+- F477 | Data | `lib---integrations.md / src/lib/integrations/rate-limits.ts` | 5-13 | category=failure-point | severity=medium
+  - Description: The shared client-side `RATE_LIMITS` map omits `liftosaur` even though `liftosaur` is a declared provider and the sync queue processes Liftosaur tasks. Any caller using this shared map for provider throttling will run Liftosaur sync without a provider-specific cap.
+  - Fix direction: Add a Liftosaur entry consistent with the server-side queue limit, or derive both client and Edge Function limits from one source so provider additions cannot diverge.
+- F486 | Data | `lib---integrations.md / src/lib/integrations/strong.ts` | 112-136 | category=failure-point | severity=medium
+  - Description: `parseStrongCSV()` constructs a `Date` from each workout's `Date` field and immediately calls `toISOString()` without checking validity. A single malformed or locale-specific date in a Strong export can throw and cancel the whole CSV import.
+  - Fix direction: Validate `startTime.getTime()` before using it. Report invalid rows/workouts in a parse summary and continue importing valid workouts where possible.
+- F496 | Data | `lib---replay-&-export.md / src/lib/exercise-muscles.ts` | 801-806, 824-832 | category=failure-point | severity=medium
+  - Description: The `dbMuscleGroup` fallback is returned without trimming, canonicalizing, or validating it against the documented parent groups. `classifyMuscleGroup` also compares `dbMuscleGroup !== "General"` before trimming/case-normalizing, so values like `" General "`, `"general"`, or arbitrary database text can be returned as primary groups despite the function comment promising one of `Chest`, `Back`, `Shoulders`, `Arms`, `Legs`, `Core`, or `General`.
+  - Fix direction: Normalize and validate `dbMuscleGroup` before using it; treat any case/whitespace variant of `General` as no hint, and fall back to `General` for unknown non-canonical values.
+- F497 | Data | `lib---replay-&-export.md / src/lib/export/csv-security.ts` | 1-5 | category=failure-point | severity=medium
+  - Description: Formula-injection protection only checks the first character of the raw field. Spreadsheet applications can still interpret values with leading spaces before a dangerous formula prefix (for example `" =SUM(...)"`) or formula text after leading whitespace/control characters. This helper is used by manual CSV generation in `src/lib/integrations/export-csv.ts`, so it is a security boundary rather than dead code.
+  - Fix direction: Detect formulas after leading spaces and other spreadsheet-ignored control characters, or prefix any field whose left-trimmed value starts with `=`, `+`, `-`, `@`, tab, CR, or LF. Add tests for leading-space and newline-prefixed formulas.
+- F500 | Data | `lib---replay-&-export.md / src/lib/export/data-export.ts` | 227-234, 286-309 | category=failure-point | severity=medium
+  - Description: Nested exports load `exercises`, `routine_exercises`, and `cycle_days` with a single `.in(..., ids)` query containing all parent IDs. Users with many workouts/routines/cycles can exceed URL/query length or PostgREST filter limits, causing the export to fail. `analytics-tables.ts` already has chunked pagination helpers for this exact pattern, but `data-export.ts` does not use them.
+  - Fix direction: Reuse a chunked/paginated fetch helper for all `.in` filters, with a bounded chunk size and page size, before adding each nested table to the ZIP.
+- F002 | UI | `analytics-dashboard.md / src/app/components/Analytics.tsx` | 1369-1375, 1490-1496 | category=failure-point | severity=medium
+  - Description: The page-level empty states are gated only on volume/muscle/external summary data (`mobileHasData` and `hasData`). If a user has records, phase stats, progression data, performance benchmark data, or detailed body intelligence but no volume/muscle summary rows for the selected period, the entire tab content is replaced by the empty state and those valid tabs become inaccessible.
+  - Fix direction: Gate empty states per tab, or include all tab-specific data sources in the global availability check. Records/performance/progression/body detail views should be reachable even when the overview charts are empty.
+- F006 | UI | `analytics-dashboard.md / src/app/components/analytics/MobileBodyTab.tsx` | 55-65, 72-83, 151-163, 208-241 | category=failure-point | severity=medium
+  - Description: The mobile Body tab returns early when `muscleGroupData.length === 0`, before rendering `BodyMuscleHeatmap`, volume landmarks, SRA recovery, and recommendations. Those sections are driven by `bodyMuscleModel`, `weeklyVolume`, `muscleRecoveries`, and `recommendations`, so valid detailed body intelligence can be hidden just because the summary muscle-group distribution query is empty.
+  - Fix direction: Replace the whole-tab early return with per-widget empty states. Render detailed body, landmarks, SRA, and recommendations based on their own data availability.
+- F022 | UI | `app-entry-&-routing.md / src/app/components/AuthCallback.tsx` | 66-92 | category=failure-point | severity=medium
+  - Description: The callback gives Supabase only eight 250ms polling attempts (about two seconds) to make a session visible. On slow devices, delayed storage, or slower OAuth callback processing, this can show “Authentication did not complete” even though the auth state may arrive moments later.
+  - Fix direction: Prefer `onAuthStateChange`/`SIGNED_IN` for the callback, or extend the timeout with backoff and keep listening for a late session before declaring failure.
+- F029 | UI | `app-shell-&-layout.md / src/app/components/BottomSheet.tsx` | 27-38, 67-72, 99-100 | category=failure-point | severity=medium
+  - Description: `defaultSnap` and `snapPoints` are not validated. An out-of-range `defaultSnap` produces `NaN` for `currentSnapPoint`; an empty `snapPoints` array will also make the reduce in `handleDragEnd` fail. Either case can leave the sheet offscreen or throw during drag handling.
+  - Fix direction: Clamp `defaultSnap` to a valid index, reject or default empty snap arrays, and normalize snap percentages to a safe range before using them.
+- F030 | UI | `app-shell-&-layout.md / src/app/components/BottomSheet.tsx` | 80-104, 114-129 | category=failure-point | severity=medium
+  - Description: The custom sheet has no dialog semantics, focus trap, initial focus management, Escape handling, or `aria-modal`. Keyboard and screen-reader users can tab to background content while the visual overlay is open.
+  - Fix direction: Use the existing Radix/Vaul drawer/dialog primitives or add `role="dialog"`, `aria-modal="true"`, labelled title wiring, Escape close, focus trapping, and focus restoration.
+- F033 | UI | `app-shell-&-layout.md / src/app/components/ErrorFallback.tsx` | 31-38, 56-60 | category=failure-point | severity=medium
+  - Description: The fallback directly uses `sessionStorage` and `window.location.reload()` without guarding storage access. If session storage is unavailable or throws (private/blocked storage, embedded contexts), this error-handling UI can throw while already handling an error.
+  - Fix direction: Wrap storage reads/writes/removes in `try/catch` and fall back to manual reload UI if storage is unavailable.
+- F039 | UI | `app-shell-&-layout.md / src/app/components/LocalProfileFilter.tsx` | 34-49, 56-69 | category=failure-point | severity=medium
+  - Description: If `activeProfileId` points to a profile that is no longer present in the fetched profile list, the component does not reset it. The UI can retain a stale filter value and downstream pages may show empty or incorrect filtered data even though the profile no longer exists.
+  - Fix direction: When profiles load, verify `activeProfileId` exists in the list and reset it to `null` if it does not.
+- F045 | UI | `app-shell-&-layout.md / src/app/components/modals/RoutinePickerModal.tsx` | 30-46, 53-55 | category=failure-point | severity=medium
+  - Description: The custom modal has no `role="dialog"`, `aria-modal`, labelled-by wiring, focus trap, Escape handling, or focus restoration. The close icon button also has no accessible label beyond the icon. Keyboard and screen-reader users can have difficulty understanding and exiting the modal.
+  - Fix direction: Use the app's dialog component/Radix Dialog or add complete modal accessibility behavior and an `aria-label` for the close button.
+- F059 | UI | `charts-&-visualization.md / src/app/components/charts/CommunityDistribution.tsx` | 84-89, 115-119, 149-166 | category=failure-point | severity=medium
+  - Description: The x-axis domain is fixed to the generated percentile curve's min/max, while the `YOU` markLine is placed at the raw `userValue`. If the user's value is below the lowest supplied percentile or above the highest supplied percentile, one side of the split can be empty and the marker is outside the axis range, so the chart can hide the user's position entirely for outlier users.
+  - Fix direction: Expand the axis domain to include `userValue`, clamp the marker to the visible edge with an outlier label, or add synthetic boundary points so out-of-range users still get a visible indicator.
+- F063 | UI | `charts-&-visualization.md / src/app/components/charts/ForceCurve.tsx` | 191-204, 215-223 | category=failure-point | severity=medium
+  - Description: Gradient IDs are built from only `rep.repNumber` (`force-gradient-${rep.repNumber}`). SVG IDs are document-wide, so multiple `ForceCurve` instances on the same page, or duplicate rep numbers in one chart, can collide and cause an area to reference another chart's gradient.
+  - Fix direction: Generate a component-scoped ID prefix with React `useId()` (or another stable unique prefix) and include it in both the `LinearGradient` `id` and the `fill` URL.
+- F064 | UI | `charts-&-visualization.md / src/app/components/charts/MuscleRadar.tsx` | 74-108 | category=failure-point | severity=medium
+  - Description: The radar visualization renders only through `EChartsWrapper`, which ultimately draws to canvas, and this component provides no surrounding `role`, aria summary, or screen-reader table. Users relying on assistive technology cannot access the current/previous muscle-group values.
+  - Fix direction: Wrap the chart in an accessible summary and add a visually hidden table listing each muscle group's current and previous values, similar to the visx chart components in this folder.
+- F067 | UI | `charts-&-visualization.md / src/app/components/charts/TrainingLoadGauge.tsx` | 22-25, 94 | category=failure-point | severity=medium
+  - Description: The gauge renders only the ECharts canvas with no accessible wrapper, text equivalent, or hidden data table. The TypeScript union protects internal callers at compile time, but at runtime the score/zone are not exposed to screen readers in a reliable way.
+  - Fix direction: Wrap the gauge in a `role="img"` container with an aria-label such as `Training load: ${clamped}, ${zoneLabel}`, and provide visible or sr-only text for the score and zone.
+- F072 | UI | `charts-&-visualization.md / src/app/components/charts/shared/EChartsWrapper.tsx` | 63-68, 70-86 | category=failure-point | severity=medium
+  - Description: Responsive behavior listens only to global `window.resize`. Charts inside tabs, cards, sidebars, accordions, or other containers can change size without a window resize, leaving the ECharts canvas at a stale size until the user resizes the browser.
+  - Fix direction: Use `ResizeObserver` on the wrapper/container or enable the chart library's auto-resize behavior so chart instances resize whenever their own container changes.
+- F098 | UI | `community-features.md / src/app/components/community/CommunityDetailDrawer.tsx` | 207-244 | category=failure-point | severity=medium
+  - Description: Vote and save actions are rendered regardless of authentication state. The action menu is gated by `user`, but the vote/save buttons can still call mutations while logged out; `useVote` throws without a local toast, and `useSaveItem` surfaces a generic failure. This creates a confusing failure path for anonymous users.
+  - Fix direction: Gate vote/save buttons behind auth, show a sign-in prompt, or add explicit unauthenticated handling before invoking the mutations.
+- F102 | UI | `community-features.md / src/app/components/community/CreatorProfile.tsx` | 72-86, 255-265 | category=failure-point | severity=medium
+  - Description: The loading state only tracks the routines query (`feedLoading`). The cycles query can still be loading or can fail, but the UI may already render an empty or partial shared-content list with no cycle loading/error indication.
+  - Fix direction: Track `cycleLoading` and `cycleError` alongside `feedLoading`, and render loading/error/partial states based on both queries.
+- F103 | UI | `community-features.md / src/app/components/community/CreatorProfile.tsx` | 72-86, 104-106, 270-279 | category=failure-point | severity=medium
+  - Description: `CreatorProfile` uses infinite queries for routines and cycles but never calls `fetchNextPage` or renders a sentinel/load-more control. Creators with more than the first page of shared routines or cycles are silently truncated.
+  - Fix direction: Add pagination controls or an intersection sentinel for both creator feed queries, or use a non-infinite query that intentionally fetches the full creator profile content needed by this view.
+- F106 | UI | `community-features.md / src/app/components/community/ShareContentDialog.tsx` | 111-118, 147-158 | category=failure-point | severity=medium
+  - Description: Manual dialog closes pass `setOpen` directly and do not call `resetForm`. If the user closes the share dialog with the overlay/escape/close button and later reopens it, stale source selection, name, description, tags, difficulty, or success state can remain.
+  - Fix direction: Wrap `onOpenChange` in a handler that resets form state whenever the dialog closes, and ensure controlled and uncontrolled modes both use that close handler.
+- F107 | UI | `community-features.md / src/app/components/community/VoteButton.tsx` | 24-40 | category=failure-point | severity=medium
+  - Description: The button invokes `useVote` directly without explicit unauthenticated handling or local error feedback, and it does not stop propagation. If this component is embedded inside a clickable card or drawer trigger, a vote click can also trigger the parent click handler, and logged-out vote attempts fail through the mutation path rather than presenting a sign-in prompt.
+  - Fix direction: Add an auth-aware guard/error callback, and call `event.stopPropagation()` inside the click handler when the component is intended for use inside clickable containers.
+- F110 | UI | `cycle-&-routine-builders.md / src/app/components/CycleBuilder.tsx` | 74-77, 342-353 | category=failure-point | severity=medium
+  - Description: Edit mode handles only the loading state. If `cycleDetailOptions` fails or returns no cycle, the component falls through into a default blank builder while `isEditing` remains true. The user can then click Save and receive update behavior against an invalid or inaccessible `cycleId` with no clear load error shown.
+  - Fix direction: Read `isError`/`error` from the query and render a non-editable error/unauthorized state with navigation back to `/cycles`. Consider requiring loaded data before enabling save in edit mode.
+- F125 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 263-269, 307-321, 142-168 | category=failure-point | severity=medium
+  - Description: Deleting an exercise only removes that exercise. If it was part of a two-exercise superset, the remaining exercise keeps its `supersetId`, so the builder can save an invalid one-exercise superset and continue rendering it as a group.
+  - Fix direction: After deletion, detect supersets with fewer than two members and automatically clear their superset fields or prompt the user to ungroup.
+- F127 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 594-598 | category=failure-point | severity=medium
+  - Description: The detail panel uses a non-null assertion on `exercises.find(...)`. If `selectedExercise` ever becomes stale after a state refresh or mutation, the component crashes instead of closing the panel or showing an empty state.
+  - Fix direction: Resolve the selected exercise into a variable, render `EmptyDetailPanel` when it is missing, and clear stale `selectedExercise` in an effect when `exercises` changes.
+- F135 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/SupersetContainer.tsx` | 125-131, 148-157 | category=failure-point | severity=medium
+  - Description: The container allows removing any exercise from a superset without guarding against leaving fewer than two exercises. That can produce an invalid one-exercise superset while still showing the group UI.
+  - Fix direction: Disable the remove action at the minimum valid group size, or make removal of the second-to-last exercise automatically ungroup the superset.
+- F367 | UI | `feature-components-part-1.md / src/app/components/Goals.tsx` | 381-399 | category=failure-point | severity=medium
+  - Description: Goal completion marks a goal as celebrated before the `updateGoal.mutate` call succeeds. If the mutation fails, `celebratedRef` suppresses future completion attempts for that goal in this component instance, leaving a goal at 100% but still active until reload or remount.
+  - Fix direction: Add the goal ID to `celebratedRef` only in mutation success handling, or remove it from the set in `onError` so completion can retry.
+- F373 | UI | `feature-components-part-1.md / src/app/components/PricingPlans.tsx` | 260-262, 302-388, 607-613 | category=failure-point | severity=medium
+  - Description: Direct Subscribe buttons do not set any in-flight state while `openCheckout` is starting. Users can repeatedly click Subscribe and potentially open multiple checkout attempts, unlike plan-change buttons that use `billingActionPriceId`.
+  - Fix direction: Track the selected checkout price ID in `handleSubscribe`, disable the button while checkout is starting, and clear it on failure/cancel/success as appropriate.
+- F371 | UI | `feature-components-part-1.md / src/app/components/TrainingCycles.tsx` | 39-41, 51, 106-140 | category=failure-point | severity=medium
+  - Description: Query errors are not handled. If `cycleListOptions` fails, `cycles` is undefined, `allCycles` becomes `[]`, and the UI displays the empty-state "Plan your training cycle" instead of an error/retry state. This can mislead users into thinking their cycles are gone.
+  - Fix direction: Read `error`/`isError` from `useQuery` and render a distinct error card with retry before falling back to the empty state.
+- F379 | UI | `feature-components-part-1.md / src/app/components/profile/DangerZone.tsx` | 161-164 | category=failure-point | severity=medium
+  - Description: The final permanent deletion confirmation action is not disabled while `executeDeletion.isPending`. A double-click can send duplicate `delete-account` function invocations for an irreversible operation.
+  - Fix direction: Disable the final `AlertDialogAction` while `executeDeletion.isPending` and show the existing loading state in the dialog action as well as on the outer button.
+- F386 | UI | `feature-components-part-2.md / src/app/components/Biomechanics.tsx` | 180-189, 399-411, 416-445, 467-480, 530-547 | category=failure-point | severity=medium
+  - Description: Telemetry and rep-summary query errors are not read or rendered. A failed query is shown as `No telemetry data`, empty charts, or `Need at least 2 reps`, which misdiagnoses failures as missing data and gives no retry path.
+  - Fix direction: Destructure `error`/`refetch` from `repTelemetryOptions` and `repSummariesOptions`; render an error card or inline retry state before falling back to empty-data messages.
+- F387 | UI | `feature-components-part-2.md / src/app/components/ExerciseProgress.tsx` | 216-227, 290-367 | category=failure-point | severity=medium
+  - Description: The exercise list, profile, and progress queries ignore `error`. Once `isPending` is false, request failures are rendered as `No progress data yet` or `No progress data for this exercise`, which hides backend/auth/schema failures.
+  - Fix direction: Read `error` and `refetch` from each query and render explicit error states before no-data states.
+- F389 | UI | `feature-components-part-2.md / src/app/components/ExerciseProgress.tsx` | 216-227 | category=failure-point | severity=medium
+  - Description: `exerciseListOptions(userId, activeProfileId)` and `profileOptions(userId)` are called without guarding on a non-empty `userId`, and the progress query is only guarded by `!!selectedExercise`. During auth initialization this can issue queries with an empty user id.
+  - Fix direction: Use object-form `useQuery` with `enabled: !!userId` for all user-scoped queries, and `enabled: !!userId && !!selectedExercise` for the progress query.
+- F390 | UI | `feature-components-part-2.md / src/app/components/Integrations.tsx` | 33-37, 102-115, 118-132, 135-149, 155-180, 203-205 | category=failure-point | severity=medium
+  - Description: The page derives `userId` and `accessToken` as empty strings while auth/session data is unavailable, but connect/sync/disconnect/import child handlers can still be rendered and invoked with those empty values. OAuth connect calls with an empty token fail after the user clicks, and mutation calls can be sent with an empty user id.
+  - Fix direction: Gate the integration UI behind an authenticated/session-ready state, disable provider actions until `userId` and `accessToken` are present, and show a loading or sign-in-required state while auth is unresolved.
+- F381 | UI | `feature-components-part-2.md / src/app/components/Recovery.tsx` | 195-207, 315-550 | category=failure-point | severity=medium
+  - Description: The premium page only handles `isLoading`, `recovery?.isGated`, and `recovery && !recovery.isGated`. If `useRecoveryScore()` finishes with `recovery === null` because the query failed, the user sees the header/disclaimer area with no score, no empty state, and no error or retry path.
+  - Fix direction: Have `useRecoveryScore()` expose query errors, and render a dedicated error/empty state when loading is false and `recovery` is null.
+- F382 | UI | `feature-components-part-2.md / src/app/components/RecoveryDashboardWidget.tsx` | 43-57, 104-108 | category=failure-point | severity=medium
+  - Description: A failed recovery-score query is indistinguishable from a user having no training data. After loading, `recovery` can be null and the widget renders `No training data yet`, hiding backend/auth/network failures from the user.
+  - Fix direction: Expose the recovery query error from the hook and render a compact error state with retry instead of reusing the no-data state.
+- F411 | UI | `feature-components-part-3.md / src/app/components/ComparisonView.tsx` | 476-502 | category=failure-point | severity=medium
+  - Description: The error state renders raw `errorA?.message || errorB?.message` directly to the user. Supabase/PostgREST and parsing errors can contain implementation details, table/column names, or confusing low-level messages that are not appropriate for end users.
+  - Fix direction: Log/report the raw error internally and render a generic user-safe message with a retry/back-to-history action.
+- F415 | UI | `feature-components-part-3.md / src/app/components/CookieConsentBanner.tsx` | 10-14, 20-28 | category=failure-point | severity=medium
+  - Description: Consent read/write calls are not protected from storage failures. `getConsentStatus()` and `setConsentStatus()` use `localStorage` directly, so browsers that block storage, private-mode quota/security errors, or embedded contexts can throw and break the banner/app instead of falling back gracefully.
+  - Fix direction: Wrap consent reads/writes in `try/catch`, default to showing the banner when reads fail, and keep in-memory visibility changes even if persistence fails.
+- F419 | UI | `feature-components-part-3.md / src/app/components/NextWorkoutWidget.tsx` | 12-18, 152-160 | category=failure-point | severity=medium
+  - Description: `RoutineName` treats any missing or failed routine detail as `Custom Workout`. If the routine query errors, is unauthorized, or returns no row because of a data integrity issue, the schedule silently shows a different workout type instead of indicating that the assigned routine could not be loaded.
+  - Fix direction: Track `isError` separately and render an explicit "Routine unavailable" state (with retry/logging) instead of falling back to `Custom Workout` except when `result.routineId` is actually null.
+- F412 | UI | `feature-components-part-3.md / src/app/components/OnboardingOverlay.tsx` | 99-105 | category=failure-point | severity=medium
+  - Description: `Dialog` close events call `onComplete()`. Pressing Escape, clicking the overlay/close affordance, or any parent-driven close therefore marks onboarding complete instead of simply dismissing or keeping it incomplete. A brand-new user can accidentally skip all onboarding without choosing Skip or completing the steps.
+  - Fix direction: Disable outside/Escape close for mandatory onboarding, or route close events to a separate dismiss/skip handler that is explicit in UI and analytics.
+- F402 | UI | `feature-components-part-3.md / src/app/components/landing/ForceCurveDemo.tsx` | 105-116, 329-336 | category=failure-point | severity=medium
+  - Description: The chart only falls back when `ParentSize` reports `width <= 0`. For very narrow containers where `0 < width < MARGINS.left + MARGINS.right` (60px), `innerWidth` becomes negative and the x-scale range, axes, tooltip positions, and SVG paths are generated with invalid/reversed geometry. This can break rendering in constrained responsive layouts or tests that mount the component in a small container.
+  - Fix direction: Clamp `innerWidth`/`innerHeight` to a minimum positive size, or use the fixed fallback until the measured width is at least the total horizontal margin plus a usable plot width.
+- F428 | UI | `hooks-&-providers.md / src/hooks/useNotificationSync.ts` | 82-87 | category=failure-point | severity=medium
+  - Description: The effect writes zero counts to the UI store whenever a query's `data` is `undefined`, including during the initial loading period or after a query error. This can briefly clear badges on every mount/focus refetch and can hide failures as empty notification counts.
+  - Fix direction: Include query loading/error state in the hook. Only write a count once its query has successfully resolved, or preserve the previous UI-store count while a query is pending/erroring.
+- F430 | UI | `hooks-&-providers.md / src/hooks/useOnboarding.ts` | 113-121 | category=race-condition | severity=medium
+  - Description: `dismissHint` merges `hintId` into `onboarding.dismissed_hints` on the client and sends the whole JSON object with `update`. Two dismissals fired close together from separate `FeatureHint` instances can both read the same stale `dismissed_hints` object and overwrite each other, losing one dismissal.
+  - Fix direction: Move the merge into an atomic database RPC/update expression, or perform an optimistic React Query update that serializes mutations and merges against the latest cached state before writing.
+- F432 | UI | `hooks-&-providers.md / src/hooks/useRealtimeSync.ts` | 89-94, 102-114 | category=race-condition | severity=medium
+  - Description: The Supabase broadcast channel topic is fixed as `sync:${user.id}`. `removeChannel` is called during cleanup but not awaited, so a quick user-shell remount or React StrictMode remount can create a new channel with the same topic before the old one is fully removed. This is the same class of remount race avoided in `useCommentRealtime` and `useSubscription` by adding a unique suffix.
+  - Fix direction: Add a per-mount unique suffix to the channel topic, e.g. `sync:${user.id}:${crypto.randomUUID()}`, while retaining the user-specific broadcast filter/validation semantics. Add a remount-before-cleanup regression test.
+- F433 | UI | `hooks-&-providers.md / src/hooks/useRecoveryScore.ts` | 23-28, 44-65 | category=failure-point | severity=medium
+  - Description: The returned `isLoading` only reflects `sessionsLoading`. The computed recovery score also depends on `activeCycle`, and the returned `wearable` value has its own query, but neither query contributes to `isLoading`. The UI can render a recovery score before active-cycle adjustments or wearable data have resolved, then change after the fact without indicating that the initial score was incomplete.
+  - Fix direction: Track pending/error state for all queries used by the result, or split the return value into separate loading flags (`isScoreLoading`, `isWearableLoading`, `isCycleLoading`). Avoid presenting the final score until all inputs that affect it have either resolved or intentionally failed/been skipped.
+- F435 | UI | `hooks-&-providers.md / src/hooks/useSubscription.ts` | 89-94, 128-151 | category=failure-point | severity=medium
+  - Description: When the subscription query errors, `data` is `undefined` and the hook falls back to `FREE`/`none` with `isEntitled: false` while exposing no `isError` or `error` field. A transient Supabase/network failure can therefore silently downgrade premium users in the UI instead of showing an unknown/error state or preserving the last known entitlement.
+  - Fix direction: Return React Query error state from the hook and distinguish `unknown` from confirmed `FREE`. Consider using `placeholderData`/previous cached data for transient refetch errors, and let access-control consumers decide whether to fail closed or show a retry/error state.
+- F501 | UI | `session-replay.md / src/app/components/session-replay/PlaybackControls.tsx` | 22-38 | category=failure-point | severity=medium
+  - Description: The global Space shortcut only excludes `INPUT`, `TEXTAREA`, and `SELECT`. Focused buttons, tab triggers, sliders, links, and `contenteditable` elements can still receive Space for their native action while the window handler also toggles playback. For example, pressing Space on the speed tabs or the play/pause button can unexpectedly toggle playback in addition to the focused control's own behavior.
+  - Fix direction: Restrict the shortcut to non-interactive targets. Ignore `e.defaultPrevented`, `button`, `a`, elements with interactive ARIA roles, `[contenteditable]`, and controls inside replay widgets, or bind the shortcut only when the replay surface itself has focus.
+- F507 | UI | `session-replay.md / src/app/components/session-replay/ReplayIntelligencePanel.tsx` | 42-43, 87-109 | category=failure-point | severity=medium
+  - Description: If `currentRepIndex` is out of range, the panel falls back to `intelligence.repInsights[0]`. A stale or malformed index therefore displays Rep 1 details even when the playhead/index is not on Rep 1, which can mislead the athlete about the selected rep's velocity, force, and sticking point.
+  - Fix direction: Clamp `currentRepIndex` to the valid rep-insight range, prefer the nearest valid rep, or render a neutral "no rep selected" state instead of defaulting to the first rep.
+- F511 | UI | `session-replay.md / src/app/components/session-replay/SessionReplay.tsx` | 169-190 | category=failure-point | severity=medium
+  - Description: `ResizeObserver` is constructed unconditionally in the effect. Browsers/environments without `ResizeObserver` support will throw at render time for the replay page instead of falling back to a fixed canvas width.
+  - Fix direction: Guard with `typeof ResizeObserver !== "undefined"`, fall back to `clientWidth`/`window.resize`, and keep the initial 600px width when observation is unavailable.
+- F515 | UI | `session-replay.md / src/app/components/session-replay/TimelineBar.tsx` | 37-50, 77-81 | category=failure-point | severity=medium
+  - Description: Scrubbing pauses playback on pointer down and resumes only on pointer up. If the pointer is canceled, capture is lost, the pointer leaves the control, or the component unmounts during a drag, `handlePointerUp` may never run and playback remains paused while `onScrubEnd` is skipped.
+  - Fix direction: Handle `onPointerCancel`, `onLostPointerCapture`, and cleanup-on-unmount, or use the slider's committed-value callback if available to restore playback reliably.
+- F568 | Other | `ui-primitives-shadcn.md / src/app/components/ui/ZoneBadge.tsx` | 68-75 | category=failure-point | severity=medium
+  - Description: If `ZoneBadge` is rendered with `showLabel={false}`, the visual output can be only a color dot with no accessible text. The `title` attribute on the non-focusable wrapper is not a reliable accessible name for screen-reader or keyboard users.
+  - Fix direction: Add an `aria-label` based on `zone.label` and `systemLabel`, or keep a visually hidden label whenever the visible label is suppressed.
+- F551 | Other | `ui-primitives-shadcn.md / src/app/components/ui/button.tsx` | 39-56 | category=failure-point | severity=medium
+  - Description: `Button` renders a native `<button>` by default but does not set `type="button"`. When used inside a form without an explicit `type`, it will submit the form unintentionally.
+  - Fix direction: Default native buttons to `type="button"` when `asChild` is false, while still allowing callers to pass `type="submit"` explicitly.
+- F553 | Other | `ui-primitives-shadcn.md / src/app/components/ui/carousel.tsx` | 77-85 | category=failure-point | severity=medium
+  - Description: Keyboard handling only responds to `ArrowLeft` and `ArrowRight`. When `orientation="vertical"`, users would expect `ArrowUp`/`ArrowDown`; vertical carousels therefore have incomplete keyboard support.
+  - Fix direction: Branch on `orientation` and map horizontal carousels to left/right and vertical carousels to up/down, or support both key pairs safely.
+- F555 | Other | `ui-primitives-shadcn.md / src/app/components/ui/disabled-with-reason.tsx` | 39-46 | category=failure-point | severity=medium
+  - Description: The tooltip trigger wrapper is a plain `<span>` with no `tabIndex`, despite the comment saying it intercepts hover/focus. Disabled controls are not focusable and the wrapper is not focusable either, so keyboard users cannot discover the disabled reason.
+  - Fix direction: Make the wrapper keyboard-focusable (`tabIndex={0}`) and provide an accessible name/description, or use an enabled button-like wrapper with `aria-disabled="true"` and explicit click prevention.
+- F560 | Other | `ui-primitives-shadcn.md / src/app/components/ui/progress.tsx` | 24-25 | category=failure-point | severity=medium
+  - Description: The progress indicator transform uses `value || 0` directly and does not clamp or validate the value. Values outside 0-100, `NaN`, or values based on a non-100 max can produce invalid or misleading transforms.
+  - Fix direction: Normalize against the root `max` value when applicable and clamp to `[0, 100]` before computing the translate percentage.
+- F561 | Other | `ui-primitives-shadcn.md / src/app/components/ui/sidebar.tsx` | 264-278, 286-303, 417-436, 515-522, 560-576 | category=failure-point | severity=medium
+  - Description: Several sidebar controls render native buttons without a default `type="button"` (`SidebarTrigger` through `Button`, `SidebarRail`, `SidebarGroupAction`, `SidebarMenuButton`, and `SidebarMenuAction`). If these components are placed inside a form, clicking them can submit the form unexpectedly.
+  - Fix direction: Default native sidebar buttons to `type="button"` while preserving explicit caller-provided `type` values and `asChild` behavior.
+- F562 | Other | `ui-primitives-shadcn.md / src/app/components/ui/sidebar.tsx` | 286-303 | category=failure-point | severity=medium
+  - Description: `SidebarRail` is a clickable `<button>` but is forced out of the tab order with `tabIndex={-1}`. It has an `aria-label`, but keyboard users cannot reach it to toggle the sidebar.
+  - Fix direction: Keep the rail focusable or provide an equivalent keyboard-focusable toggle adjacent to it. If it must remain pointer-only, mark it appropriately and ensure another visible keyboard path exists.
+- F227 | Migrations | `database-migrations.md / supabase/migrations/20260420194722_schema_drift_reconciliation.sql` | 1-3 | category=stub | severity=medium
+  - Description: This is a stub that says the real migration was applied remotely and adds `is_bodyweight`/`duration_seconds` plus benchmark RLS changes, but it does not apply those changes locally. A fresh database built only from repository migrations will drift from production.
+  - Fix direction: Replace the stub with an idempotent migration that performs the documented schema/RLS changes, or add a follow-up migration that reconciles fresh installs.
+- F229 | Migrations | `database-migrations.md / supabase/migrations/20260420210411_comprehensive_dashboard_drift_reconciliation.sql` | 1-3 | category=stub | severity=medium
+  - Description: This stub claims remote creation of `goal_snapshots`, `overload_suggestions`, `telemetry_analysis`, and `wearable_daily_summaries` plus column additions, but applies none of it locally. Fresh local/staging databases will miss dashboard objects present in production.
+  - Fix direction: Replace with idempotent DDL for the documented tables/columns or create a real reconciliation migration immediately after it.
+- F230 | Migrations | `database-migrations.md / supabase/migrations/20260503160018_remote_history_reconciliation.sql` | 1-11 | category=stub | severity=medium
+  - Description: The migration intentionally does `NULL` to match a production-only migration version. That unblocks deployment history but permanently hides whatever schema/data change production version `20260503160018` actually performed from fresh database rebuilds.
+  - Fix direction: Add a companion reconciliation migration with the real DDL/data changes from the production migration, or document and verify that the production migration was truly a no-op.
+- F231 | Migrations | `database-migrations.md / supabase/migrations/20260503162322_remote_history_reconciliation.sql` | 1-11 | category=stub | severity=medium
+  - Description: Same as the prior reconciliation file: the repository records the remote version with a no-op block, but does not reproduce the production schema/data change for fresh databases.
+  - Fix direction: Add an idempotent reconciliation migration for the actual production changes or confirm the remote migration had no schema/data effect.
+- F076 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/migrations.yml` | 8-10 | category=stub | severity=medium
+  - Description: The workflow explicitly documents live-production drift detection as out of scope and tracked as a follow-up. The current gate proves migrations can clean-apply locally, but it cannot detect the previously documented class of prod drift where schema changes exist in one environment but not another.
+  - Fix direction: Add a separate scheduled or protected workflow that runs a linked `supabase db diff` / schema comparison against production or a read-only prod clone using tightly scoped secrets, and alerts without requiring PR credentials on every run.
+- F087 | CI/CD | `ci-cd-&-workflows.md / CLAUDE.md` | 220-222 | category=stub | severity=medium
+  - Description: The migration CI coverage section records a not-yet-wired scheduled production drift check. This is a known gap in the migration safety story and is the exact class of issue the migration discipline section is trying to prevent.
+  - Fix direction: Either implement the scheduled prod-drift workflow or move this to a tracked issue/runbook with owner and status so agents do not treat the coverage as complete.
+- F523 | Tests | `sync-tests-&-security-tests.md / tests/sync/error-classes.test.ts` | 45-60, 123-137 | category=stub | severity=medium
+  - Description: The TRANSIENT live 5xx and NETWORK fetch-abort scenarios are permanently `it.skip`, not gated by `liveIt`. They will not run even under `npm run test:sync:live`.
+  - Fix direction: Convert executable live scenarios to `liveIt` and leave only truly manual destructive cases as skipped. For network abort, inject a failing fetch into the harness instead of requiring firewall manipulation.
+- F529 | Tests | `sync-tests-&-security-tests.md / tests/sync/hierarchy.test.ts` | 1074-1220 | category=stub | severity=medium
+  - Description: Several tests in the delta/entity sections are documentation-only checks. They assert success or that response fields are defined, while comments state important behavior such as push-only entities, `updated_at` support, badge `earned_at` filtering, and pagination metadata.
+  - Fix direction: Replace documentation assertions with executable checks against schema/query behavior. For behavior the mock cannot emulate, use `liveIt` and a dedicated lower-level unit test for filter construction.
+- F533 | Tests | `sync-tests-&-security-tests.md / tests/sync/phases.test.ts` | 130-149 | category=stub | severity=medium
+  - Description: The only test that verifies server-derived `personalRecords[].workoutPhase` is gated behind `liveIt`, so it is skipped in the default mock CI path. The mock always returns an empty `personalRecords` array, leaving PR phase derivation untested in normal sync tests.
+  - Fix direction: Add mock support for deriving PR records from `isPr` sets, or add a direct unit test of the production PR-derivation function.
+- F535 | Tests | `sync-tests-&-security-tests.md / tests/sync/pull-pagination.test.ts` | 143-159 | category=stub | severity=medium
+  - Description: The composite cursor stability regression is `it.skip`, so it never runs in either mock or live mode. This leaves the timestamp-collision pagination case unprotected.
+  - Fix direction: Convert it to `liveIt` with real seed data or add a unit test around cursor predicate construction and ordering.
+- F482 | Data | `lib---integrations.md / src/lib/integrations/garmin.ts` | 93-95 | category=stub | severity=medium
+  - Description: The Garmin OAuth path is marked "ready but untested until credentials are available." This is a known unverified integration path in production-facing code, so failures may only surface when credentials are finally provisioned.
+  - Fix direction: Add a mocked Edge Function/OAuth initiation test now and a credential-backed smoke test or feature flag before exposing the Garmin connect button as active.
+- F485 | Data | `lib---integrations.md / src/lib/integrations/hevy.ts` | 214-240 | category=stub | severity=medium
+  - Description: The Hevy API normalizer is explicitly documented as `API structure is TBD`, but it still validates against a concrete guessed schema. If the real API response differs, valid workouts will be rejected by Zod or normalized incorrectly.
+  - Fix direction: Replace the placeholder schema with the documented/current Hevy API contract and add fixture tests from real or captured API responses. If the API contract is not stable, gate the API path and rely on CSV import until it is verified.
+- F043 | UI | `app-shell-&-layout.md / src/app/components/modals/RoutinePickerModal.tsx` | 58-66 | category=stub | severity=medium
+  - Description: The Search input is rendered but has no state, `onChange`, or filtering logic. Typing into the field does not change the recent or all routines lists.
+  - Fix direction: Add search state and filter routines by name and relevant metadata, including an empty-results state.
+- F044 | UI | `app-shell-&-layout.md / src/app/components/modals/RoutinePickerModal.tsx` | 147-154 | category=stub | severity=medium
+  - Description: The `+ Create New Routine` button has no `onClick`, link, or callback prop, so it is a visible dead control.
+  - Fix direction: Accept an `onCreateRoutine` callback or render a router link to the routine creation route, and close the modal if appropriate.
+- F121 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/WeekOverview.tsx` | 14-22, 97-107 | category=stub | severity=medium
+  - Description: Muscle group distribution is hard-coded mock data while the UI says it is based on assigned routines. Balance warnings are therefore based on static placeholder percentages, not the actual schedule.
+  - Fix direction: Compute distribution from assigned routine exercises, or hide this section until real routine volume data is available.
+- F130 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/superset-helpers.ts` | 1-22 | category=stub | severity=medium
+  - Description: The file still contains integration-instruction comments such as "Add these interfaces and state to existing RoutineBuilder.tsx" and commented-out state declarations. This reads as a leftover implementation stub rather than finalized production helper code.
+  - Fix direction: Remove scaffolding comments, keep only the exported helper API, and ensure the helpers are actually integrated or delete the unused module.
+- F385 | UI | `feature-components-part-2.md / src/app/components/Biomechanics.tsx` | 213-214, 371-407 | category=stub | severity=medium
+  - Description: Turning off `Overlay All Reps` always sets `selectedRep` to `1`; there is no UI state or selector for any other rep. The switch implies single-rep selection, but the implementation only supports rep 1.
+  - Fix direction: Add selected-rep state and a rep selector when overlay is disabled, or remove the single-rep mode until it can select all valid reps.
+- F510 | UI | `session-replay.md / src/app/components/session-replay/SessionReplay.tsx` | 98-100, 126-134, 377-413 | category=stub | severity=medium
+  - Description: Rep boundaries are placeholder logic: `deriveRepBoundaries` ignores `_telemetry`, estimates starts from cumulative `tut_ms + 500`, and the comment explicitly documents that this is inaccurate. These approximate boundaries drive current rep selection, annotation windows, fatigue highlighting, quality badge rep number, and phase/intelligence calculations, so replay can drift from the actual telemetry.
+  - Fix direction: Derive boundaries from actual telemetry transitions or persisted rep start/end timestamps. If exact boundaries are unavailable, surface the approximation as degraded/partial data and keep it out of features that need precise timing.
+- F512 | UI | `session-replay.md / src/app/components/session-replay/SetNavigation.tsx` | 53-67 | category=stub | severity=medium
+  - Description: The Set/Session view-mode toggle updates `viewMode`, but the session replay UI never reads `viewMode` to change playback scope, aggregation, navigation, or charts. The visible "Session" option is therefore a placeholder that promises session-level replay without implementing it.
+  - Fix direction: Either implement session mode end-to-end or remove/disable the toggle until the mode is supported. Add tests that assert the UI changes when `viewMode` is set to `session`.
+
+### Low (149)
+
+- F270 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-checkout-custom-data/index.ts` | 38-51 | category=error | severity=low
+  - Description: Unlike the other browser-facing Paddle functions, this handler has no outer `try/catch`. Supabase auth client failures, environment edge cases, or crypto/HMAC failures will escape the handler, producing the platform default 500 response rather than a consistent JSON response with CORS headers.
+  - Fix direction: Wrap the authenticated path in a `try/catch`, log unexpected errors, and return `{ error: "Internal server error" }` with the same CORS and JSON headers used elsewhere.
+- F266 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/paddle-webhooks/index.ts` | 140-142, 333-338 | category=error | severity=low
+  - Description: `JSON.parse(rawBody)` is inside the broad handler `try`, so a signed but malformed JSON payload is returned as a 500 `Internal server error`. That classifies a client/payload problem as an infrastructure failure and can trigger retries/noisy alerts instead of a clear invalid-payload response.
+  - Fix direction: Catch JSON parse errors separately after signature verification and return a 400 `Invalid JSON payload` with billing-alert logging. Keep 500 responses for database/configuration/server failures that Paddle should retry.
+- F184 | Data | `data-layer---queries.md / src/queries/community.ts` | 53-69 | category=error | severity=low
+  - Description: `hydrateProfiles` ignores the Supabase error from the `public_profiles` lookup. A failed profile hydration query is indistinguishable from all creators having no public profile, which hides backend/RLS regressions and renders incomplete feed data without surfacing an error state.
+  - Fix direction: Capture `{ data, error }`, throw or return a recoverable partial-result marker when `error` is present, and add a test for profile hydration failures.
+- F086 | CI/CD | `ci-cd-&-workflows.md / CLAUDE.md` | 24-32 | category=bug | severity=low
+  - Description: The environment-variable list documents `SENTRY_DSN`, but the application initializes Sentry from `import.meta.env.VITE_SENTRY_DSN`. Following this guidance will leave browser error tracking disabled because Vite does not expose non-`VITE_` variables to client code.
+  - Fix direction: Rename the documented variable to `VITE_SENTRY_DSN` and align `.env.example` / README documentation so all agent-facing setup instructions use the same key.
+- F534 | Tests | `sync-tests-&-security-tests.md / tests/sync/phases.test.ts` | 152-171 | category=bug | severity=low
+  - Description: The test title says the default phase is `COMBINED` when `prPhase` is omitted, but the assertion expects `pulledSet.prPhase` to be `undefined`. This verifies absence preservation, not COMBINED defaulting.
+  - Fix direction: Rename the test to reflect absence preservation, or assert the actual consumer/server defaulting path produces `COMBINED`.
+- F469 | Data | `lib---core-utilities.md / src/lib/telemetry-display.ts` | 14-31 | category=bug | severity=low
+  - Description: The helpers are typed for `"A" | "B"`, but runtime data from `database.types.ts` allows `rep_telemetry.cable` to be `string | null`. Any invalid value passed through casts or untyped data will be displayed as `Right`/`right` because the implementation treats everything except `"A"` as cable B.
+  - Fix direction: Add a runtime guard/parser for cable identifiers and return an explicit `Unknown`/`unknown` fallback for invalid or null values.
+- F489 | Data | `lib---integrations.md / src/lib/integrations/export-csv.ts` | 74-78, 183 | category=bug | severity=low
+  - Description: `formatDate()` converts the stored ISO timestamp using the browser's local timezone. The same exported workout can shift date/time depending on where the browser runs, which is especially risky when `started_at` is already stored as a canonical UTC timestamp.
+  - Fix direction: Decide whether Strong export should use UTC or the user's workout timezone, and format explicitly for that timezone instead of relying on the runtime's local timezone.
+- F479 | Data | `lib---integrations.md / src/lib/integrations/strava.ts` | 16, 20, 62, 68 | category=bug | severity=low
+  - Description: Optional Strava metrics are defaulted to `0` in the Zod schema, then written as real zero values. Missing `distance` or `total_elevation_gain` becomes indistinguishable from an actual zero-distance or zero-elevation activity, which can skew analytics and UI summaries.
+  - Fix direction: Keep optional provider fields nullable through normalization: remove the schema defaults and emit `null` when Strava omits the field.
+- F480 | Data | `lib---integrations.md / src/lib/integrations/strava.ts` | 63-65 | category=bug | severity=low
+  - Description: Calorie conversion uses a truthiness check on `activity.kilojoules`. A valid value of `0` kilojoules is normalized to `null` instead of `0`, which incorrectly marks known zero-energy data as missing.
+  - Fix direction: Use `activity.kilojoules != null` before converting so zero remains zero while only null/undefined becomes missing.
+- F487 | Data | `lib---integrations.md / src/lib/integrations/strong.ts` | 125-138 | category=bug | severity=low
+  - Description: Strong `Distance` values are summed and stored directly as `distance_meters`, but the parser has no distance-unit handling. If Strong exports distance in the user's configured unit rather than meters, imported cardio distances will be incorrect.
+  - Fix direction: Add an import distance-unit option or parse the unit from the export format, then convert to meters before populating `distance_meters`.
+- F492 | Data | `lib---replay-&-export.md / src/lib/replay-renderer.ts` | 40-49 | category=bug | severity=low
+  - Description: `drawRepBands` can only shade intervals between adjacent `repBoundaries`. Other replay code/tests pass `repBoundaries` as rep start times (for example `[0, 1500, 3000, 4500]` for four reps), which leaves the last rep without an end boundary and therefore never shades it. Adding a trailing max-time boundary would help the renderer, but `replay-phase-analytics.ts` currently treats every boundary as a rep start.
+  - Fix direction: Define one boundary contract shared by renderer/intelligence/analytics. If boundaries are starts, derive each end from the next start or `maxTime` before rendering bands.
+- F003 | UI | `analytics-dashboard.md / src/app/components/Analytics.tsx` | 1680-1683 | category=bug | severity=low
+  - Description: A stray semicolon is rendered inside the JSX tree after the desktop `PageShell`. TypeScript accepts it as a text child, so the dashboard can display an unintended `;` at the bottom of the page.
+  - Fix direction: Remove the standalone semicolon from inside the JSX return.
+- F046 | UI | `app-shell-&-layout.md / src/app/components/modals/RoutinePickerModal.tsx` | 26-27, 77-107, 117-142 | category=bug | severity=low
+  - Description: `recent` is `routines.slice(0, 2)` and `all` is the full `routines` array, so the first two routines are rendered twice in the same picker. This creates duplicate controls with the same action and can be confusing for keyboard/screen-reader navigation.
+  - Fix direction: Exclude recent items from the All section or rename the second section to make duplication intentional and accessible.
+- F070 | UI | `charts-&-visualization.md / src/app/components/charts/VelocityProfile.tsx` | 295-305 | category=bug | severity=low
+  - Description: The outer aria summary always computes `peakVelocity` from `mean_velocity_mps`, even when the chart is configured to show peak velocity bars. Screen-reader users can hear a lower "Peak mean velocity" value than the visual chart emphasizes.
+  - Fix direction: Compute the aria peak from `peak_velocity_mps` when `showPeakVelocity` is true, or rename the label to clarify that it is summarizing mean velocity only.
+- F128 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineBuilder.tsx` | 95-98, 1097-1101 | category=bug | severity=low
+  - Description: Kilogram weights are displayed with `Math.round(converted)`, so fractional kg values are lost in the input display. A user opening a 2.5 kg value sees `3`, and editing can persist the rounded value.
+  - Fix direction: Use the same decimal-preserving formatting as `weightInputValue` for controlled inputs, or preserve the raw input string while editing.
+- F113 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/CycleOverview.tsx` | 31-34, 97-111 | category=bug | severity=low
+  - Description: `customMode` is initialized from the first `duration` prop value but never synchronized if the parent later loads or resets the duration. Once Custom is clicked, a subsequent preset duration from the parent can still render the custom input because `customMode` remains true.
+  - Fix direction: Derive custom mode solely from `duration`, or add an effect that resets `customMode` when `duration` changes to a preset value.
+- F434 | UI | `hooks-&-providers.md / src/hooks/useStreak.ts` | 20-31 | category=bug | severity=low
+  - Description: The streak computation stops after 365 iterations, so a user with a streak longer than one year will always be capped at 365 even when `workouts` contains consecutive days beyond that range.
+  - Fix direction: Iterate until the first missing day instead of using a hard-coded 365-day cap, or make the cap explicit in the UI/product requirements and return a distinct capped value.
+- F262 | Edge Functions | `edge-functions---billing-paddle.md / supabase/functions/_shared/paddleWebhookSecurity.ts` | 48-67 | category=failure-point | severity=low
+  - Description: The custom-data signature comparison iterates only over `Math.min(a.length, b.length)` and returns immediately after a length-dependent amount of work. Length is not secret, and the expected hex digest length is fixed, but malformed attacker-controlled signatures with different lengths still produce measurably different timing than same-length signatures.
+  - Fix direction: Normalize by rejecting non-hex/non-64-character signatures before comparison, or compare against a fixed-length zero-padded buffer so every invalid signature follows the same amount of work.
+- F305 | Edge Functions | `edge-functions---integrations.md / supabase/functions/_shared/garminIdentity.ts` | 23-32 | category=failure-point | severity=low
+  - Description: `timingSafeEqual` only loops to `Math.min(a.length, b.length)`. It does return false on length mismatch, but runtime still depends on the shorter input length, which leaks candidate token length information.
+  - Fix direction: Iterate to a fixed maximum or to `Math.max(a.length, b.length)` while substituting zero for out-of-range bytes, so mismatched lengths take comparable work.
+- F290 | Edge Functions | `edge-functions---integrations.md / supabase/functions/fitbit-oauth/index.ts` | 138-144 | category=failure-point | severity=low
+  - Description: The initial `sync_queue` insert result is ignored. If queueing fails, the function still redirects as successfully connected, but no initial sync will run.
+  - Fix direction: Capture the queue insert error and either surface a non-fatal warning in integration state or redirect with a partial-success status that prompts manual sync.
+- F287 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-webhook/index.ts` | 289-294 | category=failure-point | severity=low
+  - Description: The per-user `last_sync_at` update is awaited but its error is ignored. A failed timestamp update leaves the persisted integration stale while the webhook response still reports success.
+  - Fix direction: Capture the update error. Treat it as a persistence failure and return a retryable 5xx, or at least include it in the error count and logs.
+- F312 | Edge Functions | `edge-functions---misc.md / supabase/functions/generate-insights/index.ts` | 548-565 | category=failure-point | severity=low
+  - Description: Current streak calculation compares `started_at.slice(0, 10)` and `now.toISOString().slice(0, 10)`, which are UTC calendar days. Users training near local midnight can have sessions counted on the wrong local day, breaking current streak milestones and achievement insights.
+  - Fix direction: Store or derive the user's timezone and compute workout-day keys in that timezone, or define explicitly that streaks are UTC-based and align the client UI to the same rule.
+- F322 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/flags.ts` | 30-31 | category=failure-point | severity=low
+  - Description: `SYNC_LWW_ENABLED` lowercases the environment value but does not trim it. A value copied into Supabase secrets as `true `, ` TRUE`, or with a trailing newline will silently evaluate to `false`, leaving the LWW path disabled even though the operator intended to enable it.
+  - Fix direction: Normalize with `.trim().toLowerCase()` and consider logging the parsed flag state at cold start for rollout verification.
+- F327 | Edge Functions | `edge-functions---shared-core.md / supabase/functions/_shared/rateLimitRpc.ts` | 23-38 | category=failure-point | severity=low
+  - Description: `normalizeRateLimitRpcResult` checks only JavaScript types. It accepts negative, fractional, or non-finite `remaining`/`retry_after_seconds` values if a malformed RPC implementation or test double returns them, and `rateLimit.ts` will propagate those into API responses and `Retry-After` headers.
+  - Fix direction: Validate semantic bounds as well as types: require safe integer `remaining >= 0`, require `retry_after_seconds === null` or a safe integer `>= 1`, and reject malformed rows so callers fail closed.
+- F332 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/syncPayloadShape.ts` | 76-91 | category=failure-point | severity=low
+  - Description: `normalizePushPayloadShape()` is no longer used by the production `mobile-sync-push` handler; repository search found only tests importing it. Keeping a second, stale ingress normalizer beside `pushPayloadSchema` creates drift risk: future fixes may land in one path while the live path uses the other.
+  - Fix direction: Either remove this helper and its tests after confirming the Zod schema fully replaces it, or wire it into the handler explicitly and keep a single source of truth for ingress shape normalization.
+- F333 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/_shared/syncPlatform.ts` | 1-9 | category=failure-point | severity=low
+  - Description: `normalizeSyncPlatform()` returns arbitrary trimmed/lowercased strings for non-Android/iOS inputs, while the live `platformSchema` in `pushPayloadSchema.ts` canonicalizes those same inputs to `unknown`. The two platform normalization contracts now disagree, so any future caller of this shared helper can persist values the current push schema would not emit.
+  - Fix direction: Align `normalizeSyncPlatform()` with `platformSchema` (`android`/`ios`/`unknown` only), or delete the unused helper and keep `describeSyncPlatformInput()` as the only export.
+- F360 | Edge Functions | `edge-functions---sync-&-data.md / supabase/functions/process-sync-queue/index.ts` | 78, 93-95 | category=failure-point | severity=low
+  - Description: `results.skipped` is initialized but not incremented when a provider is skipped due to rate limiting. The response underreports skipped providers/tasks, reducing observability for scheduler health.
+  - Fix direction: Increment `skipped` by the number of tasks deferred, or at least by one per rate-limited provider, and include provider names in the response for diagnostics.
+- F054 | CI/CD | `build-&-config.md / .npmrc` | .npmrc:1 | category=failure-point | severity=low
+  - Description: `legacy-peer-deps=true` disables npm's peer-dependency conflict enforcement for every install. That can be useful as a temporary compatibility workaround, but it also allows incompatible React/Vite/testing-library peer combinations to install silently and makes CI less likely to catch dependency graph regressions.
+  - Fix direction: Document why this is required and periodically test `npm ci --legacy-peer-deps=false` in CI or a scheduled dependency job. Remove the setting once upstream peer ranges support the chosen stack.
+- F055 | CI/CD | `build-&-config.md / index.html` | index.html:14 | category=failure-point | severity=low
+  - Description: `og:image` is configured as a relative path (`/phoenix-hero.png`). Some Open Graph/Twitter/social crawlers require an absolute URL and can fail to render preview images correctly when only a relative URL is provided.
+  - Fix direction: Use an absolute canonical URL such as `https://portal.phoenixproject.app/phoenix-hero.png`, and consider adding `twitter:image` with the same absolute URL.
+- F056 | CI/CD | `build-&-config.md / index.html` | index.html:22-23 | category=failure-point | severity=low
+  - Description: The Google Fonts CSS is requested twice: once as `rel="preload" as="style"` and again immediately as `rel="stylesheet"` with the same URL. Depending on browser/preload behavior, this can waste an extra request or make the preload ineffective rather than improving first render.
+  - Fix direction: Either remove the preload and keep the stylesheet, or use the standard preload-to-stylesheet pattern with an `onload` swap plus a `noscript` fallback if the extra complexity is justified.
+- F050 | CI/CD | `build-&-config.md / vite.config.ts` | vite.config.ts:173-181 | category=failure-point | severity=low
+  - Description: `vite.config.ts` contains a `test` block even though the repository also has `vitest.config.ts`, and the two configurations drift. The Vite config only includes `src/**/*` and `tests/security/**/*`, while `vitest.config.ts` includes `tests/**/*`, inlines `body-muscles`, sets coverage, and injects mock env. If an IDE, developer command, or future CI path accidentally uses `vite.config.ts` as the Vitest config, it can silently run a narrower/different test suite.
+  - Fix direction: Keep Vitest settings in one place. Remove the `test` block from `vite.config.ts`, or import shared constants from a single test-config module so both entry points cannot drift.
+- F083 | CI/CD | `ci-cd-&-workflows.md / .github/ISSUE_TEMPLATE/bug_report.yml` | 83-89 | category=failure-point | severity=low
+  - Description: Expected behavior is optional. For a bug report, missing expected behavior often makes it difficult to determine whether the report describes a defect, a feature request, or expected product behavior.
+  - Fix direction: Make the expected-behavior field required, or fold it into the required bug description prompt so every bug report captures actual vs expected behavior.
+- F084 | CI/CD | `ci-cd-&-workflows.md / .github/ISSUE_TEMPLATE/config.yml` | 3-5 | category=failure-point | severity=low
+  - Description: The only contact link sends general questions to the `Project-Phoenix-MP` discussions board rather than a Phoenix Portal discussion/support location. Portal users who avoid opening a blank issue can be routed to the mobile-app repository, making triage ownership ambiguous.
+  - Fix direction: Point the contact link at a portal-specific discussion category or clearly state that the mobile repository discussion board is the intended shared support venue for both projects.
+- F081 | CI/CD | `ci-cd-&-workflows.md / .github/workflows/sync-tests.yml` | 29-45, 94-119 | category=failure-point | severity=low
+  - Description: The workflow hardcodes Node 20 for the primary job and tests only Node 20/22 in the PR matrix, while the main CI workflow follows `.nvmrc`, which currently selects Node 24. Sync tests can therefore pass in this workflow while still failing under the repository's current default Node runtime.
+  - Fix direction: Use `node-version-file: .nvmrc` for the primary job and include that version in the matrix, or document why sync tests intentionally exclude the runtime used by the rest of CI.
+- F091 | CI/CD | `ci-cd-&-workflows.md / README.md` | 84-89 | category=failure-point | severity=low
+  - Description: The development quickstart tells contributors to use `npm install`, while CI and the workflow guidance use `npm ci`. `npm install` can mutate `package-lock.json` or resolve dependencies differently from CI, leading to avoidable local/CI drift.
+  - Fix direction: Change the default setup command to `npm ci` and mention `npm install <pkg>` only for intentional dependency changes.
+- F092 | CI/CD | `ci-cd-&-workflows.md / README.md` | 118-128 | category=failure-point | severity=low
+  - Description: The environment-variable section omits `VITE_SENTRY_DSN` and does not list the six required Paddle price ID variables individually. New deployments following only the README can silently ship with disabled error monitoring or incomplete checkout configuration.
+  - Fix direction: List every required/optional runtime variable explicitly, including `VITE_SENTRY_DSN` as optional monitoring config and all tier/interval Paddle price IDs.
+- F090 | CI/CD | `ci-cd-&-workflows.md / WORKFLOW.md` | 66 | category=failure-point | severity=low
+  - Description: The untrusted-input handling paragraph contains literal `\n` escape sequences instead of real Markdown line breaks. This makes an important safety instruction harder for agents and humans to read, and increases the chance that issue-content trust boundaries are missed.
+  - Fix direction: Replace the escaped `\n` text with normal Markdown bullets/paragraphs and keep the instruction visually prominent near the issue metadata.
+- F240 | Tests | `e2e-tests.md / e2e/integrations.spec.ts` | 72-78 | category=failure-point | severity=low
+  - Description: The Garmin test asserts there are zero `Sync Now` buttons on the whole page. This is only correct for the current single-provider fixture and will become brittle if the page renders another connected provider with a valid manual-sync button in the same test state.
+  - Fix direction: Scope the absence assertion to the Garmin provider card/section instead of the whole page.
+- F242 | Tests | `e2e-tests.md / e2e/navigation.spec.ts` | 3-8, 20-21, 38-39, 54-55, 63-74, 90-107 | category=failure-point | severity=low
+  - Description: The navigation suite relies heavily on fixed `waitForTimeout` sleeps to wait for animation/page readiness. This adds runtime and can still be flaky on slow CI or under changed animation durations.
+  - Fix direction: Replace fixed sleeps with web-first assertions for the next visible landmark/heading, or disable/reduce animations in Playwright through app config/CSS for E2E runs.
+- F245 | Tests | `e2e-tests.md / e2e/public-pages.spec.ts` | 20-47, 105-121, 127-142, 148-175 | category=failure-point | severity=low
+  - Description: The public-page error checks listen for `pageerror` only. Console errors, failed network requests for critical chunks/assets, and React recoverable errors logged to console can go unnoticed.
+  - Fix direction: Add `console` and `requestfailed` listeners with an allowlist for known benign failures, or use Playwright's web error/request assertions where appropriate.
+- F255 | Tests | `e2e-tests.md / e2e/support/mockSupabase.ts` | 253-257, 423-426, 453-457 | category=failure-point | severity=low
+  - Description: Several route handlers call `JSON.parse(request.postData())` without guarding parse errors. A malformed or unexpectedly empty request body will throw from the route handler rather than returning a controlled test failure with endpoint context.
+  - Fix direction: Wrap request-body parsing in a helper that reports the endpoint, method, and body on parse failure, then fulfills a clear 400/500 response for test diagnostics.
+- F522 | Tests | `sync-tests-&-security-tests.md / tests/sync/conflicts/conflict-resolution.test.ts` | 404-411 | category=failure-point | severity=low
+  - Description: The routine deletion scenario does not actually send any deletion/tombstone signal. It simply pulls again after the initial push, so it cannot validate preserving session routine snapshots across routine deletion.
+  - Fix direction: Push the real deletion representation used by the sync API, then assert the routine is deleted/hidden while historical sessions retain `routineName` and routine references as intended.
+- F536 | Tests | `sync-tests-&-security-tests.md / tests/sync/pull-pagination.test.ts` | 209-242 | category=failure-point | severity=low
+  - Description: The entity-order test uses `Object.keys(result.data!)` to infer pagination/order semantics. JavaScript object key order only proves response serialization order, not that the Edge Function pages entity buckets in the documented order.
+  - Fix direction: Test the actual paging sequence by seeding multiple entity types and walking cursors, or unit test the production bucket-order planner.
+- F540 | Tests | `sync-tests-&-security-tests.md / tests/sync/round-trip/entity-roundtrip.test.ts` | 932-1043 | category=failure-point | severity=low
+  - Description: The full sync payload test includes RPG attributes, badges, and gamification stats, but after pulling it only checks sessions/routines/cycles counts. Several entity types in the combined payload can be dropped without failing the test.
+  - Fix direction: Assert every entity type included in the payload is returned or intentionally push-only, with explicit expectations for stats and gamification fields.
+- F541 | Tests | `sync-tests-&-security-tests.md / tests/sync/round-trip/workout-roundtrip.test.ts` | 610-629 | category=failure-point | severity=low
+  - Description: The test named “should isolate failures - one bad session should not block others” only pushes a single valid session. It contains no bad session and therefore does not exercise isolation or transactional behavior.
+  - Fix direction: Include one valid and one deliberately invalid session in the same payload, then assert the expected all-or-nothing or partial-acceptance contract.
+- F137 | Data | `data-layer---mutations-&-schemas.md / src/mutations/account.ts` | 99-101 | category=failure-point | severity=low
+  - Description: `useExecuteDeletion` ignores the result of `supabase.auth.signOut()`. If the Edge Function succeeds but sign-out fails, the client can remain in an authenticated/stale session state after showing "Account deleted. Signing out...".
+  - Fix direction: Capture `{ error }` from `signOut()`, clear local auth/query state deliberately, and surface/retry sign-out failures.
+- F161 | Data | `data-layer---mutations-&-schemas.md / src/schemas/comments.ts` | 11-16 | category=failure-point | severity=low
+  - Description: Date fields are transformed with `new Date(s)` but never validated. Invalid date strings still parse successfully as `Invalid Date`, which can later break sorting, formatting, or edit-window calculations.
+  - Fix direction: Use `z.coerce.date()` or refine transformed dates with `Number.isFinite(date.getTime())`.
+- F167 | Data | `data-layer---mutations-&-schemas.md / src/schemas/onboarding.ts` | 10-17 | category=failure-point | severity=low
+  - Description: `completed_at` and `created_at` use raw `new Date` transforms without checking validity, so invalid persisted date strings parse as `Invalid Date` instead of failing schema validation.
+  - Fix direction: Use `z.coerce.date()` or add a finite-time refine after transformation.
+- F171 | Data | `data-layer---mutations-&-schemas.md / src/schemas/telemetry.ts` | 64-70 | category=failure-point | severity=low
+  - Description: `exerciseProgressSchema.recorded_at` uses `new Date(s)` without validity checks, so invalid timestamps parse successfully and later affect time-range filtering/sorting.
+  - Fix direction: Use `z.coerce.date()` or a finite timestamp refine.
+- F179 | Data | `data-layer---queries.md / src/queries/biomechanics.ts` | 12-55 | category=failure-point | severity=low
+  - Description: `sessionAsymmetryOptions` has no `enabled: !!sessionId` guard even though an empty session id produces a distinct cache key and a query against `session_id = ""`. Other session-scoped options in the codebase guard against this.
+  - Fix direction: Add `enabled: !!sessionId` to the returned options or require all callers to override it consistently.
+- F180 | Data | `data-layer---queries.md / src/queries/body-intelligence.ts` | 9-19, 47-62 | category=failure-point | severity=low
+  - Description: Both query options accept caller-controlled identifiers/ranges but do not guard invalid input. `bodyIntelligenceOptions` will run with an empty `userId` or a negative/invalid `days` value, and `sessionSetWeightsOptions` will run with an empty `sessionId`.
+  - Fix direction: Gate on valid identifiers (`!!userId`, `!!sessionId`) and clamp/validate `days` to a positive finite range before building the query.
+- F185 | Data | `data-layer---queries.md / src/queries/community.ts` | 256-267 | category=failure-point | severity=low
+  - Description: `userVotesOptions` returns a mutable `Set` from the query function. Storing mutable/non-serializable data in the query cache makes accidental in-place mutation easy and can defeat structural-sharing expectations.
+  - Fix direction: Return a stable array of voted ids from the query and construct a `Set` in the component with `useMemo`, or freeze/wrap the result behind a read-only helper.
+- F186 | Data | `data-layer---queries.md / src/queries/cycles.ts` | 32-48 | category=failure-point | severity=low
+  - Description: `cycleDetailOptions` does not include `enabled: !!cycleId`. Reusing the options directly with a missing id will issue `.single()` for `id = ""` and surface a Supabase error instead of remaining idle.
+  - Fix direction: Add the same enabled guard used by other detail queries, or document that every caller must supply its own enabled predicate.
+- F189 | Data | `data-layer---queries.md / src/queries/insights.ts` | 5-19 | category=failure-point | severity=low
+  - Description: `insightsOptions` lacks an `enabled: !!userId` guard. Direct reuse with an empty user id still creates and executes a query for `user_id = ""`.
+  - Fix direction: Add `enabled: !!userId` to match the guarded query options in neighboring files.
+- F190 | Data | `data-layer---queries.md / src/queries/integrations.ts` | 10-24, 31-55 | category=failure-point | severity=low
+  - Description: Both integration query options require `userId` but do not gate empty ids. Components that forget to override `enabled` can create cached empty-user queries and unnecessary Supabase requests.
+  - Fix direction: Add `enabled: !!userId` to both options; for provider-specific activity queries also keep the provider in the key as already done.
+- F191 | Data | `data-layer---queries.md / src/queries/localProfiles.ts` | 14-28 | category=failure-point | severity=low
+  - Description: `localProfilesOptions` requires a user id but has no enabled guard, so an unauthenticated/loading auth state can issue `local_profiles` queries for `user_id = ""` if a caller does not add its own guard.
+  - Fix direction: Add `enabled: !!userId` to the query options.
+- F192 | Data | `data-layer---queries.md / src/queries/onboarding.ts` | 10-26, 33-45 | category=failure-point | severity=low
+  - Description: `onboardingOptions` and `hasWorkoutsOptions` both require `userId` but do not gate empty ids. During auth initialization this can cache null/zero results under the empty-user key if a caller forgets to override `enabled`.
+  - Fix direction: Add `enabled: !!userId` to both options.
+- F194 | Data | `data-layer---queries.md / src/queries/progress.ts` | 35-59 | category=failure-point | severity=low
+  - Description: `exerciseProgressOptions` will execute with an empty `userId` or empty `exerciseName`; both are required for a meaningful result and both are part of the query key.
+  - Fix direction: Add `enabled: !!userId && !!exerciseName` or validate inputs before constructing options.
+- F195 | Data | `data-layer---queries.md / src/queries/records.ts` | 10-34 | category=failure-point | severity=low
+  - Description: `personalRecordsOptions` has no `enabled: !!userId` guard. Direct reuse during auth loading can query and cache an empty-user record list.
+  - Fix direction: Add `enabled: !!userId` to the options.
+- F197 | Data | `data-layer---queries.md / src/queries/replay.ts` | 9-34, 40-66 | category=failure-point | severity=low
+  - Description: Replay session and telemetry options do not include `enabled` guards for their required ids. Current callers add their own guards, but the options are easy to misuse and will otherwise run `.single()`/telemetry requests with empty ids.
+  - Fix direction: Add `enabled: !!sessionId` and `enabled: !!setId` directly to the option factories.
+- F198 | Data | `data-layer---queries.md / src/queries/routines.ts` | 26-42 | category=failure-point | severity=low
+  - Description: `routineDetailOptions` does not include `enabled: !!routineId`. A missing id produces an active `.single()` query for `id = ""` rather than an idle query.
+  - Fix direction: Add `enabled: !!routineId` or enforce non-empty ids before calling this factory.
+- F199 | Data | `data-layer---queries.md / src/queries/telemetry.ts` | 8-20, 24-36 | category=failure-point | severity=low
+  - Description: `repTelemetryOptions` and `repSummariesOptions` lack `enabled: !!setId` guards. Empty set ids create active queries and cache entries even though the result cannot be meaningful.
+  - Fix direction: Add `enabled: !!setId` to both options.
+- F202 | Data | `data-layer---stores.md / src/stores/useCommunityStore.ts` | 33-41 | category=failure-point | severity=low
+  - Description: The community UI store is an in-memory Zustand store only. Active tab, sort, search, filters, selected item, and the blocked-user set are not persisted or synchronized by the store. In practice, community filters reset on reload, and multiple tabs can diverge until hooks refetch/re-hydrate their local state. This is especially visible for blocked users because the backing hook writes localStorage, but the store itself does not listen for `storage` events or any BroadcastChannel signal.
+  - Fix direction: Decide which fields are intended to survive reload/tab boundaries, then add `persist` with `partialize` for those fields only (likely tab/sort/filters/search, not transient selected item), and add a storage-event/BroadcastChannel bridge or query invalidation strategy for blocked-user changes across tabs.
+- F207 | Data | `data-layer---stores.md / src/stores/useReplayStore.ts` | 14, 24, 53-54 | category=failure-point | severity=low
+  - Description: `currentRepIndex` is part of global replay state and has a setter, but the main replay component derives the current rep index from `currentTimeMs` locally and never writes it back to the store. Any future component that subscribes to `useReplayStore((s) => s.currentRepIndex)` will observe stale state, and the reset path updates a field that is not the source of truth.
+  - Fix direction: Remove `currentRepIndex` from the store if it is derived-only state, or centralize the derivation/synchronization in the store so there is one authoritative value.
+- F209 | Data | `data-layer---stores.md / src/stores/useUIStore.ts` | 19-22 | category=failure-point | severity=low
+  - Description: `setStreak` and `setNotifications` accept arbitrary numbers and write them directly. A negative, fractional, `NaN`, or infinite value from a buggy caller or future API response would flow into badge rendering and animation logic without normalization.
+  - Fix direction: Sanitize at the store boundary: coerce to finite non-negative integers, optionally cap very large badge values for display, and add tests for invalid numeric inputs.
+- F436 | Data | `lib---analytics-&-science.md / src/lib/biomechanics.ts` | 50-52 | category=failure-point | severity=low
+  - Description: `calculateRom` spreads the full `positions` array into `Math.max(...positions)` and `Math.min(...positions)`. Large telemetry arrays can exceed the JavaScript argument limit and throw a `RangeError`, and any `NaN`/non-finite reading will make the returned ROM `NaN`.
+  - Fix direction: Iterate through the readings while filtering to finite numbers, track min/max incrementally, and return 0 when no finite positions remain.
+- F454 | Data | `lib---analytics-&-science.md / src/lib/challenges.ts` | 3-12 | category=failure-point | severity=low
+  - Description: `formatChallengeValue` formats `NaN`, `Infinity`, or negative challenge values without validation. Corrupt challenge progress can surface literal `NaN`, `∞`, or negative counts/volumes in the UI.
+  - Fix direction: Validate `value` with `Number.isFinite`, clamp counters where appropriate, and return an unavailable placeholder for invalid challenge metrics.
+- F453 | Data | `lib---analytics-&-science.md / src/lib/community-atlas.ts` | 90-107, 131-162 | category=failure-point | severity=low
+  - Description: `normalizePercentiles` only accepts one- or two-digit percentile keys (`p0` through `p99`) and drops `p100`. Benchmarks that include a maximum cutoff at `p100` lose their upper boundary, so high outliers are clamped/interpolated against the last lower percentile instead of the true maximum bucket.
+  - Fix direction: Accept `100` in the percentile key parser, validate the resulting value is between 0 and 100, and include that boundary in interpolation.
+- F441 | Data | `lib---analytics-&-science.md / src/lib/insights.ts` | 133-157, 160-169 | category=failure-point | severity=low
+  - Description: Insight IDs for PRs and plateaus are derived by lowercasing exercise names and replacing whitespace only. Punctuation, slashes, duplicate spaces after replacement, and duplicate exercise names can still collide or produce awkward IDs such as `pr-bench/press`, causing downstream de-duplication or React key usage to merge distinct insights.
+  - Fix direction: Use a shared slug helper that removes non-alphanumeric separators and include a stable discriminator when multiple PRs/plateaus for the same exercise can be emitted.
+- F443 | Data | `lib---analytics-&-science.md / src/lib/rep-quality.ts` | 124-144 | category=failure-point | severity=low
+  - Description: `calculateTutScore` assumes the target TUT range is ordered and positive. A caller-provided range such as `[5000, 2000]`, `[0, 0]`, or negative bounds can make normal reps score incorrectly or produce divisions by zero in the shortfall/excess math.
+  - Fix direction: Normalize and validate the target range before scoring; reject non-finite/non-positive bounds or fall back to the default `[2000, 5000]` range.
+- F446 | Data | `lib---analytics-&-science.md / src/lib/sra-recovery.ts` | 81-105 | category=failure-point | severity=low
+  - Description: Negative `hoursSinceLastTrained` values are accepted. Clock skew or future-dated sessions produce a negative ratio and inflate `hoursRemaining` beyond the expected recovery window, while still reporting the muscle as `FATIGUED`.
+  - Fix direction: Clamp elapsed hours to `>= 0` or treat negative elapsed time as invalid data with a safe fallback/status flag.
+- F447 | Data | `lib---analytics-&-science.md / src/lib/vbt.ts` | 168-173, 188-193 | category=failure-point | severity=low
+  - Description: Non-finite velocities such as `NaN` fail the zone predicates and silently fall back to the first zone (`GRIND`/`absolute-strength`). Invalid telemetry is therefore displayed as a real slow-rep classification instead of an unavailable/invalid state.
+  - Fix direction: Validate `Number.isFinite(meanVelocityMps)` before classification and return `null`, throw a controlled validation error, or expose an explicit unknown zone for invalid samples.
+- F448 | Data | `lib---analytics-&-science.md / src/lib/volume-landmarks.ts` | 45-63, 88-101 | category=failure-point | severity=low
+  - Description: Negative or non-finite `setCount`/`weeklySets` values are not sanitized. Bad imported data can reduce a muscle group's weekly volume below zero and then classify it as `below_mev`, hiding the data-quality problem as a training recommendation.
+  - Fix direction: Clamp set counts to non-negative finite numbers at aggregation and return `null` or an explicit invalid state from `classifyVolumeStatus` for non-finite inputs.
+- F449 | Data | `lib---analytics-&-science.md / src/lib/workout-phases.ts` | 19-24, 32-34 | category=failure-point | severity=low
+  - Description: `normalizeWorkoutPhase` only recognizes exact string keys and does not trim whitespace or normalize case generically. Values like `"CONCENTRIC "`, `" eccentric"`, or API enum variants with incidental whitespace silently fall back to `Combined`.
+  - Fix direction: Trim the input and normalize to a canonical uppercase key before lookup; make `isWorkoutPhase` use the same normalization path when validating external values.
+- F473 | Data | `lib---core-utilities.md / src/lib/toast-undo.ts` | 34-59 | category=failure-point | severity=low
+  - Description: The destructive timer is independent of the toast lifecycle. If the toast is dismissed by timeout, programmatic dismissal, route change, or component unmount before `delayMs`, the action still executes with no visible Undo affordance.
+  - Fix direction: Use the toast library's dismissal/close hooks if available, keep the toast visible for the entire undo window, and provide a returned cancellation function so components can clear the pending action on unmount.
+- F466 | Data | `lib---core-utilities.md / src/lib/units.ts` | 5-8, 20-37, 66-82 | category=failure-point | severity=low
+  - Description: `safeNumber` filters only `null`, `undefined`, and `NaN`; it allows `Infinity` and `-Infinity`. Formatting helpers can therefore emit `Infinity kg`, `Infinity lbs`, or nonsensical abbreviated values if upstream calculations divide by zero or overflow.
+  - Fix direction: Use `Number.isFinite` instead of only `Number.isNaN`, or handle infinite values explicitly with a display fallback such as `—`.
+- F478 | Data | `lib---integrations.md / src/lib/integrations/rate-limits.ts` | 19-32 | category=failure-point | severity=low
+  - Description: `isRateLimited()` assumes `window_started_at` is always a valid date string and `requests_this_window` is always a number. The database types for rate-limit tracking allow those fields to be nullable, and malformed timestamps produce unreliable comparisons, which can fail open or fail closed depending on the stored values.
+  - Fix direction: Accept nullable tracking fields, validate `window_started_at` with `Number.isFinite()`, coerce missing request counts to 0, and treat corrupt tracking rows as an expired/reset window rather than relying on JavaScript date coercion.
+- F498 | Data | `lib---replay-&-export.md / src/lib/export/csv.ts` | 80-89 | category=failure-point | severity=low
+  - Description: `downloadCSV` creates an anchor and clicks it without appending it to the document, while the ZIP export helpers append/remove their download anchor. Some browsers and WebViews ignore synthetic clicks on detached anchors, so CSV exports can silently fail in those environments.
+  - Fix direction: Mirror the ZIP download path: append the anchor to `document.body`, click it, remove it, and consider deferring `URL.revokeObjectURL` to the next task/tick after the click.
+- F494 | Data | `lib---replay-&-export.md / src/lib/replay-phase-analytics.ts` | 80-90 | category=failure-point | severity=low
+  - Description: `repNumberForTimestamp` assumes each `repBoundaries` entry is a rep start. If a caller supplies a terminal end boundary (which the renderer would need to shade the final interval), timestamps at or after that terminal boundary advance `index` past `repSummaries.length - 1` and can be labeled as a phantom rep (`index + 1`).
+  - Fix direction: Treat boundaries as half-open rep windows and cap the resolved index to `repSummaries.length - 1`, or pass explicit `{startMs,endMs}` windows instead of overloading a raw number array.
+- F491 | Data | `lib---replay-&-export.md / src/lib/replay-renderer.ts` | 60-62, 132-137, 207-212 | category=failure-point | severity=low
+  - Description: `currentTimeMs` is not clamped before drawing the playhead. If the player state briefly goes negative or beyond the last telemetry timestamp during seeking or data refresh, the playhead is drawn outside the plot area; when no samples are visible yet, the out-of-bounds playhead is the only thing rendered.
+  - Fix direction: Clamp `currentTimeMs` to `[0, maxTime]` for rendering, and use the raw value only for playback state if needed.
+- F011 | UI | `analytics-dashboard.md / src/app/components/analytics/SRARecoveryMatrix.tsx` | 101-105, 127-135 | category=failure-point | severity=low
+  - Description: The display treats `hoursSinceLastTrained === 0` as "No data". The SRA model also uses `0` as the sentinel for never-trained muscles, but `0` can also represent a muscle trained just now. In that edge case, a freshly trained muscle is shown as no data instead of fatigued/recovering.
+  - Fix direction: Carry an explicit `hasTrainingData` or nullable `hoursSinceLastTrained` field through `MuscleRecovery` rather than overloading `0` as a sentinel.
+- F019 | UI | `app-entry-&-routing.md / src/app/routes/AppLayout.tsx` | 74-77 | category=failure-point | severity=low
+  - Description: `SkipToContent` links to `#main-content`, but the target `<motion.main>` is not programmatically focusable. Some keyboard/screen-reader users may jump the scroll position without moving focus to the main region, reducing the usefulness of the skip link.
+  - Fix direction: Add `tabIndex={-1}` to the main landmark and ensure focus styles remain accessible when the skip link is activated.
+- F020 | UI | `app-entry-&-routing.md / src/app/routes/ProtectedRoute.tsx` | 12-13 | category=failure-point | severity=low
+  - Description: Unauthenticated users are redirected to `/` without preserving the protected URL they originally requested. After sign-in, the auth flow sends users to `/dashboard`, so deep links such as `/history/:sessionId` or `/replay/:sessionId` are lost.
+  - Fix direction: Use `useLocation()` and pass redirect state such as `{ from: location }`, then have the sign-in/auth-callback flow return authenticated users to that safe internal path when present.
+- F016 | UI | `app-entry-&-routing.md / src/app/routes/index.tsx` | 25-31 | category=failure-point | severity=low
+  - Description: The chunk-load recovery path uses `sessionStorage.getItem` and `sessionStorage.setItem` inside the `catch` handler without guarding storage errors. If session storage is unavailable or throws, the recovery handler throws before `window.location.reload()` and the intended stale-asset recovery does not happen.
+  - Fix direction: Wrap the session-storage throttle in `try/catch`; if storage is unavailable, fall back to a best-effort reload or an in-memory flag.
+- F015 | UI | `app-entry-&-routing.md / src/main.tsx` | 13 | category=failure-point | severity=low
+  - Description: `getConsentStatus()` reads `localStorage` during module initialization before React renders. In browsers or privacy modes where storage access throws `SecurityError`, the entire app can fail before the root is created.
+  - Fix direction: Make consent reads/writes defensive with `try/catch` and default to `null` or rejected consent when storage is unavailable, so rendering is not blocked.
+- F031 | UI | `app-shell-&-layout.md / src/app/components/BottomSheet.tsx` | 43-53 | category=failure-point | severity=low
+  - Description: Opening the sheet unconditionally sets `document.body.style.overflow = "hidden"` and cleanup resets it to an empty string. If another modal or page-level style already had a body overflow value, closing this sheet will clobber it.
+  - Fix direction: Save the previous body overflow value and restore that exact value, or use a shared scroll-lock utility with reference counting.
+- F037 | UI | `app-shell-&-layout.md / src/app/components/EmberParticles.tsx` | 114-119 | category=failure-point | severity=low
+  - Description: The particle canvas is decorative but is not marked `aria-hidden`. Some assistive technologies may expose it as an unlabeled graphic/canvas.
+  - Fix direction: Add `aria-hidden="true"` and, if needed, `role="presentation"` to the canvas.
+- F034 | UI | `app-shell-&-layout.md / src/app/components/ErrorFallback.tsx` | 50-53 | category=failure-point | severity=low
+  - Description: Non-chunk errors render `error.message` directly to end users. React escapes the content, so this is not an XSS issue, but production exceptions can contain internal implementation details, table names, URLs, or other sensitive diagnostics.
+  - Fix direction: Show a generic user-facing message in production and send the raw error to logging/observability instead.
+- F040 | UI | `app-shell-&-layout.md / src/app/components/LocalProfileFilter.tsx` | 39-51 | category=failure-point | severity=low
+  - Description: The `label` uses `htmlFor="profile-filter-select"`, but the rendered `SelectTrigger` is not given that id. The visible label is therefore not programmatically associated with the combobox.
+  - Fix direction: Pass `id="profile-filter-select"` to `SelectTrigger` if supported, or use the select component's labelled-by pattern.
+- F032 | UI | `app-shell-&-layout.md / src/app/components/PageLoading.tsx` | 6-34 | category=failure-point | severity=low
+  - Description: The loading state is only visual text plus animation and is not exposed as a live status region. Assistive technologies may not announce that the page is loading during route-level Suspense transitions.
+  - Fix direction: Add `role="status"` and/or `aria-live="polite"`, and mark decorative animated elements `aria-hidden`.
+- F035 | UI | `app-shell-&-layout.md / src/app/components/PortalBanner.tsx` | 5-31 | category=failure-point | severity=low
+  - Description: Dismissal is component-local state only. If the banner is remounted by route/layout changes or the page is refreshed, the same user sees it again despite dismissing it.
+  - Fix direction: Persist dismissal in local storage or user preferences if the intended behavior is one-time acknowledgement.
+- F036 | UI | `app-shell-&-layout.md / src/app/components/SkipToContent.tsx` | 3-5 | category=failure-point | severity=low
+  - Description: The link targets `#main-content`, but the target main element is not focusable in `AppLayout`. Activating the skip link may scroll to the main content while keyboard focus remains on the skip link, which weakens the accessibility benefit.
+  - Fix direction: Make the target focusable with `tabIndex={-1}` and ensure activation moves focus to it, or handle focus programmatically on click.
+- F042 | UI | `app-shell-&-layout.md / src/app/components/figma/ImageWithFallback.tsx` | 12-14, 33-40 | category=failure-point | severity=low
+  - Description: A caller-provided `onError` handler is overwritten by the internal `handleError` because `onError={handleError}` is applied after `{...rest}`. Consumers cannot perform logging, metrics, or custom fallback behavior on image load failures.
+  - Fix direction: Extract `onError` from props and invoke it from `handleError` before setting fallback state.
+- F060 | UI | `charts-&-visualization.md / src/app/components/charts/CommunityDistribution.tsx` | 80-82, 172-177 | category=failure-point | severity=low
+  - Description: When fewer than two valid percentile keys are provided, the component returns an empty ECharts option and still renders a chart container with an aria-label stating the user's value. Visually this is a blank 60px chart with no explanation, which looks like a rendering failure rather than an empty-data state.
+  - Fix direction: Render an explicit empty-state message such as "Not enough community data" when `generateBellCurvePoints` returns no points, and make the accessible label match that state.
+- F061 | UI | `charts-&-visualization.md / src/app/components/charts/ConsistencyWidget.tsx` | 30-32 | category=failure-point | severity=low
+  - Description: `ProgressRing` caps progress at 100% but does not clamp the lower bound. If imported aggregate data ever contains a negative session count, `fill` becomes negative and `strokeDashoffset` exceeds the circumference, producing an invalid/reversed progress arc instead of a safe zero state.
+  - Fix direction: Clamp `fill` with `Math.max(0, Math.min(sessions / target, 1))` and consider sanitizing displayed counts to non-negative values before rendering.
+- F068 | UI | `charts-&-visualization.md / src/app/components/charts/TrainingLoadGauge.tsx` | 22-25, 51-85 | category=failure-point | severity=low
+  - Description: `zoneColor` and `zoneLabel` are looked up directly from the incoming `zone`. If API or persisted data ever supplies an unexpected zone string, ECharts receives `undefined` for pointer color, title color, and series name, leading to a broken or unlabeled gauge instead of a safe fallback.
+  - Fix direction: Validate `zone` at the boundary or default unknown zones to a neutral color/label before constructing the option.
+- F097 | UI | `community-features.md / src/app/components/community/CommunityContentPreview.tsx` | 23-25, 401-405 | category=failure-point | severity=low
+  - Description: Missing or null embedded routine durations are formatted as `0 min`. For older or partial shared cycle snapshots this presents unknown data as a real zero-minute workout, which can mislead users reviewing imported/community content.
+  - Fix direction: Distinguish unknown from zero by returning a placeholder such as `Duration unavailable` when the stored duration is null/undefined, and only display `0 min` for an explicit numeric zero if that is valid.
+- F099 | UI | `community-features.md / src/app/components/community/CommunityFilterPanel.tsx` | 109-117, 131-142 | category=failure-point | severity=low
+  - Description: The labels use `htmlFor="muscle-group-filter"` and `htmlFor="difficulty-filter"`, but those ids are not applied to the corresponding select triggers. Screen readers will not reliably associate the labels with the controls.
+  - Fix direction: Add matching ids to the `SelectTrigger` elements, or use the project/Radix-supported labeling pattern such as wrapping with a label or applying `aria-labelledby`.
+- F105 | UI | `community-features.md / src/app/components/community/FeaturedCreators.tsx` | 34-47, 99-134 | category=failure-point | severity=low
+  - Description: Scroll-button state is computed only when the scroll container first mounts and on scroll events. When loading skeletons are replaced by real creators, or when blocked-user filtering changes the creator list, `canScrollLeft`/`canScrollRight` may remain stale until the user manually scrolls.
+  - Fix direction: Re-run `updateScrollState` when `isLoading`, `creators?.length`, or blocked-user data changes; consider a `ResizeObserver` for robust width changes.
+- F112 | UI | `cycle-&-routine-builders.md / src/app/components/CycleBuilder.tsx` | 327, 824-833 | category=failure-point | severity=low
+  - Description: The day card always renders a remove button, even when only one day remains. `handleRemoveDay` silently returns for the final day, so the UI exposes a destructive control that does nothing.
+  - Fix direction: Hide or disable the remove button when `days.length <= 1`, and communicate why the final schedule day cannot be removed.
+- F129 | UI | `cycle-&-routine-builders.md / src/app/components/RoutineDetail.tsx` | 221-319 | category=failure-point | severity=low
+  - Description: The detail page has no empty-state branch for routines with zero exercises. It renders the header/stat cards and then an empty content area, which looks like a loading or rendering failure.
+  - Fix direction: Add an explicit empty routine state with a call to edit/add exercises when `routine.routine_exercises.length === 0`.
+- F116 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/DayEditor.tsx` | 136-164, 185-213, 270-275 | category=failure-point | severity=low
+  - Description: Numeric override inputs do not clamp typed values. Users can type very large or negative weight adjustments, negative rep modifiers, or arbitrary rest times; only some button paths clamp values.
+  - Fix direction: Validate and clamp typed values in each `onChange` path before calling `onUpdateOverrides`, matching the intended domain constraints.
+- F118 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/ProgressionRules.tsx` | 479-512 | category=failure-point | severity=low
+  - Description: The deload intensity and volume inputs set `min="0"` and `max="100"`, but typed values are not clamped before being stored. Browsers do not reliably prevent invalid typed number input, so values over 100 can be persisted in state.
+  - Fix direction: Clamp deload percentages to 0-100 in `onChange` before calling `onDeloadConfigChange`.
+- F120 | UI | `cycle-&-routine-builders.md / src/app/components/cycle-builder/RoutinePicker.tsx` | 52-68, 75-77 | category=failure-point | severity=low
+  - Description: The custom modal does not implement focus trapping, Escape handling, or explicit dialog semantics. Keyboard and assistive-technology users can tab behind the overlay or may not get a proper modal announcement.
+  - Fix direction: Use the shared Dialog component or add `role="dialog"`, `aria-modal="true"`, labelled title, Escape close handling, and focus trap/restore behavior.
+- F132 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/superset-helpers.ts` | 42-49 | category=failure-point | severity=low
+  - Description: `createSuperset` uses `Date.now()` for IDs. Two supersets created in the same millisecond can collide, especially in tests or batched UI actions.
+  - Fix direction: Use `crypto.randomUUID()` or a monotonic ID generator for client-created superset IDs.
+- F133 | UI | `cycle-&-routine-builders.md / src/app/components/routine-builder/superset-types.ts` | 34-56, 59-64 | category=failure-point | severity=low
+  - Description: There are only four superset colors/labels, and `getNextSupersetColor` cycles back to the first color after all are used. A fifth superset becomes visually labelled the same as the first, making groups ambiguous.
+  - Fix direction: Expand the palette/labels or derive labels from group index so each group remains distinguishable even when colors repeat.
+- F369 | UI | `feature-components-part-1.md / src/app/components/GoalDashboardWidget.tsx` | 19-28 | category=failure-point | severity=low
+  - Description: The widget calls `useGoalProgress(activeProfileId)` before returning the non-premium locked card. That hook performs goal/workout/record queries even when the user cannot see goal data, adding avoidable network work on the dashboard.
+  - Fix direction: Split the paid widget body into a child component rendered only after the premium check, or add enabled gates to the underlying queries used by goal progress.
+- F370 | UI | `feature-components-part-1.md / src/app/components/GoalProgressRing.tsx` | 20-25 | category=failure-point | severity=low
+  - Description: The SVG has an `aria-label`, but no explicit `role="img"`. Some assistive technologies do not announce standalone SVG labels consistently without an image role.
+  - Fix direction: Add `role="img"` to the SVG, or mark the SVG decorative and expose the percentage in adjacent text.
+- F374 | UI | `feature-components-part-1.md / src/app/components/PricingPlans.tsx` | 810-814 | category=failure-point | severity=low
+  - Description: The cancel-subscription confirmation action is not disabled while `isCanceling` is true. Repeated clicks can send duplicate cancel requests before the dialog closes.
+  - Fix direction: Add `disabled={isCanceling}` to the `AlertDialogAction`, matching the safer pattern used in `Profile.tsx`.
+- F375 | UI | `feature-components-part-1.md / src/app/components/SubscriptionGate.tsx` | 31-32 | category=failure-point | severity=low
+  - Description: Loading always renders a fixed `h-32 w-full` skeleton, even when the caller passed `fallback={null}` or uses the gate around an inline control. This can create large layout jumps or an oversized placeholder where no fallback should appear.
+  - Fix direction: Allow a dedicated `loadingFallback`, honor `fallback={null}` during loading for inline gates, or size the skeleton based on the gated context.
+- F372 | UI | `feature-components-part-1.md / src/app/components/TrainingCycles.tsx` | 258-265 | category=failure-point | severity=low
+  - Description: The dropdown trigger is an icon-only button without an accessible label. Screen reader users hear an unlabeled button and cannot tell it opens cycle actions.
+  - Fix direction: Add `aria-label={`Open actions for ${cycle.name}`}` or visible sr-only text inside the trigger.
+- F361 | UI | `feature-components-part-1.md / src/app/components/WorkoutHistory.tsx` | 56-63, 508-520 | category=failure-point | severity=low
+  - Description: Workout cards are clickable `Card`/`div` UI with `onClick`, but they are not keyboard-focusable and do not expose button/link semantics. Keyboard and assistive-technology users cannot open a workout or select workouts for compare mode reliably.
+  - Fix direction: Render the interactive card as a `button`/`Link`, or add `role="button"`, `tabIndex={0}`, and Enter/Space key handling while preserving visible focus styles.
+- F400 | UI | `feature-components-part-2.md / src/app/components/CalendarWidget.tsx` | 131-155 | category=failure-point | severity=low
+  - Description: Calendar day buttons expose the day number, selected state, and current date, but the workout dot is visual-only and locked dates rely on disabled styling. Screen reader users are not told which dates have workouts or why a date is unavailable.
+  - Fix direction: Add an `aria-label` that includes the full date plus states such as `selected`, `today`, `has workout`, and `locked/unavailable`.
+- F401 | UI | `feature-components-part-2.md / src/app/components/CalendarWidgetMobile.tsx` | 110-136 | category=failure-point | severity=low
+  - Description: The mobile calendar has the same accessibility gap as the desktop calendar: workout indicators and locked-date status are communicated only visually.
+  - Fix direction: Add full stateful `aria-label` text for each day button and ensure locked dates expose a reason when available.
+- F383 | UI | `feature-components-part-2.md / src/app/components/RecoveryScore.tsx` | 34-35, 73-76, 87 | category=failure-point | severity=low
+  - Description: The component trusts `result.score` to be a valid 0-100 value. If an upstream change or bad server result passes a negative score, a score above 100, or `NaN`, the SVG dash offset and displayed value can overdraw or render invalid gauge output.
+  - Fix direction: Clamp and validate the display score inside the component, e.g. `const score = Number.isFinite(result.score) ? Math.min(100, Math.max(0, result.score)) : 0`.
+- F392 | UI | `feature-components-part-2.md / src/app/components/integrations/ExternalActivityList.tsx` | 54-60, 84-87, 143-145 | category=failure-point | severity=low
+  - Description: Dates are parsed with `new Date(...)` and rendered without validating the result. Malformed provider data can render `Invalid Date`, and invalid timestamps sort unpredictably because `getTime()` returns `NaN`.
+  - Fix direction: Add a safe date parser/formatter that detects invalid dates, renders a fallback, and sorts invalid values deterministically at the end.
+- F393 | UI | `feature-components-part-2.md / src/app/components/integrations/HevyConnect.tsx` | 146-149, 151-178 | category=failure-point | severity=low
+  - Description: CSV validation is a case-sensitive filename suffix check. Valid exports named with uppercase or mixed-case extensions, such as `HEVY_EXPORT.CSV`, are rejected before parsing. Read/parse failures also leave the selected file in the input unless the user manually clears it.
+  - Fix direction: Normalize the filename before checking the extension, and clear/reset the file input plus preview state on parse/read failure.
+- F394 | UI | `feature-components-part-2.md / src/app/components/integrations/LiftosaurConnect.tsx` | 24-28, 40-50, 147-160 | category=failure-point | severity=low
+  - Description: The component documents the Liftosaur API key format as `lftsk_*`, but only validates that the field is non-empty. Obvious bad keys are sent to the edge function, producing unnecessary network calls and delayed feedback.
+  - Fix direction: Add lightweight client-side format validation before invoking `liftosaur-sync`, while keeping the server-side validation authoritative.
+- F395 | UI | `feature-components-part-2.md / src/app/components/integrations/MobileOnlyProvider.tsx` | 20-34, 63-65 | category=failure-point | severity=low
+  - Description: `formatRelative` does not validate parsed dates and treats future timestamps as `Just now` because negative minute deltas satisfy `diffMin < 1`. Clock skew or bad provider data can mislead users about last sync freshness.
+  - Fix direction: Check `Number.isFinite(date.getTime())`, handle future timestamps explicitly, and render a safe fallback for invalid dates.
+- F407 | UI | `feature-components-part-3.md / src/app/components/Challenges.tsx` | 62-68, 165, 230-232, 457 | category=failure-point | severity=low
+  - Description: Date parsing failures are not handled. If a malformed/null `end_date` is returned from the API cast, `new Date(endDate).getTime()` becomes `NaN`, `Math.max(0, NaN)` returns `NaN`, and the UI displays `NaN days` / `NaN days left` instead of a safe fallback.
+  - Fix direction: Validate parsed dates before computing the difference and render an "unknown"/"ended" fallback when the date is invalid.
+- F408 | UI | `feature-components-part-3.md / src/app/components/ComparisonSessionPicker.tsx` | 67-75 | category=failure-point | severity=low
+  - Description: The search field is identified only by placeholder text and has no programmatic label. Once users type into it, screen-reader users lose the accessible prompt for what the input searches.
+  - Fix direction: Add a visually-hidden `<label>` linked with `htmlFor`, or add an `aria-label="Search sessions by name or date"` to the input.
+- F409 | UI | `feature-components-part-3.md / src/app/components/ComparisonSessionPicker.tsx` | 92-97 | category=failure-point | severity=low
+  - Description: Session rows are clickable `Card` elements without button/link semantics, `tabIndex`, or keyboard handlers. Keyboard and assistive-technology users cannot reliably select a session from the dialog.
+  - Fix direction: Render each row as a real `<button type="button">` styled like the card, or add appropriate `role="button"`, `tabIndex={0}`, and Enter/Space handling.
+- F417 | UI | `feature-components-part-3.md / src/app/components/ConsistencyCalendar.tsx` | 217-239, 245-269 | category=failure-point | severity=low
+  - Description: Calendar cell details are only available through mouse hover on SVG rects. Keyboard users and touch devices cannot reveal the per-day tooltip, despite the rects being presented with interactive cursor styling.
+  - Fix direction: Make cells focusable with keyboard handlers/focus tooltip support, or provide an accessible textual summary/list for selected days.
+- F418 | UI | `feature-components-part-3.md / src/app/components/MuscleHeatmap.tsx` | 225-247, 273-310, 330-350 | category=failure-point | severity=low
+  - Description: Muscle-region details are only available via mouse hover, and the Front/Back toggle buttons do not expose selected state (`aria-pressed`). Touch, keyboard, and assistive-technology users cannot inspect region values or reliably know which view is active.
+  - Fix direction: Add `aria-pressed` to the view toggle buttons, make regions focusable/selectable, and show the same tooltip/details on focus/click/touch as on hover.
+- F414 | UI | `feature-components-part-3.md / src/app/components/PWAInstallPrompt.tsx` | 64-66 | category=failure-point | severity=low
+  - Description: The dismiss control is an icon-only button with no accessible name. Screen readers will announce an unlabeled button, making it unclear that it closes the install prompt.
+  - Fix direction: Add `aria-label="Dismiss install prompt"` or include visually-hidden text inside the button.
+- F413 | UI | `feature-components-part-3.md / src/app/components/WhatsNewBanner.tsx` | 24-28 | category=failure-point | severity=low
+  - Description: `handleDismiss` schedules `onDismiss()` with `setTimeout` but does not clear the timer on unmount. If the banner unmounts before 300ms because of route changes or parent state changes, the stale timer can still fire and mutate onboarding state after the component lifecycle has ended.
+  - Fix direction: Store the timeout id in a ref and clear it in an effect cleanup, or let `AnimatePresence`/motion completion callbacks trigger persistence while the component is still mounted.
+- F403 | UI | `feature-components-part-3.md / src/app/components/landing/ForceCurveDemo.tsx` | 162-180 | category=failure-point | severity=low
+  - Description: The SVG gradient id `force-area-gradient` is hardcoded. If multiple `ForceCurveDemo` instances render in the same document, duplicate ids can make `fill="url(#force-area-gradient)"` resolve to the wrong gradient definition or violate unique-id assumptions used by tests and assistive tooling.
+  - Fix direction: Generate a per-instance id with `useId()` and reference that id in the `AreaClosed` fill.
+- F404 | UI | `feature-components-part-3.md / src/app/components/landing/ProductShowcase.tsx` | 45-53 | category=failure-point | severity=low
+  - Description: The mini force chart uses a hardcoded SVG gradient id `force-gradient`. Rendering more than one `ProductShowcase` on a page creates duplicate DOM ids and can cause `url(#force-gradient)` references to bind to another instance's gradient.
+  - Fix direction: Use `useId()` or accept an id prefix from the parent, then build a unique gradient id for each rendered SVG.
+- F423 | UI | `hooks-&-providers.md / src/app/hooks/usePWAInstall.ts` | 107-120 | category=failure-point | severity=low
+  - Description: `promptInstall` awaits `deferredPrompt.prompt()` and `deferredPrompt.userChoice` without `try/finally` or error handling. If the browser rejects either promise, the module-level `deferredPrompt` remains set and `promptAvailable` remains true, so the banner can continue to render while the install flow is no longer usable.
+  - Fix direction: Wrap the prompt flow in `try/catch/finally`; log or surface a non-blocking failure state, and clear `deferredPrompt`/`promptAvailable` in `finally` after a prompt attempt.
+- F424 | UI | `hooks-&-providers.md / src/app/hooks/useReducedMotion.ts` | 13, 17-20 | category=failure-point | severity=low
+  - Description: The hook assumes `window.matchMedia` exists and that the returned `MediaQueryList` supports `addEventListener`. Older Safari/WebViews only expose `addListener`/`removeListener`, and non-browser/test environments can omit `matchMedia`, causing the hook to throw during initialization or mount.
+  - Fix direction: Guard for `typeof window.matchMedia === "function"`, and use an `addEventListener`/`removeEventListener` path with an `addListener`/`removeListener` fallback.
+- F502 | UI | `session-replay.md / src/app/components/session-replay/QualityBadge.tsx` | 87-100 | category=failure-point | severity=low
+  - Description: Factor hints are exposed only through the native `title` attribute on the label. `title` is not reliably available to keyboard, touch, or screen-reader users, so the meaning of "Higher is better" / "Higher is more balanced" can be missed.
+  - Fix direction: Render the hint as visible text, use an accessible tooltip component, or connect the label to hidden explanatory text with `aria-describedby`.
+- F504 | UI | `session-replay.md / src/app/components/session-replay/ReplayAnnotationOverlay.tsx` | 18-20, 37-41, 73-74 | category=failure-point | severity=low
+  - Description: The x-coordinate calculation clamps plot width to at least 1px, but it does not handle containers narrower than the left/right margins. On very narrow layouts, annotation x values can sit outside the SVG viewBox, and the text x position can become negative through `Math.min(width - 44, x + 6)`.
+  - Fix direction: Treat tiny widths as a no-render state, clamp label coordinates to `[0, width]`, and/or scale margins down for small containers.
+- F506 | UI | `session-replay.md / src/app/components/session-replay/ReplayCanvas.tsx` | 33-38, 64-71 | category=failure-point | severity=low
+  - Description: The component silently returns when `getContext("2d")` fails and still exposes a canvas with `role="img"`. Users get no visible fallback or accessible data if the browser blocks canvas, canvas creation fails, or rendering is otherwise unsupported.
+  - Fix direction: Track a render-support/error state and render a fallback message or tabular summary. If using `role="img"`, provide a meaningful textual alternative that describes the current chart data.
+- F508 | UI | `session-replay.md / src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx` | 96-142, 211-223 | category=failure-point | severity=low
+  - Description: The force/velocity scatter plots are rendered only as visual Recharts charts, with no accessible title/description, no tabular equivalent, and no keyboard-readable list of phase points. Screen-reader users can access the energy cards but not the actual force-vs-position or velocity-vs-position analytics.
+  - Fix direction: Add an accessible summary/table of the plotted phase points, give the chart regions labelled headings/descriptions, and consider hiding purely decorative SVG internals while exposing the underlying data in semantic HTML.
+- F548 | Other | `ui-primitives-shadcn.md / src/app/components/ui/alert.tsx` | 28-32 | category=failure-point | severity=low
+  - Description: `Alert` always renders `role="alert"`, even for the default/non-destructive variant. Static informational content rendered with `role="alert"` can be announced assertively by assistive technology and interrupt users even when no urgent status change occurred.
+  - Fix direction: Make the live-region role opt-in, use `role="status"` for non-urgent messages, or expose a prop for callers to choose the appropriate role.
+- F549 | Other | `ui-primitives-shadcn.md / src/app/components/ui/breadcrumb.tsx` | 52-63 | category=failure-point | severity=low
+  - Description: `BreadcrumbPage` renders a non-interactive `<span>` with `role="link"`, `aria-disabled="true"`, and `aria-current="page"`. This can cause the current page to be announced as a disabled link even though it is not focusable or interactive.
+  - Fix direction: Prefer a plain text element with `aria-current="page"` and no `role="link"`, or render an actual disabled/non-clickable link only when a link semantic is intentionally required.
+- F550 | Other | `ui-primitives-shadcn.md / src/app/components/ui/breadcrumb.tsx` | 90-99 | category=failure-point | severity=low
+  - Description: `BreadcrumbEllipsis` sets `aria-hidden="true"` on the wrapper while also including an `sr-only` label (`More`). Because the parent is hidden from the accessibility tree, the screen-reader label is also hidden.
+  - Fix direction: If the ellipsis should be announced, remove `aria-hidden` from the wrapper and hide only the icon. If it should be decorative, remove the unreachable `sr-only` text to avoid a misleading implementation.
+- F556 | Other | `ui-primitives-shadcn.md / src/app/components/ui/empty-state.tsx` | 27, 33-39 | category=failure-point | severity=low
+  - Description: The title and action styling hard-code white text (`text-white`) and CTA colors instead of relying fully on semantic tokens. In non-dark themes or high-contrast themes, this can produce insufficient contrast or inconsistent theming.
+  - Fix direction: Use semantic foreground/action tokens (`text-foreground`, `text-primary-foreground`, etc.) instead of fixed white text classes.
+- F559 | Other | `ui-primitives-shadcn.md / src/app/components/ui/pagination.tsx` | 105-113 | category=failure-point | severity=low
+  - Description: `PaginationEllipsis` sets `aria-hidden` on the wrapper while including an `sr-only` label (`More pages`). The label is hidden from assistive technologies because the parent is hidden.
+  - Fix direction: Either remove `aria-hidden` and mark only the icon decorative, or remove the unreachable `sr-only` text if the ellipsis is intended to be purely decorative.
+- F563 | Other | `ui-primitives-shadcn.md / src/app/components/ui/sidebar.tsx` | 609-612 | category=failure-point | severity=low
+  - Description: `SidebarMenuSkeleton` computes a random width during render. In SSR/hydration scenarios this can cause server/client markup drift; during remounts it can also create unnecessary layout variation.
+  - Fix direction: Use deterministic skeleton widths, a CSS variable set by the caller, or a stable seeded value generated outside the render path.
+- F564 | Other | `ui-primitives-shadcn.md / src/app/components/ui/skeleton.tsx` | 113-122 | category=failure-point | severity=low
+  - Description: `ChartSkeleton` computes bar heights with `Math.random()` during render. This makes the skeleton non-deterministic, can cause SSR hydration mismatches, and can visually jump on remount.
+  - Fix direction: Replace runtime randomness with fixed placeholder heights or a stable seeded pattern.
+- F566 | Other | `ui-primitives-shadcn.md / src/app/components/ui/tooltip.tsx` | 21-28 | category=failure-point | severity=low
+  - Description: The `Tooltip` convenience component wraps every tooltip in a new `TooltipProvider` with the local default `delayDuration=0`. This prevents an app-level `TooltipProvider` from consistently controlling tooltip delay/skip behavior and can lead to unexpected timing differences across tooltips.
+  - Fix direction: Export `TooltipPrimitive.Root` directly for `Tooltip`, or only provide `TooltipProvider` at the application/layout level so provider configuration is centralized.
+- F280 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-oauth/index.ts` | 23-24 | category=stub | severity=low
+  - Description: The file explicitly states the Garmin Edge Function is "ready but untested until credentials are available." This is an unresolved integration risk for a production OAuth path.
+  - Fix direction: Track this as an integration validation task and remove the note only after real Garmin OAuth credentials have exercised both request-token and access-token exchanges.
+- F284 | Edge Functions | `edge-functions---integrations.md / supabase/functions/garmin-webhook/index.ts` | 20-21 | category=stub | severity=low
+  - Description: The webhook handler states it is "ready but untested until webhook registration is complete." This is an unresolved production risk for the only Garmin sync path, since Garmin sync is webhook-driven.
+  - Fix direction: Add a validation task with Garmin webhook registration and fixture replay. Remove the note after the registered webhook is proven end-to-end.
+- F516 | Tests | `sync-tests-&-security-tests.md / tests/sync/setup.ts` | 175-185 | category=stub | severity=low
+  - Description: `setupTestIsolation()` is effectively empty: it declares `testUser` but never creates or cleans one up, and both hooks contain comments only. Any future test that calls this helper expecting per-test isolation will receive no isolation at all.
+  - Fix direction: Either implement the helper around `createTrackedTestUser()` / `cleanupTrackedTestUser()` or remove it so tests cannot opt into a no-op isolation API.
+- F445 | Data | `lib---analytics-&-science.md / src/lib/progression-workbench.ts` | 212-219 | category=stub | severity=low
+  - Description: `buildExerciseSummary` creates a `placeholder` object cast as `ProgressionExerciseSummary` just to pass `placeholder.plateauRisk` into `buildRecommendation`. The cast is placeholder logic that bypasses the interface contract and can hide future required-field changes from TypeScript.
+  - Fix direction: Pass the `plateauRisk` value directly to `buildRecommendation` and remove the fake `ProgressionExerciseSummary` object/cast.
+- F377 | UI | `feature-components-part-1.md / src/app/components/Profile.tsx` | 844-846 | category=stub | severity=low
+  - Description: Notification settings are exposed and saved even though the UI states notification delivery is not active yet. Users can change preferences that currently have no effect.
+  - Fix direction: Keep the notice but disable the controls until delivery is live, or clearly mark the entire section as preparatory/beta with no immediate effect.
+- F378 | UI | `feature-components-part-1.md / src/app/components/Profile.tsx` | 1023-1045 | category=stub | severity=low
+  - Description: Profile visibility and leaderboard participation are labeled "Coming soon -- your preference is saved" while still being interactive. These settings currently do not affect product behavior.
+  - Fix direction: Disable the switches until enforcement is implemented, or add an explicit beta/inactive state so users do not assume privacy/leaderboard behavior changed immediately.
+- F364 | UI | `feature-components-part-1.md / src/app/components/SessionDetail.tsx` | 720-724 | category=stub | severity=low
+  - Description: The Share Summary action is a placeholder that only shows `Session sharing coming in a future update`. This is exposed as an active button, so users can click a feature that has no implementation.
+  - Fix direction: Hide or disable the button until sharing is implemented, or wire it to the real share/export flow.
+
+## Findings by category
+
+Detailed findings are already listed in the severity sections; this index groups them by the requested broad categories.
+
+### Bugs (170)
+
+- F357 | `edge-functions---sync-&-data.md` | 98-127 | critical | `supabase/functions/process-sync-queue/index.ts` | Pending tasks are selected and then updated to `processing` in separate non-conditional statements.
+- F259 | `edge-functions---billing-paddle.md` | 24-29 | high | `supabase/functions/_shared/paddleSubscriptionUpdate.ts` | `buildPaddleSubscriptionPatch` sends `items: [{ price_id: newPriceId, quantity: 1 }]` for every plan switch.
+- F264 | `edge-functions---billing-paddle.md` | 207-315 | high | `supabase/functions/paddle-webhooks/index.ts` | Webhook idempotency and ordering are implemented as a read-then-upsert sequence outside a transaction or conditional update.
+- F292 | `edge-functions---integrations.md` | 62-75 | high | `supabase/functions/fitbit-sync/index.ts` | Fitbit refresh token persistence is not checked.
+- F293 | `edge-functions---integrations.md` | 239-246 | high | `supabase/functions/fitbit-sync/index.ts` | The function fetches `user_integrations.last_sync_at` and `status` but never checks that the integration status is `connected`.
+- F285 | `edge-functions---integrations.md` | 85-88 | high | `supabase/functions/garmin-webhook/index.ts` | `started_at` is calculated as `(startTimeInSeconds + startTimeOffsetInSeconds) * 1000`.
+- F297 | `edge-functions---integrations.md` | 221-259, 261-272 | high | `supabase/functions/hevy-sync/index.ts` | Per-workout upsert errors are silently swallowed.
+- F302 | `edge-functions---integrations.md` | 282-329, 331-342 | high | `supabase/functions/liftosaur-sync/index.ts` | Per-record upsert errors are ignored.
+- F278 | `edge-functions---integrations.md` | 213-233 | high | `supabase/functions/strava-sync/index.ts` | Strava refresh token rotation is persisted without checking the update result.
+- F279 | `edge-functions---integrations.md` | 296-345 | high | `supabase/functions/strava-sync/index.ts` | Per-activity upsert failures are collected in `errors`, but `last_sync_at` is still advanced and the sync queue entry is marked `completed_w
+- F338 | `edge-functions---sync-&-data.md` | 71-77, 396-418 | high | `supabase/functions/_shared/pushPayloadSchema.ts` | `arrayOf()` converts any non-array value to `[]`.
+- F351 | `edge-functions---sync-&-data.md` | 1024-1037 | high | `supabase/functions/mobile-sync-pull/index.ts` | `personalRecordDtos` omits `exerciseId` and `localProfileId` even though the RPC/query returns `exercise_id` and `local_profile_id` and push
+- F343 | `edge-functions---sync-&-data.md` | 1385-1400, 1403-1614 | high | `supabase/functions/mobile-sync-push/index.ts` | Existing exercises for accepted sessions are deleted before replacement child rows and progress rows are inserted, but the sequence is not t
+- F344 | `edge-functions---sync-&-data.md` | 1294-1296, 1541-1564, 2211-2233 | high | `supabase/functions/mobile-sync-push/index.ts` | LWW rejection filtering is applied to exercises/sets/rep summaries, but not to top-level telemetry or phase statistics.
+- F212 | `database-migrations.md` | 42-49, 112-131 | high | `supabase/migrations/20260218_phase11_comments.sql` | The comment update policy allows owners to update any column on their own comment within five minutes, including `item_id` and `item_type`.
+- F219 | `database-migrations.md` | 9-35, 45-82, 92-124 | high | `supabase/migrations/20260412_leaderboard_functions.sql` | The leaderboard RPCs are `SECURITY INVOKER`, but they query RLS-protected `personal_records`, `exercises`, and `profiles`.
+- F047 | `build-&-config.md` | package.json:21-22`, `vitest.config.ts:34-36 | high | `package.json` | `test:sync:live` sets `MOCK_EDGE_FUNCTIONS=false` and `SYNC_LIVE_TESTS=true`, but `vitest.config.ts` unconditionally injects `MOCK_EDGE_FUNC
+- F088 | `ci-cd-&-workflows.md` | 41-44, 150-159 | high | `WORKFLOW.md` | The Codex turn sandbox disables network access, but the documented execution flow requires `git fetch origin main --prune`, branch pushes, P
+- F247 | `e2e-tests.md` | 96-181 | high | `e2e/realtime-cross-tab.spec.ts` | The mocked cross-tab test does not actually simulate a cross-tab broadcast.
+- F521 | `sync-tests-&-security-tests.md` | 420-477 | high | `tests/sync/conflicts/conflict-resolution.test.ts` | The active-cycle conflict test computes `activeCycles` but never asserts it.
+- F141 | `data-layer---mutations-&-schemas.md` | 95-107 | high | `src/mutations/comments.ts` | The expired-edit guard relies on `count === 0`, but the Supabase update does not request a count or select a row.
+- F149 | `data-layer---mutations-&-schemas.md` | 129-167 | high | `src/mutations/cycles.ts` | `useUpdateCycle` updates the parent with an ownership filter, but then deletes and reinserts `cycle_days` by `cycle_id` only.
+- F157 | `data-layer---mutations-&-schemas.md` | 199-207 | high | `src/mutations/routines.ts` | `useUpdateRoutine` updates `routines` by `id` only and does not include `.eq("user_id", user.id)`, unlike delete and favorite mutations.
+- F176 | `data-layer---queries.md` | 377-394 | high | `src/queries/analytics.ts` | `vbtAssessmentsOptions(userId, exerciseId)` filters by `user_id` in the query function but the query key only contains `exerciseId`.
+- F203 | `data-layer---stores.md` | 19-20 | high | `src/stores/useProfileFilterStore.ts` | The persisted key `phoenix-profile-filter` is global and not scoped to the authenticated user.
+- F205 | `data-layer---stores.md` | 28-35, 54 | high | `src/stores/useReplayStore.ts` | `reset()` only clears `isPlaying`, `currentTimeMs`, and `currentRepIndex`; it preserves `currentSetIndex`, `viewMode`, `speed`, and `activeC
+- F451 | `lib---analytics-&-science.md` | 20-26, 48-52 | high | `src/lib/computeNextWorkout.ts` | The next workout is selected with `cycleDays[daysSinceStart % cycleDays.length]`, assuming the input array is already sorted by `day_number`
+- F457 | `lib---core-utilities.md` | 18-28, 59-64, 133-146 | high | `src/lib/paddle.ts` | `PaddleEventType` includes `transaction.completed` and `transaction.payment_failed`, but `PaddleWebhookEvent.data` is always typed as `Paddl
+- F460 | `lib---core-utilities.md` | 154-170 | high | `src/lib/paddle.ts` | The upsert payload records `last_event_id` and `last_event_occurred_at`, but this builder does not encode any stale-event protection.
+- F481 | `lib---integrations.md` | 14-15, 66-69 | high | `src/lib/integrations/garmin.ts` | The code comments `startTimeInSeconds` as Unix epoch seconds, but then adds `startTimeOffsetInSeconds` before converting to ISO.
+- F476 | `lib---integrations.md` | 18-37 | high | `src/lib/integrations/normalize.ts` | `IntegrationProvider` includes `strong` and `liftosaur`, but `normalizeActivity()` has no cases for either provider.
+- F001 | `analytics-dashboard.md` | 760-771, 1397-1400, 1629-1632 | high | `src/app/components/Analytics.tsx` | The phase filter is presented as controlling the Progress tab phase metrics, but `phaseMetricSummary` is always built from all `phaseStatsRa
+- F007 | `analytics-dashboard.md` | 116-128 | high | `src/app/components/analytics/PerformanceTab.tsx` | Training Efficiency computes `totalVol` from `volumeComparison.current.total_volume` and passes `totalVol / totalMin` directly to `convertWe
+- F009 | `analytics-dashboard.md` | 154-190, 415-423, 453-460, 549-577 | high | `src/app/components/analytics/RecordsTab.tsx` | Records are grouped only by exercise (`exercise_id ??
+- F012 | `analytics-dashboard.md` | 68-90, 106-128, 131-143 | high | `src/app/components/analytics/strengthPhaseTransforms.ts` | Strength phase series combine all strength record types (`MAX_WEIGHT` and `1RM`) into the same exercise/phase key and use raw `item.value` f
+- F013 | `analytics-dashboard.md` | 73-82, 118-126 | high | `src/app/components/analytics/strengthPhaseTransforms.ts` | Date buckets are formatted as month name only (`"Jan"`, `"Feb"`, etc.).
+- F023 | `app-entry-&-routing.md` | 40-58 | high | `src/providers/AuthProvider.tsx` | Initial session loading and auth-state subscription can race.
+- F028 | `app-shell-&-layout.md` | 56-75, 99-100 | high | `src/app/components/BottomSheet.tsx` | Drag dismissal compares the absolute motion value `y` with `150`, but the open position itself is usually a positive translate value (`conta
+- F038 | `app-shell-&-layout.md` | 58-61 | high | `src/app/components/DeleteConfirmDialog.tsx` | `AlertDialogAction` closes the controlled dialog as part of its default action.
+- F062 | `charts-&-visualization.md` | 105-110, 178-179, 216-229 | high | `src/app/components/charts/ForceCurve.tsx` | Non-normalized curves use an x-domain of `[0, maxTimestamp]` and render each point at its raw `timestamp_ms`.
+- F094 | `community-features.md` | 82-96, 249-250, 392-394 | high | `src/app/components/Community.tsx` | The same `sentinelRef` is attached to both the mobile and desktop infinite-scroll sentinels while both layouts remain mounted and are only h
+- F095 | `community-features.md` | 108-117, 151-158, 293-299 | high | `src/app/components/Community.tsx` | Creator-profile interactions pass only an item id back to `Community`, while `Community` resolves the selected item only from the main feed'
+- F096 | `community-features.md` | 378-387 | high | `src/app/components/Community.tsx` | Desktop feed cards do not pass `contentType` to `CommunityFeedCard`, so `CommunityFeedCard` defaults action-menu operations to `routine`.
+- F104 | `community-features.md` | 49, 104-107, 271-278 | high | `src/app/components/community/CreatorProfile.tsx` | `CreatorProfile` combines routine and cycle items into `allItems`, but card vote/select callbacks only receive an id.
+- F108 | `cycle-&-routine-builders.md` | 139, 237, 431-444 | high | `src/app/components/CycleBuilder.tsx` | The builder treats `duration` as a number of schedule days in the UI (`Duration (Days)`) but loads and saves the same value as `duration_wee
+- F109 | `cycle-&-routine-builders.md` | 316-333, 438-454, 532-540, 239-248 | high | `src/app/components/CycleBuilder.tsx` | Changing the duration input or preset buttons updates only the `duration` state.
+- F365 | `feature-components-part-1.md` | 80-87, 323-329, and src/queries/progress.ts lines 115-130 | high | `src/app/components/SummaryReport.tsx` | `weeklySummaryOptions` fetches only the selected current window (`7` or `30` days), but `computeSummary` tries to split that data at `now -
+- F380 | `feature-components-part-1.md` | 29-30, 51-62, and src/queries/workouts.ts lines 22-39 | high | `src/app/components/profile/ExportSection.tsx` | "Export Workout History" uses `workoutListOptions`, which is the paginated list query limited to `WORKOUTS_PAGE_SIZE` (50).
+- F384 | `feature-components-part-2.md` | 193-210 | high | `src/app/components/Biomechanics.tsx` | Rep force curves are split by evenly slicing the telemetry array across `repSummaries.length`.
+- F397 | `feature-components-part-2.md` | 63-64, 74-114, 116-139, 334-338, 386-395 | high | `src/app/components/integrations/StrongConnect.tsx` | Strong CSV rows are parsed immediately using the current `importWeightUnit`, but the user can change the weight-unit toggle after the previe
+- F431 | `hooks-&-providers.md` | 7-18 | high | `src/hooks/usePlayback.ts` | `useAnimationFrame` from `motion/react` passes `delta` in milliseconds, but the hook comments that it is seconds and multiplies it by `1000`
+- F505 | `session-replay.md` | 40-52 | high | `src/app/components/session-replay/ReplayCanvas.tsx` | The canvas renderers receive raw `TelemetryPointRow[]` data even though telemetry rows are per-cable (`cable: "A" | "B"`).
+- F509 | `session-replay.md` | 53-56, 76-83, 201-371 | high | `src/app/components/session-replay/SessionReplay.tsx` | Playback reset on mount does not reset or clamp `currentSetIndex`, and the component directly indexes `allSets[currentSetIndex]`.
+- F565 | `ui-primitives-shadcn.md` | 16-23, 52-59 | high | `src/app/components/ui/slider.tsx` | When neither `value` nor `defaultValue` is supplied, `_values` falls back to `[min, max]`, so the wrapper renders two thumbs by default.
+- F567 | `ui-primitives-shadcn.md` | 26, 37-54 | high | `src/app/components/ui/unsaved-changes-dialog.tsx` | `onOpenChange={(o) => !o && onCancel()}` calls `onCancel` whenever the alert dialog closes.
+- F258 | `edge-functions---billing-paddle.md` | 13-18, 74, 77-90 | medium | `supabase/functions/_shared/paddleSubscriptionState.ts` | Subscription state is derived only from `subscription.items?.[0]?.price?.id`.
+- F261 | `edge-functions---billing-paddle.md` | 35-42 | medium | `supabase/functions/_shared/paddleWebhookSecurity.ts` | `classifyPaddleEventOrder` marks any distinct event with `incomingTime <= lastTime` as stale.
+- F267 | `edge-functions---billing-paddle.md` | 54-81 | medium | `supabase/functions/paddle-cancel-subscription/index.ts` | Cancellation is allowed only for local statuses `active` and `trialing`.
+- F307 | `edge-functions---integrations.md` | 65-70 | medium | `supabase/functions/_shared/garminIdentity.ts` | Identity resolution rejects `matches.length > 1` as ambiguous, but there is no repair path.
+- F286 | `edge-functions---integrations.md` | 171-172 | medium | `supabase/functions/garmin-webhook/index.ts` | The handler uses `payload.activities ??
+- F296 | `edge-functions---integrations.md` | 161-199 | medium | `supabase/functions/hevy-sync/index.ts` | The Hevy sync fetches only `${HEVY_API_BASE}/workouts` once and does not implement pagination or date-window traversal.
+- F300 | `edge-functions---integrations.md` | 199-258 | medium | `supabase/functions/liftosaur-sync/index.ts` | Pagination has a hard `MAX_PAGES = 10` safety cap, but if `hasMore` is still true at page 10 the function silently stops and reports success
+- F301 | `edge-functions---integrations.md` | 294-296 | medium | `supabase/functions/liftosaur-sync/index.ts` | When Liftoscript timestamp parsing fails, `started_at` falls back to `new Date().toISOString()`.
+- F316 | `edge-functions---misc.md` | 410-499 | medium | `supabase/functions/compute-rankings/index.ts` | Special event metrics from `leaderboard_events.metric` are not validated against the metrics implemented by the TypeScript switch.
+- F321 | `edge-functions---misc.md` | 74-107, 141-163 | medium | `supabase/functions/delete-account/index.ts` | The one-per-hour rate limit is consumed before validating that a pending deletion request exists, that the grace period has expired, that Pa
+- F311 | `edge-functions---misc.md` | 613-644 | medium | `supabase/functions/generate-insights/index.ts` | Refreshing cached insights is implemented as `delete()` followed by `insert()` outside a transaction.
+- F325 | `edge-functions---shared-core.md` | 61-77, 147-167, 227-270 | medium | `supabase/functions/_shared/rateLimit.ts` | `checkRateLimit` does not validate `key`, `userId`, `maxRequests`, or `windowSeconds` before invoking the RPC/fallback logic.
+- F329 | `edge-functions---shared-core.md` | 45-50, 68 | medium | `supabase/functions/_shared/requireSubscription.ts` | `subscription?.tier` and `subscription?.status` are cast directly to `SubscriptionTier`/`SubscriptionStatus` without runtime validation.
+- F335 | `edge-functions---sync-&-data.md` | 401-414 | medium | `supabase/functions/_shared/personalRecordRow.ts` | `personalRecordIdentityKey()` excludes `id`, `value`, `weight_kg`, and `reps`.
+- F339 | `edge-functions---sync-&-data.md` | 273-282 | medium | `supabase/functions/_shared/pushPayloadSchema.ts` | RPG attributes use `z.number().int()`, so payloads containing finite floats are rejected before `mobile-sync-push` can run its documented RP
+- F331 | `edge-functions---sync-&-data.md` | 33-68 | medium | `supabase/functions/_shared/syncPayloadShape.ts` | `toArr()` only verifies that the container is an array, then casts every element to `UnknownRecord`.
+- F346 | `edge-functions---sync-&-data.md` | 2343-2383 | medium | `supabase/functions/mobile-sync-push/index.ts` | In the LWW external activity path, returned rows are mapped back to request metadata by `r.id`.
+- F359 | `edge-functions---sync-&-data.md` | 83-96, 164-165, 246-277 | medium | `supabase/functions/process-sync-queue/index.ts` | Provider-level rate limiting is non-atomic.
+- F214 | `database-migrations.md` | 29-31, 44-62 | medium | `supabase/migrations/20260219_phase11_goals.sql` | The insert policy is named `Premium users can create goals`, but it only checks `user_id = auth.uid()`.
+- F078 | `ci-cd-&-workflows.md` | 3-18 | medium | `.github/workflows/sync-tests.yml` | The workflow is path-filtered but does not include `.github/workflows/sync-tests.yml` in either the push or pull-request paths.
+- F237 | `e2e-tests.md` | 32-37 | medium | `e2e/critical-paths.spec.ts` | The routine builder test conditionally fills the routine-name input only if it is visible.
+- F251 | `e2e-tests.md` | 5-9, 16-34, 60-67 | medium | `e2e/fixtures/auth.ts` | `loadEnvFile()` runs after importing constants from `../support/supabase`.
+- F248 | `e2e-tests.md` | 134-144 | medium | `e2e/signup-onboarding.spec.ts` | The test calls `page.addInitScript` after the landing page and dialog are already loaded.
+- F143 | `data-layer---mutations-&-schemas.md` | 24-50 | medium | `src/mutations/community.ts` | `useVote` implements toggle via check-then-insert/delete.
+- F145 | `data-layer---mutations-&-schemas.md` | 315-337 | medium | `src/mutations/community.ts` | `useFollowCreator` uses the same check-then-insert/delete toggle pattern as votes.
+- F162 | `data-layer---mutations-&-schemas.md` | 30-34 | medium | `src/schemas/comments.ts` | `createCommentSchema` accepts whitespace-only comments because `.min(1)` is applied before trimming.
+- F165 | `data-layer---mutations-&-schemas.md` | 33-41 | medium | `src/schemas/goals.ts` | `createGoalSchema` omits `target_unit`, but `useCreateGoal` requires and inserts `target_unit`.
+- F172 | `data-layer---mutations-&-schemas.md` | 254-255 | medium | `src/schemas/transforms.ts` | `routineExerciseSchema.is_amrap` is `z.boolean().optional().default(false)`, but the generated database type shows `routine_exercises.is_amr
+- F173 | `data-layer---mutations-&-schemas.md` | 225-266 | medium | `src/schemas/transforms.ts` | `routineExerciseSchema` omits `per_set_echo_levels` and `warmup_sets` even though those columns exist and are included in community snapshot
+- F177 | `data-layer---queries.md` | 148-152, 189-194, 210-212, 246-248, 288-290, 320-322 | medium | `src/queries/analytics.ts` | `periodToDays("all")` returns `3650`, so several analytics options labeled as `all` actually fetch only the last ten years.
+- F178 | `data-layer---queries.md` | 20-30 | medium | `src/queries/benchmarks.ts` | `benchmarkOptions(metricType, metricKey?)` accepts an optional `metricKey`, but when it is omitted the Supabase query only filters by `metri
+- F181 | `data-layer---queries.md` | 39-52 | medium | `src/queries/challenges.ts` | The progress query key only includes `challengeId` and `userId`, but the result also depends on `challengeType`, `targetValue`, `startDate`,
+- F183 | `data-layer---queries.md` | 23-24, 101-108 | medium | `src/queries/community.ts` | `FeedSort` supports `"hot"`, but the implementation only special-cases `"new"`; both `"hot"` and `"top"` are ordered by `vote_count` then `s
+- F188 | `data-layer---queries.md` | 27-36 | medium | `src/queries/freshness.ts` | The query orders by `updated_at` and then reports that row's `started_at` as `lastWorkoutStartedAt`.
+- F196 | `data-layer---queries.md` | 62-76 | medium | `src/queries/recovery.ts` | `activeCyclePositionOptions` is user-scoped only and has no `profileId` parameter, while adjacent cycle/routine/workout queries are local-pr
+- F200 | `data-layer---queries.md` | 176-183 | medium | `src/queries/workouts.ts` | `sessionDetailOptions` passes `exerciseIds` directly to `.in("exercise_id", exerciseIds)`.
+- F450 | `lib---analytics-&-science.md` | 60-75, 80-105 | medium | `src/lib/comparison.ts` | Per-session exercise maps are keyed by lowercased name, so duplicate exercises in the same session overwrite earlier entries.
+- F439 | `lib---analytics-&-science.md` | 45-53, 56-69 | medium | `src/lib/form-analysis.ts` | `normalizedDecayRate` uses `Math.abs(slope / values[0])`, so an improving set where force, velocity, or ROM trends upward is treated as deca
+- F444 | `lib---analytics-&-science.md` | 260-265, 284-287 | medium | `src/lib/progression-workbench.ts` | Progress rows are grouped by the raw `exercise_name` string and selected with a case-sensitive equality check.
+- F442 | `lib---analytics-&-science.md` | 197-236 | medium | `src/lib/recovery.ts` | Once `daysSinceFirstSession >= 14`, an empty `sessions` array is treated as a normal recovery input.
+- F471 | `lib---core-utilities.md` | 74-88 | medium | `src/lib/in-app-browser.ts` | `buildAndroidChromeIntentUrl` includes the original URL hash inside `rest` and then appends another `#Intent` separator.
+- F463 | `lib---core-utilities.md` | 110-120, 156-165, 197-199 | medium | `src/lib/paddle-client.ts` | Checkout callbacks are stored in a single module-level `activeCallbacks` object.
+- F458 | `lib---core-utilities.md` | 72-94, 144-160 | medium | `src/lib/paddle.ts` | Unknown or missing Paddle price IDs map to `FREE`, and `buildSubscriptionUpsert` writes that tier.
+- F468 | `lib---core-utilities.md` | 46-62 | medium | `src/lib/telemetry.ts` | `normalizeRepTime` assumes points are already sorted by `timestamp_ms`, using the first point as min and the last point as max.
+- F465 | `lib---core-utilities.md` | 52-64 | medium | `src/lib/units.ts` | `weightInputToKg` converts blank, invalid, null, and undefined input to `0`.
+- F483 | `lib---integrations.md` | 16-17, 63-65 | medium | `src/lib/integrations/fitbit.ts` | The schema captures `distanceUnit`, but normalization always treats `distance` as kilometers and multiplies by 1000.
+- F495 | `lib---replay-&-export.md` | 964-978, 1070-1084 | medium | `src/lib/exercise-demo-media-manifest.ts` | Two exercise entries contain duplicate `angle: "FRONT"` media variants: `wgiwmR1yt3QJtiWs` (`Concentration Curl`) and `z70P8xJtRTKpAUbr` (`C
+- F493 | `lib---replay-&-export.md` | 88-93 | medium | `src/lib/replay-intelligence.ts` | `findStickingPoint` flags any point whose velocity is below `mean_velocity * 0.45` and force is high.
+- F490 | `lib---replay-&-export.md` | 195-201, 216-218 | medium | `src/lib/replay-renderer.ts` | `renderVelocityBars` scales the y-axis from `Math.max(...velocity_mps) * 1.1` and assumes all velocity values are positive.
+- F004 | `analytics-dashboard.md` | 78-80, 262-281, 325-334 | medium | `src/app/components/analytics/BodyTab.tsx` | `toCanonicalMuscleGroup` maps `Abdominals` to `Core` but does not accept `Core` itself.
+- F005 | `analytics-dashboard.md` | 147-155, 159-162, 229-233 | medium | `src/app/components/analytics/ExerciseDeepDive.tsx` | `selectedExercise` is initialized from the first exercise only once.
+- F010 | `analytics-dashboard.md` | 146-152, 200-209, 325-364, 610-715 | medium | `src/app/components/analytics/RecordsTab.tsx` | The phase filter is applied to grouped exercise records, but timeline mode, milestones, total PR count, and "This Month" summary all continu
+- F008 | `analytics-dashboard.md` | 41-70, 74-98 | medium | `src/app/components/analytics/phaseStatisticsTransforms.ts` | The transform averages per-row average metrics with equal weight.
+- F018 | `app-entry-&-routing.md` | 71-83 | medium | `src/app/routes/AppLayout.tsx` | The page `ErrorBoundary` does not reset on route changes.
+- F014 | `app-entry-&-routing.md` | 12-20 | medium | `src/main.tsx` | React 19 root error hooks forward to `sentryHandler`, but that handler is only assigned during startup when consent was already accepted.
+- F025 | `app-shell-&-layout.md` | 103-147 | medium | `src/app/components/AppSidebar.tsx` | `useAutoCollapse` tries to avoid persisting viewport-driven sidebar changes by toggling `isAutoCollapsingRef` around `setOpen`, but `setOpen
+- F026 | `app-shell-&-layout.md` | 61-69, 247-250 | medium | `src/app/components/MobileBottomNav.tsx` | More-menu active state uses exact path equality.
+- F027 | `app-shell-&-layout.md` | 71-83, 96, 251-254 | medium | `src/app/components/MobileBottomNav.tsx` | Opening the More drawer pushes a synthetic history entry, but selecting a drawer link closes the drawer with `setMoreOpen(false)` directly.
+- F041 | `app-shell-&-layout.md` | 10, 16-40 | medium | `src/app/components/figma/ImageWithFallback.tsx` | Once `didError` is set, it is never reset when the `src` prop changes.
+- F057 | `charts-&-visualization.md` | 298-342 | medium | `src/app/components/charts/AsymmetryGauge.tsx` | Summary mode converts signed asymmetry directly into left/right CSS widths with `50 +/- avgAsymmetry / 2` and never clamps the result.
+- F058 | `charts-&-visualization.md` | 37-43 | medium | `src/app/components/charts/CommunityDistribution.tsx` | `valueToPercentile` divides by `(val1 - val0)` without guarding equal adjacent percentile values.
+- F065 | `charts-&-visualization.md` | 44-56, 259-267 | medium | `src/app/components/charts/PowerOutput.tsx` | The chart and hidden accessibility table label reps by array position (`i + 1`) instead of the source `rep.rep_number`.
+- F066 | `charts-&-visualization.md` | 85-97, 120-125 | medium | `src/app/components/charts/PowerOutput.tsx` | `maxWatts` is computed as `Math.max(...watts) * 1.2` and can be `0` or negative when data is zero, missing, or represents negative/eccentric
+- F069 | `charts-&-visualization.md` | 73-92, 150-165, 172-178 | medium | `src/app/components/charts/VelocityProfile.tsx` | When all rep velocities are zero, `maxVelocity` becomes `0`, so the y-scale domain is `[0, 0]`.
+- F071 | `charts-&-visualization.md` | 8-15, 22-36 | medium | `src/app/components/charts/shared/EChartsWrapper.tsx` | The wrapper uses tree-shakeable ECharts registration but does not register `MarkLineComponent`.
+- F100 | `community-features.md` | 11-16 | medium | `src/app/components/community/CommunitySearch.tsx` | `CommunitySearch` owns its own `localValue` and only writes the debounced value to the shared community store; it never reads the current st
+- F101 | `community-features.md` | 25-31, 80-95 | medium | `src/app/components/community/ContentActionMenu.tsx` | The component's public props allow `contentType="comment"`, but the own-content delete path always casts `contentType` to `"routine" | "cycl
+- F111 | `cycle-&-routine-builders.md` | 326-337, 552-571 | medium | `src/app/components/CycleBuilder.tsx` | Removing a day reindexes the remaining days but does not clear or remap `selectedDay`.
+- F123 | `cycle-&-routine-builders.md` | 351-355 | medium | `src/app/components/RoutineBuilder.tsx` | Saving a routine always sends `description: ""`.
+- F124 | `cycle-&-routine-builders.md` | 283-301 | medium | `src/app/components/RoutineBuilder.tsx` | Superset creation overwrites the selected exercises' `supersetId` without checking whether any are already members of other supersets.
+- F126 | `cycle-&-routine-builders.md` | 284, 290-299 | medium | `src/app/components/RoutineBuilder.tsx` | `supersetOrder` is assigned from the order in which exercises were selected, not from their order in the routine.
+- F114 | `cycle-&-routine-builders.md` | 108-115 | medium | `src/app/components/cycle-builder/DayEditor.tsx` | The `+ Create New Routine` action calls the same `onAssignRoutine` callback as Assign/Change.
+- F115 | `cycle-&-routine-builders.md` | 40-42, 267-275 | medium | `src/app/components/cycle-builder/DayEditor.tsx` | Rest-time override state and parsing treat `0` as absent.
+- F117 | `cycle-&-routine-builders.md` | 116-133, 454-507 | medium | `src/app/components/cycle-builder/ProgressionRules.tsx` | Several numeric fields use `parseFloat(...) || default` or `parseInt(...) || default`, which makes valid zero values impossible to enter.
+- F119 | `cycle-&-routine-builders.md` | 208-241, 233-237 | medium | `src/app/components/cycle-builder/RoutinePicker.tsx` | `RoutineItem` renders a `<button>` that contains a shadcn `<Button>` for Select.
+- F122 | `cycle-&-routine-builders.md` | 24, 35-36 | medium | `src/app/components/cycle-builder/WeekOverview.tsx` | The week grid uses `dayNames.slice(0, days.length)`, but `dayNames` has only seven entries.
+- F134 | `cycle-&-routine-builders.md` | 175-180, 221-225 | medium | `src/app/components/routine-builder/SupersetContainer.tsx` | Rest-after and transition inputs use `parseInt(...) || default`, so users cannot type an explicit `0` even though the decrement buttons clam
+- F131 | `cycle-&-routine-builders.md` | 62-70 | medium | `src/app/components/routine-builder/superset-helpers.ts` | `addExerciseToSuperset` blindly appends `exerciseId` to the target group.
+- F368 | `feature-components-part-1.md` | 312-314, 412-443 | medium | `src/app/components/Goals.tsx` | The comment and limit logic say `FREE = 1`, but the page returns an upgrade gate for every non-premium user before the one-goal free limit c
+- F376 | `feature-components-part-1.md` | 171, 193, 293-295 | medium | `src/app/components/Profile.tsx` | The header streak uses `useStreak(workouts)` where `workouts` comes from `workoutListOptions(userId)` with no active profile filter and only
+- F363 | `feature-components-part-1.md` | 498-543 | medium | `src/app/components/SessionDetail.tsx` | The Session Config card is only rendered when `eccentric_load` or `echo_level` is non-null, but the card also contains `warmup_reps` and `wo
+- F366 | `feature-components-part-1.md` | 151-162, 481-492 | medium | `src/app/components/SummaryReport.tsx` | `dailyWorkoutMap` increments once per `ExerciseProgress` row, not once per workout/session.
+- F362 | `feature-components-part-1.md` | 246-266 | medium | `src/app/components/WorkoutHistory.tsx` | `handleLoadMore` calls `workoutListPageOptions(user.id, nextOffset)` without passing `activeProfileId`.
+- F388 | `feature-components-part-2.md` | 206-234 | medium | `src/app/components/ExerciseProgress.tsx` | `selectedExercise` is initialized from `initialExercise` once, but never updates if the prop changes later.
+- F396 | `feature-components-part-2.md` | 28-38 | medium | `src/app/components/integrations/StravaConnect.tsx` | `handleConnect` awaits `initiateStravaConnect(accessToken)` without `try/catch/finally`.
+- F405 | `feature-components-part-3.md` | 497-505, 770-803 | medium | `src/app/components/Challenges.tsx` | `activeChallenges` means every active challenge that is not completed, regardless of whether the user joined it.
+- F410 | `feature-components-part-3.md` | 359-361 | medium | `src/app/components/ComparisonView.tsx` | The premium upgrade copy refers to "Phoenix and Elite plans", but the app's pricing source of truth defines Ember, Flame, and Inferno tiers.
+- F416 | `feature-components-part-3.md` | 41-45, 121-123, 136-137 | medium | `src/app/components/ConsistencyCalendar.tsx` | Workout days are keyed with `toISOString().slice(0, 10)`, which groups by UTC date, while the calendar grid, labels, and streak computations
+- F420 | `feature-components-part-3.md` | 72-83 | medium | `src/app/components/FAQ.tsx` | The FAQ hardcodes stale subscription information: it says there are two tiers and prices Ember at $15/mo, while the pricing source of truth
+- F421 | `feature-components-part-3.md` | 135-144, 185-189, 301-304 | medium | `src/app/components/PrivacyPolicy.tsx` | The policy states that performance metrics such as velocity/load/power are collected and stored on cloud servers, but the Bluetooth section
+- F422 | `hooks-&-providers.md` | 18-23, 26-28 | medium | `src/app/hooks/useButtonSuccess.ts` | `trigger()` schedules a timeout that calls `setIsSuccess(false)`, but the hook never clears that timeout on unmount.
+- F425 | `hooks-&-providers.md` | 7, 31-44, 46-63 | medium | `src/hooks/useBlockedUsers.ts` | Blocked user IDs are hydrated from and persisted to a single global `phoenix-blocked-users` localStorage key.
+- F426 | `hooks-&-providers.md` | 16-18, 41-49 | medium | `src/hooks/useCommunityRealtime.ts` | The hook uses the fixed Supabase realtime channel topic `community-votes-realtime`.
+- F429 | `hooks-&-providers.md` | 8, 41-55 | medium | `src/hooks/useOnboarding.ts` | Onboarding version comparisons use raw string comparison (`onboarding.version_seen < CURRENT_VERSION`) and `showHints` requires exact equali
+- F503 | `session-replay.md` | 59-83 | medium | `src/app/components/session-replay/ReplayAnnotationOverlay.tsx` | The overlay renders every sticking point from `intelligence.stickingPoints` regardless of playback time.
+- F513 | `session-replay.md` | 28-46 | medium | `src/app/components/session-replay/SetNavigation.tsx` | Previous/Next only call `prevSet`/`nextSet`; they do not pause playback or reset the playhead for the newly selected set.
+- F514 | `session-replay.md` | 29-35, 64-72, 82-89 | medium | `src/app/components/session-replay/TimelineBar.tsx` | `fatigueStartPercent` divides by `durationMs` without checking that duration is positive or that `fatigueStartRepIndex` exists in `repBounda
+- F552 | `ui-primitives-shadcn.md` | 95-103 | medium | `src/app/components/ui/carousel.tsx` | The effect registers both `reInit` and `select` listeners on the Embla API, but cleanup removes only the `select` listener.
+- F554 | `ui-primitives-shadcn.md` | 195-197, 225-227 | medium | `src/app/components/ui/carousel.tsx` | `CarouselPrevious` and `CarouselNext` set internal `disabled` and `onClick` props before spreading caller props.
+- F557 | `ui-primitives-shadcn.md` | 30-37 | medium | `src/app/components/ui/form-error-summary.tsx` | `scrollToFirstError` searches the entire document for the first `[aria-invalid="true"]`.
+- F558 | `ui-primitives-shadcn.md` | 27-29, 44-55, 71-73 | medium | `src/app/components/ui/form.tsx` | `FormFieldContext` and `FormItemContext` are initialized with cast empty objects, so the guard `if (!fieldContext)` is unreachable.
+- F086 | `ci-cd-&-workflows.md` | 24-32 | low | `CLAUDE.md` | The environment-variable list documents `SENTRY_DSN`, but the application initializes Sentry from `import.meta.env.VITE_SENTRY_DSN`.
+- F534 | `sync-tests-&-security-tests.md` | 152-171 | low | `tests/sync/phases.test.ts` | The test title says the default phase is `COMBINED` when `prPhase` is omitted, but the assertion expects `pulledSet.prPhase` to be `undefine
+- F469 | `lib---core-utilities.md` | 14-31 | low | `src/lib/telemetry-display.ts` | The helpers are typed for `"A" | "B"`, but runtime data from `database.types.ts` allows `rep_telemetry.cable` to be `string | null`.
+- F489 | `lib---integrations.md` | 74-78, 183 | low | `src/lib/integrations/export-csv.ts` | `formatDate()` converts the stored ISO timestamp using the browser's local timezone.
+- F479 | `lib---integrations.md` | 16, 20, 62, 68 | low | `src/lib/integrations/strava.ts` | Optional Strava metrics are defaulted to `0` in the Zod schema, then written as real zero values.
+- F480 | `lib---integrations.md` | 63-65 | low | `src/lib/integrations/strava.ts` | Calorie conversion uses a truthiness check on `activity.kilojoules`.
+- F487 | `lib---integrations.md` | 125-138 | low | `src/lib/integrations/strong.ts` | Strong `Distance` values are summed and stored directly as `distance_meters`, but the parser has no distance-unit handling.
+- F492 | `lib---replay-&-export.md` | 40-49 | low | `src/lib/replay-renderer.ts` | `drawRepBands` can only shade intervals between adjacent `repBoundaries`.
+- F003 | `analytics-dashboard.md` | 1680-1683 | low | `src/app/components/Analytics.tsx` | A stray semicolon is rendered inside the JSX tree after the desktop `PageShell`.
+- F046 | `app-shell-&-layout.md` | 26-27, 77-107, 117-142 | low | `src/app/components/modals/RoutinePickerModal.tsx` | `recent` is `routines.slice(0, 2)` and `all` is the full `routines` array, so the first two routines are rendered twice in the same picker.
+- F070 | `charts-&-visualization.md` | 295-305 | low | `src/app/components/charts/VelocityProfile.tsx` | The outer aria summary always computes `peakVelocity` from `mean_velocity_mps`, even when the chart is configured to show peak velocity bars
+- F128 | `cycle-&-routine-builders.md` | 95-98, 1097-1101 | low | `src/app/components/RoutineBuilder.tsx` | Kilogram weights are displayed with `Math.round(converted)`, so fractional kg values are lost in the input display.
+- F113 | `cycle-&-routine-builders.md` | 31-34, 97-111 | low | `src/app/components/cycle-builder/CycleOverview.tsx` | `customMode` is initialized from the first `duration` prop value but never synchronized if the parent later loads or resets the duration.
+- F434 | `hooks-&-providers.md` | 20-31 | low | `src/hooks/useStreak.ts` | The streak computation stops after 365 iterations, so a user with a streak longer than one year will always be capped at 365 even when `work
+
+### Errors (36)
+
+- F291 | `edge-functions---integrations.md` | 20-24, 139-159, 261, 294, 354, 373-377 | critical | `supabase/functions/fitbit-sync/index.ts` | `deno check --node-modules-dir=auto` fails for this file.
+- F294 | `edge-functions---integrations.md` | 200-218, 284-288 | critical | `supabase/functions/hevy-sync/index.ts` | `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+- F298 | `edge-functions---integrations.md` | 259-279, 354-359 | critical | `supabase/functions/liftosaur-sync/index.ts` | `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+- F263 | `edge-functions---billing-paddle.md` | 207-211, 246-276 | high | `supabase/functions/paddle-webhooks/index.ts` | The existing subscription lookup ignores the `error` returned by `.maybeSingle()`.
+- F282 | `edge-functions---integrations.md` | 184-190 | high | `supabase/functions/garmin-oauth/index.ts` | The temporary Garmin OAuth request token and request token secret are stored directly in `oauth_tokens.access_token` and `oauth_tokens.refre
+- F354 | `edge-functions---sync-&-data.md` | 438-451, 515-528, 554-587 | high | `supabase/functions/mobile-integration-sync/index.ts` | `persistActivities()` logs per-row upsert failures but does not propagate them.
+- F350 | `edge-functions---sync-&-data.md` | 482-507, 646-675, 780-809, 892-913, 997-1021, 1040-1072 | high | `supabase/functions/mobile-sync-pull/index.ts` | Multiple database read errors are only logged or ignored while the function continues and returns success.
+- F222 | `database-migrations.md` | 256-265, 306-314 | high | `supabase/migrations/20260420234500_parity_sync_rpc_functions.sql` | `get_badges_excluding_ids` and `get_personal_records_excluding_ids` declare `BIGINT` IDs and `BIGINT[]` known-id parameters even though `ear
+- F148 | `data-layer---mutations-&-schemas.md` | 62-99 | high | `src/mutations/cycles.ts` | `useSaveCycle` creates the `training_cycles` parent row and then inserts `cycle_days` in a separate request.
+- F150 | `data-layer---mutations-&-schemas.md` | 146-167 | high | `src/mutations/cycles.ts` | Cycle day replacement is not atomic.
+- F156 | `data-layer---mutations-&-schemas.md` | 116-143 | high | `src/mutations/routines.ts` | `useSaveRoutine` inserts the routine row and routine exercises in separate requests.
+- F158 | `data-layer---mutations-&-schemas.md` | 211-227 | high | `src/mutations/routines.ts` | Updating a routine deletes all existing exercises and reinserts the replacement set in separate requests.
+- F455 | `lib---core-utilities.md` | 42-58 | high | `src/lib/supabase.ts` | `fetchWithAuthRetry` calls `supabaseRef.current.auth.refreshSession()` from inside the Supabase client's global custom fetch.
+- F499 | `lib---replay-&-export.md` | 267-270 | high | `src/lib/export/data-export.ts` | A `rep_telemetry` page failure is logged with `console.warn` and then the loop breaks, allowing the export to continue and download a partia
+- F391 | `feature-components-part-2.md` | 23-39 | high | `src/app/components/integrations/ExternalActivityList.tsx` | `PROVIDER_ICON` and `PROVIDER_LABEL` are typed as `Record<IntegrationProvider, ...>` but omit the `strong` and `liftosaur` providers that ar
+- F272 | `edge-functions---billing-paddle.md` | 294-302, 358-363 | medium | `supabase/functions/paddle-refresh-subscription/index.ts` | The successful Paddle subscription response is parsed with `await paddleResponse.json()` outside a response-specific `try/catch`.
+- F315 | `edge-functions---misc.md` | 414-499, 521-646 | medium | `supabase/functions/compute-rankings/index.ts` | Many weekly and user-ranking queries drop the `error` field from Supabase responses.
+- F309 | `edge-functions---misc.md` | 334-343 | medium | `supabase/functions/generate-insights/index.ts` | `req.headers.get('Authorization')!` uses a non-null assertion without a runtime guard.
+- F310 | `edge-functions---misc.md` | 443-468, 487-543 | medium | `supabase/functions/generate-insights/index.ts` | Several data queries ignore their `error` fields.
+- F328 | `edge-functions---shared-core.md` | 39-48 | medium | `supabase/functions/_shared/requireSubscription.ts` | The subscription query ignores the `error` field from `.maybeSingle()`.
+- F355 | `edge-functions---sync-&-data.md` | 467-483 | medium | `supabase/functions/mobile-integration-sync/index.ts` | The stored-token lookup ignores the Supabase `error` field.
+- F348 | `edge-functions---sync-&-data.md` | 312, 337, 1163-1168 | medium | `supabase/functions/mobile-sync-pull/index.ts` | Request JSON parsing and `lastSync` date conversion are not validated locally.
+- F347 | `edge-functions---sync-&-data.md` | 2492-2506 | medium | `supabase/functions/mobile-sync-push/index.ts` | The catch block returns raw internal error messages to clients and maps any message containing `upsert failed` or `insert failed` to HTTP 40
+- F153 | `data-layer---mutations-&-schemas.md` | 92-101 | medium | `src/mutations/integrations.ts` | When provider Edge Function invocation fails, `useManualSync` attempts to mark the queued sync as failed but ignores any error from that upd
+- F154 | `data-layer---mutations-&-schemas.md` | 153-159 | medium | `src/mutations/integrations.ts` | `useConnectIntegration` ignores errors from the initial `sync_queue` insert.
+- F470 | `lib---core-utilities.md` | 5-15 | medium | `src/lib/consent.ts` | `getConsentStatus` and `setConsentStatus` access `localStorage` directly with no `typeof window` check or `try/catch`.
+- F462 | `lib---core-utilities.md` | 128-145, 201-210 | medium | `src/lib/paddle-client.ts` | Missing token or missing `window.Paddle` causes `initializePaddle` to return without throwing, and `openCheckout` then logs an error and ret
+- F472 | `lib---core-utilities.md` | 51-57 | medium | `src/lib/toast-undo.ts` | If the delayed `action` fails, the catch block only shows a generic toast and swallows the error.
+- F021 | `app-entry-&-routing.md` | 65-96 | medium | `src/app/components/AuthCallback.tsx` | `resolveSession()` awaits `supabase.auth.getSession()` inside a loop, but the async function has no `try/catch`.
+- F017 | `app-entry-&-routing.md` | 157-220 | medium | `src/app/routes/index.tsx` | The top-level route tree has a `Suspense` fallback but no error boundary around public routes.
+- F024 | `app-entry-&-routing.md` | 66-69 | medium | `src/providers/AuthProvider.tsx` | `handleSignOut()` ignores the `{ error }` returned by `supabase.auth.signOut()` and still clears the React Query cache.
+- F399 | `feature-components-part-2.md` | 37-45, 86-97 | medium | `src/app/components/integrations/SyncStatus.tsx` | The generated sync queue row type allows `status: string | null`, but the component assumes non-null status in `some((q: { status: string })
+- F427 | `hooks-&-providers.md` | 47-57, 59-76, 82-87 | medium | `src/hooks/useNotificationSync.ts` | The community notification query ignores `error` from the `shared_routines` and `shared_cycles` lookups.
+- F270 | `edge-functions---billing-paddle.md` | 38-51 | low | `supabase/functions/paddle-checkout-custom-data/index.ts` | Unlike the other browser-facing Paddle functions, this handler has no outer `try/catch`.
+- F266 | `edge-functions---billing-paddle.md` | 140-142, 333-338 | low | `supabase/functions/paddle-webhooks/index.ts` | `JSON.parse(rawBody)` is inside the broad handler `try`, so a signed but malformed JSON payload is returned as a 500 `Internal server error`
+- F184 | `data-layer---queries.md` | 53-69 | low | `src/queries/community.ts` | `hydrateProfiles` ignores the Supabase error from the `public_profiles` lookup.
+
+### Failure Points (334)
+
+- F221 | `database-migrations.md` | 12-111, 120-174, 183-247, 256-297, 306-357 | critical | `supabase/migrations/20260420234500_parity_sync_rpc_functions.sql` | All five parity sync RPCs are `SECURITY DEFINER`, accept `p_user_id`, and filter rows by `p_user_id` without checking `p_user_id = auth.uid(
+- F223 | `database-migrations.md` | 8-104 | critical | `supabase/migrations/20260421000100_fix_sessions_rpc_routine_session_id_type.sql` | The replacement `get_sessions_excluding_ids` remains `SECURITY DEFINER`, still accepts arbitrary `p_user_id`, and has no `auth.uid()`/role c
+- F224 | `database-migrations.md` | 7-103 | critical | `supabase/migrations/20260421001000_fix_sessions_rpc_column_types.sql` | The second replacement `get_sessions_excluding_ids` again preserves the unauthenticated `SECURITY DEFINER`/arbitrary `p_user_id` pattern.
+- F225 | `database-migrations.md` | 26-86, 95-165 | critical | `supabase/migrations/20260427200000_fix_parity_sync_stale_routines_cycles.sql` | The new stale-aware routines/cycles RPC overloads are also `SECURITY DEFINER`, accept arbitrary `p_user_id`, and do not restrict execution o
+- F226 | `database-migrations.md` | 7-48, 53-104 | critical | `supabase/migrations/20260428234500_fix_parity_sync_uuid_badges_prs.sql` | The UUID-corrected badge and personal-record RPCs keep the same `SECURITY DEFINER` plus arbitrary `p_user_id` pattern and do not revoke publ
+- F304 | `edge-functions---integrations.md` | 81-107 | high | `supabase/functions/disconnect-integration/index.ts` | Disconnect only deletes local tokens and marks local queue rows failed.
+- F283 | `edge-functions---integrations.md` | 185-206, 278-301 | high | `supabase/functions/garmin-oauth/index.ts` | All Garmin token/integration upserts ignore their returned errors.
+- F317 | `edge-functions---misc.md` | 46-56, 149-209 | high | `supabase/functions/delete-account/index.ts` | The destructive account-deletion handler has no method guard.
+- F318 | `edge-functions---misc.md` | 112-125 | high | `supabase/functions/delete-account/index.ts` | Avatar storage cleanup is treated as non-critical and both list/remove errors are allowed to continue.
+- F319 | `edge-functions---misc.md` | 130-139, 173-204 | high | `supabase/functions/delete-account/index.ts` | Paddle cancellation happens only after `auth.admin.deleteUser(userId)` succeeds, and failures are only logged plus returned as `billingCance
+- F323 | `edge-functions---shared-core.md` | 119-124 | high | `supabase/functions/_shared/oauthTokenCrypto.ts` | `decryptOAuthSecret` returns any stored value without the `enc:v1:` prefix as plaintext, even in deployed production with `OAUTH_TOKEN_ENCRY
+- F358 | `edge-functions---sync-&-data.md` | 123-127, 144-200 | high | `supabase/functions/process-sync-queue/index.ts` | A task marked `processing` has no lease/timeout recovery.
+- F211 | `database-migrations.md` | 14-17, 27-41 | high | `supabase/migrations/20260216_integrations.sql` | `user_integrations` stores `access_token`, `refresh_token`, `token_expires_at`, and `api_key`, while the RLS policies allow the owning authe
+- F215 | `database-migrations.md` | 43-70 | high | `supabase/migrations/20260221_exercise_progress_and_creator_stats.sql` | `creator_stats` is created as a normal view, which is security-definer by default in Postgres.
+- F216 | `database-migrations.md` | 40-61 | high | `supabase/migrations/20260302120000_sync_compat_rpg_gamification.sql` | `earned_badges` allows authenticated users to insert and delete their own badges directly.
+- F217 | `database-migrations.md` | 8-33, 68-91 | high | `supabase/migrations/20260302120000_sync_compat_rpg_gamification.sql` | `rpg_attributes` and `gamification_stats` allow authenticated users to insert/update their own progression and aggregate statistics directly
+- F073 | `ci-cd-&-workflows.md` | 51-59 | high | `.github/workflows/ci.yml` | The CI job is named `Edge Function Deno Check`, but it delegates to `npm run check:edge-functions`, whose script currently runs `deno check`
+- F075 | `ci-cd-&-workflows.md` | 17-24, 59-65 | high | `.github/workflows/deploy-edge-functions.yml` | `workflow_dispatch` can deploy whichever ref the operator selects, but the job has no `environment`, branch assertion, or ref guard before d
+- F080 | `ci-cd-&-workflows.md` | 56-83 | high | `.github/workflows/sync-tests.yml` | Live sync tests protect production by denying only two hard-coded URL patterns (`ilzlswmatadlnsuxatcv.supabase.co` and `api.phoenix-portal.c
+- F253 | `e2e-tests.md` | 180-208, 362-395, 453-487 | high | `e2e/support/mockSupabase.ts` | The generic row filter only implements `eq` and `in`, ignoring common PostgREST query operators such as `gte`, `lte`, `range`, `limit`, and
+- F254 | `e2e-tests.md` | 330-335, 489-495 | high | `e2e/support/mockSupabase.ts` | Unknown Edge Functions and unknown REST tables are fulfilled with successful generic responses.
+- F517 | `sync-tests-&-security-tests.md` | 157-189, 192-224, 228-270 | high | `tests/sync/batch/batch-failure.test.ts` | The file header says the batch behavior should defer `lastSync` until all batches succeed, but the failure tests only verify partial mock-st
+- F544 | `sync-tests-&-security-tests.md` | 733-738, 768-831, 837-852 | high | `tests/sync/helpers/edge-function-harness.ts` | `generateTestId()` returns strings like `test-${Date.now()}-...`, and the builder helpers use it for session/exercise/set/routine IDs.
+- F545 | `sync-tests-&-security-tests.md` | 80-150, 395-427 | high | `tests/sync/helpers/mock-edge-functions.ts` | `mockPushEndpoint()` does not call `checkMockError()` and does not validate via the full production `pushPayloadSchema`; it only checks auth
+- F546 | `sync-tests-&-security-tests.md` | 233-294 | high | `tests/sync/helpers/mock-edge-functions.ts` | `mockPullEndpoint()` accepts `deviceId`, `profileId`, `cursor`, `pageSize`, and `knownEntityIds`, but ignores all of them.
+- F525 | `sync-tests-&-security-tests.md` | 741-792 | high | `tests/sync/hierarchy.test.ts` | The profile-isolation pull test pushes data for profile A and profile B, then only asserts both pulls succeeded and returned defined data.
+- F530 | `sync-tests-&-security-tests.md` | 613-689 | high | `tests/sync/multi-device.test.ts` | The profile no-cross-contamination test only asserts both profile pulls succeeded.
+- F542 | `sync-tests-&-security-tests.md` | 134-216, 318-380, 399-419 | high | `tests/sync/validation.test.ts` | Most high-value server invariants are `liveIt` and therefore skipped in the default `npm run test:sync` path: payload size, array caps, rate
+- F160 | `data-layer---mutations-&-schemas.md` | 20-24 | high | `src/mutations/workouts.ts` | `useSaveSessionNotes` updates `workout_sessions` by `sessionId` only, with no current-user filter and no affected-row check.
+- F459 | `lib---core-utilities.md` | 184-235 | high | `src/lib/paddle.ts` | `verifyPaddleSignature` validates the HMAC but never checks freshness of the `ts=` value.
+- F398 | `feature-components-part-2.md` | 25-35, 74-79 | high | `src/app/components/integrations/SyncStatus.tsx` | The sync-queue query ignores the Supabase `error` return value and falls back to `data ??
+- F406 | `feature-components-part-3.md` | 260-264, 797-798 | high | `src/app/components/Challenges.tsx` | On desktop, clicking "Leave Challenge" immediately calls `leaveMutation.mutate(challenge.id)` with no confirmation, while mobile requires an
+- F257 | `edge-functions---billing-paddle.md` | 73-94, 106-114 | medium | `supabase/functions/_shared/paddlePriceIds.ts` | Price IDs are collected into independent tier sets and `mapPriceIdToTier` resolves duplicates by fixed precedence (`INFERNO` before `FLAME`
+- F260 | `edge-functions---billing-paddle.md` | 18-21 | medium | `supabase/functions/_shared/paddleSubscriptionUpdate.ts` | The no-op/uncancel decision compares only the locally stored `currentPriceId` against the requested price.
+- F268 | `edge-functions---billing-paddle.md` | 98-125 | medium | `supabase/functions/paddle-cancel-subscription/index.ts` | After Paddle successfully schedules cancellation, the function returns `{ success: true }` without persisting the returned subscription stat
+- F269 | `edge-functions---billing-paddle.md` | 110-118 | medium | `supabase/functions/paddle-cancel-subscription/index.ts` | Raw Paddle API error text is returned to the authenticated client in `details`.
+- F271 | `edge-functions---billing-paddle.md` | 248-282 | medium | `supabase/functions/paddle-refresh-subscription/index.ts` | When Paddle returns 404 for a stored subscription ID, the function marks the local row `canceled` but leaves `paddle_subscription_id` and `p
+- F273 | `edge-functions---billing-paddle.md` | 212-220 | medium | `supabase/functions/paddle-update-subscription/index.ts` | Raw Paddle API error text is returned to the authenticated client in `details`.
+- F274 | `edge-functions---billing-paddle.md` | 277-284 | medium | `supabase/functions/paddle-update-subscription/index.ts` | The function immediately upserts the local subscription from the Paddle PATCH response, but the shared builder still derives `price_id` from
+- F265 | `edge-functions---billing-paddle.md` | 189-220 | medium | `supabase/functions/paddle-webhooks/index.ts` | `custom_data.user_id` is checked only for truthiness before being used in a Supabase equality filter and as the HMAC message.
+- F306 | `edge-functions---integrations.md` | 57-63 | medium | `supabase/functions/_shared/garminIdentity.ts` | If decrypting any candidate token throws, `resolveGarminWebhookIdentity` rejects the entire identity resolution.
+- F303 | `edge-functions---integrations.md` | 81-112 | medium | `supabase/functions/disconnect-integration/index.ts` | Token deletion, integration-state update, and sync-queue update run concurrently outside a transaction.
+- F288 | `edge-functions---integrations.md` | 70-93 | medium | `supabase/functions/fitbit-oauth/index.ts` | The OAuth state token is deleted before the Fitbit token exchange succeeds.
+- F289 | `edge-functions---integrations.md` | 96-100 | medium | `supabase/functions/fitbit-oauth/index.ts` | The Fitbit token response is trusted without validating `access_token`, `refresh_token`, `user_id`, and `expires_in`.
+- F281 | `edge-functions---integrations.md` | 141-176 | medium | `supabase/functions/garmin-oauth/index.ts` | The CSRF state token is deleted before the Garmin request-token call succeeds.
+- F295 | `edge-functions---integrations.md` | 124-135 | medium | `supabase/functions/hevy-sync/index.ts` | After successfully storing a Hevy API key, the `user_integrations` upsert result is ignored.
+- F275 | `edge-functions---integrations.md` | 82-87 | medium | `supabase/functions/initiate-oauth/index.ts` | The `oauth_states` insert result is not checked.
+- F276 | `edge-functions---integrations.md` | 92-117 | medium | `supabase/functions/initiate-oauth/index.ts` | Provider client IDs and the public Supabase URL are assumed to exist.
+- F299 | `edge-functions---integrations.md` | 164-173 | medium | `supabase/functions/liftosaur-sync/index.ts` | After successfully storing a Liftosaur API key, the `user_integrations` upsert result is ignored.
+- F277 | `edge-functions---integrations.md` | 106-112 | medium | `supabase/functions/strava-oauth/index.ts` | The Strava token response shape is trusted without validation.
+- F313 | `edge-functions---misc.md` | 222-239, 263-370, 386-499, 517-663 | medium | `supabase/functions/compute-rankings/index.ts` | Ranking endpoints have no rate limit even though they run service-role queries across all leaderboard participants and call aggregate RPCs.
+- F314 | `edge-functions---misc.md` | 89-98, 230-231 | medium | `supabase/functions/compute-rankings/index.ts` | `weekStart` is accepted directly from the request and converted with `new Date(weekStart)` before calling `toISOString()`.
+- F320 | `edge-functions---misc.md` | 22-33, 188-204 | medium | `supabase/functions/delete-account/index.ts` | The Paddle cancellation fetch has no explicit timeout or abort signal.
+- F308 | `edge-functions---misc.md` | 326-363, 613-644 | medium | `supabase/functions/generate-insights/index.ts` | The handler accepts every non-OPTIONS method and defaults an unparsable or absent body to `{}`.
+- F324 | `edge-functions---shared-core.md` | 13, 53-99, 110-116, 131-139 | medium | `supabase/functions/_shared/oauthTokenCrypto.ts` | The ciphertext prefix contains only an algorithm version (`enc:v1:`) and `getAesKey` loads exactly one key from `OAUTH_TOKEN_ENCRYPTION_KEY`
+- F326 | `edge-functions---shared-core.md` | 147-181, 253-275 | medium | `supabase/functions/_shared/rateLimit.ts` | The fallback path is described as atomic, but it is a multi-query read/update loop outside a database transaction.
+- F330 | `edge-functions---shared-core.md` | 9, 16-21 | medium | `supabase/functions/_shared/subscriptionEntitlement.ts` | Only `active` and `trialing` statuses are entitlement-bearing.
+- F334 | `edge-functions---sync-&-data.md` | 70-109 | medium | `supabase/functions/_shared/exerciseProgressRows.ts` | The row builder stores negative or otherwise nonsensical set metrics if they pass through validation.
+- F336 | `edge-functions---sync-&-data.md` | 421-432, 490-520 | medium | `supabase/functions/_shared/personalRecordRow.ts` | Dedicated personal records with missing `value` are silently converted to `weightKg ??
+- F340 | `edge-functions---sync-&-data.md` | 141-178, 229-271, 291-294, 337-345, 353-368, 370-392 | medium | `supabase/functions/_shared/pushPayloadSchema.ts` | Timestamp fields are validated as plain strings rather than datetime strings.
+- F341 | `edge-functions---sync-&-data.md` | 104-178, 190-218, 242-271, 273-345, 353-368 | medium | `supabase/functions/_shared/pushPayloadSchema.ts` | Many numeric fields accept any number with no non-negative/domain bounds: reps, weights, durations, counts, RPG level/XP, sample counts, con
+- F337 | `edge-functions---sync-&-data.md` | 8-10, 32-40 | medium | `supabase/functions/_shared/rpgSchema.ts` | The file documents `roundRpgFloats()` as the boundary guard for both push and pull, but repository search found no production import.
+- F353 | `edge-functions---sync-&-data.md` | 374-436 | medium | `supabase/functions/mobile-integration-sync/index.ts` | The `connect` path stores the encrypted API key and marks the integration connected before validating the key against the provider.
+- F356 | `edge-functions---sync-&-data.md` | 537-542 | medium | `supabase/functions/mobile-integration-sync/index.ts` | The top-level catch returns `(err as Error).message` directly to the mobile client.
+- F349 | `edge-functions---sync-&-data.md` | 354-365 | medium | `supabase/functions/mobile-sync-pull/index.ts` | `pageSize` is capped only with `Math.min`; zero or negative values are accepted.
+- F352 | `edge-functions---sync-&-data.md` | 937-1073 | medium | `supabase/functions/mobile-sync-pull/index.ts` | `personalRecords`, `localProfiles`, and `externalActivities` are fetched wholesale on the final `stats` page and do not consume `remainingPa
+- F342 | `edge-functions---sync-&-data.md` | 830-880, 1075-1271 | medium | `supabase/functions/mobile-sync-push/index.ts` | Custom exercises are upserted before the later cross-user ownership and parent-reference validation block.
+- F345 | `edge-functions---sync-&-data.md` | 2229-2233, 2253-2257, 2288-2293 | medium | `supabase/functions/mobile-sync-push/index.ts` | `session_phase_statistics`, `exercise_signatures`, and `vbt_assessments` write errors are logged as warnings while the overall push still su
+- F210 | `database-migrations.md` | 61-74 | medium | `supabase/migrations/00001_create_subscriptions.sql` | `public.user_subscription_tier()` is declared `SECURITY DEFINER` without a fixed `search_path`.
+- F213 | `database-migrations.md` | 60-75, 112-131 | medium | `supabase/migrations/20260218_phase11_comments.sql` | `check_comment_rate_limit()` and `update_comment_count()` are `SECURITY DEFINER` functions without an explicit safe `search_path`, and they
+- F218 | `database-migrations.md` | 39-45 | medium | `supabase/migrations/20260318150000_insights_benchmarks.sql` | `community_benchmarks` uses `FOR SELECT USING (true)` without `TO authenticated`, so the policy applies to PUBLIC, including anon, on an agg
+- F220 | `database-migrations.md` | 179-189 | medium | `supabase/migrations/20260412_leaderboard_functions.sql` | `update_leaderboard_events_updated_at()` is `SECURITY DEFINER` with `SET search_path = public`.
+- F232 | `database-migrations.md` | 469-473, 516-517, 549-554 | medium | `supabase/migrations/20260526120000_community_snapshots_and_imports.sql` | `import_shared_cycle()` casts JSON snapshot fields directly to `INT`/`NUMERIC` (for example `(v_snapshot ->> 'duration_weeks')::INT` and `(v
+- F051 | `build-&-config.md` | biome.json:8-10 | medium | `biome.json` | The Biome file set is restricted to `src/**/*.ts`, `src/**/*.tsx`, and `vite.config.ts`.
+- F049 | `build-&-config.md` | tsconfig.app.json:23 | medium | `tsconfig.app.json` | Application source is compiled with `"types": ["vitest/globals", "vite-plugin-pwa/react"]`.
+- F048 | `build-&-config.md` | tsconfig.json:2-5`, `tsconfig.app.json:25 | medium | `tsconfig.json` | The root TypeScript project references only `tsconfig.app.json`, and the app config includes only `src`.
+- F052 | `build-&-config.md` | wrangler.toml:1`, `wrangler.toml:7-12 | medium | `wrangler.toml` | The file is labeled as Cloudflare Pages configuration, but it uses Workers/static-assets keys (`[assets] directory = "./dist"`) and does not
+- F053 | `build-&-config.md` | wrangler.toml:11-12 | medium | `wrangler.toml` | The configured deployment build command runs `npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config`, but it skips
+- F082 | `ci-cd-&-workflows.md` | 29-60 | medium | `.github/ISSUE_TEMPLATE/bug_report.yml` | The Mobile OS Version, Mobile App Version, and Mobile Device Model fields say they are required for Mobile App-only or Both reports, but Git
+- F074 | `ci-cd-&-workflows.md` | 97-111 | medium | `.github/workflows/ci.yml` | The production build job runs `npm run build` with placeholder Supabase values and then only checks for sourcemaps.
+- F077 | `ci-cd-&-workflows.md` | 55-59, 77-79 | medium | `.github/workflows/migrations.yml` | The clean-apply job has no job-level or step-level timeout.
+- F079 | `ci-cd-&-workflows.md` | 3-18 | medium | `.github/workflows/sync-tests.yml` | This workflow omits an explicit top-level `permissions` block.
+- F085 | `ci-cd-&-workflows.md` | 36-39 | medium | `AGENTS.md` | The guidance tells agents to run `npm run test:sync` for migration-adjacent work and to commit idempotent migration files, but it does not d
+- F093 | `ci-cd-&-workflows.md` | 161-167 | medium | `README.md` | The deployment section lists GitHub Pages as a static-host option without warning that the app uses `BrowserRouter`.
+- F089 | `ci-cd-&-workflows.md` | 22-30 | medium | `WORKFLOW.md` | The `after_create` hook performs both a fresh clone and `npm ci`, but the hook timeout is only 600,000 ms (10 minutes).
+- F233 | `e2e-tests.md` | 52-60, 93-100 | medium | `e2e/a11y.spec.ts` | The axe audit collects WCAG A/AA violations but only fails on `critical` and `serious` impact violations.
+- F234 | `e2e-tests.md` | 65-75 | medium | `e2e/a11y.spec.ts` | Authenticated page accessibility tests use the generic mock harness without seeding realistic page data for most routes.
+- F235 | `e2e-tests.md` | 264-270, 291-302 | medium | `e2e/account-deletion.spec.ts` | The destructive-delete success path verifies sign-out/localStorage clearing, but it does not assert the documented redirect to `/`.
+- F236 | `e2e-tests.md` | 94-123 | medium | `e2e/account-deletion.spec.ts` | The deletion_requests mock responds based only on path and method; it does not validate the `user_id` and `status` filters on GET or the POS
+- F238 | `e2e-tests.md` | 73-104 | medium | `e2e/critical-paths.spec.ts` | The subscription-gate checks only visible copy/buttons and never verifies that gated integration-management controls are absent for FREE use
+- F252 | `e2e-tests.md` | 14, 41-52, 83-91 | medium | `e2e/fixtures/auth.ts` | The live session cache is a single `.session-cache.json` beside the fixture, keyed only by timestamp and not by Supabase URL, test email, or
+- F239 | `e2e-tests.md` | 43-50 | medium | `e2e/integrations.spec.ts` | The manual sync/disconnect test asserts generic text (`Recent Activity`, `completed`, `Connect Strava`) but does not verify the request cont
+- F241 | `e2e-tests.md` | 61-79 | medium | `e2e/navigation.spec.ts` | The test named `privacy page back-navigation to landing` uses `page.goto("/")` rather than exercising an in-page back/home link, browser bac
+- F243 | `e2e-tests.md` | 36-43 | medium | `e2e/pricing-gates.spec.ts` | The FLAME downgrade test only checks for a `Downgrade` button and absence of `Included in your plan`.
+- F244 | `e2e-tests.md` | 117-121, 138-142 | medium | `e2e/public-pages.spec.ts` | Privacy and Terms content checks use only body text length greater than 200.
+- F249 | `e2e-tests.md` | 83-105 | medium | `e2e/signup-onboarding.spec.ts` | The signup auth mock returns `[]` or `{ success: true }` for broad REST/functions/auth fallthroughs, including endpoints not explicitly mode
+- F250 | `e2e-tests.md` | 199-203 | medium | `e2e/smoke.spec.ts` | The compare-page smoke test accepts `Missing Session IDs` as a passing state.
+- F256 | `e2e-tests.md` | 3-15 | medium | `e2e/support/supabase.ts` | The default Supabase URL is a real-looking hosted domain (`https://test-project.supabase.co`).
+- F518 | `sync-tests-&-security-tests.md` | 49-66 | medium | `tests/sync/broadcast.test.ts` | The main successful-broadcast test pushes an empty sessions payload and then accepts any channel matching `/^sync:/`.
+- F519 | `sync-tests-&-security-tests.md` | 230-279 | medium | `tests/sync/conflicts/conflict-resolution.test.ts` | The delta-sync scenario records a `syncTime`, pushes a second routine, and comments that only the second routine should be returned, but it
+- F520 | `sync-tests-&-security-tests.md` | 289-349 | medium | `tests/sync/conflicts/conflict-resolution.test.ts` | The badge union-merge test describes an expected 3-badge union but only asserts `pullResult.success === true`.
+- F524 | `sync-tests-&-security-tests.md` | 62-85, 139-147 | medium | `tests/sync/error-classes.test.ts` | `setMockErrorMode('server')` and `setMockErrorMode('network')` are acknowledged as unwired.
+- F547 | `sync-tests-&-security-tests.md` | 184-195, 201-215 | medium | `tests/sync/helpers/mock-edge-functions.ts` | Badge and broadcast identity are derived from payload data or hardcoded `mock-user` instead of authenticated user context.
+- F526 | `sync-tests-&-security-tests.md` | 794-814 | medium | `tests/sync/hierarchy.test.ts` | The `local_profiles` test pushes `allProfiles` but only asserts `localProfiles` is an array.
+- F527 | `sync-tests-&-security-tests.md` | 991-1028 | medium | `tests/sync/hierarchy.test.ts` | The delta-sync test named “should return only records modified since lastSync” does not assert which records are returned.
+- F528 | `sync-tests-&-security-tests.md` | 1031-1057 | medium | `tests/sync/hierarchy.test.ts` | The empty-delta test performs a future-timestamp pull but never asserts returned entity arrays are empty.
+- F531 | `sync-tests-&-security-tests.md` | 700-814 | medium | `tests/sync/multi-device.test.ts` | The personal-record preservation test creates two PR-producing sessions and pulls, but only asserts that at least two sessions exist.
+- F532 | `sync-tests-&-security-tests.md` | 821-894 | medium | `tests/sync/multi-device.test.ts` | The delta-sync accuracy test records a post-first-push sync time and comments that only session 2 should be returned, but only asserts delta
+- F537 | `sync-tests-&-security-tests.md` | 649-699 | medium | `tests/sync/round-trip/entity-roundtrip.test.ts` | The personal-record round-trip tests only build local `expectedRecord` / `record` objects and assert their own fields.
+- F538 | `sync-tests-&-security-tests.md` | 703-732 | medium | `tests/sync/round-trip/entity-roundtrip.test.ts` | The RPG attributes “round-trip” test only checks push success and then reasserts the local object values.
+- F539 | `sync-tests-&-security-tests.md` | 753-793 | medium | `tests/sync/round-trip/entity-roundtrip.test.ts` | The badge round-trip test pushes badges but never pulls and asserts returned badge rows.
+- F543 | `sync-tests-&-security-tests.md` | 399-418 | medium | `tests/sync/validation.test.ts` | The expired-JWT live test uses a placeholder-looking token string and only expects status 401.
+- F136 | `data-layer---mutations-&-schemas.md` | 62-70, 72-76 | medium | `src/mutations/account.ts` | `useCancelDeletion` treats a zero-row update as success.
+- F138 | `data-layer---mutations-&-schemas.md` | 43-48, 50-54, 72-77, 79-83 | medium | `src/mutations/challenges.ts` | `useLeaveChallenge` and `useCompleteChallenge` do not verify that any participant row was actually deleted/updated.
+- F139 | `data-layer---mutations-&-schemas.md` | 16-19, 21-30 | medium | `src/mutations/challenges.ts` | `useJoinChallenge` does not handle duplicate participation explicitly.
+- F140 | `data-layer---mutations-&-schemas.md` | 23-30 | medium | `src/mutations/comments.ts` | `useCreateComment` accepts and inserts the raw `body` argument without applying the `createCommentSchema` constraints.
+- F142 | `data-layer---mutations-&-schemas.md` | 146-152, 155-162 | medium | `src/mutations/comments.ts` | `useDeleteComment` soft-deletes without verifying that a row matched the comment ID and current user.
+- F144 | `data-layer---mutations-&-schemas.md` | 53-64 | medium | `src/mutations/community.ts` | `useVote` has no `onError` handler.
+- F146 | `data-layer---mutations-&-schemas.md` | 424-429, 432-449 | medium | `src/mutations/community.ts` | `useBlockUser` does not distinguish duplicate blocks from real failures and does not make blocking idempotent.
+- F147 | `data-layer---mutations-&-schemas.md` | 515-527, 531-539 | medium | `src/mutations/community.ts` | `useDeleteSharedContent` does not verify that a shared routine/cycle row was actually deleted.
+- F151 | `data-layer---mutations-&-schemas.md` | 27-47 | medium | `src/mutations/goals.ts` | `useCreateGoal` inserts caller-supplied values directly and does not parse the shared create-goal schema.
+- F152 | `data-layer---mutations-&-schemas.md` | 134-142, 145-149 | medium | `src/mutations/goals.ts` | `useArchiveGoal` does not verify that a goal row was actually archived.
+- F155 | `data-layer---mutations-&-schemas.md` | 29-33, 35-41 | medium | `src/mutations/profile.ts` | `useUpdateProfile` does not verify that a profile row exists for `userId`.
+- F159 | `data-layer---mutations-&-schemas.md` | 10-17, 64-94 | medium | `src/mutations/routines.ts` | Routine inputs are not validated in the mutation before duration and storage transforms run.
+- F163 | `data-layer---mutations-&-schemas.md` | 16-43, 67-86 | medium | `src/schemas/community.ts` | Community routine/cycle snapshot schemas accept arbitrary numeric values for counts, reps, weights, durations, day numbers, and adjustments.
+- F164 | `data-layer---mutations-&-schemas.md` | 90-99, 124-154 | medium | `src/schemas/community.ts` | Malformed `exercises_snapshot` or `cycle_snapshot` values are swallowed with `.catch(null)`.
+- F166 | `data-layer---mutations-&-schemas.md` | 37-52 | medium | `src/schemas/goals.ts` | PR goal validation only checks truthiness of `exercise_name` and `deadline` is any string.
+- F168 | `data-layer---mutations-&-schemas.md` | 8-11 | medium | `src/schemas/recovery.ts` | Recovery session data accepts any numeric `total_volume`, including negative or non-finite values.
+- F169 | `data-layer---mutations-&-schemas.md` | 32-36 | medium | `src/schemas/recovery.ts` | `wearableRecoverySchema` leaves `raw_data` as unrestricted `z.any()`.
+- F170 | `data-layer---mutations-&-schemas.md` | 26-32, 38-53 | medium | `src/schemas/telemetry.ts` | Telemetry and rep summary schemas do not enforce non-negative/finite constraints for timestamp, force, velocity, position, power, ROM, or ti
+- F174 | `data-layer---mutations-&-schemas.md` | 54-56, 75-80, 112-142, 164-169, 191-199, 218-219, 265, 287, 305-309, 323-327, 373-380, 397-401 | medium | `src/schemas/transforms.ts` | Many date transforms use `new Date(s)` without validating the result.
+- F175 | `data-layer---mutations-&-schemas.md` | 243-253, 358-359 | medium | `src/schemas/transforms.ts` | Several JSON fields use `z.any()` and are accepted without shape validation (`per_set_weights`, `per_set_rest`, `per_set_reps`, `progression
+- F182 | `data-layer---queries.md` | 56-113 | medium | `src/queries/challenges.ts` | `challengeType` is a plain string and the switch has no default/error path.
+- F187 | `data-layer---queries.md` | 36-40 | medium | `src/queries/exercises.ts` | Search text is interpolated directly into a PostgREST `.or()` expression.
+- F193 | `data-layer---queries.md` | 43-66, 98-132 | medium | `src/queries/profile.ts` | `profileStatsOptions` and `topExercisesOptions` fetch all workout sessions/exercises and aggregate client-side with no limit or server-side
+- F201 | `data-layer---stores.md` | 14, 30, 40-41 | medium | `src/stores/useCommunityStore.ts` | `blockedUserIds` is kept as a mutable `Set` and `setBlockedUserIds` stores the caller-provided `Set` by reference.
+- F204 | `data-layer---stores.md` | 20 | medium | `src/stores/useProfileFilterStore.ts` | The store persists to `sessionStorage`, which is per-tab and does not emit useful cross-tab synchronization for other tabs.
+- F206 | `data-layer---stores.md` | 44, 46-53 | medium | `src/stores/useReplayStore.ts` | Navigation and seek actions accept unbounded values.
+- F208 | `data-layer---stores.md` | 13-23 | medium | `src/stores/useUIStore.ts` | The UI store is global and has no reset action or user scoping.
+- F437 | `lib---analytics-&-science.md` | 325-335, 345-347, 371-386 | medium | `src/lib/body-muscle-analytics.ts` | `buildBodyMuscleFocusModel` permits rows with only `setCount`, but reps and volume are computed only from the nested `sets` array.
+- F452 | `lib---analytics-&-science.md` | 54-59 | medium | `src/lib/computeNextWorkout.ts` | `day.day_type` is cast to `"workout" | "rest"` even though the schema exposes it as a plain string.
+- F438 | `lib---analytics-&-science.md` | 38-58, 81-90 | medium | `src/lib/fatigue-detection.ts` | The fatigue calculation never validates that velocities are finite.
+- F440 | `lib---analytics-&-science.md` | 50-65, 67-90 | medium | `src/lib/freshness.ts` | `partialTelemetry` is handled before refresh errors.
+- F474 | `lib---core-utilities.md` | 1576-1627 | medium | `src/lib/database.types.ts` | The `subscriptions` table exposes `status` and `tier` as unrestricted `string` types even though the application expects narrow unions (`FRE
+- F475 | `lib---core-utilities.md` | 1036-1066, 2169-2199 | medium | `src/lib/database.types.ts` | Telemetry rows/views allow nullable `cable`, `force_n`, `velocity_mps`, and `position_mm`, while `src/lib/telemetry.ts` chart helpers requir
+- F461 | `lib---core-utilities.md` | 78-103 | medium | `src/lib/paddle-client.ts` | `scriptLoadPromise` is cached even when the Paddle script load rejects.
+- F464 | `lib---core-utilities.md` | 11-30, 33-42 | medium | `src/lib/subscription-entitlement.ts` | Only `active` and `trialing` are treated as entitlement-bearing statuses.
+- F456 | `lib---core-utilities.md` | 42-58 | medium | `src/lib/supabase.ts` | The retry path reuses the original `input` and `init` after the first `fetch`.
+- F467 | `lib---core-utilities.md` | 32-40 | medium | `src/lib/telemetry.ts` | `downsampleTelemetry` accepts any `targetPoints` value.
+- F488 | `lib---integrations.md` | 117-124 | medium | `src/lib/integrations/export-csv.ts` | Export batches set lookup by exercise IDs, but it does not batch the earlier `.in("session_id", sessionIds)` exercise query.
+- F484 | `lib---integrations.md` | 89-115, 246-260 | medium | `src/lib/integrations/hevy.ts` | CSV and API normalization build `Date` objects and call `toISOString()` without validating that `start_time`/`end_time` parsed successfully.
+- F477 | `lib---integrations.md` | 5-13 | medium | `src/lib/integrations/rate-limits.ts` | The shared client-side `RATE_LIMITS` map omits `liftosaur` even though `liftosaur` is a declared provider and the sync queue processes Lifto
+- F486 | `lib---integrations.md` | 112-136 | medium | `src/lib/integrations/strong.ts` | `parseStrongCSV()` constructs a `Date` from each workout's `Date` field and immediately calls `toISOString()` without checking validity.
+- F496 | `lib---replay-&-export.md` | 801-806, 824-832 | medium | `src/lib/exercise-muscles.ts` | The `dbMuscleGroup` fallback is returned without trimming, canonicalizing, or validating it against the documented parent groups.
+- F497 | `lib---replay-&-export.md` | 1-5 | medium | `src/lib/export/csv-security.ts` | Formula-injection protection only checks the first character of the raw field.
+- F500 | `lib---replay-&-export.md` | 227-234, 286-309 | medium | `src/lib/export/data-export.ts` | Nested exports load `exercises`, `routine_exercises`, and `cycle_days` with a single `.in(..., ids)` query containing all parent IDs.
+- F002 | `analytics-dashboard.md` | 1369-1375, 1490-1496 | medium | `src/app/components/Analytics.tsx` | The page-level empty states are gated only on volume/muscle/external summary data (`mobileHasData` and `hasData`).
+- F006 | `analytics-dashboard.md` | 55-65, 72-83, 151-163, 208-241 | medium | `src/app/components/analytics/MobileBodyTab.tsx` | The mobile Body tab returns early when `muscleGroupData.length === 0`, before rendering `BodyMuscleHeatmap`, volume landmarks, SRA recovery,
+- F022 | `app-entry-&-routing.md` | 66-92 | medium | `src/app/components/AuthCallback.tsx` | The callback gives Supabase only eight 250ms polling attempts (about two seconds) to make a session visible.
+- F029 | `app-shell-&-layout.md` | 27-38, 67-72, 99-100 | medium | `src/app/components/BottomSheet.tsx` | `defaultSnap` and `snapPoints` are not validated.
+- F030 | `app-shell-&-layout.md` | 80-104, 114-129 | medium | `src/app/components/BottomSheet.tsx` | The custom sheet has no dialog semantics, focus trap, initial focus management, Escape handling, or `aria-modal`.
+- F033 | `app-shell-&-layout.md` | 31-38, 56-60 | medium | `src/app/components/ErrorFallback.tsx` | The fallback directly uses `sessionStorage` and `window.location.reload()` without guarding storage access.
+- F039 | `app-shell-&-layout.md` | 34-49, 56-69 | medium | `src/app/components/LocalProfileFilter.tsx` | If `activeProfileId` points to a profile that is no longer present in the fetched profile list, the component does not reset it.
+- F045 | `app-shell-&-layout.md` | 30-46, 53-55 | medium | `src/app/components/modals/RoutinePickerModal.tsx` | The custom modal has no `role="dialog"`, `aria-modal`, labelled-by wiring, focus trap, Escape handling, or focus restoration.
+- F059 | `charts-&-visualization.md` | 84-89, 115-119, 149-166 | medium | `src/app/components/charts/CommunityDistribution.tsx` | The x-axis domain is fixed to the generated percentile curve's min/max, while the `YOU` markLine is placed at the raw `userValue`.
+- F063 | `charts-&-visualization.md` | 191-204, 215-223 | medium | `src/app/components/charts/ForceCurve.tsx` | Gradient IDs are built from only `rep.repNumber` (`force-gradient-${rep.repNumber}`).
+- F064 | `charts-&-visualization.md` | 74-108 | medium | `src/app/components/charts/MuscleRadar.tsx` | The radar visualization renders only through `EChartsWrapper`, which ultimately draws to canvas, and this component provides no surrounding
+- F067 | `charts-&-visualization.md` | 22-25, 94 | medium | `src/app/components/charts/TrainingLoadGauge.tsx` | The gauge renders only the ECharts canvas with no accessible wrapper, text equivalent, or hidden data table.
+- F072 | `charts-&-visualization.md` | 63-68, 70-86 | medium | `src/app/components/charts/shared/EChartsWrapper.tsx` | Responsive behavior listens only to global `window.resize`.
+- F098 | `community-features.md` | 207-244 | medium | `src/app/components/community/CommunityDetailDrawer.tsx` | Vote and save actions are rendered regardless of authentication state.
+- F102 | `community-features.md` | 72-86, 255-265 | medium | `src/app/components/community/CreatorProfile.tsx` | The loading state only tracks the routines query (`feedLoading`).
+- F103 | `community-features.md` | 72-86, 104-106, 270-279 | medium | `src/app/components/community/CreatorProfile.tsx` | `CreatorProfile` uses infinite queries for routines and cycles but never calls `fetchNextPage` or renders a sentinel/load-more control.
+- F106 | `community-features.md` | 111-118, 147-158 | medium | `src/app/components/community/ShareContentDialog.tsx` | Manual dialog closes pass `setOpen` directly and do not call `resetForm`.
+- F107 | `community-features.md` | 24-40 | medium | `src/app/components/community/VoteButton.tsx` | The button invokes `useVote` directly without explicit unauthenticated handling or local error feedback, and it does not stop propagation.
+- F110 | `cycle-&-routine-builders.md` | 74-77, 342-353 | medium | `src/app/components/CycleBuilder.tsx` | Edit mode handles only the loading state.
+- F125 | `cycle-&-routine-builders.md` | 263-269, 307-321, 142-168 | medium | `src/app/components/RoutineBuilder.tsx` | Deleting an exercise only removes that exercise.
+- F127 | `cycle-&-routine-builders.md` | 594-598 | medium | `src/app/components/RoutineBuilder.tsx` | The detail panel uses a non-null assertion on `exercises.find(...)`.
+- F135 | `cycle-&-routine-builders.md` | 125-131, 148-157 | medium | `src/app/components/routine-builder/SupersetContainer.tsx` | The container allows removing any exercise from a superset without guarding against leaving fewer than two exercises.
+- F367 | `feature-components-part-1.md` | 381-399 | medium | `src/app/components/Goals.tsx` | Goal completion marks a goal as celebrated before the `updateGoal.mutate` call succeeds.
+- F373 | `feature-components-part-1.md` | 260-262, 302-388, 607-613 | medium | `src/app/components/PricingPlans.tsx` | Direct Subscribe buttons do not set any in-flight state while `openCheckout` is starting.
+- F371 | `feature-components-part-1.md` | 39-41, 51, 106-140 | medium | `src/app/components/TrainingCycles.tsx` | Query errors are not handled.
+- F379 | `feature-components-part-1.md` | 161-164 | medium | `src/app/components/profile/DangerZone.tsx` | The final permanent deletion confirmation action is not disabled while `executeDeletion.isPending`.
+- F386 | `feature-components-part-2.md` | 180-189, 399-411, 416-445, 467-480, 530-547 | medium | `src/app/components/Biomechanics.tsx` | Telemetry and rep-summary query errors are not read or rendered.
+- F387 | `feature-components-part-2.md` | 216-227, 290-367 | medium | `src/app/components/ExerciseProgress.tsx` | The exercise list, profile, and progress queries ignore `error`.
+- F389 | `feature-components-part-2.md` | 216-227 | medium | `src/app/components/ExerciseProgress.tsx` | `exerciseListOptions(userId, activeProfileId)` and `profileOptions(userId)` are called without guarding on a non-empty `userId`, and the pro
+- F390 | `feature-components-part-2.md` | 33-37, 102-115, 118-132, 135-149, 155-180, 203-205 | medium | `src/app/components/Integrations.tsx` | The page derives `userId` and `accessToken` as empty strings while auth/session data is unavailable, but connect/sync/disconnect/import chil
+- F381 | `feature-components-part-2.md` | 195-207, 315-550 | medium | `src/app/components/Recovery.tsx` | The premium page only handles `isLoading`, `recovery?.isGated`, and `recovery && !recovery.isGated`.
+- F382 | `feature-components-part-2.md` | 43-57, 104-108 | medium | `src/app/components/RecoveryDashboardWidget.tsx` | A failed recovery-score query is indistinguishable from a user having no training data.
+- F411 | `feature-components-part-3.md` | 476-502 | medium | `src/app/components/ComparisonView.tsx` | The error state renders raw `errorA?.message || errorB?.message` directly to the user.
+- F415 | `feature-components-part-3.md` | 10-14, 20-28 | medium | `src/app/components/CookieConsentBanner.tsx` | Consent read/write calls are not protected from storage failures.
+- F419 | `feature-components-part-3.md` | 12-18, 152-160 | medium | `src/app/components/NextWorkoutWidget.tsx` | `RoutineName` treats any missing or failed routine detail as `Custom Workout`.
+- F412 | `feature-components-part-3.md` | 99-105 | medium | `src/app/components/OnboardingOverlay.tsx` | `Dialog` close events call `onComplete()`.
+- F402 | `feature-components-part-3.md` | 105-116, 329-336 | medium | `src/app/components/landing/ForceCurveDemo.tsx` | The chart only falls back when `ParentSize` reports `width <= 0`.
+- F428 | `hooks-&-providers.md` | 82-87 | medium | `src/hooks/useNotificationSync.ts` | The effect writes zero counts to the UI store whenever a query's `data` is `undefined`, including during the initial loading period or after
+- F430 | `hooks-&-providers.md` | 113-121 | medium | `src/hooks/useOnboarding.ts` | `dismissHint` merges `hintId` into `onboarding.dismissed_hints` on the client and sends the whole JSON object with `update`.
+- F432 | `hooks-&-providers.md` | 89-94, 102-114 | medium | `src/hooks/useRealtimeSync.ts` | The Supabase broadcast channel topic is fixed as `sync:${user.id}`.
+- F433 | `hooks-&-providers.md` | 23-28, 44-65 | medium | `src/hooks/useRecoveryScore.ts` | The returned `isLoading` only reflects `sessionsLoading`.
+- F435 | `hooks-&-providers.md` | 89-94, 128-151 | medium | `src/hooks/useSubscription.ts` | When the subscription query errors, `data` is `undefined` and the hook falls back to `FREE`/`none` with `isEntitled: false` while exposing n
+- F501 | `session-replay.md` | 22-38 | medium | `src/app/components/session-replay/PlaybackControls.tsx` | The global Space shortcut only excludes `INPUT`, `TEXTAREA`, and `SELECT`.
+- F507 | `session-replay.md` | 42-43, 87-109 | medium | `src/app/components/session-replay/ReplayIntelligencePanel.tsx` | If `currentRepIndex` is out of range, the panel falls back to `intelligence.repInsights[0]`.
+- F511 | `session-replay.md` | 169-190 | medium | `src/app/components/session-replay/SessionReplay.tsx` | `ResizeObserver` is constructed unconditionally in the effect.
+- F515 | `session-replay.md` | 37-50, 77-81 | medium | `src/app/components/session-replay/TimelineBar.tsx` | Scrubbing pauses playback on pointer down and resumes only on pointer up.
+- F568 | `ui-primitives-shadcn.md` | 68-75 | medium | `src/app/components/ui/ZoneBadge.tsx` | If `ZoneBadge` is rendered with `showLabel={false}`, the visual output can be only a color dot with no accessible text.
+- F551 | `ui-primitives-shadcn.md` | 39-56 | medium | `src/app/components/ui/button.tsx` | `Button` renders a native `<button>` by default but does not set `type="button"`.
+- F553 | `ui-primitives-shadcn.md` | 77-85 | medium | `src/app/components/ui/carousel.tsx` | Keyboard handling only responds to `ArrowLeft` and `ArrowRight`.
+- F555 | `ui-primitives-shadcn.md` | 39-46 | medium | `src/app/components/ui/disabled-with-reason.tsx` | The tooltip trigger wrapper is a plain `<span>` with no `tabIndex`, despite the comment saying it intercepts hover/focus.
+- F560 | `ui-primitives-shadcn.md` | 24-25 | medium | `src/app/components/ui/progress.tsx` | The progress indicator transform uses `value || 0` directly and does not clamp or validate the value.
+- F561 | `ui-primitives-shadcn.md` | 264-278, 286-303, 417-436, 515-522, 560-576 | medium | `src/app/components/ui/sidebar.tsx` | Several sidebar controls render native buttons without a default `type="button"` (`SidebarTrigger` through `Button`, `SidebarRail`, `Sidebar
+- F562 | `ui-primitives-shadcn.md` | 286-303 | medium | `src/app/components/ui/sidebar.tsx` | `SidebarRail` is a clickable `<button>` but is forced out of the tab order with `tabIndex={-1}`.
+- F262 | `edge-functions---billing-paddle.md` | 48-67 | low | `supabase/functions/_shared/paddleWebhookSecurity.ts` | The custom-data signature comparison iterates only over `Math.min(a.length, b.length)` and returns immediately after a length-dependent amou
+- F305 | `edge-functions---integrations.md` | 23-32 | low | `supabase/functions/_shared/garminIdentity.ts` | `timingSafeEqual` only loops to `Math.min(a.length, b.length)`.
+- F290 | `edge-functions---integrations.md` | 138-144 | low | `supabase/functions/fitbit-oauth/index.ts` | The initial `sync_queue` insert result is ignored.
+- F287 | `edge-functions---integrations.md` | 289-294 | low | `supabase/functions/garmin-webhook/index.ts` | The per-user `last_sync_at` update is awaited but its error is ignored.
+- F312 | `edge-functions---misc.md` | 548-565 | low | `supabase/functions/generate-insights/index.ts` | Current streak calculation compares `started_at.slice(0, 10)` and `now.toISOString().slice(0, 10)`, which are UTC calendar days.
+- F322 | `edge-functions---shared-core.md` | 30-31 | low | `supabase/functions/_shared/flags.ts` | `SYNC_LWW_ENABLED` lowercases the environment value but does not trim it.
+- F327 | `edge-functions---shared-core.md` | 23-38 | low | `supabase/functions/_shared/rateLimitRpc.ts` | `normalizeRateLimitRpcResult` checks only JavaScript types.
+- F332 | `edge-functions---sync-&-data.md` | 76-91 | low | `supabase/functions/_shared/syncPayloadShape.ts` | `normalizePushPayloadShape()` is no longer used by the production `mobile-sync-push` handler; repository search found only tests importing i
+- F333 | `edge-functions---sync-&-data.md` | 1-9 | low | `supabase/functions/_shared/syncPlatform.ts` | `normalizeSyncPlatform()` returns arbitrary trimmed/lowercased strings for non-Android/iOS inputs, while the live `platformSchema` in `pushP
+- F360 | `edge-functions---sync-&-data.md` | 78, 93-95 | low | `supabase/functions/process-sync-queue/index.ts` | `results.skipped` is initialized but not incremented when a provider is skipped due to rate limiting.
+- F054 | `build-&-config.md` | .npmrc:1 | low | `.npmrc` | `legacy-peer-deps=true` disables npm's peer-dependency conflict enforcement for every install.
+- F055 | `build-&-config.md` | index.html:14 | low | `index.html` | `og:image` is configured as a relative path (`/phoenix-hero.png`).
+- F056 | `build-&-config.md` | index.html:22-23 | low | `index.html` | The Google Fonts CSS is requested twice: once as `rel="preload" as="style"` and again immediately as `rel="stylesheet"` with the same URL.
+- F050 | `build-&-config.md` | vite.config.ts:173-181 | low | `vite.config.ts` | `vite.config.ts` contains a `test` block even though the repository also has `vitest.config.ts`, and the two configurations drift.
+- F083 | `ci-cd-&-workflows.md` | 83-89 | low | `.github/ISSUE_TEMPLATE/bug_report.yml` | Expected behavior is optional.
+- F084 | `ci-cd-&-workflows.md` | 3-5 | low | `.github/ISSUE_TEMPLATE/config.yml` | The only contact link sends general questions to the `Project-Phoenix-MP` discussions board rather than a Phoenix Portal discussion/support
+- F081 | `ci-cd-&-workflows.md` | 29-45, 94-119 | low | `.github/workflows/sync-tests.yml` | The workflow hardcodes Node 20 for the primary job and tests only Node 20/22 in the PR matrix, while the main CI workflow follows `.nvmrc`,
+- F091 | `ci-cd-&-workflows.md` | 84-89 | low | `README.md` | The development quickstart tells contributors to use `npm install`, while CI and the workflow guidance use `npm ci`.
+- F092 | `ci-cd-&-workflows.md` | 118-128 | low | `README.md` | The environment-variable section omits `VITE_SENTRY_DSN` and does not list the six required Paddle price ID variables individually.
+- F090 | `ci-cd-&-workflows.md` | 66 | low | `WORKFLOW.md` | The untrusted-input handling paragraph contains literal `\n` escape sequences instead of real Markdown line breaks.
+- F240 | `e2e-tests.md` | 72-78 | low | `e2e/integrations.spec.ts` | The Garmin test asserts there are zero `Sync Now` buttons on the whole page.
+- F242 | `e2e-tests.md` | 3-8, 20-21, 38-39, 54-55, 63-74, 90-107 | low | `e2e/navigation.spec.ts` | The navigation suite relies heavily on fixed `waitForTimeout` sleeps to wait for animation/page readiness.
+- F245 | `e2e-tests.md` | 20-47, 105-121, 127-142, 148-175 | low | `e2e/public-pages.spec.ts` | The public-page error checks listen for `pageerror` only.
+- F255 | `e2e-tests.md` | 253-257, 423-426, 453-457 | low | `e2e/support/mockSupabase.ts` | Several route handlers call `JSON.parse(request.postData())` without guarding parse errors.
+- F522 | `sync-tests-&-security-tests.md` | 404-411 | low | `tests/sync/conflicts/conflict-resolution.test.ts` | The routine deletion scenario does not actually send any deletion/tombstone signal.
+- F536 | `sync-tests-&-security-tests.md` | 209-242 | low | `tests/sync/pull-pagination.test.ts` | The entity-order test uses `Object.keys(result.data!)` to infer pagination/order semantics.
+- F540 | `sync-tests-&-security-tests.md` | 932-1043 | low | `tests/sync/round-trip/entity-roundtrip.test.ts` | The full sync payload test includes RPG attributes, badges, and gamification stats, but after pulling it only checks sessions/routines/cycle
+- F541 | `sync-tests-&-security-tests.md` | 610-629 | low | `tests/sync/round-trip/workout-roundtrip.test.ts` | The test named “should isolate failures - one bad session should not block others” only pushes a single valid session.
+- F137 | `data-layer---mutations-&-schemas.md` | 99-101 | low | `src/mutations/account.ts` | `useExecuteDeletion` ignores the result of `supabase.auth.signOut()`.
+- F161 | `data-layer---mutations-&-schemas.md` | 11-16 | low | `src/schemas/comments.ts` | Date fields are transformed with `new Date(s)` but never validated.
+- F167 | `data-layer---mutations-&-schemas.md` | 10-17 | low | `src/schemas/onboarding.ts` | `completed_at` and `created_at` use raw `new Date` transforms without checking validity, so invalid persisted date strings parse as `Invalid
+- F171 | `data-layer---mutations-&-schemas.md` | 64-70 | low | `src/schemas/telemetry.ts` | `exerciseProgressSchema.recorded_at` uses `new Date(s)` without validity checks, so invalid timestamps parse successfully and later affect t
+- F179 | `data-layer---queries.md` | 12-55 | low | `src/queries/biomechanics.ts` | `sessionAsymmetryOptions` has no `enabled: !!sessionId` guard even though an empty session id produces a distinct cache key and a query agai
+- F180 | `data-layer---queries.md` | 9-19, 47-62 | low | `src/queries/body-intelligence.ts` | Both query options accept caller-controlled identifiers/ranges but do not guard invalid input.
+- F185 | `data-layer---queries.md` | 256-267 | low | `src/queries/community.ts` | `userVotesOptions` returns a mutable `Set` from the query function.
+- F186 | `data-layer---queries.md` | 32-48 | low | `src/queries/cycles.ts` | `cycleDetailOptions` does not include `enabled: !!cycleId`.
+- F189 | `data-layer---queries.md` | 5-19 | low | `src/queries/insights.ts` | `insightsOptions` lacks an `enabled: !!userId` guard.
+- F190 | `data-layer---queries.md` | 10-24, 31-55 | low | `src/queries/integrations.ts` | Both integration query options require `userId` but do not gate empty ids.
+- F191 | `data-layer---queries.md` | 14-28 | low | `src/queries/localProfiles.ts` | `localProfilesOptions` requires a user id but has no enabled guard, so an unauthenticated/loading auth state can issue `local_profiles` quer
+- F192 | `data-layer---queries.md` | 10-26, 33-45 | low | `src/queries/onboarding.ts` | `onboardingOptions` and `hasWorkoutsOptions` both require `userId` but do not gate empty ids.
+- F194 | `data-layer---queries.md` | 35-59 | low | `src/queries/progress.ts` | `exerciseProgressOptions` will execute with an empty `userId` or empty `exerciseName`; both are required for a meaningful result and both ar
+- F195 | `data-layer---queries.md` | 10-34 | low | `src/queries/records.ts` | `personalRecordsOptions` has no `enabled: !!userId` guard.
+- F197 | `data-layer---queries.md` | 9-34, 40-66 | low | `src/queries/replay.ts` | Replay session and telemetry options do not include `enabled` guards for their required ids.
+- F198 | `data-layer---queries.md` | 26-42 | low | `src/queries/routines.ts` | `routineDetailOptions` does not include `enabled: !!routineId`.
+- F199 | `data-layer---queries.md` | 8-20, 24-36 | low | `src/queries/telemetry.ts` | `repTelemetryOptions` and `repSummariesOptions` lack `enabled: !!setId` guards.
+- F202 | `data-layer---stores.md` | 33-41 | low | `src/stores/useCommunityStore.ts` | The community UI store is an in-memory Zustand store only.
+- F207 | `data-layer---stores.md` | 14, 24, 53-54 | low | `src/stores/useReplayStore.ts` | `currentRepIndex` is part of global replay state and has a setter, but the main replay component derives the current rep index from `current
+- F209 | `data-layer---stores.md` | 19-22 | low | `src/stores/useUIStore.ts` | `setStreak` and `setNotifications` accept arbitrary numbers and write them directly.
+- F436 | `lib---analytics-&-science.md` | 50-52 | low | `src/lib/biomechanics.ts` | `calculateRom` spreads the full `positions` array into `Math.max(...positions)` and `Math.min(...positions)`.
+- F454 | `lib---analytics-&-science.md` | 3-12 | low | `src/lib/challenges.ts` | `formatChallengeValue` formats `NaN`, `Infinity`, or negative challenge values without validation.
+- F453 | `lib---analytics-&-science.md` | 90-107, 131-162 | low | `src/lib/community-atlas.ts` | `normalizePercentiles` only accepts one- or two-digit percentile keys (`p0` through `p99`) and drops `p100`.
+- F441 | `lib---analytics-&-science.md` | 133-157, 160-169 | low | `src/lib/insights.ts` | Insight IDs for PRs and plateaus are derived by lowercasing exercise names and replacing whitespace only.
+- F443 | `lib---analytics-&-science.md` | 124-144 | low | `src/lib/rep-quality.ts` | `calculateTutScore` assumes the target TUT range is ordered and positive.
+- F446 | `lib---analytics-&-science.md` | 81-105 | low | `src/lib/sra-recovery.ts` | Negative `hoursSinceLastTrained` values are accepted.
+- F447 | `lib---analytics-&-science.md` | 168-173, 188-193 | low | `src/lib/vbt.ts` | Non-finite velocities such as `NaN` fail the zone predicates and silently fall back to the first zone (`GRIND`/`absolute-strength`).
+- F448 | `lib---analytics-&-science.md` | 45-63, 88-101 | low | `src/lib/volume-landmarks.ts` | Negative or non-finite `setCount`/`weeklySets` values are not sanitized.
+- F449 | `lib---analytics-&-science.md` | 19-24, 32-34 | low | `src/lib/workout-phases.ts` | `normalizeWorkoutPhase` only recognizes exact string keys and does not trim whitespace or normalize case generically.
+- F473 | `lib---core-utilities.md` | 34-59 | low | `src/lib/toast-undo.ts` | The destructive timer is independent of the toast lifecycle.
+- F466 | `lib---core-utilities.md` | 5-8, 20-37, 66-82 | low | `src/lib/units.ts` | `safeNumber` filters only `null`, `undefined`, and `NaN`; it allows `Infinity` and `-Infinity`.
+- F478 | `lib---integrations.md` | 19-32 | low | `src/lib/integrations/rate-limits.ts` | `isRateLimited()` assumes `window_started_at` is always a valid date string and `requests_this_window` is always a number.
+- F498 | `lib---replay-&-export.md` | 80-89 | low | `src/lib/export/csv.ts` | `downloadCSV` creates an anchor and clicks it without appending it to the document, while the ZIP export helpers append/remove their downloa
+- F494 | `lib---replay-&-export.md` | 80-90 | low | `src/lib/replay-phase-analytics.ts` | `repNumberForTimestamp` assumes each `repBoundaries` entry is a rep start.
+- F491 | `lib---replay-&-export.md` | 60-62, 132-137, 207-212 | low | `src/lib/replay-renderer.ts` | `currentTimeMs` is not clamped before drawing the playhead.
+- F011 | `analytics-dashboard.md` | 101-105, 127-135 | low | `src/app/components/analytics/SRARecoveryMatrix.tsx` | The display treats `hoursSinceLastTrained === 0` as "No data".
+- F019 | `app-entry-&-routing.md` | 74-77 | low | `src/app/routes/AppLayout.tsx` | `SkipToContent` links to `#main-content`, but the target `<motion.main>` is not programmatically focusable.
+- F020 | `app-entry-&-routing.md` | 12-13 | low | `src/app/routes/ProtectedRoute.tsx` | Unauthenticated users are redirected to `/` without preserving the protected URL they originally requested.
+- F016 | `app-entry-&-routing.md` | 25-31 | low | `src/app/routes/index.tsx` | The chunk-load recovery path uses `sessionStorage.getItem` and `sessionStorage.setItem` inside the `catch` handler without guarding storage
+- F015 | `app-entry-&-routing.md` | 13 | low | `src/main.tsx` | `getConsentStatus()` reads `localStorage` during module initialization before React renders.
+- F031 | `app-shell-&-layout.md` | 43-53 | low | `src/app/components/BottomSheet.tsx` | Opening the sheet unconditionally sets `document.body.style.overflow = "hidden"` and cleanup resets it to an empty string.
+- F037 | `app-shell-&-layout.md` | 114-119 | low | `src/app/components/EmberParticles.tsx` | The particle canvas is decorative but is not marked `aria-hidden`.
+- F034 | `app-shell-&-layout.md` | 50-53 | low | `src/app/components/ErrorFallback.tsx` | Non-chunk errors render `error.message` directly to end users.
+- F040 | `app-shell-&-layout.md` | 39-51 | low | `src/app/components/LocalProfileFilter.tsx` | The `label` uses `htmlFor="profile-filter-select"`, but the rendered `SelectTrigger` is not given that id.
+- F032 | `app-shell-&-layout.md` | 6-34 | low | `src/app/components/PageLoading.tsx` | The loading state is only visual text plus animation and is not exposed as a live status region.
+- F035 | `app-shell-&-layout.md` | 5-31 | low | `src/app/components/PortalBanner.tsx` | Dismissal is component-local state only.
+- F036 | `app-shell-&-layout.md` | 3-5 | low | `src/app/components/SkipToContent.tsx` | The link targets `#main-content`, but the target main element is not focusable in `AppLayout`.
+- F042 | `app-shell-&-layout.md` | 12-14, 33-40 | low | `src/app/components/figma/ImageWithFallback.tsx` | A caller-provided `onError` handler is overwritten by the internal `handleError` because `onError={handleError}` is applied after `{...rest}
+- F060 | `charts-&-visualization.md` | 80-82, 172-177 | low | `src/app/components/charts/CommunityDistribution.tsx` | When fewer than two valid percentile keys are provided, the component returns an empty ECharts option and still renders a chart container wi
+- F061 | `charts-&-visualization.md` | 30-32 | low | `src/app/components/charts/ConsistencyWidget.tsx` | `ProgressRing` caps progress at 100% but does not clamp the lower bound.
+- F068 | `charts-&-visualization.md` | 22-25, 51-85 | low | `src/app/components/charts/TrainingLoadGauge.tsx` | `zoneColor` and `zoneLabel` are looked up directly from the incoming `zone`.
+- F097 | `community-features.md` | 23-25, 401-405 | low | `src/app/components/community/CommunityContentPreview.tsx` | Missing or null embedded routine durations are formatted as `0 min`.
+- F099 | `community-features.md` | 109-117, 131-142 | low | `src/app/components/community/CommunityFilterPanel.tsx` | The labels use `htmlFor="muscle-group-filter"` and `htmlFor="difficulty-filter"`, but those ids are not applied to the corresponding select
+- F105 | `community-features.md` | 34-47, 99-134 | low | `src/app/components/community/FeaturedCreators.tsx` | Scroll-button state is computed only when the scroll container first mounts and on scroll events.
+- F112 | `cycle-&-routine-builders.md` | 327, 824-833 | low | `src/app/components/CycleBuilder.tsx` | The day card always renders a remove button, even when only one day remains.
+- F129 | `cycle-&-routine-builders.md` | 221-319 | low | `src/app/components/RoutineDetail.tsx` | The detail page has no empty-state branch for routines with zero exercises.
+- F116 | `cycle-&-routine-builders.md` | 136-164, 185-213, 270-275 | low | `src/app/components/cycle-builder/DayEditor.tsx` | Numeric override inputs do not clamp typed values.
+- F118 | `cycle-&-routine-builders.md` | 479-512 | low | `src/app/components/cycle-builder/ProgressionRules.tsx` | The deload intensity and volume inputs set `min="0"` and `max="100"`, but typed values are not clamped before being stored.
+- F120 | `cycle-&-routine-builders.md` | 52-68, 75-77 | low | `src/app/components/cycle-builder/RoutinePicker.tsx` | The custom modal does not implement focus trapping, Escape handling, or explicit dialog semantics.
+- F132 | `cycle-&-routine-builders.md` | 42-49 | low | `src/app/components/routine-builder/superset-helpers.ts` | `createSuperset` uses `Date.now()` for IDs.
+- F133 | `cycle-&-routine-builders.md` | 34-56, 59-64 | low | `src/app/components/routine-builder/superset-types.ts` | There are only four superset colors/labels, and `getNextSupersetColor` cycles back to the first color after all are used.
+- F369 | `feature-components-part-1.md` | 19-28 | low | `src/app/components/GoalDashboardWidget.tsx` | The widget calls `useGoalProgress(activeProfileId)` before returning the non-premium locked card.
+- F370 | `feature-components-part-1.md` | 20-25 | low | `src/app/components/GoalProgressRing.tsx` | The SVG has an `aria-label`, but no explicit `role="img"`.
+- F374 | `feature-components-part-1.md` | 810-814 | low | `src/app/components/PricingPlans.tsx` | The cancel-subscription confirmation action is not disabled while `isCanceling` is true.
+- F375 | `feature-components-part-1.md` | 31-32 | low | `src/app/components/SubscriptionGate.tsx` | Loading always renders a fixed `h-32 w-full` skeleton, even when the caller passed `fallback={null}` or uses the gate around an inline contr
+- F372 | `feature-components-part-1.md` | 258-265 | low | `src/app/components/TrainingCycles.tsx` | The dropdown trigger is an icon-only button without an accessible label.
+- F361 | `feature-components-part-1.md` | 56-63, 508-520 | low | `src/app/components/WorkoutHistory.tsx` | Workout cards are clickable `Card`/`div` UI with `onClick`, but they are not keyboard-focusable and do not expose button/link semantics.
+- F400 | `feature-components-part-2.md` | 131-155 | low | `src/app/components/CalendarWidget.tsx` | Calendar day buttons expose the day number, selected state, and current date, but the workout dot is visual-only and locked dates rely on di
+- F401 | `feature-components-part-2.md` | 110-136 | low | `src/app/components/CalendarWidgetMobile.tsx` | The mobile calendar has the same accessibility gap as the desktop calendar: workout indicators and locked-date status are communicated only
+- F383 | `feature-components-part-2.md` | 34-35, 73-76, 87 | low | `src/app/components/RecoveryScore.tsx` | The component trusts `result.score` to be a valid 0-100 value.
+- F392 | `feature-components-part-2.md` | 54-60, 84-87, 143-145 | low | `src/app/components/integrations/ExternalActivityList.tsx` | Dates are parsed with `new Date(...)` and rendered without validating the result.
+- F393 | `feature-components-part-2.md` | 146-149, 151-178 | low | `src/app/components/integrations/HevyConnect.tsx` | CSV validation is a case-sensitive filename suffix check.
+- F394 | `feature-components-part-2.md` | 24-28, 40-50, 147-160 | low | `src/app/components/integrations/LiftosaurConnect.tsx` | The component documents the Liftosaur API key format as `lftsk_*`, but only validates that the field is non-empty.
+- F395 | `feature-components-part-2.md` | 20-34, 63-65 | low | `src/app/components/integrations/MobileOnlyProvider.tsx` | `formatRelative` does not validate parsed dates and treats future timestamps as `Just now` because negative minute deltas satisfy `diffMin <
+- F407 | `feature-components-part-3.md` | 62-68, 165, 230-232, 457 | low | `src/app/components/Challenges.tsx` | Date parsing failures are not handled.
+- F408 | `feature-components-part-3.md` | 67-75 | low | `src/app/components/ComparisonSessionPicker.tsx` | The search field is identified only by placeholder text and has no programmatic label.
+- F409 | `feature-components-part-3.md` | 92-97 | low | `src/app/components/ComparisonSessionPicker.tsx` | Session rows are clickable `Card` elements without button/link semantics, `tabIndex`, or keyboard handlers.
+- F417 | `feature-components-part-3.md` | 217-239, 245-269 | low | `src/app/components/ConsistencyCalendar.tsx` | Calendar cell details are only available through mouse hover on SVG rects.
+- F418 | `feature-components-part-3.md` | 225-247, 273-310, 330-350 | low | `src/app/components/MuscleHeatmap.tsx` | Muscle-region details are only available via mouse hover, and the Front/Back toggle buttons do not expose selected state (`aria-pressed`).
+- F414 | `feature-components-part-3.md` | 64-66 | low | `src/app/components/PWAInstallPrompt.tsx` | The dismiss control is an icon-only button with no accessible name.
+- F413 | `feature-components-part-3.md` | 24-28 | low | `src/app/components/WhatsNewBanner.tsx` | `handleDismiss` schedules `onDismiss()` with `setTimeout` but does not clear the timer on unmount.
+- F403 | `feature-components-part-3.md` | 162-180 | low | `src/app/components/landing/ForceCurveDemo.tsx` | The SVG gradient id `force-area-gradient` is hardcoded.
+- F404 | `feature-components-part-3.md` | 45-53 | low | `src/app/components/landing/ProductShowcase.tsx` | The mini force chart uses a hardcoded SVG gradient id `force-gradient`.
+- F423 | `hooks-&-providers.md` | 107-120 | low | `src/app/hooks/usePWAInstall.ts` | `promptInstall` awaits `deferredPrompt.prompt()` and `deferredPrompt.userChoice` without `try/finally` or error handling.
+- F424 | `hooks-&-providers.md` | 13, 17-20 | low | `src/app/hooks/useReducedMotion.ts` | The hook assumes `window.matchMedia` exists and that the returned `MediaQueryList` supports `addEventListener`.
+- F502 | `session-replay.md` | 87-100 | low | `src/app/components/session-replay/QualityBadge.tsx` | Factor hints are exposed only through the native `title` attribute on the label.
+- F504 | `session-replay.md` | 18-20, 37-41, 73-74 | low | `src/app/components/session-replay/ReplayAnnotationOverlay.tsx` | The x-coordinate calculation clamps plot width to at least 1px, but it does not handle containers narrower than the left/right margins.
+- F506 | `session-replay.md` | 33-38, 64-71 | low | `src/app/components/session-replay/ReplayCanvas.tsx` | The component silently returns when `getContext("2d")` fails and still exposes a canvas with `role="img"`.
+- F508 | `session-replay.md` | 96-142, 211-223 | low | `src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx` | The force/velocity scatter plots are rendered only as visual Recharts charts, with no accessible title/description, no tabular equivalent, a
+- F548 | `ui-primitives-shadcn.md` | 28-32 | low | `src/app/components/ui/alert.tsx` | `Alert` always renders `role="alert"`, even for the default/non-destructive variant.
+- F549 | `ui-primitives-shadcn.md` | 52-63 | low | `src/app/components/ui/breadcrumb.tsx` | `BreadcrumbPage` renders a non-interactive `<span>` with `role="link"`, `aria-disabled="true"`, and `aria-current="page"`.
+- F550 | `ui-primitives-shadcn.md` | 90-99 | low | `src/app/components/ui/breadcrumb.tsx` | `BreadcrumbEllipsis` sets `aria-hidden="true"` on the wrapper while also including an `sr-only` label (`More`).
+- F556 | `ui-primitives-shadcn.md` | 27, 33-39 | low | `src/app/components/ui/empty-state.tsx` | The title and action styling hard-code white text (`text-white`) and CTA colors instead of relying fully on semantic tokens.
+- F559 | `ui-primitives-shadcn.md` | 105-113 | low | `src/app/components/ui/pagination.tsx` | `PaginationEllipsis` sets `aria-hidden` on the wrapper while including an `sr-only` label (`More pages`).
+- F563 | `ui-primitives-shadcn.md` | 609-612 | low | `src/app/components/ui/sidebar.tsx` | `SidebarMenuSkeleton` computes a random width during render.
+- F564 | `ui-primitives-shadcn.md` | 113-122 | low | `src/app/components/ui/skeleton.tsx` | `ChartSkeleton` computes bar heights with `Math.random()` during render.
+- F566 | `ui-primitives-shadcn.md` | 21-28 | low | `src/app/components/ui/tooltip.tsx` | The `Tooltip` convenience component wraps every tooltip in a new `TooltipProvider` with the local default `delayDuration=0`.
+
+### Stubs (28)
+
+- F228 | `database-migrations.md` | 1-3 | high | `supabase/migrations/20260420203522_creator_stats_security_invoker.sql` | This stub documents a remote conversion of `creator_stats` to `security_invoker = true` but does not perform it locally.
+- F246 | `e2e-tests.md` | 81-94 | high | `e2e/realtime-cross-tab.spec.ts` | The only real Supabase Realtime broadcast test is `test.skip`, leaving the actual WebSocket/channel path unexecuted in automated E2E.
+- F227 | `database-migrations.md` | 1-3 | medium | `supabase/migrations/20260420194722_schema_drift_reconciliation.sql` | This is a stub that says the real migration was applied remotely and adds `is_bodyweight`/`duration_seconds` plus benchmark RLS changes, but
+- F229 | `database-migrations.md` | 1-3 | medium | `supabase/migrations/20260420210411_comprehensive_dashboard_drift_reconciliation.sql` | This stub claims remote creation of `goal_snapshots`, `overload_suggestions`, `telemetry_analysis`, and `wearable_daily_summaries` plus colu
+- F230 | `database-migrations.md` | 1-11 | medium | `supabase/migrations/20260503160018_remote_history_reconciliation.sql` | The migration intentionally does `NULL` to match a production-only migration version.
+- F231 | `database-migrations.md` | 1-11 | medium | `supabase/migrations/20260503162322_remote_history_reconciliation.sql` | Same as the prior reconciliation file: the repository records the remote version with a no-op block, but does not reproduce the production s
+- F076 | `ci-cd-&-workflows.md` | 8-10 | medium | `.github/workflows/migrations.yml` | The workflow explicitly documents live-production drift detection as out of scope and tracked as a follow-up.
+- F087 | `ci-cd-&-workflows.md` | 220-222 | medium | `CLAUDE.md` | The migration CI coverage section records a not-yet-wired scheduled production drift check.
+- F523 | `sync-tests-&-security-tests.md` | 45-60, 123-137 | medium | `tests/sync/error-classes.test.ts` | The TRANSIENT live 5xx and NETWORK fetch-abort scenarios are permanently `it.skip`, not gated by `liveIt`.
+- F529 | `sync-tests-&-security-tests.md` | 1074-1220 | medium | `tests/sync/hierarchy.test.ts` | Several tests in the delta/entity sections are documentation-only checks.
+- F533 | `sync-tests-&-security-tests.md` | 130-149 | medium | `tests/sync/phases.test.ts` | The only test that verifies server-derived `personalRecords[].workoutPhase` is gated behind `liveIt`, so it is skipped in the default mock C
+- F535 | `sync-tests-&-security-tests.md` | 143-159 | medium | `tests/sync/pull-pagination.test.ts` | The composite cursor stability regression is `it.skip`, so it never runs in either mock or live mode.
+- F482 | `lib---integrations.md` | 93-95 | medium | `src/lib/integrations/garmin.ts` | The Garmin OAuth path is marked "ready but untested until credentials are available." This is a known unverified integration path in product
+- F485 | `lib---integrations.md` | 214-240 | medium | `src/lib/integrations/hevy.ts` | The Hevy API normalizer is explicitly documented as `API structure is TBD`, but it still validates against a concrete guessed schema.
+- F043 | `app-shell-&-layout.md` | 58-66 | medium | `src/app/components/modals/RoutinePickerModal.tsx` | The Search input is rendered but has no state, `onChange`, or filtering logic.
+- F044 | `app-shell-&-layout.md` | 147-154 | medium | `src/app/components/modals/RoutinePickerModal.tsx` | The `+ Create New Routine` button has no `onClick`, link, or callback prop, so it is a visible dead control.
+- F121 | `cycle-&-routine-builders.md` | 14-22, 97-107 | medium | `src/app/components/cycle-builder/WeekOverview.tsx` | Muscle group distribution is hard-coded mock data while the UI says it is based on assigned routines.
+- F130 | `cycle-&-routine-builders.md` | 1-22 | medium | `src/app/components/routine-builder/superset-helpers.ts` | The file still contains integration-instruction comments such as "Add these interfaces and state to existing RoutineBuilder.tsx" and comment
+- F385 | `feature-components-part-2.md` | 213-214, 371-407 | medium | `src/app/components/Biomechanics.tsx` | Turning off `Overlay All Reps` always sets `selectedRep` to `1`; there is no UI state or selector for any other rep.
+- F510 | `session-replay.md` | 98-100, 126-134, 377-413 | medium | `src/app/components/session-replay/SessionReplay.tsx` | Rep boundaries are placeholder logic: `deriveRepBoundaries` ignores `_telemetry`, estimates starts from cumulative `tut_ms + 500`, and the c
+- F512 | `session-replay.md` | 53-67 | medium | `src/app/components/session-replay/SetNavigation.tsx` | The Set/Session view-mode toggle updates `viewMode`, but the session replay UI never reads `viewMode` to change playback scope, aggregation,
+- F280 | `edge-functions---integrations.md` | 23-24 | low | `supabase/functions/garmin-oauth/index.ts` | The file explicitly states the Garmin Edge Function is "ready but untested until credentials are available." This is an unresolved integrati
+- F284 | `edge-functions---integrations.md` | 20-21 | low | `supabase/functions/garmin-webhook/index.ts` | The webhook handler states it is "ready but untested until webhook registration is complete." This is an unresolved production risk for the
+- F516 | `sync-tests-&-security-tests.md` | 175-185 | low | `tests/sync/setup.ts` | `setupTestIsolation()` is effectively empty: it declares `testUser` but never creates or cleans one up, and both hooks contain comments only
+- F445 | `lib---analytics-&-science.md` | 212-219 | low | `src/lib/progression-workbench.ts` | `buildExerciseSummary` creates a `placeholder` object cast as `ProgressionExerciseSummary` just to pass `placeholder.plateauRisk` into `buil
+- F377 | `feature-components-part-1.md` | 844-846 | low | `src/app/components/Profile.tsx` | Notification settings are exposed and saved even though the UI states notification delivery is not active yet.
+- F378 | `feature-components-part-1.md` | 1023-1045 | low | `src/app/components/Profile.tsx` | Profile visibility and leaderboard participation are labeled "Coming soon -- your preference is saved" while still being interactive.
+- F364 | `feature-components-part-1.md` | 720-724 | low | `src/app/components/SessionDetail.tsx` | The Share Summary action is a placeholder that only shows `Session sharing coming in a future update`.
+
+## Findings by area
+
+Detailed findings are already listed in the severity sections; this index groups them by product area.
+
+### UI (194)
+
+- F391 | `feature-components-part-2.md` | 23-39 | high | error | `PROVIDER_ICON` and `PROVIDER_LABEL` are typed as `Record<IntegrationProvider, ...>` but omit the `strong` and `liftosaur` providers that ar
+- F001 | `analytics-dashboard.md` | 760-771, 1397-1400, 1629-1632 | high | bug | The phase filter is presented as controlling the Progress tab phase metrics, but `phaseMetricSummary` is always built from all `phaseStatsRa
+- F007 | `analytics-dashboard.md` | 116-128 | high | bug | Training Efficiency computes `totalVol` from `volumeComparison.current.total_volume` and passes `totalVol / totalMin` directly to `convertWe
+- F009 | `analytics-dashboard.md` | 154-190, 415-423, 453-460, 549-577 | high | bug | Records are grouped only by exercise (`exercise_id ??
+- F012 | `analytics-dashboard.md` | 68-90, 106-128, 131-143 | high | bug | Strength phase series combine all strength record types (`MAX_WEIGHT` and `1RM`) into the same exercise/phase key and use raw `item.value` f
+- F013 | `analytics-dashboard.md` | 73-82, 118-126 | high | bug | Date buckets are formatted as month name only (`"Jan"`, `"Feb"`, etc.).
+- F023 | `app-entry-&-routing.md` | 40-58 | high | bug | Initial session loading and auth-state subscription can race.
+- F028 | `app-shell-&-layout.md` | 56-75, 99-100 | high | bug | Drag dismissal compares the absolute motion value `y` with `150`, but the open position itself is usually a positive translate value (`conta
+- F038 | `app-shell-&-layout.md` | 58-61 | high | bug | `AlertDialogAction` closes the controlled dialog as part of its default action.
+- F062 | `charts-&-visualization.md` | 105-110, 178-179, 216-229 | high | bug | Non-normalized curves use an x-domain of `[0, maxTimestamp]` and render each point at its raw `timestamp_ms`.
+- F094 | `community-features.md` | 82-96, 249-250, 392-394 | high | bug | The same `sentinelRef` is attached to both the mobile and desktop infinite-scroll sentinels while both layouts remain mounted and are only h
+- F095 | `community-features.md` | 108-117, 151-158, 293-299 | high | bug | Creator-profile interactions pass only an item id back to `Community`, while `Community` resolves the selected item only from the main feed'
+- F096 | `community-features.md` | 378-387 | high | bug | Desktop feed cards do not pass `contentType` to `CommunityFeedCard`, so `CommunityFeedCard` defaults action-menu operations to `routine`.
+- F104 | `community-features.md` | 49, 104-107, 271-278 | high | bug | `CreatorProfile` combines routine and cycle items into `allItems`, but card vote/select callbacks only receive an id.
+- F108 | `cycle-&-routine-builders.md` | 139, 237, 431-444 | high | bug | The builder treats `duration` as a number of schedule days in the UI (`Duration (Days)`) but loads and saves the same value as `duration_wee
+- F109 | `cycle-&-routine-builders.md` | 316-333, 438-454, 532-540, 239-248 | high | bug | Changing the duration input or preset buttons updates only the `duration` state.
+- F365 | `feature-components-part-1.md` | 80-87, 323-329, and src/queries/progress.ts lines 115-130 | high | bug | `weeklySummaryOptions` fetches only the selected current window (`7` or `30` days), but `computeSummary` tries to split that data at `now -
+- F380 | `feature-components-part-1.md` | 29-30, 51-62, and src/queries/workouts.ts lines 22-39 | high | bug | "Export Workout History" uses `workoutListOptions`, which is the paginated list query limited to `WORKOUTS_PAGE_SIZE` (50).
+- F384 | `feature-components-part-2.md` | 193-210 | high | bug | Rep force curves are split by evenly slicing the telemetry array across `repSummaries.length`.
+- F397 | `feature-components-part-2.md` | 63-64, 74-114, 116-139, 334-338, 386-395 | high | bug | Strong CSV rows are parsed immediately using the current `importWeightUnit`, but the user can change the weight-unit toggle after the previe
+- F431 | `hooks-&-providers.md` | 7-18 | high | bug | `useAnimationFrame` from `motion/react` passes `delta` in milliseconds, but the hook comments that it is seconds and multiplies it by `1000`
+- F505 | `session-replay.md` | 40-52 | high | bug | The canvas renderers receive raw `TelemetryPointRow[]` data even though telemetry rows are per-cable (`cable: "A" | "B"`).
+- F509 | `session-replay.md` | 53-56, 76-83, 201-371 | high | bug | Playback reset on mount does not reset or clamp `currentSetIndex`, and the component directly indexes `allSets[currentSetIndex]`.
+- F398 | `feature-components-part-2.md` | 25-35, 74-79 | high | failure-point | The sync-queue query ignores the Supabase `error` return value and falls back to `data ??
+- F406 | `feature-components-part-3.md` | 260-264, 797-798 | high | failure-point | On desktop, clicking "Leave Challenge" immediately calls `leaveMutation.mutate(challenge.id)` with no confirmation, while mobile requires an
+- F021 | `app-entry-&-routing.md` | 65-96 | medium | error | `resolveSession()` awaits `supabase.auth.getSession()` inside a loop, but the async function has no `try/catch`.
+- F017 | `app-entry-&-routing.md` | 157-220 | medium | error | The top-level route tree has a `Suspense` fallback but no error boundary around public routes.
+- F024 | `app-entry-&-routing.md` | 66-69 | medium | error | `handleSignOut()` ignores the `{ error }` returned by `supabase.auth.signOut()` and still clears the React Query cache.
+- F399 | `feature-components-part-2.md` | 37-45, 86-97 | medium | error | The generated sync queue row type allows `status: string | null`, but the component assumes non-null status in `some((q: { status: string })
+- F427 | `hooks-&-providers.md` | 47-57, 59-76, 82-87 | medium | error | The community notification query ignores `error` from the `shared_routines` and `shared_cycles` lookups.
+- F004 | `analytics-dashboard.md` | 78-80, 262-281, 325-334 | medium | bug | `toCanonicalMuscleGroup` maps `Abdominals` to `Core` but does not accept `Core` itself.
+- F005 | `analytics-dashboard.md` | 147-155, 159-162, 229-233 | medium | bug | `selectedExercise` is initialized from the first exercise only once.
+- F010 | `analytics-dashboard.md` | 146-152, 200-209, 325-364, 610-715 | medium | bug | The phase filter is applied to grouped exercise records, but timeline mode, milestones, total PR count, and "This Month" summary all continu
+- F008 | `analytics-dashboard.md` | 41-70, 74-98 | medium | bug | The transform averages per-row average metrics with equal weight.
+- F018 | `app-entry-&-routing.md` | 71-83 | medium | bug | The page `ErrorBoundary` does not reset on route changes.
+- F014 | `app-entry-&-routing.md` | 12-20 | medium | bug | React 19 root error hooks forward to `sentryHandler`, but that handler is only assigned during startup when consent was already accepted.
+- F025 | `app-shell-&-layout.md` | 103-147 | medium | bug | `useAutoCollapse` tries to avoid persisting viewport-driven sidebar changes by toggling `isAutoCollapsingRef` around `setOpen`, but `setOpen
+- F026 | `app-shell-&-layout.md` | 61-69, 247-250 | medium | bug | More-menu active state uses exact path equality.
+- F027 | `app-shell-&-layout.md` | 71-83, 96, 251-254 | medium | bug | Opening the More drawer pushes a synthetic history entry, but selecting a drawer link closes the drawer with `setMoreOpen(false)` directly.
+- F041 | `app-shell-&-layout.md` | 10, 16-40 | medium | bug | Once `didError` is set, it is never reset when the `src` prop changes.
+- F057 | `charts-&-visualization.md` | 298-342 | medium | bug | Summary mode converts signed asymmetry directly into left/right CSS widths with `50 +/- avgAsymmetry / 2` and never clamps the result.
+- F058 | `charts-&-visualization.md` | 37-43 | medium | bug | `valueToPercentile` divides by `(val1 - val0)` without guarding equal adjacent percentile values.
+- F065 | `charts-&-visualization.md` | 44-56, 259-267 | medium | bug | The chart and hidden accessibility table label reps by array position (`i + 1`) instead of the source `rep.rep_number`.
+- F066 | `charts-&-visualization.md` | 85-97, 120-125 | medium | bug | `maxWatts` is computed as `Math.max(...watts) * 1.2` and can be `0` or negative when data is zero, missing, or represents negative/eccentric
+- F069 | `charts-&-visualization.md` | 73-92, 150-165, 172-178 | medium | bug | When all rep velocities are zero, `maxVelocity` becomes `0`, so the y-scale domain is `[0, 0]`.
+- F071 | `charts-&-visualization.md` | 8-15, 22-36 | medium | bug | The wrapper uses tree-shakeable ECharts registration but does not register `MarkLineComponent`.
+- F100 | `community-features.md` | 11-16 | medium | bug | `CommunitySearch` owns its own `localValue` and only writes the debounced value to the shared community store; it never reads the current st
+- F101 | `community-features.md` | 25-31, 80-95 | medium | bug | The component's public props allow `contentType="comment"`, but the own-content delete path always casts `contentType` to `"routine" | "cycl
+- F111 | `cycle-&-routine-builders.md` | 326-337, 552-571 | medium | bug | Removing a day reindexes the remaining days but does not clear or remap `selectedDay`.
+- F123 | `cycle-&-routine-builders.md` | 351-355 | medium | bug | Saving a routine always sends `description: ""`.
+- F124 | `cycle-&-routine-builders.md` | 283-301 | medium | bug | Superset creation overwrites the selected exercises' `supersetId` without checking whether any are already members of other supersets.
+- F126 | `cycle-&-routine-builders.md` | 284, 290-299 | medium | bug | `supersetOrder` is assigned from the order in which exercises were selected, not from their order in the routine.
+- F114 | `cycle-&-routine-builders.md` | 108-115 | medium | bug | The `+ Create New Routine` action calls the same `onAssignRoutine` callback as Assign/Change.
+- F115 | `cycle-&-routine-builders.md` | 40-42, 267-275 | medium | bug | Rest-time override state and parsing treat `0` as absent.
+- F117 | `cycle-&-routine-builders.md` | 116-133, 454-507 | medium | bug | Several numeric fields use `parseFloat(...) || default` or `parseInt(...) || default`, which makes valid zero values impossible to enter.
+- F119 | `cycle-&-routine-builders.md` | 208-241, 233-237 | medium | bug | `RoutineItem` renders a `<button>` that contains a shadcn `<Button>` for Select.
+- F122 | `cycle-&-routine-builders.md` | 24, 35-36 | medium | bug | The week grid uses `dayNames.slice(0, days.length)`, but `dayNames` has only seven entries.
+- F134 | `cycle-&-routine-builders.md` | 175-180, 221-225 | medium | bug | Rest-after and transition inputs use `parseInt(...) || default`, so users cannot type an explicit `0` even though the decrement buttons clam
+- F131 | `cycle-&-routine-builders.md` | 62-70 | medium | bug | `addExerciseToSuperset` blindly appends `exerciseId` to the target group.
+- F368 | `feature-components-part-1.md` | 312-314, 412-443 | medium | bug | The comment and limit logic say `FREE = 1`, but the page returns an upgrade gate for every non-premium user before the one-goal free limit c
+- F376 | `feature-components-part-1.md` | 171, 193, 293-295 | medium | bug | The header streak uses `useStreak(workouts)` where `workouts` comes from `workoutListOptions(userId)` with no active profile filter and only
+- F363 | `feature-components-part-1.md` | 498-543 | medium | bug | The Session Config card is only rendered when `eccentric_load` or `echo_level` is non-null, but the card also contains `warmup_reps` and `wo
+- F366 | `feature-components-part-1.md` | 151-162, 481-492 | medium | bug | `dailyWorkoutMap` increments once per `ExerciseProgress` row, not once per workout/session.
+- F362 | `feature-components-part-1.md` | 246-266 | medium | bug | `handleLoadMore` calls `workoutListPageOptions(user.id, nextOffset)` without passing `activeProfileId`.
+- F388 | `feature-components-part-2.md` | 206-234 | medium | bug | `selectedExercise` is initialized from `initialExercise` once, but never updates if the prop changes later.
+- F396 | `feature-components-part-2.md` | 28-38 | medium | bug | `handleConnect` awaits `initiateStravaConnect(accessToken)` without `try/catch/finally`.
+- F405 | `feature-components-part-3.md` | 497-505, 770-803 | medium | bug | `activeChallenges` means every active challenge that is not completed, regardless of whether the user joined it.
+- F410 | `feature-components-part-3.md` | 359-361 | medium | bug | The premium upgrade copy refers to "Phoenix and Elite plans", but the app's pricing source of truth defines Ember, Flame, and Inferno tiers.
+- F416 | `feature-components-part-3.md` | 41-45, 121-123, 136-137 | medium | bug | Workout days are keyed with `toISOString().slice(0, 10)`, which groups by UTC date, while the calendar grid, labels, and streak computations
+- F420 | `feature-components-part-3.md` | 72-83 | medium | bug | The FAQ hardcodes stale subscription information: it says there are two tiers and prices Ember at $15/mo, while the pricing source of truth
+- F421 | `feature-components-part-3.md` | 135-144, 185-189, 301-304 | medium | bug | The policy states that performance metrics such as velocity/load/power are collected and stored on cloud servers, but the Bluetooth section
+- F422 | `hooks-&-providers.md` | 18-23, 26-28 | medium | bug | `trigger()` schedules a timeout that calls `setIsSuccess(false)`, but the hook never clears that timeout on unmount.
+- F425 | `hooks-&-providers.md` | 7, 31-44, 46-63 | medium | bug | Blocked user IDs are hydrated from and persisted to a single global `phoenix-blocked-users` localStorage key.
+- F426 | `hooks-&-providers.md` | 16-18, 41-49 | medium | bug | The hook uses the fixed Supabase realtime channel topic `community-votes-realtime`.
+- F429 | `hooks-&-providers.md` | 8, 41-55 | medium | bug | Onboarding version comparisons use raw string comparison (`onboarding.version_seen < CURRENT_VERSION`) and `showHints` requires exact equali
+- F503 | `session-replay.md` | 59-83 | medium | bug | The overlay renders every sticking point from `intelligence.stickingPoints` regardless of playback time.
+- F513 | `session-replay.md` | 28-46 | medium | bug | Previous/Next only call `prevSet`/`nextSet`; they do not pause playback or reset the playhead for the newly selected set.
+- F514 | `session-replay.md` | 29-35, 64-72, 82-89 | medium | bug | `fatigueStartPercent` divides by `durationMs` without checking that duration is positive or that `fatigueStartRepIndex` exists in `repBounda
+- F002 | `analytics-dashboard.md` | 1369-1375, 1490-1496 | medium | failure-point | The page-level empty states are gated only on volume/muscle/external summary data (`mobileHasData` and `hasData`).
+- F006 | `analytics-dashboard.md` | 55-65, 72-83, 151-163, 208-241 | medium | failure-point | The mobile Body tab returns early when `muscleGroupData.length === 0`, before rendering `BodyMuscleHeatmap`, volume landmarks, SRA recovery,
+- F022 | `app-entry-&-routing.md` | 66-92 | medium | failure-point | The callback gives Supabase only eight 250ms polling attempts (about two seconds) to make a session visible.
+- F029 | `app-shell-&-layout.md` | 27-38, 67-72, 99-100 | medium | failure-point | `defaultSnap` and `snapPoints` are not validated.
+- F030 | `app-shell-&-layout.md` | 80-104, 114-129 | medium | failure-point | The custom sheet has no dialog semantics, focus trap, initial focus management, Escape handling, or `aria-modal`.
+- F033 | `app-shell-&-layout.md` | 31-38, 56-60 | medium | failure-point | The fallback directly uses `sessionStorage` and `window.location.reload()` without guarding storage access.
+- F039 | `app-shell-&-layout.md` | 34-49, 56-69 | medium | failure-point | If `activeProfileId` points to a profile that is no longer present in the fetched profile list, the component does not reset it.
+- F045 | `app-shell-&-layout.md` | 30-46, 53-55 | medium | failure-point | The custom modal has no `role="dialog"`, `aria-modal`, labelled-by wiring, focus trap, Escape handling, or focus restoration.
+- F059 | `charts-&-visualization.md` | 84-89, 115-119, 149-166 | medium | failure-point | The x-axis domain is fixed to the generated percentile curve's min/max, while the `YOU` markLine is placed at the raw `userValue`.
+- F063 | `charts-&-visualization.md` | 191-204, 215-223 | medium | failure-point | Gradient IDs are built from only `rep.repNumber` (`force-gradient-${rep.repNumber}`).
+- F064 | `charts-&-visualization.md` | 74-108 | medium | failure-point | The radar visualization renders only through `EChartsWrapper`, which ultimately draws to canvas, and this component provides no surrounding
+- F067 | `charts-&-visualization.md` | 22-25, 94 | medium | failure-point | The gauge renders only the ECharts canvas with no accessible wrapper, text equivalent, or hidden data table.
+- F072 | `charts-&-visualization.md` | 63-68, 70-86 | medium | failure-point | Responsive behavior listens only to global `window.resize`.
+- F098 | `community-features.md` | 207-244 | medium | failure-point | Vote and save actions are rendered regardless of authentication state.
+- F102 | `community-features.md` | 72-86, 255-265 | medium | failure-point | The loading state only tracks the routines query (`feedLoading`).
+- F103 | `community-features.md` | 72-86, 104-106, 270-279 | medium | failure-point | `CreatorProfile` uses infinite queries for routines and cycles but never calls `fetchNextPage` or renders a sentinel/load-more control.
+- F106 | `community-features.md` | 111-118, 147-158 | medium | failure-point | Manual dialog closes pass `setOpen` directly and do not call `resetForm`.
+- F107 | `community-features.md` | 24-40 | medium | failure-point | The button invokes `useVote` directly without explicit unauthenticated handling or local error feedback, and it does not stop propagation.
+- F110 | `cycle-&-routine-builders.md` | 74-77, 342-353 | medium | failure-point | Edit mode handles only the loading state.
+- F125 | `cycle-&-routine-builders.md` | 263-269, 307-321, 142-168 | medium | failure-point | Deleting an exercise only removes that exercise.
+- F127 | `cycle-&-routine-builders.md` | 594-598 | medium | failure-point | The detail panel uses a non-null assertion on `exercises.find(...)`.
+- F135 | `cycle-&-routine-builders.md` | 125-131, 148-157 | medium | failure-point | The container allows removing any exercise from a superset without guarding against leaving fewer than two exercises.
+- F367 | `feature-components-part-1.md` | 381-399 | medium | failure-point | Goal completion marks a goal as celebrated before the `updateGoal.mutate` call succeeds.
+- F373 | `feature-components-part-1.md` | 260-262, 302-388, 607-613 | medium | failure-point | Direct Subscribe buttons do not set any in-flight state while `openCheckout` is starting.
+- F371 | `feature-components-part-1.md` | 39-41, 51, 106-140 | medium | failure-point | Query errors are not handled.
+- F379 | `feature-components-part-1.md` | 161-164 | medium | failure-point | The final permanent deletion confirmation action is not disabled while `executeDeletion.isPending`.
+- F386 | `feature-components-part-2.md` | 180-189, 399-411, 416-445, 467-480, 530-547 | medium | failure-point | Telemetry and rep-summary query errors are not read or rendered.
+- F387 | `feature-components-part-2.md` | 216-227, 290-367 | medium | failure-point | The exercise list, profile, and progress queries ignore `error`.
+- F389 | `feature-components-part-2.md` | 216-227 | medium | failure-point | `exerciseListOptions(userId, activeProfileId)` and `profileOptions(userId)` are called without guarding on a non-empty `userId`, and the pro
+- F390 | `feature-components-part-2.md` | 33-37, 102-115, 118-132, 135-149, 155-180, 203-205 | medium | failure-point | The page derives `userId` and `accessToken` as empty strings while auth/session data is unavailable, but connect/sync/disconnect/import chil
+- F381 | `feature-components-part-2.md` | 195-207, 315-550 | medium | failure-point | The premium page only handles `isLoading`, `recovery?.isGated`, and `recovery && !recovery.isGated`.
+- F382 | `feature-components-part-2.md` | 43-57, 104-108 | medium | failure-point | A failed recovery-score query is indistinguishable from a user having no training data.
+- F411 | `feature-components-part-3.md` | 476-502 | medium | failure-point | The error state renders raw `errorA?.message || errorB?.message` directly to the user.
+- F415 | `feature-components-part-3.md` | 10-14, 20-28 | medium | failure-point | Consent read/write calls are not protected from storage failures.
+- F419 | `feature-components-part-3.md` | 12-18, 152-160 | medium | failure-point | `RoutineName` treats any missing or failed routine detail as `Custom Workout`.
+- F412 | `feature-components-part-3.md` | 99-105 | medium | failure-point | `Dialog` close events call `onComplete()`.
+- F402 | `feature-components-part-3.md` | 105-116, 329-336 | medium | failure-point | The chart only falls back when `ParentSize` reports `width <= 0`.
+- F428 | `hooks-&-providers.md` | 82-87 | medium | failure-point | The effect writes zero counts to the UI store whenever a query's `data` is `undefined`, including during the initial loading period or after
+- F430 | `hooks-&-providers.md` | 113-121 | medium | race-condition | `dismissHint` merges `hintId` into `onboarding.dismissed_hints` on the client and sends the whole JSON object with `update`.
+- F432 | `hooks-&-providers.md` | 89-94, 102-114 | medium | race-condition | The Supabase broadcast channel topic is fixed as `sync:${user.id}`.
+- F433 | `hooks-&-providers.md` | 23-28, 44-65 | medium | failure-point | The returned `isLoading` only reflects `sessionsLoading`.
+- F435 | `hooks-&-providers.md` | 89-94, 128-151 | medium | failure-point | When the subscription query errors, `data` is `undefined` and the hook falls back to `FREE`/`none` with `isEntitled: false` while exposing n
+- F501 | `session-replay.md` | 22-38 | medium | failure-point | The global Space shortcut only excludes `INPUT`, `TEXTAREA`, and `SELECT`.
+- F507 | `session-replay.md` | 42-43, 87-109 | medium | failure-point | If `currentRepIndex` is out of range, the panel falls back to `intelligence.repInsights[0]`.
+- F511 | `session-replay.md` | 169-190 | medium | failure-point | `ResizeObserver` is constructed unconditionally in the effect.
+- F515 | `session-replay.md` | 37-50, 77-81 | medium | failure-point | Scrubbing pauses playback on pointer down and resumes only on pointer up.
+- F043 | `app-shell-&-layout.md` | 58-66 | medium | stub | The Search input is rendered but has no state, `onChange`, or filtering logic.
+- F044 | `app-shell-&-layout.md` | 147-154 | medium | stub | The `+ Create New Routine` button has no `onClick`, link, or callback prop, so it is a visible dead control.
+- F121 | `cycle-&-routine-builders.md` | 14-22, 97-107 | medium | stub | Muscle group distribution is hard-coded mock data while the UI says it is based on assigned routines.
+- F130 | `cycle-&-routine-builders.md` | 1-22 | medium | stub | The file still contains integration-instruction comments such as "Add these interfaces and state to existing RoutineBuilder.tsx" and comment
+- F385 | `feature-components-part-2.md` | 213-214, 371-407 | medium | stub | Turning off `Overlay All Reps` always sets `selectedRep` to `1`; there is no UI state or selector for any other rep.
+- F510 | `session-replay.md` | 98-100, 126-134, 377-413 | medium | stub | Rep boundaries are placeholder logic: `deriveRepBoundaries` ignores `_telemetry`, estimates starts from cumulative `tut_ms + 500`, and the c
+- F512 | `session-replay.md` | 53-67 | medium | stub | The Set/Session view-mode toggle updates `viewMode`, but the session replay UI never reads `viewMode` to change playback scope, aggregation,
+- F003 | `analytics-dashboard.md` | 1680-1683 | low | bug | A stray semicolon is rendered inside the JSX tree after the desktop `PageShell`.
+- F046 | `app-shell-&-layout.md` | 26-27, 77-107, 117-142 | low | bug | `recent` is `routines.slice(0, 2)` and `all` is the full `routines` array, so the first two routines are rendered twice in the same picker.
+- F070 | `charts-&-visualization.md` | 295-305 | low | bug | The outer aria summary always computes `peakVelocity` from `mean_velocity_mps`, even when the chart is configured to show peak velocity bars
+- F128 | `cycle-&-routine-builders.md` | 95-98, 1097-1101 | low | bug | Kilogram weights are displayed with `Math.round(converted)`, so fractional kg values are lost in the input display.
+- F113 | `cycle-&-routine-builders.md` | 31-34, 97-111 | low | bug | `customMode` is initialized from the first `duration` prop value but never synchronized if the parent later loads or resets the duration.
+- F434 | `hooks-&-providers.md` | 20-31 | low | bug | The streak computation stops after 365 iterations, so a user with a streak longer than one year will always be capped at 365 even when `work
+- F011 | `analytics-dashboard.md` | 101-105, 127-135 | low | failure-point | The display treats `hoursSinceLastTrained === 0` as "No data".
+- F019 | `app-entry-&-routing.md` | 74-77 | low | failure-point | `SkipToContent` links to `#main-content`, but the target `<motion.main>` is not programmatically focusable.
+- F020 | `app-entry-&-routing.md` | 12-13 | low | failure-point | Unauthenticated users are redirected to `/` without preserving the protected URL they originally requested.
+- F016 | `app-entry-&-routing.md` | 25-31 | low | failure-point | The chunk-load recovery path uses `sessionStorage.getItem` and `sessionStorage.setItem` inside the `catch` handler without guarding storage
+- F015 | `app-entry-&-routing.md` | 13 | low | failure-point | `getConsentStatus()` reads `localStorage` during module initialization before React renders.
+- F031 | `app-shell-&-layout.md` | 43-53 | low | failure-point | Opening the sheet unconditionally sets `document.body.style.overflow = "hidden"` and cleanup resets it to an empty string.
+- F037 | `app-shell-&-layout.md` | 114-119 | low | failure-point | The particle canvas is decorative but is not marked `aria-hidden`.
+- F034 | `app-shell-&-layout.md` | 50-53 | low | failure-point | Non-chunk errors render `error.message` directly to end users.
+- F040 | `app-shell-&-layout.md` | 39-51 | low | failure-point | The `label` uses `htmlFor="profile-filter-select"`, but the rendered `SelectTrigger` is not given that id.
+- F032 | `app-shell-&-layout.md` | 6-34 | low | failure-point | The loading state is only visual text plus animation and is not exposed as a live status region.
+- F035 | `app-shell-&-layout.md` | 5-31 | low | failure-point | Dismissal is component-local state only.
+- F036 | `app-shell-&-layout.md` | 3-5 | low | failure-point | The link targets `#main-content`, but the target main element is not focusable in `AppLayout`.
+- F042 | `app-shell-&-layout.md` | 12-14, 33-40 | low | failure-point | A caller-provided `onError` handler is overwritten by the internal `handleError` because `onError={handleError}` is applied after `{...rest}
+- F060 | `charts-&-visualization.md` | 80-82, 172-177 | low | failure-point | When fewer than two valid percentile keys are provided, the component returns an empty ECharts option and still renders a chart container wi
+- F061 | `charts-&-visualization.md` | 30-32 | low | failure-point | `ProgressRing` caps progress at 100% but does not clamp the lower bound.
+- F068 | `charts-&-visualization.md` | 22-25, 51-85 | low | failure-point | `zoneColor` and `zoneLabel` are looked up directly from the incoming `zone`.
+- F097 | `community-features.md` | 23-25, 401-405 | low | failure-point | Missing or null embedded routine durations are formatted as `0 min`.
+- F099 | `community-features.md` | 109-117, 131-142 | low | failure-point | The labels use `htmlFor="muscle-group-filter"` and `htmlFor="difficulty-filter"`, but those ids are not applied to the corresponding select
+- F105 | `community-features.md` | 34-47, 99-134 | low | failure-point | Scroll-button state is computed only when the scroll container first mounts and on scroll events.
+- F112 | `cycle-&-routine-builders.md` | 327, 824-833 | low | failure-point | The day card always renders a remove button, even when only one day remains.
+- F129 | `cycle-&-routine-builders.md` | 221-319 | low | failure-point | The detail page has no empty-state branch for routines with zero exercises.
+- F116 | `cycle-&-routine-builders.md` | 136-164, 185-213, 270-275 | low | failure-point | Numeric override inputs do not clamp typed values.
+- F118 | `cycle-&-routine-builders.md` | 479-512 | low | failure-point | The deload intensity and volume inputs set `min="0"` and `max="100"`, but typed values are not clamped before being stored.
+- F120 | `cycle-&-routine-builders.md` | 52-68, 75-77 | low | failure-point | The custom modal does not implement focus trapping, Escape handling, or explicit dialog semantics.
+- F132 | `cycle-&-routine-builders.md` | 42-49 | low | failure-point | `createSuperset` uses `Date.now()` for IDs.
+- F133 | `cycle-&-routine-builders.md` | 34-56, 59-64 | low | failure-point | There are only four superset colors/labels, and `getNextSupersetColor` cycles back to the first color after all are used.
+- F369 | `feature-components-part-1.md` | 19-28 | low | failure-point | The widget calls `useGoalProgress(activeProfileId)` before returning the non-premium locked card.
+- F370 | `feature-components-part-1.md` | 20-25 | low | failure-point | The SVG has an `aria-label`, but no explicit `role="img"`.
+- F374 | `feature-components-part-1.md` | 810-814 | low | failure-point | The cancel-subscription confirmation action is not disabled while `isCanceling` is true.
+- F375 | `feature-components-part-1.md` | 31-32 | low | failure-point | Loading always renders a fixed `h-32 w-full` skeleton, even when the caller passed `fallback={null}` or uses the gate around an inline contr
+- F372 | `feature-components-part-1.md` | 258-265 | low | failure-point | The dropdown trigger is an icon-only button without an accessible label.
+- F361 | `feature-components-part-1.md` | 56-63, 508-520 | low | failure-point | Workout cards are clickable `Card`/`div` UI with `onClick`, but they are not keyboard-focusable and do not expose button/link semantics.
+- F400 | `feature-components-part-2.md` | 131-155 | low | failure-point | Calendar day buttons expose the day number, selected state, and current date, but the workout dot is visual-only and locked dates rely on di
+- F401 | `feature-components-part-2.md` | 110-136 | low | failure-point | The mobile calendar has the same accessibility gap as the desktop calendar: workout indicators and locked-date status are communicated only
+- F383 | `feature-components-part-2.md` | 34-35, 73-76, 87 | low | failure-point | The component trusts `result.score` to be a valid 0-100 value.
+- F392 | `feature-components-part-2.md` | 54-60, 84-87, 143-145 | low | failure-point | Dates are parsed with `new Date(...)` and rendered without validating the result.
+- F393 | `feature-components-part-2.md` | 146-149, 151-178 | low | failure-point | CSV validation is a case-sensitive filename suffix check.
+- F394 | `feature-components-part-2.md` | 24-28, 40-50, 147-160 | low | failure-point | The component documents the Liftosaur API key format as `lftsk_*`, but only validates that the field is non-empty.
+- F395 | `feature-components-part-2.md` | 20-34, 63-65 | low | failure-point | `formatRelative` does not validate parsed dates and treats future timestamps as `Just now` because negative minute deltas satisfy `diffMin <
+- F407 | `feature-components-part-3.md` | 62-68, 165, 230-232, 457 | low | failure-point | Date parsing failures are not handled.
+- F408 | `feature-components-part-3.md` | 67-75 | low | failure-point | The search field is identified only by placeholder text and has no programmatic label.
+- F409 | `feature-components-part-3.md` | 92-97 | low | failure-point | Session rows are clickable `Card` elements without button/link semantics, `tabIndex`, or keyboard handlers.
+- F417 | `feature-components-part-3.md` | 217-239, 245-269 | low | failure-point | Calendar cell details are only available through mouse hover on SVG rects.
+- F418 | `feature-components-part-3.md` | 225-247, 273-310, 330-350 | low | failure-point | Muscle-region details are only available via mouse hover, and the Front/Back toggle buttons do not expose selected state (`aria-pressed`).
+- F414 | `feature-components-part-3.md` | 64-66 | low | failure-point | The dismiss control is an icon-only button with no accessible name.
+- F413 | `feature-components-part-3.md` | 24-28 | low | failure-point | `handleDismiss` schedules `onDismiss()` with `setTimeout` but does not clear the timer on unmount.
+- F403 | `feature-components-part-3.md` | 162-180 | low | failure-point | The SVG gradient id `force-area-gradient` is hardcoded.
+- F404 | `feature-components-part-3.md` | 45-53 | low | failure-point | The mini force chart uses a hardcoded SVG gradient id `force-gradient`.
+- F423 | `hooks-&-providers.md` | 107-120 | low | failure-point | `promptInstall` awaits `deferredPrompt.prompt()` and `deferredPrompt.userChoice` without `try/finally` or error handling.
+- F424 | `hooks-&-providers.md` | 13, 17-20 | low | failure-point | The hook assumes `window.matchMedia` exists and that the returned `MediaQueryList` supports `addEventListener`.
+- F502 | `session-replay.md` | 87-100 | low | failure-point | Factor hints are exposed only through the native `title` attribute on the label.
+- F504 | `session-replay.md` | 18-20, 37-41, 73-74 | low | failure-point | The x-coordinate calculation clamps plot width to at least 1px, but it does not handle containers narrower than the left/right margins.
+- F506 | `session-replay.md` | 33-38, 64-71 | low | failure-point | The component silently returns when `getContext("2d")` fails and still exposes a canvas with `role="img"`.
+- F508 | `session-replay.md` | 96-142, 211-223 | low | failure-point | The force/velocity scatter plots are rendered only as visual Recharts charts, with no accessible title/description, no tabular equivalent, a
+- F377 | `feature-components-part-1.md` | 844-846 | low | stub | Notification settings are exposed and saved even though the UI states notification delivery is not active yet.
+- F378 | `feature-components-part-1.md` | 1023-1045 | low | stub | Profile visibility and leaderboard participation are labeled "Coming soon -- your preference is saved" while still being interactive.
+- F364 | `feature-components-part-1.md` | 720-724 | low | stub | The Share Summary action is a placeholder that only shows `Session sharing coming in a future update`.
+
+### Data (139)
+
+- F148 | `data-layer---mutations-&-schemas.md` | 62-99 | high | error | `useSaveCycle` creates the `training_cycles` parent row and then inserts `cycle_days` in a separate request.
+- F150 | `data-layer---mutations-&-schemas.md` | 146-167 | high | error | Cycle day replacement is not atomic.
+- F156 | `data-layer---mutations-&-schemas.md` | 116-143 | high | error | `useSaveRoutine` inserts the routine row and routine exercises in separate requests.
+- F158 | `data-layer---mutations-&-schemas.md` | 211-227 | high | error | Updating a routine deletes all existing exercises and reinserts the replacement set in separate requests.
+- F455 | `lib---core-utilities.md` | 42-58 | high | error | `fetchWithAuthRetry` calls `supabaseRef.current.auth.refreshSession()` from inside the Supabase client's global custom fetch.
+- F499 | `lib---replay-&-export.md` | 267-270 | high | error | A `rep_telemetry` page failure is logged with `console.warn` and then the loop breaks, allowing the export to continue and download a partia
+- F141 | `data-layer---mutations-&-schemas.md` | 95-107 | high | bug | The expired-edit guard relies on `count === 0`, but the Supabase update does not request a count or select a row.
+- F149 | `data-layer---mutations-&-schemas.md` | 129-167 | high | bug | `useUpdateCycle` updates the parent with an ownership filter, but then deletes and reinserts `cycle_days` by `cycle_id` only.
+- F157 | `data-layer---mutations-&-schemas.md` | 199-207 | high | bug | `useUpdateRoutine` updates `routines` by `id` only and does not include `.eq("user_id", user.id)`, unlike delete and favorite mutations.
+- F176 | `data-layer---queries.md` | 377-394 | high | bug | `vbtAssessmentsOptions(userId, exerciseId)` filters by `user_id` in the query function but the query key only contains `exerciseId`.
+- F203 | `data-layer---stores.md` | 19-20 | high | bug | The persisted key `phoenix-profile-filter` is global and not scoped to the authenticated user.
+- F205 | `data-layer---stores.md` | 28-35, 54 | high | bug | `reset()` only clears `isPlaying`, `currentTimeMs`, and `currentRepIndex`; it preserves `currentSetIndex`, `viewMode`, `speed`, and `activeC
+- F451 | `lib---analytics-&-science.md` | 20-26, 48-52 | high | bug | The next workout is selected with `cycleDays[daysSinceStart % cycleDays.length]`, assuming the input array is already sorted by `day_number`
+- F457 | `lib---core-utilities.md` | 18-28, 59-64, 133-146 | high | bug | `PaddleEventType` includes `transaction.completed` and `transaction.payment_failed`, but `PaddleWebhookEvent.data` is always typed as `Paddl
+- F460 | `lib---core-utilities.md` | 154-170 | high | bug | The upsert payload records `last_event_id` and `last_event_occurred_at`, but this builder does not encode any stale-event protection.
+- F481 | `lib---integrations.md` | 14-15, 66-69 | high | bug | The code comments `startTimeInSeconds` as Unix epoch seconds, but then adds `startTimeOffsetInSeconds` before converting to ISO.
+- F476 | `lib---integrations.md` | 18-37 | high | bug | `IntegrationProvider` includes `strong` and `liftosaur`, but `normalizeActivity()` has no cases for either provider.
+- F160 | `data-layer---mutations-&-schemas.md` | 20-24 | high | failure-point | `useSaveSessionNotes` updates `workout_sessions` by `sessionId` only, with no current-user filter and no affected-row check.
+- F459 | `lib---core-utilities.md` | 184-235 | high | failure-point | `verifyPaddleSignature` validates the HMAC but never checks freshness of the `ts=` value.
+- F153 | `data-layer---mutations-&-schemas.md` | 92-101 | medium | error | When provider Edge Function invocation fails, `useManualSync` attempts to mark the queued sync as failed but ignores any error from that upd
+- F154 | `data-layer---mutations-&-schemas.md` | 153-159 | medium | error | `useConnectIntegration` ignores errors from the initial `sync_queue` insert.
+- F470 | `lib---core-utilities.md` | 5-15 | medium | error | `getConsentStatus` and `setConsentStatus` access `localStorage` directly with no `typeof window` check or `try/catch`.
+- F462 | `lib---core-utilities.md` | 128-145, 201-210 | medium | error | Missing token or missing `window.Paddle` causes `initializePaddle` to return without throwing, and `openCheckout` then logs an error and ret
+- F472 | `lib---core-utilities.md` | 51-57 | medium | error | If the delayed `action` fails, the catch block only shows a generic toast and swallows the error.
+- F143 | `data-layer---mutations-&-schemas.md` | 24-50 | medium | bug | `useVote` implements toggle via check-then-insert/delete.
+- F145 | `data-layer---mutations-&-schemas.md` | 315-337 | medium | bug | `useFollowCreator` uses the same check-then-insert/delete toggle pattern as votes.
+- F162 | `data-layer---mutations-&-schemas.md` | 30-34 | medium | bug | `createCommentSchema` accepts whitespace-only comments because `.min(1)` is applied before trimming.
+- F165 | `data-layer---mutations-&-schemas.md` | 33-41 | medium | bug | `createGoalSchema` omits `target_unit`, but `useCreateGoal` requires and inserts `target_unit`.
+- F172 | `data-layer---mutations-&-schemas.md` | 254-255 | medium | bug | `routineExerciseSchema.is_amrap` is `z.boolean().optional().default(false)`, but the generated database type shows `routine_exercises.is_amr
+- F173 | `data-layer---mutations-&-schemas.md` | 225-266 | medium | bug | `routineExerciseSchema` omits `per_set_echo_levels` and `warmup_sets` even though those columns exist and are included in community snapshot
+- F177 | `data-layer---queries.md` | 148-152, 189-194, 210-212, 246-248, 288-290, 320-322 | medium | bug | `periodToDays("all")` returns `3650`, so several analytics options labeled as `all` actually fetch only the last ten years.
+- F178 | `data-layer---queries.md` | 20-30 | medium | bug | `benchmarkOptions(metricType, metricKey?)` accepts an optional `metricKey`, but when it is omitted the Supabase query only filters by `metri
+- F181 | `data-layer---queries.md` | 39-52 | medium | bug | The progress query key only includes `challengeId` and `userId`, but the result also depends on `challengeType`, `targetValue`, `startDate`,
+- F183 | `data-layer---queries.md` | 23-24, 101-108 | medium | bug | `FeedSort` supports `"hot"`, but the implementation only special-cases `"new"`; both `"hot"` and `"top"` are ordered by `vote_count` then `s
+- F188 | `data-layer---queries.md` | 27-36 | medium | bug | The query orders by `updated_at` and then reports that row's `started_at` as `lastWorkoutStartedAt`.
+- F196 | `data-layer---queries.md` | 62-76 | medium | bug | `activeCyclePositionOptions` is user-scoped only and has no `profileId` parameter, while adjacent cycle/routine/workout queries are local-pr
+- F200 | `data-layer---queries.md` | 176-183 | medium | bug | `sessionDetailOptions` passes `exerciseIds` directly to `.in("exercise_id", exerciseIds)`.
+- F450 | `lib---analytics-&-science.md` | 60-75, 80-105 | medium | bug | Per-session exercise maps are keyed by lowercased name, so duplicate exercises in the same session overwrite earlier entries.
+- F439 | `lib---analytics-&-science.md` | 45-53, 56-69 | medium | bug | `normalizedDecayRate` uses `Math.abs(slope / values[0])`, so an improving set where force, velocity, or ROM trends upward is treated as deca
+- F444 | `lib---analytics-&-science.md` | 260-265, 284-287 | medium | bug | Progress rows are grouped by the raw `exercise_name` string and selected with a case-sensitive equality check.
+- F442 | `lib---analytics-&-science.md` | 197-236 | medium | bug | Once `daysSinceFirstSession >= 14`, an empty `sessions` array is treated as a normal recovery input.
+- F471 | `lib---core-utilities.md` | 74-88 | medium | bug | `buildAndroidChromeIntentUrl` includes the original URL hash inside `rest` and then appends another `#Intent` separator.
+- F463 | `lib---core-utilities.md` | 110-120, 156-165, 197-199 | medium | bug | Checkout callbacks are stored in a single module-level `activeCallbacks` object.
+- F458 | `lib---core-utilities.md` | 72-94, 144-160 | medium | bug | Unknown or missing Paddle price IDs map to `FREE`, and `buildSubscriptionUpsert` writes that tier.
+- F468 | `lib---core-utilities.md` | 46-62 | medium | bug | `normalizeRepTime` assumes points are already sorted by `timestamp_ms`, using the first point as min and the last point as max.
+- F465 | `lib---core-utilities.md` | 52-64 | medium | bug | `weightInputToKg` converts blank, invalid, null, and undefined input to `0`.
+- F483 | `lib---integrations.md` | 16-17, 63-65 | medium | bug | The schema captures `distanceUnit`, but normalization always treats `distance` as kilometers and multiplies by 1000.
+- F495 | `lib---replay-&-export.md` | 964-978, 1070-1084 | medium | bug | Two exercise entries contain duplicate `angle: "FRONT"` media variants: `wgiwmR1yt3QJtiWs` (`Concentration Curl`) and `z70P8xJtRTKpAUbr` (`C
+- F493 | `lib---replay-&-export.md` | 88-93 | medium | bug | `findStickingPoint` flags any point whose velocity is below `mean_velocity * 0.45` and force is high.
+- F490 | `lib---replay-&-export.md` | 195-201, 216-218 | medium | bug | `renderVelocityBars` scales the y-axis from `Math.max(...velocity_mps) * 1.1` and assumes all velocity values are positive.
+- F136 | `data-layer---mutations-&-schemas.md` | 62-70, 72-76 | medium | failure-point | `useCancelDeletion` treats a zero-row update as success.
+- F138 | `data-layer---mutations-&-schemas.md` | 43-48, 50-54, 72-77, 79-83 | medium | failure-point | `useLeaveChallenge` and `useCompleteChallenge` do not verify that any participant row was actually deleted/updated.
+- F139 | `data-layer---mutations-&-schemas.md` | 16-19, 21-30 | medium | failure-point | `useJoinChallenge` does not handle duplicate participation explicitly.
+- F140 | `data-layer---mutations-&-schemas.md` | 23-30 | medium | failure-point | `useCreateComment` accepts and inserts the raw `body` argument without applying the `createCommentSchema` constraints.
+- F142 | `data-layer---mutations-&-schemas.md` | 146-152, 155-162 | medium | failure-point | `useDeleteComment` soft-deletes without verifying that a row matched the comment ID and current user.
+- F144 | `data-layer---mutations-&-schemas.md` | 53-64 | medium | failure-point | `useVote` has no `onError` handler.
+- F146 | `data-layer---mutations-&-schemas.md` | 424-429, 432-449 | medium | failure-point | `useBlockUser` does not distinguish duplicate blocks from real failures and does not make blocking idempotent.
+- F147 | `data-layer---mutations-&-schemas.md` | 515-527, 531-539 | medium | failure-point | `useDeleteSharedContent` does not verify that a shared routine/cycle row was actually deleted.
+- F151 | `data-layer---mutations-&-schemas.md` | 27-47 | medium | failure-point | `useCreateGoal` inserts caller-supplied values directly and does not parse the shared create-goal schema.
+- F152 | `data-layer---mutations-&-schemas.md` | 134-142, 145-149 | medium | failure-point | `useArchiveGoal` does not verify that a goal row was actually archived.
+- F155 | `data-layer---mutations-&-schemas.md` | 29-33, 35-41 | medium | failure-point | `useUpdateProfile` does not verify that a profile row exists for `userId`.
+- F159 | `data-layer---mutations-&-schemas.md` | 10-17, 64-94 | medium | failure-point | Routine inputs are not validated in the mutation before duration and storage transforms run.
+- F163 | `data-layer---mutations-&-schemas.md` | 16-43, 67-86 | medium | failure-point | Community routine/cycle snapshot schemas accept arbitrary numeric values for counts, reps, weights, durations, day numbers, and adjustments.
+- F164 | `data-layer---mutations-&-schemas.md` | 90-99, 124-154 | medium | failure-point | Malformed `exercises_snapshot` or `cycle_snapshot` values are swallowed with `.catch(null)`.
+- F166 | `data-layer---mutations-&-schemas.md` | 37-52 | medium | failure-point | PR goal validation only checks truthiness of `exercise_name` and `deadline` is any string.
+- F168 | `data-layer---mutations-&-schemas.md` | 8-11 | medium | failure-point | Recovery session data accepts any numeric `total_volume`, including negative or non-finite values.
+- F169 | `data-layer---mutations-&-schemas.md` | 32-36 | medium | failure-point | `wearableRecoverySchema` leaves `raw_data` as unrestricted `z.any()`.
+- F170 | `data-layer---mutations-&-schemas.md` | 26-32, 38-53 | medium | failure-point | Telemetry and rep summary schemas do not enforce non-negative/finite constraints for timestamp, force, velocity, position, power, ROM, or ti
+- F174 | `data-layer---mutations-&-schemas.md` | 54-56, 75-80, 112-142, 164-169, 191-199, 218-219, 265, 287, 305-309, 323-327, 373-380, 397-401 | medium | failure-point | Many date transforms use `new Date(s)` without validating the result.
+- F175 | `data-layer---mutations-&-schemas.md` | 243-253, 358-359 | medium | failure-point | Several JSON fields use `z.any()` and are accepted without shape validation (`per_set_weights`, `per_set_rest`, `per_set_reps`, `progression
+- F182 | `data-layer---queries.md` | 56-113 | medium | failure-point | `challengeType` is a plain string and the switch has no default/error path.
+- F187 | `data-layer---queries.md` | 36-40 | medium | failure-point | Search text is interpolated directly into a PostgREST `.or()` expression.
+- F193 | `data-layer---queries.md` | 43-66, 98-132 | medium | failure-point | `profileStatsOptions` and `topExercisesOptions` fetch all workout sessions/exercises and aggregate client-side with no limit or server-side
+- F201 | `data-layer---stores.md` | 14, 30, 40-41 | medium | failure-point | `blockedUserIds` is kept as a mutable `Set` and `setBlockedUserIds` stores the caller-provided `Set` by reference.
+- F204 | `data-layer---stores.md` | 20 | medium | failure-point | The store persists to `sessionStorage`, which is per-tab and does not emit useful cross-tab synchronization for other tabs.
+- F206 | `data-layer---stores.md` | 44, 46-53 | medium | failure-point | Navigation and seek actions accept unbounded values.
+- F208 | `data-layer---stores.md` | 13-23 | medium | failure-point | The UI store is global and has no reset action or user scoping.
+- F437 | `lib---analytics-&-science.md` | 325-335, 345-347, 371-386 | medium | failure-point | `buildBodyMuscleFocusModel` permits rows with only `setCount`, but reps and volume are computed only from the nested `sets` array.
+- F452 | `lib---analytics-&-science.md` | 54-59 | medium | failure-point | `day.day_type` is cast to `"workout" | "rest"` even though the schema exposes it as a plain string.
+- F438 | `lib---analytics-&-science.md` | 38-58, 81-90 | medium | failure-point | The fatigue calculation never validates that velocities are finite.
+- F440 | `lib---analytics-&-science.md` | 50-65, 67-90 | medium | failure-point | `partialTelemetry` is handled before refresh errors.
+- F474 | `lib---core-utilities.md` | 1576-1627 | medium | failure-point | The `subscriptions` table exposes `status` and `tier` as unrestricted `string` types even though the application expects narrow unions (`FRE
+- F475 | `lib---core-utilities.md` | 1036-1066, 2169-2199 | medium | failure-point | Telemetry rows/views allow nullable `cable`, `force_n`, `velocity_mps`, and `position_mm`, while `src/lib/telemetry.ts` chart helpers requir
+- F461 | `lib---core-utilities.md` | 78-103 | medium | failure-point | `scriptLoadPromise` is cached even when the Paddle script load rejects.
+- F464 | `lib---core-utilities.md` | 11-30, 33-42 | medium | failure-point | Only `active` and `trialing` are treated as entitlement-bearing statuses.
+- F456 | `lib---core-utilities.md` | 42-58 | medium | failure-point | The retry path reuses the original `input` and `init` after the first `fetch`.
+- F467 | `lib---core-utilities.md` | 32-40 | medium | failure-point | `downsampleTelemetry` accepts any `targetPoints` value.
+- F488 | `lib---integrations.md` | 117-124 | medium | failure-point | Export batches set lookup by exercise IDs, but it does not batch the earlier `.in("session_id", sessionIds)` exercise query.
+- F484 | `lib---integrations.md` | 89-115, 246-260 | medium | failure-point | CSV and API normalization build `Date` objects and call `toISOString()` without validating that `start_time`/`end_time` parsed successfully.
+- F477 | `lib---integrations.md` | 5-13 | medium | failure-point | The shared client-side `RATE_LIMITS` map omits `liftosaur` even though `liftosaur` is a declared provider and the sync queue processes Lifto
+- F486 | `lib---integrations.md` | 112-136 | medium | failure-point | `parseStrongCSV()` constructs a `Date` from each workout's `Date` field and immediately calls `toISOString()` without checking validity.
+- F496 | `lib---replay-&-export.md` | 801-806, 824-832 | medium | failure-point | The `dbMuscleGroup` fallback is returned without trimming, canonicalizing, or validating it against the documented parent groups.
+- F497 | `lib---replay-&-export.md` | 1-5 | medium | failure-point | Formula-injection protection only checks the first character of the raw field.
+- F500 | `lib---replay-&-export.md` | 227-234, 286-309 | medium | failure-point | Nested exports load `exercises`, `routine_exercises`, and `cycle_days` with a single `.in(..., ids)` query containing all parent IDs.
+- F482 | `lib---integrations.md` | 93-95 | medium | stub | The Garmin OAuth path is marked "ready but untested until credentials are available." This is a known unverified integration path in product
+- F485 | `lib---integrations.md` | 214-240 | medium | stub | The Hevy API normalizer is explicitly documented as `API structure is TBD`, but it still validates against a concrete guessed schema.
+- F184 | `data-layer---queries.md` | 53-69 | low | error | `hydrateProfiles` ignores the Supabase error from the `public_profiles` lookup.
+- F469 | `lib---core-utilities.md` | 14-31 | low | bug | The helpers are typed for `"A" | "B"`, but runtime data from `database.types.ts` allows `rep_telemetry.cable` to be `string | null`.
+- F489 | `lib---integrations.md` | 74-78, 183 | low | bug | `formatDate()` converts the stored ISO timestamp using the browser's local timezone.
+- F479 | `lib---integrations.md` | 16, 20, 62, 68 | low | bug | Optional Strava metrics are defaulted to `0` in the Zod schema, then written as real zero values.
+- F480 | `lib---integrations.md` | 63-65 | low | bug | Calorie conversion uses a truthiness check on `activity.kilojoules`.
+- F487 | `lib---integrations.md` | 125-138 | low | bug | Strong `Distance` values are summed and stored directly as `distance_meters`, but the parser has no distance-unit handling.
+- F492 | `lib---replay-&-export.md` | 40-49 | low | bug | `drawRepBands` can only shade intervals between adjacent `repBoundaries`.
+- F137 | `data-layer---mutations-&-schemas.md` | 99-101 | low | failure-point | `useExecuteDeletion` ignores the result of `supabase.auth.signOut()`.
+- F161 | `data-layer---mutations-&-schemas.md` | 11-16 | low | failure-point | Date fields are transformed with `new Date(s)` but never validated.
+- F167 | `data-layer---mutations-&-schemas.md` | 10-17 | low | failure-point | `completed_at` and `created_at` use raw `new Date` transforms without checking validity, so invalid persisted date strings parse as `Invalid
+- F171 | `data-layer---mutations-&-schemas.md` | 64-70 | low | failure-point | `exerciseProgressSchema.recorded_at` uses `new Date(s)` without validity checks, so invalid timestamps parse successfully and later affect t
+- F179 | `data-layer---queries.md` | 12-55 | low | failure-point | `sessionAsymmetryOptions` has no `enabled: !!sessionId` guard even though an empty session id produces a distinct cache key and a query agai
+- F180 | `data-layer---queries.md` | 9-19, 47-62 | low | failure-point | Both query options accept caller-controlled identifiers/ranges but do not guard invalid input.
+- F185 | `data-layer---queries.md` | 256-267 | low | failure-point | `userVotesOptions` returns a mutable `Set` from the query function.
+- F186 | `data-layer---queries.md` | 32-48 | low | failure-point | `cycleDetailOptions` does not include `enabled: !!cycleId`.
+- F189 | `data-layer---queries.md` | 5-19 | low | failure-point | `insightsOptions` lacks an `enabled: !!userId` guard.
+- F190 | `data-layer---queries.md` | 10-24, 31-55 | low | failure-point | Both integration query options require `userId` but do not gate empty ids.
+- F191 | `data-layer---queries.md` | 14-28 | low | failure-point | `localProfilesOptions` requires a user id but has no enabled guard, so an unauthenticated/loading auth state can issue `local_profiles` quer
+- F192 | `data-layer---queries.md` | 10-26, 33-45 | low | failure-point | `onboardingOptions` and `hasWorkoutsOptions` both require `userId` but do not gate empty ids.
+- F194 | `data-layer---queries.md` | 35-59 | low | failure-point | `exerciseProgressOptions` will execute with an empty `userId` or empty `exerciseName`; both are required for a meaningful result and both ar
+- F195 | `data-layer---queries.md` | 10-34 | low | failure-point | `personalRecordsOptions` has no `enabled: !!userId` guard.
+- F197 | `data-layer---queries.md` | 9-34, 40-66 | low | failure-point | Replay session and telemetry options do not include `enabled` guards for their required ids.
+- F198 | `data-layer---queries.md` | 26-42 | low | failure-point | `routineDetailOptions` does not include `enabled: !!routineId`.
+- F199 | `data-layer---queries.md` | 8-20, 24-36 | low | failure-point | `repTelemetryOptions` and `repSummariesOptions` lack `enabled: !!setId` guards.
+- F202 | `data-layer---stores.md` | 33-41 | low | failure-point | The community UI store is an in-memory Zustand store only.
+- F207 | `data-layer---stores.md` | 14, 24, 53-54 | low | failure-point | `currentRepIndex` is part of global replay state and has a setter, but the main replay component derives the current rep index from `current
+- F209 | `data-layer---stores.md` | 19-22 | low | failure-point | `setStreak` and `setNotifications` accept arbitrary numbers and write them directly.
+- F436 | `lib---analytics-&-science.md` | 50-52 | low | failure-point | `calculateRom` spreads the full `positions` array into `Math.max(...positions)` and `Math.min(...positions)`.
+- F454 | `lib---analytics-&-science.md` | 3-12 | low | failure-point | `formatChallengeValue` formats `NaN`, `Infinity`, or negative challenge values without validation.
+- F453 | `lib---analytics-&-science.md` | 90-107, 131-162 | low | failure-point | `normalizePercentiles` only accepts one- or two-digit percentile keys (`p0` through `p99`) and drops `p100`.
+- F441 | `lib---analytics-&-science.md` | 133-157, 160-169 | low | failure-point | Insight IDs for PRs and plateaus are derived by lowercasing exercise names and replacing whitespace only.
+- F443 | `lib---analytics-&-science.md` | 124-144 | low | failure-point | `calculateTutScore` assumes the target TUT range is ordered and positive.
+- F446 | `lib---analytics-&-science.md` | 81-105 | low | failure-point | Negative `hoursSinceLastTrained` values are accepted.
+- F447 | `lib---analytics-&-science.md` | 168-173, 188-193 | low | failure-point | Non-finite velocities such as `NaN` fail the zone predicates and silently fall back to the first zone (`GRIND`/`absolute-strength`).
+- F448 | `lib---analytics-&-science.md` | 45-63, 88-101 | low | failure-point | Negative or non-finite `setCount`/`weeklySets` values are not sanitized.
+- F449 | `lib---analytics-&-science.md` | 19-24, 32-34 | low | failure-point | `normalizeWorkoutPhase` only recognizes exact string keys and does not trim whitespace or normalize case generically.
+- F473 | `lib---core-utilities.md` | 34-59 | low | failure-point | The destructive timer is independent of the toast lifecycle.
+- F466 | `lib---core-utilities.md` | 5-8, 20-37, 66-82 | low | failure-point | `safeNumber` filters only `null`, `undefined`, and `NaN`; it allows `Infinity` and `-Infinity`.
+- F478 | `lib---integrations.md` | 19-32 | low | failure-point | `isRateLimited()` assumes `window_started_at` is always a valid date string and `requests_this_window` is always a number.
+- F498 | `lib---replay-&-export.md` | 80-89 | low | failure-point | `downloadCSV` creates an anchor and clicks it without appending it to the document, while the ZIP export helpers append/remove their downloa
+- F494 | `lib---replay-&-export.md` | 80-90 | low | failure-point | `repNumberForTimestamp` assumes each `repBoundaries` entry is a rep start.
+- F491 | `lib---replay-&-export.md` | 60-62, 132-137, 207-212 | low | failure-point | `currentTimeMs` is not clamped before drawing the playhead.
+- F445 | `lib---analytics-&-science.md` | 212-219 | low | stub | `buildExerciseSummary` creates a `placeholder` object cast as `ProgressionExerciseSummary` just to pass `placeholder.plateauRisk` into `buil
+
+### Edge Functions (104)
+
+- F291 | `edge-functions---integrations.md` | 20-24, 139-159, 261, 294, 354, 373-377 | critical | error | `deno check --node-modules-dir=auto` fails for this file.
+- F294 | `edge-functions---integrations.md` | 200-218, 284-288 | critical | error | `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+- F298 | `edge-functions---integrations.md` | 259-279, 354-359 | critical | error | `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+- F357 | `edge-functions---sync-&-data.md` | 98-127 | critical | bug | Pending tasks are selected and then updated to `processing` in separate non-conditional statements.
+- F263 | `edge-functions---billing-paddle.md` | 207-211, 246-276 | high | error | The existing subscription lookup ignores the `error` returned by `.maybeSingle()`.
+- F282 | `edge-functions---integrations.md` | 184-190 | high | error | The temporary Garmin OAuth request token and request token secret are stored directly in `oauth_tokens.access_token` and `oauth_tokens.refre
+- F354 | `edge-functions---sync-&-data.md` | 438-451, 515-528, 554-587 | high | error | `persistActivities()` logs per-row upsert failures but does not propagate them.
+- F350 | `edge-functions---sync-&-data.md` | 482-507, 646-675, 780-809, 892-913, 997-1021, 1040-1072 | high | error | Multiple database read errors are only logged or ignored while the function continues and returns success.
+- F259 | `edge-functions---billing-paddle.md` | 24-29 | high | bug | `buildPaddleSubscriptionPatch` sends `items: [{ price_id: newPriceId, quantity: 1 }]` for every plan switch.
+- F264 | `edge-functions---billing-paddle.md` | 207-315 | high | bug | Webhook idempotency and ordering are implemented as a read-then-upsert sequence outside a transaction or conditional update.
+- F292 | `edge-functions---integrations.md` | 62-75 | high | bug | Fitbit refresh token persistence is not checked.
+- F293 | `edge-functions---integrations.md` | 239-246 | high | bug | The function fetches `user_integrations.last_sync_at` and `status` but never checks that the integration status is `connected`.
+- F285 | `edge-functions---integrations.md` | 85-88 | high | bug | `started_at` is calculated as `(startTimeInSeconds + startTimeOffsetInSeconds) * 1000`.
+- F297 | `edge-functions---integrations.md` | 221-259, 261-272 | high | bug | Per-workout upsert errors are silently swallowed.
+- F302 | `edge-functions---integrations.md` | 282-329, 331-342 | high | bug | Per-record upsert errors are ignored.
+- F278 | `edge-functions---integrations.md` | 213-233 | high | bug | Strava refresh token rotation is persisted without checking the update result.
+- F279 | `edge-functions---integrations.md` | 296-345 | high | bug | Per-activity upsert failures are collected in `errors`, but `last_sync_at` is still advanced and the sync queue entry is marked `completed_w
+- F338 | `edge-functions---sync-&-data.md` | 71-77, 396-418 | high | bug | `arrayOf()` converts any non-array value to `[]`.
+- F351 | `edge-functions---sync-&-data.md` | 1024-1037 | high | bug | `personalRecordDtos` omits `exerciseId` and `localProfileId` even though the RPC/query returns `exercise_id` and `local_profile_id` and push
+- F343 | `edge-functions---sync-&-data.md` | 1385-1400, 1403-1614 | high | bug | Existing exercises for accepted sessions are deleted before replacement child rows and progress rows are inserted, but the sequence is not t
+- F344 | `edge-functions---sync-&-data.md` | 1294-1296, 1541-1564, 2211-2233 | high | bug | LWW rejection filtering is applied to exercises/sets/rep summaries, but not to top-level telemetry or phase statistics.
+- F304 | `edge-functions---integrations.md` | 81-107 | high | failure-point | Disconnect only deletes local tokens and marks local queue rows failed.
+- F283 | `edge-functions---integrations.md` | 185-206, 278-301 | high | failure-point | All Garmin token/integration upserts ignore their returned errors.
+- F317 | `edge-functions---misc.md` | 46-56, 149-209 | high | failure-point | The destructive account-deletion handler has no method guard.
+- F318 | `edge-functions---misc.md` | 112-125 | high | failure-point | Avatar storage cleanup is treated as non-critical and both list/remove errors are allowed to continue.
+- F319 | `edge-functions---misc.md` | 130-139, 173-204 | high | failure-point | Paddle cancellation happens only after `auth.admin.deleteUser(userId)` succeeds, and failures are only logged plus returned as `billingCance
+- F323 | `edge-functions---shared-core.md` | 119-124 | high | failure-point | `decryptOAuthSecret` returns any stored value without the `enc:v1:` prefix as plaintext, even in deployed production with `OAUTH_TOKEN_ENCRY
+- F358 | `edge-functions---sync-&-data.md` | 123-127, 144-200 | high | failure-point | A task marked `processing` has no lease/timeout recovery.
+- F272 | `edge-functions---billing-paddle.md` | 294-302, 358-363 | medium | error | The successful Paddle subscription response is parsed with `await paddleResponse.json()` outside a response-specific `try/catch`.
+- F315 | `edge-functions---misc.md` | 414-499, 521-646 | medium | error | Many weekly and user-ranking queries drop the `error` field from Supabase responses.
+- F309 | `edge-functions---misc.md` | 334-343 | medium | error | `req.headers.get('Authorization')!` uses a non-null assertion without a runtime guard.
+- F310 | `edge-functions---misc.md` | 443-468, 487-543 | medium | error | Several data queries ignore their `error` fields.
+- F328 | `edge-functions---shared-core.md` | 39-48 | medium | error | The subscription query ignores the `error` field from `.maybeSingle()`.
+- F355 | `edge-functions---sync-&-data.md` | 467-483 | medium | error | The stored-token lookup ignores the Supabase `error` field.
+- F348 | `edge-functions---sync-&-data.md` | 312, 337, 1163-1168 | medium | error | Request JSON parsing and `lastSync` date conversion are not validated locally.
+- F347 | `edge-functions---sync-&-data.md` | 2492-2506 | medium | error | The catch block returns raw internal error messages to clients and maps any message containing `upsert failed` or `insert failed` to HTTP 40
+- F258 | `edge-functions---billing-paddle.md` | 13-18, 74, 77-90 | medium | bug | Subscription state is derived only from `subscription.items?.[0]?.price?.id`.
+- F261 | `edge-functions---billing-paddle.md` | 35-42 | medium | bug | `classifyPaddleEventOrder` marks any distinct event with `incomingTime <= lastTime` as stale.
+- F267 | `edge-functions---billing-paddle.md` | 54-81 | medium | bug | Cancellation is allowed only for local statuses `active` and `trialing`.
+- F307 | `edge-functions---integrations.md` | 65-70 | medium | bug | Identity resolution rejects `matches.length > 1` as ambiguous, but there is no repair path.
+- F286 | `edge-functions---integrations.md` | 171-172 | medium | bug | The handler uses `payload.activities ??
+- F296 | `edge-functions---integrations.md` | 161-199 | medium | bug | The Hevy sync fetches only `${HEVY_API_BASE}/workouts` once and does not implement pagination or date-window traversal.
+- F300 | `edge-functions---integrations.md` | 199-258 | medium | bug | Pagination has a hard `MAX_PAGES = 10` safety cap, but if `hasMore` is still true at page 10 the function silently stops and reports success
+- F301 | `edge-functions---integrations.md` | 294-296 | medium | bug | When Liftoscript timestamp parsing fails, `started_at` falls back to `new Date().toISOString()`.
+- F316 | `edge-functions---misc.md` | 410-499 | medium | bug | Special event metrics from `leaderboard_events.metric` are not validated against the metrics implemented by the TypeScript switch.
+- F321 | `edge-functions---misc.md` | 74-107, 141-163 | medium | bug | The one-per-hour rate limit is consumed before validating that a pending deletion request exists, that the grace period has expired, that Pa
+- F311 | `edge-functions---misc.md` | 613-644 | medium | bug | Refreshing cached insights is implemented as `delete()` followed by `insert()` outside a transaction.
+- F325 | `edge-functions---shared-core.md` | 61-77, 147-167, 227-270 | medium | bug | `checkRateLimit` does not validate `key`, `userId`, `maxRequests`, or `windowSeconds` before invoking the RPC/fallback logic.
+- F329 | `edge-functions---shared-core.md` | 45-50, 68 | medium | bug | `subscription?.tier` and `subscription?.status` are cast directly to `SubscriptionTier`/`SubscriptionStatus` without runtime validation.
+- F335 | `edge-functions---sync-&-data.md` | 401-414 | medium | bug | `personalRecordIdentityKey()` excludes `id`, `value`, `weight_kg`, and `reps`.
+- F339 | `edge-functions---sync-&-data.md` | 273-282 | medium | bug | RPG attributes use `z.number().int()`, so payloads containing finite floats are rejected before `mobile-sync-push` can run its documented RP
+- F331 | `edge-functions---sync-&-data.md` | 33-68 | medium | bug | `toArr()` only verifies that the container is an array, then casts every element to `UnknownRecord`.
+- F346 | `edge-functions---sync-&-data.md` | 2343-2383 | medium | bug | In the LWW external activity path, returned rows are mapped back to request metadata by `r.id`.
+- F359 | `edge-functions---sync-&-data.md` | 83-96, 164-165, 246-277 | medium | bug | Provider-level rate limiting is non-atomic.
+- F257 | `edge-functions---billing-paddle.md` | 73-94, 106-114 | medium | failure-point | Price IDs are collected into independent tier sets and `mapPriceIdToTier` resolves duplicates by fixed precedence (`INFERNO` before `FLAME`
+- F260 | `edge-functions---billing-paddle.md` | 18-21 | medium | failure-point | The no-op/uncancel decision compares only the locally stored `currentPriceId` against the requested price.
+- F268 | `edge-functions---billing-paddle.md` | 98-125 | medium | failure-point | After Paddle successfully schedules cancellation, the function returns `{ success: true }` without persisting the returned subscription stat
+- F269 | `edge-functions---billing-paddle.md` | 110-118 | medium | failure-point | Raw Paddle API error text is returned to the authenticated client in `details`.
+- F271 | `edge-functions---billing-paddle.md` | 248-282 | medium | failure-point | When Paddle returns 404 for a stored subscription ID, the function marks the local row `canceled` but leaves `paddle_subscription_id` and `p
+- F273 | `edge-functions---billing-paddle.md` | 212-220 | medium | failure-point | Raw Paddle API error text is returned to the authenticated client in `details`.
+- F274 | `edge-functions---billing-paddle.md` | 277-284 | medium | failure-point | The function immediately upserts the local subscription from the Paddle PATCH response, but the shared builder still derives `price_id` from
+- F265 | `edge-functions---billing-paddle.md` | 189-220 | medium | failure-point | `custom_data.user_id` is checked only for truthiness before being used in a Supabase equality filter and as the HMAC message.
+- F306 | `edge-functions---integrations.md` | 57-63 | medium | failure-point | If decrypting any candidate token throws, `resolveGarminWebhookIdentity` rejects the entire identity resolution.
+- F303 | `edge-functions---integrations.md` | 81-112 | medium | failure-point | Token deletion, integration-state update, and sync-queue update run concurrently outside a transaction.
+- F288 | `edge-functions---integrations.md` | 70-93 | medium | failure-point | The OAuth state token is deleted before the Fitbit token exchange succeeds.
+- F289 | `edge-functions---integrations.md` | 96-100 | medium | failure-point | The Fitbit token response is trusted without validating `access_token`, `refresh_token`, `user_id`, and `expires_in`.
+- F281 | `edge-functions---integrations.md` | 141-176 | medium | failure-point | The CSRF state token is deleted before the Garmin request-token call succeeds.
+- F295 | `edge-functions---integrations.md` | 124-135 | medium | failure-point | After successfully storing a Hevy API key, the `user_integrations` upsert result is ignored.
+- F275 | `edge-functions---integrations.md` | 82-87 | medium | failure-point | The `oauth_states` insert result is not checked.
+- F276 | `edge-functions---integrations.md` | 92-117 | medium | failure-point | Provider client IDs and the public Supabase URL are assumed to exist.
+- F299 | `edge-functions---integrations.md` | 164-173 | medium | failure-point | After successfully storing a Liftosaur API key, the `user_integrations` upsert result is ignored.
+- F277 | `edge-functions---integrations.md` | 106-112 | medium | failure-point | The Strava token response shape is trusted without validation.
+- F313 | `edge-functions---misc.md` | 222-239, 263-370, 386-499, 517-663 | medium | failure-point | Ranking endpoints have no rate limit even though they run service-role queries across all leaderboard participants and call aggregate RPCs.
+- F314 | `edge-functions---misc.md` | 89-98, 230-231 | medium | failure-point | `weekStart` is accepted directly from the request and converted with `new Date(weekStart)` before calling `toISOString()`.
+- F320 | `edge-functions---misc.md` | 22-33, 188-204 | medium | failure-point | The Paddle cancellation fetch has no explicit timeout or abort signal.
+- F308 | `edge-functions---misc.md` | 326-363, 613-644 | medium | failure-point | The handler accepts every non-OPTIONS method and defaults an unparsable or absent body to `{}`.
+- F324 | `edge-functions---shared-core.md` | 13, 53-99, 110-116, 131-139 | medium | failure-point | The ciphertext prefix contains only an algorithm version (`enc:v1:`) and `getAesKey` loads exactly one key from `OAUTH_TOKEN_ENCRYPTION_KEY`
+- F326 | `edge-functions---shared-core.md` | 147-181, 253-275 | medium | failure-point | The fallback path is described as atomic, but it is a multi-query read/update loop outside a database transaction.
+- F330 | `edge-functions---shared-core.md` | 9, 16-21 | medium | failure-point | Only `active` and `trialing` statuses are entitlement-bearing.
+- F334 | `edge-functions---sync-&-data.md` | 70-109 | medium | failure-point | The row builder stores negative or otherwise nonsensical set metrics if they pass through validation.
+- F336 | `edge-functions---sync-&-data.md` | 421-432, 490-520 | medium | failure-point | Dedicated personal records with missing `value` are silently converted to `weightKg ??
+- F340 | `edge-functions---sync-&-data.md` | 141-178, 229-271, 291-294, 337-345, 353-368, 370-392 | medium | failure-point | Timestamp fields are validated as plain strings rather than datetime strings.
+- F341 | `edge-functions---sync-&-data.md` | 104-178, 190-218, 242-271, 273-345, 353-368 | medium | failure-point | Many numeric fields accept any number with no non-negative/domain bounds: reps, weights, durations, counts, RPG level/XP, sample counts, con
+- F337 | `edge-functions---sync-&-data.md` | 8-10, 32-40 | medium | failure-point | The file documents `roundRpgFloats()` as the boundary guard for both push and pull, but repository search found no production import.
+- F353 | `edge-functions---sync-&-data.md` | 374-436 | medium | failure-point | The `connect` path stores the encrypted API key and marks the integration connected before validating the key against the provider.
+- F356 | `edge-functions---sync-&-data.md` | 537-542 | medium | failure-point | The top-level catch returns `(err as Error).message` directly to the mobile client.
+- F349 | `edge-functions---sync-&-data.md` | 354-365 | medium | failure-point | `pageSize` is capped only with `Math.min`; zero or negative values are accepted.
+- F352 | `edge-functions---sync-&-data.md` | 937-1073 | medium | failure-point | `personalRecords`, `localProfiles`, and `externalActivities` are fetched wholesale on the final `stats` page and do not consume `remainingPa
+- F342 | `edge-functions---sync-&-data.md` | 830-880, 1075-1271 | medium | failure-point | Custom exercises are upserted before the later cross-user ownership and parent-reference validation block.
+- F345 | `edge-functions---sync-&-data.md` | 2229-2233, 2253-2257, 2288-2293 | medium | failure-point | `session_phase_statistics`, `exercise_signatures`, and `vbt_assessments` write errors are logged as warnings while the overall push still su
+- F270 | `edge-functions---billing-paddle.md` | 38-51 | low | error | Unlike the other browser-facing Paddle functions, this handler has no outer `try/catch`.
+- F266 | `edge-functions---billing-paddle.md` | 140-142, 333-338 | low | error | `JSON.parse(rawBody)` is inside the broad handler `try`, so a signed but malformed JSON payload is returned as a 500 `Internal server error`
+- F262 | `edge-functions---billing-paddle.md` | 48-67 | low | failure-point | The custom-data signature comparison iterates only over `Math.min(a.length, b.length)` and returns immediately after a length-dependent amou
+- F305 | `edge-functions---integrations.md` | 23-32 | low | failure-point | `timingSafeEqual` only loops to `Math.min(a.length, b.length)`.
+- F290 | `edge-functions---integrations.md` | 138-144 | low | failure-point | The initial `sync_queue` insert result is ignored.
+- F287 | `edge-functions---integrations.md` | 289-294 | low | failure-point | The per-user `last_sync_at` update is awaited but its error is ignored.
+- F312 | `edge-functions---misc.md` | 548-565 | low | failure-point | Current streak calculation compares `started_at.slice(0, 10)` and `now.toISOString().slice(0, 10)`, which are UTC calendar days.
+- F322 | `edge-functions---shared-core.md` | 30-31 | low | failure-point | `SYNC_LWW_ENABLED` lowercases the environment value but does not trim it.
+- F327 | `edge-functions---shared-core.md` | 23-38 | low | failure-point | `normalizeRateLimitRpcResult` checks only JavaScript types.
+- F332 | `edge-functions---sync-&-data.md` | 76-91 | low | failure-point | `normalizePushPayloadShape()` is no longer used by the production `mobile-sync-push` handler; repository search found only tests importing i
+- F333 | `edge-functions---sync-&-data.md` | 1-9 | low | failure-point | `normalizeSyncPlatform()` returns arbitrary trimmed/lowercased strings for non-Android/iOS inputs, while the live `platformSchema` in `pushP
+- F360 | `edge-functions---sync-&-data.md` | 78, 93-95 | low | failure-point | `results.skipped` is initialized but not incremented when a provider is skipped due to rate limiting.
+- F280 | `edge-functions---integrations.md` | 23-24 | low | stub | The file explicitly states the Garmin Edge Function is "ready but untested until credentials are available." This is an unresolved integrati
+- F284 | `edge-functions---integrations.md` | 20-21 | low | stub | The webhook handler states it is "ready but untested until webhook registration is complete." This is an unresolved production risk for the
+
+### Migrations (23)
+
+- F221 | `database-migrations.md` | 12-111, 120-174, 183-247, 256-297, 306-357 | critical | failure-point | All five parity sync RPCs are `SECURITY DEFINER`, accept `p_user_id`, and filter rows by `p_user_id` without checking `p_user_id = auth.uid(
+- F223 | `database-migrations.md` | 8-104 | critical | failure-point | The replacement `get_sessions_excluding_ids` remains `SECURITY DEFINER`, still accepts arbitrary `p_user_id`, and has no `auth.uid()`/role c
+- F224 | `database-migrations.md` | 7-103 | critical | failure-point | The second replacement `get_sessions_excluding_ids` again preserves the unauthenticated `SECURITY DEFINER`/arbitrary `p_user_id` pattern.
+- F225 | `database-migrations.md` | 26-86, 95-165 | critical | failure-point | The new stale-aware routines/cycles RPC overloads are also `SECURITY DEFINER`, accept arbitrary `p_user_id`, and do not restrict execution o
+- F226 | `database-migrations.md` | 7-48, 53-104 | critical | failure-point | The UUID-corrected badge and personal-record RPCs keep the same `SECURITY DEFINER` plus arbitrary `p_user_id` pattern and do not revoke publ
+- F222 | `database-migrations.md` | 256-265, 306-314 | high | error | `get_badges_excluding_ids` and `get_personal_records_excluding_ids` declare `BIGINT` IDs and `BIGINT[]` known-id parameters even though `ear
+- F212 | `database-migrations.md` | 42-49, 112-131 | high | bug | The comment update policy allows owners to update any column on their own comment within five minutes, including `item_id` and `item_type`.
+- F219 | `database-migrations.md` | 9-35, 45-82, 92-124 | high | bug | The leaderboard RPCs are `SECURITY INVOKER`, but they query RLS-protected `personal_records`, `exercises`, and `profiles`.
+- F211 | `database-migrations.md` | 14-17, 27-41 | high | failure-point | `user_integrations` stores `access_token`, `refresh_token`, `token_expires_at`, and `api_key`, while the RLS policies allow the owning authe
+- F215 | `database-migrations.md` | 43-70 | high | failure-point | `creator_stats` is created as a normal view, which is security-definer by default in Postgres.
+- F216 | `database-migrations.md` | 40-61 | high | failure-point | `earned_badges` allows authenticated users to insert and delete their own badges directly.
+- F217 | `database-migrations.md` | 8-33, 68-91 | high | failure-point | `rpg_attributes` and `gamification_stats` allow authenticated users to insert/update their own progression and aggregate statistics directly
+- F228 | `database-migrations.md` | 1-3 | high | stub | This stub documents a remote conversion of `creator_stats` to `security_invoker = true` but does not perform it locally.
+- F214 | `database-migrations.md` | 29-31, 44-62 | medium | bug | The insert policy is named `Premium users can create goals`, but it only checks `user_id = auth.uid()`.
+- F210 | `database-migrations.md` | 61-74 | medium | failure-point | `public.user_subscription_tier()` is declared `SECURITY DEFINER` without a fixed `search_path`.
+- F213 | `database-migrations.md` | 60-75, 112-131 | medium | failure-point | `check_comment_rate_limit()` and `update_comment_count()` are `SECURITY DEFINER` functions without an explicit safe `search_path`, and they
+- F218 | `database-migrations.md` | 39-45 | medium | failure-point | `community_benchmarks` uses `FOR SELECT USING (true)` without `TO authenticated`, so the policy applies to PUBLIC, including anon, on an agg
+- F220 | `database-migrations.md` | 179-189 | medium | failure-point | `update_leaderboard_events_updated_at()` is `SECURITY DEFINER` with `SET search_path = public`.
+- F232 | `database-migrations.md` | 469-473, 516-517, 549-554 | medium | failure-point | `import_shared_cycle()` casts JSON snapshot fields directly to `INT`/`NUMERIC` (for example `(v_snapshot ->> 'duration_weeks')::INT` and `(v
+- F227 | `database-migrations.md` | 1-3 | medium | stub | This is a stub that says the real migration was applied remotely and adds `is_bodyweight`/`duration_seconds` plus benchmark RLS changes, but
+- F229 | `database-migrations.md` | 1-3 | medium | stub | This stub claims remote creation of `goal_snapshots`, `overload_suggestions`, `telemetry_analysis`, and `wearable_daily_summaries` plus colu
+- F230 | `database-migrations.md` | 1-11 | medium | stub | The migration intentionally does `NULL` to match a production-only migration version.
+- F231 | `database-migrations.md` | 1-11 | medium | stub | Same as the prior reconciliation file: the repository records the remote version with a no-op block, but does not reproduce the production s
+
+### Tests (56)
+
+- F247 | `e2e-tests.md` | 96-181 | high | bug | The mocked cross-tab test does not actually simulate a cross-tab broadcast.
+- F521 | `sync-tests-&-security-tests.md` | 420-477 | high | bug | The active-cycle conflict test computes `activeCycles` but never asserts it.
+- F253 | `e2e-tests.md` | 180-208, 362-395, 453-487 | high | failure-point | The generic row filter only implements `eq` and `in`, ignoring common PostgREST query operators such as `gte`, `lte`, `range`, `limit`, and
+- F254 | `e2e-tests.md` | 330-335, 489-495 | high | failure-point | Unknown Edge Functions and unknown REST tables are fulfilled with successful generic responses.
+- F517 | `sync-tests-&-security-tests.md` | 157-189, 192-224, 228-270 | high | failure-point | The file header says the batch behavior should defer `lastSync` until all batches succeed, but the failure tests only verify partial mock-st
+- F544 | `sync-tests-&-security-tests.md` | 733-738, 768-831, 837-852 | high | failure-point | `generateTestId()` returns strings like `test-${Date.now()}-...`, and the builder helpers use it for session/exercise/set/routine IDs.
+- F545 | `sync-tests-&-security-tests.md` | 80-150, 395-427 | high | failure-point | `mockPushEndpoint()` does not call `checkMockError()` and does not validate via the full production `pushPayloadSchema`; it only checks auth
+- F546 | `sync-tests-&-security-tests.md` | 233-294 | high | failure-point | `mockPullEndpoint()` accepts `deviceId`, `profileId`, `cursor`, `pageSize`, and `knownEntityIds`, but ignores all of them.
+- F525 | `sync-tests-&-security-tests.md` | 741-792 | high | failure-point | The profile-isolation pull test pushes data for profile A and profile B, then only asserts both pulls succeeded and returned defined data.
+- F530 | `sync-tests-&-security-tests.md` | 613-689 | high | failure-point | The profile no-cross-contamination test only asserts both profile pulls succeeded.
+- F542 | `sync-tests-&-security-tests.md` | 134-216, 318-380, 399-419 | high | failure-point | Most high-value server invariants are `liveIt` and therefore skipped in the default `npm run test:sync` path: payload size, array caps, rate
+- F246 | `e2e-tests.md` | 81-94 | high | stub | The only real Supabase Realtime broadcast test is `test.skip`, leaving the actual WebSocket/channel path unexecuted in automated E2E.
+- F237 | `e2e-tests.md` | 32-37 | medium | bug | The routine builder test conditionally fills the routine-name input only if it is visible.
+- F251 | `e2e-tests.md` | 5-9, 16-34, 60-67 | medium | bug | `loadEnvFile()` runs after importing constants from `../support/supabase`.
+- F248 | `e2e-tests.md` | 134-144 | medium | bug | The test calls `page.addInitScript` after the landing page and dialog are already loaded.
+- F233 | `e2e-tests.md` | 52-60, 93-100 | medium | failure-point | The axe audit collects WCAG A/AA violations but only fails on `critical` and `serious` impact violations.
+- F234 | `e2e-tests.md` | 65-75 | medium | failure-point | Authenticated page accessibility tests use the generic mock harness without seeding realistic page data for most routes.
+- F235 | `e2e-tests.md` | 264-270, 291-302 | medium | failure-point | The destructive-delete success path verifies sign-out/localStorage clearing, but it does not assert the documented redirect to `/`.
+- F236 | `e2e-tests.md` | 94-123 | medium | failure-point | The deletion_requests mock responds based only on path and method; it does not validate the `user_id` and `status` filters on GET or the POS
+- F238 | `e2e-tests.md` | 73-104 | medium | failure-point | The subscription-gate checks only visible copy/buttons and never verifies that gated integration-management controls are absent for FREE use
+- F252 | `e2e-tests.md` | 14, 41-52, 83-91 | medium | failure-point | The live session cache is a single `.session-cache.json` beside the fixture, keyed only by timestamp and not by Supabase URL, test email, or
+- F239 | `e2e-tests.md` | 43-50 | medium | failure-point | The manual sync/disconnect test asserts generic text (`Recent Activity`, `completed`, `Connect Strava`) but does not verify the request cont
+- F241 | `e2e-tests.md` | 61-79 | medium | failure-point | The test named `privacy page back-navigation to landing` uses `page.goto("/")` rather than exercising an in-page back/home link, browser bac
+- F243 | `e2e-tests.md` | 36-43 | medium | failure-point | The FLAME downgrade test only checks for a `Downgrade` button and absence of `Included in your plan`.
+- F244 | `e2e-tests.md` | 117-121, 138-142 | medium | failure-point | Privacy and Terms content checks use only body text length greater than 200.
+- F249 | `e2e-tests.md` | 83-105 | medium | failure-point | The signup auth mock returns `[]` or `{ success: true }` for broad REST/functions/auth fallthroughs, including endpoints not explicitly mode
+- F250 | `e2e-tests.md` | 199-203 | medium | failure-point | The compare-page smoke test accepts `Missing Session IDs` as a passing state.
+- F256 | `e2e-tests.md` | 3-15 | medium | failure-point | The default Supabase URL is a real-looking hosted domain (`https://test-project.supabase.co`).
+- F518 | `sync-tests-&-security-tests.md` | 49-66 | medium | failure-point | The main successful-broadcast test pushes an empty sessions payload and then accepts any channel matching `/^sync:/`.
+- F519 | `sync-tests-&-security-tests.md` | 230-279 | medium | failure-point | The delta-sync scenario records a `syncTime`, pushes a second routine, and comments that only the second routine should be returned, but it
+- F520 | `sync-tests-&-security-tests.md` | 289-349 | medium | failure-point | The badge union-merge test describes an expected 3-badge union but only asserts `pullResult.success === true`.
+- F524 | `sync-tests-&-security-tests.md` | 62-85, 139-147 | medium | failure-point | `setMockErrorMode('server')` and `setMockErrorMode('network')` are acknowledged as unwired.
+- F547 | `sync-tests-&-security-tests.md` | 184-195, 201-215 | medium | failure-point | Badge and broadcast identity are derived from payload data or hardcoded `mock-user` instead of authenticated user context.
+- F526 | `sync-tests-&-security-tests.md` | 794-814 | medium | failure-point | The `local_profiles` test pushes `allProfiles` but only asserts `localProfiles` is an array.
+- F527 | `sync-tests-&-security-tests.md` | 991-1028 | medium | failure-point | The delta-sync test named “should return only records modified since lastSync” does not assert which records are returned.
+- F528 | `sync-tests-&-security-tests.md` | 1031-1057 | medium | failure-point | The empty-delta test performs a future-timestamp pull but never asserts returned entity arrays are empty.
+- F531 | `sync-tests-&-security-tests.md` | 700-814 | medium | failure-point | The personal-record preservation test creates two PR-producing sessions and pulls, but only asserts that at least two sessions exist.
+- F532 | `sync-tests-&-security-tests.md` | 821-894 | medium | failure-point | The delta-sync accuracy test records a post-first-push sync time and comments that only session 2 should be returned, but only asserts delta
+- F537 | `sync-tests-&-security-tests.md` | 649-699 | medium | failure-point | The personal-record round-trip tests only build local `expectedRecord` / `record` objects and assert their own fields.
+- F538 | `sync-tests-&-security-tests.md` | 703-732 | medium | failure-point | The RPG attributes “round-trip” test only checks push success and then reasserts the local object values.
+- F539 | `sync-tests-&-security-tests.md` | 753-793 | medium | failure-point | The badge round-trip test pushes badges but never pulls and asserts returned badge rows.
+- F543 | `sync-tests-&-security-tests.md` | 399-418 | medium | failure-point | The expired-JWT live test uses a placeholder-looking token string and only expects status 401.
+- F523 | `sync-tests-&-security-tests.md` | 45-60, 123-137 | medium | stub | The TRANSIENT live 5xx and NETWORK fetch-abort scenarios are permanently `it.skip`, not gated by `liveIt`.
+- F529 | `sync-tests-&-security-tests.md` | 1074-1220 | medium | stub | Several tests in the delta/entity sections are documentation-only checks.
+- F533 | `sync-tests-&-security-tests.md` | 130-149 | medium | stub | The only test that verifies server-derived `personalRecords[].workoutPhase` is gated behind `liveIt`, so it is skipped in the default mock C
+- F535 | `sync-tests-&-security-tests.md` | 143-159 | medium | stub | The composite cursor stability regression is `it.skip`, so it never runs in either mock or live mode.
+- F534 | `sync-tests-&-security-tests.md` | 152-171 | low | bug | The test title says the default phase is `COMBINED` when `prPhase` is omitted, but the assertion expects `pulledSet.prPhase` to be `undefine
+- F240 | `e2e-tests.md` | 72-78 | low | failure-point | The Garmin test asserts there are zero `Sync Now` buttons on the whole page.
+- F242 | `e2e-tests.md` | 3-8, 20-21, 38-39, 54-55, 63-74, 90-107 | low | failure-point | The navigation suite relies heavily on fixed `waitForTimeout` sleeps to wait for animation/page readiness.
+- F245 | `e2e-tests.md` | 20-47, 105-121, 127-142, 148-175 | low | failure-point | The public-page error checks listen for `pageerror` only.
+- F255 | `e2e-tests.md` | 253-257, 423-426, 453-457 | low | failure-point | Several route handlers call `JSON.parse(request.postData())` without guarding parse errors.
+- F522 | `sync-tests-&-security-tests.md` | 404-411 | low | failure-point | The routine deletion scenario does not actually send any deletion/tombstone signal.
+- F536 | `sync-tests-&-security-tests.md` | 209-242 | low | failure-point | The entity-order test uses `Object.keys(result.data!)` to infer pagination/order semantics.
+- F540 | `sync-tests-&-security-tests.md` | 932-1043 | low | failure-point | The full sync payload test includes RPG attributes, badges, and gamification stats, but after pulling it only checks sessions/routines/cycle
+- F541 | `sync-tests-&-security-tests.md` | 610-629 | low | failure-point | The test named “should isolate failures - one bad session should not block others” only pushes a single valid session.
+- F516 | `sync-tests-&-security-tests.md` | 175-185 | low | stub | `setupTestIsolation()` is effectively empty: it declares `testUser` but never creates or cleans one up, and both hooks contain comments only
+
+### CI/CD (31)
+
+- F047 | `build-&-config.md` | package.json:21-22`, `vitest.config.ts:34-36 | high | bug | `test:sync:live` sets `MOCK_EDGE_FUNCTIONS=false` and `SYNC_LIVE_TESTS=true`, but `vitest.config.ts` unconditionally injects `MOCK_EDGE_FUNC
+- F088 | `ci-cd-&-workflows.md` | 41-44, 150-159 | high | bug | The Codex turn sandbox disables network access, but the documented execution flow requires `git fetch origin main --prune`, branch pushes, P
+- F073 | `ci-cd-&-workflows.md` | 51-59 | high | failure-point | The CI job is named `Edge Function Deno Check`, but it delegates to `npm run check:edge-functions`, whose script currently runs `deno check`
+- F075 | `ci-cd-&-workflows.md` | 17-24, 59-65 | high | failure-point | `workflow_dispatch` can deploy whichever ref the operator selects, but the job has no `environment`, branch assertion, or ref guard before d
+- F080 | `ci-cd-&-workflows.md` | 56-83 | high | failure-point | Live sync tests protect production by denying only two hard-coded URL patterns (`ilzlswmatadlnsuxatcv.supabase.co` and `api.phoenix-portal.c
+- F078 | `ci-cd-&-workflows.md` | 3-18 | medium | bug | The workflow is path-filtered but does not include `.github/workflows/sync-tests.yml` in either the push or pull-request paths.
+- F051 | `build-&-config.md` | biome.json:8-10 | medium | failure-point | The Biome file set is restricted to `src/**/*.ts`, `src/**/*.tsx`, and `vite.config.ts`.
+- F049 | `build-&-config.md` | tsconfig.app.json:23 | medium | failure-point | Application source is compiled with `"types": ["vitest/globals", "vite-plugin-pwa/react"]`.
+- F048 | `build-&-config.md` | tsconfig.json:2-5`, `tsconfig.app.json:25 | medium | failure-point | The root TypeScript project references only `tsconfig.app.json`, and the app config includes only `src`.
+- F052 | `build-&-config.md` | wrangler.toml:1`, `wrangler.toml:7-12 | medium | failure-point | The file is labeled as Cloudflare Pages configuration, but it uses Workers/static-assets keys (`[assets] directory = "./dist"`) and does not
+- F053 | `build-&-config.md` | wrangler.toml:11-12 | medium | failure-point | The configured deployment build command runs `npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config`, but it skips
+- F082 | `ci-cd-&-workflows.md` | 29-60 | medium | failure-point | The Mobile OS Version, Mobile App Version, and Mobile Device Model fields say they are required for Mobile App-only or Both reports, but Git
+- F074 | `ci-cd-&-workflows.md` | 97-111 | medium | failure-point | The production build job runs `npm run build` with placeholder Supabase values and then only checks for sourcemaps.
+- F077 | `ci-cd-&-workflows.md` | 55-59, 77-79 | medium | failure-point | The clean-apply job has no job-level or step-level timeout.
+- F079 | `ci-cd-&-workflows.md` | 3-18 | medium | failure-point | This workflow omits an explicit top-level `permissions` block.
+- F085 | `ci-cd-&-workflows.md` | 36-39 | medium | failure-point | The guidance tells agents to run `npm run test:sync` for migration-adjacent work and to commit idempotent migration files, but it does not d
+- F093 | `ci-cd-&-workflows.md` | 161-167 | medium | failure-point | The deployment section lists GitHub Pages as a static-host option without warning that the app uses `BrowserRouter`.
+- F089 | `ci-cd-&-workflows.md` | 22-30 | medium | failure-point | The `after_create` hook performs both a fresh clone and `npm ci`, but the hook timeout is only 600,000 ms (10 minutes).
+- F076 | `ci-cd-&-workflows.md` | 8-10 | medium | stub | The workflow explicitly documents live-production drift detection as out of scope and tracked as a follow-up.
+- F087 | `ci-cd-&-workflows.md` | 220-222 | medium | stub | The migration CI coverage section records a not-yet-wired scheduled production drift check.
+- F086 | `ci-cd-&-workflows.md` | 24-32 | low | bug | The environment-variable list documents `SENTRY_DSN`, but the application initializes Sentry from `import.meta.env.VITE_SENTRY_DSN`.
+- F054 | `build-&-config.md` | .npmrc:1 | low | failure-point | `legacy-peer-deps=true` disables npm's peer-dependency conflict enforcement for every install.
+- F055 | `build-&-config.md` | index.html:14 | low | failure-point | `og:image` is configured as a relative path (`/phoenix-hero.png`).
+- F056 | `build-&-config.md` | index.html:22-23 | low | failure-point | The Google Fonts CSS is requested twice: once as `rel="preload" as="style"` and again immediately as `rel="stylesheet"` with the same URL.
+- F050 | `build-&-config.md` | vite.config.ts:173-181 | low | failure-point | `vite.config.ts` contains a `test` block even though the repository also has `vitest.config.ts`, and the two configurations drift.
+- F083 | `ci-cd-&-workflows.md` | 83-89 | low | failure-point | Expected behavior is optional.
+- F084 | `ci-cd-&-workflows.md` | 3-5 | low | failure-point | The only contact link sends general questions to the `Project-Phoenix-MP` discussions board rather than a Phoenix Portal discussion/support
+- F081 | `ci-cd-&-workflows.md` | 29-45, 94-119 | low | failure-point | The workflow hardcodes Node 20 for the primary job and tests only Node 20/22 in the PR matrix, while the main CI workflow follows `.nvmrc`,
+- F091 | `ci-cd-&-workflows.md` | 84-89 | low | failure-point | The development quickstart tells contributors to use `npm install`, while CI and the workflow guidance use `npm ci`.
+- F092 | `ci-cd-&-workflows.md` | 118-128 | low | failure-point | The environment-variable section omits `VITE_SENTRY_DSN` and does not list the six required Paddle price ID variables individually.
+- F090 | `ci-cd-&-workflows.md` | 66 | low | failure-point | The untrusted-input handling paragraph contains literal `\n` escape sequences instead of real Markdown line breaks.
+
+## Prioritized action plan: top 20 most impactful issues
+
+1. F291 — critical error in `edge-functions---integrations.md` (20-24, 139-159, 261, 294, 354, 373-377) [Edge Functions] — `deno check --node-modules-dir=auto` fails for this file.
+2. F294 — critical error in `edge-functions---integrations.md` (200-218, 284-288) [Edge Functions] — `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+3. F298 — critical error in `edge-functions---integrations.md` (259-279, 354-359) [Edge Functions] — `deno check --node-modules-dir=auto` fails because `fetchError.message` and `err.message` are accessed while catch variables are `unknown`.
+4. F225 — critical failure-point in `database-migrations.md` (26-86, 95-165) [Migrations] — The new stale-aware routines/cycles RPC overloads are also `SECURITY DEFINER`, accept arbitrary `p_user_id`, and do not restrict execution o
+5. F223 — critical failure-point in `database-migrations.md` (8-104) [Migrations] — The replacement `get_sessions_excluding_ids` remains `SECURITY DEFINER`, still accepts arbitrary `p_user_id`, and has no `auth.uid()`/role c
+6. F224 — critical failure-point in `database-migrations.md` (7-103) [Migrations] — The second replacement `get_sessions_excluding_ids` again preserves the unauthenticated `SECURITY DEFINER`/arbitrary `p_user_id` pattern.
+7. F226 — critical failure-point in `database-migrations.md` (7-48, 53-104) [Migrations] — The UUID-corrected badge and personal-record RPCs keep the same `SECURITY DEFINER` plus arbitrary `p_user_id` pattern and do not revoke publ
+8. F221 — critical failure-point in `database-migrations.md` (12-111, 120-174, 183-247, 256-297, 306-357) [Migrations] — All five parity sync RPCs are `SECURITY DEFINER`, accept `p_user_id`, and filter rows by `p_user_id` without checking `p_user_id = auth.uid(
+9. F357 — critical bug in `edge-functions---sync-&-data.md` (98-127) [Edge Functions] — Pending tasks are selected and then updated to `processing` in separate non-conditional statements.
+10. F278 — high bug in `edge-functions---integrations.md` (213-233) [Edge Functions] — Strava refresh token rotation is persisted without checking the update result.
+11. F282 — high error in `edge-functions---integrations.md` (184-190) [Edge Functions] — The temporary Garmin OAuth request token and request token secret are stored directly in `oauth_tokens.access_token` and `oauth_tokens.refre
+12. F323 — high failure-point in `edge-functions---shared-core.md` (119-124) [Edge Functions] — `decryptOAuthSecret` returns any stored value without the `enc:v1:` prefix as plaintext, even in deployed production with `OAUTH_TOKEN_ENCRY
+13. F279 — high bug in `edge-functions---integrations.md` (296-345) [Edge Functions] — Per-activity upsert failures are collected in `errors`, but `last_sync_at` is still advanced and the sync queue entry is marked `completed_w
+14. F297 — high bug in `edge-functions---integrations.md` (221-259, 261-272) [Edge Functions] — Per-workout upsert errors are silently swallowed.
+15. F075 — high failure-point in `ci-cd-&-workflows.md` (17-24, 59-65) [CI/CD] — `workflow_dispatch` can deploy whichever ref the operator selects, but the job has no `environment`, branch assertion, or ref guard before d
+16. F219 — high bug in `database-migrations.md` (9-35, 45-82, 92-124) [Migrations] — The leaderboard RPCs are `SECURITY INVOKER`, but they query RLS-protected `personal_records`, `exercises`, and `profiles`.
+17. F283 — high failure-point in `edge-functions---integrations.md` (185-206, 278-301) [Edge Functions] — All Garmin token/integration upserts ignore their returned errors.
+18. F391 — high error in `feature-components-part-2.md` (23-39) [UI] — `PROVIDER_ICON` and `PROVIDER_LABEL` are typed as `Record<IntegrationProvider, ...>` but omit the `strong` and `liftosaur` providers that ar
+19. F073 — high failure-point in `ci-cd-&-workflows.md` (51-59) [CI/CD] — The CI job is named `Edge Function Deno Check`, but it delegates to `npm run check:edge-functions`, whose script currently runs `deno check`
+20. F350 — high error in `edge-functions---sync-&-data.md` (482-507, 646-675, 780-809, 892-913, 997-1021, 1040-1072) [Edge Functions] — Multiple database read errors are only logged or ignored while the function continues and returns success.
+
+## Notes
+
+- Findings were synthesized from the 29 individual review reports in `.phoenix-review/`.
+- Race-condition findings were grouped under Failure Points for the category rollup because the final report requested the broader buckets Bugs, Stubs, Errors, and Failure Points.
+- No source-code fixes were attempted while preparing this documentation.
