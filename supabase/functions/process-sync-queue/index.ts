@@ -121,6 +121,10 @@ Deno.serve(async (req) => {
 
     for (const stale of staleTasks ?? []) {
       const nextRetryCount = (stale.retry_count ?? 0) + 1;
+      // Re-assert the expired-lease predicate in the update so a concurrent
+      // processor that has already reclaimed (or freshly re-claimed) this row
+      // cannot be clobbered: a fresh claim sets started_at >= leaseExpiry, so
+      // this `lt` no longer matches and the stale snapshot becomes a no-op.
       if (nextRetryCount >= MAX_RETRIES) {
         await supabase
           .from('sync_queue')
@@ -131,7 +135,8 @@ Deno.serve(async (req) => {
             completed_at: new Date().toISOString(),
           })
           .eq('id', stale.id)
-          .eq('status', 'processing');
+          .eq('status', 'processing')
+          .lt('started_at', leaseExpiry);
       } else {
         await supabase
           .from('sync_queue')
@@ -141,7 +146,8 @@ Deno.serve(async (req) => {
             error_message: 'Reclaimed after processing lease expired',
           })
           .eq('id', stale.id)
-          .eq('status', 'processing');
+          .eq('status', 'processing')
+          .lt('started_at', leaseExpiry);
       }
     }
 
