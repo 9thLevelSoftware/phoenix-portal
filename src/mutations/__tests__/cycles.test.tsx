@@ -15,9 +15,10 @@ const mockChain = {
 };
 
 const from = vi.fn(() => mockChain);
+const rpc = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from },
+	supabase: { from, rpc },
 }));
 
 vi.mock("@/providers/AuthProvider", () => ({
@@ -187,16 +188,10 @@ describe("useUpdateCycle", () => {
 		vi.clearAllMocks();
 	});
 
-	it("updates cycle, deletes old days, and inserts new days", async () => {
+	it("updates the cycle and its days atomically via RPC", async () => {
 		const { useUpdateCycle } = await import("../cycles");
 
-		const eqSecond = vi.fn(() => Promise.resolve({ error: null }));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
-		mockChain.delete.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
-		}));
-		mockChain.insert.mockImplementation(() => Promise.resolve({ error: null }));
+		rpc.mockResolvedValue({ data: "cycle-1", error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -207,8 +202,10 @@ describe("useUpdateCycle", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(from).toHaveBeenCalledWith("training_cycles");
-		expect(from).toHaveBeenCalledWith("cycle_days");
+		expect(rpc).toHaveBeenCalledWith(
+			"update_cycle_with_days",
+			expect.objectContaining({ p_cycle_id: "cycle-1" }),
+		);
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle updated");
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.cycles.all,
@@ -221,13 +218,10 @@ describe("useUpdateCycle", () => {
 	it("shows user-friendly error on update failure", async () => {
 		const { useUpdateCycle } = await import("../cycles");
 
-		const eqSecond = vi.fn(() =>
-			Promise.resolve({
-				error: { message: "permission denied for table", code: "42501" },
-			}),
-		);
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
+		rpc.mockResolvedValue({
+			data: null,
+			error: { message: "permission denied for table", code: "42501" },
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useUpdateCycle(), { wrapper });

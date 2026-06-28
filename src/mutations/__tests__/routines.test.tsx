@@ -32,9 +32,10 @@ const mockChain = {
 };
 
 const from = vi.fn(() => mockChain);
+const rpc = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from },
+	supabase: { from, rpc },
 }));
 
 vi.mock("@/providers/AuthProvider", () => ({
@@ -201,26 +202,11 @@ describe("useUpdateRoutine", () => {
 		vi.clearAllMocks();
 	});
 
-	it("updates routine, deletes old exercises, and inserts new ones", async () => {
+	it("updates the routine and its exercises atomically via RPC", async () => {
 		const { useUpdateRoutine } = await import("../routines");
 
-		// update now scopes by id + user_id and confirms the row via
-		// .select("id").maybeSingle() (ownership check).
-		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => ({
-				eq: vi.fn(() => ({
-					select: vi.fn(() => ({
-						maybeSingle: vi.fn(() =>
-							Promise.resolve({ data: { id: "routine-1" }, error: null }),
-						),
-					})),
-				})),
-			})),
-		}));
-		mockChain.delete.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
-		}));
-		mockChain.insert.mockImplementation(() => Promise.resolve({ error: null }));
+		// Update now runs through the atomic update_routine_with_exercises RPC.
+		rpc.mockResolvedValue({ data: "routine-1", error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -236,12 +222,16 @@ describe("useUpdateRoutine", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		// Should touch "routines" for update, "routine_exercises" for delete + insert
-		expect(from).toHaveBeenCalledWith("routines");
-		expect(from).toHaveBeenCalledWith("routine_exercises");
-		// Toast
+		// One atomic RPC call instead of separate update/delete/insert requests.
+		expect(rpc).toHaveBeenCalledWith(
+			"update_routine_with_exercises",
+			expect.objectContaining({
+				p_routine_id: "routine-1",
+				p_name: "Updated Routine",
+				p_exercise_count: 1,
+			}),
+		);
 		expect(mockToast.success).toHaveBeenCalledWith("Routine updated");
-		// Cache invalidation: both all and detail
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.routines.all,
 		});
@@ -252,26 +242,14 @@ describe("useUpdateRoutine", () => {
 
 	it("preserves per-set weights when updating an existing routine", async () => {
 		const { useUpdateRoutine } = await import("../routines");
-		let insertedExerciseRows: Array<Record<string, unknown>> = [];
+		let exerciseRows: Array<Record<string, unknown>> = [];
 
-		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => ({
-				eq: vi.fn(() => ({
-					select: vi.fn(() => ({
-						maybeSingle: vi.fn(() =>
-							Promise.resolve({ data: { id: "routine-1" }, error: null }),
-						),
-					})),
-				})),
-			})),
-		}));
-		mockChain.delete.mockImplementation(() => ({
-			eq: vi.fn(() => Promise.resolve({ error: null })),
-		}));
-		mockChain.insert.mockImplementation((rows: unknown) => {
-			insertedExerciseRows = rows as Array<Record<string, unknown>>;
-			return Promise.resolve({ error: null });
-		});
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
@@ -289,33 +267,20 @@ describe("useUpdateRoutine", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(insertedExerciseRows).toHaveLength(1);
-		expect(insertedExerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
+		expect(exerciseRows).toHaveLength(1);
+		expect(exerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
 		// per_set_weights must follow the same per-cable halving as `weight` so
 		// the stored and displayed values round-trip consistently.
-		expect(insertedExerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
+		expect(exerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
 	});
 
 	it("shows user-friendly error on update failure", async () => {
 		const { useUpdateRoutine } = await import("../routines");
 
-		mockChain.update.mockImplementation(() => ({
-			eq: vi.fn(() => ({
-				eq: vi.fn(() => ({
-					select: vi.fn(() => ({
-						maybeSingle: vi.fn(() =>
-							Promise.resolve({
-								data: null,
-								error: {
-									message: "new row violates check constraint",
-									code: "23514",
-								},
-							}),
-						),
-					})),
-				})),
-			})),
-		}));
+		rpc.mockResolvedValue({
+			data: null,
+			error: { message: "new row violates check constraint", code: "23514" },
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });

@@ -111,7 +111,7 @@ Test mocks updated in account/comments/community/goals test files for the new ch
 |----|---------|-----------|
 | F148 (useSaveCycle) | CONFIRMED | Parent-cleanup: delete the orphaned `training_cycles` row if `cycle_days` insert fails. |
 | F156 (useSaveRoutine) | CONFIRMED | Parent-cleanup: delete the orphaned `routines` row if `routine_exercises` insert fails. |
-| F149/F150 (useUpdateCycle), F158 (useUpdateRoutine) | CONFIRMED — pending | UPDATE delete+reinsert is not recoverable by cleanup (old children already gone); needs a transactional Postgres RPC. Next: a migration with `replace_cycle_days`/`replace_routine_exercises` (or parent+children upsert) RPCs, idempotent per CLAUDE.md. |
+| F149/F150 (useUpdateCycle), F158 (useUpdateRoutine) | CONFIRMED — DONE | New idempotent migration `20260628120000_atomic_routine_cycle_replace_rpcs.sql` adds SECURITY INVOKER RPCs `update_routine_with_exercises` / `update_cycle_with_days` that do the parent update + child delete/replace in one transaction, scoped to `auth.uid()`. Mutations rewired to `supabase.rpc(...)`; signatures added to `database.types.ts`; tests mock `rpc`. Migration validated by the Supabase preview branch + migrations CI gate. |
 
 ---
 
