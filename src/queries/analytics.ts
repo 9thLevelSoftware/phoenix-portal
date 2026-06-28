@@ -218,23 +218,25 @@ export function formScoreTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, form_score")
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.not("form_score", "is", null);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.not("form_score", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return data;
 		},
@@ -254,9 +256,7 @@ export function safetyTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
@@ -269,9 +269,13 @@ export function safetyTrendOptions(
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return (data ?? []).filter(
 				(r) =>
@@ -296,23 +300,25 @@ export function calorieHistoryOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, estimated_calories")
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.not("estimated_calories", "is", null);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.not("estimated_calories", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return data;
 		},
