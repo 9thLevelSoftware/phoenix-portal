@@ -374,14 +374,8 @@ export const challengeSchema = z.object({
 	challenge_type: z.enum(["volume", "frequency", "streak", "pr_count"]),
 	target_value: z.number(),
 	target_unit: z.string().nullable(),
-	start_date: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
-	end_date: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	start_date: nullableDate,
+	end_date: nullableDate,
 	difficulty: z.string(),
 	prize: z.string().nullable(),
 	created_at: z.coerce.date(),
@@ -399,10 +393,7 @@ export const challengeParticipantSchema = z.object({
 	challenge_id: z.string().uuid(),
 	user_id: z.string().uuid(),
 	joined_at: z.coerce.date(),
-	completed_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	completed_at: nullableDate,
 });
 
 export const challengeParticipantListSchema = z.array(
