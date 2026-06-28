@@ -9,6 +9,12 @@ const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
 const PUBLIC_SUPABASE_URL =
   Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
 
+// How long a pending Garmin OAuth 1.0a request token stays valid before the
+// callback stops considering it. Garmin request tokens are short-lived; the
+// non-null expiry also distinguishes a pending request token from a permanent
+// access token (stored with token_expires_at = null) during callback lookup.
+const GARMIN_PENDING_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
 /**
  * Garmin Connect OAuth 1.0a callback handler.
  *
@@ -187,13 +193,22 @@ Deno.serve(async (req) => {
       // Store request token temporarily in oauth_tokens (server-only).
       // Encrypt the request token + secret with the same pattern as permanent
       // OAuth secrets so sensitive material is never persisted in plaintext.
+      //
+      // token_expires_at marks this row as a PENDING request token: it is set to
+      // a short future time, whereas permanent OAuth 1.0a access tokens are
+      // stored with token_expires_at = null ("don't expire"). The callback below
+      // uses this to scan only in-flight pending rows instead of decrypting every
+      // connected Garmin user's permanent token on each callback.
+      const pendingTokenExpiresAt = new Date(
+        Date.now() + GARMIN_PENDING_TOKEN_TTL_MS,
+      ).toISOString();
       const { error: pendingTokenError } = await supabase.from('oauth_tokens').upsert(
         {
           user_id: userId,
           provider: 'garmin',
           access_token: await encryptOAuthSecret(requestToken), // Temporary request token
           refresh_token: await encryptOAuthSecret(requestTokenSecret), // Temporary request token secret
-          token_expires_at: null,
+          token_expires_at: pendingTokenExpiresAt,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,provider' },
@@ -237,13 +252,19 @@ Deno.serve(async (req) => {
     if (oauthToken && oauthVerifier) {
       // Look up the stored pending request token. The request token + secret are
       // stored encrypted (see Step 1), so we cannot match on the ciphertext via a
-      // column filter — decrypt each Garmin token row and compare to the returned
-      // oauth_token. Pending rows have a null token_expires_at (permanent tokens set it).
+      // column filter — decrypt each candidate row and compare to the returned
+      // oauth_token. Candidates are restricted to PENDING request tokens: rows
+      // with a non-null, not-yet-expired token_expires_at. Permanent access
+      // tokens use token_expires_at = null, so this bounds the decrypt loop to
+      // the handful of in-flight authorizations instead of every connected
+      // Garmin user's permanent token (which would be an unbounded full-table
+      // decrypt that can time out).
       const { data: pendingRows, error: lookupError } = await supabase
         .from('oauth_tokens')
         .select('user_id, access_token, refresh_token')
         .eq('provider', 'garmin')
-        .is('token_expires_at', null);
+        .not('token_expires_at', 'is', null)
+        .gt('token_expires_at', new Date().toISOString());
 
       if (lookupError) {
         console.error('Garmin pending token lookup failed:', lookupError);

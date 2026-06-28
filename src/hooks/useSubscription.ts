@@ -1,8 +1,4 @@
-import {
-	keepPreviousData,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { z } from "zod";
 import {
@@ -93,14 +89,24 @@ export function useSubscription(): SubscriptionData {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
 
+	const subscriptionKey = queryKeys.subscription.byUser(user?.id ?? "");
+
 	const { data, isLoading, isError, error } = useQuery({
-		queryKey: queryKeys.subscription.byUser(user?.id ?? ""),
+		queryKey: subscriptionKey,
 		queryFn: () => fetchSubscription(user?.id),
 		enabled: !!user,
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		// Preserve the last-known entitlement across transient refetch errors so a
-		// momentary network/Supabase failure doesn't silently downgrade the user.
-		placeholderData: keepPreviousData,
+		// momentary network/Supabase failure doesn't silently downgrade the user —
+		// but ONLY for the same user. `keepPreviousData` would also carry a row
+		// forward across a user switch or sign-out (the query key changes), briefly
+		// exposing the previous account's paid entitlement to the new/anonymous
+		// session. Scope the carry-over to a matching user id so that never happens.
+		placeholderData: (previousData, previousQuery) => {
+			if (!previousQuery) return undefined;
+			const previousUserId = previousQuery.queryKey[1];
+			return previousUserId === subscriptionKey[1] ? previousData : undefined;
+		},
 	});
 
 	// Subscribe to Realtime changes on the subscriptions table for this user
