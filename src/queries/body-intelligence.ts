@@ -11,12 +11,16 @@ export function bodyIntelligenceOptions(
 	days: number = 7,
 	profileId?: string | null,
 ) {
+	// Clamp days to a sane positive range so invalid input cannot produce a
+	// nonsensical (or future-dated) cutoff.
+	const safeDays =
+		Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 365) : 7;
 	return queryOptions({
-		queryKey: queryKeys.analytics.bodyIntelligence(userId, days, profileId),
+		queryKey: queryKeys.analytics.bodyIntelligence(userId, safeDays, profileId),
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		queryFn: async () => {
 			const since = new Date();
-			since.setDate(since.getDate() - days);
+			since.setDate(since.getDate() - safeDays);
 
 			let query = supabase
 				.from("exercises")
@@ -37,6 +41,7 @@ export function bodyIntelligenceOptions(
 				setCount: Array.isArray(row.sets) ? row.sets.length : 0,
 			}));
 		},
+		enabled: !!userId,
 	});
 }
 
@@ -59,5 +64,6 @@ export function sessionSetWeightsOptions(sessionId: string) {
 			if (error) throw error;
 			return data ?? [];
 		},
+		enabled: !!sessionId,
 	});
 }
