@@ -4,6 +4,24 @@ import { z } from "zod";
 // Vitruvian has dual cables; DB stores per-cable, portal shows total
 // Change to 1 if DB convention changes to store total
 export const WEIGHT_MULTIPLIER = 2;
+
+// Nullable ISO timestamp → Date | null, rejecting malformed strings (which would
+// otherwise parse as `Invalid Date` and corrupt downstream sorting/formatting).
+const validDate = (d: Date | null) =>
+	d === null || Number.isFinite(d.getTime());
+
+const nullableDate = z
+	.string()
+	.nullable()
+	.transform((s) => (s ? new Date(s) : null))
+	.refine(validDate, { message: "Invalid date" });
+
+const nullableOptionalDate = z
+	.string()
+	.nullable()
+	.optional()
+	.transform((s) => (s ? new Date(s) : null))
+	.refine(validDate, { message: "Invalid date" });
 const weightTransform = z
 	.number()
 	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
@@ -51,7 +69,7 @@ export const workoutSessionSchema = z.object({
 		.string()
 		.nullable()
 		.transform((name) => name?.trim() || "Untitled Workout"),
-	started_at: z.string().transform((s) => new Date(s)),
+	started_at: z.coerce.date(),
 	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
 	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform that was incorrectly doubling volume.
 	set_count: z.number(),
@@ -135,7 +153,7 @@ export const personalRecordSchema = z.object({
 	record_type: z.string(),
 	value: weightTransform,
 	unit: z.string(),
-	achieved_at: z.string().transform((s) => new Date(s)),
+	achieved_at: z.coerce.date(),
 	previous_value: z
 		.number()
 		.nullable()
@@ -163,10 +181,7 @@ export const routineSchema = z.object({
 	/** Stored as seconds in DB; exposed to portal UI as minutes */
 	estimated_duration: z.number().transform((sec) => Math.round(sec / 60)),
 	times_completed: z.number(),
-	last_used_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	last_used_at: nullableDate,
 	tags: z.array(z.string()).nullable(),
 	is_favorite: z.boolean(),
 	local_profile_id: z.string().nullable().optional(),
@@ -188,15 +203,8 @@ export const trainingCycleSchema = z.object({
 	status: z.enum(["active", "completed", "draft"]),
 	workout_days: z.number(),
 	rest_days: z.number(),
-	started_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
-	last_used_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	started_at: nullableOptionalDate,
+	last_used_at: nullableDate,
 	local_profile_id: z.string().nullable().optional(),
 });
 
@@ -215,7 +223,7 @@ export const analyticsSummarySchema = z.object({
 	total_duration: z.number(),
 	avg_session_duration: z.number(),
 	streak_days: z.number(),
-	computed_at: z.string().transform((s) => new Date(s)),
+	computed_at: z.coerce.date(),
 });
 
 export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
@@ -241,7 +249,7 @@ export const routineExerciseSchema = z.object({
 	// Stored per-cable to match the single `weight` column; multiply back to
 	// display totals so the UI keeps round-trip symmetry with `weight`.
 	per_set_weights: z
-		.any()
+		.unknown()
 		.nullable()
 		.optional()
 		.transform((v) =>
@@ -249,10 +257,18 @@ export const routineExerciseSchema = z.object({
 				? v.map((x) => (typeof x === "number" ? x * WEIGHT_MULTIPLIER : x))
 				: v,
 		),
-	per_set_rest: z.any().nullable().optional(),
-	per_set_reps: z.any().nullable().optional(),
-	is_amrap: z.boolean().optional().default(false),
-	is_bodyweight: z.boolean().optional().default(false),
+	per_set_rest: z.unknown().nullable().optional(),
+	per_set_reps: z.unknown().nullable().optional(),
+	per_set_echo_levels: z.unknown().nullable().optional(),
+	warmup_sets: z.unknown().nullable().optional(),
+	is_amrap: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
+	is_bodyweight: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
 	pr_percentage: z.number().nullable().optional(),
 	rep_count_timing: z.string().nullable().optional(),
 	stop_at_position: z.string().nullable().optional(),
@@ -262,7 +278,7 @@ export const routineExerciseSchema = z.object({
 		.transform((v) => v ?? true),
 	eccentric_load: z.string().nullable().optional(),
 	echo_level: z.string().nullable().optional(),
-	created_at: z.string().transform((s) => new Date(s)),
+	created_at: z.coerce.date(),
 });
 
 export const routineExerciseListSchema = z.array(routineExerciseSchema);
@@ -284,7 +300,7 @@ export const earnedBadgeSchema = z.object({
 	badge_name: z.string(),
 	badge_description: z.string().nullable().optional(),
 	badge_tier: z.string(),
-	earned_at: z.string().transform((s) => new Date(s)),
+	earned_at: z.coerce.date(),
 });
 
 export const earnedBadgeListSchema = z.array(earnedBadgeSchema);
@@ -302,11 +318,7 @@ export const rpgAttributesSchema = z.object({
 	character_class: z.string().nullable().optional(),
 	level: z.number(),
 	experience_points: z.number(),
-	updated_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
+	updated_at: nullableOptionalDate,
 });
 
 export type RpgAttributes = z.infer<typeof rpgAttributesSchema>;
@@ -320,11 +332,7 @@ export const gamificationStatsSchema = z.object({
 	longest_streak: z.number(),
 	current_streak: z.number(),
 	total_time_seconds: z.number(),
-	updated_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
+	updated_at: nullableOptionalDate,
 });
 
 export type GamificationStats = z.infer<typeof gamificationStatsSchema>;
@@ -350,13 +358,9 @@ export type CycleDay = z.infer<typeof cycleDaySchema>;
 
 export const cycleDetailSchema = trainingCycleSchema.extend({
 	cycle_days: z.array(cycleDaySchema),
-	started_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
-	progression_settings: z.any().nullable().optional(),
-	deload_settings: z.any().nullable().optional(),
+	started_at: nullableOptionalDate,
+	progression_settings: z.unknown().nullable().optional(),
+	deload_settings: z.unknown().nullable().optional(),
 });
 
 export type CycleDetail = z.infer<typeof cycleDetailSchema>;
@@ -370,17 +374,11 @@ export const challengeSchema = z.object({
 	challenge_type: z.enum(["volume", "frequency", "streak", "pr_count"]),
 	target_value: z.number(),
 	target_unit: z.string().nullable(),
-	start_date: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
-	end_date: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	start_date: nullableDate,
+	end_date: nullableDate,
 	difficulty: z.string(),
 	prize: z.string().nullable(),
-	created_at: z.string().transform((s) => new Date(s)),
+	created_at: z.coerce.date(),
 	is_active: z.boolean(),
 });
 
@@ -394,11 +392,8 @@ export const challengeParticipantSchema = z.object({
 	id: z.string().uuid(),
 	challenge_id: z.string().uuid(),
 	user_id: z.string().uuid(),
-	joined_at: z.string().transform((s) => new Date(s)),
-	completed_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	joined_at: z.coerce.date(),
+	completed_at: nullableDate,
 });
 
 export const challengeParticipantListSchema = z.array(

@@ -87,7 +87,10 @@ import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
-import { buildPhaseMetricSummary } from "./analytics/phaseStatisticsTransforms";
+import {
+	buildPhaseMetricSummary,
+	type PhaseMetricPair,
+} from "./analytics/phaseStatisticsTransforms";
 import {
 	buildMobileStrengthPhaseData,
 	buildStrengthPhaseSeries,
@@ -759,16 +762,31 @@ export function Analytics() {
 	const strengthExercises = strengthSeries.series.map((item) => item.name);
 	const phaseMetricSummary = useMemo(() => {
 		const summary = buildPhaseMetricSummary(phaseStatsRaw ?? []);
+		// session_phase_statistics rows carry concentric AND eccentric columns,
+		// so the phase filter scopes WHICH side is surfaced rather than which
+		// rows are aggregated. Zero out the non-selected side when a single
+		// phase is chosen; "all"/"Combined" keep both sides visible.
+		const scopePair = (pair: PhaseMetricPair): PhaseMetricPair => {
+			if (phaseFilter === "Concentric") {
+				return { ...pair, eccentricAvg: 0, eccentricMax: 0 };
+			}
+			if (phaseFilter === "Eccentric") {
+				return { ...pair, concentricAvg: 0, concentricMax: 0 };
+			}
+			return pair;
+		};
 		return {
 			...summary,
-			load: {
+			load: scopePair({
 				concentricAvg: convertWeight(summary.load.concentricAvg, unit),
 				concentricMax: convertWeight(summary.load.concentricMax, unit),
 				eccentricAvg: convertWeight(summary.load.eccentricAvg, unit),
 				eccentricMax: convertWeight(summary.load.eccentricMax, unit),
-			},
+			}),
+			velocity: scopePair(summary.velocity),
+			power: scopePair(summary.power),
 		};
-	}, [phaseStatsRaw, unit]);
+	}, [phaseStatsRaw, unit, phaseFilter]);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
@@ -1190,8 +1208,17 @@ export function Analytics() {
 		weight: Math.round(convertWeight(item.weight, unit) * 10) / 10,
 	}));
 	const mobileTotalWorkouts = (volumeRaw ?? []).length;
+	// Records/phase/progression/body intelligence each drive their own tabs, so
+	// the page-level empty state must consider every observable data source --
+	// otherwise a user with only e.g. phase stats or PRs loses access to all tabs.
+	const hasTabData =
+		(strengthRaw?.length ?? 0) > 0 ||
+		(phaseStatsRaw?.length ?? 0) > 0 ||
+		(progressionWorkbenchData?.progressRows.length ?? 0) > 0 ||
+		(progressionWorkbenchData?.records.length ?? 0) > 0 ||
+		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
-		mobileVolumeData.length > 0 || mobileMusclData.length > 0;
+		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;
 
 	if (isPending) {
 		return (
@@ -1236,7 +1263,10 @@ export function Analytics() {
 
 	const externalCount = externalActivities?.length ?? 0;
 	const hasData =
-		volumeData.length > 0 || muscleGroupData.length > 0 || externalCount > 0;
+		volumeData.length > 0 ||
+		muscleGroupData.length > 0 ||
+		externalCount > 0 ||
+		hasTabData;
 
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
@@ -1679,7 +1709,6 @@ export function Analytics() {
 					)}
 				</PageShell>
 			</div>
-			;
 		</div>
 	);
 }

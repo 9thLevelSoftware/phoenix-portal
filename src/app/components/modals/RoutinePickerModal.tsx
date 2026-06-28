@@ -1,5 +1,6 @@
 import { Dumbbell, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useMemo, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -15,6 +16,8 @@ interface RoutinePickerModalProps {
 		muscleGroup: string;
 	}>;
 	onSelect: (routineId: string) => void;
+	/** Optional handler for the "Create New Routine" action. */
+	onCreateRoutine?: () => void;
 }
 
 export function RoutinePickerModal({
@@ -22,9 +25,23 @@ export function RoutinePickerModal({
 	onClose,
 	routines,
 	onSelect,
+	onCreateRoutine,
 }: RoutinePickerModalProps) {
-	const recent = routines.slice(0, 2);
-	const all = routines;
+	const [search, setSearch] = useState("");
+
+	const filtered = useMemo(() => {
+		const q = search.trim().toLowerCase();
+		if (!q) return routines;
+		return routines.filter(
+			(r) =>
+				r.name.toLowerCase().includes(q) ||
+				r.muscleGroup.toLowerCase().includes(q),
+		);
+	}, [routines, search]);
+
+	// Only show the Recent section when not actively searching.
+	const recent = search.trim() ? [] : routines.slice(0, 2);
+	const all = filtered;
 
 	return (
 		<AnimatePresence>
@@ -61,6 +78,9 @@ export function RoutinePickerModal({
 									<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
 									<Input
 										placeholder="Search routines..."
+										value={search}
+										onChange={(e) => setSearch(e.target.value)}
+										aria-label="Search routines"
 										className="pl-10 bg-background border-secondary"
 									/>
 								</div>
@@ -68,24 +88,68 @@ export function RoutinePickerModal({
 
 							{/* Content */}
 							<div className="p-6 overflow-y-auto max-h-[calc(80vh-200px)]">
+								{all.length === 0 && (
+									<div className="text-center py-8 text-sm text-muted-foreground">
+										No routines match "{search.trim()}"
+									</div>
+								)}
 								{/* Recent */}
-								<div className="mb-6">
-									<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
-										Recent
-									</h3>
-									<div className="space-y-2">
-										{recent.map((routine) => (
-											<button
-												type="button"
-												key={routine.id}
-												onClick={() => onSelect(routine.id)}
-												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
-											>
-												<div className="flex items-center justify-between">
-													<div className="flex items-center gap-3">
-														<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-															<Dumbbell className="w-5 h-5 text-white" />
+								{recent.length > 0 && (
+									<div className="mb-6">
+										<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
+											Recent
+										</h3>
+										<div className="space-y-2">
+											{recent.map((routine) => (
+												<button
+													type="button"
+													key={routine.id}
+													onClick={() => onSelect(routine.id)}
+													className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
+												>
+													<div className="flex items-center justify-between">
+														<div className="flex items-center gap-3">
+															<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+																<Dumbbell className="w-5 h-5 text-white" />
+															</div>
+															<div>
+																<div className="font-semibold text-white">
+																	{routine.name}
+																</div>
+																<div className="text-sm text-muted-foreground">
+																	{routine.exercises} exercises • ~
+																	{routine.duration} min
+																</div>
+															</div>
 														</div>
+														<Button
+															size="sm"
+															className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+														>
+															Select
+														</Button>
+													</div>
+												</button>
+											))}
+										</div>
+									</div>
+								)}
+
+								{/* All Routines */}
+								{all.length > 0 && (
+									<div>
+										<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
+											{search.trim() ? "Results" : "All My Routines"}
+										</h3>
+										<div className="space-y-2">
+											{all.map((routine) => (
+												<button
+													type="button"
+													key={routine.id}
+													onClick={() => onSelect(routine.id)}
+													className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
+												>
+													<div className="flex items-center justify-between">
 														<div>
 															<div className="font-semibold text-white">
 																{routine.name}
@@ -95,64 +159,32 @@ export function RoutinePickerModal({
 																{routine.duration} min
 															</div>
 														</div>
+														<Button
+															size="sm"
+															className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+														>
+															Select
+														</Button>
 													</div>
-													<Button
-														size="sm"
-														className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
-													>
-														Select
-													</Button>
-												</div>
-											</button>
-										))}
+												</button>
+											))}
+										</div>
 									</div>
-								</div>
-
-								{/* All Routines */}
-								<div>
-									<h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">
-										All My Routines
-									</h3>
-									<div className="space-y-2">
-										{all.map((routine) => (
-											<button
-												type="button"
-												key={routine.id}
-												onClick={() => onSelect(routine.id)}
-												className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
-											>
-												<div className="flex items-center justify-between">
-													<div>
-														<div className="font-semibold text-white">
-															{routine.name}
-														</div>
-														<div className="text-sm text-muted-foreground">
-															{routine.exercises} exercises • ~
-															{routine.duration} min
-														</div>
-													</div>
-													<Button
-														size="sm"
-														className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity"
-													>
-														Select
-													</Button>
-												</div>
-											</button>
-										))}
-									</div>
-								</div>
+								)}
 							</div>
 
 							{/* Footer */}
-							<div className="p-6 border-t border-secondary">
-								<Button
-									variant="outline"
-									className="w-full border-primary text-primary hover:bg-primary/10"
-								>
-									+ Create New Routine
-								</Button>
-							</div>
+							{onCreateRoutine && (
+								<div className="p-6 border-t border-secondary">
+									<Button
+										variant="outline"
+										onClick={onCreateRoutine}
+										className="w-full border-primary text-primary hover:bg-primary/10"
+									>
+										+ Create New Routine
+									</Button>
+								</div>
+							)}
 						</Card>
 					</motion.div>
 				</>

@@ -201,7 +201,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		try {
 			const { unmount } = render(<TestComponent />);
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				`sync:${USER_ID}`,
+				expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
 			);
 
 			// Queue a broadcast inside the debounce window, then unmount
@@ -230,7 +230,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		try {
 			const { rerender, unmount } = render(<TestComponent />);
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				`sync:${USER_ID}`,
+				expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
 			);
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledTimes(1);
 
@@ -244,7 +244,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 			// the new user ID.
 			expect(mocks.removeChannel).toHaveBeenCalled();
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				`sync:${ALT_USER_ID}`,
+				expect.stringMatching(new RegExp(`^sync:${ALT_USER_ID}:`)),
 			);
 			unmount();
 		} finally {

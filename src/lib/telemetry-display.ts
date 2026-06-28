@@ -18,15 +18,27 @@ export type Cable = "A" | "B";
  *
  * - Cable A → "Left" (left actuator)
  * - Cable B → "Right" (right actuator)
+ *
+ * Database/query results can surface `cable` as `string | null`; any value that
+ * is not the canonical "A"/"B" returns an explicit "Unknown" rather than being
+ * silently treated as "Right".
  */
-export function cableDisplayName(c: Cable): "Left" | "Right" {
-	return c === "A" ? "Left" : "Right";
+export function cableDisplayName(
+	c: Cable | string | null | undefined,
+): "Left" | "Right" | "Unknown" {
+	if (c === "A") return "Left";
+	if (c === "B") return "Right";
+	return "Unknown";
 }
 
 /**
  * Convert a cable identifier to a lowercase slug suitable for CSS class names
- * or URL fragments.
+ * or URL fragments. Non-canonical values return "unknown".
  */
-export function cableSlug(c: Cable): "left" | "right" {
-	return c === "A" ? "left" : "right";
+export function cableSlug(
+	c: Cable | string | null | undefined,
+): "left" | "right" | "unknown" {
+	if (c === "A") return "left";
+	if (c === "B") return "right";
+	return "unknown";
 }

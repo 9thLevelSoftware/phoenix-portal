@@ -330,9 +330,25 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: cors });
   }
 
+  // POST only — this endpoint deletes and reinserts cached user_insights, so it
+  // is state-changing. Reject other methods before auth/parsing so an
+  // authenticated GET/HEAD or proxy retry cannot trigger regeneration. (F308)
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     // ── Auth ──────────────────────────────────────────────────────────────────
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
@@ -358,7 +374,22 @@ Deno.serve(async (req) => {
     if (!rateCheck.allowed) return rateCheck.response!;
 
     // ── Parse request ─────────────────────────────────────────────────────────
-    const body = await req.json().catch(() => ({}));
+    // An empty body is allowed (defaults apply); malformed JSON is rejected with
+    // a 400 instead of being silently replaced with {}. (F309)
+    const rawBody = await req.text();
+    let body: { userId?: string; period?: string };
+    if (rawBody.trim().length === 0) {
+      body = {};
+    } else {
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid JSON body' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
     const userId: string = body.userId ?? user.id;
     const period: string = body.period ?? '30d';
 
@@ -441,10 +472,18 @@ Deno.serve(async (req) => {
     let muscleGroups: Record<string, number> = {};
 
     if (currentSessionIds.length > 0) {
-      const { data: exerciseRows } = await supabaseAdmin
+      const { data: exerciseRows, error: exerciseRowsError } = await supabaseAdmin
         .from('exercises')
         .select('muscle_group')
         .in('session_id', currentSessionIds);
+
+      if (exerciseRowsError) {
+        console.error('Failed to fetch exercise rows:', exerciseRowsError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch workout data' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       if (exerciseRows && exerciseRows.length > 0) {
         const groupCounts: Record<string, number> = {};
@@ -460,12 +499,20 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Recent personal records ────────────────────────────────────────────
-    const { data: prRows } = await supabaseAdmin
+    const { data: prRows, error: prRowsError } = await supabaseAdmin
       .from('personal_records')
       .select('exercise_name, record_type, workout_phase, value, previous_value')
       .eq('user_id', userId)
       .gte('achieved_at', currentStart.toISOString())
       .order('achieved_at', { ascending: false });
+
+    if (prRowsError) {
+      console.error('Failed to fetch personal records:', prRowsError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch workout data' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const recentPRs = (prRows ?? []).map((r) => ({
       exercise: r.exercise_name,
@@ -484,12 +531,20 @@ Deno.serve(async (req) => {
 
     // ── 4. Plateau detection (exercise_progress: 1RM flat for 3+ weeks) ───────
     const threeWeeksAgo = new Date(now.getTime() - 21 * 86400_000);
-    const { data: progressRows } = await supabaseAdmin
+    const { data: progressRows, error: progressRowsError } = await supabaseAdmin
       .from('exercise_progress')
       .select('exercise_name, estimated_1rm_kg, recorded_at')
       .eq('user_id', userId)
       .gte('recorded_at', threeWeeksAgo.toISOString())
       .order('recorded_at', { ascending: true });
+
+    if (progressRowsError) {
+      console.error('Failed to fetch exercise progress:', progressRowsError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch workout data' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const plateauExercises: string[] = [];
     if (progressRows && progressRows.length > 0) {
@@ -535,12 +590,20 @@ Deno.serve(async (req) => {
     // ── 5. Streak calculation ─────────────────────────────────────────────────
     // Pull all distinct workout days in the last 90 days, sorted descending
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 86400_000);
-    const { data: streakSessions } = await supabaseAdmin
+    const { data: streakSessions, error: streakSessionsError } = await supabaseAdmin
       .from('workout_sessions')
       .select('started_at')
       .eq('user_id', userId)
       .gte('started_at', ninetyDaysAgo.toISOString())
       .order('started_at', { ascending: false });
+
+    if (streakSessionsError) {
+      console.error('Failed to fetch streak sessions:', streakSessionsError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch workout data' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     let currentStreak = 0;
     let bestStreak = 0;
@@ -610,23 +673,11 @@ Deno.serve(async (req) => {
 
     const insights = generateInsights(insightInput, weightUnit);
 
-    // ── 8. Persist: delete old, insert new ────────────────────────────────────
-    const { error: deleteError } = await supabaseAdmin
-      .from('user_insights')
-      .delete()
-      .eq('user_id', userId)
-      .eq('period', period);
-
-    if (deleteError) {
-      console.error('Failed to delete old insights:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to clear old insights' }),
-        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-
+    // ── 8. Persist: atomically replace the cached insights for this period ─────
+    // Delete-old + insert-new run in one transaction via replace_user_insights
+    // (F303/F311): doing them as separate statements meant a failure after the
+    // delete left the user with no cached insights until the next regeneration.
     const rows = insights.map((insight) => ({
-      user_id: userId,
       insight_type: insight.type,
       title: insight.title,
       description: insight.description,
@@ -635,21 +686,20 @@ Deno.serve(async (req) => {
       metric_value: insight.metric?.value ?? null,
       metric_unit: insight.metric?.unit ?? null,
       metric_delta: insight.metric?.delta ?? null,
-      period,
     }));
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabaseAdmin
-        .from('user_insights')
-        .insert(rows);
+    const { error: persistError } = await supabaseAdmin.rpc('replace_user_insights', {
+      p_user_id: userId,
+      p_period: period,
+      p_rows: rows,
+    });
 
-      if (insertError) {
-        console.error('Failed to insert insights:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to save insights' }),
-          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (persistError) {
+      console.error('Failed to persist insights:', persistError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to save insights' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(

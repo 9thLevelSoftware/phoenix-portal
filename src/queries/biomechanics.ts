@@ -52,5 +52,6 @@ export function sessionAsymmetryOptions(sessionId: string) {
 				};
 			});
 		},
+		enabled: !!sessionId,
 	});
 }

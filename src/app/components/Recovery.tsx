@@ -181,7 +181,7 @@ function FreeRecoveryView() {
 
 export function Recovery() {
 	const { isPremium } = useSubscription();
-	const { recovery, wearable, isLoading, daysSinceFirstSession } =
+	const { recovery, wearable, isLoading, isError, daysSinceFirstSession } =
 		useRecoveryScore();
 
 	const [showDisclaimer, setShowDisclaimer] = useState(() => {
@@ -201,6 +201,27 @@ export function Recovery() {
 						<div className="h-48 bg-secondary rounded-lg" />
 						<div className="h-32 bg-secondary rounded-lg" />
 					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Distinguish a failed query from a user with no recovery data.
+	if (isError && !recovery) {
+		return (
+			<div className="min-h-screen pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+					<Card className="p-6 sm:p-8 bg-surface-2 border-secondary text-center">
+						<HeartPulse className="w-10 h-10 text-primary mx-auto mb-4" />
+						<h2 className="text-xl text-white mb-2">
+							Couldn't load recovery data
+						</h2>
+						<p className="text-sm text-muted-foreground mb-6">
+							Something went wrong while loading your recovery readiness. Please
+							try again.
+						</p>
+						<Button onClick={() => window.location.reload()}>Retry</Button>
+					</Card>
 				</div>
 			</div>
 		);

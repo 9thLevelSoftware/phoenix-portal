@@ -511,21 +511,20 @@ export function useDeleteSharedContent() {
 		mutationFn: async ({ contentId, contentType }: DeleteSharedContentArgs) => {
 			if (!user) throw new Error("Must be logged in to delete");
 
-			if (contentType === "routine") {
-				const { error } = await supabase
-					.from("shared_routines")
-					.delete()
-					.eq("id", contentId)
-					.eq("user_id", user.id);
-				if (error) throw error;
-			} else {
-				const { error } = await supabase
-					.from("shared_cycles")
-					.delete()
-					.eq("id", contentId)
-					.eq("user_id", user.id);
-				if (error) throw error;
-			}
+			const table =
+				contentType === "routine" ? "shared_routines" : "shared_cycles";
+			const { data: deleted, error } = await supabase
+				.from(table)
+				.delete()
+				.eq("id", contentId)
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
+			if (error) throw error;
+			if (!deleted)
+				throw new Error(
+					"Content not found or you don't have permission to remove it.",
+				);
 		},
 
 		onSuccess: () => {

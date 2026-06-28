@@ -149,7 +149,9 @@ function computeSummary(
 
 	// Daily volume sparkline
 	const dailyVolumeMap = new Map<string, number>();
-	const dailyWorkoutMap = new Map<string, number>();
+	// Count distinct workout sessions per day, not exercise-progress rows — a
+	// single session has one row per exercise and would otherwise overcount.
+	const dailySessionSets = new Map<string, Set<string>>();
 	for (const d of current) {
 		const dayKey = d.recorded_at.toLocaleDateString("en-US", {
 			weekday: "short",
@@ -158,7 +160,13 @@ function computeSummary(
 			dayKey,
 			(dailyVolumeMap.get(dayKey) ?? 0) + d.total_volume_kg,
 		);
-		dailyWorkoutMap.set(dayKey, (dailyWorkoutMap.get(dayKey) ?? 0) + 1);
+		const sessions = dailySessionSets.get(dayKey) ?? new Set<string>();
+		sessions.add(d.session_id);
+		dailySessionSets.set(dayKey, sessions);
+	}
+	const dailyWorkoutMap = new Map<string, number>();
+	for (const [day, sessions] of dailySessionSets.entries()) {
+		dailyWorkoutMap.set(day, sessions.size);
 	}
 	const dailyVolume = Array.from(dailyVolumeMap.entries()).map(
 		([day, volume]) => ({

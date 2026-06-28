@@ -49,7 +49,7 @@ function PowerOutputInner({
 						? rep.power_watts
 						: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
 				return {
-					repNumber: i + 1,
+					repNumber: rep.rep_number ?? i + 1,
 					watts,
 					force: rep.mean_force_n,
 					velocity: rep.mean_velocity_mps,
@@ -84,7 +84,9 @@ function PowerOutputInner({
 
 	const maxWatts = useMemo(() => {
 		if (powerData.length === 0) return 100;
-		return Math.max(...powerData.map((d) => d.watts)) * 1.2; // headroom for labels
+		// Clamp to a positive minimum so zero/missing/negative power data can't
+		// produce a degenerate or inverted y-domain.
+		return Math.max(100, Math.max(...powerData.map((d) => d.watts)) * 1.2); // headroom for labels
 	}, [powerData]);
 
 	const yScale = useMemo(
@@ -263,7 +265,7 @@ export function PowerOutput(props: PowerOutputProps) {
 								: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
 						return (
 							<tr key={rep.id}>
-								<td>Rep {i + 1}</td>
+								<td>Rep {rep.rep_number ?? i + 1}</td>
 								<td>{watts}</td>
 							</tr>
 						);

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Manages a temporary success state for buttons.
@@ -23,9 +23,12 @@ export function useButtonSuccess(durationMs = 2000) {
 		timerRef.current = setTimeout(() => setIsSuccess(false), durationMs);
 	}, [durationMs]);
 
-	// Clean up timer on unmount
-	const cleanupRef = useRef(trigger);
-	cleanupRef.current = trigger;
+	// Clean up timer on unmount to avoid setting state after the component is gone.
+	useEffect(() => {
+		return () => {
+			if (timerRef.current) clearTimeout(timerRef.current);
+		};
+	}, []);
 
 	return { isSuccess, trigger } as const;
 }

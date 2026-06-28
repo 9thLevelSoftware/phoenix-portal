@@ -92,7 +92,10 @@ export function useUpdateComment() {
 			// check was bypassed.
 			const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-			const { error, count } = await supabase
+			// `.select()` is required for the row check: a bare `.update()` does
+			// not populate `count`, so the previous `count === 0` guard never
+			// fired and the server-side edit-window check was a no-op.
+			const { data: updated, error } = await supabase
 				.from("community_comments")
 				.update({
 					body,
@@ -100,10 +103,12 @@ export function useUpdateComment() {
 				})
 				.eq("id", commentId)
 				.eq("user_id", user.id)
-				.gte("created_at", fiveMinutesAgo);
+				.gte("created_at", fiveMinutesAgo)
+				.select("id")
+				.maybeSingle();
 
 			if (error) throw error;
-			if (count === 0) {
+			if (!updated) {
 				throw new Error("Edit window has expired");
 			}
 		},
@@ -141,6 +146,24 @@ export function useDeleteComment() {
 	return useMutation({
 		mutationFn: async ({ commentId }: DeleteCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to delete");
+
+			// Verify the comment exists and belongs to the user BEFORE soft-deleting.
+			// We can't confirm via the update's returned row: the SELECT RLS policy
+			// only exposes `deleted_at IS NULL` rows, so once deleted_at is set the
+			// representation is filtered out and would look like a failure.
+			const { data: existing, error: findError } = await supabase
+				.from("community_comments")
+				.select("id")
+				.eq("id", commentId)
+				.eq("user_id", user.id)
+				.is("deleted_at", null)
+				.maybeSingle();
+
+			if (findError) throw findError;
+			if (!existing)
+				throw new Error(
+					"Comment not found or you don't have permission to delete it.",
+				);
 
 			// Soft delete: set deleted_at timestamp
 			const { error } = await supabase

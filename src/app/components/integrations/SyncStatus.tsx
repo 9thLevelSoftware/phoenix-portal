@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, Clock, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import {
 	Card,
@@ -22,15 +22,17 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
 };
 
 export function SyncStatus({ userId }: SyncStatusProps) {
-	const { data: queue } = useQuery({
+	const { data: queue, isError } = useQuery({
 		queryKey: queryKeys.integrations.syncQueue(userId),
 		queryFn: async () => {
-			const { data } = await supabase
+			const { data, error } = await supabase
 				.from("sync_queue")
 				.select("*")
 				.eq("user_id", userId)
 				.order("created_at", { ascending: false })
 				.limit(10);
+			// Surface DB/RLS/network failures instead of reporting "All synced".
+			if (error) throw error;
 			return data ?? [];
 		},
 		enabled: !!userId,
@@ -38,8 +40,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			// Only poll when there's pending or processing work
 			const items = query.state.data ?? [];
 			const hasPending = items.some(
-				(q: { status: string }) =>
-					q.status === "pending" || q.status === "processing",
+				(q) => q.status === "pending" || q.status === "processing",
 			);
 			return hasPending ? 15_000 : false;
 		},
@@ -55,7 +56,14 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-4">
-					{processing && (
+					{isError && (
+						<div className="flex items-center gap-2 text-sm text-red-400">
+							<AlertCircle className="h-4 w-4" />
+							<span>Couldn't load sync status. Please try again.</span>
+						</div>
+					)}
+
+					{!isError && processing && (
 						<div className="flex items-center gap-2 text-sm">
 							<Loader2 className="h-4 w-4 animate-spin text-amber-400" />
 							<span className="capitalize">
@@ -64,14 +72,14 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 						</div>
 					)}
 
-					{pending > 0 && (
+					{!isError && pending > 0 && (
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Clock className="h-4 w-4" />
 							<span>{pending} sync(s) pending</span>
 						</div>
 					)}
 
-					{!processing && pending === 0 && (
+					{!isError && !processing && pending === 0 && (
 						<div className="flex items-center gap-2 text-sm text-emerald-400">
 							<CheckCircle className="h-4 w-4" />
 							<span>All synced</span>
@@ -79,7 +87,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 					)}
 
 					{/* Recent activity */}
-					{queue && queue.length > 0 && (
+					{!isError && queue && queue.length > 0 && (
 						<div className="border-t border-secondary pt-4 mt-4">
 							<h4 className="text-sm font-medium mb-2">Recent Activity</h4>
 							<div className="space-y-2">

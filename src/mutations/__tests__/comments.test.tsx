@@ -12,6 +12,7 @@ const mockChain = {
 	insert: vi.fn(),
 	update: vi.fn(),
 	delete: vi.fn(),
+	select: vi.fn(),
 };
 
 const from = vi.fn(() => mockChain);
@@ -159,7 +160,11 @@ describe("useUpdateComment", () => {
 	it("updates comment within edit window and invalidates cache", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() => Promise.resolve({ error: null, count: 1 }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -207,9 +212,11 @@ describe("useUpdateComment", () => {
 	it("shows generic error when Supabase update fails", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() =>
-			Promise.resolve({ error: { message: "permission denied" }, count: null }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: null, error: { message: "permission denied" } }),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -244,9 +251,18 @@ describe("useDeleteComment", () => {
 	it("soft-deletes comment via update and invalidates caches", async () => {
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() => Promise.resolve({ error: null }));
-		const eqId = vi.fn(() => ({ eq: eqUserId }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+		// Pre-read confirms the comment exists and is owned by the user.
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const isDeletedAt = vi.fn(() => ({ maybeSingle }));
+		const selEqUser = vi.fn(() => ({ is: isDeletedAt }));
+		const selEqId = vi.fn(() => ({ eq: selEqUser }));
+		mockChain.select.mockImplementation(() => ({ eq: selEqId }));
+		// Soft-delete update (no returned representation needed).
+		const updEqUser = vi.fn(() => Promise.resolve({ error: null }));
+		const updEqId = vi.fn(() => ({ eq: updEqUser }));
+		mockChain.update.mockImplementation(() => ({ eq: updEqId }));
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -272,11 +288,19 @@ describe("useDeleteComment", () => {
 	it("shows user-friendly error on delete failure", async () => {
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() =>
+		// Pre-read succeeds; the soft-delete update then fails.
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const isDeletedAt = vi.fn(() => ({ maybeSingle }));
+		const selEqUser = vi.fn(() => ({ is: isDeletedAt }));
+		const selEqId = vi.fn(() => ({ eq: selEqUser }));
+		mockChain.select.mockImplementation(() => ({ eq: selEqId }));
+		const updEqUser = vi.fn(() =>
 			Promise.resolve({ error: { message: "row-level security violation" } }),
 		);
-		const eqId = vi.fn(() => ({ eq: eqUserId }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+		const updEqId = vi.fn(() => ({ eq: updEqUser }));
+		mockChain.update.mockImplementation(() => ({ eq: updEqId }));
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useDeleteComment(), { wrapper });

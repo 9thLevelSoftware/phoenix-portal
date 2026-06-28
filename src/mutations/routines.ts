@@ -131,7 +131,8 @@ export function useSaveRoutine() {
 
 			if (routineError) throw routineError;
 
-			// Insert exercises
+			// Insert exercises. If this fails, roll back the orphaned parent so we
+			// don't leave a routine whose exercise_count has no matching children.
 			if (input.exercises.length > 0) {
 				const routineExercises = toRoutineExerciseRows(
 					routine.id,
@@ -140,7 +141,14 @@ export function useSaveRoutine() {
 				const { error: exError } = await supabase
 					.from("routine_exercises")
 					.insert(routineExercises);
-				if (exError) throw exError;
+				if (exError) {
+					await supabase
+						.from("routines")
+						.delete()
+						.eq("id", routine.id)
+						.eq("user_id", user.id);
+					throw exError;
+				}
 			}
 
 			return routine;
@@ -195,37 +203,31 @@ export function useUpdateRoutine() {
 		mutationFn: async (input: UpdateRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to update routines");
 
-			// Update routine row
-			const { error: routineError } = await supabase
-				.from("routines")
-				.update({
-					name: input.name,
-					description: input.description ?? "",
-					exercise_count: input.exercises.length,
-					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
-				})
-				.eq("id", input.routineId);
+			// Atomic update via RPC: the parent update + exercise delete/replace
+			// run in one transaction (server-side), scoped to auth.uid(), so a
+			// failed insert can no longer leave the routine with zero exercises.
+			const { data: updatedId, error } = await supabase.rpc(
+				"update_routine_with_exercises",
+				{
+					p_routine_id: input.routineId,
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_exercise_count: input.exercises.length,
+					p_estimated_duration: estimatedRoutineDurationSeconds(
+						input.exercises,
+					),
+					p_exercises: toRoutineExerciseRows(
+						input.routineId,
+						input.exercises,
+					) as unknown as Json,
+				},
+			);
 
-			if (routineError) throw routineError;
-
-			// Delete old exercises, insert new ones
-			const { error: deleteError } = await supabase
-				.from("routine_exercises")
-				.delete()
-				.eq("routine_id", input.routineId);
-
-			if (deleteError) throw deleteError;
-
-			if (input.exercises.length > 0) {
-				const routineExercises = toRoutineExerciseRows(
-					input.routineId,
-					input.exercises,
+			if (error) throw error;
+			if (!updatedId)
+				throw new Error(
+					"Routine not found or you don't have permission to update it",
 				);
-				const { error: exError } = await supabase
-					.from("routine_exercises")
-					.insert(routineExercises);
-				if (exError) throw exError;
-			}
 
 			return { id: input.routineId };
 		},

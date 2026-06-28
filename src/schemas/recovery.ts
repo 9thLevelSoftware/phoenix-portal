@@ -6,8 +6,8 @@ import { z } from "zod";
  * cares about relative ratios, not display values.
  */
 export const recoverySessionSchema = z.object({
-	started_at: z.string().transform((s) => new Date(s)),
-	total_volume: z.number(),
+	started_at: z.coerce.date(),
+	total_volume: z.number().finite().nonnegative(),
 });
 
 export const recoverySessionListSchema = z.array(recoverySessionSchema);
@@ -32,8 +32,8 @@ export type ActiveCycleRow = z.infer<typeof activeCycleSchema>;
 export const wearableRecoverySchema = z.object({
 	id: z.string().uuid(),
 	provider: z.string(),
-	raw_data: z.any().nullable(),
-	synced_at: z.string().transform((s) => new Date(s)),
+	raw_data: z.unknown().nullable(),
+	synced_at: z.coerce.date(),
 });
 
 export const wearableRecoveryListSchema = z.array(wearableRecoverySchema);

@@ -178,12 +178,20 @@ export function BiomechanicsContent({
 	}, [sets, selectedSetId]);
 
 	// ---- Telemetry queries (per selected set) ----
-	const { data: telemetry, isPending: telemetryLoading } = useQuery({
+	const {
+		data: telemetry,
+		isPending: telemetryLoading,
+		isError: telemetryError,
+	} = useQuery({
 		...repTelemetryOptions(effectiveSetId),
 		enabled: !!effectiveSetId,
 	});
 
-	const { data: repSummaries, isPending: summariesLoading } = useQuery({
+	const {
+		data: repSummaries,
+		isPending: summariesLoading,
+		isError: summariesError,
+	} = useQuery({
 		...repSummariesOptions(effectiveSetId),
 		enabled: !!effectiveSetId,
 	});
@@ -398,6 +406,10 @@ export function BiomechanicsContent({
 								</div>
 								{telemetryLoading ? (
 									<Skeleton className="h-[300px] w-full" />
+								) : telemetryError ? (
+									<div className="py-8 text-center text-sm text-muted-foreground">
+										Couldn't load telemetry for this set. Please try again.
+									</div>
 								) : repData.length > 0 ? (
 									<ForceCurve
 										repData={repData}
@@ -530,6 +542,10 @@ export function BiomechanicsContent({
 							<Section title="Form Analysis" icon={Activity}>
 								{summariesLoading ? (
 									<Skeleton className="h-[300px] w-full" />
+								) : summariesError ? (
+									<div className="py-8 text-center text-sm text-muted-foreground">
+										Couldn't load rep data for this set. Please try again.
+									</div>
 								) : repSummaries && repSummaries.length >= 2 ? (
 									<FormAnalysis
 										reps={repSummaries.map((r) => ({

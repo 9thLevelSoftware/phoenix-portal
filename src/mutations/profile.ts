@@ -26,11 +26,14 @@ export function useUpdateProfile(userId: string | undefined) {
 		mutationFn: async (fields: ProfileUpdate) => {
 			if (!userId) throw new Error("Not authenticated");
 
-			const { error } = await supabase
+			const { data: updated, error } = await supabase
 				.from("profiles")
 				.update(fields)
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.select("user_id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!updated) throw new Error("Profile not found for this user.");
 		},
 		onSuccess: () => {
 			toast.success("Settings saved");

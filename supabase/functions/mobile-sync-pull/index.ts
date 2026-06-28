@@ -128,6 +128,28 @@ function uuidParityIds(ids: unknown[] | undefined): string[] {
 }
 
 /**
+ * Build a retryable 503 response for a failed Supabase read. Sync pulls must
+ * never return partial success: if a required child/entity read fails the
+ * client could advance its sync state and silently lose the missing rows, so
+ * we fail the whole pull and let the client retry.
+ */
+function readFailure(
+  entity: string,
+  error: { code?: string; message?: string; hint?: string },
+  cors: Record<string, string>,
+): Response {
+  console.error(`Error fetching ${entity}:`, error);
+  return new Response(
+    JSON.stringify({
+      error: `Failed to fetch ${entity}`,
+      code: error.code ?? 'UNKNOWN',
+      details: error.message ?? error.hint ?? null,
+    }),
+    { status: 503, headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '5' } },
+  );
+}
+
+/**
  * Enforce MAX_PARITY_IDS on each parity list and reject with HTTP 413 if any
  * exceeds the cap. Resolves audit item #7 (2026-04-19). Client must chunk
  * long parity lists into <=MAX_PARITY_IDS batches.
@@ -351,8 +373,23 @@ Deno.serve(async (req) => {
       cursor: body.cursor,
     });
 
-    // Pagination: parse cursor and pageSize with defaults
-    const pageSize = Math.min(body.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    // Pagination: parse cursor and pageSize with defaults.
+    // fix(F352/F19): reject zero/negative/non-finite pageSize. Previously only
+    // an upper Math.min cap was applied, so pageSize <= 0 produced an empty
+    // successful response with hasMore:false, letting a client advance its sync
+    // state while receiving no data.
+    const requestedPageSize = body.pageSize ?? DEFAULT_PAGE_SIZE;
+    if (
+      typeof requestedPageSize !== 'number' ||
+      !Number.isFinite(requestedPageSize) ||
+      requestedPageSize < 1
+    ) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid pageSize. Must be a positive integer.' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+    const pageSize = Math.min(Math.floor(requestedPageSize), MAX_PAGE_SIZE);
     const cursor = body.cursor ? decodeCursor(body.cursor) : null;
 
     // If cursor is provided but invalid, start fresh (stale cursor handling)
@@ -480,29 +517,38 @@ Deno.serve(async (req) => {
       let repSummariesRaw: Record<string, unknown>[] = [];
 
       if (sessionIds.length > 0) {
-        const { data: exercises } = await supabase
+        const { data: exercises, error: exercisesError } = await supabase
           .from('exercises')
           .select('*')
           .in('session_id', sessionIds)
           .order('order_index', { ascending: true });
+        if (exercisesError) {
+          return readFailure('session exercises', exercisesError, cors);
+        }
         exercisesRaw = exercises ?? [];
 
         const exerciseIds = exercisesRaw.map((e) => e.id as string);
 
         if (exerciseIds.length > 0) {
-          const { data: sets } = await supabase
+          const { data: sets, error: setsError } = await supabase
             .from('sets')
             .select('*')
             .in('exercise_id', exerciseIds);
+          if (setsError) {
+            return readFailure('session sets', setsError, cors);
+          }
           setsRaw = sets ?? [];
 
           const setIds = setsRaw.map((s) => s.id as string);
 
           if (setIds.length > 0) {
-            const { data: repSums } = await supabase
+            const { data: repSums, error: repSummariesError } = await supabase
               .from('rep_summaries')
               .select('*')
               .in('set_id', setIds);
+            if (repSummariesError) {
+              return readFailure('session rep summaries', repSummariesError, cors);
+            }
             repSummariesRaw = repSums ?? [];
           }
         }
@@ -643,7 +689,7 @@ Deno.serve(async (req) => {
           p_limit: remainingPageSize + 1,
           p_last_sync_at: lastSyncISO,
         });
-        if (error) console.error('Error fetching routines:', error);
+        if (error) return readFailure('routines', error, cors);
         routinesData = (data as Record<string, unknown>[]) ?? [];
       } else {
         // Legacy timestamp-based mode
@@ -671,7 +717,7 @@ Deno.serve(async (req) => {
         }
 
         const { data, error } = await routinesQuery;
-        if (error) console.error('Error fetching routines:', error);
+        if (error) return readFailure('routines', error, cors);
         routinesData = (data as Record<string, unknown>[]) ?? [];
       }
 
@@ -687,13 +733,14 @@ Deno.serve(async (req) => {
       const routineIds = routinesData.map((r: Record<string, unknown>) => r.id as string);
       let routineExercisesRaw: Record<string, unknown>[] = [];
       if (routineIds.length > 0) {
-        const { data: re } = await supabase
+        const { data: re, error: reError } = await supabase
           .from('routine_exercises')
           .select(`
             *,
             catalog:exercise_catalog(display_name, equipment)
           `)
           .in('routine_id', routineIds);
+        if (reError) return readFailure('routine exercises', reError, cors);
         routineExercisesRaw = re ?? [];
       }
 
@@ -777,7 +824,7 @@ Deno.serve(async (req) => {
           p_limit: remainingPageSize + 1,
           p_last_sync_at: lastSyncISO,
         });
-        if (error) console.error('Error fetching cycles:', error);
+        if (error) return readFailure('cycles', error, cors);
         cyclesData = (data as Record<string, unknown>[]) ?? [];
       } else {
         // Legacy timestamp-based mode
@@ -805,7 +852,7 @@ Deno.serve(async (req) => {
         }
 
         const { data, error } = await cyclesQuery;
-        if (error) console.error('Error fetching cycles:', error);
+        if (error) return readFailure('cycles', error, cors);
         cyclesData = (data as Record<string, unknown>[]) ?? [];
       }
 
@@ -821,10 +868,11 @@ Deno.serve(async (req) => {
       const cycleIds = cyclesData.map((c: Record<string, unknown>) => c.id as string);
       let cycleDaysRaw: Record<string, unknown>[] = [];
       if (cycleIds.length > 0) {
-        const { data: cd } = await supabase
+        const { data: cd, error: cdError } = await supabase
           .from('cycle_days')
           .select('*')
           .in('cycle_id', cycleIds);
+        if (cdError) return readFailure('cycle days', cdError, cors);
         cycleDaysRaw = cd ?? [];
       }
 
@@ -889,7 +937,7 @@ Deno.serve(async (req) => {
           p_cursor_id: cursorId,
           p_limit: remainingPageSize + 1,
         });
-        if (error) console.error('Error fetching badges:', error);
+        if (error) return readFailure('badges', error, cors);
         badgesData = (data as Record<string, unknown>[]) ?? [];
       } else {
         // Legacy timestamp-based mode
@@ -909,7 +957,7 @@ Deno.serve(async (req) => {
         }
 
         const { data, error } = await badgesQuery;
-        if (error) console.error('Error fetching badges:', error);
+        if (error) return readFailure('badges', error, cors);
         badgesData = (data as Record<string, unknown>[]) ?? [];
       }
 
@@ -938,12 +986,13 @@ Deno.serve(async (req) => {
     // Stats are singleton records per user, so we fetch them on the final page
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('stats')) {
       // RPG attributes (delta sync)
-      const { data: rpgAttributes } = await supabase
+      const { data: rpgAttributes, error: rpgError } = await supabase
         .from('rpg_attributes')
         .select('*')
         .eq('user_id', userId)
         .gt('updated_at', lastSyncISO)
         .maybeSingle();
+      if (rpgError) return readFailure('rpg attributes', rpgError, cors);
 
       rpgDto = rpgAttributes
         ? {
@@ -965,12 +1014,13 @@ Deno.serve(async (req) => {
         : null;
 
       // Gamification stats (delta sync)
-      const { data: gamificationStats } = await supabase
+      const { data: gamificationStats, error: gamificationError } = await supabase
         .from('gamification_stats')
         .select('*')
         .eq('user_id', userId)
         .gt('updated_at', lastSyncISO)
         .maybeSingle();
+      if (gamificationError) return readFailure('gamification stats', gamificationError, cors);
 
       gamificationDto = gamificationStats
         ? {
@@ -1000,7 +1050,7 @@ Deno.serve(async (req) => {
           p_known_ids: knownPRIds,
           p_profile_id: profileId,
         });
-        if (error) console.error('Error fetching personal records:', error);
+        if (error) return readFailure('personal records', error, cors);
         personalRecordsData = (data as Record<string, unknown>[]) ?? [];
       } else {
         // Legacy timestamp-based mode
@@ -1017,13 +1067,18 @@ Deno.serve(async (req) => {
         }
 
         const { data, error } = await personalRecordsQuery;
-        if (error) console.error('Error fetching personal records:', error);
+        if (error) return readFailure('personal records', error, cors);
         personalRecordsData = (data as Record<string, unknown>[]) ?? [];
       }
 
       personalRecordDtos = personalRecordsData.map((pr: Record<string, unknown>) => ({
         id: pr.id,
         userId: pr.user_id,
+        // fix(F351): preserve catalog exercise linkage and profile scope so the
+        // mobile side does not lose exerciseId/localProfileId on pull. Push
+        // accepts these fields and the RPC/query returns the snake_case columns.
+        exerciseId: pr.exercise_id ?? null,
+        localProfileId: pr.local_profile_id ?? null,
         exerciseName: pr.exercise_name,
         muscleGroup: pr.muscle_group,
         recordType: pr.record_type,
@@ -1037,10 +1092,11 @@ Deno.serve(async (req) => {
       }));
 
       // Local profiles (always included on final page)
-      const { data: profilesData } = await supabase
+      const { data: profilesData, error: profilesError } = await supabase
         .from('local_profiles')
         .select('id, name, color_index, device_id, created_at, updated_at')
         .eq('user_id', userId);
+      if (profilesError) return readFailure('local profiles', profilesError, cors);
       // Transform to camelCase for mobile DTO compatibility
       localProfiles = (profilesData ?? []).map((p: Record<string, unknown>) => ({
         id: p.id,
@@ -1049,11 +1105,12 @@ Deno.serve(async (req) => {
       }));
 
       // External activities (EMBER+ enforced at handler start)
-      const { data: externalActivitiesRaw } = await supabase
+      const { data: externalActivitiesRaw, error: externalActivitiesError } = await supabase
         .from('external_activities')
         .select('*')
         .eq('user_id', userId)
         .gt('synced_at', lastSyncISO);
+      if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
 
       externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
         id: a.id,

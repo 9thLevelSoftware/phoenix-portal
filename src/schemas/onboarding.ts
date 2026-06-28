@@ -10,11 +10,14 @@ export const onboardingSchema = z.object({
 	completed_at: z
 		.string()
 		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+		.transform((s) => (s ? new Date(s) : null))
+		.refine((d) => d === null || Number.isFinite(d.getTime()), {
+			message: "Invalid date",
+		}),
 	version_seen: z.string().nullable(),
 	dismissed_hints: z.record(z.boolean()).default({}),
 	dismissed_whats_new: z.boolean(),
-	created_at: z.string().transform((s) => new Date(s)),
+	created_at: z.coerce.date(),
 });
 
 export type OnboardingRow = z.infer<typeof onboardingSchema>;

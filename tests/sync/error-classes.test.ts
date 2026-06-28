@@ -61,28 +61,15 @@ describe('Sync wire-level error class signals', () => {
 
     it('mock server-error mode returns status 500 (transient wire signal)', async () => {
       setMockErrorMode('server');
-      // The mock's `checkMockError` returns a 500 at every call (see
-      // mock-edge-functions.ts lines 364-372). Even though the default
-      // mockPushEndpoint path doesn't invoke checkMockError, we can still
-      // assert the flag round-trips via a pull to exercise shape.
-      //
-      // NOTE: setMockErrorMode only affects functions that call
-      // checkMockError. Neither mockPushEndpoint nor mockPullEndpoint
-      // invoke it directly today — this is an observable gap. Flag for
-      // follow-up so the mock stays useful for classifier testing.
-      //
-      // Regression marker until the mock wires in checkMockError at the
-      // top of push/pull: expect a successful call (current behavior),
-      // not the injected 500. When the wiring lands, flip these
-      // expectations.
+      // `checkMockError` is wired into the top of both mockPushEndpoint and
+      // mockPullEndpoint (see mock-edge-functions.ts), so setMockErrorMode
+      // now surfaces the injected 500 the mobile classifier maps to TRANSIENT.
       const result = await callPushEndpoint(
         createMinimalPushPayload(testUser.id),
         testUser.accessToken,
       );
-      // Current mock behavior: succeeds despite setMockErrorMode('server')
-      // TODO(mock): wire checkMockError into mockPushEndpoint, then flip
-      // this to expect result.status === 500.
-      expect(result.status).toBe(200);
+      expect(result.status).toBe(500);
+      expect(result.error?.code).toBe('SERVER_ERROR');
     });
   });
 
@@ -137,12 +124,21 @@ describe('Sync wire-level error class signals', () => {
     );
 
     it('mock network-error mode exposes NETWORK_ERROR code on affected paths', async () => {
-      // Mirrors the TRANSIENT mock-wiring gap above. setMockErrorMode is
-      // honoured only by functions that call checkMockError. We assert the
-      // setter doesn't throw and document the gap so classifier-dependent
-      // tests don't silently pass.
+      // `checkMockError` is wired into push and pull, so network mode now
+      // surfaces the status 0 / NETWORK_ERROR signal the mobile classifier
+      // reads as NETWORK.
       setMockErrorMode('network');
-      expect(() => setMockErrorMode('network')).not.toThrow();
+      const pushResult = await callPushEndpoint(
+        createMinimalPushPayload(testUser.id),
+        testUser.accessToken,
+      );
+      expect(pushResult.status).toBe(0);
+      expect(pushResult.error?.code).toBe('NETWORK_ERROR');
+
+      const pullResult = await callPullEndpoint(0, testUser.accessToken);
+      expect(pullResult.status).toBe(0);
+      expect(pullResult.error?.code).toBe('NETWORK_ERROR');
+
       setMockErrorMode('none');
     });
   });

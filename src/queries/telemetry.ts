@@ -17,6 +17,7 @@ export function repTelemetryOptions(setId: string) {
 			if (error) throw error;
 			return z.array(telemetryPointSchema).parse(data);
 		},
+		enabled: !!setId,
 	});
 }
 
@@ -33,5 +34,6 @@ export function repSummariesOptions(setId: string) {
 			if (error) throw error;
 			return z.array(repSummarySchema).parse(data);
 		},
+		enabled: !!setId,
 	});
 }

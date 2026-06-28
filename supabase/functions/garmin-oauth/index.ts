@@ -1,6 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
-import { encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { extractGarminProviderUserId } from '../_shared/garminIdentity.ts';
 
 const GARMIN_CONSUMER_KEY = Deno.env.get('GARMIN_CONSUMER_KEY')!;
@@ -8,6 +8,12 @@ const GARMIN_CONSUMER_SECRET = Deno.env.get('GARMIN_CONSUMER_SECRET')!;
 const APP_URL = Deno.env.get('APP_URL') ?? 'http://localhost:5173';
 const PUBLIC_SUPABASE_URL =
   Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
+
+// How long a pending Garmin OAuth 1.0a request token stays valid before the
+// callback stops considering it. Garmin request tokens are short-lived; the
+// non-null expiry also distinguishes a pending request token from a permanent
+// access token (stored with token_expires_at = null) during callback lookup.
+const GARMIN_PENDING_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Garmin Connect OAuth 1.0a callback handler.
@@ -138,9 +144,6 @@ Deno.serve(async (req) => {
 
       const userId = stateRow.user_id;
 
-      // Delete used state token (single-use)
-      await supabase.from('oauth_states').delete().eq('state_token', stateParam);
-
       const requestTokenUrl = 'https://connectapi.garmin.com/oauth-service/oauth/request_token';
       const callbackUrl = `${PUBLIC_SUPABASE_URL}/functions/v1/garmin-oauth`;
       const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -178,23 +181,46 @@ Deno.serve(async (req) => {
 
       const responseText = await requestTokenResponse.text();
       const responseParams = new URLSearchParams(responseText);
-      const requestToken = responseParams.get('oauth_token')!;
-      const requestTokenSecret = responseParams.get('oauth_token_secret')!;
+      const requestToken = responseParams.get('oauth_token');
+      const requestTokenSecret = responseParams.get('oauth_token_secret');
 
-      // Store request token temporarily in oauth_tokens (server-only)
-      await supabase.from('oauth_tokens').upsert(
+      // Validate the provider response shape before consuming state / storing tokens
+      if (!requestToken || !requestTokenSecret) {
+        console.error('Garmin request token response missing oauth_token/secret');
+        return Response.redirect(`${APP_URL}/integrations?error=garmin_request_token_failed`);
+      }
+
+      // Store request token temporarily in oauth_tokens (server-only).
+      // Encrypt the request token + secret with the same pattern as permanent
+      // OAuth secrets so sensitive material is never persisted in plaintext.
+      //
+      // token_expires_at marks this row as a PENDING request token: it is set to
+      // a short future time, whereas permanent OAuth 1.0a access tokens are
+      // stored with token_expires_at = null ("don't expire"). The callback below
+      // uses this to scan only in-flight pending rows instead of decrypting every
+      // connected Garmin user's permanent token on each callback.
+      const pendingTokenExpiresAt = new Date(
+        Date.now() + GARMIN_PENDING_TOKEN_TTL_MS,
+      ).toISOString();
+      const { error: pendingTokenError } = await supabase.from('oauth_tokens').upsert(
         {
           user_id: userId,
           provider: 'garmin',
-          access_token: requestToken, // Temporarily store request token
-          refresh_token: requestTokenSecret, // Temporarily store request token secret
+          access_token: await encryptOAuthSecret(requestToken), // Temporary request token
+          refresh_token: await encryptOAuthSecret(requestTokenSecret), // Temporary request token secret
+          token_expires_at: pendingTokenExpiresAt,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,provider' },
       );
 
+      if (pendingTokenError) {
+        console.error('Failed to store Garmin pending request token:', pendingTokenError);
+        return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
+      }
+
       // Update user_integrations with non-sensitive status
-      await supabase.from('user_integrations').upsert(
+      const { error: pendingIntegrationError } = await supabase.from('user_integrations').upsert(
         {
           user_id: userId,
           provider: 'garmin',
@@ -204,6 +230,15 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'user_id,provider' },
       );
+
+      if (pendingIntegrationError) {
+        console.error('Failed to store Garmin pending integration state:', pendingIntegrationError);
+        return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
+      }
+
+      // Consume the state token only after the request token has been persisted, so a
+      // transient Garmin/API failure does not strand the user with an invalidated state.
+      await supabase.from('oauth_states').delete().eq('state_token', stateParam);
 
       // Redirect user to Garmin authorization page
       const authUrl = `https://connect.garmin.com/oauthConfirm?oauth_token=${requestToken}`;
@@ -215,21 +250,56 @@ Deno.serve(async (req) => {
     // Garmin redirects here after user authorizes
     // =========================================================================
     if (oauthToken && oauthVerifier) {
-      // Look up the stored request token secret in oauth_tokens
-      const { data: pendingToken, error: lookupError } = await supabase
+      // Look up the stored pending request token. The request token + secret are
+      // stored encrypted (see Step 1), so we cannot match on the ciphertext via a
+      // column filter — decrypt each candidate row and compare to the returned
+      // oauth_token. Candidates are restricted to PENDING request tokens: rows
+      // with a non-null, not-yet-expired token_expires_at. Permanent access
+      // tokens use token_expires_at = null, so this bounds the decrypt loop to
+      // the handful of in-flight authorizations instead of every connected
+      // Garmin user's permanent token (which would be an unbounded full-table
+      // decrypt that can time out).
+      const { data: pendingRows, error: lookupError } = await supabase
         .from('oauth_tokens')
-        .select('user_id, refresh_token')
+        .select('user_id, access_token, refresh_token')
         .eq('provider', 'garmin')
-        .eq('access_token', oauthToken) // We stored request token here
-        .single();
+        .not('token_expires_at', 'is', null)
+        .gt('token_expires_at', new Date().toISOString());
 
-      if (lookupError || !pendingToken) {
-        console.error('Garmin pending token not found:', lookupError);
+      if (lookupError) {
+        console.error('Garmin pending token lookup failed:', lookupError);
         return Response.redirect(`${APP_URL}/integrations?error=garmin_state_lost`);
       }
 
-      const requestTokenSecret = pendingToken.refresh_token!;
-      const userId = pendingToken.user_id;
+      let matchedUserId: string | null = null;
+      let matchedSecret: string | null = null;
+      for (const row of pendingRows ?? []) {
+        let storedRequestToken: string | null | undefined;
+        try {
+          storedRequestToken = await decryptOAuthSecret(row.access_token);
+        } catch (decryptErr) {
+          console.error('Garmin pending token decrypt failed; skipping candidate:', decryptErr);
+          continue;
+        }
+        if (storedRequestToken === oauthToken) {
+          matchedUserId = row.user_id;
+          try {
+            matchedSecret = (await decryptOAuthSecret(row.refresh_token)) ?? null;
+          } catch (decryptErr) {
+            console.error('Garmin pending token secret decrypt failed:', decryptErr);
+            return Response.redirect(`${APP_URL}/integrations?error=garmin_state_lost`);
+          }
+          break;
+        }
+      }
+
+      if (!matchedUserId || !matchedSecret) {
+        console.error('Garmin pending token not found for returned oauth_token');
+        return Response.redirect(`${APP_URL}/integrations?error=garmin_state_lost`);
+      }
+
+      const requestTokenSecret = matchedSecret;
+      const userId = matchedUserId;
 
       const accessTokenUrl = 'https://connectapi.garmin.com/oauth-service/oauth/access_token';
       const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -269,13 +339,19 @@ Deno.serve(async (req) => {
 
       const responseText = await accessTokenResponse.text();
       const responseParams = new URLSearchParams(responseText);
-      const accessToken = responseParams.get('oauth_token')!;
-      const accessTokenSecret = responseParams.get('oauth_token_secret')!;
+      const accessToken = responseParams.get('oauth_token');
+      const accessTokenSecret = responseParams.get('oauth_token_secret');
       const providerUserId = extractGarminProviderUserId(responseParams);
+
+      // Validate the provider response shape before persisting
+      if (!accessToken || !accessTokenSecret) {
+        console.error('Garmin access token response missing oauth_token/secret');
+        return Response.redirect(`${APP_URL}/integrations?error=garmin_token_exchange_failed`);
+      }
 
       // Store the permanent access token in oauth_tokens (server-only)
       // OAuth 1.0a tokens don't expire (no refresh_token concept)
-      await supabase.from('oauth_tokens').upsert(
+      const { error: tokenError } = await supabase.from('oauth_tokens').upsert(
         {
           user_id: userId,
           provider: 'garmin',
@@ -287,8 +363,13 @@ Deno.serve(async (req) => {
         { onConflict: 'user_id,provider' },
       );
 
+      if (tokenError) {
+        console.error('Failed to store Garmin access token:', tokenError);
+        return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
+      }
+
       // Update user_integrations with non-sensitive data only
-      await supabase.from('user_integrations').upsert(
+      const { error: integrationError } = await supabase.from('user_integrations').upsert(
         {
           user_id: userId,
           provider: 'garmin',
@@ -299,6 +380,11 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'user_id,provider' },
       );
+
+      if (integrationError) {
+        console.error('Failed to update Garmin integration:', integrationError);
+        return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
+      }
 
       // No initial sync queue for Garmin -- relies on webhook push notifications
       // for real-time activity updates. User can trigger manual sync if needed.

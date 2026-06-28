@@ -448,11 +448,15 @@ export async function createTestUser(
   password?: string
 ): Promise<TestUser> {
   if (useMocks()) {
-    // Return mock user when mocks are enabled
+    // Return mock user when mocks are enabled. Encode the user id into the
+    // access token so the mock endpoints can derive user-scoped identity
+    // (broadcast channel, badge keys) from the authenticated context rather
+    // than from payload data. See parseMockUserId in mock-edge-functions.ts.
+    const mockUserId = `mock-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     return {
-      id: `mock-user-${Date.now()}`,
+      id: mockUserId,
       email: email || `test-${Date.now()}@test.local`,
-      accessToken: 'mock-access-token',
+      accessToken: `mock-access-token:${mockUserId}`,
     };
   }
 
@@ -731,10 +735,16 @@ export async function callPullEndpoint(
 // ============================================================================
 
 /**
- * Generate a unique ID for test data
+ * Generate a unique ID for test entity primary keys.
+ *
+ * Returns a real UUID so that mock-mode payloads satisfy the production
+ * `pushPayloadSchema`, which enforces a strict UUID regex on entity ids
+ * (session/exercise/set/routine/cycle ids). Using a timestamp-based string
+ * here previously let mock tests pass with ids the real Edge Functions
+ * would reject in live mode.
  */
 export function generateTestId(): string {
-  return `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return crypto.randomUUID();
 }
 
 /**

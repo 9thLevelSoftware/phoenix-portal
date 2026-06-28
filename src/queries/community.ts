@@ -51,10 +51,14 @@ async function hydrateProfiles<T extends { user_id: string | null }>(
 	const profileMap: Record<string, ProfileSummary> = {};
 
 	if (userIds.length > 0) {
-		const { data: profiles } = await supabase
+		const { data: profiles, error } = await supabase
 			.from("public_profiles")
 			.select("id, display_name, avatar_url")
 			.in("id", userIds);
+
+		// Surface backend/RLS failures instead of silently rendering every creator
+		// as having no public profile.
+		if (error) throw error;
 
 		if (profiles) {
 			for (const p of profiles as Array<
@@ -101,6 +105,12 @@ export function communityFeedOptions(params: FeedParams) {
 			// Sort
 			if (params.sort === "new") {
 				query = query.order("shared_at", { ascending: false });
+			} else if (params.sort === "hot") {
+				// "hot" ranks by the precomputed hot_score (recency-weighted votes),
+				// with shared_at as a deterministic tie-breaker.
+				query = query
+					.order("hot_score", { ascending: false })
+					.order("shared_at", { ascending: false });
 			} else {
 				query = query
 					.order("vote_count", { ascending: false })

@@ -315,7 +315,11 @@ describe("useArchiveGoal", () => {
 	it("archives a goal by setting status to 'archived' and invalidates cache", async () => {
 		const { useArchiveGoal } = await import("../goals");
 
-		const eqUser = vi.fn(() => Promise.resolve({ error: null }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "goal-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUser = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUser }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
 

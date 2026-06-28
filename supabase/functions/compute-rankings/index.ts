@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 // =============================================================================
 // Response Types (matching src/queries/leaderboard.ts)
@@ -104,6 +105,36 @@ function getMonday(date: Date): Date {
   return new Date(date.setDate(diff));
 }
 
+// Reasonable historical/future window for weekly leaderboards. Requests outside
+// this range would force unbounded scans for weeks that cannot hold meaningful
+// data, so we reject them rather than running the query.
+const WEEK_START_MIN = new Date('2023-01-01T00:00:00Z').getTime();
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validate a client-supplied weekStart as an ISO `YYYY-MM-DD` date within an
+ * allowed historical/future window. Returns the normalized date string or an
+ * error message. fix(F314): previously fed straight into `new Date(weekStart)`,
+ * where invalid strings threw a RangeError (generic 500) and arbitrary dates
+ * could request unbounded windows.
+ */
+function validateWeekStart(weekStart: string): { ok: true; value: string } | { ok: false; error: string } {
+  if (!ISO_DATE_REGEX.test(weekStart)) {
+    return { ok: false, error: 'weekStart must be an ISO date in YYYY-MM-DD format' };
+  }
+  const parsed = new Date(`${weekStart}T00:00:00Z`);
+  const ms = parsed.getTime();
+  if (Number.isNaN(ms)) {
+    return { ok: false, error: 'weekStart is not a valid date' };
+  }
+  // Allow up to 1 week into the future to tolerate client/server clock skew.
+  const maxMs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  if (ms < WEEK_START_MIN || ms > maxMs) {
+    return { ok: false, error: 'weekStart is outside the allowed range' };
+  }
+  return { ok: true, value: weekStart };
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -191,6 +222,22 @@ Deno.serve(async (req) => {
     // 3. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
     const supabase = createClient(supabaseUrl, supabaseServiceKey) as SupabaseAnyClient;
+
+    // Rate limit: ranking requests run service-role scans/aggregate RPCs across
+    // all leaderboard participants, so cap per-user request volume. Keyed by
+    // request type so global/weekly/user share separate budgets.
+    const rateCheck = await checkRateLimit(
+      supabase,
+      {
+        key: `compute-rankings:${body.type}`,
+        userId: user.id,
+        maxRequests: 30,
+        windowSeconds: 60,
+      },
+      cors,
+    );
+    if (!rateCheck.allowed) return rateCheck.response!;
+
     const gate = await requireSubscription(supabase, user.id, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
 
@@ -228,6 +275,15 @@ Deno.serve(async (req) => {
     }
 
     if (body.type === 'weekly') {
+      if (body.weekStart !== undefined) {
+        const weekValidation = validateWeekStart(body.weekStart);
+        if (!weekValidation.ok) {
+          return new Response(
+            JSON.stringify({ error: weekValidation.error }),
+            { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
       const result = await computeWeeklyRankings(supabase, body.weekStart);
       return new Response(
         JSON.stringify(result),
@@ -412,10 +468,15 @@ async function computeWeeklyRankings(
     : getWeeklyMetric(start);
 
   // Get eligible users
-  const { data: eligibleProfiles } = await supabase
+  const { data: eligibleProfiles, error: eligibleProfilesError } = await supabase
     .from('profiles')
     .select('id, display_name, avatar_url, user_id')
     .eq('leaderboard_participation', true);
+
+  if (eligibleProfilesError) {
+    console.error('Failed to fetch weekly leaderboard profiles:', eligibleProfilesError);
+    throw new Error('Failed to fetch leaderboard profiles');
+  }
 
   const eligibleUserIds = (eligibleProfiles ?? []).map(p => p.user_id).filter(Boolean) as string[];
   const profilesByUserId = new Map(
@@ -435,17 +496,41 @@ async function computeWeeklyRankings(
     };
   }
 
+  // fix(F316/F9): validate the active metric against the metrics this function
+  // actually implements. A special event configured with an unsupported metric
+  // would otherwise return event metadata with an empty entries list, making the
+  // competition look like it has no participants. Surface a config error instead.
+  const SUPPORTED_WEEKLY_METRICS = new Set([
+    'total_volume_kg',
+    'total_workouts',
+    'pr_count',
+    'current_streak',
+  ]);
+  if (!SUPPORTED_WEEKLY_METRICS.has(metricConfig.metric)) {
+    console.error(
+      'Unsupported weekly leaderboard metric configured:',
+      metricConfig.metric,
+      isSpecialEvent ? `(event ${event?.id})` : '(metric rotation)',
+    );
+    throw new Error(`Unsupported leaderboard metric: ${metricConfig.metric}`);
+  }
+
   let entries: LeaderboardEntry[] = [];
 
   // Compute weekly values based on metric
   if (metricConfig.metric === 'total_volume_kg' || metricConfig.metric === 'total_workouts') {
     // Aggregate from workout_sessions within the week
-    const { data: sessions } = await supabase
+    const { data: sessions, error: sessionsError } = await supabase
       .from('workout_sessions')
       .select('user_id, total_volume, started_at')
       .in('user_id', eligibleUserIds)
       .gte('started_at', `${start}T00:00:00Z`)
       .lte('started_at', `${end}T23:59:59Z`);
+
+    if (sessionsError) {
+      console.error('Failed to fetch weekly workout sessions:', sessionsError);
+      throw new Error('Failed to fetch weekly leaderboard sessions');
+    }
 
     const weeklyStats = new Map<string, { volume: number; count: number }>();
     for (const session of sessions ?? []) {
@@ -464,12 +549,17 @@ async function computeWeeklyRankings(
   } else if (metricConfig.metric === 'pr_count') {
     // Count personal_records rows achieved during the week. Dedicated
     // concentric/eccentric records count separately from combined records.
-    const { data: prs } = await supabase
+    const { data: prs, error: prsError } = await supabase
       .from('personal_records')
       .select('user_id')
       .in('user_id', eligibleUserIds)
       .gte('achieved_at', `${start}T00:00:00Z`)
       .lte('achieved_at', `${end}T23:59:59Z`);
+
+    if (prsError) {
+      console.error('Failed to fetch weekly personal records:', prsError);
+      throw new Error('Failed to fetch weekly leaderboard PRs');
+    }
 
     const prCounts = new Map<string, number>();
     for (const pr of prs ?? []) {
@@ -484,10 +574,15 @@ async function computeWeeklyRankings(
     );
   } else if (metricConfig.metric === 'current_streak') {
     // Use current gamification_stats streak values
-    const { data: stats } = await supabase
+    const { data: stats, error: statsError } = await supabase
       .from('gamification_stats')
       .select('user_id, current_streak')
       .in('user_id', eligibleUserIds);
+
+    if (statsError) {
+      console.error('Failed to fetch weekly gamification stats:', statsError);
+      throw new Error('Failed to fetch weekly leaderboard stats');
+    }
 
     const statsMap = new Map((stats ?? []).map(s => [s.user_id, s]));
     entries = buildRankings(
@@ -519,10 +614,15 @@ async function computeUserRankings(
   targetUserId: string
 ): Promise<UserRanking[]> {
   // Get all eligible users
-  const { data: eligibleProfiles } = await supabase
+  const { data: eligibleProfiles, error: eligibleProfilesError } = await supabase
     .from('profiles')
     .select('user_id')
     .eq('leaderboard_participation', true);
+
+  if (eligibleProfilesError) {
+    console.error('Failed to fetch user-ranking eligible profiles:', eligibleProfilesError);
+    throw new Error('Failed to fetch leaderboard profiles');
+  }
 
   const eligibleUserIds = (eligibleProfiles ?? []).map(p => p.user_id).filter(Boolean) as string[];
   const totalUsers = eligibleUserIds.length;
@@ -532,10 +632,15 @@ async function computeUserRankings(
   }
 
   // Get gamification stats for all eligible users
-  const { data: stats } = await supabase
+  const { data: stats, error: statsError } = await supabase
     .from('gamification_stats')
     .select('user_id, total_volume_kg, total_workouts, longest_streak, current_streak')
     .in('user_id', eligibleUserIds);
+
+  if (statsError) {
+    console.error('Failed to fetch user-ranking gamification stats:', statsError);
+    throw new Error('Failed to fetch leaderboard stats');
+  }
 
   const statsMap = new Map((stats ?? []).map(s => [s.user_id, s]));
   const userStats = statsMap.get(targetUserId);
@@ -587,9 +692,14 @@ async function computeUserRankings(
   });
 
   // PR Count ranking (via RPC)
-  const { data: prRank } = await supabase.rpc('get_user_pr_rank', {
+  const { data: prRank, error: prRankError } = await supabase.rpc('get_user_pr_rank', {
     target_user_id: targetUserId,
   });
+
+  if (prRankError) {
+    console.error('Failed to fetch user PR rank:', prRankError);
+    throw new Error('Failed to compute user PR rank');
+  }
 
   if (prRank && prRank.length > 0) {
     const pr = prRank[0];
@@ -602,9 +712,13 @@ async function computeUserRankings(
     });
   } else {
     // User has 0 PRs. Get count of users with >0 PRs from RPC (already called for global rankings)
-    const { data: allPrUsers } = await supabase.rpc('get_pr_count_rankings', {
+    const { data: allPrUsers, error: allPrUsersError } = await supabase.rpc('get_pr_count_rankings', {
       result_limit: totalUsers,
     });
+    if (allPrUsersError) {
+      console.error('Failed to fetch PR count rankings for zero-PR baseline:', allPrUsersError);
+      throw new Error('Failed to compute user PR rank');
+    }
     // All 0-PR users are tied at rank = (users with PRs) + 1
     const usersWithPRs = (allPrUsers ?? []).length;
     const zeroRank = usersWithPRs + 1;
@@ -628,6 +742,7 @@ async function computeUserRankings(
 
   if (masteryQueryError) {
     console.error('Failed to fetch user exercise data:', masteryQueryError);
+    throw new Error('Failed to compute exercise mastery ranking');
   }
 
   // Group by exercise name, count distinct sessions
@@ -641,9 +756,14 @@ async function computeUserRankings(
   const masteredCount = [...exerciseSessionMap.values()].filter(sessions => sessions.size >= 10).length;
 
   // Get all users' mastery for ranking
-  const { data: allMasteryData } = await supabase.rpc('get_exercise_mastery_rankings', {
+  const { data: allMasteryData, error: allMasteryError } = await supabase.rpc('get_exercise_mastery_rankings', {
     result_limit: totalUsers,
   });
+
+  if (allMasteryError) {
+    console.error('Failed to fetch exercise mastery rankings:', allMasteryError);
+    throw new Error('Failed to compute exercise mastery ranking');
+  }
 
   const masteryValues = (allMasteryData ?? []).map((m: { mastered_count: number }) => m.mastered_count);
   // Users with 0 mastery rank after all users with positive mastery

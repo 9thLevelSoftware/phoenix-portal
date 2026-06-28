@@ -19,6 +19,32 @@ function isChunkLoadError(error: Error): boolean {
 
 const RELOAD_KEY = "phoenix-chunk-reload";
 
+// sessionStorage can throw in private/blocked-storage contexts. This error UI
+// must never throw while already handling an error, so all access is best-effort.
+function safeSessionGet(key: string): string | null {
+	try {
+		return sessionStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function safeSessionSet(key: string, value: string): void {
+	try {
+		sessionStorage.setItem(key, value);
+	} catch {
+		// ignore storage failure
+	}
+}
+
+function safeSessionRemove(key: string): void {
+	try {
+		sessionStorage.removeItem(key);
+	} catch {
+		// ignore storage failure
+	}
+}
+
 export function PageErrorFallback({
 	error,
 	resetErrorBoundary,
@@ -28,13 +54,13 @@ export function PageErrorFallback({
 	useEffect(() => {
 		if (!isChunkLoadError(error)) return;
 		// Prevent infinite reload loops: only auto-reload once per session
-		const lastReload = sessionStorage.getItem(RELOAD_KEY);
+		const lastReload = safeSessionGet(RELOAD_KEY);
 		const now = Date.now();
 		if (lastReload && now - Number(lastReload) < 30_000) return;
 		if (hasAutoReloaded.current) return;
 
 		hasAutoReloaded.current = true;
-		sessionStorage.setItem(RELOAD_KEY, String(now));
+		safeSessionSet(RELOAD_KEY, String(now));
 		window.location.reload();
 	}, [error]);
 
@@ -55,7 +81,7 @@ export function PageErrorFallback({
 				<Button
 					onClick={() => {
 						if (chunkError) {
-							sessionStorage.removeItem(RELOAD_KEY);
+							safeSessionRemove(RELOAD_KEY);
 							window.location.reload();
 						} else {
 							resetErrorBoundary();

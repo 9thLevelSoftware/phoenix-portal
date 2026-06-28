@@ -337,15 +337,19 @@ describe('Conflict Resolution Integration Tests', () => {
       });
       await callPushEndpoint(deviceBPayload, testUser.accessToken);
 
-      // PULL: Should return union of all unique badges
-      // NOTE: The mock stores badges additively, matching union behavior
+      // PULL: Should return union of all unique badges. The mock keys badges
+      // by `${authedUserId}:${badgeId}`, so the overlapping FIRST_WORKOUT
+      // collapses to one row and the union is exactly three badges.
       const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-      // In a full implementation, we'd expect 3 unique badges:
-      // FIRST_WORKOUT, WEEK_WARRIOR, PR_KING
-      // The mock may return all pushed badges; we verify the pattern
       expect(pullResult.success).toBe(true);
-      // At minimum, we should have badges from both devices
+      const badgeIds = (pullResult.data?.badges ?? []).map((b) => b.badgeId);
+      expect(badgeIds).toHaveLength(3);
+      expect(new Set(badgeIds)).toEqual(
+        new Set(['FIRST_WORKOUT', 'WEEK_WARRIOR', 'PR_KING']),
+      );
+      // FIRST_WORKOUT must appear exactly once (union de-dup, not append).
+      expect(badgeIds.filter((id) => id === 'FIRST_WORKOUT')).toHaveLength(1);
     });
   });
 

@@ -389,6 +389,7 @@ export function hydratePersonalRecordExerciseNamesFromSessionExercises(
 }
 
 export interface PersonalRecordIdentityInput {
+	id?: string | null;
 	local_profile_id?: string | null;
 	exercise_name?: string | null;
 	exercise_id?: string | null;
@@ -398,7 +399,38 @@ export interface PersonalRecordIdentityInput {
 	workout_phase?: string | null;
 }
 
+/**
+ * Stable dedup/identity key for a personal_records row.
+ *
+ * Dedicated mobile PRs carry a stable `id`; two distinct dedicated records for
+ * the same profile/exercise/timestamp/type/phase but different `id` (and
+ * possibly different `value`) are legitimately distinct rows and MUST NOT
+ * collapse into one (Finding F335). So when an `id` is present we key on it.
+ *
+ * Legacy set-derived rows have no `id` — for those we fall back to the derived
+ * (profile, exercise, achieved_at, record_type, workout_phase) identity, which
+ * is what both the payload-side dedup and the existing-row lookup rely on. The
+ * existing-row lookup selects `id`, so DB rows and dedicated payload rows match
+ * on `id` consistently.
+ */
 export function personalRecordIdentityKey(
+	row: PersonalRecordIdentityInput,
+): string {
+	if (typeof row.id === "string" && row.id.length > 0) {
+		return JSON.stringify(["id", row.id]);
+	}
+	return personalRecordDerivedIdentityKey(row);
+}
+
+/**
+ * Identity key derived purely from (profile, exercise, achieved_at, record_type,
+ * workout_phase), ignoring `id`. Legacy set-derived PR payload rows have no
+ * `id`, so to dedupe them against existing DB rows (which always have an `id`)
+ * the existing rows must ALSO be indexed under this derived key — otherwise a
+ * legacy row never matches and the non-dedicated insert path duplicates it on
+ * every re-sync.
+ */
+export function personalRecordDerivedIdentityKey(
 	row: PersonalRecordIdentityInput,
 ): string {
 	const profileKey = row.local_profile_id ?? "default";

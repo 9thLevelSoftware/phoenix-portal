@@ -295,9 +295,12 @@ function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
 	const label = getSummaryLabel(avgAsymmetry);
 	const color = isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED;
 
-	// Calculate left/right split as percentages
-	const leftPct = 50 - avgAsymmetry / 2;
-	const rightPct = 50 + avgAsymmetry / 2;
+	// Calculate left/right split as percentages, clamped to [0, 100] so severe
+	// but valid imbalances (asymmetry can reach +/-200%) cannot emit negative
+	// or overflowing widths.
+	const clamp01 = (n: number) => Math.max(0, Math.min(100, n));
+	const leftPct = clamp01(50 - avgAsymmetry / 2);
+	const rightPct = clamp01(50 + avgAsymmetry / 2);
 
 	return (
 		<div className="flex flex-col items-center gap-4 py-6">

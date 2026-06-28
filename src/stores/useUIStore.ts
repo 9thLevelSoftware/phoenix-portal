@@ -8,17 +8,42 @@ export interface UIState {
 	};
 	setStreak: (streak: number) => void;
 	setNotifications: (notifications: Partial<UIState["notifications"]>) => void;
+	reset: () => void;
 }
 
-export const useUIStore = create<UIState>()((set) => ({
+/** Coerce arbitrary numeric input to a finite, non-negative integer badge count. */
+function sanitizeCount(value: number): number {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value);
+}
+
+const initialState = {
 	streak: 0,
 	notifications: {
 		challenges: 0,
 		community: 0,
 	},
-	setStreak: (streak) => set({ streak }),
+};
+
+export const useUIStore = create<UIState>()((set) => ({
+	...initialState,
+	setStreak: (streak) => set({ streak: sanitizeCount(streak) }),
 	setNotifications: (notifications) =>
 		set((state) => ({
-			notifications: { ...state.notifications, ...notifications },
+			notifications: {
+				challenges:
+					notifications.challenges !== undefined
+						? sanitizeCount(notifications.challenges)
+						: state.notifications.challenges,
+				community:
+					notifications.community !== undefined
+						? sanitizeCount(notifications.community)
+						: state.notifications.community,
+			},
 		})),
+	reset: () =>
+		set({
+			streak: initialState.streak,
+			notifications: { ...initialState.notifications },
+		}),
 }));

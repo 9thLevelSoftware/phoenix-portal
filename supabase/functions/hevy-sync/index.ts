@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
@@ -199,18 +200,19 @@ Deno.serve(async (req) => {
       workouts = data.workouts ?? data ?? [];
     } catch (fetchError) {
       console.error('Hevy API fetch error:', fetchError);
+      const fetchMessage = errorMessage(fetchError);
 
       await supabase
         .from('user_integrations')
         .update({
           status: 'error',
-          error_message: `Sync failed: ${fetchError.message}`,
+          error_message: `Sync failed: ${fetchMessage}`,
         })
         .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
-        JSON.stringify({ error: `Hevy API error: ${fetchError.message}` }),
+        JSON.stringify({ error: `Hevy API error: ${fetchMessage}` }),
         {
           status: 502,
           headers: { ...cors, 'Content-Type': 'application/json' },
@@ -220,6 +222,7 @@ Deno.serve(async (req) => {
 
     // Normalize and upsert workouts to external_activities
     let importedCount = 0;
+    let failedCount = 0;
     for (const workout of workouts) {
       const startTime = new Date(workout.start_time);
       const endTime = new Date(workout.end_time);
@@ -242,12 +245,32 @@ Deno.serve(async (req) => {
           { onConflict: 'user_id,provider,external_id' }
         );
 
-      if (!activityError) {
+      if (activityError) {
+        failedCount++;
+        console.error(`Failed to persist Hevy workout ${workout.id}:`, activityError);
+      } else {
         importedCount++;
       }
     }
 
-    // Update last sync timestamp and status
+    // If any activity failed to persist, do NOT advance last_sync_at: the next
+    // incremental sync uses it as the cutoff and would skip the dropped rows.
+    // Returning non-2xx lets the queue processor retry (upserts are idempotent).
+    if (failedCount > 0) {
+      const failMessage = `Failed to persist ${failedCount} of ${workouts.length} workouts`;
+      await supabase
+        .from('user_integrations')
+        .update({ status: 'error', error_message: failMessage })
+        .eq('user_id', userId)
+        .eq('provider', 'hevy');
+
+      return new Response(
+        JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Update last sync timestamp and status (all activities persisted)
     await supabase
       .from('user_integrations')
       .update({
@@ -284,7 +307,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Hevy sync error:', err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: errorMessage(err) }),
       {
         status: 500,
         headers: { ...cors, 'Content-Type': 'application/json' },

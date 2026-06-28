@@ -2,12 +2,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import {
+  getAllAllowedPriceIds,
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
+  resolveBasePlanPriceId,
 } from "../_shared/paddleSubscriptionState.ts";
 import { verifyPaddleCustomDataSignature } from "../_shared/paddleWebhookSecurity.ts";
 
@@ -171,7 +173,16 @@ Deno.serve(async (req) => {
         );
       }
 
-      const transactionBody = await transactionResponse.json();
+      let transactionBody: Record<string, unknown> | null = null;
+      try {
+        transactionBody = await transactionResponse.json();
+      } catch {
+        console.error("Paddle transaction API returned non-JSON response");
+        return new Response(
+          JSON.stringify({ error: "Invalid Paddle response" }),
+          { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
       const transaction = transactionBody?.data as PaddleTransactionState | undefined;
       if (!transaction?.id || transaction.id !== requestedTransactionId) {
         console.error("Paddle transaction response missing or mismatched data.id");
@@ -246,10 +257,19 @@ Deno.serve(async (req) => {
     );
 
     if (paddleResponse.status === 404) {
+      console.error(
+        "[BILLING_ALERT] Paddle subscription not found (404), clearing provider identifiers:",
+        paddleSubscriptionId,
+      );
+      // Clear the provider identifiers and price so future refresh/cancel/update
+      // paths do not keep targeting a Paddle subscription that no longer exists,
+      // and so stale price data is not left attached to a canceled row.
       const { error } = await supabaseAdmin
         .from("subscriptions")
         .update({
           status: "canceled",
+          paddle_subscription_id: null,
+          price_id: null,
           current_period_end: null,
           cancel_at_period_end: false,
           updated_at: new Date().toISOString(),
@@ -291,7 +311,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    const paddleBody = await paddleResponse.json();
+    let paddleBody: Record<string, unknown> | null = null;
+    try {
+      paddleBody = await paddleResponse.json();
+    } catch {
+      console.error("Paddle subscription API returned non-JSON response");
+      return new Response(
+        JSON.stringify({ error: "Invalid Paddle response" }),
+        { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
     const subscription = paddleBody?.data as PaddleSubscriptionState | undefined;
     if (!subscription?.id) {
       console.error("Paddle subscription response missing data.id");
@@ -301,7 +330,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const priceId = subscription.items?.[0]?.price?.id ?? "";
+    const priceId = resolveBasePlanPriceId(
+      subscription,
+      getAllAllowedPriceIds(Deno.env),
+    );
     let tier = mapPriceIdToTier(priceId, Deno.env);
     if (priceId && tier === "FREE") {
       if (existingTier && existingTier !== "FREE" && existingTier !== "free") {
@@ -325,6 +357,7 @@ Deno.serve(async (req) => {
       userId: user.id,
       subscription,
       tier,
+      priceId,
     });
 
     const { error } = await supabaseAdmin

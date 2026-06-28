@@ -1,7 +1,9 @@
 import { ArrowBigUp } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/components/ui/utils";
+import { useAuth } from "@/app/hooks/useAuth";
 import { useVote } from "@/mutations/community";
 
 interface VoteButtonProps {
@@ -20,8 +22,15 @@ export function VoteButton({
 	compact = false,
 }: VoteButtonProps) {
 	const vote = useVote();
+	const { user } = useAuth();
 
-	const handleClick = () => {
+	const handleClick = (event: React.MouseEvent) => {
+		// Prevent triggering a parent clickable card/drawer trigger.
+		event.stopPropagation();
+		if (!user) {
+			toast.error("Sign in to vote on community content.");
+			return;
+		}
 		vote.mutate({ itemId, itemType });
 	};
 

@@ -78,7 +78,9 @@ export function CycleBuilder() {
 
 	const [cycleName, setCycleName] = useState("Untitled Cycle");
 	const [description, setDescription] = useState("");
-	const [duration, setDuration] = useState(7);
+	// Cycle length in WEEKS — persisted to `duration_weeks`. Distinct from the
+	// day-template length, which is derived from `days.length`.
+	const [durationWeeks, setDurationWeeks] = useState(4);
 	const [startDate, setStartDate] = useState<string>("");
 	const [days, setDays] = useState<DayConfig[]>([
 		{ dayNumber: 1, type: "workout" },
@@ -136,7 +138,7 @@ export function CycleBuilder() {
 		if (existingCycle) {
 			setCycleName(existingCycle.name);
 			setDescription(existingCycle.description ?? "");
-			setDuration(existingCycle.duration_weeks);
+			setDurationWeeks(existingCycle.duration_weeks || 4);
 			setStartDate(
 				existingCycle.started_at
 					? existingCycle.started_at.toISOString().split("T")[0]
@@ -234,7 +236,7 @@ export function CycleBuilder() {
 		const payload = {
 			name: cycleName,
 			description,
-			duration_weeks: duration,
+			duration_weeks: durationWeeks,
 			started_at: startDate || null,
 			days: days.map((d) => ({
 				day_number: d.dayNumber,
@@ -319,7 +321,6 @@ export function CycleBuilder() {
 			type: "workout",
 		};
 		setDays([...days, newDay]);
-		setDuration(days.length + 1);
 		setHasUnsavedChanges(true);
 	};
 
@@ -330,7 +331,14 @@ export function CycleBuilder() {
 				.filter((d) => d.dayNumber !== dayNumber)
 				.map((d, i) => ({ ...d, dayNumber: i + 1 })),
 		);
-		setDuration(days.length - 1);
+		// Reconcile the selected day after reindexing so the editor doesn't end up
+		// pointing at a different (reindexed) day than the user had open.
+		setSelectedDay((current) => {
+			if (current == null) return current;
+			if (current === dayNumber) return null; // removed the open day -> close editor
+			// Days after the removed one shift down by one.
+			return current > dayNumber ? current - 1 : current;
+		});
 		setHasUnsavedChanges(true);
 	};
 
@@ -429,31 +437,34 @@ export function CycleBuilder() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
 								<Label className="text-secondary-foreground mb-2">
-									Duration (Days)
+									Cycle Length (Weeks)
 								</Label>
 								<div className="flex items-center gap-2">
 									<Input
 										type="number"
-										value={duration}
+										value={durationWeeks}
 										onChange={(e) => {
-											setDuration(parseInt(e.target.value, 10) || 7);
+											const parsed = parseInt(e.target.value, 10);
+											setDurationWeeks(
+												Number.isFinite(parsed) ? Math.max(1, parsed) : 1,
+											);
 											setHasUnsavedChanges(true);
 										}}
 										className="bg-background border-secondary w-24"
 										min="1"
 									/>
 									<div className="flex gap-2">
-										{[3, 4, 5, 6, 7].map((num) => (
+										{[4, 6, 8, 12, 16].map((num) => (
 											<Button
 												key={num}
 												size="sm"
-												variant={duration === num ? "default" : "outline"}
+												variant={durationWeeks === num ? "default" : "outline"}
 												onClick={() => {
-													setDuration(num);
+													setDurationWeeks(num);
 													setHasUnsavedChanges(true);
 												}}
 												className={
-													duration === num
+													durationWeeks === num
 														? "bg-primary border-0"
 														: "border-secondary"
 												}
@@ -463,6 +474,10 @@ export function CycleBuilder() {
 										))}
 									</div>
 								</div>
+								<p className="text-xs text-muted-foreground mt-1">
+									The day schedule below defines one repeating week (
+									{days.length} day{days.length !== 1 ? "s" : ""}).
+								</p>
 							</div>
 
 							<div className="md:col-span-2">
@@ -536,6 +551,7 @@ export function CycleBuilder() {
 										onClick={() => handleDayClick(day.dayNumber)}
 										onRemove={() => handleRemoveDay(day.dayNumber)}
 										isSelected={selectedDay === day.dayNumber}
+										canRemove={days.length > 1}
 									/>
 								))}
 							</div>
@@ -721,7 +737,7 @@ export function CycleBuilder() {
 				cycle={{
 					name: cycleName,
 					description,
-					duration,
+					duration: days.length,
 					days,
 					progression: {
 						type: progressionType,
@@ -763,11 +779,13 @@ function DayCard({
 	onClick,
 	onRemove,
 	isSelected,
+	canRemove,
 }: {
 	day: DayConfig;
 	onClick: () => void;
 	onRemove: () => void;
 	isSelected: boolean;
+	canRemove: boolean;
 }) {
 	return (
 		<motion.div
@@ -821,16 +839,18 @@ function DayCard({
 					</div>
 				)}
 
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						onRemove();
-					}}
-					className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
-				>
-					<X className="w-3 h-3 text-destructive" />
-				</button>
+				{canRemove && (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onRemove();
+						}}
+						className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
+					>
+						<X className="w-3 h-3 text-destructive" />
+					</button>
+				)}
 			</Card>
 		</motion.div>
 	);

@@ -28,4 +28,4 @@
  * phoenix-portal/docs/dto-drift-matrix.md.
  */
 export const SYNC_LWW_ENABLED =
-	(Deno.env.get("SYNC_LWW_ENABLED") ?? "false").toLowerCase() === "true";
+	(Deno.env.get("SYNC_LWW_ENABLED") ?? "false").trim().toLowerCase() === "true";

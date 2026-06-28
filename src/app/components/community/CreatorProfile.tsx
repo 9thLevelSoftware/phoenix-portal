@@ -41,12 +41,20 @@ import {
 	isFollowingOptions,
 	userVotesOptions,
 } from "@/queries/community";
+import type { CommunityFeedItem } from "@/schemas/community";
 
 interface CreatorProfileProps {
 	userId: string;
 	onBack: () => void;
-	onSelectItem?: (id: string) => void;
-	onVote?: (id: string) => void;
+	/** Receives the full feed item so the caller can open the right detail. */
+	onSelectItem?: (item: CommunityFeedItem) => void;
+	/** Vote handler with an explicit item type (routine vs cycle). */
+	onVote?: (id: string, itemType: "routine" | "cycle") => void;
+}
+
+/** A creator-profile feed item is a routine when it carries `routine_id`. */
+function feedItemType(item: CommunityFeedItem): "routine" | "cycle" {
+	return "routine_id" in item ? "routine" : "cycle";
 }
 
 function getInitials(name: string): string {
@@ -69,7 +77,14 @@ export function CreatorProfile({
 		creatorStatsOptions(userId),
 	);
 
-	const { data: feedData, isLoading: feedLoading } = useInfiniteQuery(
+	const {
+		data: feedData,
+		isLoading: feedLoading,
+		isError: feedError,
+		hasNextPage: hasMoreRoutines,
+		isFetchingNextPage: fetchingMoreRoutines,
+		fetchNextPage: fetchMoreRoutines,
+	} = useInfiniteQuery(
 		communityFeedOptions({
 			tab: "routines",
 			sort: "new",
@@ -77,7 +92,14 @@ export function CreatorProfile({
 		}),
 	);
 
-	const { data: cycleData } = useInfiniteQuery(
+	const {
+		data: cycleData,
+		isLoading: cycleLoading,
+		isError: cycleError,
+		hasNextPage: hasMoreCycles,
+		isFetchingNextPage: fetchingMoreCycles,
+		fetchNextPage: fetchMoreCycles,
+	} = useInfiniteQuery(
 		communityFeedOptions({
 			tab: "cycles",
 			sort: "new",
@@ -252,7 +274,7 @@ export function CreatorProfile({
 				Shared Content
 			</h3>
 
-			{feedLoading ? (
+			{feedLoading || cycleLoading ? (
 				<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
 					{Array.from({ length: 3 }).map((_, i) => (
 						<Card
@@ -262,22 +284,47 @@ export function CreatorProfile({
 						/>
 					))}
 				</div>
+			) : feedError || cycleError ? (
+				<div className="text-center py-12 text-muted-foreground">
+					<p>Couldn't load this creator's shared content. Please try again.</p>
+				</div>
 			) : allItems.length === 0 ? (
 				<div className="text-center py-12 text-muted-foreground">
 					<p>This creator has not shared any content yet.</p>
 				</div>
 			) : (
-				<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-					{allItems.map((item) => (
-						<CommunityFeedCard
-							key={item.id}
-							item={item}
-							onSelect={onSelectItem ?? (() => {})}
-							isVoted={votedIds?.has(item.id) ?? false}
-							onVote={onVote ?? (() => {})}
-						/>
-					))}
-				</div>
+				<>
+					<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+						{allItems.map((item) => (
+							<CommunityFeedCard
+								key={item.id}
+								item={item}
+								onSelect={() => onSelectItem?.(item)}
+								isVoted={votedIds?.has(item.id) ?? false}
+								onVote={(id) => onVote?.(id, feedItemType(item))}
+								contentType={feedItemType(item)}
+							/>
+						))}
+					</div>
+					{(hasMoreRoutines || hasMoreCycles) && (
+						<div className="flex justify-center mt-6">
+							<Button
+								variant="outline"
+								size="sm"
+								className="border-secondary text-muted-foreground"
+								disabled={fetchingMoreRoutines || fetchingMoreCycles}
+								onClick={() => {
+									if (hasMoreRoutines) fetchMoreRoutines();
+									if (hasMoreCycles) fetchMoreCycles();
+								}}
+							>
+								{fetchingMoreRoutines || fetchingMoreCycles
+									? "Loading..."
+									: "Load more"}
+							</Button>
+						</div>
+					)}
+				</>
 			)}
 
 			{/* Block confirmation dialog */}

@@ -1,5 +1,4 @@
-// Superset Enhancement Module for RoutineBuilder
-// Add these interfaces and state to existing RoutineBuilder.tsx
+// Superset grouping helpers for the routine builder.
 
 export interface SupersetGroup {
 	id: string;
@@ -15,11 +14,6 @@ export const SUPERSET_COLORS = [
 	{ id: "C", color: "#10B981", name: "Green" },
 	{ id: "D", color: "#F59E0B", name: "Amber" },
 ];
-
-// Add these state variables to RoutineBuilder component:
-// const [selectionMode, setSelectionMode] = useState(false);
-// const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
-// const [supersets, setSupersets] = useState<SupersetGroup[]>([]);
 
 // Superset Helper Functions
 export function getNextSupersetColor(
@@ -44,7 +38,8 @@ export function createSuperset(
 	existingSupersets: SupersetGroup[],
 ): SupersetGroup {
 	return {
-		id: `superset-${Date.now()}`,
+		// Use a UUID so two supersets created in the same millisecond don't collide.
+		id: `superset-${crypto.randomUUID()}`,
 		exerciseIds,
 		color: getNextSupersetColor(existingSupersets),
 		transitionTime: 10,
@@ -64,9 +59,20 @@ export function addExerciseToSuperset(
 	exerciseId: string,
 	supersets: SupersetGroup[],
 ): SupersetGroup[] {
-	return supersets.map((s) =>
-		s.id === supersetId
-			? { ...s, exerciseIds: [...s.exerciseIds, exerciseId] }
-			: s,
-	);
+	return supersets.map((s) => {
+		if (s.id === supersetId) {
+			// Idempotent: don't add a duplicate membership.
+			if (s.exerciseIds.includes(exerciseId)) return s;
+			return { ...s, exerciseIds: [...s.exerciseIds, exerciseId] };
+		}
+		// Remove the exercise from any other group so it can't be a member of two
+		// supersets at once.
+		if (s.exerciseIds.includes(exerciseId)) {
+			return {
+				...s,
+				exerciseIds: s.exerciseIds.filter((id) => id !== exerciseId),
+			};
+		}
+		return s;
+	});
 }

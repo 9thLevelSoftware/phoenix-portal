@@ -78,38 +78,18 @@ Deno.serve(async (req) => {
 
     const timestamp = new Date().toISOString();
 
-    const [{ error: tokenError }, { error: integrationError }, { error: queueError }] =
-      await Promise.all([
-        supabaseAdmin
-          .from('oauth_tokens')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('provider', provider),
-        supabaseAdmin
-          .from('user_integrations')
-          .update({
-            status: 'disconnected',
-            connected_at: null,
-            provider_user_id: null,
-            error_message: null,
-          })
-          .eq('user_id', user.id)
-          .eq('provider', provider),
-        supabaseAdmin
-          .from('sync_queue')
-          .update({
-            status: 'failed',
-            error_message: 'Integration disconnected by user',
-            completed_at: timestamp,
-          })
-          .eq('user_id', user.id)
-          .eq('provider', provider)
-          .in('status', ['pending', 'processing']),
-      ]);
+    // Token deletion, integration-state reset, and sync-queue cancellation run
+    // in one transaction via disconnect_integration (F303): doing them as three
+    // concurrent statements outside a transaction could leave a partial state
+    // (e.g. tokens deleted but the integration still flagged connected) if one
+    // failed.
+    const { error: disconnectError } = await supabaseAdmin.rpc('disconnect_integration', {
+      p_user_id: user.id,
+      p_provider: provider,
+      p_timestamp: timestamp,
+    });
 
-    if (tokenError) throw tokenError;
-    if (integrationError) throw integrationError;
-    if (queueError) throw queueError;
+    if (disconnectError) throw disconnectError;
 
     return new Response(
       JSON.stringify({ success: true }),
