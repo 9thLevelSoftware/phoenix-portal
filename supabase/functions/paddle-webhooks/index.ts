@@ -343,15 +343,46 @@ Deno.serve(async (req) => {
       occurredAt: eventOrder.occurredAt,
     });
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .upsert(upsertData, { onConflict: "user_id" });
+    // Apply atomically with an ordering guard: the RPC only writes when this
+    // event is strictly newer than the stored last_event_occurred_at, closing
+    // the read-then-upsert race between concurrent deliveries (F264).
+    const { data: applied, error } = await supabase.rpc(
+      "apply_subscription_event",
+      {
+        p_user_id: userId,
+        p_paddle_customer_id:
+          (upsertData.paddle_customer_id as string | null) ?? null,
+        p_paddle_subscription_id:
+          (upsertData.paddle_subscription_id as string | null) ?? null,
+        p_tier: upsertData.tier as string,
+        p_status: upsertData.status as string,
+        p_price_id: (upsertData.price_id as string | null) ?? null,
+        p_current_period_start:
+          (upsertData.current_period_start as string | null) ?? null,
+        p_current_period_end:
+          (upsertData.current_period_end as string | null) ?? null,
+        p_cancel_at_period_end: Boolean(upsertData.cancel_at_period_end),
+        p_last_event_id: event.event_id,
+        p_last_event_occurred_at: eventOrder.occurredAt,
+      },
+    );
 
     if (error) {
-      console.error(`[BILLING_ALERT] Error upserting subscription for ${event.event_type}:`, error);
+      console.error(`[BILLING_ALERT] Error applying subscription event for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: responseHeaders },
+      );
+    }
+
+    if (applied === false) {
+      // A concurrent, newer event won the ordering race at write time.
+      console.warn(
+        `[Paddle] Skipped stale event ${event.event_id} at write time (lost ordering race)`,
+      );
+      return new Response(
+        JSON.stringify({ received: true, stale: true }),
+        { status: 200, headers: responseHeaders },
       );
     }
 

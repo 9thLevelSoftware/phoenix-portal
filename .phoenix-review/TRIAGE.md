@@ -122,8 +122,13 @@ Test mocks updated in account/comments/community/goals test files for the new ch
 | F357 (sync-queue claim race) | PARTIAL→CONFIRMED | Conditional claim: `UPDATE … WHERE id AND status='pending' RETURNING`; skip the task if another invocation already won it. |
 | F358 (stuck `processing` no recovery) | CONFIRMED | Reclaim `processing` tasks older than a 5-min lease back to `pending` before fetching. |
 
-Remaining in theme (deferred): F264 (atomic Paddle webhook ordering — needs conditional-upsert
-RPC), F343 (push exercise delete+replace transaction), F303/F311/F359.
+### PR-4 batch 2
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F264 (Paddle webhook ordering race) | CONFIRMED — DONE | New migration `20260628130000_atomic_paddle_subscription_event.sql` adds `apply_subscription_event` (SECURITY DEFINER, service_role-only) doing an `INSERT … ON CONFLICT (user_id) DO UPDATE … WHERE incoming.last_event_occurred_at > stored` — the write only lands when the event is strictly newer. paddle-webhooks calls it; a lost ordering race returns 200 `stale`. |
+
+Remaining in theme: F343 (push exercise delete+replace transaction — large mobile-sync-push change), F303/F311/F359.
 
 ---
 
