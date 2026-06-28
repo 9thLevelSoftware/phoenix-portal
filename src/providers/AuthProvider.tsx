@@ -26,6 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		let isActive = true;
+		// Once any auth-state event has fired, it is authoritative. The initial
+		// getSession() result must not overwrite a newer SIGNED_IN/SIGNED_OUT state
+		// if it resolves afterwards (race between getSession and onAuthStateChange).
+		let authEventReceived = false;
 
 		const applySession = (nextSession: Session | null) => {
 			if (!isActive) {
@@ -41,9 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		void supabase.auth
 			.getSession()
 			.then(({ data: { session: initialSession } }) => {
+				if (authEventReceived) {
+					return;
+				}
 				applySession(initialSession);
 			})
 			.catch(() => {
+				if (authEventReceived) {
+					return;
+				}
 				applySession(null);
 			});
 
@@ -51,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		const {
 			data: { subscription },
 		} = supabase.auth.onAuthStateChange((event, newSession) => {
+			authEventReceived = true;
 			if (event === "SIGNED_OUT") {
 				queryClient.clear();
 			}
@@ -64,7 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	}, [queryClient]);
 
 	const handleSignOut = async () => {
-		await supabase.auth.signOut();
+		const { error } = await supabase.auth.signOut();
+		if (error) {
+			// Surface the failure to callers; do not clear cached data while the
+			// user may still be authenticated to avoid an inconsistent UI state.
+			throw error;
+		}
 		queryClient.clear();
 	};
 

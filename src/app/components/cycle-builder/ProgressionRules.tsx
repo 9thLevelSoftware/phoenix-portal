@@ -126,13 +126,19 @@ export function ProgressionRules({
 										<Input
 											type="number"
 											step="0.5"
-											value={progressionConfig.percentageIncrease || 2.5}
-											onChange={(e) =>
+											value={progressionConfig.percentageIncrease ?? 2.5}
+											onChange={(e) => {
+												// Preserve an explicit 0; only default when cleared/NaN.
+												const raw = e.target.value;
+												const parsed = parseFloat(raw);
 												onProgressionConfigChange({
 													...progressionConfig,
-													percentageIncrease: parseFloat(e.target.value) || 2.5,
-												})
-											}
+													percentageIncrease:
+														raw === "" || !Number.isFinite(parsed)
+															? 2.5
+															: Math.max(0, parsed),
+												});
+											}}
 											className="text-center bg-background border-secondary"
 										/>
 										<span className="text-muted-foreground">%</span>
@@ -479,13 +485,17 @@ export function ProgressionRules({
 											<Input
 												type="number"
 												value={currentDeload.intensityPercent}
-												onChange={(e) =>
+												onChange={(e) => {
+													const raw = e.target.value;
+													const parsed = parseInt(raw, 10);
 													onDeloadConfigChange({
 														...currentDeload,
 														intensityPercent:
-															parseInt(e.target.value, 10) || 60,
-													})
-												}
+															raw === "" || !Number.isFinite(parsed)
+																? 60
+																: Math.max(0, Math.min(100, parsed)),
+													});
+												}}
 												className="w-24 bg-background border-secondary"
 												min="0"
 												max="100"
@@ -501,12 +511,17 @@ export function ProgressionRules({
 											<Input
 												type="number"
 												value={currentDeload.volumePercent}
-												onChange={(e) =>
+												onChange={(e) => {
+													const raw = e.target.value;
+													const parsed = parseInt(raw, 10);
 													onDeloadConfigChange({
 														...currentDeload,
-														volumePercent: parseInt(e.target.value, 10) || 50,
-													})
-												}
+														volumePercent:
+															raw === "" || !Number.isFinite(parsed)
+																? 50
+																: Math.max(0, Math.min(100, parsed)),
+													});
+												}}
 												className="w-24 bg-background border-secondary"
 												min="0"
 												max="100"

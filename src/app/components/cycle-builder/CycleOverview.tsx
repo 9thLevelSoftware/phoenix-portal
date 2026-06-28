@@ -1,10 +1,12 @@
 import { Calendar } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Textarea } from "@/app/components/ui/textarea";
+
+const DURATION_PRESETS = [3, 4, 5, 6, 7];
 
 interface CycleOverviewProps {
 	name: string;
@@ -27,10 +29,18 @@ export function CycleOverview({
 	onDurationChange,
 	onStartDateChange,
 }: CycleOverviewProps) {
-	const durationPresets = [3, 4, 5, 6, 7];
+	const durationPresets = DURATION_PRESETS;
 	const [customMode, setCustomMode] = useState(
 		!durationPresets.includes(duration),
 	);
+	// Sync custom mode if the parent later resets duration to a preset value
+	// (e.g. when loading an existing cycle), so a stale customMode doesn't keep
+	// the custom input visible.
+	useEffect(() => {
+		if (DURATION_PRESETS.includes(duration)) {
+			setCustomMode(false);
+		}
+	}, [duration]);
 	const isCustomDuration = customMode || !durationPresets.includes(duration);
 
 	return (

@@ -213,17 +213,26 @@ export function ExerciseProgress({
 	const [timeRange, setTimeRange] = useState<string>("3M");
 	const { activeProfileId } = useProfileFilterStore();
 
-	const { data: exercises, isPending: exercisesPending } = useQuery(
-		exerciseListOptions(userId, activeProfileId),
-	);
+	const {
+		data: exercises,
+		isPending: exercisesPending,
+		isError: exercisesError,
+	} = useQuery({
+		...exerciseListOptions(userId, activeProfileId),
+		enabled: !!userId,
+	});
 	const { data: profile } = useQuery({
 		...profileOptions(userId),
 		enabled: !!userId,
 	});
 
-	const { data: progressRaw, isPending: progressPending } = useQuery({
+	const {
+		data: progressRaw,
+		isPending: progressPending,
+		isError: progressError,
+	} = useQuery({
 		...exerciseProgressOptions(userId, selectedExercise, activeProfileId),
-		enabled: !!selectedExercise,
+		enabled: !!userId && !!selectedExercise,
 	});
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
@@ -232,6 +241,14 @@ export function ExerciseProgress({
 			setSelectedExercise(exercises[0]);
 		}
 	}, [exercises, selectedExercise]);
+
+	// Keep the chart in sync when the parent (e.g. BiomechanicsContent) changes
+	// the exercise via the initialExercise prop.
+	useEffect(() => {
+		if (initialExercise) {
+			setSelectedExercise(initialExercise);
+		}
+	}, [initialExercise]);
 
 	const days = TIME_RANGES.find((r) => r.label === timeRange)?.days ?? 90;
 	const filteredData = useMemo(
@@ -305,6 +322,20 @@ export function ExerciseProgress({
 		);
 	}
 
+	// Surface a load failure instead of implying there's simply no data.
+	if (exercisesError) {
+		return (
+			<div className="text-center py-16">
+				<h3 className="text-2xl font-semibold text-white mb-2">
+					Couldn't load exercise progress
+				</h3>
+				<p className="text-muted-foreground max-w-md mx-auto">
+					Something went wrong while loading your progress. Please try again.
+				</p>
+			</div>
+		);
+	}
+
 	if (!exercises || exercises.length === 0) {
 		return (
 			<div className="text-center py-16">
@@ -359,6 +390,10 @@ export function ExerciseProgress({
 					<Skeleton className="h-[300px]" />
 					<Skeleton className="h-[300px]" />
 					<Skeleton className="h-[300px]" />
+				</div>
+			) : progressError ? (
+				<div className="text-center py-12 text-muted-foreground">
+					Couldn't load progress for this exercise. Please try again.
 				</div>
 			) : chartData.length === 0 ? (
 				<div className="text-center py-12 text-muted-foreground">

@@ -1052,8 +1052,11 @@ describe('Task 3: Delta Sync Behavior', () => {
       const deltaPull = await callPullEndpoint(futureSyncTime, testUser.accessToken);
 
       expect(deltaPull.success).toBe(true);
-      // In mock mode with future timestamp, should return empty
-      // Note: The mock has simplified logic
+      // A lastSync newer than the last push must yield no delta-controlled rows.
+      expect(deltaPull.data!.sessions).toHaveLength(0);
+      expect(deltaPull.data!.routines).toHaveLength(0);
+      expect(deltaPull.data!.cycles).toHaveLength(0);
+      expect(deltaPull.data!.badges).toHaveLength(0);
     });
   });
 

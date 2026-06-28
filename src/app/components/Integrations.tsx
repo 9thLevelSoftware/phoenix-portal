@@ -30,10 +30,13 @@ import {
 } from "@/queries/integrations";
 
 export function Integrations() {
-	const { user, session } = useAuth();
+	const { user, session, loading: authLoading } = useAuth();
 	const { isPremium } = useSubscription();
 	const userId = user?.id ?? "";
 	const accessToken = session?.access_token ?? "";
+	// Provider connect/sync/disconnect actions all require an authenticated user
+	// and a valid access token; treat their absence as "auth not ready".
+	const isAuthReady = !!userId && !!accessToken;
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	// Handle OAuth callback URL params (?connected=provider or ?error=type)
@@ -79,6 +82,21 @@ export function Integrations() {
 				: `Failed to connect ${providerName}. Please try again.`,
 		);
 	};
+
+	if (authLoading || !isAuthReady) {
+		return (
+			<SubscriptionGate requiredTier="FLAME">
+				<div className="container mx-auto p-6">
+					<div className="flex flex-col items-center justify-center py-24 text-center">
+						<div className="w-10 h-10 rounded-full border-2 border-secondary border-t-primary animate-spin mb-4" />
+						<p className="text-sm text-muted-foreground">
+							Preparing your integrations...
+						</p>
+					</div>
+				</div>
+			</SubscriptionGate>
+		);
+	}
 
 	return (
 		<SubscriptionGate requiredTier="FLAME">

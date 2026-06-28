@@ -1,5 +1,8 @@
 name: Sync Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -8,6 +11,10 @@ on:
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
+      - '.github/workflows/sync-tests.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.ts'
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +22,10 @@ on:
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
+      - '.github/workflows/sync-tests.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.ts'
   workflow_dispatch:
     inputs:
       use_mocks:
@@ -26,13 +37,11 @@ on:
           - 'true'
           - 'false'
 
-env:
-  NODE_VERSION: '20'
-
 jobs:
   sync-tests:
     name: Sync Validation Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -41,7 +50,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          # Track the repository's canonical runtime (.nvmrc) so sync tests run
+          # under the same Node version as the rest of CI.
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -60,9 +71,29 @@ jobs:
             echo "::error::Required staging Supabase secrets not configured for live tests. Configure SYNC_STAGING_SUPABASE_URL, SYNC_STAGING_SUPABASE_ANON_KEY, and SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY in repository secrets."
             exit 1
           fi
+
+          # Defence in depth: explicitly reject known production hosts...
           case "$SUPABASE_URL" in
             *"ilzlswmatadlnsuxatcv.supabase.co"*|*"api.phoenix-portal.com"*)
-              echo "::error::Refusing to run live sync tests against production Supabase URL."
+              echo "::error::Refusing to run live sync tests against a known production Supabase URL."
+              exit 1
+              ;;
+          esac
+
+          # ...then fail closed: the staging URL must match an explicitly
+          # configured staging ref/host allowlist. This prevents a misconfigured
+          # SYNC_STAGING_SUPABASE_URL (e.g. a new prod ref or custom domain) from
+          # silently being treated as staging.
+          if [ -z "$EXPECTED_STAGING_PROJECT_REF" ]; then
+            echo "::error::SYNC_STAGING_PROJECT_REF is not configured. Set it to the staging project ref to enable live tests (fail-closed allowlist)."
+            exit 1
+          fi
+          case "$SUPABASE_URL" in
+            "https://$EXPECTED_STAGING_PROJECT_REF.supabase.co"*|"https://$EXPECTED_STAGING_PROJECT_REF.supabase.in"*)
+              echo "Live sync target matches the configured staging project ref."
+              ;;
+            *)
+              echo "::error::SYNC_STAGING_SUPABASE_URL does not match SYNC_STAGING_PROJECT_REF ($EXPECTED_STAGING_PROJECT_REF). Refusing to run live tests against an unrecognized host."
               exit 1
               ;;
           esac
@@ -71,6 +102,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          EXPECTED_STAGING_PROJECT_REF: ${{ secrets.SYNC_STAGING_PROJECT_REF }}
 
       - name: Run sync tests (live mode)
         if: ${{ github.event.inputs.use_mocks == 'false' }}
@@ -98,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['20', '22']
+        node-version: ['20', '22', '24']
 
     steps:
       - name: Checkout repository

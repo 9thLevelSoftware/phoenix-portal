@@ -36,12 +36,6 @@ export function ReplayAnnotationOverlay({
 	const selectedRep = intelligence.repInsights[currentRepIndex];
 	const plotHeight = Math.max(1, height - MARGIN.top - MARGIN.bottom);
 
-	// Only reveal sticking points the playhead has reached, matching the canvas
-	// renderer which hides future sticking points until currentTimeMs catches up.
-	const visibleStickingPoints = intelligence.stickingPoints.filter(
-		(point) => point.timestampMs <= currentTimeMs,
-	);
-
 	return (
 		<svg
 			className="pointer-events-none absolute inset-0 rounded-lg"
@@ -65,10 +59,17 @@ export function ReplayAnnotationOverlay({
 				/>
 			)}
 
-			{visibleStickingPoints.map((point) => {
+			{intelligence.stickingPoints.map((point) => {
 				const x = xForTime(point.timestampMs, intelligence.durationMs, width);
+				// Dim sticking points the playhead hasn't reached yet, matching the
+				// canvas renderer which de-emphasizes future events. Kept rendered
+				// (not removed) so annotation positions stay stable.
+				const isFuture = point.timestampMs > currentTimeMs;
 				return (
-					<g key={`${point.repNumber}-${point.timestampMs}`}>
+					<g
+						key={`${point.repNumber}-${point.timestampMs}`}
+						opacity={isFuture ? 0.25 : 1}
+					>
 						<line
 							x1={x}
 							x2={x}

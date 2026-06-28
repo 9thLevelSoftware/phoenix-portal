@@ -89,7 +89,9 @@ describe("CycleBuilder", () => {
 	it("renders Cycle Details section with duration input", () => {
 		renderWithProviders(<CycleBuilder />);
 		expect(screen.getByText(/cycle details/i)).toBeInTheDocument();
-		expect(screen.getByDisplayValue("7")).toBeInTheDocument();
+		// Cycle length now defaults to 4 WEEKS (was conflated with the 7-day template).
+		expect(screen.getByText(/cycle length \(weeks\)/i)).toBeInTheDocument();
+		expect(screen.getAllByDisplayValue("4").length).toBeGreaterThanOrEqual(1);
 	});
 
 	it("renders Workout Schedule section", () => {
@@ -199,7 +201,7 @@ describe("CycleBuilder", () => {
 		expect(mockSaveMutate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				name: "Untitled Cycle",
-				duration_weeks: 7,
+				duration_weeks: 4,
 				days: expect.arrayContaining([
 					expect.objectContaining({ day_number: 1, day_type: "workout" }),
 				]),
@@ -230,9 +232,9 @@ describe("CycleBuilder", () => {
 	// ---------------------------------------------------------------
 	// Duration quick-set buttons
 	// ---------------------------------------------------------------
-	it("renders quick-set duration buttons for 3-7 days", () => {
+	it("renders quick-set cycle-length buttons (weeks)", () => {
 		renderWithProviders(<CycleBuilder />);
-		for (const num of [3, 4, 5, 6, 7]) {
+		for (const num of [4, 6, 8, 12, 16]) {
 			expect(
 				screen.getByRole("button", { name: String(num) }),
 			).toBeInTheDocument();

@@ -364,6 +364,9 @@ export function PricingPlans() {
 			}
 		};
 
+		// Mark this checkout in-flight so the Subscribe button can disable and
+		// prevent repeated clicks opening multiple checkout attempts.
+		setBillingActionPriceId(priceId);
 		try {
 			await openCheckout({
 				priceId,
@@ -384,6 +387,8 @@ export function PricingPlans() {
 					? error.message
 					: "Billing checkout is unavailable. Please try again.";
 			toast.error(message);
+		} finally {
+			setBillingActionPriceId(null);
 		}
 	};
 
@@ -608,8 +613,16 @@ export function PricingPlans() {
 			<Button
 				className={`w-full ${tierConfig.buttonClass}`}
 				onClick={() => void handleSubscribe(tierConfig.tier, priceId)}
+				disabled={isBillingActionInFlight}
 			>
-				Subscribe
+				{isBillingActionInFlight ? (
+					<>
+						<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+						Starting checkout...
+					</>
+				) : (
+					"Subscribe"
+				)}
 			</Button>
 		);
 	};

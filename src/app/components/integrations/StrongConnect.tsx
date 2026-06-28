@@ -60,6 +60,7 @@ export function StrongConnect({
 	>(null);
 	const [isImporting, setIsImporting] = useState(false);
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
+	const [rawCsv, setRawCsv] = useState<string | null>(null);
 	const [importWeightUnit, setImportWeightUnit] = useState<"kg" | "lbs">("kg");
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,15 +94,19 @@ export function StrongConnect({
 						toast.error(
 							"No workouts found in CSV. Verify this is a Strong export file.",
 						);
+						setRawCsv(null);
 						setParsedActivities(null);
 						return;
 					}
 
+					// Keep the raw CSV so we can reparse if the user changes the unit.
+					setRawCsv(csvContent);
 					setParsedActivities(activities);
 				} catch (_err) {
 					toast.error(
 						"Failed to parse CSV file. Make sure it is a valid Strong export.",
 					);
+					setRawCsv(null);
 					setParsedActivities(null);
 				}
 			};
@@ -111,6 +116,22 @@ export function StrongConnect({
 			reader.readAsText(file);
 		},
 		[importWeightUnit],
+	);
+
+	// Reparse the already-loaded CSV when the import unit changes, so the preview
+	// and the imported values reflect the currently-selected unit.
+	const handleImportUnitChange = useCallback(
+		(unit: "kg" | "lbs") => {
+			setImportWeightUnit(unit);
+			if (!rawCsv) return;
+			try {
+				const activities = parseStrongCSV(rawCsv, unit);
+				setParsedActivities(activities.length > 0 ? activities : null);
+			} catch {
+				setParsedActivities(null);
+			}
+		},
+		[rawCsv],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -125,6 +146,7 @@ export function StrongConnect({
 				queryKey: queryKeys.integrations.external(userId),
 			});
 			setParsedActivities(null);
+			setRawCsv(null);
 			setCsvFileName(null);
 			if (fileInputRef.current) {
 				fileInputRef.current.value = "";
@@ -140,6 +162,7 @@ export function StrongConnect({
 
 	const handleClearPreview = useCallback(() => {
 		setParsedActivities(null);
+		setRawCsv(null);
 		setCsvFileName(null);
 		if (fileInputRef.current) {
 			fileInputRef.current.value = "";
@@ -333,7 +356,7 @@ export function StrongConnect({
 
 						<WeightUnitToggle
 							value={importWeightUnit}
-							onChange={setImportWeightUnit}
+							onChange={handleImportUnitChange}
 							description="Strong exports weights in your app's unit setting. Select the unit your Strong app uses so we can store values correctly."
 						/>
 

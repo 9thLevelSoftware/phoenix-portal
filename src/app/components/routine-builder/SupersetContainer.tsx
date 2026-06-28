@@ -125,8 +125,20 @@ export function SupersetContainer({
 									<Button
 										size="sm"
 										variant="ghost"
-										onClick={() => onRemoveExercise(exercise.id)}
+										onClick={() =>
+											// A superset needs at least two exercises. Removing one
+											// from a two-exercise group would leave an invalid
+											// single-exercise superset, so ungroup instead.
+											supersetExercises.length <= 2
+												? onUngroup()
+												: onRemoveExercise(exercise.id)
+										}
 										className="text-destructive hover:text-chart-2"
+										title={
+											supersetExercises.length <= 2
+												? "Removing this exercise will ungroup the superset"
+												: "Remove exercise from superset"
+										}
 									>
 										<X className="w-4 h-4" />
 									</Button>
@@ -175,9 +187,17 @@ export function SupersetContainer({
 					<Input
 						type="number"
 						value={superset.restAfter}
-						onChange={(e) =>
-							onUpdateRestAfter(parseInt(e.target.value, 10) || 90)
-						}
+						onChange={(e) => {
+							// Preserve an explicit 0; only fall back to the default when the
+							// field is cleared or non-numeric.
+							const raw = e.target.value;
+							const parsed = parseInt(raw, 10);
+							onUpdateRestAfter(
+								raw === "" || !Number.isFinite(parsed)
+									? 90
+									: Math.max(0, parsed),
+							);
+						}}
 						className="w-16 text-center bg-background border-secondary h-8"
 					/>
 					<span className="text-sm text-muted-foreground">s</span>
@@ -221,7 +241,15 @@ function TransitionIndicator({
 						<Input
 							type="number"
 							value={time}
-							onChange={(e) => onUpdate(parseInt(e.target.value, 10) || 10)}
+							onChange={(e) => {
+								const raw = e.target.value;
+								const parsed = parseInt(raw, 10);
+								onUpdate(
+									raw === "" || !Number.isFinite(parsed)
+										? 10
+										: Math.max(0, parsed),
+								);
+							}}
 							onBlur={() => setIsEditing(false)}
 							className="w-12 text-center h-6 text-xs bg-background border-secondary"
 							autoFocus

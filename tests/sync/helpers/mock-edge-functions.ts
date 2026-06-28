@@ -31,6 +31,24 @@ export function useMocks(): boolean {
   return process.env.MOCK_EDGE_FUNCTIONS === 'true';
 }
 
+/**
+ * Derive the authenticated user id from a mock access token.
+ *
+ * `createTestUser` (mock mode) encodes the user id as
+ * `mock-access-token:${userId}`. We key all user-scoped mock state and
+ * broadcasts off this value so the mock models the real Edge Functions,
+ * which derive identity from the JWT, not from payload data. Falls back to
+ * 'mock-user' for legacy/unencoded tokens.
+ */
+export function parseMockUserId(authToken: string): string {
+  const prefix = 'mock-access-token:';
+  if (authToken?.startsWith(prefix)) {
+    const id = authToken.slice(prefix.length);
+    if (id) return id;
+  }
+  return 'mock-user';
+}
+
 // ============================================================================
 // Mock State
 // ============================================================================
@@ -81,6 +99,13 @@ export function mockPushEndpoint(
   payload: PushPayload,
   authToken: string
 ): EdgeFunctionResult<{ success: boolean; syncTime?: number }> {
+  // Honor injected error modes (network/auth/server) so classifier-dependent
+  // tests can exercise the wire signals the mobile app keys off.
+  const injectedError = checkMockError();
+  if (injectedError) {
+    return injectedError as EdgeFunctionResult<{ success: boolean; syncTime?: number }>;
+  }
+
   // Check for injected batch failure first (simulates server-side batch processing)
   const sessionCount = payload.sessions?.length ?? 0;
   const batchError = checkBatchFailure(sessionCount);
@@ -181,15 +206,17 @@ export function mockPushEndpoint(
     }
   }
 
+  // Identity comes from the authenticated token (mirrors JWT extraction in
+  // the real Edge Function), not from payload data.
+  const authedUserId = parseMockUserId(authToken);
+
   // Store badges (union merge: keyed by userId:badgeId to prevent duplicates)
   if (payload.badges) {
     for (const badge of payload.badges) {
-      // Extract userId from auth token context or use a placeholder
-      // In mock, we'll use badgeId as the key part that matters for union
-      const badgeKey = `mock-user:${badge.badgeId}`;
+      const badgeKey = `${authedUserId}:${badge.badgeId}`;
       const responseBadge: BadgeResponseDto = {
         ...badge,
-        userId: 'mock-user', // In real impl, this comes from JWT
+        userId: authedUserId,
       };
       mockStore.badges.set(badgeKey, responseBadge);
     }
@@ -200,9 +227,9 @@ export function mockPushEndpoint(
 
   // Emit mirror of the Edge Function's fire-and-forget broadcast.
   // The real implementation is at mobile-sync-push/index.ts lines 1449-1471.
-  // We derive a userId from the sessions payload or fall back to 'mock-user'.
-  const userId = payload.sessions?.[0]?.userId ?? 'mock-user';
-  recordBroadcast(`sync:${userId}`, 'sync_complete', {
+  // The channel identity is derived from the authenticated user (JWT), not
+  // from payload data — so an empty push still broadcasts to the right user.
+  recordBroadcast(`sync:${authedUserId}`, 'sync_complete', {
     syncTime: new Date(syncTime).toISOString(),
     deviceId: payload.deviceId,
     platform: payload.platform,
@@ -235,6 +262,12 @@ export function mockPullEndpoint(
   authToken: string,
   options?: { deviceId?: string; profileId?: string }
 ): EdgeFunctionResult<PullResponse> {
+  // Honor injected error modes (network/auth/server) before any other checks.
+  const injectedError = checkMockError();
+  if (injectedError) {
+    return injectedError as EdgeFunctionResult<PullResponse>;
+  }
+
   // Validate auth token
   if (!authToken || authToken === '') {
     return {

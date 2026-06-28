@@ -86,8 +86,11 @@ export function useRealtimeSync() {
 			);
 		}
 
+		// Unique per-mount topic so a quick remount (StrictMode / user-shell
+		// re-render) doesn't collide with a channel whose removeChannel cleanup
+		// is still in flight.
 		const channel = supabase
-			.channel(`sync:${user.id}`)
+			.channel(`sync:${user.id}:${crypto.randomUUID()}`)
 			.on("broadcast", { event: "sync_complete" }, () => {
 				scheduleInvalidation();
 			})

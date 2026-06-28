@@ -53,6 +53,7 @@ export function SessionReplay() {
 	// Reset playback state on mount and whenever the session changes, so a set
 	// index retained from a previous (longer) session can't index past the
 	// current session's sets.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is an intentional trigger so playback resets on session change, even though it isn't read in the effect body.
 	useEffect(() => {
 		reset();
 	}, [reset, sessionId]);

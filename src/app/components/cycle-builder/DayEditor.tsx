@@ -37,8 +37,10 @@ export function DayEditor({
 		restTimeOverride: undefined,
 	};
 
+	// Treat an explicit 0-second override as enabled; only null/undefined means
+	// "no override".
 	const [restTimeEnabled, setRestTimeEnabled] = useState(
-		!!overrides.restTimeOverride,
+		overrides.restTimeOverride != null,
 	);
 
 	return (
@@ -256,7 +258,7 @@ export function DayEditor({
 														...overrides,
 														restTimeOverride: Math.max(
 															0,
-															(overrides.restTimeOverride || 90) - 15,
+															(overrides.restTimeOverride ?? 90) - 15,
 														),
 													})
 												}
@@ -266,14 +268,20 @@ export function DayEditor({
 											</Button>
 											<Input
 												type="number"
-												value={overrides.restTimeOverride || 90}
-												onChange={(e) =>
+												value={overrides.restTimeOverride ?? 90}
+												onChange={(e) => {
+													// Preserve an explicit 0; only fall back to the
+													// default when cleared/non-numeric. Clamp negatives.
+													const raw = e.target.value;
+													const parsed = parseInt(raw, 10);
 													onUpdateOverrides({
 														...overrides,
 														restTimeOverride:
-															parseInt(e.target.value, 10) || 90,
-													})
-												}
+															raw === "" || !Number.isFinite(parsed)
+																? 90
+																: Math.max(0, parsed),
+													});
+												}}
 												className="text-center bg-background border-secondary"
 											/>
 											<span className="text-sm text-muted-foreground">s</span>

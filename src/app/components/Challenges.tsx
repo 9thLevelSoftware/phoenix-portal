@@ -497,6 +497,10 @@ export function Challenges() {
 	const activeChallenges = (challenges ?? []).filter(
 		(c) => !completedIds.has(c.id),
 	);
+	// Challenges the user has actually joined and not yet completed.
+	const joinedActiveChallenges = activeChallenges.filter((c) =>
+		joinedIds.has(c.id),
+	);
 	const pastChallenges = (challenges ?? []).filter((c) =>
 		completedIds.has(c.id),
 	);
@@ -635,7 +639,7 @@ export function Challenges() {
 						)}
 					</TabsContent>
 
-					{/* Mobile Leave confirmation dialog */}
+					{/* Leave confirmation dialog (portaled — shared by mobile + desktop) */}
 					<AlertDialog
 						open={!!leaveConfirmId}
 						onOpenChange={(open) => !open && setLeaveConfirmId(null)}
@@ -659,7 +663,11 @@ export function Challenges() {
 								</AlertDialogCancel>
 								<AlertDialogAction
 									className="bg-destructive hover:bg-destructive/90"
-									onClick={confirmLeave}
+									disabled={leaveMutation.isPending}
+									onClick={(event) => {
+										event.preventDefault();
+										confirmLeave();
+									}}
 								>
 									Leave
 								</AlertDialogAction>
@@ -779,27 +787,64 @@ export function Challenges() {
 									</p>
 								</div>
 							) : (
-								activeChallenges.map((challenge, index) => (
-									<ChallengeCard
-										key={challenge.id}
-										challenge={challenge}
-										index={index}
-										isJoined={joinedIds.has(challenge.id)}
-										isExpanded={expandedId === challenge.id}
-										daysRemaining={getDaysRemaining(challenge.end_date)}
-										userId={userId}
-										unit={unit}
-										onToggleExpand={() =>
-											setExpandedId(
-												expandedId === challenge.id ? null : challenge.id,
-											)
-										}
-										onJoin={() => joinMutation.mutate(challenge.id)}
-										onLeave={() => leaveMutation.mutate(challenge.id)}
-										joinPending={joinMutation.isPending}
-										leavePending={leaveMutation.isPending}
-									/>
-								))
+								<>
+									{/* Joined, in-progress challenges */}
+									{joinedActiveChallenges.length > 0 && (
+										<div className="space-y-6">
+											{joinedActiveChallenges.map((challenge, index) => (
+												<ChallengeCard
+													key={challenge.id}
+													challenge={challenge}
+													index={index}
+													isJoined
+													isExpanded={expandedId === challenge.id}
+													daysRemaining={getDaysRemaining(challenge.end_date)}
+													userId={userId}
+													unit={unit}
+													onToggleExpand={() =>
+														setExpandedId(
+															expandedId === challenge.id ? null : challenge.id,
+														)
+													}
+													onJoin={() => joinMutation.mutate(challenge.id)}
+													onLeave={() => setLeaveConfirmId(challenge.id)}
+													joinPending={joinMutation.isPending}
+													leavePending={leaveMutation.isPending}
+												/>
+											))}
+										</div>
+									)}
+
+									{/* Discoverable challenges the user hasn't joined */}
+									{discoverChallenges.length > 0 && (
+										<div className="space-y-6">
+											<h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pt-2">
+												Discover Challenges
+											</h3>
+											{discoverChallenges.map((challenge, index) => (
+												<ChallengeCard
+													key={challenge.id}
+													challenge={challenge}
+													index={index}
+													isJoined={false}
+													isExpanded={expandedId === challenge.id}
+													daysRemaining={getDaysRemaining(challenge.end_date)}
+													userId={userId}
+													unit={unit}
+													onToggleExpand={() =>
+														setExpandedId(
+															expandedId === challenge.id ? null : challenge.id,
+														)
+													}
+													onJoin={() => joinMutation.mutate(challenge.id)}
+													onLeave={() => setLeaveConfirmId(challenge.id)}
+													joinPending={joinMutation.isPending}
+													leavePending={leaveMutation.isPending}
+												/>
+											))}
+										</div>
+									)}
+								</>
 							)}
 						</TabsContent>
 

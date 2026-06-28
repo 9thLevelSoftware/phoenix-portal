@@ -61,9 +61,9 @@ describe('mobile-sync-push → Supabase Broadcast', () => {
     expect(events).toHaveLength(1);
 
     const [evt] = events;
-    // Channel is `sync:{userId}` — the mock derives userId from the
-    // sessions payload (or falls back to 'mock-user'). Accept either form.
-    expect(evt.channel).toMatch(/^sync:/);
+    // Channel is `sync:{userId}` derived from the authenticated user context
+    // (not the payload), so even an empty push targets the correct channel.
+    expect(evt.channel).toBe(`sync:${testUser.id}`);
     expect(evt.event).toBe('sync_complete');
 
     // Payload shape matches Edge Function (index.ts lines 1454-1464)

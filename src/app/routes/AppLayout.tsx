@@ -68,7 +68,10 @@ export function AppLayout() {
 							<WhatsNewBanner onDismiss={() => dismissWhatsNew.mutate()} />
 						)}
 
-						<ErrorBoundary FallbackComponent={PageErrorFallback}>
+						<ErrorBoundary
+							FallbackComponent={PageErrorFallback}
+							resetKeys={[location.pathname]}
+						>
 							<Suspense fallback={<PageLoading />}>
 								<AnimatePresence mode="wait">
 									<motion.main

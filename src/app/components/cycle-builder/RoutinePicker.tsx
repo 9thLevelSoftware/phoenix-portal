@@ -205,10 +205,20 @@ function RoutineItem({
 	};
 
 	return (
-		<button
-			type="button"
+		// Use a non-button container so the inner Select button isn't nested inside
+		// another button (invalid HTML) and clicks don't fire onSelect twice.
+		// biome-ignore lint/a11y/useSemanticElements: a <button> can't contain the inner Select <button>, so a role=button div is required here.
+		<div
+			role="button"
+			tabIndex={0}
 			onClick={onSelect}
-			className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group"
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onSelect();
+				}
+			}}
+			className="w-full p-4 bg-background border border-secondary rounded-lg hover:border-primary transition-all text-left group cursor-pointer"
 		>
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3 flex-1">
@@ -233,11 +243,15 @@ function RoutineItem({
 				<Button
 					size="sm"
 					className="bg-primary hover:bg-chart-2 border-0 opacity-0 group-hover:opacity-100 transition-opacity ml-4"
-					onClick={onSelect}
+					onClick={(e) => {
+						// Prevent the outer card's onClick from also firing.
+						e.stopPropagation();
+						onSelect();
+					}}
 				>
 					Select
 				</Button>
 			</div>
-		</button>
+		</div>
 	);
 }

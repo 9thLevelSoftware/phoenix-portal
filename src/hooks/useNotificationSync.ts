@@ -21,7 +21,7 @@ export function useNotificationSync(): void {
 	const setNotifications = useUIStore((s) => s.setNotifications);
 
 	// --- Challenges needing attention ---
-	const { data: challengeCount } = useQuery({
+	const { data: challengeCount, isSuccess: challengeSuccess } = useQuery({
 		queryKey: ["notifications", "challenges", user?.id],
 		queryFn: async () => {
 			const { count, error } = await supabase
@@ -37,7 +37,7 @@ export function useNotificationSync(): void {
 	});
 
 	// --- Recent community comments on user's content ---
-	const { data: communityCount } = useQuery({
+	const { data: communityCount, isSuccess: communitySuccess } = useQuery({
 		queryKey: ["notifications", "community", user?.id],
 		queryFn: async () => {
 			const sevenDaysAgo = new Date(
@@ -45,16 +45,18 @@ export function useNotificationSync(): void {
 			).toISOString();
 
 			// Get IDs of user's shared routines
-			const { data: routines } = await supabase
+			const { data: routines, error: routinesError } = await supabase
 				.from("shared_routines")
 				.select("id")
 				.eq("user_id", user?.id);
+			if (routinesError) throw routinesError;
 
 			// Get IDs of user's shared cycles
-			const { data: cycles } = await supabase
+			const { data: cycles, error: cyclesError } = await supabase
 				.from("shared_cycles")
 				.select("id")
 				.eq("user_id", user?.id);
+			if (cyclesError) throw cyclesError;
 
 			const itemIds = [
 				...(routines ?? []).map((r) => r.id),
@@ -80,9 +82,24 @@ export function useNotificationSync(): void {
 	});
 
 	useEffect(() => {
-		setNotifications({
-			challenges: challengeCount ?? 0,
-			community: communityCount ?? 0,
-		});
-	}, [challengeCount, communityCount, setNotifications]);
+		// Only write a count once its query has successfully resolved. Writing
+		// during the initial loading window or after an error would briefly clear
+		// badges on every mount/focus refetch and hide failures as empty counts.
+		const next: { challenges?: number; community?: number } = {};
+		if (challengeSuccess) {
+			next.challenges = challengeCount ?? 0;
+		}
+		if (communitySuccess) {
+			next.community = communityCount ?? 0;
+		}
+		if (next.challenges !== undefined || next.community !== undefined) {
+			setNotifications(next);
+		}
+	}, [
+		challengeCount,
+		communityCount,
+		challengeSuccess,
+		communitySuccess,
+		setNotifications,
+	]);
 }

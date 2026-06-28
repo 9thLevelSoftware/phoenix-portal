@@ -1,4 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 import { z } from "zod";
 import {
@@ -35,6 +39,9 @@ interface SubscriptionData {
 	isEntitled: boolean;
 	isStale: boolean;
 	isLoading: boolean;
+	/** True when the subscription query failed and no cached data is available. */
+	isError: boolean;
+	error: Error | null;
 	isPremium: boolean;
 	isFlame: boolean;
 	isInferno: boolean;
@@ -86,11 +93,14 @@ export function useSubscription(): SubscriptionData {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
 
-	const { data, isLoading } = useQuery({
+	const { data, isLoading, isError, error } = useQuery({
 		queryKey: queryKeys.subscription.byUser(user?.id ?? ""),
 		queryFn: () => fetchSubscription(user?.id),
 		enabled: !!user,
 		staleTime: 5 * 60 * 1000, // 5 minutes
+		// Preserve the last-known entitlement across transient refetch errors so a
+		// momentary network/Supabase failure doesn't silently downgrade the user.
+		placeholderData: keepPreviousData,
 	});
 
 	// Subscribe to Realtime changes on the subscriptions table for this user
@@ -146,6 +156,10 @@ export function useSubscription(): SubscriptionData {
 		isEntitled,
 		isStale: isStaleActiveSubscription(status, currentPeriodEnd),
 		isLoading,
+		// Only report an error when the query failed AND we have no cached data to
+		// fall back on; otherwise consumers keep using the last-known entitlement.
+		isError: isError && data === undefined,
+		error: error instanceof Error ? error : null,
 		isPremium: isEntitled,
 		isFlame: tier === "FLAME" || tier === "INFERNO",
 		isInferno: tier === "INFERNO",

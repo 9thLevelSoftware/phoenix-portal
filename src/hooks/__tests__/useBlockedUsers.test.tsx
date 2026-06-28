@@ -6,7 +6,7 @@ import { useCommunityStore } from "@/stores/useCommunityStore";
 import { normalizeBlockedUserIds, useBlockedUsers } from "../useBlockedUsers";
 
 vi.mock("@/providers/AuthProvider", () => ({
-	useAuth: () => ({ user: null }),
+	useAuth: () => ({ user: { id: "test-user" } }),
 }));
 
 vi.mock("@/queries/community", () => ({
@@ -70,7 +70,7 @@ describe("useBlockedUsers", () => {
 
 	it("hydrates only string blocked user IDs from localStorage", async () => {
 		localStorage.setItem(
-			"phoenix-blocked-users",
+			"phoenix-blocked-users:test-user",
 			JSON.stringify(["user-1", 123, { id: "user-2" }, "", "user-3"]),
 		);
 
