@@ -14,6 +14,33 @@ const TIER_LEVEL: Record<string, number> = {
 
 export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
 
+const KNOWN_TIERS = new Set<SubscriptionTier>(['FREE', 'EMBER', 'FLAME', 'INFERNO']);
+const KNOWN_STATUSES = new Set<SubscriptionStatus>([
+  'active',
+  'past_due',
+  'canceled',
+  'trialing',
+  'incomplete',
+  'none',
+]);
+
+function configurationError(corsHeaders: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({
+      error: 'subscription_unavailable',
+      message: 'Subscription status is temporarily unavailable. Please retry shortly.',
+    }),
+    {
+      status: 503,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': '30',
+      },
+    },
+  );
+}
+
 /**
  * Check whether a user meets the minimum subscription tier.
  *
@@ -36,14 +63,41 @@ export async function requireSubscription(
   | { allowed: true; tier: SubscriptionTier }
   | { allowed: false; tier: SubscriptionTier; response: Response }
 > {
-  const { data: subscription } = await supabase
+  const { data: subscription, error } = await supabase
     .from('subscriptions')
     .select('tier, status, current_period_end')
     .eq('user_id', userId)
     .maybeSingle();
 
-  const rawTier = (subscription?.tier as SubscriptionTier) ?? 'FREE';
-  const status = (subscription?.status as SubscriptionStatus | undefined) ?? 'none';
+  // fix(F328): A DB outage, RLS/service-role misconfig, schema drift, or
+  // duplicate-row error must NOT be silently treated as "no subscription"
+  // (which would downgrade a paying user to FREE and return a 402). Fail
+  // closed with a retryable 503 so operators see the infra failure instead
+  // of a billing denial.
+  if (error) {
+    console.error('[requireSubscription] subscription lookup failed:', error);
+    return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
+  }
+
+  // fix(F329): Validate DB-stored tier/status against known sets before
+  // computing entitlement. Schema drift (legacy PHOENIX/ELITE tiers, a new
+  // Paddle status, etc.) must not silently map to level 0 or leak an invalid
+  // typed value through the allowed branch.
+  const rawTierValue = subscription?.tier ?? 'FREE';
+  const rawStatusValue = subscription?.status ?? 'none';
+  if (
+    !KNOWN_TIERS.has(rawTierValue as SubscriptionTier) ||
+    !KNOWN_STATUSES.has(rawStatusValue as SubscriptionStatus)
+  ) {
+    console.error(
+      '[requireSubscription] unknown tier/status in subscriptions row:',
+      { tier: rawTierValue, status: rawStatusValue },
+    );
+    return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
+  }
+
+  const rawTier = rawTierValue as SubscriptionTier;
+  const status = rawStatusValue as SubscriptionStatus;
   const entitled = isSubscriptionEntitled(status, subscription?.current_period_end ?? null);
   const tier: SubscriptionTier = entitled ? rawTier : 'FREE';
   const userLevel = TIER_LEVEL[tier] ?? 0;
