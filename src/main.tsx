@@ -10,7 +10,15 @@ import "./styles/index.css";
 // Initialize Sentry lazily — only fetched for users who have consented
 // Lightweight proxy forwards errors to Sentry only if/when SDK loads
 let sentryHandler: ((error: unknown, errorInfo: unknown) => void) | null = null;
-if (getConsentStatus() === "accepted") {
+// Reading consent touches localStorage, which can throw in privacy modes /
+// blocked-storage contexts. Default to not-consented rather than failing to boot.
+let initialConsent: string | null = null;
+try {
+	initialConsent = getConsentStatus();
+} catch {
+	initialConsent = null;
+}
+if (initialConsent === "accepted") {
 	import("./lib/sentry").then(({ initSentry, sentryErrorHandler }) => {
 		initSentry();
 		sentryHandler = sentryErrorHandler;

@@ -23,15 +23,26 @@ export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 	useEffect(() => {
 		if (disabled) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.code !== "Space" || e.defaultPrevented) return;
+			const target = e.target as HTMLElement | null;
+			if (!target) return;
+			// Don't hijack Space from focused interactive controls (buttons, links,
+			// inputs, tabs, sliders, contenteditable), which have their own Space
+			// behavior.
+			const tag = target.tagName;
+			if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(tag)) return;
+			if (target.isContentEditable) return;
+			const role = target.getAttribute("role");
 			if (
-				e.code === "Space" &&
-				!["INPUT", "TEXTAREA", "SELECT"].includes(
-					(e.target as HTMLElement).tagName,
+				role &&
+				["button", "link", "tab", "slider", "checkbox", "menuitem"].includes(
+					role,
 				)
 			) {
-				e.preventDefault();
-				togglePlayPause();
+				return;
 			}
+			e.preventDefault();
+			togglePlayPause();
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);

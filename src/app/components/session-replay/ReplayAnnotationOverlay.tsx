@@ -1,4 +1,5 @@
 import type { ReplayIntelligence } from "@/lib/replay-intelligence";
+import { useReplayStore } from "@/stores/useReplayStore";
 
 interface ReplayAnnotationOverlayProps {
 	intelligence: ReplayIntelligence;
@@ -26,12 +27,20 @@ export function ReplayAnnotationOverlay({
 	width,
 	height,
 }: ReplayAnnotationOverlayProps) {
+	const currentTimeMs = useReplayStore((state) => state.currentTimeMs);
+
 	if (intelligence.status === "empty" || intelligence.durationMs <= 0) {
 		return null;
 	}
 
 	const selectedRep = intelligence.repInsights[currentRepIndex];
 	const plotHeight = Math.max(1, height - MARGIN.top - MARGIN.bottom);
+
+	// Only reveal sticking points the playhead has reached, matching the canvas
+	// renderer which hides future sticking points until currentTimeMs catches up.
+	const visibleStickingPoints = intelligence.stickingPoints.filter(
+		(point) => point.timestampMs <= currentTimeMs,
+	);
 
 	return (
 		<svg
@@ -56,7 +65,7 @@ export function ReplayAnnotationOverlay({
 				/>
 			)}
 
-			{intelligence.stickingPoints.map((point) => {
+			{visibleStickingPoints.map((point) => {
 				const x = xForTime(point.timestampMs, intelligence.durationMs, width);
 				return (
 					<g key={`${point.repNumber}-${point.timestampMs}`}>

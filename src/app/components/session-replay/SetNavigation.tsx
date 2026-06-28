@@ -16,10 +16,24 @@ export function SetNavigation({
 	currentSetIndex,
 	totalSets,
 }: SetNavigationProps) {
-	const { viewMode, setViewMode, nextSet, prevSet } = useReplayStore();
+	const { viewMode, setViewMode, nextSet, prevSet, pause, seek } =
+		useReplayStore();
 
 	const isFirstSet = currentSetIndex === 0;
 	const isLastSet = currentSetIndex >= totalSets - 1;
+
+	// Changing sets pauses playback and resets the playhead, so the new set's
+	// timeline/chart don't open at a stale (possibly out-of-range) position.
+	const goToPrevSet = () => {
+		pause();
+		seek(0);
+		prevSet();
+	};
+	const goToNextSet = () => {
+		pause();
+		seek(0);
+		nextSet();
+	};
 
 	return (
 		<div className="flex items-center justify-between gap-4">
