@@ -134,7 +134,15 @@ Test mocks updated in account/comments/community/goals test files for the new ch
 |----|---------|-----------|
 | F343 (push exercise delete+replace not atomic) | CONFIRMED — DONE | mobile-sync-push deleted all `exercises` for the affected sessions (CASCADE removing sets/rep_summaries/rep_telemetry) then re-inserted in separate statements; a failure after the delete permanently destroyed the user's data. New idempotent migration `20260628150000_atomic_replace_session_children.sql` adds `replace_session_children` (SECURITY DEFINER, service_role-only) folding the delete + all four child inserts into one transaction (`ON CONFLICT (id) DO UPDATE` preserves idempotent re-sync). The edge function builds + ownership-checks the child rows, then performs the swap with one RPC call. Column types verified against live schema (note `exercises.exercise_id` is TEXT, not UUID; `database.types.ts` was stale on that column). Migration clean-applied on the Supabase preview branch. |
 
-Remaining in theme: F303/F311/F359.
+### PR-4 batch 4 — remaining concurrency/atomicity
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F311 (generate-insights delete+insert) | CONFIRMED — DONE | Cached `user_insights` for a (user, period) were refreshed by DELETE-then-INSERT in two statements; a failure after the delete wiped the cache until next regen. New migration `20260628160000_atomic_insights_and_disconnect_rpcs.sql` adds `replace_user_insights` (SECURITY DEFINER, service_role-only) doing delete+insert in one transaction; the function calls it via one `rpc`. |
+| F303 (disconnect-integration partial state) | CONFIRMED — DONE | Token delete + integration-state reset + sync-queue cancel ran concurrently (Promise.all) outside a transaction, so a partial failure could strand the account (tokens gone but still flagged connected). Same migration adds `disconnect_integration` (SECURITY DEFINER, service_role-only) folding all three writes into one transaction; the function calls it via one `rpc`. |
+| F359 (provider rate-limit check-then-act) | MITIGATED | The core harm — two concurrent cron runs double-processing the same task — is eliminated by the F357 atomic claim (`UPDATE … WHERE status='pending' RETURNING`): only one invocation wins each row. The residual (both runs passing the provider rate-limit gate and processing *different* tasks) is bounded by the scheduled single-instance cron and the per-task claim; a distributed rate-limit lock is not warranted. No code change. |
+
+Both RPCs compiled cleanly on the Supabase preview branch.
 
 ---
 

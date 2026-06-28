@@ -673,23 +673,11 @@ Deno.serve(async (req) => {
 
     const insights = generateInsights(insightInput, weightUnit);
 
-    // ── 8. Persist: delete old, insert new ────────────────────────────────────
-    const { error: deleteError } = await supabaseAdmin
-      .from('user_insights')
-      .delete()
-      .eq('user_id', userId)
-      .eq('period', period);
-
-    if (deleteError) {
-      console.error('Failed to delete old insights:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to clear old insights' }),
-        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-
+    // ── 8. Persist: atomically replace the cached insights for this period ─────
+    // Delete-old + insert-new run in one transaction via replace_user_insights
+    // (F303/F311): doing them as separate statements meant a failure after the
+    // delete left the user with no cached insights until the next regeneration.
     const rows = insights.map((insight) => ({
-      user_id: userId,
       insight_type: insight.type,
       title: insight.title,
       description: insight.description,
@@ -698,21 +686,20 @@ Deno.serve(async (req) => {
       metric_value: insight.metric?.value ?? null,
       metric_unit: insight.metric?.unit ?? null,
       metric_delta: insight.metric?.delta ?? null,
-      period,
     }));
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabaseAdmin
-        .from('user_insights')
-        .insert(rows);
+    const { error: persistError } = await supabaseAdmin.rpc('replace_user_insights', {
+      p_user_id: userId,
+      p_period: period,
+      p_rows: rows,
+    });
 
-      if (insertError) {
-        console.error('Failed to insert insights:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to save insights' }),
-          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (persistError) {
+      console.error('Failed to persist insights:', persistError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to save insights' }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(
