@@ -128,7 +128,25 @@ Test mocks updated in account/comments/community/goals test files for the new ch
 |----|---------|-----------|
 | F264 (Paddle webhook ordering race) | CONFIRMED — DONE | New migration `20260628130000_atomic_paddle_subscription_event.sql` adds `apply_subscription_event` (SECURITY DEFINER, service_role-only) doing an `INSERT … ON CONFLICT (user_id) DO UPDATE … WHERE incoming.last_event_occurred_at > stored` — the write only lands when the event is strictly newer. paddle-webhooks calls it; a lost ordering race returns 200 `stale`. |
 
-Remaining in theme: F343 (push exercise delete+replace transaction — large mobile-sync-push change), F303/F311/F359.
+### PR-4 batch 3 — F343 push delete+replace atomicity (dedicated pass)
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F343 (push exercise delete+replace not atomic) | CONFIRMED — DONE | mobile-sync-push deleted all `exercises` for the affected sessions (CASCADE removing sets/rep_summaries/rep_telemetry) then re-inserted in separate statements; a failure after the delete permanently destroyed the user's data. New idempotent migration `20260628150000_atomic_replace_session_children.sql` adds `replace_session_children` (SECURITY DEFINER, service_role-only) folding the delete + all four child inserts into one transaction (`ON CONFLICT (id) DO UPDATE` preserves idempotent re-sync). The edge function builds + ownership-checks the child rows, then performs the swap with one RPC call. Column types verified against live schema (note `exercises.exercise_id` is TEXT, not UUID; `database.types.ts` was stale on that column). Migration clean-applied on the Supabase preview branch. |
+
+Remaining in theme: F303/F311/F359.
+
+---
+
+## Post-workflow integration fixes (user-flagged P1/P2 + Codex review)
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| P1 — legacy PR dedupe (personalRecordRow.ts) | CONFIRMED — DONE | mobile-sync-push indexed existing `personal_records` only by their id-key, so legacy set-derived payload rows (no `id`) never matched and the non-dedicated insert path re-created duplicate derived PR rows every re-sync. Added `personalRecordDerivedIdentityKey()`; existing rows are now indexed under BOTH their id-key and derived key. |
+| P2 — profile filter owner binding (AuthProvider) | CONFIRMED — DONE | `setOwnerUser` existed but was never called, so a rehydrated `activeProfileId` from a previous user could survive a user switch and feed routine/cycle/community import mutations. `applySession` now calls `useProfileFilterStore.setOwnerUser(nextUser?.id ?? null)` on every auth transition. |
+| Codex — workouts.ts `_none_` UUID sentinel | CONFIRMED — DONE | Replaced both `["_none_"]` sentinels in the sets queries (session + comparison detail) with conditional empty-array handling; `exercise_id` is a UUID column and PostgREST rejects the sentinel for zero-exercise sessions. |
+| Codex P2 — useSubscription entitlement carry-over | CONFIRMED — DONE | `placeholderData: keepPreviousData` carried a row across a query-key (user) change, briefly exposing the prior account's `isPremium`/tier to the new/anonymous session. Scoped the carry-over to a matching user id (default caching already covers same-key refetch errors). |
+| Codex P2 — garmin-oauth unbounded pending-token decrypt | CONFIRMED — DONE | Callback filtered pending request tokens on `token_expires_at IS NULL`, but permanent OAuth 1.0a tokens also use `null`, so every callback decrypted all connected Garmin users' tokens. Pending tokens now carry a short non-null expiry; the lookup scans only non-expired pending rows. |
 
 ---
 
