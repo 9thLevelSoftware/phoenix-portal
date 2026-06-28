@@ -334,9 +334,7 @@ export function phaseStatisticsTrendOptions(
 	return queryOptions({
 		queryKey: queryKeys.analytics.phaseStats(userId, period, profileId),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("session_phase_statistics")
@@ -359,8 +357,11 @@ export function phaseStatisticsTrendOptions(
 					].join(", "),
 				)
 				.eq("user_id", userId)
-				.gte("workout_sessions.started_at", since.toISOString())
 				.order("created_at", { ascending: true });
+
+			if (cutoff) {
+				query = query.gte("workout_sessions.started_at", cutoff);
+			}
 
 			if (profileId) {
 				query = query.eq("workout_sessions.local_profile_id", profileId);
