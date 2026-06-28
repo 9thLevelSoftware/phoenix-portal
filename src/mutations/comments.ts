@@ -147,20 +147,32 @@ export function useDeleteComment() {
 		mutationFn: async ({ commentId }: DeleteCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to delete");
 
-			// Soft delete: set deleted_at timestamp
-			const { data: deleted, error } = await supabase
+			// Verify the comment exists and belongs to the user BEFORE soft-deleting.
+			// We can't confirm via the update's returned row: the SELECT RLS policy
+			// only exposes `deleted_at IS NULL` rows, so once deleted_at is set the
+			// representation is filtered out and would look like a failure.
+			const { data: existing, error: findError } = await supabase
 				.from("community_comments")
-				.update({ deleted_at: new Date().toISOString() })
+				.select("id")
 				.eq("id", commentId)
 				.eq("user_id", user.id)
-				.select("id")
+				.is("deleted_at", null)
 				.maybeSingle();
 
-			if (error) throw error;
-			if (!deleted)
+			if (findError) throw findError;
+			if (!existing)
 				throw new Error(
 					"Comment not found or you don't have permission to delete it.",
 				);
+
+			// Soft delete: set deleted_at timestamp
+			const { error } = await supabase
+				.from("community_comments")
+				.update({ deleted_at: new Date().toISOString() })
+				.eq("id", commentId)
+				.eq("user_id", user.id);
+
+			if (error) throw error;
 		},
 
 		onSuccess: (_data, variables) => {
