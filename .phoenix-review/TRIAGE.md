@@ -118,6 +118,7 @@ Test mocks updated in account/comments/community/goals test files for the new ch
 | F148 (useSaveCycle) | CONFIRMED | Parent-cleanup: delete the orphaned `training_cycles` row if `cycle_days` insert fails. |
 | F156 (useSaveRoutine) | CONFIRMED | Parent-cleanup: delete the orphaned `routines` row if `routine_exercises` insert fails. |
 | F149/F150 (useUpdateCycle), F158 (useUpdateRoutine) | CONFIRMED — DONE | New idempotent migration `20260628120000_atomic_routine_cycle_replace_rpcs.sql` adds SECURITY INVOKER RPCs `update_routine_with_exercises` / `update_cycle_with_days` that do the parent update + child delete/replace in one transaction, scoped to `auth.uid()`. Mutations rewired to `supabase.rpc(...)`; signatures added to `database.types.ts`; tests mock `rpc`. Migration validated by the Supabase preview branch + migrations CI gate. |
+| Replace-RPC malformed-payload wipe (P1, external review) | CONFIRMED — DONE | The array-type check lived in the INSERT guard, AFTER the child DELETE, so a non-array `p_exercises`/`p_days` (null/object/string) updated the parent, deleted every child, skipped the insert, and returned success — a silent child wipe (the RPCs are EXECUTE-able by `authenticated`). New migration `20260628180000_validate_replace_rpc_payloads.sql` validates the payload is a JSON array BEFORE any mutation and RAISEs otherwise; `[]` remains the valid clear-all path. Both client builders already always pass an array, so no caller is affected. |
 
 ---
 
