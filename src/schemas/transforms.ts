@@ -181,10 +181,7 @@ export const routineSchema = z.object({
 	/** Stored as seconds in DB; exposed to portal UI as minutes */
 	estimated_duration: z.number().transform((sec) => Math.round(sec / 60)),
 	times_completed: z.number(),
-	last_used_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	last_used_at: nullableDate,
 	tags: z.array(z.string()).nullable(),
 	is_favorite: z.boolean(),
 	local_profile_id: z.string().nullable().optional(),
@@ -206,15 +203,8 @@ export const trainingCycleSchema = z.object({
 	status: z.enum(["active", "completed", "draft"]),
 	workout_days: z.number(),
 	rest_days: z.number(),
-	started_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
-	last_used_at: z
-		.string()
-		.nullable()
-		.transform((s) => (s ? new Date(s) : null)),
+	started_at: nullableOptionalDate,
+	last_used_at: nullableDate,
 	local_profile_id: z.string().nullable().optional(),
 });
 
@@ -328,11 +318,7 @@ export const rpgAttributesSchema = z.object({
 	character_class: z.string().nullable().optional(),
 	level: z.number(),
 	experience_points: z.number(),
-	updated_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
+	updated_at: nullableOptionalDate,
 });
 
 export type RpgAttributes = z.infer<typeof rpgAttributesSchema>;
@@ -346,11 +332,7 @@ export const gamificationStatsSchema = z.object({
 	longest_streak: z.number(),
 	current_streak: z.number(),
 	total_time_seconds: z.number(),
-	updated_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
+	updated_at: nullableOptionalDate,
 });
 
 export type GamificationStats = z.infer<typeof gamificationStatsSchema>;
@@ -376,11 +358,7 @@ export type CycleDay = z.infer<typeof cycleDaySchema>;
 
 export const cycleDetailSchema = trainingCycleSchema.extend({
 	cycle_days: z.array(cycleDaySchema),
-	started_at: z
-		.string()
-		.nullable()
-		.optional()
-		.transform((s) => (s ? new Date(s) : null)),
+	started_at: nullableOptionalDate,
 	progression_settings: z.unknown().nullable().optional(),
 	deload_settings: z.unknown().nullable().optional(),
 });

@@ -55,8 +55,14 @@ function formatDistance(meters: number | null): string {
 	return `${Math.round(meters)} m`;
 }
 
+function parseTimestamp(dateStr: string): number {
+	return new Date(dateStr).getTime();
+}
+
 function formatDate(dateStr: string): string {
-	return new Date(dateStr).toLocaleDateString(undefined, {
+	const ms = parseTimestamp(dateStr);
+	if (!Number.isFinite(ms)) return "—";
+	return new Date(ms).toLocaleDateString(undefined, {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
@@ -84,11 +90,18 @@ export function ExternalActivityList({
 		if (providerFilter !== "all") {
 			result = result.filter((a) => a.provider === providerFilter);
 		}
-		// Sort by date descending (most recent first)
-		return [...result].sort(
-			(a, b) =>
-				new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
-		);
+		// Sort by date descending (most recent first). Invalid timestamps sort
+		// deterministically to the end instead of producing NaN comparisons.
+		return [...result].sort((a, b) => {
+			const aMs = parseTimestamp(a.started_at);
+			const bMs = parseTimestamp(b.started_at);
+			const aValid = Number.isFinite(aMs);
+			const bValid = Number.isFinite(bMs);
+			if (!aValid && !bValid) return 0;
+			if (!aValid) return 1;
+			if (!bValid) return -1;
+			return bMs - aMs;
+		});
 	}, [activities, providerFilter]);
 
 	if (activities.length === 0) {
