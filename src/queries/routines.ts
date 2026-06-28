@@ -39,5 +39,6 @@ export function routineDetailOptions(routineId: string) {
 			if (error) throw error;
 			return routineDetailSchema.parse(data);
 		},
+		enabled: !!routineId,
 	});
 }

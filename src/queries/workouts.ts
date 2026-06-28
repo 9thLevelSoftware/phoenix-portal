@@ -173,12 +173,14 @@ export function sessionDetailOptions(sessionId: string) {
 				.order("order_index", { ascending: true });
 			if (exercisesError) throw exercisesError;
 
-			// Fetch sets for all exercises in this session
+			// Fetch sets for all exercises in this session. Guard the empty case so a
+			// session with zero exercises doesn't produce an invalid `in ()` filter
+			// (mirrors comparisonDetailOptions).
 			const exerciseIds = exercises.map((e: { id: string }) => e.id);
 			const { data: sets, error: setsError } = await supabase
 				.from("sets")
 				.select("*")
-				.in("exercise_id", exerciseIds)
+				.in("exercise_id", exerciseIds.length > 0 ? exerciseIds : ["_none_"])
 				.order("set_number", { ascending: true });
 			if (setsError) throw setsError;
 
