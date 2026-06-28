@@ -21,6 +21,7 @@ export function integrationsOptions(userId: string) {
 			if (error) throw error;
 			return data;
 		},
+		enabled: !!userId,
 	});
 }
 
@@ -52,5 +53,6 @@ export function externalActivitiesOptions(
 			if (error) throw error;
 			return data;
 		},
+		enabled: !!userId,
 	});
 }

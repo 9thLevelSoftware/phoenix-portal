@@ -31,5 +31,6 @@ export function personalRecordsOptions(
 				await resolvePersonalRecordDisplayNames(data),
 			);
 		},
+		enabled: !!userId,
 	});
 }
