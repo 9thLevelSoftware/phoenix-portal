@@ -13,11 +13,11 @@ export const StravaActivitySchema = z.object({
 	sport_type: z.string(),
 	start_date: z.string(),
 	elapsed_time: z.number(),
-	distance: z.number().optional().default(0),
+	distance: z.number().nullable().optional(),
 	kilojoules: z.number().nullable().optional(),
 	average_heartrate: z.number().nullable().optional(),
 	max_heartrate: z.number().nullable().optional(),
-	total_elevation_gain: z.number().optional().default(0),
+	total_elevation_gain: z.number().nullable().optional(),
 });
 
 export type StravaActivity = z.infer<typeof StravaActivitySchema>;
@@ -59,13 +59,16 @@ export function normalizeStravaActivity(raw: unknown): NormalizedActivity {
 		activity_type: mapStravaWireType(activity.sport_type),
 		started_at: activity.start_date,
 		duration_seconds: activity.elapsed_time,
-		distance_meters: activity.distance,
-		calories: activity.kilojoules
-			? Math.round(activity.kilojoules * 0.239)
-			: null,
+		// Keep missing optional metrics as null so a genuine 0 (zero-distance /
+		// zero-elevation / zero-energy activity) stays distinct from "not reported".
+		distance_meters: activity.distance ?? null,
+		calories:
+			activity.kilojoules != null
+				? Math.round(activity.kilojoules * 0.239)
+				: null,
 		avg_heart_rate: activity.average_heartrate ?? null,
 		max_heart_rate: activity.max_heartrate ?? null,
-		elevation_gain_meters: activity.total_elevation_gain,
+		elevation_gain_meters: activity.total_elevation_gain ?? null,
 	};
 }
 
