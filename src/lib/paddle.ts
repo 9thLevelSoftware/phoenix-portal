@@ -130,9 +130,7 @@ export interface PaddleWebhookEvent {
  * {@link buildSubscriptionUpsert} so transaction payloads are never read as
  * subscription data.
  */
-export function isSubscriptionEvent(
-	event: { event_type: string },
-): boolean {
+export function isSubscriptionEvent(event: { event_type: string }): boolean {
 	return event.event_type.startsWith("subscription.");
 }
 
