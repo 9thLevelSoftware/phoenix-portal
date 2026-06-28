@@ -15,6 +15,7 @@ import {
   partitionPersonalRecordRowsByExerciseCatalogValidity,
   partitionPersonalRecordRowsByLocalProfileValidity,
   partitionPersonalRecordRowsBySessionValidity,
+  personalRecordDerivedIdentityKey,
   personalRecordIdentityKey,
   shouldRepairDedicatedRecordLocalProfilesForPush,
   shouldValidatePersonalRecordProfileIdsForPush,
@@ -1731,12 +1732,20 @@ Deno.serve(async (req) => {
         throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
       }
 
-      const existingPrIdsByIdentity = new Map<string, string | null>(
-        (existingPrs ?? []).map((row) => [
-          personalRecordIdentityKey(row),
-          typeof row.id === 'string' ? row.id : null,
-        ])
-      );
+      // Index existing rows under BOTH their id-key and their derived-identity
+      // key. Dedicated payload rows (with id) match on the id-key; legacy
+      // set-derived rows (no id) match on the derived key — without the latter
+      // they would never match an existing row and the insert path would create
+      // duplicate PRs on every re-sync.
+      const existingPrIdsByIdentity = new Map<string, string | null>();
+      for (const row of existingPrs ?? []) {
+        const existingId = typeof row.id === 'string' ? row.id : null;
+        existingPrIdsByIdentity.set(personalRecordIdentityKey(row), existingId);
+        existingPrIdsByIdentity.set(
+          personalRecordDerivedIdentityKey(row),
+          existingId,
+        );
+      }
 
       const latestPayloadRowsByIdentity = new Map<string, typeof prRows[number]>();
       for (const row of prRows) {

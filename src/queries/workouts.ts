@@ -173,16 +173,20 @@ export function sessionDetailOptions(sessionId: string) {
 				.order("order_index", { ascending: true });
 			if (exercisesError) throw exercisesError;
 
-			// Fetch sets for all exercises in this session. Guard the empty case so a
-			// session with zero exercises doesn't produce an invalid `in ()` filter
-			// (mirrors comparisonDetailOptions).
+			// Fetch sets for all exercises in this session. Skip the query entirely
+			// for sessions with zero exercises: `exercise_id` is a UUID column, so a
+			// sentinel like `_none_` in an `in` filter is rejected as invalid UUID.
 			const exerciseIds = exercises.map((e: { id: string }) => e.id);
-			const { data: sets, error: setsError } = await supabase
-				.from("sets")
-				.select("*")
-				.in("exercise_id", exerciseIds.length > 0 ? exerciseIds : ["_none_"])
-				.order("set_number", { ascending: true });
-			if (setsError) throw setsError;
+			let sets: unknown[] = [];
+			if (exerciseIds.length > 0) {
+				const { data, error: setsError } = await supabase
+					.from("sets")
+					.select("*")
+					.in("exercise_id", exerciseIds)
+					.order("set_number", { ascending: true });
+				if (setsError) throw setsError;
+				sets = data ?? [];
+			}
 
 			// Parse with Zod and assemble
 			const parsedSession = workoutSessionSchema.parse(session);
@@ -230,15 +234,21 @@ export function comparisonDetailOptions(sessionId: string) {
 
 			const exerciseIds = exercises.map((e: { id: string }) => e.id);
 
-			const { data: sets, error: setsError } = await supabase
-				.from("sets")
-				.select("*")
-				.in("exercise_id", exerciseIds.length > 0 ? exerciseIds : ["_none_"])
-				.order("set_number", { ascending: true });
-			if (setsError) throw setsError;
+			// Skip the sets query for empty sessions: `exercise_id` is a UUID column,
+			// so a `_none_` sentinel in an `in` filter is rejected as invalid UUID.
+			let sets: { id: string; exercise_id: string }[] = [];
+			if (exerciseIds.length > 0) {
+				const { data, error: setsError } = await supabase
+					.from("sets")
+					.select("*")
+					.in("exercise_id", exerciseIds)
+					.order("set_number", { ascending: true });
+				if (setsError) throw setsError;
+				sets = (data ?? []) as { id: string; exercise_id: string }[];
+			}
 
 			// Fetch rep summaries for velocity data
-			const setIds = (sets ?? []).map((s: { id: string }) => s.id);
+			const setIds = sets.map((s: { id: string }) => s.id);
 			let reps: { set_id: string; mean_velocity_mps: number | null }[] = [];
 			if (setIds.length > 0) {
 				const { data: repData, error: repError } = await supabase

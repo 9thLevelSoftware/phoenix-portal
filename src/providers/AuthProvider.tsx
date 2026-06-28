@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface AuthContextType {
 	user: User | null;
@@ -37,7 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			}
 
 			setSession(nextSession);
-			setUser(nextSession?.user ?? null);
+			const nextUser = nextSession?.user ?? null;
+			setUser(nextUser);
+			// Bind the persisted profile filter to the current user. If it was
+			// rehydrated for a different user (sign-out then a new sign-in in the
+			// same browser session), this clears it so the previous user's local
+			// profile can't leak into RLS-affecting create/import mutations.
+			useProfileFilterStore.getState().setOwnerUser(nextUser?.id ?? null);
 			setLoading(false);
 		};
 
