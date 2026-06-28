@@ -25,6 +25,8 @@ const PROVIDER_ICON: Record<IntegrationProvider, typeof Activity> = {
 	fitbit: Watch,
 	garmin: Watch,
 	hevy: Dumbbell,
+	liftosaur: Dumbbell,
+	strong: Dumbbell,
 	apple_health: Smartphone,
 	google_health: Smartphone,
 };
@@ -34,6 +36,8 @@ const PROVIDER_LABEL: Record<IntegrationProvider, string> = {
 	fitbit: "Fitbit",
 	garmin: "Garmin",
 	hevy: "Hevy",
+	liftosaur: "Liftosaur",
+	strong: "Strong",
 	apple_health: "Apple Health",
 	google_health: "Health Connect",
 };
