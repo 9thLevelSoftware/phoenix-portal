@@ -194,6 +194,17 @@ function periodToDays(period: string): number {
 	return 7;
 }
 
+/**
+ * Returns the ISO cutoff for a period, or null for "all" (no date filter).
+ * Use to keep "all" truly unbounded instead of silently capping at 10 years.
+ */
+function periodCutoffISO(period: string): string | null {
+	if (period === "all") return null;
+	const since = new Date();
+	since.setDate(since.getDate() - periodToDays(period));
+	return since.toISOString();
+}
+
 /** Form score trend over time (GAP 4) */
 export function formScoreTrendOptions(
 	userId: string,
@@ -376,11 +387,7 @@ export function phaseStatisticsOptions(sessionId: string) {
 /** VBT assessments for an exercise (GAP 9) */
 export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
 	return queryOptions({
-		queryKey: [
-			...queryKeys.analytics.all,
-			"vbt-assessments",
-			exerciseId,
-		] as const,
+		queryKey: queryKeys.analytics.vbtAssessments(userId, exerciseId),
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("vbt_assessments")
@@ -391,6 +398,6 @@ export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
 			if (error) throw error;
 			return data;
 		},
-		enabled: !!exerciseId,
+		enabled: !!userId && !!exerciseId,
 	});
 }
