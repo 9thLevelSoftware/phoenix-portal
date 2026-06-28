@@ -16,5 +16,6 @@ export function insightsOptions(userId: string, period: string = "30d") {
 			if (error) throw error;
 			return data;
 		},
+		enabled: !!userId,
 	});
 }

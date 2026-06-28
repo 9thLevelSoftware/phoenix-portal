@@ -45,5 +45,6 @@ export function cycleDetailOptions(cycleId: string) {
 			if (error) throw error;
 			return cycleDetailSchema.parse(data);
 		},
+		enabled: !!cycleId,
 	});
 }
