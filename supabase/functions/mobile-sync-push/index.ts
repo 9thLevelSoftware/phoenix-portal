@@ -1521,21 +1521,32 @@ Deno.serve(async (req) => {
       // here would double the serial SELECTs on a chunked probe — at
       // MAX_TELEMETRY_POINTS=50_000 that's an extra ~500 roundtrips before
       // any insert. Keep the single upstream check and proceed directly.
-      // rep_telemetry is keyed to sets and (matching prior behaviour) is not
-      // gated by the session-acceptance filter; it carries its own ids.
-      const telemetryRows = (payload.telemetry ?? []).map((t) => ({
-        id: t.id,
-        set_id: t.setId,
-        user_id: userId,
-        timestamp_ms: t.timestampMs,
-        force_n: t.forceN,
-        velocity_mps: t.velocityMps,
-        position_mm: t.positionMm,
-        // cable stored canonically as "A" | "B" from BLE. Do not translate
-        // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
-        // when a human-readable label is needed. Audit item #4 (2026-04-19).
-        cable: t.cable,
-      }));
+      //
+      // Gate telemetry to the sets being written this push, mirroring how
+      // exercises/sets/rep_summaries are gated by the LWW acceptance filter.
+      // Mobile regenerates set UUIDs on every push, so a set_id only ever
+      // refers to a set in THIS payload; if its parent session was LWW-rejected
+      // that set is not (re-)inserted, so its telemetry would reference a
+      // non-existent row. Before this gate the whole replace_session_children
+      // transaction (now atomic) would roll back on that FK violation, blocking
+      // every other session's data in the same push. Drop the stale telemetry
+      // instead — we are keeping the server's newer version of that session.
+      const acceptedSetIds = new Set(dedupedSetRows.map((r) => r.id));
+      const telemetryRows = (payload.telemetry ?? [])
+        .filter((t) => acceptedSetIds.has(t.setId))
+        .map((t) => ({
+          id: t.id,
+          set_id: t.setId,
+          user_id: userId,
+          timestamp_ms: t.timestampMs,
+          force_n: t.forceN,
+          velocity_mps: t.velocityMps,
+          position_mm: t.positionMm,
+          // cable stored canonically as "A" | "B" from BLE. Do not translate
+          // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
+          // when a human-readable label is needed. Audit item #4 (2026-04-19).
+          cable: t.cable,
+        }));
       const dedupedTelemetryRows = deduplicateByKey(telemetryRows, (r) => r.id);
 
       // --- 4f. Atomic swap: delete affected sessions' children + re-insert all
