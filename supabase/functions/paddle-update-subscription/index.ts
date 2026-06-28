@@ -2,6 +2,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import {
+  findCrossTierDuplicatePriceIds,
   getConfiguredPriceIdForTierInterval,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
@@ -12,6 +13,7 @@ import {
 import {
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
+  resolveBasePlanPriceId,
 } from "../_shared/paddleSubscriptionState.ts";
 import { isSubscriptionEntitled, type SubscriptionStatus } from "../_shared/subscriptionEntitlement.ts";
 import {
@@ -47,6 +49,18 @@ Deno.serve(async (req) => {
       );
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(Deno.env);
+    if (duplicatePriceIds.length > 0) {
+      console.error(
+        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
+        duplicatePriceIds,
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration invalid" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
@@ -185,10 +199,56 @@ Deno.serve(async (req) => {
 
     const currentPaddleSubscriptionId = sub.paddle_subscription_id;
 
+    // Fetch the authoritative current subscription so we can (a) carry forward
+    // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
+    // current item state rather than a possibly-stale local price_id.
+    const currentSubResponse = await fetch(
+      `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    let currentItems: PaddleSubscriptionState["items"] = undefined;
+    let authoritativeCurrentPriceId: string | null = sub.price_id;
+    if (currentSubResponse.ok) {
+      let currentBody: Record<string, unknown> | null = null;
+      try {
+        currentBody = await currentSubResponse.json();
+      } catch {
+        console.error("Paddle API returned non-JSON subscription response");
+        return new Response(
+          JSON.stringify({ error: "Invalid Paddle response" }),
+          { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+      const currentSub = currentBody?.data as PaddleSubscriptionState | undefined;
+      if (currentSub?.items) {
+        currentItems = currentSub.items;
+        authoritativeCurrentPriceId = resolveBasePlanPriceId(
+          currentSub,
+          ALLOWED_PRICE_IDS,
+        ) || sub.price_id;
+      }
+    } else {
+      // Non-fatal: fall back to local price_id. Log the raw error server-side.
+      const fetchError = await currentSubResponse.text();
+      console.error(
+        "Paddle current subscription fetch failed:",
+        currentSubResponse.status,
+        fetchError,
+      );
+    }
+
     const patchDecision = buildPaddleSubscriptionPatch(
-      sub.price_id,
+      authoritativeCurrentPriceId,
       newPriceId,
       Boolean(sub.cancel_at_period_end),
+      currentItems,
     );
     if (patchDecision.action === "already_current") {
       return new Response(
@@ -215,7 +275,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: "Failed to update subscription",
-          details: paddleError,
+          code: "paddle_update_failed",
         }),
         { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
       );
@@ -253,7 +313,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const updatedPriceId = updatedSubscription.items?.[0]?.price?.id ?? newPriceId;
+    const updatedPriceId =
+      resolveBasePlanPriceId(updatedSubscription, ALLOWED_PRICE_IDS) || newPriceId;
     let updatedTier = mapPriceIdToTier(updatedPriceId, Deno.env);
     if (updatedPriceId && updatedTier === "FREE") {
       const existingTier = sub.tier as string | undefined;
@@ -278,6 +339,7 @@ Deno.serve(async (req) => {
       userId: user.id,
       subscription: updatedSubscription,
       tier: updatedTier,
+      priceId: updatedPriceId,
     });
     const { error: updateError } = await supabaseAdmin
       .from("subscriptions")

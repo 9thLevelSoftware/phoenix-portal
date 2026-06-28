@@ -51,9 +51,25 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: cors });
   }
 
+  // POST only — this is a destructive, state-changing endpoint. Reject any
+  // other method before authentication so an accidental GET/HEAD or proxy
+  // retry cannot trigger the deletion flow. (F317)
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     // Authenticate the user via their JWT
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,

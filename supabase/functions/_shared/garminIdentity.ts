@@ -25,9 +25,14 @@ function timingSafeEqual(aValue: string, bValue: string): boolean {
   const a = encoder.encode(aValue);
   const b = encoder.encode(bValue);
   let mismatch = a.length !== b.length ? 1 : 0;
-  const cmpLen = Math.min(a.length, b.length);
+  // Iterate to the longer length, substituting 0 for out-of-range bytes, so that
+  // comparison work does not depend on the shorter input's length (avoids leaking
+  // candidate token length via timing).
+  const cmpLen = Math.max(a.length, b.length);
   for (let i = 0; i < cmpLen; i++) {
-    mismatch |= a[i]! ^ b[i]!;
+    const av = i < a.length ? a[i]! : 0;
+    const bv = i < b.length ? b[i]! : 0;
+    mismatch |= av ^ bv;
   }
   return mismatch === 0;
 }
@@ -56,7 +61,18 @@ export async function resolveGarminWebhookIdentity(
 
   const matches: GarminIdentityCandidate[] = [];
   for (const candidate of candidates) {
-    const accessToken = await decryptAccessToken(candidate.access_token);
+    let accessToken: string | null | undefined;
+    try {
+      accessToken = await decryptAccessToken(candidate.access_token);
+    } catch (decryptError) {
+      // A single corrupt/stale token row must not fail identity resolution for
+      // every other candidate. Skip this candidate and keep checking the rest.
+      console.error(
+        `[garminIdentity] failed to decrypt token for candidate user ${candidate.user_id}; skipping:`,
+        decryptError,
+      );
+      continue;
+    }
     if (accessToken && timingSafeEqual(accessToken, activity.userAccessToken)) {
       matches.push(candidate);
     }

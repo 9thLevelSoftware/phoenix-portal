@@ -79,12 +79,37 @@ Deno.serve(async (req) => {
     const stateToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-    await supabase.from('oauth_states').insert({
+    // Validate required provider configuration before persisting state, so we never
+    // hand back a malformed authorization URL (e.g. client_id=undefined) for a state
+    // row that was already inserted.
+    if (provider === 'strava' && !Deno.env.get('STRAVA_CLIENT_ID')) {
+      console.error('Initiate OAuth: STRAVA_CLIENT_ID is not configured');
+      return new Response(JSON.stringify({ error: 'Provider not configured' }), {
+        status: 503, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    if (provider === 'fitbit' && !Deno.env.get('FITBIT_CLIENT_ID')) {
+      console.error('Initiate OAuth: FITBIT_CLIENT_ID is not configured');
+      return new Response(JSON.stringify({ error: 'Provider not configured' }), {
+        status: 503, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { error: stateInsertError } = await supabase.from('oauth_states').insert({
       state_token: stateToken,
       user_id: user.id,
       provider,
       expires_at: expiresAt,
     });
+
+    if (stateInsertError) {
+      // Persisting the state failed — the callback would later reject with
+      // invalid_state. Fail loudly here instead of returning a doomed auth URL.
+      console.error('Initiate OAuth: failed to persist state token:', stateInsertError);
+      return new Response(JSON.stringify({ error: 'Failed to start OAuth flow' }), {
+        status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Build provider-specific auth URL
     let authUrl: string;

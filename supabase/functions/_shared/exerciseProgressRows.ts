@@ -77,12 +77,22 @@ export function buildExerciseProgressRows(
 		for (const exercise of session.exercises) {
 			if (exercise.sets.length === 0) continue;
 
-			const maxWeight = Math.max(...exercise.sets.map((s) => s.weightKg));
+			// pushPayloadSchema enforces non-negative weights/reps at ingress, but
+			// clamp defensively here too so a direct (non-HTTP) caller cannot write
+			// negative progress snapshots that then propagate back to mobile on
+			// pull (Finding F334).
+			const maxWeight = Math.max(
+				0,
+				...exercise.sets.map((s) => Math.max(0, s.weightKg)),
+			);
 			const totalVolume = exercise.sets.reduce(
-				(sum, s) => sum + s.weightKg * s.actualReps,
+				(sum, s) => sum + Math.max(0, s.weightKg) * Math.max(0, s.actualReps),
 				0,
 			);
-			const maxReps = Math.max(...exercise.sets.map((s) => s.actualReps));
+			const maxReps = Math.max(
+				0,
+				...exercise.sets.map((s) => Math.max(0, s.actualReps)),
+			);
 			const setCount = exercise.sets.length;
 
 			const estimated1rm =

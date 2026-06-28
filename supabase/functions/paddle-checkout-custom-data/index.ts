@@ -18,44 +18,52 @@ Deno.serve(async (req) => {
     });
   }
 
-  const secret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
-  if (!secret?.trim()) {
-    console.error("PADDLE_CUSTOM_DATA_SECRET is not set");
-    return new Response(JSON.stringify({ error: "Billing signing not configured" }), {
+  try {
+    const secret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET");
+    if (!secret?.trim()) {
+      console.error("PADDLE_CUSTOM_DATA_SECRET is not set");
+      return new Response(JSON.stringify({ error: "Billing signing not configured" }), {
+        status: 500,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    const cd_sig = await hmacSha256Hex(secret, user.id);
+    return new Response(
+      JSON.stringify({
+        custom_data: {
+          user_id: user.id,
+          cd_sig,
+        },
+      }),
+      { headers: { ...cors, "Content-Type": "application/json" } },
+    );
+  } catch (err) {
+    console.error("paddle-checkout-custom-data error:", err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { ...cors, "Content-Type": "application/json" },
     });
   }
-
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  }
-
-  const cd_sig = await hmacSha256Hex(secret, user.id);
-  return new Response(
-    JSON.stringify({
-      custom_data: {
-        user_id: user.id,
-        cd_sig,
-      },
-    }),
-    { headers: { ...cors, "Content-Type": "application/json" } },
-  );
 });

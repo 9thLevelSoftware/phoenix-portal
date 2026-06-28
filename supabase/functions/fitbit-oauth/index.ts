@@ -67,9 +67,6 @@ Deno.serve(async (req) => {
 
     const userId = stateRow.user_id;
 
-    // Delete used state token (single-use)
-    await supabase.from('oauth_states').delete().eq('state_token', state);
-
     // Fitbit requires Basic auth: base64(client_id:client_secret)
     const basicAuth = btoa(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`);
     const redirectUri = `${PUBLIC_SUPABASE_URL}/functions/v1/fitbit-oauth`;
@@ -95,6 +92,21 @@ Deno.serve(async (req) => {
 
     const tokens = await tokenResponse.json();
     // Fitbit response: { access_token, refresh_token, user_id, expires_in, scope, token_type }
+
+    // Validate the provider response shape before consuming state / persisting tokens.
+    if (
+      typeof tokens?.access_token !== 'string' ||
+      typeof tokens?.refresh_token !== 'string' ||
+      typeof tokens?.user_id !== 'string' ||
+      typeof tokens?.expires_in !== 'number'
+    ) {
+      console.error('Fitbit token response missing required fields');
+      return Response.redirect(`${APP_URL}/integrations?error=token_payload_invalid`);
+    }
+
+    // Delete used state token (single-use) only after a successful token exchange,
+    // so a transient Fitbit failure does not strand the user with a consumed state.
+    await supabase.from('oauth_states').delete().eq('state_token', state);
 
     // Calculate token expiry from expires_in (seconds from now)
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();

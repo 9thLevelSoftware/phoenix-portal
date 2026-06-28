@@ -68,10 +68,65 @@ export const platformSchema = z
 		return "unknown";
 	});
 
-// Helper: coerce missing/null/non-array to [] before item-level validation.
+// ─── Wire timestamps ─────────────────────────────────────────────────────
+// Mobile ships timestamps as ISO-8601 strings. Validate them at ingress so a
+// malformed value returns a precise 400 with a field path instead of failing
+// later as a Postgres timestamp error or corrupting cursor/sync comparisons.
+// `Date.parse` accepts the ISO-8601 forms the Kotlin client emits (with and
+// without milliseconds, with `Z` or numeric offset). We intentionally keep it
+// permissive about format but strict about parseability.
+const isoDatetime = z
+	.string()
+	.refine((v) => Number.isFinite(Date.parse(v)), {
+		message: "expected an ISO-8601 datetime string",
+	});
+
+// Nullable/optional ISO datetime: undefined stays undefined, explicit null
+// stays null, present strings must parse.
+function nullableDatetime() {
+	return isoDatetime.nullable().optional();
+}
+
+// ISO datetime with a server-side default when the field is absent/null.
+function datetimeWithDefault(makeDefault: () => string) {
+	return isoDatetime
+		.nullish()
+		.transform((v) => v ?? makeDefault());
+}
+
+// ─── Bounded numbers ─────────────────────────────────────────────────────
+// Many wire numerics are physically non-negative (weights, reps, durations,
+// counts, volumes). Reject negatives/non-finite at ingress so a malformed
+// client cannot persist negative progress snapshots that then propagate back
+// to mobile on pull.
+const nonNegNumber = z.number().finite().nonnegative();
+const nonNegInt = z.number().int().nonnegative();
+
+// Non-negative scalar with a NOT-NULL-DEFAULT fallback (nullish → default).
+function nonNegNumberDefault(fallback: number) {
+	return nonNegNumber.nullish().transform((v) => v ?? fallback);
+}
+function nonNegIntDefault(fallback: number) {
+	return nonNegInt.nullish().transform((v) => v ?? fallback);
+}
+
+// Helper: coerce missing (undefined/null) to [] for backward compat, but
+// reject a non-array non-null value (object/string/number) with a 400 and a
+// field path. Silently dropping a mis-typed sync section is dangerous because
+// the client can advance its local sync timestamp after the server discarded
+// the data.
 function arrayOf<T extends z.ZodTypeAny>(item: T) {
 	return z
 		.unknown()
+		.superRefine((v, ctx) => {
+			if (v === undefined || v === null) return;
+			if (!Array.isArray(v)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "expected an array",
+				});
+			}
+		})
 		.transform((v) => (Array.isArray(v) ? v : []))
 		.pipe(z.array(item));
 }
@@ -87,14 +142,14 @@ function nullableField<T extends z.ZodTypeAny>(item: T) {
 const repSummarySchema = z.object({
 	id: uuid,
 	setId: uuid,
-	repNumber: z.number().int(),
+	repNumber: nonNegInt,
 	meanVelocityMps: nullableField(z.number()),
 	peakVelocityMps: nullableField(z.number()),
 	meanForceN: nullableField(z.number()),
 	peakForceN: nullableField(z.number()),
 	powerWatts: nullableField(z.number()),
-	romMm: nullableField(z.number()),
-	tutMs: nullableField(z.number()),
+	romMm: nullableField(nonNegNumber),
+	tutMs: nullableField(nonNegNumber),
 	leftForceAvg: nullableField(z.number()),
 	rightForceAvg: nullableField(z.number()),
 	asymmetryPct: nullableField(z.number()),
@@ -105,17 +160,17 @@ const setSchema = z.object({
 	id: uuid,
 	exerciseId: uuid,
 	setNumber: z.number().int(),
-	targetReps: nullableField(z.number().int()),
+	targetReps: nullableField(nonNegInt),
 	// DB defaults below — nullish coerces to the default so an explicit NULL
 	// in the payload doesn't bypass DEFAULT on INSERT.
-	actualReps: z.number().int().nullish().transform((v) => v ?? 0),
-	weightKg: z.number().nullish().transform((v) => v ?? 0),
+	actualReps: nonNegIntDefault(0),
+	weightKg: nonNegNumberDefault(0),
 	rpe: nullableField(z.number().int()),
 	isPr: z.boolean().nullish().transform((v) => v ?? false),
 	// Send-only PR derivation hints (see PortalSetDto Kotlin doc).
 	prType: nullableField(z.string()),
 	prPhase: nullableField(z.string()),
-	prVolume: nullableField(z.number()),
+	prVolume: nullableField(nonNegNumber),
 	notes: nullableField(z.string()),
 	workoutMode: nullableField(z.string()),
 	repSummaries: arrayOf(repSummarySchema).default([]),
@@ -127,14 +182,14 @@ const exerciseSchema = z.object({
 	exerciseId: nullableField(z.string()),
 	name: z.string(),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
-	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	orderIndex: nonNegIntDefault(0),
 	// Mobile-provided canonical estimated 1RM (per-cable kg). Optional for
 	// backward compat; absent → server recomputes (see exerciseProgressRows).
-	estimatedOneRepMaxKg: nullableField(z.number()),
+	estimatedOneRepMaxKg: nullableField(nonNegNumber),
 	// Velocity-based (VBT) estimated 1RM (per-cable kg). Brand-new, optional,
 	// stored verbatim alongside estimatedOneRepMaxKg (never recomputed). Absent
 	// on legacy payloads → null column. Issue #517 Phase 6.
-	velocityEstimatedOneRepMaxKg: nullableField(z.number()),
+	velocityEstimatedOneRepMaxKg: nullableField(nonNegNumber),
 	sets: arrayOf(setSchema).default([]),
 });
 
@@ -142,17 +197,14 @@ const sessionSchema = z.object({
 	id: uuid,
 	userId: z.string(),
 	name: nullableField(z.string()),
-	startedAt: z
-		.string()
-		.nullish()
-		.transform((v) => v ?? new Date().toISOString()),
-	updatedAt: nullableField(z.string()),
+	startedAt: datetimeWithDefault(() => new Date().toISOString()),
+	updatedAt: nullableDatetime(),
 	// DB NOT-NULL-DEFAULT numeric columns: coerce nullish → 0.
-	durationSeconds: z.number().int().nullish().transform((v) => v ?? 0),
-	totalVolume: z.number().nullish().transform((v) => v ?? 0),
-	setCount: z.number().int().nullish().transform((v) => v ?? 0),
-	exerciseCount: z.number().int().nullish().transform((v) => v ?? 0),
-	prCount: z.number().int().nullish().transform((v) => v ?? 0),
+	durationSeconds: nonNegIntDefault(0),
+	totalVolume: nonNegNumberDefault(0),
+	setCount: nonNegIntDefault(0),
+	exerciseCount: nonNegIntDefault(0),
+	prCount: nonNegIntDefault(0),
 	routineName: nullableField(z.string()),
 	workoutMode: nullableField(z.string()),
 	routineSessionId: nullableField(z.string()),
@@ -165,22 +217,22 @@ const sessionSchema = z.object({
 	dominantSide: nullableField(z.string()),
 	strengthProfile: nullableField(z.string()),
 	formScore: nullableField(z.number().int()),
-	deloadWarnings: nullableField(z.number().int()),
-	romViolations: nullableField(z.number().int()),
-	spotterActivations: nullableField(z.number().int()),
-	peakForceN: nullableField(z.number()),
-	estimatedCalories: nullableField(z.number()),
-	heaviestLiftKg: nullableField(z.number()),
+	deloadWarnings: nullableField(nonNegInt),
+	romViolations: nullableField(nonNegInt),
+	spotterActivations: nullableField(nonNegInt),
+	peakForceN: nullableField(nonNegNumber),
+	estimatedCalories: nullableField(nonNegNumber),
+	heaviestLiftKg: nullableField(nonNegNumber),
 	eccentricLoad: nullableField(z.number().int()),
 	echoLevel: nullableField(z.number().int()),
-	warmupReps: nullableField(z.number().int()),
-	workingReps: nullableField(z.number().int()),
+	warmupReps: nullableField(nonNegInt),
+	workingReps: nullableField(nonNegInt),
 });
 
 const repTelemetrySchema = z.object({
 	id: uuid,
 	setId: uuid,
-	timestampMs: z.number(),
+	timestampMs: nonNegNumber,
 	forceN: nullableField(z.number()),
 	velocityMps: nullableField(z.number()),
 	positionMm: nullableField(z.number()),
@@ -193,15 +245,15 @@ const routineExerciseSchema = z.object({
 	exerciseId: nullableField(z.string()),
 	name: z.string(),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
-	sets: z.number().int().nullish().transform((v) => v ?? 3),
-	reps: z.number().int().nullish().transform((v) => v ?? 10),
-	weight: z.number().nullish().transform((v) => v ?? 0),
-	restSeconds: z.number().int().nullish().transform((v) => v ?? 90),
+	sets: nonNegIntDefault(3),
+	reps: nonNegIntDefault(10),
+	weight: nonNegNumberDefault(0),
+	restSeconds: nonNegIntDefault(90),
 	mode: z.string().nullish().transform((v) => v ?? "OLD_SCHOOL"),
-	orderIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	orderIndex: nonNegIntDefault(0),
 	supersetId: nullableField(z.string()),
 	supersetColor: nullableField(z.string()),
-	supersetOrder: nullableField(z.number().int()),
+	supersetOrder: nullableField(nonNegInt),
 	perSetWeights: nullableField(z.string()),
 	perSetRest: nullableField(z.string()),
 	perSetReps: nullableField(z.string()),
@@ -231,11 +283,11 @@ const routineSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: z.string().nullish().transform((v) => v ?? ""),
-	exerciseCount: z.number().int().nullish().transform((v) => v ?? 0),
-	estimatedDuration: z.number().nullish().transform((v) => v ?? 0),
-	timesCompleted: z.number().int().nullish().transform((v) => v ?? 0),
+	exerciseCount: nonNegIntDefault(0),
+	estimatedDuration: nonNegNumberDefault(0),
+	timesCompleted: nonNegIntDefault(0),
 	isFavorite: z.boolean().nullish().transform((v) => v ?? false),
-	updatedAt: nullableField(z.string()),
+	updatedAt: nullableDatetime(),
 	exercises: arrayOf(routineExerciseSchema).default([]),
 });
 
@@ -245,9 +297,11 @@ const cycleDaySchema = z.object({
 	dayNumber: z.number().int(),
 	dayType: z.string().nullish().transform((v) => v ?? "workout"),
 	routineId: nullableField(z.string()),
-	weightAdjustment: z.number().nullish().transform((v) => v ?? 0),
+	// weightAdjustment / repModifier are signed deltas (a deload can reduce
+	// load/reps), so they are NOT constrained to non-negative.
+	weightAdjustment: z.number().finite().nullish().transform((v) => v ?? 0),
 	repModifier: z.number().int().nullish().transform((v) => v ?? 0),
-	restOverride: nullableField(z.number().int()),
+	restOverride: nullableField(nonNegInt),
 	restType: nullableField(z.string()),
 	notes: nullableField(z.string()),
 });
@@ -257,29 +311,42 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: z.number().int().nullish().transform((v) => v ?? 4),
-	workoutDays: z.number().int().nullish().transform((v) => v ?? 0),
-	restDays: z.number().int().nullish().transform((v) => v ?? 0),
-	currentWeek: z.number().int().nullish().transform((v) => v ?? 1),
+	durationWeeks: nonNegIntDefault(4),
+	workoutDays: nonNegIntDefault(0),
+	restDays: nonNegIntDefault(0),
+	currentWeek: nonNegIntDefault(1),
 	status: z.string().nullish().transform((v) => v ?? "draft"),
-	startedAt: nullableField(z.string()),
-	lastUsedAt: nullableField(z.string()),
-	updatedAt: nullableField(z.string()),
+	startedAt: nullableDatetime(),
+	lastUsedAt: nullableDatetime(),
+	updatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
 	deloadSettings: nullableField(z.string()),
 	days: arrayOf(cycleDaySchema).default([]),
 });
 
+// RPG attributes are integer columns in Postgres, but mobile can ship finite
+// floats (computed scores). The documented contract (_shared/rpgSchema.ts) is
+// that float rounding at the push write is the defensive boundary — so accept
+// any finite non-negative number and round it here rather than rejecting the
+// payload before the rounding can run (Finding F339).
+const rpgInt = (fallback: number) =>
+	z
+		.number()
+		.finite()
+		.nonnegative()
+		.nullish()
+		.transform((v) => (v == null ? fallback : Math.round(v)));
+
 const rpgAttributesSchema = z.object({
 	userId: z.string(),
-	strength: z.number().int().nullish().transform((v) => v ?? 0),
-	power: z.number().int().nullish().transform((v) => v ?? 0),
-	stamina: z.number().int().nullish().transform((v) => v ?? 0),
-	consistency: z.number().int().nullish().transform((v) => v ?? 0),
-	mastery: z.number().int().nullish().transform((v) => v ?? 0),
+	strength: rpgInt(0),
+	power: rpgInt(0),
+	stamina: rpgInt(0),
+	consistency: rpgInt(0),
+	mastery: rpgInt(0),
 	characterClass: nullableField(z.string()),
-	level: z.number().int().nullish().transform((v) => v ?? 1),
-	experiencePoints: z.number().int().nullish().transform((v) => v ?? 0),
+	level: rpgInt(1),
+	experiencePoints: rpgInt(0),
 });
 
 const badgeSchema = z.object({
@@ -288,20 +355,17 @@ const badgeSchema = z.object({
 	badgeName: z.string(),
 	badgeDescription: nullableField(z.string()),
 	badgeTier: z.string().nullish().transform((v) => v ?? "bronze"),
-	earnedAt: z
-		.string()
-		.nullish()
-		.transform((v) => v ?? new Date().toISOString()),
+	earnedAt: datetimeWithDefault(() => new Date().toISOString()),
 });
 
 const gamificationStatsSchema = z.object({
 	userId: z.string(),
-	totalWorkouts: z.number().int().nullish().transform((v) => v ?? 0),
-	totalReps: z.number().int().nullish().transform((v) => v ?? 0),
-	totalVolumeKg: z.number().nullish().transform((v) => v ?? 0),
-	longestStreak: z.number().int().nullish().transform((v) => v ?? 0),
-	currentStreak: z.number().int().nullish().transform((v) => v ?? 0),
-	totalTimeSeconds: z.number().int().nullish().transform((v) => v ?? 0),
+	totalWorkouts: nonNegIntDefault(0),
+	totalReps: nonNegIntDefault(0),
+	totalVolumeKg: nonNegNumberDefault(0),
+	longestStreak: nonNegIntDefault(0),
+	currentStreak: nonNegIntDefault(0),
+	totalTimeSeconds: nonNegIntDefault(0),
 });
 
 const phaseStatisticsSchema = z.object({
@@ -324,30 +388,30 @@ const phaseStatisticsSchema = z.object({
 const exerciseSignatureSchema = z.object({
 	id: uuid,
 	exerciseId: z.string(),
-	romMm: z.number().nullish().transform((v) => v ?? 0),
-	durationMs: z.number().nullish().transform((v) => v ?? 0),
-	symmetryRatio: z.number().nullish().transform((v) => v ?? 0.5),
+	romMm: nonNegNumberDefault(0),
+	durationMs: nonNegNumberDefault(0),
+	symmetryRatio: z.number().finite().nullish().transform((v) => v ?? 0.5),
 	velocityProfile: z.string().nullish().transform((v) => v ?? "LINEAR"),
 	cableConfig: z.string().nullish().transform((v) => v ?? "DUAL_SYMMETRIC"),
-	sampleCount: z.number().int().nullish().transform((v) => v ?? 1),
-	confidence: z.number().nullish().transform((v) => v ?? 0),
-	updatedAt: nullableField(z.string()),
+	sampleCount: nonNegIntDefault(1),
+	confidence: nonNegNumberDefault(0),
+	updatedAt: nullableDatetime(),
 });
 
 const assessmentResultSchema = z.object({
 	id: uuid,
 	exerciseId: z.string(),
-	estimatedOneRepMaxKg: z.number(),
+	estimatedOneRepMaxKg: nonNegNumber,
 	loadVelocityData: z.string(),
 	assessmentSessionId: nullableField(z.string()),
-	userOverrideKg: nullableField(z.number()),
-	createdAt: z.string(),
+	userOverrideKg: nullableField(nonNegNumber),
+	createdAt: isoDatetime,
 });
 
 const localProfileSchema = z.object({
 	id: localProfileIdSchema,
 	name: z.string(),
-	colorIndex: z.number().int().nullish().transform((v) => v ?? 0),
+	colorIndex: nonNegIntDefault(0),
 });
 
 const externalActivitySchema = z.object({
@@ -356,15 +420,15 @@ const externalActivitySchema = z.object({
 	provider: z.string(),
 	name: z.string(),
 	activityType: z.string().nullish().transform((v) => v ?? "strength"),
-	startedAt: z.string(),
-	durationSeconds: z.number().int().nullish().transform((v) => v ?? 0),
-	distanceMeters: nullableField(z.number()),
-	calories: nullableField(z.number().int()),
-	avgHeartRate: nullableField(z.number().int()),
-	maxHeartRate: nullableField(z.number().int()),
-	elevationGainMeters: nullableField(z.number()),
+	startedAt: isoDatetime,
+	durationSeconds: nonNegIntDefault(0),
+	distanceMeters: nullableField(nonNegNumber),
+	calories: nullableField(nonNegInt),
+	avgHeartRate: nullableField(nonNegInt),
+	maxHeartRate: nullableField(nonNegInt),
+	elevationGainMeters: nullableField(nonNegNumber),
 	rawData: nullableField(z.string()),
-	syncedAt: nullableField(z.string()),
+	syncedAt: nullableDatetime(),
 });
 
 const personalRecordSchema = z.object({
@@ -374,17 +438,14 @@ const personalRecordSchema = z.object({
 	exerciseId: nullableField(z.string()),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	recordType: z.string().nullish().transform((v) => v ?? "1RM"),
-	value: nullableField(z.number()),
-	volume: nullableField(z.number()),
-	weightKg: nullableField(z.number()),
-	reps: nullableField(z.number().int()),
+	value: nullableField(nonNegNumber),
+	volume: nullableField(nonNegNumber),
+	weightKg: nullableField(nonNegNumber),
+	reps: nullableField(nonNegInt),
 	workoutPhase: z.string().nullish().transform((v) => v ?? "COMBINED"),
 	sessionId: nullableField(uuid),
-	achievedAt: z
-		.string()
-		.nullish()
-		.transform((v) => v ?? new Date().toISOString()),
-	updatedAt: nullableField(z.string()),
+	achievedAt: datetimeWithDefault(() => new Date().toISOString()),
+	updatedAt: nullableDatetime(),
 	localProfileId: localProfileIdSchema.nullable().optional(),
 	// Accepted for wire compatibility; personal_records has no workout_mode
 	// column, so the push handler can only preserve this through session_id.

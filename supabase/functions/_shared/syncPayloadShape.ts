@@ -31,7 +31,16 @@
 type UnknownRecord = Record<string, unknown>;
 
 function toArr(value: unknown): UnknownRecord[] {
-	return Array.isArray(value) ? (value as UnknownRecord[]) : [];
+	if (!Array.isArray(value)) return [];
+	// Drop null/undefined/non-object elements so downstream normalizers never
+	// dereference `.exercises` / `.sets` / `.repSummaries` on a non-object and
+	// throw before producing a safe shape (Finding F331). The schema-based
+	// ingress (pushPayloadSchema) rejects such items outright; this normalizer
+	// is the defensive fallback path and only needs shape-safe survivors.
+	return value.filter(
+		(item): item is UnknownRecord =>
+			typeof item === "object" && item !== null && !Array.isArray(item),
+	);
 }
 
 function normalizeSet(raw: UnknownRecord): UnknownRecord {
