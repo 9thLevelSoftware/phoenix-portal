@@ -1383,25 +1383,22 @@ Deno.serve(async (req) => {
         sessionsInserted = sessionRows.length;
       }
 
-      // --- 4b-pre. Clean stale exercises before re-inserting (issue #33) ---
-      // Mobile generates new random exercise/set UUIDs each sync push,
-      // so upsert-by-id never matches the old rows — duplicates pile up.
-      // Delete existing exercises for affected sessions first; CASCADE
-      // removes their sets, rep_summaries, and rep_telemetry automatically.
+      // --- 4b-pre. Atomic delete + re-insert of session children (issue #33, F343) ---
+      // Mobile generates new random exercise/set/rep UUIDs each sync push, so
+      // upsert-by-id never matches the old rows and duplicates pile up. We
+      // therefore delete the existing exercises for the affected sessions
+      // (CASCADE removes their sets, rep_summaries and rep_telemetry) and
+      // re-insert the new rows. That delete + re-insert is performed in ONE
+      // transaction by the replace_session_children RPC below: previously the
+      // delete and each upsert were separate statements, so a failure after the
+      // delete permanently destroyed the user's data. The child rows are built
+      // and ownership-checked here; the single RPC call near the end of this
+      // block does the atomic swap.
       const affectedSessionIds = payload.sessions
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
         .map((s) => s.id);
 
-      if (affectedSessionIds.length > 0) {
-        const { error: cleanupErr } = await supabase
-          .from('exercises')
-          .delete()
-          .in('session_id', affectedSessionIds)
-          .eq('user_id', userId);
-        if (cleanupErr) throw new Error(`exercises pre-cleanup failed: ${cleanupErr.message}`);
-      }
-
-      // --- 4b. Batch upsert exercises ---
+      // --- 4b. Build exercise rows ---
       // When LWW is enabled, only accept exercises whose parent session was
       // accepted by the LWW gate. Rejecting the parent but inserting the
       // children would leave orphan rows referencing a stale session.
@@ -1425,6 +1422,9 @@ Deno.serve(async (req) => {
       // case-sensitive JS Set check while PostgreSQL treats them as equal.
       const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
 
+      // Ownership pre-check: reject any incoming id already owned by a different
+      // user before the atomic replace deletes/re-inserts. The actual write
+      // happens in the replace_session_children RPC below.
       if (dedupedExerciseRows.length > 0) {
         const exerciseOwnershipResp = await assertRowsOwnedByUser(
           supabase,
@@ -1434,15 +1434,9 @@ Deno.serve(async (req) => {
           cors,
         );
         if (exerciseOwnershipResp) return exerciseOwnershipResp;
-
-        const { error: exErr } = await supabase
-          .from('exercises')
-          .upsert(dedupedExerciseRows, { onConflict: 'id' });
-        if (exErr) throw new Error(`exercises upsert failed: ${exErr.message}`);
-        exercisesInserted = dedupedExerciseRows.length;
       }
 
-      // --- 4c. Batch upsert sets ---
+      // --- 4c. Build set rows ---
       // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
       // projection. They are send-only derivation hints consumed by the
       // personal_records insert path below; the `sets` table has no columns
@@ -1479,15 +1473,9 @@ Deno.serve(async (req) => {
           cors,
         );
         if (setOwnershipResp) return setOwnershipResp;
-
-        const { error: setErr } = await supabase
-          .from('sets')
-          .upsert(dedupedSetRows, { onConflict: 'id' });
-        if (setErr) throw new Error(`sets upsert failed: ${setErr.message}`);
-        setsInserted = dedupedSetRows.length;
       }
 
-      // --- 4d. Batch upsert rep_summaries ---
+      // --- 4d. Build rep_summary rows ---
       const repRows = payload.sessions
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
         .flatMap((s) =>
@@ -1525,44 +1513,54 @@ Deno.serve(async (req) => {
           cors,
         );
         if (repOwnershipResp) return repOwnershipResp;
-
-        const { error: repErr } = await supabase
-          .from('rep_summaries')
-          .upsert(dedupedRepRows, { onConflict: 'id' });
-        if (repErr) throw new Error(`rep_summaries upsert failed: ${repErr.message}`);
-        repSummariesInserted = dedupedRepRows.length;
       }
 
-      // --- 4e. Batch insert rep_telemetry (GAP 1: force curves) ---
+      // --- 4e. Build rep_telemetry rows (GAP 1: force curves) ---
       // NOTE: ownership for rep_telemetry.id is already verified in the
       // directOwnerChecks loop above (see `allTelemetryIds`). Re-checking
       // here would double the serial SELECTs on a chunked probe — at
       // MAX_TELEMETRY_POINTS=50_000 that's an extra ~500 roundtrips before
       // any insert. Keep the single upstream check and proceed directly.
-      if (payload.telemetry && payload.telemetry.length > 0) {
-        // Insert in batches of 500 to avoid payload limits
-        const TELEMETRY_BATCH = 500;
-        for (let i = 0; i < payload.telemetry.length; i += TELEMETRY_BATCH) {
-          const batch = payload.telemetry.slice(i, i + TELEMETRY_BATCH).map((t) => ({
-            id: t.id,
-            set_id: t.setId,
-            user_id: userId,
-            timestamp_ms: t.timestampMs,
-            force_n: t.forceN,
-            velocity_mps: t.velocityMps,
-            position_mm: t.positionMm,
-            // cable stored canonically as "A" | "B" from BLE. Do not translate
-            // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
-            // when a human-readable label is needed. Audit item #4 (2026-04-19).
-            cable: t.cable,
-          }));
+      // rep_telemetry is keyed to sets and (matching prior behaviour) is not
+      // gated by the session-acceptance filter; it carries its own ids.
+      const telemetryRows = (payload.telemetry ?? []).map((t) => ({
+        id: t.id,
+        set_id: t.setId,
+        user_id: userId,
+        timestamp_ms: t.timestampMs,
+        force_n: t.forceN,
+        velocity_mps: t.velocityMps,
+        position_mm: t.positionMm,
+        // cable stored canonically as "A" | "B" from BLE. Do not translate
+        // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
+        // when a human-readable label is needed. Audit item #4 (2026-04-19).
+        cable: t.cable,
+      }));
+      const dedupedTelemetryRows = deduplicateByKey(telemetryRows, (r) => r.id);
 
-          const { error: telErr } = await supabase
-            .from('rep_telemetry')
-            .upsert(batch, { onConflict: 'id' });
-          if (telErr) throw new Error(`rep_telemetry upsert failed: ${telErr.message}`);
-          telemetryInserted += batch.length;
+      // --- 4f. Atomic swap: delete affected sessions' children + re-insert all
+      // child rows in a single transaction (F343). A failure anywhere rolls the
+      // delete back, so partial-write data loss is impossible.
+      if (
+        affectedSessionIds.length > 0 ||
+        dedupedExerciseRows.length > 0 ||
+        dedupedTelemetryRows.length > 0
+      ) {
+        const { error: replaceErr } = await supabase.rpc('replace_session_children', {
+          p_user_id: userId,
+          p_session_ids: affectedSessionIds,
+          p_exercises: dedupedExerciseRows,
+          p_sets: dedupedSetRows,
+          p_rep_summaries: dedupedRepRows,
+          p_rep_telemetry: dedupedTelemetryRows,
+        });
+        if (replaceErr) {
+          throw new Error(`session children replace failed: ${replaceErr.message}`);
         }
+        exercisesInserted = dedupedExerciseRows.length;
+        setsInserted = dedupedSetRows.length;
+        repSummariesInserted = dedupedRepRows.length;
+        telemetryInserted = dedupedTelemetryRows.length;
       }
 
       // =====================================================================
