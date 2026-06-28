@@ -49,6 +49,12 @@ export function challengeProgressOptions(
 			...queryKeys.challenges.detail(challengeId),
 			"progress",
 			userId,
+			// Progress depends on the challenge metadata too — include it so cached
+			// results are invalidated when the challenge definition changes.
+			challengeType,
+			targetValue,
+			startDate,
+			endDate,
 		] as const,
 		queryFn: async () => {
 			let current = 0;
@@ -104,6 +110,8 @@ export function challengeProgressOptions(
 					current = (data ?? []).length;
 					break;
 				}
+				default:
+					throw new Error(`Unsupported challenge type: ${challengeType}`);
 			}
 
 			const percentage = Math.min(
