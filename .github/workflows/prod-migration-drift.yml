@@ -1,0 +1,197 @@
+name: Prod Migration Drift
+
+# Detects the migration-drift class documented in:
+#   - CLAUDE.md -> "Migration Workflow Discipline" -> "CI coverage"
+#   - .phoenix-review/ci-cd-&-workflows.md -> Finding 4
+#   - Project Phoenix RCA for mobile cloud-sync issue #602 (cross-repo link:
+#     9thLevelSoftware/Project-Phoenix-MP#602)
+#
+# Background: the existing `.github/workflows/migrations.yml` clean-applies
+# every migration into a fresh local stack on PRs, but it intentionally does
+# not compare against the live production project. Migration
+# `20260627000000_add_velocity_estimated_1rm_kg.sql` shipped in `phoenix-portal`
+# main without ever being pushed to live Supabase, while the matching
+# `mobile-sync-push` Edge Function was redeployed afterwards. Live PostgREST
+# then rejected inserts with:
+#   Could not find the 'velocity_estimated_1rm_kg' column of 'exercise_progress'
+#   in the schema cache
+#
+# Scope and limits of THIS workflow (please read before merging):
+#   - This is a *detector* only. It does NOT gate or block the Edge Function
+#     deploy path. `.github/workflows/deploy-edge-functions.yml` continues to
+#     deploy independently of this workflow's result.
+#   - It runs on a daily schedule, on `workflow_dispatch`, and on `main` push
+#     only when this very file changes. It does NOT run on PRs (PR-side forks
+#     cannot reach the prod secrets required by `supabase migration list --linked`).
+#   - When it detects drift, it fails its own run and emits remediation steps.
+#     The drift is informational until a human operator pushes the missing
+#     migration via `supabase db push` (or equivalent). The user-visible
+#     issue #602 stays open until that operational push completes and the
+#     reporter path is verified.
+#   - This PR adds the detector only; it does NOT itself fix or close the
+#     live Supabase schema/cache state that drives the mobile sync error.
+#
+# Required repository secrets (production read-only from this job's POV):
+#   - SUPABASE_ACCESS_TOKEN      Personal access token from
+#                                https://supabase.com/dashboard/account/tokens
+#   - SUPABASE_PROD_PROJECT_REF  Project ref of the prod Supabase project
+#                                (the 20-char string in the dashboard URL)
+#   - SUPABASE_PROD_DB_PASSWORD  Database password for the prod project
+#                                (used only by `supabase migration list --linked`;
+#                                the CLI uses it transiently and does not write
+#                                it back to the project)
+
+on:
+  # Daily at 06:17 UTC so drift alerts surface ahead of any user-visible
+  # breakage window.
+  schedule:
+    - cron: "17 6 * * *"
+  # Manual run only. This job needs production Supabase credentials that
+  # should never be exposed to PR-side forks, so we deliberately do NOT
+  # run on pull_request.
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prod-migration-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-migration-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  drift-check:
+    name: Detect unapplied migrations in prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+        with:
+          version: 2.76.9
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          SUPABASE_PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "$SUPABASE_PROD_PROJECT_REF" ] && missing="$missing SUPABASE_PROD_PROJECT_REF"
+          [ -z "$SUPABASE_PROD_DB_PASSWORD" ] && missing="$missing SUPABASE_PROD_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing. See the header comment in this workflow for provisioning steps."
+            exit 1
+          fi
+
+      - name: Link prod project (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+        run: |
+          # `supabase link` writes the project-ref + transient DB password to
+          # ~/.supabase/. The home dir is ephemeral on the runner, so this
+          # does not leak between jobs. Subsequent `migration list --linked`
+          # invocations reuse this link.
+          supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
+
+      - name: List local migrations
+        id: local
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # `version` is the numeric prefix that
+          # `supabase/migrations/<version>_<name>.sql` uses. Emit just the
+          # version, one per line, sorted/unique. Matches
+          # `schema_migrations.version` exactly.
+          : > local_migrations.txt
+          for f in supabase/migrations/*.sql; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            version=$(echo "$base" | sed -E 's/^([0-9]+)_.*/\1/')
+            echo "$version" >> local_migrations.txt
+          done
+          sort -u -o local_migrations.txt local_migrations.txt
+          count=$(wc -l < local_migrations.txt | tr -d ' ')
+          echo "Local migration count: $count"
+          {
+            echo "versions<<EOF"
+            cat local_migrations.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: List prod-applied migrations
+        id: remote
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # `--output-format json` is stable and avoids parsing the pretty
+          # table (whose layout differs across CLI versions). Each record
+          # carries a `version` field that matches the local file prefix.
+          #
+          # jq robustness: the CLI emits either a single JSON array
+          # (`json`) or one object per line (`stream-json` / NDJSON). The
+          # previous expression `'.[]? | select(.version != null) | .version'`
+          # errored on the object-input shape because `.[]?` does not iterate
+          # scalars. This filter normalizes either shape to an iterator over
+          # objects, then drops entries without a `version` field.
+          : > remote_migrations.txt
+          set -o pipefail
+          supabase migration list --linked --output-format json 2>/dev/null \
+            | jq -r 'if type == "array" then .[] else . end | select(.version? != null) | .version' \
+            >> remote_migrations.txt || {
+              echo "::error::Failed to query remote migrations. Check SUPABASE_ACCESS_TOKEN, SUPABASE_PROD_PROJECT_REF, SUPABASE_PROD_DB_PASSWORD, and that the project is linked."
+              exit 1
+            }
+          sort -u -o remote_migrations.txt remote_migrations.txt
+          count=$(wc -l < remote_migrations.txt | tr -d ' ')
+          echo "Remote applied count: $count"
+          {
+            echo "applied<<EOF"
+            cat remote_migrations.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Report unapplied migrations
+        env:
+          LOCAL: ${{ steps.local.outputs.versions }}
+          APPLIED: ${{ steps.remote.outputs.applied }}
+        run: |
+          # Treat the remote list as the source of truth. Any local version
+          # not in the remote list is unapplied to prod. Drift like
+          # `20260627000000_add_velocity_estimated_1rm_kg.sql` shows up here.
+          # NOTE: this is a detection/reporting step only. It does not block
+          # any deploy path; the Edge Function deploy workflow is independent.
+          : > local_sorted.txt
+          : > applied_sorted.txt
+          echo "$LOCAL" | sort -u > local_sorted.txt
+          echo "$APPLIED" | sort -u > applied_sorted.txt
+
+          unapplied=$(comm -23 local_sorted.txt applied_sorted.txt)
+          if [ -z "$unapplied" ]; then
+            echo "No drift: every local migration is applied to prod."
+            exit 0
+          fi
+
+          echo "::error::Drift detected. The following local migrations are NOT applied to prod:"
+          echo "$unapplied" | sed 's/^/  - /'
+          echo ""
+          echo "To remediate, run locally (after supabase link):"
+          echo "  supabase db push --include-all"
+          echo "Or apply a single migration non-interactively:"
+          echo "  psql \"\$DATABASE_URL\" -f supabase/migrations/<version>_*.sql"
+          echo "After applying, reload the PostgREST schema if clients still report cache errors:"
+          echo "  NOTIFY pgrst, 'reload schema';"
+          echo ""
+          echo "Reminder: this detector does not gate Edge Function deploys. Issue"
+          echo "9thLevelSoftware/Project-Phoenix-MP#602 stays open until the migration"
+          echo "is applied AND the reporter's Android Sync Now path is verified."
+          exit 1

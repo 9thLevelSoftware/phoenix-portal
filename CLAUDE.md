@@ -219,4 +219,4 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 
 ### CI coverage
 - `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/`. Fails on file-vs-applied count mismatch.
-- Follow-up not yet wired: a scheduled `supabase db diff --linked --schema public` that alerts on prod drift. Requires `SUPABASE_ACCESS_TOKEN` + DB password secrets.
+- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`. **Detector only — does not gate `.github/workflows/deploy-edge-functions.yml` or any other deploy path.** The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
