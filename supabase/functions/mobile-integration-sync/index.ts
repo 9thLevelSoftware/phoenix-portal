@@ -475,13 +475,26 @@ Deno.serve(async (req) => {
     // =========================================================================
     // action === 'sync'
 
-    // Retrieve stored API key
-    const { data: tokenData } = await supabase
+    // Retrieve stored API key. Use maybeSingle so a genuinely-missing row is
+    // null (handled below as "connect first"), and surface a real DB error as a
+    // retryable 500 instead of silently treating it as "no key found" (F355).
+    const { data: tokenData, error: tokenError } = await supabase
       .from('oauth_tokens')
       .select('api_key')
       .eq('user_id', userId)
       .eq('provider', provider)
-      .single();
+      .maybeSingle();
+
+    if (tokenError) {
+      console.error('mobile-integration-sync stored-token lookup failed:', tokenError);
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          error: 'Failed to read stored integration credentials. Please retry shortly.',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const storedApiKey = (await decryptOAuthSecret(tokenData?.api_key)) ?? '';
 

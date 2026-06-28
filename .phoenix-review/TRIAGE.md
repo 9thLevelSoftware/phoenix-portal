@@ -73,9 +73,15 @@ rows permanently. Token rotations were persisted without checking the write. Fix
 | F354 (mobile-integration) | CONFIRMED | `persistActivities` returns failure count; callers skip `last_sync_at` advance + 502. |
 | F263 (paddle-webhooks) | CONFIRMED | Capture `.maybeSingle()` error; return 500 so Paddle retries with full ordering context. |
 
-Remaining in theme (read-error propagation, lower data-loss risk): F350 (mobile-sync-pull child
-reads), F310/F315 (rankings), F328 (shared subscription lookup), F355 (stored-token lookup) —
-queued as a follow-up batch in this theme.
+### Read-error propagation follow-up (closed)
+
+| ID | Verdict | Resolution |
+|----|---------|-----------|
+| F350 (mobile-sync-pull child reads) | ALREADY-FIXED | Every read now returns a 500 on `error` (via the `readFailure()` helper / explicit `if (…Error) return new Response(…500…)`); the function no longer continues and returns `success` after a failed read. |
+| F310 (generate-insights reads) | ALREADY-FIXED | All data queries (sessions, exercises, PRs, exercise_progress, streak) capture their `error` and return 500. |
+| F315 (compute-rankings reads) | ALREADY-FIXED | All weekly/user ranking queries capture and check `error`; the one exception (target-profile participation check) fails closed with a 403 — safe for an authz gate. |
+| F328 (requireSubscription lookup) | ALREADY-FIXED | `.maybeSingle()` error now returns a retryable 503 (`fix(F328)`), and unknown tier/status is rejected (`fix(F329)`) instead of silently downgrading to FREE. |
+| F355 (mobile-integration-sync stored-token lookup) | CONFIRMED — DONE | Lookup used `.single()` and dropped `error`, so a transient DB failure was misreported as "No API key found. Connect the integration first." Switched to `.maybeSingle()` with an explicit error branch returning a retryable 500; a genuinely-missing row still falls through to the existing 400. |
 
 ---
 
