@@ -9,7 +9,8 @@ import { RecoveryScore } from "./RecoveryScore";
 
 export function RecoveryDashboardWidget() {
 	const { isPremium } = useSubscription();
-	const { recovery, isLoading, daysSinceFirstSession } = useRecoveryScore();
+	const { recovery, isLoading, isError, daysSinceFirstSession } =
+		useRecoveryScore();
 
 	if (!isPremium) {
 		return (
@@ -100,6 +101,13 @@ export function RecoveryDashboardWidget() {
 							<p className="text-xs text-muted-foreground">Limited range</p>
 						)}
 					</div>
+				</div>
+			) : isError ? (
+				<div className="flex flex-col items-center justify-center py-4 text-center">
+					<HeartPulse className="w-8 h-8 text-secondary mb-2" />
+					<p className="text-sm text-muted-foreground">
+						Couldn't load recovery data
+					</p>
 				</div>
 			) : (
 				<div className="flex flex-col items-center justify-center py-4 text-center">

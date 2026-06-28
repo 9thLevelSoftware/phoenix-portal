@@ -34,8 +34,13 @@ export async function fetchExerciseCatalog(
 	}
 
 	if (filters?.search) {
-		// Search across name and display_name
-		const escaped = filters.search.replace(/[%_\\]/g, "\\$&");
+		// Search across name and display_name.
+		// Escape LIKE wildcards/backslash, then strip PostgREST `.or()` delimiters
+		// (comma and parentheses) which would otherwise produce malformed filters
+		// or unintended OR conditions.
+		const escaped = filters.search
+			.replace(/[%_\\]/g, "\\$&")
+			.replace(/[(),]/g, " ");
 		const term = `%${escaped}%`;
 		query = query.or(`name.ilike.${term},display_name.ilike.${term}`);
 	}

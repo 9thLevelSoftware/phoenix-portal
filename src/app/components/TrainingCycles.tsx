@@ -36,9 +36,12 @@ export function TrainingCycles() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: cycles, isPending } = useQuery(
-		cycleListOptions(user?.id, activeProfileId),
-	);
+	const {
+		data: cycles,
+		isPending,
+		isError,
+		refetch,
+	} = useQuery(cycleListOptions(user?.id, activeProfileId));
 
 	const [shareDialogOpen, setShareDialogOpen] = useState(false);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -97,6 +100,40 @@ export function TrainingCycles() {
 							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							<CardSkeleton key={i} />
 						))}
+					</div>
+				</PageShell>
+			</div>
+		);
+	}
+
+	// Distinguish a load failure from genuinely having no cycles so we don't
+	// imply the user's cycles are gone when the query simply errored.
+	if (isError) {
+		return (
+			<div className="min-h-screen pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
+					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+							<div>
+								<h1 className="text-display-2 mb-2 text-white">
+									Training Cycles
+								</h1>
+								<p className="text-muted-foreground">Periodize your progress</p>
+							</div>
+						</div>
+					</div>
+				</div>
+				<PageShell>
+					<div className="text-center py-16">
+						<p className="text-lg text-white mb-2">
+							Couldn't load your training cycles
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Something went wrong. Your cycles are safe — please try again.
+						</p>
+						<Button onClick={() => refetch()} variant="outline">
+							Retry
+						</Button>
 					</div>
 				</PageShell>
 			</div>

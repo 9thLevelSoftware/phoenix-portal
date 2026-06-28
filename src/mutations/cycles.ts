@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
@@ -80,7 +81,8 @@ export function useSaveCycle() {
 
 			if (cycleError) throw cycleError;
 
-			// Insert cycle days
+			// Insert cycle days. If this fails, roll back the orphaned parent so we
+			// don't leave a draft cycle with no schedule.
 			if (input.days.length > 0) {
 				const { error: daysError } = await supabase.from("cycle_days").insert(
 					input.days.map((day) => ({
@@ -95,7 +97,14 @@ export function useSaveCycle() {
 						rest_type: day.rest_type ?? null,
 					})),
 				);
-				if (daysError) throw daysError;
+				if (daysError) {
+					await supabase
+						.from("training_cycles")
+						.delete()
+						.eq("id", cycle.id)
+						.eq("user_id", user.id);
+					throw daysError;
+				}
 			}
 
 			return cycle;
@@ -126,46 +135,44 @@ export function useUpdateCycle() {
 			).length;
 			const restDays = input.days.filter((d) => d.day_type === "rest").length;
 
-			const { error: cycleError } = await supabase
-				.from("training_cycles")
-				.update({
-					name: input.name,
-					description: input.description ?? "",
-					duration_weeks: input.duration_weeks,
-					workout_days: workoutDays,
-					rest_days: restDays,
-					started_at: input.started_at || null,
-					progression_settings: input.progression_settings ?? null,
-					deload_settings: input.deload_settings ?? null,
-				})
-				.eq("id", input.cycleId)
-				.eq("user_id", user.id);
+			const days = input.days.map((day) => ({
+				cycle_id: input.cycleId,
+				day_number: day.day_number,
+				day_type: day.day_type,
+				routine_id: day.routine_id || null,
+				weight_adjustment: day.weight_adjustment,
+				rep_modifier: day.rep_modifier,
+				rest_override: day.rest_override ?? null,
+				notes: day.notes ?? null,
+				rest_type: day.rest_type ?? null,
+			}));
 
-			if (cycleError) throw cycleError;
+			// Atomic update via RPC: the parent update + cycle_days delete/replace
+			// run in one transaction (server-side), scoped to auth.uid(), so a
+			// failed insert can no longer leave the cycle with no schedule.
+			const { data: updatedId, error } = await supabase.rpc(
+				"update_cycle_with_days",
+				{
+					p_cycle_id: input.cycleId,
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_duration_weeks: input.duration_weeks,
+					p_workout_days: workoutDays,
+					p_rest_days: restDays,
+					p_started_at: input.started_at || null,
+					p_progression_settings: (input.progression_settings ??
+						null) as unknown as Json | null,
+					p_deload_settings: (input.deload_settings ??
+						null) as unknown as Json | null,
+					p_days: days as unknown as Json,
+				},
+			);
 
-			const { error: deleteError } = await supabase
-				.from("cycle_days")
-				.delete()
-				.eq("cycle_id", input.cycleId);
-
-			if (deleteError) throw deleteError;
-
-			if (input.days.length > 0) {
-				const { error: daysError } = await supabase.from("cycle_days").insert(
-					input.days.map((day) => ({
-						cycle_id: input.cycleId,
-						day_number: day.day_number,
-						day_type: day.day_type,
-						routine_id: day.routine_id || null,
-						weight_adjustment: day.weight_adjustment,
-						rep_modifier: day.rep_modifier,
-						rest_override: day.rest_override ?? null,
-						notes: day.notes ?? null,
-						rest_type: day.rest_type ?? null,
-					})),
+			if (error) throw error;
+			if (!updatedId)
+				throw new Error(
+					"Cycle not found or you don't have permission to update it",
 				);
-				if (daysError) throw daysError;
-			}
 
 			return { id: input.cycleId };
 		},

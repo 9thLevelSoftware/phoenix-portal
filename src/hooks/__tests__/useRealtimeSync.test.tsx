@@ -88,7 +88,10 @@ describe("useRealtimeSync", () => {
 		vi.useFakeTimers();
 		const { unmount } = render(<TestComponent />);
 
-		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(`sync:${USER_ID}`);
+		// Topic carries a per-mount unique suffix to avoid remount channel collisions.
+		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
+			expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
+		);
 		expect(mocks.subscribeHandler).toBeTypeOf("function");
 
 		mocks.broadcastHandler?.({});

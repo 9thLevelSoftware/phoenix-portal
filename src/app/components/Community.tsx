@@ -78,20 +78,29 @@ export function Community() {
 		enabled: !!user?.id,
 	});
 
-	// Infinite scroll sentinel
-	const sentinelRef = useRef<HTMLDivElement>(null);
+	// Infinite scroll sentinels. Mobile and desktop layouts both stay mounted
+	// (toggled via CSS), so they need separate refs/observers — sharing one ref
+	// would let React point it at the hidden layout's sentinel and stall paging.
+	const mobileSentinelRef = useRef<HTMLDivElement>(null);
+	const desktopSentinelRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		const el = sentinelRef.current;
-		if (!el) return;
+		const targets = [
+			mobileSentinelRef.current,
+			desktopSentinelRef.current,
+		].filter((el): el is HTMLDivElement => el !== null);
+		if (targets.length === 0) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
-				if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+				const intersecting = entries.some((entry) => entry.isIntersecting);
+				if (intersecting && hasNextPage && !isFetchingNextPage) {
 					fetchNextPage();
 				}
 			},
 			{ threshold: 0.1 },
 		);
-		observer.observe(el);
+		for (const el of targets) {
+			observer.observe(el);
+		}
 		return () => observer.disconnect();
 	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
@@ -105,19 +114,39 @@ export function Community() {
 		debouncedSearch || filters.muscleGroup || filters.difficulty,
 	);
 
-	const selectedItem = selectedItemId
-		? (allItems.find((item) => item.id === selectedItemId) ?? null)
-		: null;
+	// When viewing a creator profile, the selected item may not be in the main
+	// feed. Hold the full item so the drawer can render it regardless of source.
+	const [selectedCreatorItem, setSelectedCreatorItem] =
+		useState<CommunityFeedItem | null>(null);
+
+	const selectedItem = selectedCreatorItem
+		? selectedCreatorItem
+		: selectedItemId
+			? (allItems.find((item) => item.id === selectedItemId) ?? null)
+			: null;
 
 	const handleVote = useCallback(
-		(id: string) => {
+		(id: string, itemType?: "routine" | "cycle") => {
 			voteMutation.mutate({
 				itemId: id,
-				itemType: activeTab === "routines" ? "routine" : "cycle",
+				itemType: itemType ?? (activeTab === "routines" ? "routine" : "cycle"),
 			});
 		},
 		[voteMutation, activeTab],
 	);
+
+	const handleSelectCreatorItem = useCallback(
+		(item: CommunityFeedItem) => {
+			setSelectedCreatorItem(item);
+			setSelectedItemId(item.id);
+		},
+		[setSelectedItemId],
+	);
+
+	const closeDetail = useCallback(() => {
+		setSelectedItemId(null);
+		setSelectedCreatorItem(null);
+	}, [setSelectedItemId]);
 
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
@@ -153,7 +182,7 @@ export function Community() {
 						<CreatorProfile
 							userId={viewingCreatorId}
 							onBack={() => setViewingCreatorId(null)}
-							onSelectItem={(id) => setSelectedItemId(id)}
+							onSelectItem={handleSelectCreatorItem}
 							onVote={handleVote}
 						/>
 					</div>
@@ -247,7 +276,7 @@ export function Community() {
 							)}
 
 							{/* Mobile Infinite scroll sentinel */}
-							<div ref={sentinelRef} className="h-4" />
+							<div ref={mobileSentinelRef} className="h-4" />
 							{isFetchingNextPage && (
 								<div className="flex justify-center py-3">
 									<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -261,7 +290,7 @@ export function Community() {
 				<CommunityDetailDrawer
 					item={selectedItem}
 					open={!!selectedItemId}
-					onClose={() => setSelectedItemId(null)}
+					onClose={closeDetail}
 				/>
 			</div>
 
@@ -294,7 +323,7 @@ export function Community() {
 						<CreatorProfile
 							userId={viewingCreatorId}
 							onBack={() => setViewingCreatorId(null)}
-							onSelectItem={(id) => setSelectedItemId(id)}
+							onSelectItem={handleSelectCreatorItem}
 							onVote={handleVote}
 						/>
 					) : (
@@ -384,6 +413,9 @@ export function Community() {
 											isVoted={votedIds?.has(item.id) ?? false}
 											onVote={handleVote}
 											onAuthorClick={setViewingCreatorId}
+											contentType={
+												activeTab === "routines" ? "routine" : "cycle"
+											}
 										/>
 									))}
 								</div>
@@ -391,7 +423,7 @@ export function Community() {
 
 							{/* Desktop Infinite scroll sentinel */}
 							<div
-								ref={sentinelRef}
+								ref={desktopSentinelRef}
 								className="h-10 flex items-center justify-center"
 							>
 								{isFetchingNextPage && (
@@ -410,7 +442,7 @@ export function Community() {
 					<CommunityDetailDrawer
 						item={selectedItem}
 						open={!!selectedItemId}
-						onClose={() => setSelectedItemId(null)}
+						onClose={closeDetail}
 					/>
 				</PageShell>
 			</div>

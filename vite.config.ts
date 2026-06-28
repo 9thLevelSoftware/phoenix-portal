@@ -1,5 +1,3 @@
-/// <reference types="vitest/config" />
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
@@ -169,15 +167,5 @@ export default defineConfig({
 				},
 			},
 		},
-	},
-	test: {
-		globals: true,
-		environment: "jsdom",
-		setupFiles: ["./src/test/setup.ts"],
-		css: true,
-		include: [
-			"src/**/*.{test,spec}.{ts,tsx}",
-			"tests/security/**/*.{test,spec}.{ts,tsx}",
-		],
 	},
 });

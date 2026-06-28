@@ -194,6 +194,17 @@ function periodToDays(period: string): number {
 	return 7;
 }
 
+/**
+ * Returns the ISO cutoff for a period, or null for "all" (no date filter).
+ * Use to keep "all" truly unbounded instead of silently capping at 10 years.
+ */
+function periodCutoffISO(period: string): string | null {
+	if (period === "all") return null;
+	const since = new Date();
+	since.setDate(since.getDate() - periodToDays(period));
+	return since.toISOString();
+}
+
 /** Form score trend over time (GAP 4) */
 export function formScoreTrendOptions(
 	userId: string,
@@ -207,23 +218,25 @@ export function formScoreTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, form_score")
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.not("form_score", "is", null);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.not("form_score", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return data;
 		},
@@ -243,9 +256,7 @@ export function safetyTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
@@ -258,9 +269,13 @@ export function safetyTrendOptions(
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return (data ?? []).filter(
 				(r) =>
@@ -285,23 +300,25 @@ export function calorieHistoryOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, estimated_calories")
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.not("estimated_calories", "is", null);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
-			const { data, error } = await query
-				.not("estimated_calories", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
+			if (cutoff) {
+				query = query.gte("started_at", cutoff);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: true,
+			});
 			if (error) throw error;
 			return data;
 		},
@@ -317,9 +334,7 @@ export function phaseStatisticsTrendOptions(
 	return queryOptions({
 		queryKey: queryKeys.analytics.phaseStats(userId, period, profileId),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("session_phase_statistics")
@@ -342,8 +357,11 @@ export function phaseStatisticsTrendOptions(
 					].join(", "),
 				)
 				.eq("user_id", userId)
-				.gte("workout_sessions.started_at", since.toISOString())
 				.order("created_at", { ascending: true });
+
+			if (cutoff) {
+				query = query.gte("workout_sessions.started_at", cutoff);
+			}
 
 			if (profileId) {
 				query = query.eq("workout_sessions.local_profile_id", profileId);
@@ -376,11 +394,7 @@ export function phaseStatisticsOptions(sessionId: string) {
 /** VBT assessments for an exercise (GAP 9) */
 export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
 	return queryOptions({
-		queryKey: [
-			...queryKeys.analytics.all,
-			"vbt-assessments",
-			exerciseId,
-		] as const,
+		queryKey: queryKeys.analytics.vbtAssessments(userId, exerciseId),
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("vbt_assessments")
@@ -391,6 +405,6 @@ export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
 			if (error) throw error;
 			return data;
 		},
-		enabled: !!exerciseId,
+		enabled: !!userId && !!exerciseId,
 	});
 }

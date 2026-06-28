@@ -26,6 +26,31 @@ export interface PaddleSubscriptionState {
   } | null;
 }
 
+/**
+ * Resolve the base plan price ID from a Paddle subscription's items.
+ *
+ * Paddle subscriptions can contain multiple items (add-ons, metered items),
+ * which are not guaranteed to be ordered with the base plan first. When an
+ * allowlist of configured paid price IDs is provided, the first item whose
+ * price matches the allowlist is treated as the base plan. Falls back to the
+ * first item's price (legacy behavior) when no allowlisted item is found.
+ */
+export function resolveBasePlanPriceId(
+  subscription: Pick<PaddleSubscriptionState, "items">,
+  allowedPriceIds?: ReadonlySet<string>,
+): string {
+  const items = subscription.items ?? [];
+  if (allowedPriceIds && allowedPriceIds.size > 0) {
+    for (const item of items) {
+      const id = item.price?.id;
+      if (id && allowedPriceIds.has(id)) {
+        return id;
+      }
+    }
+  }
+  return items[0]?.price?.id ?? "";
+}
+
 export function mapPaddleStatusToSubscriptionStatus(
   paddleStatus: string,
 ): PortalSubscriptionStatus {
@@ -61,17 +86,25 @@ export function buildSubscriptionUpsertFromPaddleState({
   userId,
   subscription,
   tier,
+  priceId: explicitPriceId,
   eventId,
   occurredAt,
 }: {
   userId: string;
   subscription: PaddleSubscriptionState;
   tier: string;
+  /**
+   * Explicitly resolved base plan price ID. When omitted, falls back to the
+   * first subscription item's price (legacy behavior). Callers that resolve
+   * the base plan against a configured allowlist should pass it here so a
+   * leading add-on item cannot write the wrong/null price_id.
+   */
+  priceId?: string;
   eventId?: string;
   occurredAt?: string;
 }): Record<string, unknown> {
   const status = mapPaddleStatusToSubscriptionStatus(subscription.status);
-  const priceId = subscription.items?.[0]?.price?.id ?? '';
+  const priceId = explicitPriceId ?? subscription.items?.[0]?.price?.id ?? '';
   const isCanceled = status === 'canceled';
 
   return {

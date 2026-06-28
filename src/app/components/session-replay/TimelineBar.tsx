@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Slider } from "@/app/components/ui/slider";
 import type { FatigueAnalysis } from "@/lib/fatigue-detection";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -26,12 +26,20 @@ export function TimelineBar({
 	const wasPlayingRef = useRef(false);
 	const { isPlaying, pause, play } = useReplayStore();
 
-	// Calculate fatigue region position
-	const fatigueStartPercent =
+	// Calculate fatigue region position. Require a positive duration and a valid
+	// boundary index so zero-duration or mismatched data can't produce
+	// Infinity/NaN percentages, then clamp to [0, 100].
+	const fatigueBoundary =
 		fatigue.isFatigued &&
 		fatigue.fatigueStartRepIndex !== null &&
-		repBoundaries.length > 0
-			? (repBoundaries[fatigue.fatigueStartRepIndex] / durationMs) * 100
+		durationMs > 0 &&
+		fatigue.fatigueStartRepIndex >= 0 &&
+		fatigue.fatigueStartRepIndex < repBoundaries.length
+			? repBoundaries[fatigue.fatigueStartRepIndex]
+			: null;
+	const fatigueStartPercent =
+		fatigueBoundary !== null && Number.isFinite(fatigueBoundary)
+			? Math.max(0, Math.min(100, (fatigueBoundary / durationMs) * 100))
 			: null;
 
 	const handlePointerDown = useCallback(() => {
@@ -56,6 +64,17 @@ export function TimelineBar({
 		[seek],
 	);
 
+	// If the component unmounts mid-scrub (e.g. navigating away during a drag),
+	// resume playback that was paused on pointer down so the player isn't left
+	// stuck in a paused state.
+	useEffect(() => {
+		return () => {
+			if (wasPlayingRef.current) {
+				play();
+			}
+		};
+	}, [play]);
+
 	return (
 		<div className="w-full space-y-1">
 			{/* Timeline container with fatigue overlay */}
@@ -78,13 +97,16 @@ export function TimelineBar({
 					className="relative z-10 h-full flex items-center"
 					onPointerDown={handlePointerDown}
 					onPointerUp={handlePointerUp}
+					onPointerCancel={handlePointerUp}
+					onLostPointerCapture={handlePointerUp}
 				>
 					<Slider
-						value={[currentTimeMs]}
+						value={[Math.min(currentTimeMs, Math.max(durationMs, 0))]}
 						min={0}
-						max={durationMs}
+						max={durationMs > 0 ? durationMs : 1}
 						step={16} // ~60fps granularity
 						onValueChange={handleValueChange}
+						disabled={durationMs <= 0}
 						className="w-full"
 					/>
 				</div>

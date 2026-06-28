@@ -56,11 +56,82 @@ export interface PaddleSubscriptionData {
 	canceled_at?: string | null;
 }
 
+/**
+ * Paddle transaction webhook payload. Distinct shape from subscription data:
+ * `id` is a transaction id (txn_XXXX) and the related subscription is referenced
+ * via `subscription_id`. Never treat these fields as subscription fields.
+ */
+export interface PaddleTransactionData {
+	id: string; // txn_XXXX
+	customer_id?: string; // ctm_XXXX
+	subscription_id?: string | null; // sub_XXXX (the subscription this txn belongs to)
+	status?: string;
+	custom_data?: {
+		user_id?: string;
+		[key: string]: unknown;
+	};
+	items?: PaddleSubscriptionItem[];
+}
+
+type PaddleSubscriptionEventType = Extract<
+	PaddleEventType,
+	`subscription.${string}`
+>;
+
+type PaddleTransactionEventType = Extract<
+	PaddleEventType,
+	`transaction.${string}`
+>;
+
+export interface PaddleSubscriptionEvent {
+	event_id: string;
+	event_type: PaddleSubscriptionEventType;
+	occurred_at: string;
+	data: PaddleSubscriptionData;
+}
+
+export interface PaddleTransactionEvent {
+	event_id: string;
+	event_type: PaddleTransactionEventType;
+	occurred_at: string;
+	data: PaddleTransactionData;
+}
+
+/**
+ * Discriminated union of Paddle webhook events keyed by `event_type`.
+ * `event_type` may also be an unknown future string, in which case `data`
+ * carries no narrowed guarantees.
+ */
+export type PaddleWebhookEventUnion =
+	| PaddleSubscriptionEvent
+	| PaddleTransactionEvent
+	| {
+			event_id: string;
+			event_type: string;
+			occurred_at: string;
+			data: PaddleSubscriptionData | PaddleTransactionData;
+	  };
+
+/**
+ * Subscription-shaped webhook event. Retained as the canonical event type for
+ * subscription handlers; transaction events have a different `data` shape and
+ * must be handled separately (see {@link isSubscriptionEvent}).
+ */
 export interface PaddleWebhookEvent {
 	event_id: string;
 	event_type: PaddleEventType | string;
 	occurred_at: string;
 	data: PaddleSubscriptionData;
+}
+
+/**
+ * Type guard: true only for `subscription.*` events, whose `data` is a
+ * {@link PaddleSubscriptionData}. Use this before passing an event to
+ * {@link buildSubscriptionUpsert} so transaction payloads are never read as
+ * subscription data.
+ */
+export function isSubscriptionEvent(event: { event_type: string }): boolean {
+	return event.event_type.startsWith("subscription.");
 }
 
 // ─── Price → Tier (tests / shared logic only; mirrors Edge `PADDLE_*_PRICE_IDS`) ─
@@ -134,6 +205,11 @@ export function buildSubscriptionUpsert(
 	event: PaddleWebhookEvent,
 	tierResolver: (priceId: string) => string,
 ): Record<string, unknown> | null {
+	// Only subscription.* events carry PaddleSubscriptionData. Transaction
+	// events have a different shape (txn id, subscription_id) and would be
+	// silently mis-mapped to wrong customer/subscription IDs and tier here.
+	if (!isSubscriptionEvent(event)) return null;
+
 	const data = event.data;
 	const userId = data.custom_data?.user_id;
 

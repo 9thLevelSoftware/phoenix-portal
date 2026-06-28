@@ -4,7 +4,12 @@ import { useAuth } from "@/providers/AuthProvider";
 import { blockedUsersOptions } from "@/queries/community";
 import { useCommunityStore } from "@/stores/useCommunityStore";
 
-const STORAGE_KEY = "phoenix-blocked-users";
+const STORAGE_KEY_PREFIX = "phoenix-blocked-users";
+
+/** Per-user storage key so one account's blocked list never leaks to another. */
+function storageKeyFor(userId: string): string {
+	return `${STORAGE_KEY_PREFIX}:${userId}`;
+}
 
 export function normalizeBlockedUserIds(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -25,42 +30,52 @@ export function normalizeBlockedUserIds(value: unknown): string[] {
  */
 export function useBlockedUsers(): { blockedUserIds: Set<string> } {
 	const { user } = useAuth();
+	const userId = user?.id ?? null;
 	const blockedUserIds = useCommunityStore((s) => s.blockedUserIds);
 	const setBlockedUserIds = useCommunityStore((s) => s.setBlockedUserIds);
+	const resetAll = useCommunityStore((s) => s.resetAll);
 
-	// Hydrate from localStorage on mount for instant blocking
+	// Hydrate from this user's localStorage on mount/account switch for instant
+	// blocking. When there's no authenticated user, clear any stale community
+	// state so one account's blocked list never applies to another.
 	useEffect(() => {
+		if (!userId) {
+			resetAll();
+			return;
+		}
 		try {
-			const stored = localStorage.getItem(STORAGE_KEY);
+			const stored = localStorage.getItem(storageKeyFor(userId));
 			if (stored) {
 				const ids = normalizeBlockedUserIds(JSON.parse(stored));
-				if (ids.length > 0) {
-					setBlockedUserIds(new Set(ids));
-				}
+				setBlockedUserIds(new Set(ids));
+			} else {
+				// No cached data for this user yet — don't inherit a previous user's set.
+				setBlockedUserIds(new Set());
 			}
 		} catch {
 			// Ignore malformed localStorage data
+			setBlockedUserIds(new Set());
 		}
-	}, [setBlockedUserIds]);
+	}, [userId, setBlockedUserIds, resetAll]);
 
 	const { data } = useQuery({
-		...blockedUsersOptions(user?.id ?? ""),
-		enabled: !!user,
+		...blockedUsersOptions(userId ?? ""),
+		enabled: !!userId,
 	});
 
-	// Sync server data to Zustand store and localStorage
+	// Sync server data to Zustand store and this user's localStorage
 	useEffect(() => {
-		if (data) {
+		if (data && userId) {
 			const normalized = normalizeBlockedUserIds(data);
 			const newSet = new Set(normalized);
 			setBlockedUserIds(newSet);
 			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+				localStorage.setItem(storageKeyFor(userId), JSON.stringify(normalized));
 			} catch {
 				// Ignore localStorage write failures
 			}
 		}
-	}, [data, setBlockedUserIds]);
+	}, [data, userId, setBlockedUserIds]);
 
 	return { blockedUserIds };
 }

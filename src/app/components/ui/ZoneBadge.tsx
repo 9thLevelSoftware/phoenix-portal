@@ -71,7 +71,13 @@ export function ZoneBadge({
 					style={{ backgroundColor: zone.color }}
 				/>
 			)}
-			{showLabel && <span>{zone.label}</span>}
+			{showLabel ? (
+				<span>{zone.label}</span>
+			) : (
+				// Without a visible label the badge is only a color dot; expose the
+				// classification as visually-hidden text for screen-reader users.
+				<span className="sr-only">{`${zone.label} — ${systemLabel} classification`}</span>
+			)}
 		</div>
 	);
 }

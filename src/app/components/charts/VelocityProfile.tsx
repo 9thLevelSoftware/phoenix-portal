@@ -79,7 +79,9 @@ function VelocityProfileInner({
 					: r.mean_velocity_mps,
 			),
 		);
-		return peak * 1.15; // headroom
+		// Clamp to a positive minimum so an all-zero (or negative) velocity
+		// stream can't collapse the y-domain to [0, 0].
+		return Math.max(1, peak * 1.15); // headroom
 	}, [repSummaries, showPeakVelocity]);
 
 	const yScale = useMemo(
@@ -294,15 +296,21 @@ function VelocityProfileInner({
 
 export function VelocityProfile(props: VelocityProfileProps) {
 	const repCount = props.repSummaries.length;
+	const showPeakVelocity = props.showPeakVelocity ?? true;
 	const peakVelocity =
 		repCount > 0
-			? Math.max(...props.repSummaries.map((r) => r.mean_velocity_mps))
+			? Math.max(
+					...props.repSummaries.map((r) =>
+						showPeakVelocity ? r.peak_velocity_mps : r.mean_velocity_mps,
+					),
+				)
 			: 0;
+	const peakLabel = showPeakVelocity ? "Peak velocity" : "Peak mean velocity";
 
 	return (
 		<div
 			role="img"
-			aria-label={`Velocity profile chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak mean velocity: ${peakVelocity.toFixed(2)} m/s.`}
+			aria-label={`Velocity profile chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. ${peakLabel}: ${peakVelocity.toFixed(2)} m/s.`}
 		>
 			<div aria-hidden="true">
 				<ParentSize>

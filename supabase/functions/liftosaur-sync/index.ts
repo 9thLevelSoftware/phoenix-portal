@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
@@ -258,19 +259,20 @@ Deno.serve(async (req) => {
 			}
 		} catch (fetchError) {
 			console.error("Liftosaur API fetch error:", fetchError);
+			const fetchMessage = errorMessage(fetchError);
 
 			await supabase
 				.from("user_integrations")
 				.update({
 					status: "error",
-					error_message: `Sync failed: ${fetchError.message}`,
+					error_message: `Sync failed: ${fetchMessage}`,
 				})
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
 			return new Response(
 				JSON.stringify({
-					error: `Liftosaur API error: ${fetchError.message}`,
+					error: `Liftosaur API error: ${fetchMessage}`,
 				}),
 				{
 					status: 502,
@@ -281,6 +283,7 @@ Deno.serve(async (req) => {
 
 		// Normalize and upsert records to external_activities
 		let importedCount = 0;
+		let failedCount = 0;
 		for (const record of allRecords) {
 			const meta = parseLiftoscriptMetadata(record.text);
 
@@ -312,12 +315,32 @@ Deno.serve(async (req) => {
 					{ onConflict: "user_id,provider,external_id" }
 				);
 
-			if (!activityError) {
+			if (activityError) {
+				failedCount++;
+				console.error(`Failed to persist Liftosaur record ${record.id}:`, activityError);
+			} else {
 				importedCount++;
 			}
 		}
 
-		// Update last sync timestamp and status
+		// If any record failed to persist, do NOT advance last_sync_at (it is the
+		// incremental cutoff and would skip the dropped rows). Returning non-2xx
+		// lets the queue processor retry; upserts are idempotent.
+		if (failedCount > 0) {
+			const failMessage = `Failed to persist ${failedCount} of ${allRecords.length} records`;
+			await supabase
+				.from("user_integrations")
+				.update({ status: "error", error_message: failMessage })
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+			return new Response(
+				JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
+			);
+		}
+
+		// Update last sync timestamp and status (all records persisted)
 		await supabase
 			.from("user_integrations")
 			.update({
@@ -353,7 +376,7 @@ Deno.serve(async (req) => {
 		);
 	} catch (err) {
 		console.error("Liftosaur sync error:", err);
-		return new Response(JSON.stringify({ error: err.message }), {
+		return new Response(JSON.stringify({ error: errorMessage(err) }), {
 			status: 500,
 			headers: { ...cors, "Content-Type": "application/json" },
 		});

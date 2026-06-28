@@ -78,9 +78,6 @@ Deno.serve(async (req) => {
 
     const userId = stateRow.user_id;
 
-    // Delete used state token (single-use)
-    await supabase.from('oauth_states').delete().eq('state_token', state);
-
     // ----------------------------------------------------------------
     // Exchange authorization code for tokens
     // ----------------------------------------------------------------
@@ -106,10 +103,28 @@ Deno.serve(async (req) => {
     const tokens = await tokenResponse.json();
 
     // tokens shape: { token_type, expires_at, expires_in, refresh_token, access_token, athlete: { id, ... } }
+    // Validate the provider response shape before consuming state / persisting tokens.
+    if (
+      typeof tokens?.access_token !== 'string' ||
+      typeof tokens?.refresh_token !== 'string' ||
+      typeof tokens?.expires_at !== 'number' ||
+      tokens?.athlete?.id == null
+    ) {
+      console.error('Strava token response missing required fields');
+      return Response.redirect(
+        `${APP_URL()}/integrations?error=token_payload_invalid`,
+        302
+      );
+    }
+
     const providerUserId = String(tokens.athlete.id);
     const accessToken: string = tokens.access_token;
     const refreshToken: string = tokens.refresh_token;
     const tokenExpiresAt = new Date(tokens.expires_at * 1000).toISOString();
+
+    // Delete used state token (single-use) only after a successful token exchange,
+    // so a transient Strava failure does not strand the user with a consumed state.
+    await supabase.from('oauth_states').delete().eq('state_token', state);
 
     // ----------------------------------------------------------------
     // Store tokens in oauth_tokens (server-only table)

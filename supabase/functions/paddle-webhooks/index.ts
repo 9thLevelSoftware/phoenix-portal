@@ -201,14 +201,47 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Reject a present-but-malformed user_id BEFORE any DB lookup.
+    // `subscriptions.user_id` is a UUID column, so a non-UUID value (e.g. forged
+    // custom_data) makes the lookup error; without this guard that error would
+    // be misclassified as a retryable 500 and Paddle would redeliver forever.
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(userId)) {
+      console.error(
+        "[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:",
+        event.event_id,
+      );
+      return new Response(
+        JSON.stringify({ error: "Invalid user_id in custom_data" }),
+        { status: 400, headers: responseHeaders },
+      );
+    }
+
     // Load the existing row before custom_data trust checks. New checkouts must
     // carry cd_sig; legacy subscriptions may omit it only when the Paddle
     // subscription ID already matches the stored row for the same user.
-    const { data: existingSubscription } = await supabase
+    const { data: existingSubscription, error: existingSubscriptionError } = await supabase
       .from("subscriptions")
       .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
       .eq("user_id", userId)
       .maybeSingle();
+
+    // A failed lookup (DB outage, schema drift, multiple rows) must NOT be
+    // treated as "no existing subscription" — that silently disables duplicate
+    // and stale-event detection and rejects legacy unsigned events for the wrong
+    // reason. Return 500 so Paddle retries with full ordering/trust context.
+    if (existingSubscriptionError) {
+      console.error(
+        "[BILLING_ALERT] Failed to load existing subscription:",
+        event.event_id,
+        existingSubscriptionError,
+      );
+      return new Response(
+        JSON.stringify({ error: "Failed to load subscription state" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
 
     // Verify the signed user_id handed out by paddle-checkout-custom-data so
     // a client can't forge another user's user_id in custom_data (P1-10).
@@ -310,15 +343,46 @@ Deno.serve(async (req) => {
       occurredAt: eventOrder.occurredAt,
     });
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .upsert(upsertData, { onConflict: "user_id" });
+    // Apply atomically with an ordering guard: the RPC only writes when this
+    // event is strictly newer than the stored last_event_occurred_at, closing
+    // the read-then-upsert race between concurrent deliveries (F264).
+    const { data: applied, error } = await supabase.rpc(
+      "apply_subscription_event",
+      {
+        p_user_id: userId,
+        p_paddle_customer_id:
+          (upsertData.paddle_customer_id as string | null) ?? null,
+        p_paddle_subscription_id:
+          (upsertData.paddle_subscription_id as string | null) ?? null,
+        p_tier: upsertData.tier as string,
+        p_status: upsertData.status as string,
+        p_price_id: (upsertData.price_id as string | null) ?? null,
+        p_current_period_start:
+          (upsertData.current_period_start as string | null) ?? null,
+        p_current_period_end:
+          (upsertData.current_period_end as string | null) ?? null,
+        p_cancel_at_period_end: Boolean(upsertData.cancel_at_period_end),
+        p_last_event_id: event.event_id,
+        p_last_event_occurred_at: eventOrder.occurredAt,
+      },
+    );
 
     if (error) {
-      console.error(`[BILLING_ALERT] Error upserting subscription for ${event.event_type}:`, error);
+      console.error(`[BILLING_ALERT] Error applying subscription event for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: responseHeaders },
+      );
+    }
+
+    if (applied === false) {
+      // A concurrent, newer event won the ordering race at write time.
+      console.warn(
+        `[Paddle] Skipped stale event ${event.event_id} at write time (lost ordering race)`,
+      );
+      return new Response(
+        JSON.stringify({ received: true, stale: true }),
+        { status: 200, headers: responseHeaders },
       );
     }
 

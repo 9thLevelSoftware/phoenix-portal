@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -22,8 +23,24 @@ export function UnsavedChangesDialog({
 	onDiscard,
 	onCancel,
 }: UnsavedChangesDialogProps) {
+	// Track whether Save/Discard initiated the close so the resulting
+	// onOpenChange(false) doesn't also fire onCancel. Only dismissals that
+	// didn't go through an explicit action (Escape, overlay click) should cancel.
+	const actionTakenRef = useRef(false);
+
 	return (
-		<AlertDialog open={open} onOpenChange={(o) => !o && onCancel()}>
+		<AlertDialog
+			open={open}
+			onOpenChange={(o) => {
+				if (!o) {
+					if (actionTakenRef.current) {
+						actionTakenRef.current = false;
+					} else {
+						onCancel();
+					}
+				}
+			}}
+		>
 			<AlertDialogContent className="bg-surface-2 border-secondary">
 				<AlertDialogHeader>
 					<AlertDialogTitle className="text-white">
@@ -35,19 +52,29 @@ export function UnsavedChangesDialog({
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel
-						onClick={onCancel}
+						onClick={() => {
+							// Mark handled so onOpenChange doesn't fire onCancel twice.
+							actionTakenRef.current = true;
+							onCancel();
+						}}
 						className="border-secondary text-muted-foreground hover:text-white"
 					>
 						Cancel
 					</AlertDialogCancel>
 					<AlertDialogAction
-						onClick={onDiscard}
+						onClick={() => {
+							actionTakenRef.current = true;
+							onDiscard();
+						}}
 						className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 					>
 						Discard
 					</AlertDialogAction>
 					<AlertDialogAction
-						onClick={onSave}
+						onClick={() => {
+							actionTakenRef.current = true;
+							onSave();
+						}}
 						className="bg-primary hover:bg-primary/90 border-0 text-white"
 					>
 						Save

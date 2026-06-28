@@ -35,8 +35,21 @@ jobs:
   deploy:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Protected environment: configure required reviewers / branch restrictions
+    # on the `production` environment in repo settings for an extra approval gate.
+    environment: production
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Production functions only ever ship from main. Guard against a
+      # workflow_dispatch run selecting a feature branch or stale commit.
+      - name: Enforce main-only deploys
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Edge Function deploys are restricted to refs/heads/main (got $GITHUB_REF). Re-run from main."
+            exit 1
+          fi
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0

@@ -28,12 +28,21 @@ export function normalizeActivity(
 			return normalizeGarminActivity(raw);
 		case "hevy":
 			return normalizeHevyActivity(raw);
+		case "strong":
+		case "liftosaur":
+			throw new Error(
+				`${provider} activities are imported via CSV/API and do not use the single-activity web normalizer. Use the provider-specific parser instead.`,
+			);
 		case "apple_health":
 		case "google_health":
 			throw new Error(
 				`${provider} activities are synced via the mobile app and do not use the web normalizer.`,
 			);
-		default:
-			throw new Error(`Unknown integration provider: ${provider}`);
+		default: {
+			// Exhaustive check: adding a new IntegrationProvider without a case
+			// here will fail to compile until dispatch support is added.
+			const _exhaustive: never = provider;
+			throw new Error(`Unknown integration provider: ${_exhaustive}`);
+		}
 	}
 }

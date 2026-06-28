@@ -82,9 +82,13 @@ export function downloadCSV(content: string, filename: string): void {
 	const blob = new Blob([BOM + content], { type: "text/csv;charset=utf-8;" });
 
 	const link = document.createElement("a");
-	link.href = URL.createObjectURL(blob);
+	const url = URL.createObjectURL(blob);
+	link.href = url;
 	link.download = `${filename}.csv`;
+	// Append to the document before clicking; some browsers/WebViews ignore
+	// synthetic clicks on detached anchors. Defer revoke so the click is handled.
+	document.body.appendChild(link);
 	link.click();
-
-	URL.revokeObjectURL(link.href);
+	document.body.removeChild(link);
+	setTimeout(() => URL.revokeObjectURL(url), 0);
 }

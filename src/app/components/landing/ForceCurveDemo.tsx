@@ -329,8 +329,12 @@ export function ForceCurveDemo() {
 			<div style={{ height: CHART_HEIGHT }}>
 				<ParentSize>
 					{({ width }) => {
-						if (width <= 0) {
-							// Fallback for SSR / test environments where container has no width
+						// Total horizontal margin is 60px (left 44 + right 16). Below a
+						// usable plot width, innerWidth would go negative and produce a
+						// reversed x-scale / invalid geometry — fall back to a fixed size
+						// (also covers SSR / tests where the container has no width).
+						const MIN_USABLE_WIDTH = MARGINS.left + MARGINS.right + 40;
+						if (width < MIN_USABLE_WIDTH) {
 							return <Chart width={400} height={CHART_HEIGHT} />;
 						}
 						return <Chart width={width} height={CHART_HEIGHT} />;

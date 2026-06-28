@@ -1,7 +1,13 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Scheduled sync queue processor.
@@ -10,6 +16,11 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  */
 
 const MAX_RETRIES = 10;
+
+// A task that has sat in `processing` longer than this lease is assumed to have
+// crashed mid-run (the worker died before marking it completed/failed) and is
+// reclaimed back to `pending` so it can be retried.
+const PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
@@ -95,6 +106,51 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Reclaim tasks stuck in `processing` past the lease (crashed workers) so
+    // they are retried instead of being stranded forever. Increment retry_count
+    // on each reclaim and mark `permanently_failed` at the cap; otherwise a task
+    // whose sync deterministically times out/crashes would be requeued every
+    // lease interval forever and never reach a terminal state.
+    const leaseExpiry = new Date(Date.now() - PROCESSING_LEASE_MS).toISOString();
+    const { data: staleTasks } = await supabase
+      .from('sync_queue')
+      .select('id, retry_count')
+      .eq('provider', provider)
+      .eq('status', 'processing')
+      .lt('started_at', leaseExpiry);
+
+    for (const stale of staleTasks ?? []) {
+      const nextRetryCount = (stale.retry_count ?? 0) + 1;
+      // Re-assert the expired-lease predicate in the update so a concurrent
+      // processor that has already reclaimed (or freshly re-claimed) this row
+      // cannot be clobbered: a fresh claim sets started_at >= leaseExpiry, so
+      // this `lt` no longer matches and the stale snapshot becomes a no-op.
+      if (nextRetryCount >= MAX_RETRIES) {
+        await supabase
+          .from('sync_queue')
+          .update({
+            status: 'permanently_failed',
+            retry_count: nextRetryCount,
+            error_message: `Max retries (${MAX_RETRIES}) exceeded: processing lease expired repeatedly`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', stale.id)
+          .eq('status', 'processing')
+          .lt('started_at', leaseExpiry);
+      } else {
+        await supabase
+          .from('sync_queue')
+          .update({
+            status: 'pending',
+            retry_count: nextRetryCount,
+            error_message: 'Reclaimed after processing lease expired',
+          })
+          .eq('id', stale.id)
+          .eq('status', 'processing')
+          .lt('started_at', leaseExpiry);
+      }
+    }
+
     // Fetch pending tasks for this provider only
     const { data: tasks } = await supabase
       .from('sync_queue')
@@ -120,11 +176,22 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Mark as processing
-      await supabase
+      // Atomically claim the task: only transition pending -> processing, and
+      // proceed only if THIS invocation won the row. Two concurrent cron runs
+      // can read the same pending rows, so an unconditional update would let
+      // both call the provider sync (duplicate external API calls/writes).
+      const { data: claimed } = await supabase
         .from('sync_queue')
         .update({ status: 'processing', started_at: new Date().toISOString() })
-        .eq('id', task.id);
+        .eq('id', task.id)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle();
+
+      if (!claimed) {
+        // Another concurrent invocation already claimed this task — skip it.
+        continue;
+      }
 
       // Check subscription before calling sync function
       const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
@@ -243,7 +310,7 @@ async function callSyncFunction(provider: string, userId: string) {
 /**
  * Increment the rate limit counter for a provider, resetting the window if expired.
  */
-async function incrementRateLimit(supabase: ReturnType<typeof createClient>, provider: string) {
+async function incrementRateLimit(supabase: DbClient, provider: string) {
   const now = new Date();
   const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
   if (!limit) return;

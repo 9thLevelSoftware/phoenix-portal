@@ -2209,6 +2209,32 @@ export type Database = {
 			};
 		};
 		Functions: {
+			update_routine_with_exercises: {
+				Args: {
+					p_routine_id: string;
+					p_name: string;
+					p_description: string;
+					p_exercise_count: number;
+					p_estimated_duration: number;
+					p_exercises: Json;
+				};
+				Returns: string;
+			};
+			update_cycle_with_days: {
+				Args: {
+					p_cycle_id: string;
+					p_name: string;
+					p_description: string;
+					p_duration_weeks: number;
+					p_workout_days: number;
+					p_rest_days: number;
+					p_started_at: string | null;
+					p_progression_settings: Json | null;
+					p_deload_settings: Json | null;
+					p_days: Json;
+				};
+				Returns: string;
+			};
 			check_rate_limit: {
 				Args: {
 					p_key: string;

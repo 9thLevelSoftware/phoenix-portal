@@ -10,7 +10,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { CalendarWidget } from "@/app/components/CalendarWidget";
 import { PageShell } from "@/app/components/PageShell";
@@ -248,7 +248,7 @@ export function WorkoutHistory() {
 		setIsLoadingMore(true);
 		const nextOffset = (loadedPages + 1) * WORKOUTS_PAGE_SIZE;
 		try {
-			const opts = workoutListPageOptions(user.id, nextOffset);
+			const opts = workoutListPageOptions(user.id, nextOffset, activeProfileId);
 			const page = await queryClient.fetchQuery({
 				...opts,
 				queryKey: opts.queryKey,
@@ -263,7 +263,17 @@ export function WorkoutHistory() {
 		} finally {
 			setIsLoadingMore(false);
 		}
-	}, [user?.id, isLoadingMore, loadedPages, queryClient]);
+	}, [user?.id, isLoadingMore, loadedPages, queryClient, activeProfileId]);
+
+	// Reset pagination when the active profile filter changes, so additional
+	// pages are fetched for the selected profile rather than appended across
+	// profiles (which would corrupt stats, calendar markers, and history).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on profile change
+	useEffect(() => {
+		setExtraWorkouts([]);
+		setLoadedPages(0);
+		setHasMore(true);
+	}, [activeProfileId]);
 
 	const toggleCompareSelection = (sessionId: string) => {
 		setSelectedForCompare((prev) => {

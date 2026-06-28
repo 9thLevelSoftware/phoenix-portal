@@ -43,6 +43,36 @@ export async function exportAllUserData(
 		return data;
 	}
 
+	// Fetch a nested table filtered by a (potentially large) set of parent IDs,
+	// chunking the `.in(...)` filter so we don't exceed URL/PostgREST length
+	// limits for users with many workouts/routines/cycles.
+	const IN_CHUNK_SIZE = 200;
+	async function addChunkedInTable(
+		tableName: string,
+		filename: string,
+		column: string,
+		ids: string[],
+	): Promise<void> {
+		progress(`Exporting ${tableName}...`);
+		const rows: Record<string, unknown>[] = [];
+		for (let i = 0; i < ids.length; i += IN_CHUNK_SIZE) {
+			const chunk = ids.slice(i, i + IN_CHUNK_SIZE);
+			const { data, error } = await supabase
+				.from(tableName)
+				.select("*")
+				.in(column, chunk);
+			if (error) {
+				throw new Error(
+					`Export failed for ${tableName}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			if (data) rows.push(...data);
+		}
+		if (rows.length > 0) {
+			zip.file(`${filename}.json`, JSON.stringify(rows, null, 2));
+		}
+	}
+
 	try {
 		// ──────────────────────────────────────
 		// Direct user-owned tables
@@ -227,10 +257,11 @@ export async function exportAllUserData(
 		const workoutIds = workoutResult?.map((w) => w.id) ?? [];
 
 		if (workoutIds.length > 0) {
-			await addTable(
+			await addChunkedInTable(
 				"exercises",
 				"exercises",
-				supabase.from("exercises").select("*").in("session_id", workoutIds),
+				"session_id",
+				workoutIds,
 			);
 		} else {
 			progress("Skipping exercises (no workouts)...");
@@ -265,8 +296,12 @@ export async function exportAllUserData(
 				.range(offset, offset + PAGE_SIZE - 1);
 
 			if (error) {
-				console.warn("Failed to export rep_telemetry page:", error);
-				break;
+				// Don't silently download a partial telemetry.json — that would omit
+				// an arbitrary tail of rows and undermine GDPR data portability.
+				// Surface the failure to the caller instead.
+				throw new Error(
+					`Failed to export rep_telemetry at offset ${offset}: ${error.message}`,
+				);
 			}
 
 			if (data && data.length > 0) {
@@ -286,13 +321,11 @@ export async function exportAllUserData(
 		const routineIds = routineResult?.map((r) => r.id) ?? [];
 
 		if (routineIds.length > 0) {
-			await addTable(
+			await addChunkedInTable(
 				"routine_exercises",
 				"routine-exercises",
-				supabase
-					.from("routine_exercises")
-					.select("*")
-					.in("routine_id", routineIds),
+				"routine_id",
+				routineIds,
 			);
 		} else {
 			progress("Skipping routine exercises (no routines)...");
@@ -302,11 +335,7 @@ export async function exportAllUserData(
 		const cycleIds = cycleResult?.map((c) => c.id) ?? [];
 
 		if (cycleIds.length > 0) {
-			await addTable(
-				"cycle_days",
-				"cycle-days",
-				supabase.from("cycle_days").select("*").in("cycle_id", cycleIds),
-			);
+			await addChunkedInTable("cycle_days", "cycle-days", "cycle_id", cycleIds);
 		} else {
 			progress("Skipping cycle days (no training cycles)...");
 		}

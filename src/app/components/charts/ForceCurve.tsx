@@ -6,7 +6,7 @@ import { ParentSize } from "@visx/responsive";
 import { scaleLinear } from "@visx/scale";
 import { AreaClosed, LinePath } from "@visx/shape";
 import { bisector } from "@visx/vendor/d3-array";
-import { useCallback, useMemo } from "react";
+import { useCallback, useId, useMemo } from "react";
 
 import {
 	downsampleTelemetry,
@@ -64,6 +64,9 @@ function ForceCurveInner({
 	} = useChartTooltip();
 
 	const margins = CHART_MARGINS;
+	// Component-scoped prefix so SVG gradient IDs don't collide across multiple
+	// ForceCurve instances on the same page.
+	const gradientPrefix = useId();
 
 	// Downsample and optionally normalize each rep
 	const processedReps: ProcessedRep[] = useMemo(() => {
@@ -82,10 +85,15 @@ function ForceCurveInner({
 				};
 			}
 
+			// Render elapsed time within the rep so absolute/set-relative
+			// timestamps that don't start near zero aren't compressed to the
+			// right edge. Mirrors normalized mode, which treats the first
+			// timestamp as the rep start.
+			const repStart = downsampled.length > 0 ? downsampled[0].timestamp_ms : 0;
 			return {
 				repNumber: rep.repNumber,
 				points: downsampled.map((p) => ({
-					x: p.timestamp_ms,
+					x: p.timestamp_ms - repStart,
 					force_n: p.force_n,
 				})),
 				colorIndex: index,
@@ -194,7 +202,7 @@ function ForceCurveInner({
 					return (
 						<LinearGradient
 							key={`gradient-${rep.repNumber}`}
-							id={`force-gradient-${rep.repNumber}`}
+							id={`${gradientPrefix}-force-gradient-${rep.repNumber}`}
 							from={color}
 							to={color}
 							fromOpacity={0.3}
@@ -219,7 +227,7 @@ function ForceCurveInner({
 								y={(d) => yScale(getY(d)) ?? 0}
 								yScale={yScale}
 								curve={curveMonotoneX}
-								fill={`url(#force-gradient-${rep.repNumber})`}
+								fill={`url(#${gradientPrefix}-force-gradient-${rep.repNumber})`}
 								shapeRendering="optimizeSpeed"
 							/>
 							<LinePath

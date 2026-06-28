@@ -109,9 +109,19 @@ export function parseStrongCSV(
 		(row) => `${row["Workout Name"]}|${row.Date}`,
 	);
 
-	return Object.entries(workoutGroups).map(([_key, rows]) => {
+	const activities: NormalizedActivity[] = [];
+	for (const [_key, rows] of Object.entries(workoutGroups)) {
 		const first = rows[0];
 		const startTime = new Date(first.Date);
+
+		// Skip workouts with an unparseable Date rather than letting a single
+		// malformed/locale-specific row throw RangeError and cancel the import.
+		if (!Number.isFinite(startTime.getTime())) {
+			console.warn(
+				`Strong CSV: skipping workout "${first["Workout Name"]}" with invalid Date "${first.Date}"`,
+			);
+			continue;
+		}
 
 		// Duration comes from the Duration column (e.g., "1h 23m")
 		const durationSeconds = parseDurationToSeconds(first.Duration);
@@ -127,7 +137,7 @@ export function parseStrongCSV(
 			return sum + (Number.isNaN(distance) || distance === 0 ? 0 : distance);
 		}, 0);
 
-		return {
+		activities.push({
 			external_id: externalId,
 			provider: "strong" as const,
 			name: first["Workout Name"],
@@ -140,8 +150,9 @@ export function parseStrongCSV(
 			avg_heart_rate: null,
 			max_heart_rate: null,
 			elevation_gain_meters: null,
-		};
-	});
+		});
+	}
+	return activities;
 }
 
 /**

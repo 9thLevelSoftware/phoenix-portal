@@ -160,9 +160,18 @@ export function DangerZone() {
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
 							<AlertDialogAction
 								className="bg-red-600 hover:bg-red-700 text-white"
-								onClick={() => executeDeletion.mutate()}
+								disabled={executeDeletion.isPending}
+								onClick={(event) => {
+									// Keep the dialog open while the irreversible delete runs and
+									// prevent a double-click from firing duplicate invocations.
+									event.preventDefault();
+									if (executeDeletion.isPending) return;
+									executeDeletion.mutate();
+								}}
 							>
-								Yes, Delete Permanently
+								{executeDeletion.isPending
+									? "Deleting..."
+									: "Yes, Delete Permanently"}
 							</AlertDialogAction>
 						</AlertDialogFooter>
 					</AlertDialogContent>

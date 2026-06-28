@@ -101,8 +101,16 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 	}
 
 	return (
-		<Dialog open onOpenChange={(open) => !open && onComplete()}>
-			<DialogContent className="sm:max-w-md border-primary/30 bg-surface-2 overflow-hidden">
+		// Escape/overlay dismissals are blocked below, so onOpenChange(false) only
+		// fires for the explicit close (X) button — route that to Skip rather than
+		// silently treating an accidental backdrop/Escape close as "completed".
+		<Dialog open onOpenChange={(open) => !open && handleSkip()}>
+			<DialogContent
+				className="sm:max-w-md border-primary/30 bg-surface-2 overflow-hidden"
+				onEscapeKeyDown={(e) => e.preventDefault()}
+				onPointerDownOutside={(e) => e.preventDefault()}
+				onInteractOutside={(e) => e.preventDefault()}
+			>
 				<AnimatePresence mode="wait" custom={direction}>
 					<motion.div
 						key={currentStep}

@@ -31,6 +31,7 @@ export const replaySessionOptions = (sessionId: string) =>
 			return data;
 		},
 		staleTime: 5 * 60 * 1000, // 5 minutes
+		enabled: !!sessionId,
 	});
 
 /**
@@ -63,4 +64,5 @@ export const replayTelemetryOptions = (setId: string) =>
 			};
 		},
 		staleTime: 10 * 60 * 1000, // Telemetry is immutable, cache longer
+		enabled: !!setId,
 	});

@@ -110,9 +110,20 @@ export function useOnboarding() {
 		mutationFn: async ({ hintId }: { hintId: string }) => {
 			if (!user) throw new Error("Not authenticated");
 
-			// Merge the new hint into existing dismissed_hints JSONB
+			// Re-read the latest dismissed_hints from the server immediately before
+			// merging, so two near-simultaneous dismissals don't both write against
+			// the same stale closure-captured object and clobber each other.
+			const { data: latest, error: readError } = await supabase
+				.from("user_onboarding")
+				.select("dismissed_hints")
+				.eq("user_id", user.id)
+				.maybeSingle();
+			if (readError) throw readError;
+
 			const currentHints =
-				onboarding?.dismissed_hints ?? ({} as Record<string, boolean>);
+				(latest?.dismissed_hints as Record<string, boolean> | null) ??
+				onboarding?.dismissed_hints ??
+				({} as Record<string, boolean>);
 			const updatedHints = { ...currentHints, [hintId]: true };
 
 			const { error } = await supabase

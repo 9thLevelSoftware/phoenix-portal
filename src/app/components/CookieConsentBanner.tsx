@@ -8,7 +8,15 @@ export function CookieConsentBanner() {
 	const [visible, setVisible] = useState(false);
 
 	useEffect(() => {
-		if (getConsentStatus() === null) {
+		// Storage access can throw in privacy modes / embedded contexts. When the
+		// read fails, default to showing the banner rather than crashing.
+		let status: string | null = null;
+		try {
+			status = getConsentStatus();
+		} catch {
+			status = null;
+		}
+		if (status === null) {
 			setVisible(true);
 		}
 	}, []);
@@ -18,13 +26,23 @@ export function CookieConsentBanner() {
 	}
 
 	const handleAccept = () => {
-		setConsentStatus("accepted");
+		// Persist best-effort; even if storage is blocked, honor the in-memory
+		// choice and initialize Sentry for this session.
+		try {
+			setConsentStatus("accepted");
+		} catch {
+			// ignore persistence failure
+		}
 		import("@/lib/sentry").then(({ initSentry }) => initSentry());
 		setVisible(false);
 	};
 
 	const handleReject = () => {
-		setConsentStatus("rejected");
+		try {
+			setConsentStatus("rejected");
+		} catch {
+			// ignore persistence failure
+		}
 		setVisible(false);
 	};
 

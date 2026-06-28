@@ -9,6 +9,7 @@ import {
 	DataZoomComponent,
 	GridComponent,
 	LegendComponent,
+	MarkLineComponent,
 	TitleComponent,
 	ToolboxComponent,
 	TooltipComponent,
@@ -33,6 +34,7 @@ echarts.use([
 	TitleComponent,
 	DataZoomComponent,
 	ToolboxComponent,
+	MarkLineComponent,
 ]);
 
 // Register theme once
@@ -59,30 +61,44 @@ export function EChartsWrapper({
 	onEvents,
 }: EChartsWrapperProps) {
 	const chartRef = useRef<ReactEChartsCore>(null);
+	const containerRef = useRef<HTMLDivElement>(null);
 
-	// Handle responsive resize
+	// Handle responsive resize: window resize plus container-size changes
+	// (tabs/cards/sidebars can resize the chart without a window resize).
 	useEffect(() => {
-		const handleResize = () => chartRef.current?.getEchartsInstance()?.resize();
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
+		const resize = () => chartRef.current?.getEchartsInstance()?.resize();
+		window.addEventListener("resize", resize);
+
+		let observer: ResizeObserver | undefined;
+		if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+			observer = new ResizeObserver(() => resize());
+			observer.observe(containerRef.current);
+		}
+
+		return () => {
+			window.removeEventListener("resize", resize);
+			observer?.disconnect();
+		};
 	}, []);
 
 	return (
-		<ReactEChartsCore
-			ref={chartRef}
-			echarts={echarts}
-			option={option}
-			theme="phoenix"
-			style={{ height, width: "100%" }}
-			className={className}
-			showLoading={loading}
-			loadingOption={{
-				text: "",
-				color: "#FF6B35",
-				maskColor: "rgba(13, 13, 13, 0.8)",
-			}}
-			onEvents={onEvents}
-			notMerge
-		/>
+		<div ref={containerRef} style={{ width: "100%", height }}>
+			<ReactEChartsCore
+				ref={chartRef}
+				echarts={echarts}
+				option={option}
+				theme="phoenix"
+				style={{ height: "100%", width: "100%" }}
+				className={className}
+				showLoading={loading}
+				loadingOption={{
+					text: "",
+					color: "#FF6B35",
+					maskColor: "rgba(13, 13, 13, 0.8)",
+				}}
+				onEvents={onEvents}
+				notMerge
+			/>
+		</div>
 	);
 }

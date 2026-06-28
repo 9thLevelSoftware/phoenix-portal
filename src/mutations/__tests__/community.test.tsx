@@ -604,7 +604,11 @@ describe("useDeleteSharedContent", () => {
 	it("deletes shared routine and invalidates community feed", async () => {
 		const { useDeleteSharedContent } = await import("../community");
 
-		const eqUserId = vi.fn(() => Promise.resolve({ error: null }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "shared-x" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.delete.mockImplementation(() => ({ eq: eqId }));
 
@@ -629,7 +633,11 @@ describe("useDeleteSharedContent", () => {
 	it("deletes shared cycle when contentType is cycle", async () => {
 		const { useDeleteSharedContent } = await import("../community");
 
-		const eqUserId = vi.fn(() => Promise.resolve({ error: null }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "shared-x" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.delete.mockImplementation(() => ({ eq: eqId }));
 
@@ -646,9 +654,14 @@ describe("useDeleteSharedContent", () => {
 	it("shows user-friendly error on delete failure", async () => {
 		const { useDeleteSharedContent } = await import("../community");
 
-		const eqUserId = vi.fn(() =>
-			Promise.resolve({ error: { message: "RLS policy violation" } }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({
+				data: null,
+				error: { message: "RLS policy violation" },
+			}),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.delete.mockImplementation(() => ({ eq: eqId }));
 

@@ -39,6 +39,8 @@ function generateBellCurvePoints(
 			const [pct0, val0] = knownPcts[i];
 			const [pct1, val1] = knownPcts[i + 1];
 			if (v >= val0 && v <= val1) {
+				// Guard tied/flat buckets to avoid dividing by zero (NaN density).
+				if (val1 === val0) return pct0;
 				const t = (v - val0) / (val1 - val0);
 				return pct0 + t * (pct1 - pct0);
 			}
@@ -77,12 +79,20 @@ export function CommunityDistribution({
 	color,
 	label,
 }: CommunityDistributionProps) {
+	const points = useMemo(
+		() => generateBellCurvePoints(percentiles),
+		[percentiles],
+	);
+	const hasData = points.length > 0;
+
 	const option = useMemo(() => {
-		const points = generateBellCurvePoints(percentiles);
 		if (points.length === 0) return {};
 
-		const minX = points[0][0];
-		const maxX = points[points.length - 1][0];
+		// Expand the axis domain to include the user's value so outlier users
+		// (below the lowest or above the highest supplied percentile) still get a
+		// visible "YOU" marker instead of one placed outside the axis range.
+		const minX = Math.min(points[0][0], userValue);
+		const maxX = Math.max(points[points.length - 1][0], userValue);
 
 		// Split into left (below user) and right (at/above user) for colored fill
 		const leftPoints = points.filter(([x]) => x <= userValue);
@@ -167,7 +177,20 @@ export function CommunityDistribution({
 				},
 			],
 		};
-	}, [percentiles, userValue, color]);
+	}, [points, userValue, color]);
+
+	if (!hasData) {
+		return (
+			<div
+				role="img"
+				aria-label={`${label} community distribution: not enough community data. Your value: ${userValue}`}
+				className="flex items-center justify-center text-xs text-gray-500"
+				style={{ height: 60 }}
+			>
+				Not enough community data
+			</div>
+		);
+	}
 
 	return (
 		<div

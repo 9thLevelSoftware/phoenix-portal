@@ -113,14 +113,34 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: "Failed to cancel subscription",
-          details: paddleError,
+          code: "paddle_cancel_failed",
         }),
         { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
+    // Persist the scheduled cancellation locally so the UI reflects it before
+    // the webhook arrives (and even if the webhook is delayed/failing). The
+    // webhook still reconciles the authoritative state later.
+    const { error: updateError } = await supabaseAdmin
+      .from("subscriptions")
+      .update({
+        cancel_at_period_end: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      // Paddle already scheduled the cancellation; treat the local write as
+      // best-effort and let the webhook reconcile rather than failing the call.
+      console.error(
+        "Error persisting cancel_at_period_end after Paddle cancel:",
+        updateError,
+      );
+    }
+
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, cancelAtPeriodEnd: true }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
     );
   } catch (err) {

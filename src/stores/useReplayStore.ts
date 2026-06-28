@@ -41,7 +41,10 @@ export const useReplayStore = create<ReplayState>()((set) => ({
 	pause: () => set({ isPlaying: false }),
 	togglePlayPause: () => set((state) => ({ isPlaying: !state.isPlaying })),
 	setSpeed: (speed) => set({ speed }),
-	seek: (timeMs) => set({ currentTimeMs: timeMs }),
+	// Clamp to a finite, non-negative time so imperative/keyboard callers can't
+	// push the store into an invalid (NaN/negative) playback position.
+	seek: (timeMs) =>
+		set({ currentTimeMs: Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0 }),
 	setViewMode: (viewMode) => set({ viewMode }),
 	nextSet: () =>
 		set((state) => ({ currentSetIndex: state.currentSetIndex + 1 })),
@@ -50,6 +53,13 @@ export const useReplayStore = create<ReplayState>()((set) => ({
 			currentSetIndex: Math.max(0, state.currentSetIndex - 1),
 		})),
 	setActiveChart: (activeChart) => set({ activeChart }),
-	setCurrentRepIndex: (currentRepIndex) => set({ currentRepIndex }),
-	reset: () => set({ isPlaying: false, currentTimeMs: 0, currentRepIndex: 0 }),
+	setCurrentRepIndex: (currentRepIndex) =>
+		set({
+			currentRepIndex: Number.isFinite(currentRepIndex)
+				? Math.max(0, Math.floor(currentRepIndex))
+				: 0,
+		}),
+	// Full reset (used on session/page mount). Restores currentSetIndex to 0 so
+	// navigating from a high set index to a shorter session starts at set 1.
+	reset: () => set({ ...initialState }),
 }));

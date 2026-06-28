@@ -187,6 +187,9 @@ export function RoutineBuilder() {
 	});
 
 	const [routineName, setRoutineName] = useState("Untitled Routine");
+	// Preserve the routine's existing description even though this builder has no
+	// description field, so editing+saving doesn't erase it.
+	const [description, setDescription] = useState("");
 	const [exercises, setExercises] = useState<Exercise[]>([]);
 	const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 	const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -202,6 +205,7 @@ export function RoutineBuilder() {
 	useEffect(() => {
 		if (existingRoutine) {
 			setRoutineName(existingRoutine.name);
+			setDescription(existingRoutine.description ?? "");
 			setExercises(
 				existingRoutine.routine_exercises.map((ex) => ({
 					id: ex.id,
@@ -261,7 +265,29 @@ export function RoutineBuilder() {
 	};
 
 	const handleDeleteExercise = (id: string) => {
-		setExercises(exercises.filter((ex) => ex.id !== id));
+		setExercises((current) => {
+			const remaining = current.filter((ex) => ex.id !== id);
+			// Ungroup any superset left with fewer than two members after deletion.
+			const countBySuperset = new Map<string, number>();
+			for (const ex of remaining) {
+				if (ex.supersetId) {
+					countBySuperset.set(
+						ex.supersetId,
+						(countBySuperset.get(ex.supersetId) ?? 0) + 1,
+					);
+				}
+			}
+			return remaining.map((ex) =>
+				ex.supersetId && (countBySuperset.get(ex.supersetId) ?? 0) < 2
+					? {
+							...ex,
+							supersetId: null,
+							supersetColor: null,
+							supersetOrder: null,
+						}
+					: ex,
+			);
+		});
 		if (selectedExercise === id) {
 			setSelectedExercise(null);
 		}
@@ -286,17 +312,51 @@ export function RoutineBuilder() {
 
 		const supersetId = crypto.randomUUID();
 		const supersetColor = getNextSupersetColor(exercises);
+		const selectedSet = new Set(selectedIds);
 
+		// Source supersets that lose members to the new group: if any is left with
+		// a single member, ungroup it so we don't strand an invalid 1-exercise
+		// superset.
+		const remainingCountBySource = new Map<string, number>();
+		for (const ex of exercises) {
+			if (ex.supersetId && !selectedSet.has(ex.id)) {
+				remainingCountBySource.set(
+					ex.supersetId,
+					(remainingCountBySource.get(ex.supersetId) ?? 0) + 1,
+				);
+			}
+		}
+		const orphanedSupersetIds = new Set(
+			[...remainingCountBySource.entries()]
+				.filter(([, count]) => count < 2)
+				.map(([id]) => id),
+		);
+
+		// supersetOrder follows the exercises' order in the routine, not the order
+		// in which the user clicked them.
+		let nextOrder = 0;
 		setExercises((current) =>
 			current.map((exercise) => {
-				const supersetOrder = selectedIds.indexOf(exercise.id);
-				if (supersetOrder === -1) return exercise;
-				return {
-					...exercise,
-					supersetId,
-					supersetColor,
-					supersetOrder,
-				};
+				if (selectedSet.has(exercise.id)) {
+					return {
+						...exercise,
+						supersetId,
+						supersetColor,
+						supersetOrder: nextOrder++,
+					};
+				}
+				if (
+					exercise.supersetId &&
+					orphanedSupersetIds.has(exercise.supersetId)
+				) {
+					return {
+						...exercise,
+						supersetId: null,
+						supersetColor: null,
+						supersetOrder: null,
+					};
+				}
+				return exercise;
 			}),
 		);
 		setSelectedExerciseIds(new Set());
@@ -348,10 +408,16 @@ export function RoutineBuilder() {
 			echo_level: ex.echoLevel,
 		}));
 
+	// Resolve the selected exercise; may be undefined if the id went stale after
+	// a deletion/mutation, in which case the detail panel shows its empty state.
+	const selectedExerciseData = selectedExercise
+		? exercises.find((ex) => ex.id === selectedExercise)
+		: undefined;
+
 	const handleSave = () => {
 		const payload = {
 			name: routineName,
-			description: "",
+			description,
 			exercises: buildExercisePayload(),
 		};
 
@@ -591,10 +657,9 @@ export function RoutineBuilder() {
 					{/* Right: Exercise Detail Panel */}
 					<div className="lg:col-span-1">
 						<AnimatePresence mode="wait">
-							{selectedExercise ? (
+							{selectedExerciseData ? (
 								<ExerciseDetailPanel
-									// biome-ignore lint/style/noNonNullAssertion: guarded by selectedExercise truthiness check above
-									exercise={exercises.find((ex) => ex.id === selectedExercise)!}
+									exercise={selectedExerciseData}
 									onUpdate={(updated) => {
 										setExercises(
 											exercises.map((ex) =>
@@ -605,11 +670,8 @@ export function RoutineBuilder() {
 									}}
 									onClose={() => setSelectedExercise(null)}
 									onUngroup={() => {
-										const currentExercise = exercises.find(
-											(ex) => ex.id === selectedExercise,
-										);
-										if (currentExercise?.supersetId) {
-											handleUngroupSuperset(currentExercise.supersetId);
+										if (selectedExerciseData.supersetId) {
+											handleUngroupSuperset(selectedExerciseData.supersetId);
 										}
 									}}
 									unit={unit}

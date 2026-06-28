@@ -106,17 +106,34 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.personalRecords).toEqual([]);
 	});
 
-	it("coerces non-array values in array positions to []", () => {
+	it("coerces null/undefined array positions to [] but rejects other non-arrays", () => {
+		// null/undefined (and absent) array sections are accepted and coerced to []
+		// for backward compatibility...
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",
 			platform: "android",
-			sessions: "not-an-array",
 			telemetry: null,
-			routines: 42,
 		});
 		expect(parsed.sessions).toEqual([]);
 		expect(parsed.telemetry).toEqual([]);
 		expect(parsed.routines).toEqual([]);
+
+		// ...but a non-array, non-null value (e.g. a buggy client sending a string
+		// or number) is now rejected instead of silently dropped (F338).
+		expect(
+			pushPayloadSchema.safeParse({
+				deviceId: "d1",
+				platform: "android",
+				sessions: "not-an-array",
+			}).success,
+		).toBe(false);
+		expect(
+			pushPayloadSchema.safeParse({
+				deviceId: "d1",
+				platform: "android",
+				routines: 42,
+			}).success,
+		).toBe(false);
 	});
 
 	it("preserves per-set routine reps through validation", () => {

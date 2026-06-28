@@ -50,10 +50,13 @@ export function SessionReplay() {
 		reset,
 	} = useReplayStore();
 
-	// Reset playback state on mount
+	// Reset playback state on mount and whenever the session changes, so a set
+	// index retained from a previous (longer) session can't index past the
+	// current session's sets.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is an intentional trigger so playback resets on session change, even though it isn't read in the effect body.
 	useEffect(() => {
 		reset();
-	}, [reset]);
+	}, [reset, sessionId]);
 
 	// Fetch session structure
 	const sessionQuery = useQuery({
@@ -183,10 +186,19 @@ export function SessionReplay() {
 	useEffect(() => {
 		const el = canvasContainerRef.current;
 		if (!el) return;
+		// Initialize with actual width
+		if (el.clientWidth > 0) setCanvasWidth(el.clientWidth);
+		// ResizeObserver may be unavailable in some environments; fall back to
+		// window resize so the page doesn't throw on render.
+		if (typeof ResizeObserver === "undefined") {
+			const onResize = () => {
+				if (el.clientWidth > 0) setCanvasWidth(el.clientWidth);
+			};
+			window.addEventListener("resize", onResize);
+			return () => window.removeEventListener("resize", onResize);
+		}
 		const observer = new ResizeObserver(handleResize);
 		observer.observe(el);
-		// Initialize with actual width
-		setCanvasWidth(el.clientWidth);
 		return () => observer.disconnect();
 	}, [handleResize]);
 
@@ -367,6 +379,22 @@ export function SessionReplay() {
 							<p className="text-muted-foreground">
 								No telemetry data available for this set
 							</p>
+						</div>
+					)}
+
+				{/* Out-of-range state: sets loaded but the selected index is invalid */}
+				{!sessionQuery.isLoading &&
+					!sessionQuery.error &&
+					allSets.length > 0 &&
+					!currentSet && (
+						<div className="p-8 text-center space-y-3">
+							<p className="text-muted-foreground">
+								That set is no longer available. Return to the first set to
+								continue.
+							</p>
+							<Button variant="secondary" onClick={() => reset()}>
+								Go to first set
+							</Button>
 						</div>
 					)}
 			</div>

@@ -496,7 +496,10 @@ export function SessionDetail() {
 				)}
 
 				{/* Session Config */}
-				{(session.eccentric_load != null || session.echo_level != null) && (
+				{(session.eccentric_load != null ||
+					session.echo_level != null ||
+					session.warmup_reps != null ||
+					session.working_reps != null) && (
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}

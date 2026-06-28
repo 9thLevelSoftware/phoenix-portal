@@ -24,10 +24,10 @@ const nullableWeightTransform = z
 // from src/lib/telemetry-display.ts for UI presentation.
 // Resolves audit item #4 (2026-04-19).
 export const telemetryPointSchema = z.object({
-	timestamp_ms: z.number(),
-	force_n: z.number(),
-	velocity_mps: z.number(),
-	position_mm: z.number(),
+	timestamp_ms: z.number().finite().nonnegative(),
+	force_n: z.number().finite(),
+	velocity_mps: z.number().finite(),
+	position_mm: z.number().finite(),
 	cable: z.enum(["A", "B"]),
 });
 
@@ -38,17 +38,17 @@ export type TelemetryPointRow = z.infer<typeof telemetryPointSchema>;
 export const repSummarySchema = z.object({
 	id: z.string().uuid(),
 	set_id: z.string().uuid(),
-	rep_number: z.number().int(),
-	mean_velocity_mps: z.number(),
-	peak_velocity_mps: z.number(),
-	mean_force_n: z.number(),
-	peak_force_n: z.number(),
-	power_watts: z.number(),
-	rom_mm: z.number(),
-	tut_ms: z.number(),
-	left_force_avg: z.number(),
-	right_force_avg: z.number(),
-	asymmetry_pct: z.number(),
+	rep_number: z.number().int().nonnegative(),
+	mean_velocity_mps: z.number().finite(),
+	peak_velocity_mps: z.number().finite(),
+	mean_force_n: z.number().finite(),
+	peak_force_n: z.number().finite(),
+	power_watts: z.number().finite(),
+	rom_mm: z.number().finite().nonnegative(),
+	tut_ms: z.number().finite().nonnegative(),
+	left_force_avg: z.number().finite(),
+	right_force_avg: z.number().finite(),
+	asymmetry_pct: z.number().finite(),
 	vbt_zone: z.string(),
 });
 
@@ -61,15 +61,15 @@ export const exerciseProgressSchema = z.object({
 	user_id: z.string().uuid(),
 	exercise_name: z.string(),
 	session_id: z.string().uuid(),
-	recorded_at: z.string().transform((s) => new Date(s)),
+	recorded_at: z.coerce.date(),
 	max_weight_kg: weightTransform,
 	total_volume_kg: weightTransform,
 	estimated_1rm_kg: weightTransform,
 	// Velocity-based (VBT) 1RM — distinct from the rep-based estimated_1rm_kg.
 	// Nullable; null when the row predates VBT capture. Issue #517 Phase 6.
 	velocity_estimated_1rm_kg: nullableWeightTransform,
-	max_reps: z.number(),
-	set_count: z.number(),
+	max_reps: z.number().finite().nonnegative(),
+	set_count: z.number().finite().nonnegative(),
 });
 
 export type ExerciseProgress = z.infer<typeof exerciseProgressSchema>;

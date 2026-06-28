@@ -357,8 +357,8 @@ export function ComparisonView() {
 						Premium Feature
 					</h2>
 					<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-						Workout comparison is available on Phoenix and Elite plans. Upgrade
-						to compare sessions side by side and track your progress.
+						Workout comparison is available to subscribers. Upgrade to compare
+						sessions side by side and track your progress.
 					</p>
 					<Button onClick={() => navigate("/pricing")} variant="cta">
 						View Plans

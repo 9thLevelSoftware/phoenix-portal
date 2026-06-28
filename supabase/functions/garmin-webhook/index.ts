@@ -82,10 +82,10 @@ function mapGarminActivityType(garminType: string): string {
 function normalizeGarminWebhookActivity(
   activity: GarminActivitySummary,
 ): Record<string, unknown> {
-  // Convert epoch seconds to ISO string
-  const startedAt = new Date(
-    (activity.startTimeInSeconds + (activity.startTimeOffsetInSeconds ?? 0)) * 1000,
-  ).toISOString();
+  // startTimeInSeconds is an absolute Unix epoch timestamp. startTimeOffsetInSeconds
+  // describes the local timezone offset and must NOT be added to the epoch — doing so
+  // stores local wall-clock time as UTC and shifts activities by hours for non-UTC users.
+  const startedAt = new Date(activity.startTimeInSeconds * 1000).toISOString();
 
   return {
     external_id: String(activity.activityId),
@@ -169,7 +169,17 @@ Deno.serve(async (req) => {
     }
 
     const payload: GarminWebhookPayload = await req.json();
-    const activities = payload.activities ?? payload.activityDetails ?? [];
+    // Garmin may deliver both `activities` (summaries) and `activityDetails` in the
+    // same payload. Merge and de-duplicate by activityId so detailed records are not
+    // dropped whenever summaries are also present. Details win on conflict.
+    const mergedById = new Map<number, GarminActivitySummary>();
+    for (const summary of payload.activities ?? []) {
+      mergedById.set(summary.activityId, summary);
+    }
+    for (const detail of payload.activityDetails ?? []) {
+      mergedById.set(detail.activityId, detail);
+    }
+    const activities = [...mergedById.values()];
 
     if (activities.length === 0) {
       // Acknowledge receipt even if no activities (could be a ping or other event)
@@ -286,12 +296,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Update last_sync_at for this user's Garmin integration
-        await supabase
+        // Update last_sync_at for this user's Garmin integration. The activity is
+        // already persisted, so a failed timestamp update is non-fatal — log it but
+        // do not signal a retry (that would re-upsert already-stored activities).
+        const { error: lastSyncError } = await supabase
           .from('user_integrations')
           .update({ last_sync_at: new Date().toISOString() })
           .eq('user_id', identity.userId)
           .eq('provider', 'garmin');
+
+        if (lastSyncError) {
+          console.error('[GARMIN_WEBHOOK] failed to update last_sync_at:', lastSyncError);
+        }
 
         processed++;
       } catch (activityError) {

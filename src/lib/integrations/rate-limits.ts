@@ -10,6 +10,7 @@ export const RATE_LIMITS: Record<
 	fitbit: { requests: 120, windowMs: 60 * 60 * 1000 }, // 120/hr (reserve 20% of 150)
 	garmin: { requests: 40, windowMs: 60 * 60 * 1000 }, // Conservative estimate
 	hevy: { requests: 40, windowMs: 60 * 60 * 1000 }, // Conservative estimate
+	liftosaur: { requests: 40, windowMs: 60 * 60 * 1000 }, // Mirrors process-sync-queue server limit
 };
 
 /**
@@ -17,17 +18,27 @@ export const RATE_LIMITS: Record<
  * Returns true if requests in current window have reached the limit.
  */
 export function isRateLimited(
-	tracking: { requests_this_window: number; window_started_at: string } | null,
+	tracking: {
+		requests_this_window: number | null;
+		window_started_at: string | null;
+	} | null,
 	limit: { requests: number; windowMs: number },
 ): boolean {
 	if (!tracking) return false;
 
-	const windowStart = new Date(tracking.window_started_at).getTime();
+	const windowStart = tracking.window_started_at
+		? new Date(tracking.window_started_at).getTime()
+		: Number.NaN;
+
+	// Corrupt/missing timestamp -> treat as an expired/reset window (fail open
+	// rather than relying on JavaScript date coercion of an invalid value).
+	if (!Number.isFinite(windowStart)) return false;
+
 	const now = Date.now();
 
 	// Window expired, not rate limited
 	if (now - windowStart > limit.windowMs) return false;
 
-	// Within window, check count
-	return tracking.requests_this_window >= limit.requests;
+	// Within window, check count (missing count coerces to 0).
+	return (tracking.requests_this_window ?? 0) >= limit.requests;
 }

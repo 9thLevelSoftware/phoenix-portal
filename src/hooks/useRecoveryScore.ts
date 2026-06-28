@@ -13,6 +13,9 @@ interface UseRecoveryScoreResult {
 	recovery: RecoveryResult | null;
 	wearable: WearableRecoveryRow[] | null;
 	isLoading: boolean;
+	/** True if any query feeding the recovery score failed. */
+	isError: boolean;
+	error: Error | null;
 	daysSinceFirstSession: number;
 }
 
@@ -20,11 +23,24 @@ export function useRecoveryScore(): UseRecoveryScoreResult {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 
-	const { data: sessions, isPending: sessionsLoading } = useQuery(
-		recoverySessionsOptions(userId),
-	);
-	const { data: wearable } = useQuery(wearableRecoveryOptions(userId));
-	const { data: activeCycle } = useQuery(activeCyclePositionOptions(userId));
+	const {
+		data: sessions,
+		isPending: sessionsLoading,
+		isError: sessionsError,
+		error: sessionsErr,
+	} = useQuery(recoverySessionsOptions(userId));
+	const {
+		data: wearable,
+		isPending: wearableLoading,
+		isError: wearableError,
+		error: wearableErr,
+	} = useQuery(wearableRecoveryOptions(userId));
+	const {
+		data: activeCycle,
+		isPending: cycleLoading,
+		isError: cycleError,
+		error: cycleErr,
+	} = useQuery(activeCyclePositionOptions(userId));
 
 	const result = useMemo(() => {
 		if (!sessions) return { recovery: null, daysSinceFirstSession: 0 };
@@ -58,10 +74,16 @@ export function useRecoveryScore(): UseRecoveryScoreResult {
 		return { recovery, daysSinceFirstSession };
 	}, [sessions, activeCycle]);
 
+	const firstError = sessionsErr ?? cycleErr ?? wearableErr ?? null;
+
 	return {
 		recovery: result.recovery,
 		wearable: wearable ?? null,
-		isLoading: sessionsLoading,
+		// Wait for every input that affects the final score to resolve before
+		// presenting it, so the displayed score isn't incomplete then revised.
+		isLoading: sessionsLoading || cycleLoading || wearableLoading,
+		isError: sessionsError || cycleError || wearableError,
+		error: firstError instanceof Error ? firstError : null,
 		daysSinceFirstSession: result.daysSinceFirstSession,
 	};
 }

@@ -1,8 +1,14 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Mobile Integration Sync Edge Function
@@ -436,7 +442,12 @@ Deno.serve(async (req) => {
       }
 
       if (activities.length > 0) {
-        await persistActivities(supabase, userId, provider, activities);
+        const failedCount = await persistActivities(supabase, userId, provider, activities);
+        if (failedCount > 0) {
+          return await partialPersistFailureResponse(
+            supabase, userId, provider, failedCount, activities.length, cors,
+          );
+        }
       }
 
       // Update last sync timestamp
@@ -464,13 +475,26 @@ Deno.serve(async (req) => {
     // =========================================================================
     // action === 'sync'
 
-    // Retrieve stored API key
-    const { data: tokenData } = await supabase
+    // Retrieve stored API key. Use maybeSingle so a genuinely-missing row is
+    // null (handled below as "connect first"), and surface a real DB error as a
+    // retryable 500 instead of silently treating it as "no key found" (F355).
+    const { data: tokenData, error: tokenError } = await supabase
       .from('oauth_tokens')
       .select('api_key')
       .eq('user_id', userId)
       .eq('provider', provider)
-      .single();
+      .maybeSingle();
+
+    if (tokenError) {
+      console.error('mobile-integration-sync stored-token lookup failed:', tokenError);
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          error: 'Failed to read stored integration credentials. Please retry shortly.',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const storedApiKey = (await decryptOAuthSecret(tokenData?.api_key)) ?? '';
 
@@ -513,7 +537,12 @@ Deno.serve(async (req) => {
     }
 
     if (activities.length > 0) {
-      await persistActivities(supabase, userId, provider, activities);
+      const failedCount = await persistActivities(supabase, userId, provider, activities);
+      if (failedCount > 0) {
+        return await partialPersistFailureResponse(
+          supabase, userId, provider, failedCount, activities.length, cors,
+        );
+      }
     }
 
     // Update last sync timestamp
@@ -550,13 +579,18 @@ Deno.serve(async (req) => {
 /**
  * Persist normalized activities to external_activities table.
  * Maps ActivityDto camelCase fields to snake_case columns.
+ *
+ * Returns the number of activities that failed to persist so callers can avoid
+ * advancing `last_sync_at` past data that was never written (which would skip
+ * those activities permanently on the next incremental sync).
  */
 async function persistActivities(
-  supabase: ReturnType<typeof createClient>,
+  supabase: DbClient,
   userId: string,
   provider: string,
   activities: ActivityDto[]
-): Promise<void> {
+): Promise<number> {
+  let failedCount = 0;
   for (const activity of activities) {
     const { error } = await supabase
       .from('external_activities')
@@ -581,7 +615,34 @@ async function persistActivities(
       );
 
     if (error) {
-      console.warn(`Failed to persist activity ${activity.externalId}:`, error.message);
+      failedCount++;
+      console.error(`Failed to persist activity ${activity.externalId}:`, error.message);
     }
   }
+  return failedCount;
+}
+
+/**
+ * Mark the integration as a partial-persistence failure and build the 502 the
+ * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
+ */
+async function partialPersistFailureResponse(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  failedCount: number,
+  total: number,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const failMessage = `Failed to persist ${failedCount} of ${total} activities`;
+  await supabase
+    .from('user_integrations')
+    .update({ status: 'error', error_message: failMessage })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({ status: 'error', error: failMessage }),
+    { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+  );
 }
