@@ -34,10 +34,16 @@ export function downsampleTelemetry(
 	metric: "force" | "velocity",
 	targetPoints = 750,
 ): TelemetryPoint[] {
+	// LTTB requires at least 3 target points (it always keeps the first and last
+	// and selects buckets in between). Guard against 0/1/2, negative, and
+	// non-finite values which would throw or return unusable data.
+	if (!Number.isFinite(targetPoints) || targetPoints < 3) {
+		return raw;
+	}
 	if (raw.length <= targetPoints) return raw;
 
 	const downsample = metric === "force" ? forceLTTB : velocityLTTB;
-	return downsample(raw, targetPoints) as TelemetryPoint[];
+	return downsample(raw, Math.floor(targetPoints)) as TelemetryPoint[];
 }
 
 /**
@@ -48,8 +54,14 @@ export function normalizeRepTime(
 ): (TelemetryPoint & { normalizedTime: number })[] {
 	if (points.length === 0) return [];
 
-	const minTime = points[0].timestamp_ms;
-	const maxTime = points[points.length - 1].timestamp_ms;
+	// Do not assume the input is sorted by timestamp: compute min/max across all
+	// points so unsorted telemetry cannot produce negative or >100 values.
+	let minTime = points[0].timestamp_ms;
+	let maxTime = points[0].timestamp_ms;
+	for (const p of points) {
+		if (p.timestamp_ms < minTime) minTime = p.timestamp_ms;
+		if (p.timestamp_ms > maxTime) maxTime = p.timestamp_ms;
+	}
 	const duration = maxTime - minTime;
 
 	if (duration === 0) {
