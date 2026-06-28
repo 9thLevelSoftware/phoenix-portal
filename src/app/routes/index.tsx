@@ -24,10 +24,16 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 
 			if (isChunkError) {
 				const key = "phoenix-chunk-reload";
-				const last = sessionStorage.getItem(key);
-				const now = Date.now();
-				if (!last || now - Number(last) > 30_000) {
-					sessionStorage.setItem(key, String(now));
+				// sessionStorage can throw in private/blocked-storage contexts.
+				// Fall back to a best-effort reload so recovery still happens.
+				try {
+					const last = sessionStorage.getItem(key);
+					const now = Date.now();
+					if (!last || now - Number(last) > 30_000) {
+						sessionStorage.setItem(key, String(now));
+						window.location.reload();
+					}
+				} catch {
 					window.location.reload();
 				}
 			}

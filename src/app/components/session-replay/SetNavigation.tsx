@@ -42,7 +42,7 @@ export function SetNavigation({
 				<Button
 					variant="outline"
 					size="icon"
-					onClick={prevSet}
+					onClick={goToPrevSet}
 					disabled={isFirstSet}
 					aria-label="Previous set"
 				>
@@ -56,7 +56,7 @@ export function SetNavigation({
 				<Button
 					variant="outline"
 					size="icon"
-					onClick={nextSet}
+					onClick={goToNextSet}
 					disabled={isLastSet}
 					aria-label="Next set"
 				>
@@ -74,7 +74,12 @@ export function SetNavigation({
 					<TabsTrigger value="set" className="px-3 text-xs">
 						Set
 					</TabsTrigger>
-					<TabsTrigger value="session" className="px-3 text-xs">
+					<TabsTrigger
+						value="session"
+						className="px-3 text-xs"
+						disabled
+						title="Session-level replay is coming soon"
+					>
 						Session
 					</TabsTrigger>
 				</TabsList>
