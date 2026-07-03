@@ -31,7 +31,7 @@ name: Prod Migration Drift
 #   - This PR adds the detector only; it does NOT itself fix or close the
 #     live Supabase schema/cache state that drives the mobile sync error.
 #
-# Required repository secrets (production read-only from this job's POV):
+# Required `production` environment secrets (production read-only from this job's POV):
 #   - SUPABASE_ACCESS_TOKEN      Personal access token from
 #                                https://supabase.com/dashboard/account/tokens
 #   - SUPABASE_PROD_PROJECT_REF  Project ref of the prod Supabase project
@@ -46,9 +46,9 @@ on:
   # breakage window.
   schedule:
     - cron: "17 6 * * *"
-  # Manual run only. This job needs production Supabase credentials that
-  # should never be exposed to PR-side forks, so we deliberately do NOT
-  # run on pull_request.
+  # Manual run only from main. This job needs production Supabase credentials
+  # that should never be exposed to PR-side forks or non-main refs, so we
+  # deliberately do NOT run on pull_request.
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -67,9 +67,24 @@ jobs:
     name: Detect unapplied migrations in prod
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Production drift checks must only run from main. This job uses the
+    # protected `production` environment so the DB password can be stored as an
+    # environment secret with branch restrictions instead of as a broad
+    # repository secret.
     environment: production
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Defense-in-depth for workflow_dispatch: fail before installing tools or
+      # touching any production secret if a run somehow starts from a non-main
+      # ref. Keep this before every secret-consuming step.
+      - name: Enforce main-only drift checks
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Prod migration drift checks are restricted to refs/heads/main (got $GITHUB_REF). Re-run from main."
+            exit 1
+          fi
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
