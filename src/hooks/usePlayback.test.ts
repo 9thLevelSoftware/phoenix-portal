@@ -9,8 +9,8 @@
  *     arithmetic without a real RAF loop.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayback } from "./usePlayback";
 
 // ── mock stores / deps ────────────────────────────────────────────────────────
@@ -43,7 +43,8 @@ vi.mock("motion/react", () => ({
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function invokeFrame(delta: number) {
-	if (!capturedCallback) throw new Error("useAnimationFrame callback not registered");
+	if (!capturedCallback)
+		throw new Error("useAnimationFrame callback not registered");
 	capturedCallback(0, delta);
 }
 
