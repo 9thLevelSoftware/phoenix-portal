@@ -179,7 +179,40 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // Step 3: Delete auth user (cascades to all private data)
+    // Step 3: Cancel Paddle subscription BEFORE deleting the auth user.
+    // Cancelling first guarantees the user is never billed after deletion.
+    // If cancellation fails, abort and roll back — the user remains intact
+    // and can retry. This is the same guard pattern as the missing-key check
+    // above (lines 157-163).
+    // =========================================================================
+    if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
+      const paddleResult = await cancelPaddleSubscription(
+        subscriptionRow.paddle_subscription_id,
+        paddleApiKey,
+      );
+
+      if (!paddleResult.ok) {
+        // Roll back deletion request so the user can safely retry later.
+        await supabaseAdmin
+          .from('deletion_requests')
+          .update({ status: 'pending', executed_at: null })
+          .eq('id', request.id);
+
+        console.error(
+          '[DELETE_ACCOUNT] Paddle cancel failed. Aborting deletion — user intact:',
+          subscriptionRow.paddle_subscription_id,
+          paddleResult.status,
+          paddleResult.detail,
+        );
+        return new Response(
+          JSON.stringify({ error: 'Failed to cancel billing subscription. Account deletion aborted. Please try again or contact support.' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // =========================================================================
+    // Step 4: Delete auth user (cascades to all private data)
     // CASCADE-deletes: profiles, workout_sessions (and children), personal_records,
     //   exercise_progress, routines, training_cycles, user_goals, external_activities,
     //   user_integrations, subscriptions, community_votes, saved_community_items,
@@ -201,27 +234,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    let billingCancellationPending = false;
-    if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
-      const paddleResult = await cancelPaddleSubscription(
-        subscriptionRow.paddle_subscription_id,
-        paddleApiKey,
-      );
-
-      if (!paddleResult.ok) {
-        billingCancellationPending = true;
-        console.error(
-          '[DELETE_ACCOUNT] Paddle cancel failed after auth delete. Manual follow-up required:',
-          subscriptionRow.paddle_subscription_id,
-          paddleResult.status,
-          paddleResult.detail,
-        );
-      }
-    }
-
     console.log(`Account deleted successfully for user ${userId}`);
     return new Response(
-      JSON.stringify({ success: true, billingCancellationPending }),
+      JSON.stringify({ success: true }),
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
