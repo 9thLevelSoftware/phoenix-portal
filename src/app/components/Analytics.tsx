@@ -85,7 +85,6 @@ import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	buildPhaseMetricSummary,
@@ -214,7 +213,7 @@ function bucketByWeek(
 			day: "numeric",
 		});
 		const existing = weeks.get(key) ?? { volume: 0, workouts: 0 };
-		existing.volume += item.total_volume * WEIGHT_MULTIPLIER;
+		existing.volume += item.total_volume;
 		existing.workouts += 1;
 		weeks.set(key, existing);
 	}
@@ -446,10 +445,7 @@ function bucketByWeekMobile(
 		const weekStart = new Date(date);
 		weekStart.setDate(diff);
 		const weekKey = weekStart.toISOString().slice(0, 10);
-		weeks.set(
-			weekKey,
-			(weeks.get(weekKey) ?? 0) + item.total_volume * WEIGHT_MULTIPLIER,
-		);
+		weeks.set(weekKey, (weeks.get(weekKey) ?? 0) + item.total_volume);
 	}
 	let i = 1;
 	return Array.from(weeks.entries()).map(([, volume]) => ({
@@ -743,10 +739,7 @@ export function Analytics() {
 		type: activity.activity_type,
 		isExternal: true,
 	}));
-	const volumeData = bucketByWeek(volumeRaw ?? []).map((entry) => ({
-		...entry,
-		volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
-	}));
+	const volumeData = bucketByWeek(volumeRaw ?? []);
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
 		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
@@ -802,11 +795,11 @@ export function Analytics() {
 	const heroDeltas = useMemo(() => {
 		if (!volumeComparison) return { volume: null, workouts: null };
 		const currentVol = volumeComparison.current.reduce(
-			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			(s, r) => s + (r.total_volume ?? 0),
 			0,
 		);
 		const previousVol = volumeComparison.previous.reduce(
-			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			(s, r) => s + (r.total_volume ?? 0),
 			0,
 		);
 		return {
@@ -821,7 +814,7 @@ export function Analytics() {
 	// --- Training Load from session data ---
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
-			totalVolume: (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			totalVolume: s.total_volume ?? 0,
 			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));
@@ -926,7 +919,9 @@ export function Analytics() {
 				{
 					name: "Volume",
 					type: "line",
-					data: volumeData.map((d) => d.volume),
+					data: volumeData.map((d) =>
+						Math.round(convertWeight(d.volume, unit)),
+					),
 					smooth: true,
 					areaStyle: {
 						color: {
@@ -1056,7 +1051,9 @@ export function Analytics() {
 				{
 					name: "Volume",
 					type: "line",
-					data: volumeData.map((d) => d.volume),
+					data: volumeData.map((d) =>
+						Math.round(convertWeight(d.volume, unit)),
+					),
 					smooth: true,
 					areaStyle: {
 						color: {
@@ -1498,7 +1495,11 @@ export function Analytics() {
 								className="border-primary text-primary hover:bg-primary/10"
 								onClick={() => {
 									const rows = volumeData.map((d) =>
-										[d.date, d.volume, d.workouts].join(","),
+										[
+											d.date,
+											Math.round(convertWeight(d.volume, unit)),
+											d.workouts,
+										].join(","),
 									);
 									const header = `Week,Volume (${unit}),Workouts`;
 									const csv = [header, ...rows].join("\n");

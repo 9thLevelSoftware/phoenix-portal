@@ -192,7 +192,7 @@ export function SessionDetail() {
 				<div className="flex gap-6 text-sm text-gray-600 mt-2">
 					<span>Date: {session.started_at.toLocaleDateString()}</span>
 					{session.routine_name && <span>Routine: {session.routine_name}</span>}
-					<span>Duration: {session.duration_seconds} min</span>
+					<span>Duration: {Math.round(session.duration_seconds / 60)} min</span>
 					<span>Volume: {formatVolume(session.total_volume, unit)}</span>
 				</div>
 			</div>
@@ -287,7 +287,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
 								<div className="text-2xl font-semibold text-white font-data">
-									{session.duration_seconds}m
+									{Math.round(session.duration_seconds / 60)}m
 								</div>
 							</div>
 							<div className="text-center">

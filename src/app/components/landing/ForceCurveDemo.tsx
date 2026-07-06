@@ -11,6 +11,7 @@ import { bisector } from "@visx/vendor/d3-array";
 import { useCallback } from "react";
 
 import { PHOENIX } from "@/lib/colors";
+import { classifyVbtZone, type SimplifiedZoneInfo } from "@/lib/vbt";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +26,7 @@ interface DataPoint {
 interface TooltipPayload {
 	force: number;
 	velocity: number;
-	zone: { name: string; color: string };
+	zone: SimplifiedZoneInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,19 +55,6 @@ const SAMPLE_DATA: DataPoint[] = [
 
 // Phase divider — approximate transition from concentric to eccentric
 const PHASE_DIVIDER_TIME = 1.8;
-
-// ---------------------------------------------------------------------------
-// Velocity zone classification (parity-critical with project spec)
-// ---------------------------------------------------------------------------
-
-function getVelocityZone(v: number): { name: string; color: string } {
-	const abs = Math.abs(v);
-	if (abs >= 1.0) return { name: "Explosive", color: PHOENIX.ember };
-	if (abs >= 0.75) return { name: "Fast", color: PHOENIX.gold };
-	if (abs >= 0.5) return { name: "Moderate", color: PHOENIX.forgeGreen };
-	if (abs >= 0.25) return { name: "Slow", color: PHOENIX.ashGray };
-	return { name: "Grind", color: PHOENIX.moltenSteel };
-}
 
 // ---------------------------------------------------------------------------
 // Chart margins & accessors
@@ -132,7 +120,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 			}
 
 			if (nearest) {
-				const zone = getVelocityZone(nearest.velocity);
+				const zone = classifyVbtZone(Math.abs(nearest.velocity));
 				showTooltip({
 					tooltipData: {
 						force: nearest.force,
@@ -299,7 +287,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 								marginTop: 2,
 							}}
 						>
-							{tooltipData.zone.name}
+							{tooltipData.zone.label}
 						</div>
 					</div>
 				)}

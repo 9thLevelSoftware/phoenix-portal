@@ -694,11 +694,20 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const {
-      data: { user },
-    } = await supabaseAuth.auth.getUser();
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+
+    if (authError) {
+      // Auth service itself failed (network, misconfiguration, etc.) — not a
+      // bad token. Return 503 so mobile classifies this as TRANSIENT and retries
+      // rather than treating it as a PERMANENT auth failure.
+      return new Response(
+        JSON.stringify({ error: 'Auth service unavailable' }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!user) {
+      // No authError + no user → token is genuinely invalid/expired.
       return new Response(
         JSON.stringify({ error: 'Not authenticated' }),
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
@@ -2116,7 +2125,7 @@ Deno.serve(async (req) => {
       }
 
       // Remove orphan days: day_numbers beyond the cycle's current day count
-      for (const cycle of payload.cycles) {
+      for (const cycle of payload.cycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
         const maxDayNumber = cycle.days.length > 0
           ? Math.max(...cycle.days.map((d) => d.dayNumber))
           : -1;
@@ -2516,12 +2525,12 @@ Deno.serve(async (req) => {
       console.error('mobile-sync-push error (non-Error):', err);
     }
     const message = err instanceof Error ? err.message : 'Internal server error';
-    const status = message.includes('upsert failed') || message.includes('insert failed')
-      ? 400
-      : 500;
+    // All exceptions caught here originate from server-side DB or processing
+    // failures — never from bad client input. Always return 500 so mobile
+    // classifies them as TRANSIENT (retryable) rather than PERMANENT.
     return new Response(
       JSON.stringify({ error: message }),
-      { status, headers: { ...cors, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
 });

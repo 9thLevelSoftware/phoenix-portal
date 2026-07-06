@@ -1,5 +1,3 @@
-"use client";
-
 import useEmblaCarousel, {
 	type UseEmblaCarouselType,
 } from "embla-carousel-react";
@@ -99,8 +97,8 @@ function Carousel({
 		api.on("select", onSelect);
 
 		return () => {
-			api?.off("select", onSelect);
 			api?.off("reInit", onSelect);
+			api?.off("select", onSelect);
 		};
 	}, [api, onSelect]);
 

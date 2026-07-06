@@ -12,6 +12,8 @@ interface DayEditorProps {
 	day: CycleDay;
 	onClose: () => void;
 	onAssignRoutine: () => void;
+	/** Navigate to the routine creation page. Falls back to onAssignRoutine when omitted. */
+	onCreateRoutine?: () => void;
 	onConvertToRest: () => void;
 	onConvertToWorkout: () => void;
 	onUpdateOverrides: (overrides: DayOverrides) => void;
@@ -24,6 +26,7 @@ export function DayEditor({
 	day,
 	onClose,
 	onAssignRoutine,
+	onCreateRoutine,
 	onConvertToRest,
 	onConvertToWorkout,
 	onUpdateOverrides,
@@ -110,7 +113,7 @@ export function DayEditor({
 								<Button
 									size="sm"
 									variant="ghost"
-									onClick={onAssignRoutine}
+									onClick={onCreateRoutine ?? onAssignRoutine}
 									className="w-full mt-2 text-primary hover:text-chart-2"
 								>
 									+ Create New Routine

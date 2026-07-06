@@ -312,6 +312,8 @@ export function useFollowCreator() {
 		mutationFn: async ({ followedId }: FollowCreatorArgs) => {
 			if (!user) throw new Error("Must be logged in to follow");
 
+			// TODO: `creator_follows` is not in the generated Supabase types (database.types.ts).
+			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
 			const { data: existing, error: checkError } = await supabase
 				.from("creator_follows" as never)
 				.select("id")
@@ -373,6 +375,8 @@ export function useReportContent() {
 		}: ReportContentArgs) => {
 			if (!user) throw new Error("Must be logged in to report content");
 
+			// TODO: `content_reports` is not in the generated Supabase types (database.types.ts).
+			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
 			const { error } = await supabase.from("content_reports" as never).insert({
 				reporter_id: user.id,
 				content_id: contentId,

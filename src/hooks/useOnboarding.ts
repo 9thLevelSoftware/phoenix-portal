@@ -110,26 +110,26 @@ export function useOnboarding() {
 		mutationFn: async ({ hintId }: { hintId: string }) => {
 			if (!user) throw new Error("Not authenticated");
 
-			// Re-read the latest dismissed_hints from the server immediately before
-			// merging, so two near-simultaneous dismissals don't both write against
-			// the same stale closure-captured object and clobber each other.
-			const { data: latest, error: readError } = await supabase
+			// Fetch the latest dismissed_hints directly from the DB to avoid
+			// overwriting concurrent updates from other tabs (stale cache risk).
+			const { data: current, error: fetchError } = await supabase
 				.from("user_onboarding")
 				.select("dismissed_hints")
 				.eq("user_id", user.id)
-				.maybeSingle();
-			if (readError) throw readError;
+				.single();
+			if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
-			const currentHints =
-				(latest?.dismissed_hints as Record<string, boolean> | null) ??
-				onboarding?.dismissed_hints ??
-				({} as Record<string, boolean>);
-			const updatedHints = { ...currentHints, [hintId]: true };
+			const merged = {
+				...((current?.dismissed_hints as Record<string, boolean>) ?? {}),
+				[hintId]: true,
+			};
 
 			const { error } = await supabase
 				.from("user_onboarding")
-				.update({ dismissed_hints: updatedHints })
-				.eq("user_id", user.id);
+				.upsert(
+					{ user_id: user.id, dismissed_hints: merged },
+					{ onConflict: "user_id" },
+				);
 			if (error) throw error;
 		},
 		onSuccess: () => {

@@ -23,12 +23,13 @@ export function useButtonSuccess(durationMs = 2000) {
 		timerRef.current = setTimeout(() => setIsSuccess(false), durationMs);
 	}, [durationMs]);
 
-	// Clean up timer on unmount to avoid setting state after the component is gone.
-	useEffect(() => {
-		return () => {
+	// Clean up timer on unmount to avoid setting state after unmount.
+	useEffect(
+		() => () => {
 			if (timerRef.current) clearTimeout(timerRef.current);
-		};
-	}, []);
+		},
+		[],
+	);
 
 	return { isSuccess, trigger } as const;
 }

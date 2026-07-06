@@ -40,6 +40,7 @@ const TARGETED_INVALIDATIONS = [
 	{ queryKey: queryKeys.telemetry.all, label: "telemetry" },
 	{ queryKey: queryKeys.biomechanics.all, label: "biomechanics" },
 	{ queryKey: queryKeys.progress.all, label: "progress" },
+	{ queryKey: queryKeys.recovery.all, label: "recovery" },
 	{ queryKey: queryKeys.replay.all, label: "replay" },
 	{ queryKey: queryKeys.profile.all, label: "profile" },
 	{ queryKey: queryKeys.challenges.all, label: "challenges" },

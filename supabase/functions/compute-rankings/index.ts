@@ -738,7 +738,10 @@ async function computeUserRankings(
   const { data: masteryData, error: masteryQueryError } = await supabase
     .from('exercises')
     .select('name, session_id')
-    .eq('user_id', targetUserId);
+    .eq('user_id', targetUserId)
+    .limit(50000);
+
+  if ((masteryData?.length ?? 0) >= 50000) console.warn('[compute-rankings] Exercise mastery data may be truncated for user', targetUserId);
 
   if (masteryQueryError) {
     console.error('Failed to fetch user exercise data:', masteryQueryError);

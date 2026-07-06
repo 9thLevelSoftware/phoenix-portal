@@ -310,7 +310,7 @@ export function comparisonDetailOptions(sessionId: string) {
 				name: parsedSession.name,
 				startedAt: parsedSession.started_at,
 				totalVolume: parsedSession.total_volume,
-				duration: parsedSession.duration_seconds,
+				duration: Math.round(parsedSession.duration_seconds / 60),
 				exerciseCount: parsedSession.exercise_count,
 				setCount: parsedSession.set_count,
 				prCount: parsedSession.pr_count,

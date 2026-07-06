@@ -31,7 +31,11 @@ let broadcastShouldThrow = false;
  * If `setBroadcastShouldThrow(true)` was called, this swallows the error
  * silently — matching fire-and-forget behaviour of the real Edge Function.
  */
-export function recordBroadcast(channel: string, event: string, payload: Record<string, unknown>): void {
+export function recordBroadcast(
+	channel: string,
+	event: string,
+	payload: Record<string, unknown>,
+): void {
 	if (broadcastShouldThrow) {
 		// Real Edge Function wraps broadcast in try/catch — error is logged,
 		// but the push still returns 200. Capture nothing.
@@ -51,7 +55,9 @@ export function getCapturedBroadcasts(): ReadonlyArray<CapturedBroadcast> {
 }
 
 /** Get broadcasts matching a given event name (default: sync_complete). */
-export function getBroadcastsByEvent(event = "sync_complete"): CapturedBroadcast[] {
+export function getBroadcastsByEvent(
+	event = "sync_complete",
+): CapturedBroadcast[] {
 	return capturedBroadcasts.filter((b) => b.event === event);
 }
 

@@ -137,25 +137,44 @@ function parseLiftoscriptMetadata(text: string): {
 // Provider fetch logic
 // =============================================================================
 
+const HEVY_PAGE_SIZE = 10;
+const HEVY_MAX_PAGES = 20;
+
 async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
-  const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-    headers: {
-      'api-key': apiKey,
-      'Content-Type': 'application/json',
-    },
-  });
+  const allWorkouts: HevyWorkout[] = [];
+  let page = 1;
 
-  if (response.status === 401 || response.status === 403) {
-    throw new ApiKeyError('Hevy API access denied. Verify your API key and Hevy PRO subscription.');
+  while (page <= HEVY_MAX_PAGES) {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      pageSize: HEVY_PAGE_SIZE.toString(),
+    });
+
+    const response = await fetch(`${HEVY_API_BASE}/workouts?${params.toString()}`, {
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiKeyError('Hevy API access denied. Verify your API key and Hevy PRO subscription.');
+    }
+    if (!response.ok) {
+      throw new Error(`Hevy API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    const workouts: HevyWorkout[] = data.workouts ?? data ?? [];
+    allWorkouts.push(...workouts);
+
+    // Fewer results than requested means this was the last page
+    if (workouts.length < HEVY_PAGE_SIZE) break;
+
+    page++;
   }
-  if (!response.ok) {
-    throw new Error(`Hevy API returned ${response.status}`);
-  }
 
-  const data = await response.json();
-  const workouts: HevyWorkout[] = data.workouts ?? data ?? [];
-
-  return workouts.map((w) => {
+  return allWorkouts.map((w) => {
     const startTime = new Date(w.start_time);
     const endTime = new Date(w.end_time);
     const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);

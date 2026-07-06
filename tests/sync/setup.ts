@@ -5,61 +5,64 @@
  * and environment variable handling for sync validation tests.
  */
 
-import { beforeAll, afterAll, beforeEach, afterEach, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, it } from "vitest";
+import type { TestUser } from "./helpers/edge-function-harness";
 import {
-  getAnonClient,
-  getServiceClient,
-  isLocalEnvironment,
-} from './helpers/supabase-test-client';
-import { cleanupTestUser, createTestUser } from './helpers/edge-function-harness';
-import type { TestUser } from './helpers/edge-function-harness';
+	cleanupTestUser,
+	createTestUser,
+} from "./helpers/edge-function-harness";
+import {
+	getAnonClient,
+	getServiceClient,
+	isLocalEnvironment,
+} from "./helpers/supabase-test-client";
 
 // Track test users for cleanup
 const createdTestUsers: TestUser[] = [];
 const PRODUCTION_SYNC_TEST_HOSTS = new Set([
-  'ilzlswmatadlnsuxatcv.supabase.co',
-  'api.phoenix-portal.com',
+	"ilzlswmatadlnsuxatcv.supabase.co",
+	"api.phoenix-portal.com",
 ]);
 
 export function liveSyncTestsEnabled(): boolean {
-  return (
-    process.env.MOCK_EDGE_FUNCTIONS !== 'true' &&
-    process.env.SYNC_LIVE_TESTS === 'true'
-  );
+	return (
+		process.env.MOCK_EDGE_FUNCTIONS !== "true" &&
+		process.env.SYNC_LIVE_TESTS === "true"
+	);
 }
 
 export const liveIt = liveSyncTestsEnabled() ? it : it.skip;
 
 function isProductionSyncTarget(url: string): boolean {
-  try {
-    return PRODUCTION_SYNC_TEST_HOSTS.has(new URL(url).hostname);
-  } catch {
-    return false;
-  }
+	try {
+		return PRODUCTION_SYNC_TEST_HOSTS.has(new URL(url).hostname);
+	} catch {
+		return false;
+	}
 }
 
 /**
  * Environment configuration for sync tests
  */
 export interface SyncTestEnv {
-  /** Supabase URL (local or remote) */
-  supabaseUrl: string;
-  /** Whether running against local Supabase */
-  isLocal: boolean;
-  /** Whether mocks are enabled */
-  useMocks: boolean;
+	/** Supabase URL (local or remote) */
+	supabaseUrl: string;
+	/** Whether running against local Supabase */
+	isLocal: boolean;
+	/** Whether mocks are enabled */
+	useMocks: boolean;
 }
 
 /**
  * Get current test environment configuration
  */
 export function getTestEnv(): SyncTestEnv {
-  const supabaseUrl = process.env.SUPABASE_URL || 'http://localhost:54321';
-  return {
-    supabaseUrl,
-    isLocal: isLocalEnvironment(),
-    useMocks: process.env.MOCK_EDGE_FUNCTIONS === 'true',
-  };
+	const supabaseUrl = process.env.SUPABASE_URL || "http://localhost:54321";
+	return {
+		supabaseUrl,
+		isLocal: isLocalEnvironment(),
+		useMocks: process.env.MOCK_EDGE_FUNCTIONS === "true",
+	};
 }
 
 /**
@@ -67,28 +70,31 @@ export function getTestEnv(): SyncTestEnv {
  * Returns list of missing required variables
  */
 export function validateEnvVars(): string[] {
-  const missing: string[] = [];
+	const missing: string[] = [];
 
-  // For non-mock mode, we need Supabase credentials
-  if (process.env.MOCK_EDGE_FUNCTIONS !== 'true') {
-    if (process.env.SYNC_LIVE_TESTS !== 'true') {
-      missing.push('SYNC_LIVE_TESTS=true');
-    }
-    if (!process.env.SUPABASE_URL && !isLocalEnvironment()) {
-      missing.push('SUPABASE_URL');
-    }
-    if (!process.env.SUPABASE_ANON_KEY && !isLocalEnvironment()) {
-      missing.push('SUPABASE_ANON_KEY');
-    }
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !isLocalEnvironment()) {
-      missing.push('SUPABASE_SERVICE_ROLE_KEY');
-    }
-    if (process.env.SUPABASE_URL && isProductionSyncTarget(process.env.SUPABASE_URL)) {
-      missing.push('non-production SUPABASE_URL');
-    }
-  }
+	// For non-mock mode, we need Supabase credentials
+	if (process.env.MOCK_EDGE_FUNCTIONS !== "true") {
+		if (process.env.SYNC_LIVE_TESTS !== "true") {
+			missing.push("SYNC_LIVE_TESTS=true");
+		}
+		if (!process.env.SUPABASE_URL && !isLocalEnvironment()) {
+			missing.push("SUPABASE_URL");
+		}
+		if (!process.env.SUPABASE_ANON_KEY && !isLocalEnvironment()) {
+			missing.push("SUPABASE_ANON_KEY");
+		}
+		if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !isLocalEnvironment()) {
+			missing.push("SUPABASE_SERVICE_ROLE_KEY");
+		}
+		if (
+			process.env.SUPABASE_URL &&
+			isProductionSyncTarget(process.env.SUPABASE_URL)
+		) {
+			missing.push("non-production SUPABASE_URL");
+		}
+	}
 
-  return missing;
+	return missing;
 }
 
 /**
@@ -96,23 +102,23 @@ export function validateEnvVars(): string[] {
  * Use this in tests that need an authenticated user
  */
 export async function createTrackedTestUser(
-  email?: string,
-  password?: string
+	email?: string,
+	password?: string,
 ): Promise<TestUser> {
-  const user = await createTestUser(email, password);
-  createdTestUsers.push(user);
-  return user;
+	const user = await createTestUser(email, password);
+	createdTestUsers.push(user);
+	return user;
 }
 
 /**
  * Clean up a specific test user
  */
 export async function cleanupTrackedTestUser(user: TestUser): Promise<void> {
-  await cleanupTestUser(user.id);
-  const index = createdTestUsers.findIndex((u) => u.id === user.id);
-  if (index !== -1) {
-    createdTestUsers.splice(index, 1);
-  }
+	await cleanupTestUser(user.id);
+	const index = createdTestUsers.findIndex((u) => u.id === user.id);
+	if (index !== -1) {
+		createdTestUsers.splice(index, 1);
+	}
 }
 
 /**
@@ -120,14 +126,14 @@ export async function cleanupTrackedTestUser(user: TestUser): Promise<void> {
  * Called automatically in afterAll hook
  */
 export async function cleanupAllTestUsers(): Promise<void> {
-  const cleanupPromises = createdTestUsers.map((user) =>
-    cleanupTestUser(user.id).catch((err) => {
-      console.warn(`Failed to cleanup test user ${user.id}:`, err);
-    })
-  );
+	const cleanupPromises = createdTestUsers.map((user) =>
+		cleanupTestUser(user.id).catch((err) => {
+			console.warn(`Failed to cleanup test user ${user.id}:`, err);
+		}),
+	);
 
-  await Promise.all(cleanupPromises);
-  createdTestUsers.length = 0;
+	await Promise.all(cleanupPromises);
+	createdTestUsers.length = 0;
 }
 
 /**
@@ -135,57 +141,69 @@ export async function cleanupAllTestUsers(): Promise<void> {
  * Call this in your test file's beforeAll
  */
 export function setupSyncTests(): void {
-  beforeAll(async () => {
-    const env = getTestEnv();
-    console.log(`[Sync Tests] Environment: ${env.isLocal ? 'local' : 'remote'}`);
-    console.log(`[Sync Tests] Mocks: ${env.useMocks ? 'enabled' : 'disabled'}`);
+	beforeAll(async () => {
+		const env = getTestEnv();
+		console.log(
+			`[Sync Tests] Environment: ${env.isLocal ? "local" : "remote"}`,
+		);
+		console.log(`[Sync Tests] Mocks: ${env.useMocks ? "enabled" : "disabled"}`);
 
-    // Validate environment
-    const missing = validateEnvVars();
-    if (missing.length > 0 && !env.useMocks) {
-      throw new Error(
-        `Missing required environment variables: ${missing.join(', ')}. ` +
-          'Set these variables or enable mocks with MOCK_EDGE_FUNCTIONS=true'
-      );
-    }
+		// Validate environment
+		const missing = validateEnvVars();
+		if (missing.length > 0 && !env.useMocks) {
+			throw new Error(
+				`Missing required environment variables: ${missing.join(", ")}. ` +
+					"Set these variables or enable mocks with MOCK_EDGE_FUNCTIONS=true",
+			);
+		}
 
-    // Verify connectivity
-    if (!env.useMocks) {
-      try {
-        const client = getAnonClient();
-        const { error } = await client.auth.getSession();
-        if (error) {
-          console.warn('[Sync Tests] Auth connectivity check warning:', error.message);
-        }
-      } catch (err) {
-        console.warn('[Sync Tests] Supabase connectivity check failed:', err);
-      }
-    }
-  });
+		// Verify connectivity
+		if (!env.useMocks) {
+			try {
+				const client = getAnonClient();
+				const { error } = await client.auth.getSession();
+				if (error) {
+					console.warn(
+						"[Sync Tests] Auth connectivity check warning:",
+						error.message,
+					);
+				}
+			} catch (err) {
+				console.warn("[Sync Tests] Supabase connectivity check failed:", err);
+			}
+		}
+	});
 
-  afterAll(async () => {
-    // Clean up any test users created during tests
-    await cleanupAllTestUsers();
-  });
+	afterAll(async () => {
+		// Clean up any test users created during tests
+		await cleanupAllTestUsers();
+	});
 }
 
 /**
  * Per-test isolation helpers
  */
 export function setupTestIsolation(): void {
-  let testUser: TestUser | null = null;
+	const testUser: TestUser | null = null;
 
-  beforeEach(async () => {
-    // Create fresh test user for each test if needed
-    // Tests can use createTrackedTestUser() instead if they need specific control
-  });
+	beforeEach(async () => {
+		// Create fresh test user for each test if needed
+		// Tests can use createTrackedTestUser() instead if they need specific control
+	});
 
-  afterEach(async () => {
-    // Per-test cleanup handled by tracked user system
-  });
+	afterEach(async () => {
+		// Per-test cleanup handled by tracked user system
+	});
 }
 
+export type { TestUser } from "./helpers/edge-function-harness";
+export {
+	cleanupTestUser,
+	createTestUser,
+} from "./helpers/edge-function-harness";
 // Re-export commonly used items
-export { getAnonClient, getServiceClient, isLocalEnvironment } from './helpers/supabase-test-client';
-export { createTestUser, cleanupTestUser } from './helpers/edge-function-harness';
-export type { TestUser } from './helpers/edge-function-harness';
+export {
+	getAnonClient,
+	getServiceClient,
+	isLocalEnvironment,
+} from "./helpers/supabase-test-client";

@@ -63,10 +63,8 @@ function mapGarminActivityType(garminType: string): string {
 export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
 	const activity = garminActivitySchema.parse(raw);
 
-	// Convert epoch seconds to ISO string, accounting for timezone offset
-	const startedAt = new Date(
-		(activity.startTimeInSeconds + activity.startTimeOffsetInSeconds) * 1000,
-	).toISOString();
+	// Convert epoch seconds to ISO string; epoch is already UTC, offset is not needed for storage
+	const startedAt = new Date(activity.startTimeInSeconds * 1000).toISOString();
 
 	return {
 		external_id: String(activity.activityId),

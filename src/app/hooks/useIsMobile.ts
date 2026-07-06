@@ -1,24 +1,5 @@
-import { useEffect, useState } from "react";
-
-export function useIsMobile(breakpoint: number = 768) {
-	const [isMobile, setIsMobile] = useState(
-		() => typeof window !== "undefined" && window.innerWidth < breakpoint,
-	);
-
-	useEffect(() => {
-		// Check on mount
-		const checkIsMobile = () => {
-			setIsMobile(window.innerWidth < breakpoint);
-		};
-
-		// Initial check
-		checkIsMobile();
-
-		// Listen for resize
-		window.addEventListener("resize", checkIsMobile);
-
-		return () => window.removeEventListener("resize", checkIsMobile);
-	}, [breakpoint]);
-
-	return isMobile;
-}
+// Re-exports the canonical shadcn/ui implementation.
+// All call sites use the default 768 px breakpoint so the parameterised variant
+// was redundant. The matchMedia-based implementation in use-mobile.ts is more
+// efficient (reacts to CSS breakpoint changes rather than every resize event).
+export { useIsMobile } from "../components/ui/use-mobile";

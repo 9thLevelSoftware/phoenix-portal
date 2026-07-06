@@ -282,6 +282,14 @@ Deno.serve(async (req) => {
 		}
 
 		// Normalize and upsert records to external_activities
+
+		// Capture the sync invocation time once. Records whose Liftoscript text
+		// contains no parseable ISO timestamp use this as a sentinel value instead
+		// of per-record wall-clock time. Using a single shared value makes it
+		// clear that these rows were imported at a known sync boundary, not that
+		// the wall clock happened to match the workout time.
+		const syncInvokedAt = new Date().toISOString();
+
 		let importedCount = 0;
 		let failedCount = 0;
 		for (const record of allRecords) {
@@ -294,9 +302,13 @@ Deno.serve(async (req) => {
 					: meta.dayName
 				: meta.program ?? `Workout #${record.id}`;
 
+			// Use the parsed timestamp when available; fall back to the sync
+			// invocation sentinel when the Liftoscript text has no parseable date.
+			// The sentinel makes clear that started_at reflects import time, not
+			// actual workout time.
 			const startedAt = meta.timestamp
 				? new Date(meta.timestamp).toISOString()
-				: new Date().toISOString();
+				: syncInvokedAt;
 
 			const { error: activityError } = await supabase
 				.from("external_activities")

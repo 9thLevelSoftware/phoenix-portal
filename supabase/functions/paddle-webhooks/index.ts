@@ -1,11 +1,13 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  getAllAllowedPriceIds,
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
+  resolveBasePlanPriceId,
 } from "../_shared/paddleSubscriptionState.ts";
 import {
   classifyPaddleEventOrder,
@@ -308,7 +310,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const priceId = event.data.items?.[0]?.price?.id ?? "";
+    const priceId = resolveBasePlanPriceId(
+      event.data as PaddleSubscriptionState,
+      getAllAllowedPriceIds(Deno.env),
+    );
     let tier = mapPriceIdToTier(priceId, Deno.env);
 
     if (priceId && tier === "FREE") {
