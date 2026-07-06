@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef } from "react";
+import { Info } from "lucide-react";
+import { useCallback, useRef } from "react";
 import { Slider } from "@/app/components/ui/slider";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/app/components/ui/tooltip";
 import type { FatigueAnalysis } from "@/lib/fatigue-detection";
 import { useReplayStore } from "@/stores/useReplayStore";
 
@@ -112,9 +118,23 @@ export function TimelineBar({
 				</div>
 			</div>
 
-			{/* Time labels */}
-			<div className="flex justify-between text-xs text-muted-foreground px-1">
+			{/* Time labels + estimated-boundary disclosure */}
+			<div className="flex justify-between items-center text-xs text-muted-foreground px-1">
 				<span>{formatTime(currentTimeMs)}</span>
+				{repBoundaries.length > 0 && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<span className="flex items-center gap-0.5 cursor-default select-none opacity-40 hover:opacity-70 transition-opacity">
+								<Info className="w-3 h-3" />
+								<span className="text-[10px]">est.</span>
+							</span>
+						</TooltipTrigger>
+						<TooltipContent side="top">
+							Rep boundaries are estimated from timing data, not exact telemetry
+							measurements
+						</TooltipContent>
+					</Tooltip>
+				)}
 				<span>{formatTime(durationMs)}</span>
 			</div>
 		</div>

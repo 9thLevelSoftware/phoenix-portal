@@ -53,6 +53,7 @@ import {
 	userChallengesOptions,
 } from "@/queries/challenges";
 import { cycleListOptions } from "@/queries/cycles";
+import { goalsOptions } from "@/queries/goals";
 import { earnedBadgesOptions, profileOptions } from "@/queries/profile";
 import {
 	dashboardStatsOptions,
@@ -374,9 +375,15 @@ export function Dashboard() {
 		...cycleListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	const { data: goals } = useQuery({
+		...goalsOptions(userId),
+		enabled: !!userId,
+	});
 
 	const streak = useStreak(workouts);
 	const activeCycle = cycles?.find((c) => c.status === "active");
+	const activeGoalCount =
+		goals?.filter((g) => g.status === "active").length ?? 0;
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
@@ -735,12 +742,15 @@ export function Dashboard() {
 										gradient="from-chart-2 to-primary"
 									/>
 								)}
-								<QuickStatCard
-									icon={<Target className="w-5 h-5" />}
-									value="--"
-									label="Goals"
-									gradient="from-indigo-500 to-indigo-600"
-								/>
+								{activeGoalCount > 0 && (
+									<QuickStatCard
+										icon={<Target className="w-5 h-5" />}
+										value={String(activeGoalCount)}
+										numericValue={activeGoalCount}
+										label="Goals"
+										gradient="from-indigo-500 to-indigo-600"
+									/>
+								)}
 							</div>
 						)}
 					</motion.div>
@@ -867,7 +877,7 @@ export function Dashboard() {
 										title={workout.name}
 										time={formatRelativeTime(workout.started_at)}
 										volume={formatVolume(workout.total_volume, unit)}
-										duration={`${workout.duration_seconds} min`}
+										duration={`${Math.round(workout.duration_seconds / 60)} min`}
 										prs={workout.pr_count}
 									/>
 								))}
@@ -1219,7 +1229,7 @@ export function Dashboard() {
 															{formatVolume(workout.total_volume, unit)}
 														</div>
 														<div className="text-sm text-muted-foreground font-data">
-															{workout.duration_seconds} min
+															{Math.round(workout.duration_seconds / 60)} min
 														</div>
 													</div>
 												</div>

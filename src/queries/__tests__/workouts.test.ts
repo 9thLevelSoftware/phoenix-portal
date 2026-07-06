@@ -51,7 +51,7 @@ describe("workoutListOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.workouts.list("user-abc"));
 	});
 
-	it("returns Zod-transformed data (weights doubled, dates as Date, duration as minutes)", async () => {
+	it("returns Zod-transformed data (weights doubled, dates as Date, duration as seconds)", async () => {
 		const raw = [
 			{
 				id: "11111111-1111-4111-8111-111111111111",
@@ -75,7 +75,7 @@ describe("workoutListOptions", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].total_volume).toBe(500); // Phase 40 fix: no longer doubled (already total)
-		expect(result[0].duration_seconds).toBe(60); // minutes
+		expect(result[0].duration_seconds).toBe(3600); // raw seconds — no schema transform
 		expect(result[0].started_at).toBeInstanceOf(Date);
 		expect(result[0].workout_mode).toBe("Echo");
 	});

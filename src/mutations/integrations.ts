@@ -90,7 +90,7 @@ export function useManualSync() {
 			);
 
 			if (invokeError) {
-				await supabase
+				const { error: cleanupError } = await supabase
 					.from("sync_queue")
 					.update({
 						status: "failed",
@@ -98,6 +98,8 @@ export function useManualSync() {
 						completed_at: new Date().toISOString(),
 					})
 					.eq("id", queuedSync.id);
+				if (cleanupError)
+					console.error("[useManualSync] cleanup failed:", cleanupError);
 				throw invokeError;
 			}
 		},
@@ -151,12 +153,13 @@ export function useConnectIntegration() {
 			if (error) throw error;
 
 			// Queue initial sync after connecting
-			await supabase.from("sync_queue").insert({
+			const { error: queueError } = await supabase.from("sync_queue").insert({
 				user_id: userId,
 				provider,
 				sync_type: "initial",
 				status: "pending",
 			});
+			if (queueError) throw queueError;
 		},
 		onSuccess: (_, { userId }) => {
 			queryClient.invalidateQueries({
