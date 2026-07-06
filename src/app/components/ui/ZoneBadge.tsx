@@ -95,22 +95,33 @@ export interface ZoneIndicatorProps {
  * <ZoneIndicator system="mann" />
  * <ZoneIndicator system="simplified" />
  */
+// Fixed accent colours for each zone classification system.
+// Using inline style (matching the ZoneBadge pattern) keeps these
+// colour-coded by data intent rather than by raw Tailwind palette.
+const SYSTEM_ACCENT: Record<ZoneSystem, string> = {
+	mann: "#60A5FA", // blue-400 equivalent — Dr. Mann VBT
+	simplified: "#F59E0B", // Phoenix Gold — mobile-matching zones
+};
+
 export function ZoneIndicator({ system, className }: ZoneIndicatorProps) {
-	const isMann = system === "mann";
-	const label = isMann ? "Dr. Mann VBT" : "Simplified";
-	const description = isMann
-		? "Advanced velocity-based training zones"
-		: "Mobile-matching simplified zones";
+	const label = system === "mann" ? "Dr. Mann VBT" : "Simplified";
+	const description =
+		system === "mann"
+			? "Advanced velocity-based training zones"
+			: "Mobile-matching simplified zones";
+	const color = SYSTEM_ACCENT[system];
 
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-				isMann
-					? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-					: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+				"inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
 				className,
 			)}
+			style={{
+				backgroundColor: `${color}1a`,
+				borderColor: `${color}33`,
+				color,
+			}}
 			title={description}
 		>
 			{label}

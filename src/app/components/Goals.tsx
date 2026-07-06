@@ -107,7 +107,7 @@ export function useGoalProgress(
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
-				// total_volume is already Zod-transformed (doubled)
+				// total_volume is per-cable kg from the DB; the Phase 4 fix removed the portal-side doubling
 				const totalVolume = workoutsInPeriod.reduce(
 					(sum, w) => sum + w.total_volume,
 					0,
