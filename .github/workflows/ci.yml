@@ -109,3 +109,9 @@ jobs:
           VITE_SUPABASE_URL: "https://placeholder.supabase.co"
           VITE_SUPABASE_ANON_KEY: "placeholder-anon-key"
       - run: npm run assert:no-sourcemaps
+      # TODO: Add post-deploy smoke test (curl production URL for HTTP 200)
+      # A real Cloudflare Pages deploy step should be followed by a smoke test
+      # that verifies the deployed URL returns HTTP 200, catching any env-var
+      # deletion or misconfiguration that the placeholder-based build cannot detect.
+      - name: "TODO: Post-deploy smoke test placeholder"
+        run: echo "TODO: Add post-deploy smoke test (curl production URL for HTTP 200)"
