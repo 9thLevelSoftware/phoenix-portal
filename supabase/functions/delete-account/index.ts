@@ -185,6 +185,9 @@ Deno.serve(async (req) => {
     // and can retry. This is the same guard pattern as the missing-key check
     // above (lines 157-163).
     // =========================================================================
+    let paddleCancellationCompleted = false;
+    let canceledPaddleSubscriptionId: string | null = null;
+
     if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
       const paddleResult = await cancelPaddleSubscription(
         subscriptionRow.paddle_subscription_id,
@@ -209,6 +212,9 @@ Deno.serve(async (req) => {
           { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
+
+      paddleCancellationCompleted = true;
+      canceledPaddleSubscriptionId = subscriptionRow.paddle_subscription_id;
     }
 
     // =========================================================================
@@ -221,11 +227,47 @@ Deno.serve(async (req) => {
     // =========================================================================
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (deleteError) {
-      // Roll back the deletion request status to prevent partial-delete state
+      // Keep the deletion request retryable, but do not hide the irreversible
+      // billing side effect if Paddle already accepted an immediate cancellation.
       await supabaseAdmin
         .from('deletion_requests')
         .update({ status: 'pending', executed_at: null })
         .eq('id', request.id);
+
+      if (paddleCancellationCompleted) {
+        const { error: subscriptionUpdateError } = await supabaseAdmin
+          .from('subscriptions')
+          .update({
+            status: 'canceled',
+            cancel_at_period_end: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+
+        if (subscriptionUpdateError) {
+          console.error(
+            '[DELETE_ACCOUNT] Failed to persist local subscription cancellation after auth delete failure:',
+            subscriptionUpdateError,
+          );
+        }
+
+        console.error(
+          '[DELETE_ACCOUNT_PARTIAL_FAILURE] Paddle subscription was canceled but auth user deletion failed:',
+          {
+            user_id: userId,
+            paddle_subscription_id: canceledPaddleSubscriptionId,
+            delete_error: deleteError,
+          },
+        );
+
+        return new Response(
+          JSON.stringify({
+            error: 'Billing subscription was canceled, but account deletion could not be completed. Please contact support.',
+            code: 'billing_canceled_account_delete_failed',
+          }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       console.error('[DELETE_ACCOUNT] Failed to delete auth user, rolled back request status:', deleteError);
       return new Response(

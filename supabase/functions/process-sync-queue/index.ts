@@ -211,7 +211,12 @@ Deno.serve(async (req) => {
       try {
         // Call provider-specific sync function with exponential backoff on transient errors
         await backOff(
-          () => callSyncFunction(task.provider, task.user_id, task.sync_type ?? 'incremental'),
+          () => callSyncFunction(
+            task.provider,
+            task.user_id,
+            task.sync_type ?? 'incremental',
+            task.id,
+          ),
           {
             numOfAttempts: 3,
             startingDelay: 1000,
@@ -276,7 +281,12 @@ Deno.serve(async (req) => {
 /**
  * Call the provider-specific sync Edge Function.
  */
-async function callSyncFunction(provider: string, userId: string, syncType: string) {
+async function callSyncFunction(
+  provider: string,
+  userId: string,
+  syncType: string,
+  queueId: string,
+) {
   if (provider === 'garmin') {
     const error = new Error(
       'Garmin sync is webhook-driven and cannot be queued manually.'
@@ -294,7 +304,7 @@ async function callSyncFunction(provider: string, userId: string, syncType: stri
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user_id: userId, sync_type: syncType }),
+      body: JSON.stringify({ user_id: userId, sync_type: syncType, queue_id: queueId }),
     }
   );
 

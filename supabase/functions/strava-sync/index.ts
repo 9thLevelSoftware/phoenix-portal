@@ -1,7 +1,13 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Strava Activity Sync Edge Function
@@ -69,6 +75,82 @@ interface NormalizedActivity {
   avg_heart_rate: number | null;
   max_heart_rate: number | null;
   elevation_gain_meters: number | null;
+}
+
+async function completeSyncQueueEntry(
+  supabase: DbClient,
+  options: {
+    userId: string;
+    provider: string;
+    syncType: string;
+    queueId: string | null;
+    calledByQueueProcessor: boolean;
+  },
+) {
+  const targetStatus = options.calledByQueueProcessor ? 'processing' : 'pending';
+  let queueId = options.queueId;
+
+  if (queueId) {
+    const { data: queueRow, error: selectError } = await supabase
+      .from('sync_queue')
+      .select('id')
+      .eq('id', queueId)
+      .eq('user_id', options.userId)
+      .eq('provider', options.provider)
+      .eq('status', targetStatus)
+      .maybeSingle();
+
+    if (selectError) {
+      console.error(`Failed to verify ${options.provider} sync queue entry:`, selectError);
+      return;
+    }
+
+    if (!queueRow) return;
+    queueId = queueRow.id;
+  }
+
+  if (!queueId) {
+    let query = supabase
+      .from('sync_queue')
+      .select('id')
+      .eq('user_id', options.userId)
+      .eq('provider', options.provider)
+      .eq('status', targetStatus);
+
+    if (!options.calledByQueueProcessor) {
+      query = query.eq('sync_type', options.syncType);
+    }
+
+    const { data: queueRow, error: selectError } = await query
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (selectError) {
+      console.error(`Failed to find ${options.provider} sync queue entry:`, selectError);
+      return;
+    }
+
+    queueId = queueRow?.id ?? null;
+  }
+
+  if (!queueId) return;
+
+  const { error: updateError } = await supabase
+    .from('sync_queue')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      error_message: null,
+    })
+    .eq('id', queueId)
+    .eq('user_id', options.userId)
+    .eq('provider', options.provider)
+    .eq('status', targetStatus);
+
+  if (updateError) {
+    console.error(`Failed to complete ${options.provider} sync queue entry:`, updateError);
+  }
 }
 
 function normalizeStravaActivity(raw: StravaActivityRaw): NormalizedActivity {
@@ -167,6 +249,8 @@ Deno.serve(async (req) => {
     }
 
     const sync_type = body.sync_type ?? 'incremental';
+    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
+    const calledByQueueProcessor = !jwtUser;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -374,20 +458,13 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
-    // Update sync_queue entry if one exists.
-    // The queue processor sets the entry to 'processing' before invoking this
-    // function, so we must target 'processing' — not 'pending' — here.
-    await supabase
-      .from('sync_queue')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'strava')
-      .eq('status', 'processing')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    await completeSyncQueueEntry(supabase, {
+      userId,
+      provider: 'strava',
+      syncType: sync_type,
+      queueId,
+      calledByQueueProcessor,
+    });
 
     return new Response(
       JSON.stringify({ synced_count: syncedCount, errors }),

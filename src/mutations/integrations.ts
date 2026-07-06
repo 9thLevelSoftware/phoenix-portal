@@ -85,7 +85,11 @@ export function useManualSync() {
 			const { error: invokeError } = await supabase.functions.invoke(
 				`${provider}-sync`,
 				{
-					body: { user_id: userId, sync_type: "manual" },
+					body: {
+						user_id: userId,
+						sync_type: "manual",
+						queue_id: queuedSync.id,
+					},
 				},
 			);
 

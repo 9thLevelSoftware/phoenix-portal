@@ -180,6 +180,82 @@ async function upsertFitbitRateLimitRow(
   }
 }
 
+async function completeSyncQueueEntry(
+  supabase: DbClient,
+  options: {
+    userId: string;
+    provider: string;
+    syncType: string;
+    queueId: string | null;
+    calledByQueueProcessor: boolean;
+  },
+) {
+  const targetStatus = options.calledByQueueProcessor ? 'processing' : 'pending';
+  let queueId = options.queueId;
+
+  if (queueId) {
+    const { data: queueRow, error: selectError } = await supabase
+      .from('sync_queue')
+      .select('id')
+      .eq('id', queueId)
+      .eq('user_id', options.userId)
+      .eq('provider', options.provider)
+      .eq('status', targetStatus)
+      .maybeSingle();
+
+    if (selectError) {
+      console.error(`Failed to verify ${options.provider} sync queue entry:`, selectError);
+      return;
+    }
+
+    if (!queueRow) return;
+    queueId = queueRow.id;
+  }
+
+  if (!queueId) {
+    let query = supabase
+      .from('sync_queue')
+      .select('id')
+      .eq('user_id', options.userId)
+      .eq('provider', options.provider)
+      .eq('status', targetStatus);
+
+    if (!options.calledByQueueProcessor) {
+      query = query.eq('sync_type', options.syncType);
+    }
+
+    const { data: queueRow, error: selectError } = await query
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (selectError) {
+      console.error(`Failed to find ${options.provider} sync queue entry:`, selectError);
+      return;
+    }
+
+    queueId = queueRow?.id ?? null;
+  }
+
+  if (!queueId) return;
+
+  const { error: updateError } = await supabase
+    .from('sync_queue')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      error_message: null,
+    })
+    .eq('id', queueId)
+    .eq('user_id', options.userId)
+    .eq('provider', options.provider)
+    .eq('status', targetStatus);
+
+  if (updateError) {
+    console.error(`Failed to complete ${options.provider} sync queue entry:`, updateError);
+  }
+}
+
 /**
  * Fitbit Activity Sync Edge Function.
  *
@@ -237,7 +313,9 @@ Deno.serve(async (req) => {
       userId = body.user_id;
     }
 
-    const { sync_type } = body;
+    const sync_type = body.sync_type ?? 'incremental';
+    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
+    const calledByQueueProcessor = !jwtUser;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -375,10 +453,13 @@ Deno.serve(async (req) => {
       last_request_at: new Date().toISOString(),
     });
 
-    // sync_queue lifecycle (pending → processing → completed) is managed exclusively
-    // by process-sync-queue. This function must NOT touch sync_queue status — doing
-    // so would bulk-complete ALL pending/processing Fitbit entries regardless of which
-    // task triggered this invocation (H-9).
+    await completeSyncQueueEntry(supabase, {
+      userId,
+      provider: 'fitbit',
+      syncType: sync_type,
+      queueId,
+      calledByQueueProcessor,
+    });
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),

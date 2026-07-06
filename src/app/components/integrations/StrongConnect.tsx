@@ -75,6 +75,19 @@ export function StrongConnect({
 	// CSV Import Handlers
 	// =========================================================================
 
+	const reparseImportPreview = useCallback(
+		(
+			csvContent: string,
+			weightUnit: "kg" | "lbs",
+			distanceUnit: "km" | "miles",
+		) => {
+			const activities = parseStrongCSV(csvContent, weightUnit, distanceUnit);
+			setParsedActivities(activities.length > 0 ? activities : null);
+			return activities;
+		},
+		[],
+	);
+
 	const handleFileSelect = useCallback(
 		(event: React.ChangeEvent<HTMLInputElement>) => {
 			const file = event.target.files?.[0];
@@ -91,7 +104,7 @@ export function StrongConnect({
 			reader.onload = (e) => {
 				try {
 					const csvContent = e.target?.result as string;
-					const activities = parseStrongCSV(
+					const activities = reparseImportPreview(
 						csvContent,
 						importWeightUnit,
 						importDistanceUnit,
@@ -122,7 +135,7 @@ export function StrongConnect({
 			};
 			reader.readAsText(file);
 		},
-		[importWeightUnit, importDistanceUnit],
+		[importWeightUnit, importDistanceUnit, reparseImportPreview],
 	);
 
 	// Reparse the already-loaded CSV when the import unit changes, so the preview
@@ -132,13 +145,25 @@ export function StrongConnect({
 			setImportWeightUnit(unit);
 			if (!rawCsv) return;
 			try {
-				const activities = parseStrongCSV(rawCsv, unit);
-				setParsedActivities(activities.length > 0 ? activities : null);
+				reparseImportPreview(rawCsv, unit, importDistanceUnit);
 			} catch {
 				setParsedActivities(null);
 			}
 		},
-		[rawCsv],
+		[importDistanceUnit, rawCsv, reparseImportPreview],
+	);
+
+	const handleImportDistanceUnitChange = useCallback(
+		(unit: "km" | "miles") => {
+			setImportDistanceUnit(unit);
+			if (!rawCsv) return;
+			try {
+				reparseImportPreview(rawCsv, importWeightUnit, unit);
+			} catch {
+				setParsedActivities(null);
+			}
+		},
+		[importWeightUnit, rawCsv, reparseImportPreview],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -375,7 +400,7 @@ export function StrongConnect({
 									type="button"
 									variant={importDistanceUnit === "km" ? "default" : "outline"}
 									size="sm"
-									onClick={() => setImportDistanceUnit("km")}
+									onClick={() => handleImportDistanceUnitChange("km")}
 									className={
 										importDistanceUnit === "km"
 											? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
@@ -390,7 +415,7 @@ export function StrongConnect({
 										importDistanceUnit === "miles" ? "default" : "outline"
 									}
 									size="sm"
-									onClick={() => setImportDistanceUnit("miles")}
+									onClick={() => handleImportDistanceUnitChange("miles")}
 									className={
 										importDistanceUnit === "miles"
 											? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
