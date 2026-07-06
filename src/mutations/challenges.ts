@@ -23,6 +23,9 @@ export function useJoinChallenge() {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.challenges.all,
 			});
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.notifications.all,
+			});
 		},
 		onError: (error: Error) => {
 			console.error("[useJoinChallenge] failed:", error);
@@ -56,6 +59,9 @@ export function useLeaveChallenge() {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.challenges.all,
 			});
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.notifications.all,
+			});
 		},
 		onError: (error: Error) => {
 			console.error("[useLeaveChallenge] failed:", error);
@@ -88,6 +94,9 @@ export function useCompleteChallenge() {
 			toast.success("Challenge completed!");
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.challenges.all,
+			});
+			queryClient.invalidateQueries({
+				queryKey: queryKeys.notifications.all,
 			});
 		},
 		onError: (error: Error) => {

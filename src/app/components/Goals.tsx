@@ -107,7 +107,7 @@ export function useGoalProgress(
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
-				// total_volume is already Zod-transformed (doubled)
+				// total_volume is the combined two-cable total from the DB (not per-cable); no portal-side multiplication needed
 				const totalVolume = workoutsInPeriod.reduce(
 					(sum, w) => sum + w.total_volume,
 					0,

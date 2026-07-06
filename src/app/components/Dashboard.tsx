@@ -53,6 +53,7 @@ import {
 	userChallengesOptions,
 } from "@/queries/challenges";
 import { cycleListOptions } from "@/queries/cycles";
+import { goalsOptions } from "@/queries/goals";
 import { earnedBadgesOptions, profileOptions } from "@/queries/profile";
 import {
 	dashboardStatsOptions,
@@ -60,7 +61,6 @@ import {
 	workoutListOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
@@ -81,8 +81,8 @@ function deriveWeeklyVolume(
 	if (stats) {
 		for (const row of stats) {
 			const dayName = days[new Date(row.started_at).getDay()];
-			// total_volume is per-cable in DB; multiply by 2 for display
-			volumeByDay[dayName] += row.total_volume * WEIGHT_MULTIPLIER;
+			// total_volume is already the combined total in DB — no multiplier needed
+			volumeByDay[dayName] += row.total_volume;
 		}
 	}
 
@@ -375,19 +375,21 @@ export function Dashboard() {
 		...cycleListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	const { data: goals } = useQuery({
+		...goalsOptions(userId),
+		enabled: !!userId,
+	});
 
 	const streak = useStreak(workouts);
 	const activeCycle = cycles?.find((c) => c.status === "active");
+	const activeGoalCount =
+		goals?.filter((g) => g.status === "active").length ?? 0;
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
 	const recentBadges = earnedBadges?.slice(0, 3) ?? [];
-	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined).map(
-		(row) => ({
-			...row,
-			volume: Math.round(convertWeight(row.volume, unit) * 10) / 10,
-		}),
-	);
+	// Keep weeklyVolumeData in raw kg; formatVolume handles the single unit conversion at render time
+	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
 	// Weekly estimated calories from dashboard stats
@@ -740,12 +742,15 @@ export function Dashboard() {
 										gradient="from-chart-2 to-primary"
 									/>
 								)}
-								<QuickStatCard
-									icon={<Target className="w-5 h-5" />}
-									value="--"
-									label="Goals"
-									gradient="from-indigo-500 to-indigo-600"
-								/>
+								{activeGoalCount > 0 && (
+									<QuickStatCard
+										icon={<Target className="w-5 h-5" />}
+										value={String(activeGoalCount)}
+										numericValue={activeGoalCount}
+										label="Goals"
+										gradient="from-indigo-500 to-indigo-600"
+									/>
+								)}
 							</div>
 						)}
 					</motion.div>
@@ -872,7 +877,7 @@ export function Dashboard() {
 										title={workout.name}
 										time={formatRelativeTime(workout.started_at)}
 										volume={formatVolume(workout.total_volume, unit)}
-										duration={`${workout.duration_seconds} min`}
+										duration={`${Math.round(workout.duration_seconds / 60)} min`}
 										prs={workout.pr_count}
 									/>
 								))}
@@ -1224,7 +1229,7 @@ export function Dashboard() {
 															{formatVolume(workout.total_volume, unit)}
 														</div>
 														<div className="text-sm text-muted-foreground font-data">
-															{workout.duration_seconds} min
+															{Math.round(workout.duration_seconds / 60)} min
 														</div>
 													</div>
 												</div>
@@ -1286,8 +1291,22 @@ export function Dashboard() {
 														fontSize: 11,
 														fontFamily: "Inter, sans-serif",
 													}}
+													tickFormatter={(v) => {
+														const c = convertWeight(v, unit);
+														if (Math.abs(c) >= 1_000_000)
+															return `${(c / 1_000_000).toFixed(1)}M`;
+														if (Math.abs(c) >= 1_000)
+															return `${(c / 1_000).toFixed(0)}K`;
+														return String(Math.round(c));
+													}}
 												/>
-												<Tooltip content={<RechartsTooltip />} />
+												<Tooltip
+													content={
+														<RechartsTooltip
+															formatValue={(v) => formatVolume(v, unit)}
+														/>
+													}
+												/>
 												<Area
 													type="monotone"
 													dataKey="volume"

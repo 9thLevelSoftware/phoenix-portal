@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useAuth } from "@/app/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { queryKeys } from "@/queries/keys";
 import { useUIStore } from "@/stores/useUIStore";
 
 /**
@@ -22,7 +23,9 @@ export function useNotificationSync(): void {
 
 	// --- Challenges needing attention ---
 	const { data: challengeCount, isSuccess: challengeSuccess } = useQuery({
-		queryKey: ["notifications", "challenges", user?.id],
+		queryKey: user?.id
+			? queryKeys.notifications.challenges(user.id)
+			: queryKeys.notifications.all,
 		queryFn: async () => {
 			const { count, error } = await supabase
 				.from("challenge_participants")
@@ -38,7 +41,9 @@ export function useNotificationSync(): void {
 
 	// --- Recent community comments on user's content ---
 	const { data: communityCount, isSuccess: communitySuccess } = useQuery({
-		queryKey: ["notifications", "community", user?.id],
+		queryKey: user?.id
+			? queryKeys.notifications.community(user.id)
+			: queryKeys.notifications.all,
 		queryFn: async () => {
 			const sevenDaysAgo = new Date(
 				Date.now() - 7 * 24 * 60 * 60 * 1000,

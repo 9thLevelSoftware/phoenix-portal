@@ -179,7 +179,46 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================================
-    // Step 3: Delete auth user (cascades to all private data)
+    // Step 3: Cancel Paddle subscription BEFORE deleting the auth user.
+    // Cancelling first guarantees the user is never billed after deletion.
+    // If cancellation fails, abort and roll back — the user remains intact
+    // and can retry. This is the same guard pattern as the missing-key check
+    // above (lines 157-163).
+    // =========================================================================
+    let paddleCancellationCompleted = false;
+    let canceledPaddleSubscriptionId: string | null = null;
+
+    if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
+      const paddleResult = await cancelPaddleSubscription(
+        subscriptionRow.paddle_subscription_id,
+        paddleApiKey,
+      );
+
+      if (!paddleResult.ok) {
+        // Roll back deletion request so the user can safely retry later.
+        await supabaseAdmin
+          .from('deletion_requests')
+          .update({ status: 'pending', executed_at: null })
+          .eq('id', request.id);
+
+        console.error(
+          '[DELETE_ACCOUNT] Paddle cancel failed. Aborting deletion — user intact:',
+          subscriptionRow.paddle_subscription_id,
+          paddleResult.status,
+          paddleResult.detail,
+        );
+        return new Response(
+          JSON.stringify({ error: 'Failed to cancel billing subscription. Account deletion aborted. Please try again or contact support.' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      paddleCancellationCompleted = true;
+      canceledPaddleSubscriptionId = subscriptionRow.paddle_subscription_id;
+    }
+
+    // =========================================================================
+    // Step 4: Delete auth user (cascades to all private data)
     // CASCADE-deletes: profiles, workout_sessions (and children), personal_records,
     //   exercise_progress, routines, training_cycles, user_goals, external_activities,
     //   user_integrations, subscriptions, community_votes, saved_community_items,
@@ -188,11 +227,47 @@ Deno.serve(async (req) => {
     // =========================================================================
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (deleteError) {
-      // Roll back the deletion request status to prevent partial-delete state
+      // Keep the deletion request retryable, but do not hide the irreversible
+      // billing side effect if Paddle already accepted an immediate cancellation.
       await supabaseAdmin
         .from('deletion_requests')
         .update({ status: 'pending', executed_at: null })
         .eq('id', request.id);
+
+      if (paddleCancellationCompleted) {
+        const { error: subscriptionUpdateError } = await supabaseAdmin
+          .from('subscriptions')
+          .update({
+            status: 'canceled',
+            cancel_at_period_end: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+
+        if (subscriptionUpdateError) {
+          console.error(
+            '[DELETE_ACCOUNT] Failed to persist local subscription cancellation after auth delete failure:',
+            subscriptionUpdateError,
+          );
+        }
+
+        console.error(
+          '[DELETE_ACCOUNT_PARTIAL_FAILURE] Paddle subscription was canceled but auth user deletion failed:',
+          {
+            user_id: userId,
+            paddle_subscription_id: canceledPaddleSubscriptionId,
+            delete_error: deleteError,
+          },
+        );
+
+        return new Response(
+          JSON.stringify({
+            error: 'Billing subscription was canceled, but account deletion could not be completed. Please contact support.',
+            code: 'billing_canceled_account_delete_failed',
+          }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       console.error('[DELETE_ACCOUNT] Failed to delete auth user, rolled back request status:', deleteError);
       return new Response(
@@ -201,27 +276,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    let billingCancellationPending = false;
-    if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
-      const paddleResult = await cancelPaddleSubscription(
-        subscriptionRow.paddle_subscription_id,
-        paddleApiKey,
-      );
-
-      if (!paddleResult.ok) {
-        billingCancellationPending = true;
-        console.error(
-          '[DELETE_ACCOUNT] Paddle cancel failed after auth delete. Manual follow-up required:',
-          subscriptionRow.paddle_subscription_id,
-          paddleResult.status,
-          paddleResult.detail,
-        );
-      }
-    }
-
     console.log(`Account deleted successfully for user ${userId}`);
     return new Response(
-      JSON.stringify({ success: true, billingCancellationPending }),
+      JSON.stringify({ success: true }),
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

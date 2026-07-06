@@ -56,6 +56,7 @@ export function useRealtimeSync() {
 						queryKey: queryKeys.biomechanics.all,
 					}),
 					queryClient.invalidateQueries({ queryKey: queryKeys.progress.all }),
+					queryClient.invalidateQueries({ queryKey: queryKeys.recovery.all }),
 					queryClient.invalidateQueries({ queryKey: queryKeys.replay.all }),
 					queryClient.invalidateQueries({ queryKey: queryKeys.profile.all }),
 					queryClient.invalidateQueries({

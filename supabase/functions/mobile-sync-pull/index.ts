@@ -211,8 +211,8 @@ const MAX_PAGE_SIZE = 300;
 const MAX_PARITY_IDS = 10_000;
 
 // Entity types in pagination order
-type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats' | 'customExercises';
-const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats', 'customExercises'];
+type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats' | 'personalRecords' | 'customExercises';
+const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats', 'personalRecords', 'customExercises'];
 
 interface DecodedCursor {
   type: EntityType;
@@ -1036,8 +1036,57 @@ Deno.serve(async (req) => {
           }
         : null;
 
-      // Personal records (always fetched on final page)
-      // Using RPC function to bypass URL length limits for large parity ID lists.
+      // Local profiles (always included on final page)
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('local_profiles')
+        .select('id, name, color_index, device_id, created_at, updated_at')
+        .eq('user_id', userId);
+      if (profilesError) return readFailure('local profiles', profilesError, cors);
+      // Transform to camelCase for mobile DTO compatibility
+      localProfiles = (profilesData ?? []).map((p: Record<string, unknown>) => ({
+        id: p.id,
+        name: p.name,
+        colorIndex: p.color_index,
+      }));
+
+      // External activities (EMBER+ enforced at handler start)
+      // fix(M-25): cap at 500 rows to bound memory — external activities carry
+      // large rawData JSON payloads; without a limit a user importing years of
+      // Strava history could exhaust Edge Function memory in a single response.
+      const { data: externalActivitiesRaw, error: externalActivitiesError } = await supabase
+        .from('external_activities')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('synced_at', lastSyncISO)
+        .order('synced_at', { ascending: true })
+        .limit(500);
+      if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
+
+      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+        id: a.id,
+        externalId: a.external_id,
+        provider: a.provider,
+        name: a.name,
+        activityType: a.activity_type,
+        startedAt: a.started_at,
+        durationSeconds: a.duration_seconds,
+        distanceMeters: a.distance_meters,
+        calories: a.calories,
+        avgHeartRate: a.avg_heart_rate,
+        maxHeartRate: a.max_heart_rate,
+        elevationGainMeters: a.elevation_gain_meters,
+        rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+      }));
+    }
+
+    // ─── PERSONAL RECORDS ───────────────────────────────────────────────────
+    // fix(M-24): was fetched without any row limit inside the stats block,
+    // exposing unbounded memory on power users with large PR histories.
+    // Moved here with full pagination guards matching other entity types:
+    // remainingPageSize + 1 fetch, trim to pageSize, cursor encode on overflow.
+    // Using RPC function to bypass URL length limits for large parity ID lists.
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('personalRecords') && remainingPageSize > 0) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'personalRecords');
       const knownPRIds = uuidParityIds(body.knownEntityIds?.personalRecordIds);
 
       const useRpcPR = knownPRIds.length > 0 || !body.lastSync || body.lastSync === 0;
@@ -1045,11 +1094,25 @@ Deno.serve(async (req) => {
       let personalRecordsData: Record<string, unknown>[] = [];
 
       if (useRpcPR) {
-        const { data, error } = await supabase.rpc('get_personal_records_excluding_ids', {
+        // RPC path: excludes IDs the client already has; chain order + limit
+        // client-side because get_personal_records_excluding_ids has no p_limit
+        // or cursor params (unlike get_cycles_excluding_ids / get_badges_excluding_ids).
+        let prQuery = supabase.rpc('get_personal_records_excluding_ids', {
           p_user_id: userId,
           p_known_ids: knownPRIds,
           p_profile_id: profileId,
-        });
+        })
+          .order('updated_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
+
+        if (cursorUpdatedAt && cursorId) {
+          prQuery = prQuery.or(
+            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
+
+        const { data, error } = await prQuery;
         if (error) return readFailure('personal records', error, cors);
         personalRecordsData = (data as Record<string, unknown>[]) ?? [];
       } else {
@@ -1058,7 +1121,10 @@ Deno.serve(async (req) => {
           .from('personal_records')
           .select('*')
           .eq('user_id', userId)
-          .gt('updated_at', lastSyncISO);
+          .gt('updated_at', lastSyncISO)
+          .order('updated_at', { ascending: true })
+          .order('id', { ascending: true })
+          .limit(remainingPageSize + 1);
 
         if (profileId) {
           personalRecordsQuery = personalRecordsQuery.or(
@@ -1066,9 +1132,23 @@ Deno.serve(async (req) => {
           );
         }
 
+        if (cursorUpdatedAt && cursorId) {
+          personalRecordsQuery = personalRecordsQuery.or(
+            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          );
+        }
+
         const { data, error } = await personalRecordsQuery;
         if (error) return readFailure('personal records', error, cors);
         personalRecordsData = (data as Record<string, unknown>[]) ?? [];
+      }
+
+      if (personalRecordsData.length > remainingPageSize) {
+        hasMore = true;
+        const lastPR = personalRecordsData[remainingPageSize - 1];
+        const updatedAtMs = new Date(lastPR.updated_at as string).getTime();
+        nextCursor = encodeCursor('personalRecords', updatedAtMs, lastPR.id as string);
+        personalRecordsData.splice(remainingPageSize);
       }
 
       personalRecordDtos = personalRecordsData.map((pr: Record<string, unknown>) => ({
@@ -1091,42 +1171,7 @@ Deno.serve(async (req) => {
         updatedAt: pr.updated_at,
       }));
 
-      // Local profiles (always included on final page)
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('local_profiles')
-        .select('id, name, color_index, device_id, created_at, updated_at')
-        .eq('user_id', userId);
-      if (profilesError) return readFailure('local profiles', profilesError, cors);
-      // Transform to camelCase for mobile DTO compatibility
-      localProfiles = (profilesData ?? []).map((p: Record<string, unknown>) => ({
-        id: p.id,
-        name: p.name,
-        colorIndex: p.color_index,
-      }));
-
-      // External activities (EMBER+ enforced at handler start)
-      const { data: externalActivitiesRaw, error: externalActivitiesError } = await supabase
-        .from('external_activities')
-        .select('*')
-        .eq('user_id', userId)
-        .gt('synced_at', lastSyncISO);
-      if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
-
-      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
-        id: a.id,
-        externalId: a.external_id,
-        provider: a.provider,
-        name: a.name,
-        activityType: a.activity_type,
-        startedAt: a.started_at,
-        durationSeconds: a.duration_seconds,
-        distanceMeters: a.distance_meters,
-        calories: a.calories,
-        avgHeartRate: a.avg_heart_rate,
-        maxHeartRate: a.max_heart_rate,
-        elevationGainMeters: a.elevation_gain_meters,
-        rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
-      }));
+      remainingPageSize -= personalRecordDtos.length;
     }
 
     // =========================================================================

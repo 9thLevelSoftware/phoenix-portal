@@ -113,7 +113,7 @@ export function ComparisonSessionPicker({
 											</span>
 											<span className="flex items-center gap-1">
 												<Clock className="w-3 h-3" />
-												{workout.duration_seconds}m
+												{Math.round(workout.duration_seconds / 60)}m
 											</span>
 											<span>{formatVolume(workout.total_volume, unit)}</span>
 										</div>

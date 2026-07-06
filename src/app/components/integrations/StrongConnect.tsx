@@ -62,6 +62,9 @@ export function StrongConnect({
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
 	const [rawCsv, setRawCsv] = useState<string | null>(null);
 	const [importWeightUnit, setImportWeightUnit] = useState<"kg" | "lbs">("kg");
+	const [importDistanceUnit, setImportDistanceUnit] = useState<"km" | "miles">(
+		"km",
+	);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	// CSV export state
@@ -71,6 +74,19 @@ export function StrongConnect({
 	// =========================================================================
 	// CSV Import Handlers
 	// =========================================================================
+
+	const reparseImportPreview = useCallback(
+		(
+			csvContent: string,
+			weightUnit: "kg" | "lbs",
+			distanceUnit: "km" | "miles",
+		) => {
+			const activities = parseStrongCSV(csvContent, weightUnit, distanceUnit);
+			setParsedActivities(activities.length > 0 ? activities : null);
+			return activities;
+		},
+		[],
+	);
 
 	const handleFileSelect = useCallback(
 		(event: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +104,11 @@ export function StrongConnect({
 			reader.onload = (e) => {
 				try {
 					const csvContent = e.target?.result as string;
-					const activities = parseStrongCSV(csvContent, importWeightUnit);
+					const activities = reparseImportPreview(
+						csvContent,
+						importWeightUnit,
+						importDistanceUnit,
+					);
 
 					if (activities.length === 0) {
 						toast.error(
@@ -115,7 +135,7 @@ export function StrongConnect({
 			};
 			reader.readAsText(file);
 		},
-		[importWeightUnit],
+		[importWeightUnit, importDistanceUnit, reparseImportPreview],
 	);
 
 	// Reparse the already-loaded CSV when the import unit changes, so the preview
@@ -125,13 +145,25 @@ export function StrongConnect({
 			setImportWeightUnit(unit);
 			if (!rawCsv) return;
 			try {
-				const activities = parseStrongCSV(rawCsv, unit);
-				setParsedActivities(activities.length > 0 ? activities : null);
+				reparseImportPreview(rawCsv, unit, importDistanceUnit);
 			} catch {
 				setParsedActivities(null);
 			}
 		},
-		[rawCsv],
+		[importDistanceUnit, rawCsv, reparseImportPreview],
+	);
+
+	const handleImportDistanceUnitChange = useCallback(
+		(unit: "km" | "miles") => {
+			setImportDistanceUnit(unit);
+			if (!rawCsv) return;
+			try {
+				reparseImportPreview(rawCsv, importWeightUnit, unit);
+			} catch {
+				setParsedActivities(null);
+			}
+		},
+		[importWeightUnit, rawCsv, reparseImportPreview],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -359,6 +391,46 @@ export function StrongConnect({
 							onChange={handleImportUnitChange}
 							description="Strong exports weights in your app's unit setting. Select the unit your Strong app uses so we can store values correctly."
 						/>
+
+						{/* Distance Unit Toggle */}
+						<div className="space-y-2">
+							<Label>Distance unit</Label>
+							<div className="flex gap-2">
+								<Button
+									type="button"
+									variant={importDistanceUnit === "km" ? "default" : "outline"}
+									size="sm"
+									onClick={() => handleImportDistanceUnitChange("km")}
+									className={
+										importDistanceUnit === "km"
+											? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+											: ""
+									}
+								>
+									km
+								</Button>
+								<Button
+									type="button"
+									variant={
+										importDistanceUnit === "miles" ? "default" : "outline"
+									}
+									size="sm"
+									onClick={() => handleImportDistanceUnitChange("miles")}
+									className={
+										importDistanceUnit === "miles"
+											? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+											: ""
+									}
+								>
+									miles
+								</Button>
+							</div>
+							<p className="text-xs text-muted-foreground">
+								Strong exports distances in your app's unit setting. Select the
+								unit your Strong app uses so cardio distances are stored
+								correctly.
+							</p>
+						</div>
 
 						{/* File Input */}
 						<div className="space-y-2">

@@ -16,7 +16,8 @@ const E2E_PADDLE_PRICE_IDS = {
 	VITE_PADDLE_FLAME_ANNUAL_PRICE_ID:
 		process.env.VITE_PADDLE_FLAME_ANNUAL_PRICE_ID ?? "pri_e2e_flame_annual",
 	VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID:
-		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ?? "pri_e2e_inferno_monthly",
+		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ??
+		"pri_e2e_inferno_monthly",
 	VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID:
 		process.env.VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID ?? "pri_e2e_inferno_annual",
 };

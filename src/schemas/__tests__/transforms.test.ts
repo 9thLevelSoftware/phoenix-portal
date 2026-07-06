@@ -53,10 +53,10 @@ describe("workoutSessionSchema", () => {
 		expect(result.total_volume).toBe(100);
 	});
 
-	it("converts duration_seconds to minutes", () => {
+	it("passes duration_seconds through unchanged as seconds", () => {
 		const result = workoutSessionSchema.parse(validSession);
-		// 120 seconds -> 2 minutes
-		expect(result.duration_seconds).toBe(2);
+		// 120 seconds stays as 120 — no transform applied
+		expect(result.duration_seconds).toBe(120);
 	});
 
 	it("converts started_at string to Date object", () => {

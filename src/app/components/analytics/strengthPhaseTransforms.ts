@@ -73,6 +73,7 @@ export function buildStrengthPhaseSeries(
 		const achievedAt = new Date(item.achieved_at);
 		const date = achievedAt.toLocaleDateString("en-US", {
 			month: "short",
+			year: "numeric",
 		});
 
 		dateSet.add(date);

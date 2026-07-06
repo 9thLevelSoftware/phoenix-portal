@@ -83,5 +83,8 @@ verify_jwt = false
 [functions.strava-oauth]
 verify_jwt = false
 
+[functions.generate-insights]
+verify_jwt = true
+
 [functions.strava-sync]
 verify_jwt = true

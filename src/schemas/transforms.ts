@@ -70,7 +70,7 @@ export const workoutSessionSchema = z.object({
 		.nullable()
 		.transform((name) => name?.trim() || "Untitled Workout"),
 	started_at: z.coerce.date(),
-	duration_seconds: z.number().transform((s) => Math.round(s / 60)), // output as minutes
+	duration_seconds: z.number(),
 	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform that was incorrectly doubling volume.
 	set_count: z.number(),
 	exercise_count: z.number(),

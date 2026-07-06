@@ -1020,9 +1020,6 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Make your profile visible to others
 										</div>
-										<div className="text-xs text-amber-400 mt-1">
-											Coming soon -- your preference is saved
-										</div>
 									</div>
 									<Switch
 										checked={profileVisible}
@@ -1040,9 +1037,6 @@ export function Profile() {
 										<div className="text-white">Leaderboard participation</div>
 										<div className="text-sm text-muted-foreground">
 											Appear on public leaderboards
-										</div>
-										<div className="text-xs text-amber-400 mt-1">
-											Coming soon -- your preference is saved
 										</div>
 									</div>
 									<Switch

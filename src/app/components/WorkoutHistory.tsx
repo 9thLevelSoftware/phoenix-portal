@@ -127,7 +127,7 @@ function WorkoutCard({
 						<div className="text-sm text-muted-foreground mb-1">Duration</div>
 						<div className="text-lg font-semibold text-white flex items-center justify-center gap-1 font-data">
 							<Clock className="w-4 h-4" />
-							{workout.duration_seconds}m
+							{Math.round(workout.duration_seconds / 60)}m
 						</div>
 					</div>
 					{workout.pr_count > 0 && (
@@ -708,7 +708,7 @@ export function WorkoutHistory() {
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Duration</span>
 												<span className="font-data">
-													{workout.duration_seconds} min
+													{Math.round(workout.duration_seconds / 60)} min
 												</span>
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">

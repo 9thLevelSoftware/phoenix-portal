@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     // An empty body is allowed (defaults apply); malformed JSON is rejected with
     // a 400 instead of being silently replaced with {}. (F309)
     const rawBody = await req.text();
-    let body: { userId?: string; period?: string };
+    let body: { period?: string };
     if (rawBody.trim().length === 0) {
       body = {};
     } else {
@@ -390,16 +390,10 @@ Deno.serve(async (req) => {
         );
       }
     }
-    const userId: string = body.userId ?? user.id;
+    // body.userId was accepted previously but the guard always coerced it back
+    // to the authenticated user's id. Use user.id directly.
+    const userId = user.id;
     const period: string = body.period ?? '30d';
-
-    // Guard: requesting user can only fetch their own insights
-    if (userId !== user.id) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden' }),
-        { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Validate period is one of the known values
     if (!PERIOD_DAYS[period]) {
@@ -467,31 +461,43 @@ Deno.serve(async (req) => {
         : 0;
 
     // ── 2. Muscle group distribution ──────────────────────────────────────────
-    // Join exercises to current sessions to compute distribution by muscle group
+    // Chunk session IDs into batches of 200 to stay within PostgREST URL limits
+    // (~8 KB). A single unbounded .in() call on thousands of IDs exceeds the
+    // limit for users with long 'all'-period histories (M-21).
+    const MUSCLE_GROUP_CHUNK_SIZE = 200;
     const currentSessionIds = currentSessions.map((s) => s.id);
     let muscleGroups: Record<string, number> = {};
 
     if (currentSessionIds.length > 0) {
-      const { data: exerciseRows, error: exerciseRowsError } = await supabaseAdmin
-        .from('exercises')
-        .select('muscle_group')
-        .in('session_id', currentSessionIds);
+      let allExerciseRows: Array<{ muscle_group: string | null }> = [];
 
-      if (exerciseRowsError) {
-        console.error('Failed to fetch exercise rows:', exerciseRowsError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch workout data' }),
-          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
+      for (let i = 0; i < currentSessionIds.length; i += MUSCLE_GROUP_CHUNK_SIZE) {
+        const chunk = currentSessionIds.slice(i, i + MUSCLE_GROUP_CHUNK_SIZE);
+        const { data: chunkRows, error: chunkError } = await supabaseAdmin
+          .from('exercises')
+          .select('muscle_group')
+          .in('session_id', chunk);
+
+        if (chunkError) {
+          console.error('Failed to fetch exercise rows:', chunkError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to fetch workout data' }),
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (chunkRows) {
+          allExerciseRows.push(...chunkRows);
+        }
       }
 
-      if (exerciseRows && exerciseRows.length > 0) {
+      if (allExerciseRows.length > 0) {
         const groupCounts: Record<string, number> = {};
-        for (const row of exerciseRows) {
+        for (const row of allExerciseRows) {
           const group = row.muscle_group ?? 'General';
           groupCounts[group] = (groupCounts[group] ?? 0) + 1;
         }
-        const total = exerciseRows.length;
+        const total = allExerciseRows.length;
         for (const [group, count] of Object.entries(groupCounts)) {
           muscleGroups[group] = Math.round((count / total) * 100);
         }
@@ -522,10 +528,12 @@ Deno.serve(async (req) => {
         r.workout_phase
       ),
       recordType: r.record_type,
-      value: r.value * WEIGHT_MULTIPLIER,
+      // PR values are stored per-cable (raw DB values); the display layer
+      // applies the 2x cable multiplier. Do NOT multiply here (M-22).
+      value: r.value,
       previousValue:
         r.previous_value !== null && r.previous_value !== undefined
-          ? r.previous_value * WEIGHT_MULTIPLIER
+          ? r.previous_value
           : undefined,
     }));
 
