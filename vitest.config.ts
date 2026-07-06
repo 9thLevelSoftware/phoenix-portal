@@ -24,6 +24,7 @@ export default defineConfig({
 		typecheck: {
 			tsconfig: "./tsconfig.test.json",
 		},
+		css: true,
 		include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.{test,spec}.{ts,tsx}"],
 		server: {
 			deps: {
