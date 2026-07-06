@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
         }
 
         if (chunkRows) {
-          allExerciseRows = allExerciseRows.concat(chunkRows);
+          allExerciseRows.push(...chunkRows);
         }
       }
 

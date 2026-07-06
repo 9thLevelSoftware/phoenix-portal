@@ -99,7 +99,6 @@ function Carousel({
 		return () => {
 			api?.off("reInit", onSelect);
 			api?.off("select", onSelect);
-			api?.off("reInit", onSelect);
 		};
 	}, [api, onSelect]);
 

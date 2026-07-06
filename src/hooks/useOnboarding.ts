@@ -126,8 +126,10 @@ export function useOnboarding() {
 
 			const { error } = await supabase
 				.from("user_onboarding")
-				.update({ dismissed_hints: merged })
-				.eq("user_id", user.id);
+				.upsert(
+					{ user_id: user.id, dismissed_hints: merged },
+					{ onConflict: "user_id" },
+				);
 			if (error) throw error;
 		},
 		onSuccess: () => {
