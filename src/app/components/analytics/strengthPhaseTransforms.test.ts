@@ -141,6 +141,36 @@ describe("buildStrengthPhaseSeries", () => {
 		]);
 	});
 
+	it("keeps records from different years in separate buckets", () => {
+		const result = buildStrengthPhaseSeries(
+			[
+				{
+					exercise_name: "Bench Press",
+					exercise_id: "bench",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "COMBINED",
+					value: 100,
+					achieved_at: "2025-01-15T00:00:00Z",
+				},
+				{
+					exercise_name: "Bench Press",
+					exercise_id: "bench",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "COMBINED",
+					value: 120,
+					achieved_at: "2026-01-15T00:00:00Z",
+				},
+			],
+			"all",
+		);
+
+		// Two separate date points — one per year — not merged into a single "Jan" bucket.
+		expect(result.points).toHaveLength(2);
+		const dates = result.points.map((p) => p.date as string);
+		expect(dates.some((d) => d.includes("2025"))).toBe(true);
+		expect(dates.some((d) => d.includes("2026"))).toBe(true);
+	});
+
 	it("summarizes PR count and recency from the selected strength phase", () => {
 		const result = buildStrengthPhaseSummary(
 			[

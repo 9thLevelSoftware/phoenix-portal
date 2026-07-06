@@ -60,7 +60,6 @@ import {
 	workoutListOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
@@ -81,8 +80,8 @@ function deriveWeeklyVolume(
 	if (stats) {
 		for (const row of stats) {
 			const dayName = days[new Date(row.started_at).getDay()];
-			// total_volume is per-cable in DB; multiply by 2 for display
-			volumeByDay[dayName] += row.total_volume * WEIGHT_MULTIPLIER;
+			// total_volume is already the combined total in DB — no multiplier needed
+			volumeByDay[dayName] += row.total_volume;
 		}
 	}
 
@@ -382,12 +381,8 @@ export function Dashboard() {
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
 	const recentBadges = earnedBadges?.slice(0, 3) ?? [];
-	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined).map(
-		(row) => ({
-			...row,
-			volume: Math.round(convertWeight(row.volume, unit) * 10) / 10,
-		}),
-	);
+	// Keep weeklyVolumeData in raw kg; formatVolume handles the single unit conversion at render time
+	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
 	// Weekly estimated calories from dashboard stats
@@ -1286,8 +1281,22 @@ export function Dashboard() {
 														fontSize: 11,
 														fontFamily: "Inter, sans-serif",
 													}}
+													tickFormatter={(v) => {
+														const c = convertWeight(v, unit);
+														if (Math.abs(c) >= 1_000_000)
+															return `${(c / 1_000_000).toFixed(1)}M`;
+														if (Math.abs(c) >= 1_000)
+															return `${(c / 1_000).toFixed(0)}K`;
+														return String(Math.round(c));
+													}}
 												/>
-												<Tooltip content={<RechartsTooltip />} />
+												<Tooltip
+													content={
+														<RechartsTooltip
+															formatValue={(v) => formatVolume(v, unit)}
+														/>
+													}
+												/>
 												<Area
 													type="monotone"
 													dataKey="volume"
