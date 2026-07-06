@@ -160,6 +160,11 @@ Deno.serve(async (req) => {
     }
 
     // Attempt to fetch workouts from Hevy API
+    // TODO: incremental sync — Hevy API currently provides no date-range filter,
+    // so every sync is a full re-import of all workouts. When/if Hevy exposes a
+    // `since` or `after` parameter, thread `integration.last_sync_at` through as
+    // a query param here to avoid redundant fetches on large accounts.
+    // See: https://api.hevyapp.com/docs (check for updated filter support)
     let workouts: HevyWorkout[] = [];
     try {
       const response = await fetch(`${HEVY_API_BASE}/workouts`, {

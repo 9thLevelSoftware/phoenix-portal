@@ -374,7 +374,9 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
-    // Update sync_queue entry if one exists
+    // Update sync_queue entry if one exists.
+    // The queue processor sets the entry to 'processing' before invoking this
+    // function, so we must target 'processing' — not 'pending' — here.
     await supabase
       .from('sync_queue')
       .update({
@@ -383,7 +385,7 @@ Deno.serve(async (req) => {
       })
       .eq('user_id', userId)
       .eq('provider', 'strava')
-      .eq('status', 'pending')
+      .eq('status', 'processing')
       .order('created_at', { ascending: false })
       .limit(1);
 

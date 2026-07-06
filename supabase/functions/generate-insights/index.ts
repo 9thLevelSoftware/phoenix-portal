@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     // An empty body is allowed (defaults apply); malformed JSON is rejected with
     // a 400 instead of being silently replaced with {}. (F309)
     const rawBody = await req.text();
-    let body: { userId?: string; period?: string };
+    let body: { period?: string };
     if (rawBody.trim().length === 0) {
       body = {};
     } else {
@@ -390,16 +390,10 @@ Deno.serve(async (req) => {
         );
       }
     }
-    const userId: string = body.userId ?? user.id;
+    // body.userId was accepted previously but the guard always coerced it back
+    // to the authenticated user's id. Use user.id directly.
+    const userId = user.id;
     const period: string = body.period ?? '30d';
-
-    // Guard: requesting user can only fetch their own insights
-    if (userId !== user.id) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden' }),
-        { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Validate period is one of the known values
     if (!PERIOD_DAYS[period]) {
