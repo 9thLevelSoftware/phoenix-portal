@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
       try {
         // Call provider-specific sync function with exponential backoff on transient errors
         await backOff(
-          () => callSyncFunction(task.provider, task.user_id),
+          () => callSyncFunction(task.provider, task.user_id, task.sync_type ?? 'incremental'),
           {
             numOfAttempts: 3,
             startingDelay: 1000,
@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
 /**
  * Call the provider-specific sync Edge Function.
  */
-async function callSyncFunction(provider: string, userId: string) {
+async function callSyncFunction(provider: string, userId: string, syncType: string) {
   if (provider === 'garmin') {
     const error = new Error(
       'Garmin sync is webhook-driven and cannot be queued manually.'
@@ -294,7 +294,7 @@ async function callSyncFunction(provider: string, userId: string) {
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user_id: userId }),
+      body: JSON.stringify({ user_id: userId, sync_type: syncType }),
     }
   );
 
@@ -319,7 +319,8 @@ async function incrementRateLimit(supabase: DbClient, provider: string) {
     .from('rate_limit_tracking')
     .select('*')
     .eq('provider', provider)
-    .single();
+    .is('user_id', null)
+    .maybeSingle();
 
   if (!existing) {
     await supabase.from('rate_limit_tracking').insert({
@@ -340,7 +341,8 @@ async function incrementRateLimit(supabase: DbClient, provider: string) {
         last_request_at: now.toISOString(),
         last_reset_at: windowExpired ? now.toISOString() : existing.last_reset_at,
       })
-      .eq('provider', provider);
+      .eq('provider', provider)
+      .is('user_id', null);
   }
 }
 

@@ -263,9 +263,9 @@ Deno.serve(async (req) => {
       .eq('provider', 'fitbit')
       .single();
 
-    if (tokenFetchError || !tokenData) {
+    if (tokenFetchError || !tokenData || integration?.status !== 'connected') {
       return new Response(
-        JSON.stringify({ error: 'Fitbit integration not found' }),
+        JSON.stringify({ error: 'Fitbit integration not found or not connected' }),
         { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
@@ -375,16 +375,10 @@ Deno.serve(async (req) => {
       last_request_at: new Date().toISOString(),
     });
 
-    await supabase
-      .from('sync_queue')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit')
-      .in('status', ['pending', 'processing']);
+    // sync_queue lifecycle (pending → processing → completed) is managed exclusively
+    // by process-sync-queue. This function must NOT touch sync_queue status — doing
+    // so would bulk-complete ALL pending/processing Fitbit entries regardless of which
+    // task triggered this invocation (H-9).
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
