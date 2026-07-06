@@ -4,7 +4,7 @@
  * Validates that exercise_id is preserved through the sync pipeline
  * and that equipment variants maintain their identity.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
 	catalogExerciseSchema,
 	equipmentDisplayMap,

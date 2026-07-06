@@ -25,7 +25,10 @@ export default defineConfig({
 			tsconfig: "./tsconfig.test.json",
 		},
 		css: true,
-		include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.{test,spec}.{ts,tsx}"],
+		include: [
+			"src/**/*.{test,spec}.{ts,tsx}",
+			"tests/**/*.{test,spec}.{ts,tsx}",
+		],
 		server: {
 			deps: {
 				inline: ["body-muscles"],
