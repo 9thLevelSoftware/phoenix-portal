@@ -2116,7 +2116,7 @@ Deno.serve(async (req) => {
       }
 
       // Remove orphan days: day_numbers beyond the cycle's current day count
-      for (const cycle of payload.cycles) {
+      for (const cycle of payload.cycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
         const maxDayNumber = cycle.days.length > 0
           ? Math.max(...cycle.days.map((d) => d.dayNumber))
           : -1;
