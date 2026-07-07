@@ -321,6 +321,7 @@ const cycleSchema = z.object({
 	updatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
 	deloadSettings: nullableField(z.string()),
+	templateId: nullableField(z.string()),
 	days: arrayOf(cycleDaySchema).default([]),
 });
 
