@@ -4,6 +4,7 @@ LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   rec record;
   existing_ts timestamptz;

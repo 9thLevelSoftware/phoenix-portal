@@ -77,3 +77,9 @@ $$;
 
 COMMENT ON FUNCTION get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) IS
 'Fetches training cycles not in the provided ID list OR updated since last sync. Uses POST body via RPC to bypass URL length limits.';
+
+-- Reapply the security scan lockdown because CREATE FUNCTION grants EXECUTE to PUBLIC by default.
+REVOKE ALL ON FUNCTION public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) FROM anon;
+REVOKE ALL ON FUNCTION public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) TO service_role;
