@@ -420,6 +420,96 @@ describe("personalRecordIdentityKey", () => {
 			}),
 		);
 	});
+
+	// Root-cause regression (rate_limit_exceeded incident, 2026-07-07):
+	// mobile sends achieved_at as kotlin Instant.toString() ("...Z") while
+	// PostgREST returns the stored timestamptz as "...+00:00". The derived
+	// identity key compared these raw strings, so an id-less re-pushed PR
+	// NEVER matched its existing DB row and inserted a duplicate on every
+	// sync (observed: 361k rows for ~4k logical PRs; pull pagination then
+	// exceeded the 20/min rate limit).
+	describe("achieved_at timestamp-format normalization", () => {
+		it("matches mobile 'Z' format against PostgREST '+00:00' format", () => {
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.187Z",
+				}),
+			).toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.187+00:00",
+				}),
+			);
+		});
+
+		it("matches non-UTC offsets representing the same instant", () => {
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T02:32:58.187+02:00",
+				}),
+			).toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.187Z",
+				}),
+			);
+		});
+
+		it("matches second-precision against explicit zero milliseconds", () => {
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58Z",
+				}),
+			).toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.000+00:00",
+				}),
+			);
+		});
+
+		it("still separates genuinely different instants", () => {
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.187Z",
+				}),
+			).not.toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "2026-06-10T00:32:58.188Z",
+				}),
+			);
+		});
+
+		it("falls back to the raw string for unparseable values", () => {
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "not-a-timestamp",
+				}),
+			).toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "not-a-timestamp",
+				}),
+			);
+			expect(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "not-a-timestamp",
+				}),
+			).not.toBe(
+				personalRecordIdentityKey({
+					...baseRecord,
+					achieved_at: "also-not-a-timestamp",
+				}),
+			);
+		});
+	});
 });
 
 describe("Issue #507: per-record localProfileId validation", () => {
