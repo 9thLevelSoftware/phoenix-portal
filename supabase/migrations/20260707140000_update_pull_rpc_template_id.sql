@@ -53,6 +53,7 @@ BEGIN
         tc.local_profile_id
     FROM training_cycles tc
     WHERE tc.user_id = p_user_id
+      -- Return entities that are NEW (not in known IDs) or STALE (updated since last sync)
       AND (
           array_length(p_known_ids, 1) IS NULL
           OR tc.id != ALL(p_known_ids)
@@ -62,7 +63,7 @@ BEGIN
           p_profile_id IS NULL
           OR (p_profile_id = 'default' AND tc.local_profile_id IS NULL)
           OR tc.local_profile_id = p_profile_id
-          OR tc.local_profile_id IS NULL
+          -- Removed: OR tc.local_profile_id IS NULL  (H-18: caused cross-profile bleed)
       )
       AND (
           p_cursor_updated_at IS NULL

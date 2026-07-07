@@ -259,6 +259,7 @@ export interface CycleDto {
 	lastUsedAt: string | null;
 	progressionSettings?: string | null;
 	deloadSettings?: string | null;
+	templateId?: string | null;
 	days: CycleDayDto[];
 }
 
