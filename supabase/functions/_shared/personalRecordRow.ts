@@ -423,6 +423,29 @@ export function personalRecordIdentityKey(
 }
 
 /**
+ * Normalize an achieved_at timestamp for identity comparison.
+ *
+ * Root cause of the 2026-07-07 rate_limit_exceeded incident: mobile sends
+ * achieved_at as kotlin `Instant.toString()` ("2026-06-10T00:32:58.187Z")
+ * while PostgREST returns the stored timestamptz with an explicit offset
+ * ("2026-06-10T00:32:58.187+00:00"). Comparing the raw strings meant an
+ * id-less re-pushed PR never matched its existing DB row, so every sync
+ * inserted a fresh duplicate (observed: 361k personal_records rows for
+ * ~4k logical PRs, which then blew up pull pagination past the rate limit).
+ *
+ * Parse both representations to epoch milliseconds so any two strings
+ * denoting the same instant produce the same key. Unparseable values fall
+ * back to the raw string so malformed data still gets a stable identity.
+ */
+function normalizeAchievedAtForIdentity(
+	value: string | null | undefined,
+): string {
+	if (!value) return "";
+	const epochMs = Date.parse(value);
+	return Number.isNaN(epochMs) ? value : `ts:${epochMs}`;
+}
+
+/**
  * Identity key derived purely from (profile, exercise, achieved_at, record_type,
  * workout_phase), ignoring `id`. Legacy set-derived PR payload rows have no
  * `id`, so to dedupe them against existing DB rows (which always have an `id`)
@@ -440,7 +463,7 @@ export function personalRecordDerivedIdentityKey(
 	return JSON.stringify([
 		profileKey,
 		exerciseKey,
-		row.achieved_at ?? "",
+		normalizeAchievedAtForIdentity(row.achieved_at),
 		row.record_type ?? "",
 		row.workout_phase ?? "COMBINED",
 	]);
