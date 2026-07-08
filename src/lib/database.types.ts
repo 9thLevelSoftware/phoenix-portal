@@ -2322,7 +2322,7 @@ export type Database = {
 					rest_days: number;
 					started_at: string;
 					status: string;
-					template_id: string;
+					template_id: string | null;
 					updated_at: string;
 					user_id: string;
 					workout_days: number;
