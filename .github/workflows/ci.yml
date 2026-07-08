@@ -114,4 +114,5 @@ jobs:
       # that verifies the deployed URL returns HTTP 200, catching any env-var
       # deletion or misconfiguration that the placeholder-based build cannot detect.
       - name: "TODO: Post-deploy smoke test placeholder"
-        run: echo "TODO: Add post-deploy smoke test (curl production URL for HTTP 200)"
+        run: |
+          echo "TODO: Add post-deploy smoke test (curl production URL for HTTP 200)"
