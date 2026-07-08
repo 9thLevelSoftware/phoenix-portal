@@ -173,11 +173,13 @@ jobs:
               errors="replace",
           ).splitlines():
               line = ansi.sub("", raw_line)
-              columns = re.split(r"[|│]", line)
+              columns = [column.strip().strip("`") for column in re.split(r"[|│]", line)]
+              if len(columns) >= 4 and columns[0] == "" and columns[-1] == "":
+                  columns = columns[1:]
               if len(columns) < 3:
                   continue
               remote_column = columns[1]
-              match = re.search(r"\b(\d{14})\b", remote_column)
+              match = re.search(r"\b(\d+)\b", remote_column)
               if match:
                   versions.append(match.group(1))
 
