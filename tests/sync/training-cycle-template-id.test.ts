@@ -19,12 +19,17 @@ const LWW_RPC_MIGRATION = "20260707130000_update_lww_rpc_template_id.sql";
 const PULL_RPC_MIGRATION = "20260707140000_update_pull_rpc_template_id.sql";
 const CYCLE_PULL_SIGNATURE =
 	"public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ)";
+const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
 
 function readMigration(filename: string): string {
 	return readFileSync(
 		join(process.cwd(), "supabase", "migrations", filename),
 		"utf8",
 	);
+}
+
+function readSource(filename: string): string {
+	return readFileSync(join(process.cwd(), filename), "utf8");
 }
 
 function extractTrainingCycleLwwBody(sql: string): string {
@@ -79,6 +84,20 @@ describe("Training cycle template_id migration safeguards", () => {
 });
 
 describe("Training cycle template_id push handling", () => {
+	it("chunks the legacy template_id preservation probe before PostgREST in filters", () => {
+		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
+		const lookupBlock = source.slice(
+			source.indexOf("const cycleIdsMissingTemplateId ="),
+			source.indexOf("const { error: cycErr } = await supabase"),
+		);
+
+		expect(lookupBlock).toContain("const chunkSize = 100;");
+		expect(lookupBlock).toMatch(
+			/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*cycleIdsMissingTemplateId\.length;\s*i\s*\+=\s*chunkSize\s*\)/,
+		);
+		expect(lookupBlock).toContain(".in('id', chunk)");
+	});
+
 	liveIt(
 		"preserves an existing training_cycles.template_id when SYNC_LWW_ENABLED=false and mobile pushes templateId null",
 		async () => {

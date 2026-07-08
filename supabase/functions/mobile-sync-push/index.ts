@@ -2096,18 +2096,22 @@ Deno.serve(async (req) => {
           .filter((row) => row.template_id == null)
           .map((row) => row.id);
         if (cycleIdsMissingTemplateId.length > 0) {
-          const { data: existingCycles, error: existingCyclesErr } = await supabase
-            .from('training_cycles')
-            .select('id, template_id')
-            .eq('user_id', userId)
-            .in('id', cycleIdsMissingTemplateId);
-          if (existingCyclesErr) {
-            throw new Error(`training_cycles template_id probe failed: ${existingCyclesErr.message}`);
-          }
           const existingTemplateIds = new Map<string, string>();
-          for (const row of existingCycles ?? []) {
-            if (typeof row.id === 'string' && typeof row.template_id === 'string') {
-              existingTemplateIds.set(row.id, row.template_id);
+          const chunkSize = 100;
+          for (let i = 0; i < cycleIdsMissingTemplateId.length; i += chunkSize) {
+            const chunk = cycleIdsMissingTemplateId.slice(i, i + chunkSize);
+            const { data: existingCycles, error: existingCyclesErr } = await supabase
+              .from('training_cycles')
+              .select('id, template_id')
+              .eq('user_id', userId)
+              .in('id', chunk);
+            if (existingCyclesErr) {
+              throw new Error(`training_cycles template_id probe failed: ${existingCyclesErr.message}`);
+            }
+            for (const row of existingCycles ?? []) {
+              if (typeof row.id === 'string' && typeof row.template_id === 'string') {
+                existingTemplateIds.set(row.id, row.template_id);
+              }
             }
           }
           for (const row of cycleRows) {
