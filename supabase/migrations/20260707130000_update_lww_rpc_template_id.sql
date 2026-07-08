@@ -24,8 +24,12 @@ BEGIN
         updated_at
       ) VALUES (
         rec.id, rec.user_id, rec.local_profile_id, rec.name, rec.description,
-        rec.duration_weeks, rec.workout_days, rec.rest_days, rec.current_week,
-        rec.status, rec.started_at, rec.last_used_at, rec.progression_settings,
+        COALESCE(rec.duration_weeks, 4),
+        COALESCE(rec.workout_days, 0),
+        COALESCE(rec.rest_days, 0),
+        COALESCE(rec.current_week, 1),
+        COALESCE(rec.status, 'draft'),
+        rec.started_at, rec.last_used_at, rec.progression_settings,
         rec.deload_settings, rec.template_id, COALESCE(rec.updated_at, NOW())
       )
       ON CONFLICT (id) DO UPDATE SET

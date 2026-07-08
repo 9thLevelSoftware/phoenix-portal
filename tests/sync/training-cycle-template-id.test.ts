@@ -45,6 +45,21 @@ describe("Training cycle template_id migration safeguards", () => {
 		);
 	});
 
+	it("preserves LWW insert defaults for training cycle NOT NULL fields", () => {
+		const body = extractTrainingCycleLwwBody(readMigration(LWW_RPC_MIGRATION));
+		const expectedDefaults = [
+			/COALESCE\s*\(\s*rec\.duration_weeks\s*,\s*4\s*\)/i,
+			/COALESCE\s*\(\s*rec\.workout_days\s*,\s*0\s*\)/i,
+			/COALESCE\s*\(\s*rec\.rest_days\s*,\s*0\s*\)/i,
+			/COALESCE\s*\(\s*rec\.current_week\s*,\s*1\s*\)/i,
+			/COALESCE\s*\(\s*rec\.status\s*,\s*'draft'\s*\)/i,
+		];
+
+		for (const expectedDefault of expectedDefaults) {
+			expect(body).toMatch(expectedDefault);
+		}
+	});
+
 	it("locks the recreated cycle pull RPC down to service_role", () => {
 		const sql = readMigration(PULL_RPC_MIGRATION);
 
