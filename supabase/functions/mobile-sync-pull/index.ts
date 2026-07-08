@@ -901,6 +901,7 @@ Deno.serve(async (req) => {
           lastUsedAt: c.last_used_at,
           progressionSettings: c.progression_settings != null ? JSON.stringify(c.progression_settings) : null,
           deloadSettings: c.deload_settings != null ? JSON.stringify(c.deload_settings) : null,
+          templateId: c.template_id ?? null,
           days: cDays.map((d) => ({
             id: d.id,
             cycleId: d.cycle_id,

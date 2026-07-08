@@ -206,6 +206,7 @@ export const trainingCycleSchema = z.object({
 	started_at: nullableOptionalDate,
 	last_used_at: nullableDate,
 	local_profile_id: z.string().nullable().optional(),
+	template_id: z.string().nullable().optional(),
 });
 
 export const trainingCycleListSchema = z.array(trainingCycleSchema);

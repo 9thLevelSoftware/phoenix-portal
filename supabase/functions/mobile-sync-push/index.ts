@@ -609,6 +609,7 @@ interface CycleDto {
   updatedAt?: string | null;
   progressionSettings: string | null;
   deloadSettings: string | null;
+  templateId?: string | null;
   days: CycleDayDto[];
 }
 
@@ -2059,6 +2060,7 @@ Deno.serve(async (req) => {
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
         deload_settings: safeJsonParse(c.deloadSettings),
+        template_id: c.templateId ?? null,
         updated_at: c.updatedAt ?? null,
       }));
 
@@ -2088,6 +2090,37 @@ Deno.serve(async (req) => {
         }
         cyclesUpserted = acceptedCycleIds.size;
       } else {
+        // Legacy server-wins upsert still needs to preserve an existing
+        // template_id when older mobile builds omit or null the field.
+        const cycleIdsMissingTemplateId = cycleRows
+          .filter((row) => row.template_id == null)
+          .map((row) => row.id);
+        if (cycleIdsMissingTemplateId.length > 0) {
+          const existingTemplateIds = new Map<string, string>();
+          const chunkSize = 100;
+          for (let i = 0; i < cycleIdsMissingTemplateId.length; i += chunkSize) {
+            const chunk = cycleIdsMissingTemplateId.slice(i, i + chunkSize);
+            const { data: existingCycles, error: existingCyclesErr } = await supabase
+              .from('training_cycles')
+              .select('id, template_id')
+              .eq('user_id', userId)
+              .in('id', chunk);
+            if (existingCyclesErr) {
+              throw new Error(`training_cycles template_id probe failed: ${existingCyclesErr.message}`);
+            }
+            for (const row of existingCycles ?? []) {
+              if (typeof row.id === 'string' && typeof row.template_id === 'string') {
+                existingTemplateIds.set(row.id, row.template_id);
+              }
+            }
+          }
+          for (const row of cycleRows) {
+            if (row.template_id == null) {
+              row.template_id = existingTemplateIds.get(row.id) ?? null;
+            }
+          }
+        }
+
         const { error: cycErr } = await supabase
           .from('training_cycles')
           .upsert(cycleRows, { onConflict: 'id' });

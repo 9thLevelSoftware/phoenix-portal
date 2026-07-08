@@ -680,6 +680,32 @@ describe("pushPayloadSchema", () => {
 
 		expect(findPushPayloadIncompleteRoutines(parsed)).toEqual([routineId]);
 	});
+
+	it("preserves cycle templateId strings through validation", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			cycles: [
+				{
+					id: "12345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Template Cycle",
+					templateId: "template_531",
+					days: [],
+				},
+				{
+					id: "22345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Local Cycle",
+					templateId: null,
+					days: [],
+				},
+			],
+		});
+
+		expect(parsed.cycles[0]?.templateId).toBe("template_531");
+		expect(parsed.cycles[1]?.templateId).toBeNull();
+	});
 });
 
 describe("formatPushPayloadError", () => {
