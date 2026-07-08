@@ -1710,6 +1710,7 @@ export type Database = {
 					rest_days: number;
 					started_at: string | null;
 					status: string;
+					template_id: string | null;
 					updated_at: string;
 					user_id: string;
 					workout_days: number;
@@ -1727,6 +1728,7 @@ export type Database = {
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
+					template_id?: string | null;
 					updated_at?: string;
 					user_id: string;
 					workout_days?: number;
@@ -1744,6 +1746,7 @@ export type Database = {
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
+					template_id?: string | null;
 					updated_at?: string;
 					user_id?: string;
 					workout_days?: number;
@@ -2301,6 +2304,7 @@ export type Database = {
 					p_cursor_id?: string;
 					p_cursor_updated_at?: string;
 					p_known_ids?: string[];
+					p_last_sync_at?: string;
 					p_limit?: number;
 					p_profile_id?: string;
 					p_user_id: string;
@@ -2318,6 +2322,7 @@ export type Database = {
 					rest_days: number;
 					started_at: string;
 					status: string;
+					template_id: string | null;
 					updated_at: string;
 					user_id: string;
 					workout_days: number;

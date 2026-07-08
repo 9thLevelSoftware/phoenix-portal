@@ -5,6 +5,7 @@ import {
 	personalRecordSchema,
 	routineExerciseSchema,
 	setSchema,
+	trainingCycleSchema,
 	workoutSessionSchema,
 } from "../transforms";
 
@@ -425,5 +426,27 @@ describe("gamificationStatsSchema weight handling", () => {
 		const result = gamificationStatsSchema.parse(validStats);
 		// Current behavior: no transform applied
 		expect(result.total_volume_kg).toBe(500000);
+	});
+});
+
+describe("trainingCycleSchema", () => {
+	it("preserves template_id so sync-loaded template cycles keep their identity", () => {
+		const result = trainingCycleSchema.parse({
+			id: UUID,
+			user_id: UUID2,
+			name: "Template Cycle",
+			description: null,
+			duration_weeks: 4,
+			current_week: 1,
+			status: "draft",
+			workout_days: 4,
+			rest_days: 3,
+			started_at: null,
+			last_used_at: null,
+			local_profile_id: null,
+			template_id: "template_531",
+		});
+
+		expect(result.template_id).toBe("template_531");
 	});
 });
