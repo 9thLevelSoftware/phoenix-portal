@@ -148,24 +148,48 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          # `--output-format json` is stable and avoids parsing the pretty
-          # table (whose layout differs across CLI versions). Each record
-          # carries a `version` field that matches the local file prefix.
-          #
-          # jq robustness: the CLI emits either a single JSON array
-          # (`json`) or one object per line (`stream-json` / NDJSON). The
-          # previous expression `'.[]? | select(.version != null) | .version'`
-          # errored on the object-input shape because `.[]?` does not iterate
-          # scalars. This filter normalizes either shape to an iterator over
-          # objects, then drops entries without a `version` field.
+          # The pinned Supabase CLI (2.76.9) does not support the newer
+          # `--output-format` flag. Parse the documented migration-list table
+          # output instead and keep stderr visible enough to diagnose failures
+          # without printing credentials.
           : > remote_migrations.txt
           set -o pipefail
-          supabase migration list --linked --output-format json 2>/dev/null \
-            | jq -r 'if type == "array" then .[] else . end | select(.version? != null) | .version' \
-            >> remote_migrations.txt || {
-              echo "::error::Failed to query remote migrations. Check SUPABASE_ACCESS_TOKEN, SUPABASE_PROD_PROJECT_REF, SUPABASE_PROD_DB_PASSWORD, and that the project is linked."
-              exit 1
-            }
+          if ! supabase migration list --linked > migration_list.out 2> migration_list.err; then
+            echo "::error::Failed to query remote migrations. Check SUPABASE_ACCESS_TOKEN, SUPABASE_PROD_PROJECT_REF, SUPABASE_PROD_DB_PASSWORD, and that the project is linked."
+            if [ -s migration_list.err ]; then
+              echo "Supabase CLI stderr:"
+              sed -E 's#(postgres(ql)?://[^:[:space:]]+:)[^@[:space:]]+@#\1***@#g; s#(password=)[^[:space:]]+#\1***#g' migration_list.err
+            fi
+            exit 1
+          fi
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          ansi = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+          versions = []
+          for raw_line in Path("migration_list.out").read_text(
+              encoding="utf-8",
+              errors="replace",
+          ).splitlines():
+              line = ansi.sub("", raw_line)
+              columns = re.split(r"[|│]", line)
+              if len(columns) < 3:
+                  continue
+              remote_column = columns[1]
+              match = re.search(r"\b(\d{14})\b", remote_column)
+              if match:
+                  versions.append(match.group(1))
+
+          unique_versions = sorted(set(versions))
+          Path("remote_migrations.txt").write_text(
+              "\n".join(unique_versions) + ("\n" if unique_versions else ""),
+              encoding="utf-8",
+          )
+          PY
+          if [ ! -s remote_migrations.txt ]; then
+            echo "::warning::No remote migration versions were parsed from Supabase CLI output."
+          fi
           sort -u -o remote_migrations.txt remote_migrations.txt
           count=$(wc -l < remote_migrations.txt | tr -d ' ')
           echo "Remote applied count: $count"
