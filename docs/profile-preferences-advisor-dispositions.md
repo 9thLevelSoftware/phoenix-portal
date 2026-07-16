@@ -336,5 +336,45 @@ recorded migration `20260716151000`, reported the exact composite primary key
 and all six referencing foreign keys, and allowed two disposable Auth users to
 receive separate `id = 'default'` rows through the real trigger. Cleanup
 audited zero remaining fixture users and local profiles. Production smoke and
-the mobile backend-ready gate remain paused until PR #89 passes final review,
-merges, and deploys through the normal migration pipeline.
+the mobile backend-ready gate remained paused until the migration deployed.
+
+PR #89 passed all review, preview, clean-replay, pgTAP, build, browser, and
+security gates, then squash-merged as `7df178b3`. The Supabase integration
+recorded migration `20260716151000` in production. Post-deploy catalog evidence
+confirmed:
+
+- `local_profiles` primary key is exactly `(user_id, id)`;
+- all six composite foreign keys are present;
+- 144 Auth users have 144 default local profiles, with zero users missing the
+  intended parent row;
+- `handle_new_user()` remains security-definer with an empty search path.
+
+The repaired public signup then succeeded for one disposable production test
+account and created its own default profile. After a one-day EMBER test
+entitlement was seeded, the authorized production smoke passed:
+
+- ordinary legacy push: 200;
+- ordinary legacy pull: 200;
+- five preference sections accepted and returned canonically equal on pull;
+- stale CORE mutation: `REVISION_CONFLICT` with the stored canonical.
+
+Cleanup audited zero rows for the disposable Auth user, identity, portal
+profile, local profile, preference document, subscription, sessions, routines,
+and cycles. No real user account or preference payload was used or read.
+
+The Supabase merge integration redeployed source-unchanged functions while
+applying PR #89. Production `mobile-sync-push` version 134 and
+`mobile-sync-pull` version 128 are active. New-version Edge logs contained
+three successful pushes, two successful pulls, and the expected initial 402
+before the disposable entitlement was seeded; they contained no schema-cache,
+missing-RPC, missing-relation, or unexpected 5xx error. Post-deploy advisors
+reported zero findings on the preference table/functions or repaired key.
+The existing `local_profiles` RLS and duplicate-index warnings remain the
+documented pre-existing baseline.
+
+Post-deploy production drift workflow
+[`29509962241`](https://github.com/9thLevelSoftware/phoenix-portal/actions/runs/29509962241)
+passed from merge commit `7df178b3` with no unapplied migration. The backend
+release gate for mobile PR #651 is **GO**: database artifacts, function
+deployments, legacy compatibility, canonical five-section sync, conflict
+handling, advisors, drift, and cleanup are all verified.
