@@ -75,6 +75,66 @@ function validPushBody(): Record<string, unknown> {
   };
 }
 
+const SESSION_ID = "00000000-0000-4000-8000-000000000010";
+const EXERCISE_ID = "00000000-0000-4000-8000-000000000011";
+const SET_ID = "00000000-0000-4000-8000-000000000012";
+const REP_SUMMARY_ID = "00000000-0000-4000-8000-000000000013";
+const ROUTINE_ID = "00000000-0000-4000-8000-000000000020";
+const ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000021";
+const CYCLE_ID = "00000000-0000-4000-8000-000000000030";
+const CYCLE_DAY_ID = "00000000-0000-4000-8000-000000000031";
+const MISMATCH_ID = "00000000-0000-4000-8000-000000000099";
+
+function validNestedRelationshipBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    sessions: [{
+      id: SESSION_ID,
+      userId: VALID_USER_ID,
+      name: "Relationship session",
+      startedAt: "2026-07-11T12:00:00.000Z",
+      exercises: [{
+        id: EXERCISE_ID,
+        sessionId: SESSION_ID,
+        name: "Relationship exercise",
+        sets: [{
+          id: SET_ID,
+          exerciseId: EXERCISE_ID,
+          setNumber: 1,
+          repSummaries: [{
+            id: REP_SUMMARY_ID,
+            setId: SET_ID,
+            repNumber: 1,
+          }],
+        }],
+      }],
+    }],
+    routines: [{
+      id: ROUTINE_ID,
+      userId: VALID_USER_ID,
+      name: "Relationship routine",
+      exerciseCount: 1,
+      exercises: [{
+        id: ROUTINE_EXERCISE_ID,
+        routineId: ROUTINE_ID,
+        name: "Relationship routine exercise",
+      }],
+    }],
+    cycles: [{
+      id: CYCLE_ID,
+      userId: VALID_USER_ID,
+      name: "Relationship cycle",
+      days: [{
+        id: CYCLE_DAY_ID,
+        cycleId: CYCLE_ID,
+        dayNumber: 1,
+      }],
+    }],
+  };
+}
+
 function validCoreMutation(): Record<string, unknown> {
   return {
     localProfileId: "profile-a",
@@ -260,6 +320,7 @@ function rawRequest(
 
 function permissiveQuery(
   table: string,
+  onWrite: (method: string) => void,
 ): Record<string, unknown> {
   const defaultResult = { data: [], error: null, count: 0 };
   const query: Record<string, unknown> = {};
@@ -281,7 +342,12 @@ function permissiveQuery(
     "returns",
   ];
   for (const method of chainMethods) {
-    query[method] = (..._args: unknown[]) => query;
+    query[method] = (..._args: unknown[]) => {
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method);
+      }
+      return query;
+    };
   }
   query.maybeSingle = () =>
     Promise.resolve(
@@ -310,6 +376,8 @@ interface PushHarness {
   getUserJwts: string[];
   adminConstructionCount: { value: number };
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
+  adminFromCalls: string[];
+  adminWriteCalls: Array<{ table: string; method: string }>;
   loggerCalls: unknown[][];
 }
 
@@ -322,11 +390,16 @@ function makeHarness(
   const adminConstructionCount = { value: 0 };
   const adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }> =
     [];
+  const adminFromCalls: string[] = [];
+  const adminWriteCalls: Array<{ table: string; method: string }> = [];
   const loggerCalls: unknown[][] = [];
 
   const admin = {
     from(table: string) {
-      return permissiveQuery(table);
+      adminFromCalls.push(table);
+      return permissiveQuery(table, (method) => {
+        adminWriteCalls.push({ table, method });
+      });
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -400,12 +473,21 @@ function makeHarness(
     getUserJwts,
     adminConstructionCount,
     adminRpcCalls,
+    adminFromCalls,
+    adminWriteCalls,
     loggerCalls,
   };
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
   return await response.json() as Record<string, unknown>;
+}
+
+function assertNoPrivilegedActivity(harness: PushHarness): void {
+  assertEquals(harness.adminConstructionCount.value, 0);
+  assertEquals(harness.adminRpcCalls, []);
+  assertEquals(harness.adminFromCalls, []);
+  assertEquals(harness.adminWriteCalls, []);
 }
 
 function fillAsciiPadding(
@@ -675,6 +757,98 @@ Deno.test("malformed final preference item is rejected before admin construction
   assertEquals(response.status, 400);
   assertEquals(harness.adminConstructionCount.value, 0);
   assertEquals(harness.adminRpcCalls, []);
+});
+
+for (
+  const testCase of [
+    {
+      label: "session/exercise",
+      mutate(body: Record<string, unknown>) {
+        const session = (body.sessions as Record<string, unknown>[])[0];
+        const exercise = (session.exercises as Record<string, unknown>[])[0];
+        exercise.sessionId = MISMATCH_ID;
+      },
+      error:
+        `FK mismatch in payload: exercise ${EXERCISE_ID} sessionId must equal parent session ${SESSION_ID}`,
+    },
+    {
+      label: "exercise/set",
+      mutate(body: Record<string, unknown>) {
+        const session = (body.sessions as Record<string, unknown>[])[0];
+        const exercise = (session.exercises as Record<string, unknown>[])[0];
+        const set = (exercise.sets as Record<string, unknown>[])[0];
+        set.exerciseId = MISMATCH_ID;
+      },
+      error:
+        `FK mismatch in payload: set ${SET_ID} exerciseId must equal parent exercise ${EXERCISE_ID}`,
+    },
+    {
+      label: "set/rep summary",
+      mutate(body: Record<string, unknown>) {
+        const session = (body.sessions as Record<string, unknown>[])[0];
+        const exercise = (session.exercises as Record<string, unknown>[])[0];
+        const set = (exercise.sets as Record<string, unknown>[])[0];
+        const repSummary = (set.repSummaries as Record<string, unknown>[])[0];
+        repSummary.setId = MISMATCH_ID;
+      },
+      error:
+        `FK mismatch in payload: rep_summary ${REP_SUMMARY_ID} setId must equal parent set ${SET_ID}`,
+    },
+    {
+      label: "routine/exercise",
+      mutate(body: Record<string, unknown>) {
+        const routine = (body.routines as Record<string, unknown>[])[0];
+        const exercise = (routine.exercises as Record<string, unknown>[])[0];
+        exercise.routineId = MISMATCH_ID;
+      },
+      error:
+        `FK mismatch in payload: routine_exercise ${ROUTINE_EXERCISE_ID} routineId must equal parent routine ${ROUTINE_ID}`,
+    },
+    {
+      label: "cycle/day",
+      mutate(body: Record<string, unknown>) {
+        const cycle = (body.cycles as Record<string, unknown>[])[0];
+        const day = (cycle.days as Record<string, unknown>[])[0];
+        day.cycleId = MISMATCH_ID;
+      },
+      error:
+        `FK mismatch in payload: cycle_day ${CYCLE_DAY_ID} cycleId must equal parent cycle ${CYCLE_ID}`,
+    },
+  ]
+) {
+  Deno.test(`payload relationship: ${testCase.label} mismatch is rejected before privileges`, async () => {
+    const harness = makeHarness();
+    const body = validNestedRelationshipBody();
+    testCase.mutate(body);
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 400);
+    assertEquals(await json(response), { error: testCase.error });
+    assertNoPrivilegedActivity(harness);
+  });
+}
+
+Deno.test("external activity without a client id is rejected before privileges", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    externalActivities: [{
+      externalId: "external-activity-a",
+      provider: "test-provider",
+      name: "Missing client id",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  }));
+
+  assertEquals(response.status, 400);
+  assertEquals(await json(response), {
+    error:
+      "external_activity.id is required (mobile must mint UUID before send)",
+  });
+  assertNoPrivilegedActivity(harness);
 });
 
 for (
@@ -1374,6 +1548,14 @@ Deno.test("ordinary-only request above the preference cap retains legacy capacit
   const response = await harness.handler(rawRequest(bytes));
   assertEquals(response.status, 200);
   assertEquals(harness.adminConstructionCount.value, 1);
+});
+
+Deno.test("syncTime uses the injected current time", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200);
+  assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
 });
 
 Deno.test("complete validation precedes every privileged construction and call", async () => {

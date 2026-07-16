@@ -617,7 +617,7 @@ export interface MobileSyncPushHandlerDependencies {
   createAuthClient(authorization: string): MobileSyncAuthClient;
   createAdminClient(): SupabaseClient;
   logOperationalFailure(value: { name: string }): void;
-  now?(): number;
+  now(): number;
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -641,6 +641,9 @@ function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies 
     },
     logOperationalFailure(value: { name: string }) {
       console.error(value);
+    },
+    now() {
+      return Date.now();
     },
   };
 }
@@ -905,8 +908,95 @@ async function mobileSyncPushHandler(
       );
     }
 
-    // Complete ordinary and preference validation is now finished. Only this
-    // boundary may construct a service-role-backed client.
+    const allSessionIds = (payload.sessions ?? []).map((s) => s.id);
+    const allExerciseIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.map((e) => e.id),
+    );
+    const allSetIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.map((st) => st.id)),
+    );
+    const allRepSummaryIds = (payload.sessions ?? []).flatMap((s) =>
+      s.exercises.flatMap((e) => e.sets.flatMap((st) => st.repSummaries.map((r) => r.id))),
+    );
+    const allTelemetryIds = (payload.telemetry ?? []).map((t) => t.id);
+    const allRoutineIds = (payload.routines ?? []).map((r) => r.id);
+    const allRoutineExerciseIds = (payload.routines ?? []).flatMap((r) =>
+      r.exercises.map((e) => e.id),
+    );
+    const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
+    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
+    const allPersonalRecordIds = (payload.personalRecords ?? [])
+      .map((pr) => pr.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const sessionIdSet = new Set(allSessionIds);
+    const setIdSet = new Set(allSetIds);
+    const routineIdSet = new Set(allRoutineIds);
+
+    const fkMismatchResponse = (msg: string): Response =>
+      new Response(
+        JSON.stringify({ error: `FK mismatch in payload: ${msg}` }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    for (const s of payload.sessions ?? []) {
+      for (const e of s.exercises) {
+        if (e.sessionId !== s.id) {
+          return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
+        }
+        for (const st of e.sets) {
+          if (st.exerciseId !== e.id) {
+            return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
+          }
+          for (const r of st.repSummaries) {
+            if (r.setId !== st.id) {
+              return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
+            }
+          }
+        }
+      }
+    }
+    for (const r of payload.routines ?? []) {
+      for (const e of r.exercises) {
+        if (e.routineId !== r.id) {
+          return fkMismatchResponse(
+            `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
+          );
+        }
+      }
+    }
+    for (const c of payload.cycles ?? []) {
+      for (const d of c.days) {
+        if (d.cycleId !== c.id) {
+          return fkMismatchResponse(
+            `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
+          );
+        }
+      }
+    }
+
+    const externalActivities = payload.externalActivities ?? [];
+    // Mobile mints every external activity id. Validate this payload-only
+    // invariant before any privileged gate or ordinary write.
+    type ExternalActivityWithId = typeof externalActivities[number] & {
+      id: string;
+    };
+    const activitiesWithIds = externalActivities.filter(
+      (activity): activity is ExternalActivityWithId =>
+        typeof activity.id === 'string' && activity.id.length > 0,
+    );
+    if (activitiesWithIds.length !== externalActivities.length) {
+      return new Response(
+        JSON.stringify({
+          error: 'external_activity.id is required (mobile must mint UUID before send)',
+        }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Complete payload-only validation is now finished. Only this boundary may
+    // construct a service-role-backed client. Any 400 below this point depends
+    // on authoritative server state (ownership, parent existence, or catalog
+    // conflicts) and therefore cannot be resolved before admin queries.
     const supabase = dependencies.createAdminClient();
 
     const rateCheck = await checkRateLimit(supabase, {
@@ -1173,74 +1263,6 @@ async function mobileSyncPushHandler(
     // child rows reference parents from this same payload — otherwise an
     // attacker could attach their rows to a victim's parent row.
     // =========================================================================
-    const allSessionIds = (payload.sessions ?? []).map((s) => s.id);
-    const allExerciseIds = (payload.sessions ?? []).flatMap((s) =>
-      s.exercises.map((e) => e.id),
-    );
-    const allSetIds = (payload.sessions ?? []).flatMap((s) =>
-      s.exercises.flatMap((e) => e.sets.map((st) => st.id)),
-    );
-    const allRepSummaryIds = (payload.sessions ?? []).flatMap((s) =>
-      s.exercises.flatMap((e) => e.sets.flatMap((st) => st.repSummaries.map((r) => r.id))),
-    );
-    const allTelemetryIds = (payload.telemetry ?? []).map((t) => t.id);
-    const allRoutineIds = (payload.routines ?? []).map((r) => r.id);
-    const allRoutineExerciseIds = (payload.routines ?? []).flatMap((r) =>
-      r.exercises.map((e) => e.id),
-    );
-    const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
-    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
-    const allPersonalRecordIds = (payload.personalRecords ?? [])
-      .map((pr) => pr.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    const sessionIdSet = new Set(allSessionIds);
-    const exerciseIdSet = new Set(allExerciseIds);
-    const setIdSet = new Set(allSetIds);
-    const routineIdSet = new Set(allRoutineIds);
-    const cycleIdSet = new Set(allCycleIds);
-
-    const fkMismatchResponse = (msg: string): Response =>
-      new Response(
-        JSON.stringify({ error: `FK mismatch in payload: ${msg}` }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
-
-    for (const s of payload.sessions ?? []) {
-      for (const e of s.exercises) {
-        if (e.sessionId !== s.id) {
-          return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
-        }
-        for (const st of e.sets) {
-          if (st.exerciseId !== e.id) {
-            return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
-          }
-          for (const r of st.repSummaries) {
-            if (r.setId !== st.id) {
-              return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
-            }
-          }
-        }
-      }
-    }
-    for (const r of payload.routines ?? []) {
-      for (const e of r.exercises) {
-        if (e.routineId !== r.id) {
-          return fkMismatchResponse(
-            `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
-          );
-        }
-      }
-    }
-    for (const c of payload.cycles ?? []) {
-      for (const d of c.days) {
-        if (d.cycleId !== c.id) {
-          return fkMismatchResponse(
-            `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
-          );
-        }
-      }
-    }
-
     // Direct-id ownership checks against tables with a user_id column
     const directOwnerChecks: Array<[string, string[]]> = [
       ['workout_sessions', allSessionIds],
@@ -2441,28 +2463,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
-    const externalActivities = payload.externalActivities ?? [];
     if (externalActivities.length > 0) {
-      // fix(audit #5): require client-minted id. Mobile already mints via
-      // ExternalActivity.id = generateUUID() default, so any payload missing
-      // it indicates a buggy producer. Rejecting up-front prevents the server
-      // from generating a UUID the client will never learn about.
-      type ExternalActivityWithId = typeof externalActivities[number] & {
-        id: string;
-      };
-      const activitiesWithIds = externalActivities.filter(
-        (activity): activity is ExternalActivityWithId =>
-          typeof activity.id === 'string' && activity.id.length > 0,
-      );
-      if (activitiesWithIds.length !== externalActivities.length) {
-        return new Response(
-          JSON.stringify({
-            error: 'external_activity.id is required (mobile must mint UUID before send)',
-          }),
-          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
-
       const activityRows = activitiesWithIds.map((a) => ({
         id: a.id,
         user_id: userId,
@@ -2553,7 +2554,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 15. Return sync result
     // =========================================================================
-    const syncTime = new Date().toISOString();
+    const syncTime = new Date(dependencies.now()).toISOString();
     // Use HTTP broadcast so the edge function doesn't need an active WebSocket
     // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
     const channel = supabase.channel(`sync:${userId}`, {
