@@ -1234,6 +1234,129 @@ export function parseRpcMutationRow(
   }
 }
 
+const PULL_PREFERENCE_ROW_KEYS = [
+  "local_profile_id",
+  "body_weight_kg",
+  "weight_unit",
+  "weight_increment",
+  "core_revision",
+  "core_updated_at",
+  "equipment_rack",
+  "rack_revision",
+  "rack_updated_at",
+  "workout_preferences",
+  "workout_revision",
+  "workout_updated_at",
+  "led_color_scheme_id",
+  "led_preferences",
+  "led_revision",
+  "led_updated_at",
+  "vbt_enabled",
+  "vbt_preferences",
+  "vbt_revision",
+  "vbt_updated_at",
+] as const;
+
+const pullCanonical = (
+  localProfileId: string,
+  section: ProfilePreferenceSection,
+  serverRevision: number,
+  serverUpdatedAt: string,
+  payload: JsonRecord,
+): PortalProfilePreferenceSectionCanonical => ({
+  localProfileId,
+  section,
+  documentVersion: 1,
+  serverRevision,
+  serverUpdatedAt,
+  payload,
+});
+
+export function parsePullPreferenceRow(
+  value: unknown,
+  requestedProfileId: string,
+): PortalProfilePreferenceSectionCanonical[] {
+  try {
+    const row = requireExactRecord(
+      value,
+      PULL_PREFERENCE_ROW_KEYS,
+      "pull.preferenceRow",
+    );
+    const localProfileId = requirePostgresString(
+      row.local_profile_id,
+      "pull.preferenceRow.local_profile_id",
+    );
+    if (localProfileId !== requestedProfileId) {
+      fail("pull.preferenceRow.local_profile_id");
+    }
+    return [
+      pullCanonical(
+        localProfileId,
+        "CORE",
+        infrastructureRevision(row.core_revision),
+        requireRfc3339Instant(
+          row.core_updated_at,
+          "pull.preferenceRow.core_updated_at",
+        ),
+        validateCorePayload({
+          bodyWeightKg: row.body_weight_kg,
+          weightUnit: row.weight_unit,
+          weightIncrement: row.weight_increment,
+        }),
+      ),
+      pullCanonical(
+        localProfileId,
+        "RACK",
+        infrastructureRevision(row.rack_revision),
+        requireRfc3339Instant(
+          row.rack_updated_at,
+          "pull.preferenceRow.rack_updated_at",
+        ),
+        validateRackPayload(row.equipment_rack),
+      ),
+      pullCanonical(
+        localProfileId,
+        "WORKOUT",
+        infrastructureRevision(row.workout_revision),
+        requireRfc3339Instant(
+          row.workout_updated_at,
+          "pull.preferenceRow.workout_updated_at",
+        ),
+        validateWorkoutPayload(row.workout_preferences),
+      ),
+      pullCanonical(
+        localProfileId,
+        "LED",
+        infrastructureRevision(row.led_revision),
+        requireRfc3339Instant(
+          row.led_updated_at,
+          "pull.preferenceRow.led_updated_at",
+        ),
+        validateLedPayload({
+          ledColorSchemeId: row.led_color_scheme_id,
+          preferences: row.led_preferences,
+        }),
+      ),
+      pullCanonical(
+        localProfileId,
+        "VBT",
+        infrastructureRevision(row.vbt_revision),
+        requireRfc3339Instant(
+          row.vbt_updated_at,
+          "pull.preferenceRow.vbt_updated_at",
+        ),
+        validateVbtPayload({
+          vbtEnabled: row.vbt_enabled,
+          preferences: row.vbt_preferences,
+        }),
+      ),
+    ];
+  } catch (error) {
+    if (error instanceof PreferenceInfrastructureError) throw error;
+    throw new PreferenceInfrastructureError("malformed preference pull row");
+  }
+}
+
 export const safeErrorName = (error: unknown, fallback: string): string => {
   let candidate = fallback;
   if (error instanceof Error) {
