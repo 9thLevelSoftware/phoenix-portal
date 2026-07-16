@@ -78,13 +78,6 @@ CREATE TABLE IF NOT EXISTS public.local_profile_preferences(
         AND (weight_increment = -1 OR weight_increment > 0)
     ),
     CONSTRAINT local_profile_preferences_led_scheme_check CHECK (led_color_scheme_id >= 0),
-    CONSTRAINT local_profile_preferences_rack_object_check CHECK (
-        jsonb_typeof(equipment_rack) = 'object'
-        AND equipment_rack @> '{"version":1}'::jsonb
-        AND jsonb_typeof(equipment_rack -> 'items') = 'array'
-        AND NOT jsonb_path_exists(equipment_rack, '$.items[*] ? (@.weightKg < 0)')
-        AND octet_length(equipment_rack::text) <= 262144
-    ),
     CONSTRAINT local_profile_preferences_workout_object_check CHECK (
         jsonb_typeof(workout_preferences) = 'object'
         AND workout_preferences @> '{"version":1}'::jsonb
@@ -111,21 +104,43 @@ CREATE TABLE IF NOT EXISTS public.local_profile_preferences(
             )
         )
         AND octet_length(workout_preferences::text) <= 262144
-    ),
-    CONSTRAINT local_profile_preferences_led_object_check CHECK (
+    )
+);
+
+ALTER TABLE public.local_profile_preferences
+    DROP CONSTRAINT IF EXISTS local_profile_preferences_rack_object_check;
+ALTER TABLE public.local_profile_preferences
+    ADD CONSTRAINT local_profile_preferences_rack_object_check CHECK (
+        jsonb_typeof(equipment_rack) = 'object'
+        AND equipment_rack @> '{"version":1}'::jsonb
+        AND equipment_rack ? 'items'
+        AND jsonb_typeof(equipment_rack -> 'items') = 'array'
+        AND NOT jsonb_path_exists(equipment_rack, '$.items[*] ? (@.weightKg < 0)')
+        AND octet_length(equipment_rack::text) <= 262144
+    );
+
+ALTER TABLE public.local_profile_preferences
+    DROP CONSTRAINT IF EXISTS local_profile_preferences_led_object_check;
+ALTER TABLE public.local_profile_preferences
+    ADD CONSTRAINT local_profile_preferences_led_object_check CHECK (
         jsonb_typeof(led_preferences) = 'object'
         AND led_preferences @> '{"version":1}'::jsonb
+        AND led_preferences ? 'discoModeUnlocked'
         AND jsonb_typeof(led_preferences -> 'discoModeUnlocked') = 'boolean'
         AND octet_length(led_preferences::text) <= 262144
-    ),
-    CONSTRAINT local_profile_preferences_vbt_object_check CHECK (
+    );
+
+ALTER TABLE public.local_profile_preferences
+    DROP CONSTRAINT IF EXISTS local_profile_preferences_vbt_object_check;
+ALTER TABLE public.local_profile_preferences
+    ADD CONSTRAINT local_profile_preferences_vbt_object_check CHECK (
         jsonb_typeof(vbt_preferences) = 'object'
         AND vbt_preferences @> '{"version":1}'::jsonb
+        AND vbt_preferences ? 'velocityLossThresholdPercent'
         AND jsonb_typeof(vbt_preferences -> 'velocityLossThresholdPercent') = 'number'
         AND (vbt_preferences ->> 'velocityLossThresholdPercent')::integer BETWEEN 10 AND 50
         AND octet_length(vbt_preferences::text) <= 262144
-    )
-);
+    );
 
 DO $postcondition$
 DECLARE

@@ -1039,5 +1039,114 @@ SELECT results_eq(
     'malformed section objects return the exact validation rejection contract'
 );
 
+CREATE TEMP TABLE required_nested_key_state_before ON COMMIT DROP AS
+SELECT
+    rack_revision,
+    equipment_rack,
+    led_revision,
+    led_preferences,
+    vbt_revision,
+    vbt_preferences
+FROM public.local_profile_preferences
+WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+  AND local_profile_id = 'all-sections';
+
+CREATE TEMP TABLE missing_required_key_results (
+    case_name text NOT NULL,
+    accepted boolean,
+    rejection_reason text,
+    server_revision bigint,
+    canonical_section jsonb
+) ON COMMIT DROP;
+
+INSERT INTO missing_required_key_results
+SELECT missing_key_case.case_name, result.*
+FROM (
+    VALUES
+        ('missing-rack-items', 'RACK', 1::bigint, '{"version":1}'::jsonb),
+        (
+            'missing-led-flag',
+            'LED',
+            1::bigint,
+            '{"ledColorSchemeId":3,"preferences":{"version":1}}'::jsonb
+        ),
+        (
+            'missing-vbt-threshold',
+            'VBT',
+            1::bigint,
+            '{"vbtEnabled":false,"preferences":{"version":1}}'::jsonb
+        )
+) AS missing_key_case(case_name, section_name, base_revision, payload)
+CROSS JOIN LATERAL public.mutate_local_profile_preference_section(
+    '11111111-1111-4111-8111-111111111111'::uuid,
+    'all-sections',
+    missing_key_case.section_name,
+    1,
+    missing_key_case.base_revision,
+    missing_key_case.payload
+) AS result;
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            case_name COLLATE "C",
+            accepted,
+            rejection_reason COLLATE "C",
+            server_revision,
+            canonical_section
+        FROM missing_required_key_results
+        ORDER BY case_name
+    $sql$,
+    $values$
+        VALUES
+            ('missing-led-flag'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('missing-rack-items'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('missing-vbt-threshold'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb)
+    $values$,
+    'missing required nested keys return the exact validation rejection contract'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            current_row.rack_revision = before_row.rack_revision,
+            current_row.equipment_rack = before_row.equipment_rack,
+            current_row.led_revision = before_row.led_revision,
+            current_row.led_preferences = before_row.led_preferences,
+            current_row.vbt_revision = before_row.vbt_revision,
+            current_row.vbt_preferences = before_row.vbt_preferences
+        FROM public.local_profile_preferences AS current_row
+        CROSS JOIN required_nested_key_state_before AS before_row
+        WHERE current_row.user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND current_row.local_profile_id = 'all-sections'
+    $sql$,
+    $values$
+        VALUES (true, true, true, true, true, true)
+    $values$,
+    'missing required nested keys do not change stored payloads or revisions'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            accepted,
+            rejection_reason COLLATE "C",
+            server_revision,
+            canonical_section -> 'payload'
+        FROM public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'all-sections',
+            'WORKOUT',
+            1,
+            2,
+            '{"version":1}'::jsonb
+        )
+    $sql$,
+    $values$
+        VALUES (true, NULL::text COLLATE "C", 3::bigint, '{"version":1}'::jsonb)
+    $values$,
+    'WORKOUT fields remain optional when the required version is present'
+);
+
 SELECT * FROM finish();
 ROLLBACK;
