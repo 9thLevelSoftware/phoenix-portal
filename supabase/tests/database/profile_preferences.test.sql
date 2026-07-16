@@ -93,18 +93,39 @@ SELECT is(
 
 SELECT is(
     (
-        SELECT count(*)
-        FROM pg_constraint constraint_row
-        JOIN pg_attribute attribute
-          ON attribute.attrelid = constraint_row.conrelid
-         AND attribute.attnum = ANY (constraint_row.conkey)
-        WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
-          AND constraint_row.contype = 'c'
-          AND attribute.attname = 'schema_version'
-          AND pg_get_constraintdef(constraint_row.oid) LIKE '%schema_version = 1%'
+        SELECT jsonb_agg(
+            jsonb_build_object(
+                'name', check_row.constraint_name,
+                'columns', check_row.constraint_columns,
+                'expression', check_row.normalized_expression
+            )
+            ORDER BY check_row.constraint_name
+        )
+        FROM (
+            SELECT
+                constraint_row.conname::text AS constraint_name,
+                array_agg(attribute.attname::text ORDER BY key_column.ordinality)
+                    AS constraint_columns,
+                btrim(regexp_replace(
+                    pg_get_expr(constraint_row.conbin, constraint_row.conrelid, true),
+                    '[[:space:]]+',
+                    ' ',
+                    'g'
+                )) AS normalized_expression
+            FROM pg_constraint constraint_row
+            CROSS JOIN LATERAL unnest(constraint_row.conkey)
+                WITH ORDINALITY AS key_column(attnum, ordinality)
+            JOIN pg_attribute attribute
+              ON attribute.attrelid = constraint_row.conrelid
+             AND attribute.attnum = key_column.attnum
+            WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
+              AND constraint_row.contype = 'c'
+            GROUP BY constraint_row.oid
+            HAVING bool_or(attribute.attname = 'schema_version')
+        ) AS check_row
     ),
-    1::bigint,
-    'schema_version is constrained to version 1'
+    '[{"name":"local_profile_preferences_schema_version_check","columns":["schema_version"],"expression":"schema_version = 1"}]'::jsonb,
+    'schema_version has exactly one single-column version-1 check expression'
 );
 
 SELECT results_eq(
@@ -138,21 +159,48 @@ SELECT results_eq(
 
 SELECT is(
     (
-        SELECT count(DISTINCT attribute.attname)
-        FROM pg_constraint constraint_row
-        JOIN pg_attribute attribute
-          ON attribute.attrelid = constraint_row.conrelid
-         AND attribute.attnum = ANY (constraint_row.conkey)
-        WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
-          AND constraint_row.contype = 'c'
-          AND attribute.attname IN (
-              'core_revision', 'rack_revision', 'workout_revision',
-              'led_revision', 'vbt_revision'
-          )
-          AND pg_get_constraintdef(constraint_row.oid) LIKE '%>= 0%'
+        SELECT jsonb_agg(
+            jsonb_build_object(
+                'name', check_row.constraint_name,
+                'columns', check_row.constraint_columns,
+                'expression', check_row.normalized_expression
+            )
+            ORDER BY check_row.constraint_name
+        )
+        FROM (
+            SELECT
+                constraint_row.conname::text AS constraint_name,
+                array_agg(attribute.attname::text ORDER BY key_column.ordinality)
+                    AS constraint_columns,
+                btrim(regexp_replace(
+                    pg_get_expr(constraint_row.conbin, constraint_row.conrelid, true),
+                    '[[:space:]]+',
+                    ' ',
+                    'g'
+                )) AS normalized_expression
+            FROM pg_constraint constraint_row
+            CROSS JOIN LATERAL unnest(constraint_row.conkey)
+                WITH ORDINALITY AS key_column(attnum, ordinality)
+            JOIN pg_attribute attribute
+              ON attribute.attrelid = constraint_row.conrelid
+             AND attribute.attnum = key_column.attnum
+            WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
+              AND constraint_row.contype = 'c'
+            GROUP BY constraint_row.oid
+            HAVING bool_or(attribute.attname = ANY (ARRAY[
+                'core_revision', 'rack_revision', 'workout_revision',
+                'led_revision', 'vbt_revision'
+            ]::name[]))
+        ) AS check_row
     ),
-    5::bigint,
-    'each section revision has its own nonnegative check constraint'
+    '[
+        {"name":"local_profile_preferences_core_revision_check","columns":["core_revision"],"expression":"core_revision >= 0"},
+        {"name":"local_profile_preferences_led_revision_check","columns":["led_revision"],"expression":"led_revision >= 0"},
+        {"name":"local_profile_preferences_rack_revision_check","columns":["rack_revision"],"expression":"rack_revision >= 0"},
+        {"name":"local_profile_preferences_vbt_revision_check","columns":["vbt_revision"],"expression":"vbt_revision >= 0"},
+        {"name":"local_profile_preferences_workout_revision_check","columns":["workout_revision"],"expression":"workout_revision >= 0"}
+    ]'::jsonb,
+    'each revision has exactly one independent single-column nonnegative check expression'
 );
 
 SELECT results_eq(
@@ -502,10 +550,19 @@ SELECT set_config(
     true
 );
 
-SELECT is(
-    (SELECT count(*) FROM public.local_profile_preferences),
-    1::bigint,
-    'owner A can read only owner A preference rows'
+SELECT results_eq(
+    $sql$
+        SELECT user_id, local_profile_id COLLATE "C"
+        FROM public.local_profile_preferences
+        ORDER BY user_id, local_profile_id
+    $sql$,
+    $values$
+        VALUES (
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'shared'::text COLLATE "C"
+        )
+    $values$,
+    'owner A sees exactly owner A preference identity and no owner B row'
 );
 
 SELECT is(
@@ -641,6 +698,40 @@ SELECT results_eq(
     'all five sections accept base revision zero as server revision one'
 );
 
+SELECT results_eq(
+    $sql$
+        SELECT
+            section COLLATE "C",
+            canonical_section -> 'payload'
+        FROM preference_mutation_results
+        ORDER BY section
+    $sql$,
+    $values$
+        VALUES
+            (
+                'CORE'::text COLLATE "C",
+                '{"bodyWeightKg":82.5,"weightUnit":"KG","weightIncrement":2.5}'::jsonb
+            ),
+            (
+                'LED'::text COLLATE "C",
+                '{"ledColorSchemeId":3,"preferences":{"version":1,"discoModeUnlocked":true}}'::jsonb
+            ),
+            (
+                'RACK'::text COLLATE "C",
+                '{"version":1,"items":[{"id":"rack-1","weightKg":20}]}'::jsonb
+            ),
+            (
+                'VBT'::text COLLATE "C",
+                '{"vbtEnabled":false,"preferences":{"version":1,"velocityLossThresholdPercent":25,"autoEndOnVelocityLoss":true,"defaultScalingBasis":"MAX_WEIGHT_PR","verbalEncouragementEnabled":true,"vulgarModeEnabled":false,"vulgarTier":"STRONG","dominatrixModeUnlocked":false,"dominatrixModeActive":false}}'::jsonb
+            ),
+            (
+                'WORKOUT'::text COLLATE "C",
+                '{"version":1,"summaryCountdownSeconds":10,"autoStartCountdownSeconds":3,"defaultRoutineExerciseWeightPercentOfPR":75}'::jsonb
+            )
+    $values$,
+    'base-zero accepts return the exact canonical payload for every section'
+);
+
 SELECT is(
     (
         SELECT ARRAY[
@@ -718,6 +809,37 @@ SELECT results_eq(
         )
     $values$,
     'matching-base mutation returns the targeted canonical version-1 WORKOUT document'
+);
+
+SELECT is(
+    (
+        SELECT jsonb_build_object(
+            'CORE', jsonb_build_object(
+                'bodyWeightKg', body_weight_kg,
+                'weightUnit', weight_unit,
+                'weightIncrement', weight_increment
+            ),
+            'RACK', equipment_rack,
+            'LED', jsonb_build_object(
+                'ledColorSchemeId', led_color_scheme_id,
+                'preferences', led_preferences
+            ),
+            'VBT', jsonb_build_object(
+                'vbtEnabled', vbt_enabled,
+                'preferences', vbt_preferences
+            )
+        )
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'all-sections'
+    ),
+    '{
+        "CORE":{"bodyWeightKg":82.5,"weightUnit":"KG","weightIncrement":2.5},
+        "RACK":{"version":1,"items":[{"id":"rack-1","weightKg":20}]},
+        "LED":{"ledColorSchemeId":3,"preferences":{"version":1,"discoModeUnlocked":true}},
+        "VBT":{"vbtEnabled":false,"preferences":{"version":1,"velocityLossThresholdPercent":25,"autoEndOnVelocityLoss":true,"defaultScalingBasis":"MAX_WEIGHT_PR","verbalEncouragementEnabled":true,"vulgarModeEnabled":false,"vulgarTier":"STRONG","dominatrixModeUnlocked":false,"dominatrixModeActive":false}}
+    }'::jsonb,
+    'matching WORKOUT mutation preserves exact CORE, RACK, LED, and VBT siblings'
 );
 
 TRUNCATE preference_mutation_results;

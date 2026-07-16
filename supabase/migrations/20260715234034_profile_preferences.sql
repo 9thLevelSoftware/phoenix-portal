@@ -132,7 +132,11 @@ DECLARE
     primary_key_columns text[];
     parent_key_columns text[];
     referenced_key_columns text[];
+    schema_version_check_count integer;
+    exact_schema_version_check_count integer;
     revision_column_count integer;
+    revision_check_count integer;
+    exact_revision_check_count integer;
 BEGIN
     SELECT array_agg(attribute.attname::text ORDER BY key_column.ordinality)
       INTO primary_key_columns
@@ -184,19 +188,29 @@ BEGIN
             'profile preferences postcondition: expected cascading local_profiles parent foreign key';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM pg_constraint constraint_row
-          JOIN pg_attribute attribute
-            ON attribute.attrelid = constraint_row.conrelid
-           AND attribute.attnum = ANY (constraint_row.conkey)
-         WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
-           AND constraint_row.contype = 'c'
-           AND attribute.attname = 'schema_version'
-           AND pg_get_constraintdef(constraint_row.oid) LIKE '%schema_version = 1%'
-    ) THEN
+    SELECT
+        count(*),
+        count(*) FILTER (
+            WHERE constraint_row.conkey = ARRAY[attribute.attnum]::smallint[]
+              AND btrim(regexp_replace(
+                  pg_get_expr(constraint_row.conbin, constraint_row.conrelid, true),
+                  '[[:space:]]+',
+                  ' ',
+                  'g'
+              )) = 'schema_version = 1'
+        )
+      INTO schema_version_check_count, exact_schema_version_check_count
+      FROM pg_constraint constraint_row
+      JOIN pg_attribute attribute
+        ON attribute.attrelid = constraint_row.conrelid
+       AND attribute.attname = 'schema_version'
+       AND attribute.attnum = ANY (constraint_row.conkey)
+     WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
+       AND constraint_row.contype = 'c';
+
+    IF schema_version_check_count <> 1 OR exact_schema_version_check_count <> 1 THEN
         RAISE EXCEPTION
-            'profile preferences postcondition: expected schema_version = 1 check';
+            'profile preferences postcondition: expected exactly one single-column schema_version = 1 check';
     END IF;
 
     SELECT count(*)
@@ -216,19 +230,58 @@ BEGIN
        AND NOT attribute.attisdropped
        AND attribute.atttypid = 'pg_catalog.int8'::regtype
        AND attribute.attnotnull
-       AND pg_get_expr(default_row.adbin, default_row.adrelid) = '0'
+       AND pg_get_expr(default_row.adbin, default_row.adrelid) = '0';
+
+    SELECT count(*)
+      INTO revision_check_count
+      FROM pg_constraint constraint_row
+     WHERE constraint_row.conrelid = 'public.local_profile_preferences'::regclass
+       AND constraint_row.contype = 'c'
+       AND constraint_row.conkey && ARRAY(
+           SELECT attribute.attnum
+             FROM pg_attribute attribute
+            WHERE attribute.attrelid = 'public.local_profile_preferences'::regclass
+              AND attribute.attname IN (
+                  'core_revision',
+                  'rack_revision',
+                  'workout_revision',
+                  'led_revision',
+                  'vbt_revision'
+              )
+              AND NOT attribute.attisdropped
+       );
+
+    SELECT count(*)
+      INTO exact_revision_check_count
+      FROM pg_attribute attribute
+     WHERE attribute.attrelid = 'public.local_profile_preferences'::regclass
+       AND attribute.attname IN (
+           'core_revision',
+           'rack_revision',
+           'workout_revision',
+           'led_revision',
+           'vbt_revision'
+       )
+       AND NOT attribute.attisdropped
        AND EXISTS (
            SELECT 1
              FROM pg_constraint constraint_row
             WHERE constraint_row.conrelid = attribute.attrelid
               AND constraint_row.contype = 'c'
-              AND attribute.attnum = ANY (constraint_row.conkey)
-              AND pg_get_constraintdef(constraint_row.oid) LIKE '%>= 0%'
+              AND constraint_row.conkey = ARRAY[attribute.attnum]::smallint[]
+              AND btrim(regexp_replace(
+                  pg_get_expr(constraint_row.conbin, constraint_row.conrelid, true),
+                  '[[:space:]]+',
+                  ' ',
+                  'g'
+              )) = format('%I >= 0', attribute.attname)
        );
 
-    IF revision_column_count <> 5 THEN
+    IF revision_column_count <> 5
+       OR revision_check_count <> 5
+       OR exact_revision_check_count <> 5 THEN
         RAISE EXCEPTION
-            'profile preferences postcondition: expected five nonnegative bigint section revision columns';
+            'profile preferences postcondition: expected five independent single-column nonnegative bigint section revisions';
     END IF;
 END
 $postcondition$;
