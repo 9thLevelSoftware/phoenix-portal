@@ -384,6 +384,7 @@ BEGIN
         RETURN;
     END IF;
 
+    BEGIN
     CASE p_section
         WHEN 'CORE' THEN
             UPDATE public.local_profile_preferences
@@ -537,6 +538,14 @@ BEGIN
     canonical_section := public.local_profile_preference_section_canonical(current_row, p_section);
     current_revision := (canonical_section ->> 'serverRevision')::bigint;
     RETURN QUERY SELECT false, 'REVISION_CONFLICT', current_revision, canonical_section;
+    EXCEPTION
+        WHEN check_violation
+          OR not_null_violation
+          OR numeric_value_out_of_range
+          OR invalid_text_representation THEN
+            RETURN QUERY SELECT false, 'VALIDATION_FAILED', 0::bigint, NULL::jsonb;
+            RETURN;
+    END;
 END
 $mutation$;
 

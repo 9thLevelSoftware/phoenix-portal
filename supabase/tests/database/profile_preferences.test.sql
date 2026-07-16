@@ -950,5 +950,94 @@ SELECT results_eq(
     'invalid section, version, payload, and unknown profile return explicit rejection rows'
 );
 
+CREATE TEMP TABLE malformed_preference_rejection_results (
+    case_name text NOT NULL,
+    accepted boolean,
+    rejection_reason text,
+    server_revision bigint,
+    canonical_section jsonb
+) ON COMMIT DROP;
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO malformed_preference_rejection_results
+        SELECT malformed_case.case_name, result.*
+        FROM (
+            VALUES
+                ('empty-core', 'CORE', 1::bigint, '{}'::jsonb),
+                ('empty-rack', 'RACK', 1::bigint, '{}'::jsonb),
+                ('empty-workout', 'WORKOUT', 2::bigint, '{}'::jsonb),
+                ('empty-led', 'LED', 1::bigint, '{}'::jsonb),
+                ('empty-vbt', 'VBT', 1::bigint, '{}'::jsonb),
+                (
+                    'invalid-core-number',
+                    'CORE',
+                    1::bigint,
+                    '{"bodyWeightKg":"heavy","weightUnit":"KG","weightIncrement":2.5}'::jsonb
+                ),
+                (
+                    'invalid-rack-items',
+                    'RACK',
+                    1::bigint,
+                    '{"version":1,"items":"not-an-array"}'::jsonb
+                ),
+                (
+                    'overflow-workout-countdown',
+                    'WORKOUT',
+                    2::bigint,
+                    '{"version":1,"summaryCountdownSeconds":999999999999999999999}'::jsonb
+                ),
+                (
+                    'invalid-led-scheme',
+                    'LED',
+                    1::bigint,
+                    '{"ledColorSchemeId":"bright","preferences":{"version":1,"discoModeUnlocked":false}}'::jsonb
+                ),
+                (
+                    'invalid-vbt-enabled',
+                    'VBT',
+                    1::bigint,
+                    '{"vbtEnabled":"sometimes","preferences":{"version":1,"velocityLossThresholdPercent":20}}'::jsonb
+                )
+        ) AS malformed_case(case_name, section_name, base_revision, payload)
+        CROSS JOIN LATERAL public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'all-sections',
+            malformed_case.section_name,
+            1,
+            malformed_case.base_revision,
+            malformed_case.payload
+        ) AS result
+    $sql$,
+    'malformed section objects return rejection rows without raising database exceptions'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            case_name COLLATE "C",
+            accepted,
+            rejection_reason COLLATE "C",
+            server_revision,
+            canonical_section
+        FROM malformed_preference_rejection_results
+        ORDER BY case_name
+    $sql$,
+    $values$
+        VALUES
+            ('empty-core'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-led'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-rack'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-vbt'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-workout'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-core-number'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-led-scheme'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-rack-items'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-vbt-enabled'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('overflow-workout-countdown'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb)
+    $values$,
+    'malformed section objects return the exact validation rejection contract'
+);
+
 SELECT * FROM finish();
 ROLLBACK;
