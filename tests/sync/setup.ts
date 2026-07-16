@@ -6,7 +6,10 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vitest";
-import type { TestUser } from "./helpers/edge-function-harness";
+import type {
+	CreateTestUserOptions,
+	TestUser,
+} from "./helpers/edge-function-harness";
 import {
 	cleanupTestUser,
 	createTestUser,
@@ -104,8 +107,9 @@ export function validateEnvVars(): string[] {
 export async function createTrackedTestUser(
 	email?: string,
 	password?: string,
+	options: CreateTestUserOptions = {},
 ): Promise<TestUser> {
-	const user = await createTestUser(email, password);
+	const user = await createTestUser(email, password, options);
 	createdTestUsers.push(user);
 	return user;
 }

@@ -395,7 +395,8 @@ export async function runSyncPreviewResolver(environment, dependencies = {}) {
 		githubEnv,
 		`SUPABASE_URL=${credentials.url}\n` +
 			`SUPABASE_ANON_KEY=${credentials.anonKey}\n` +
-			`SUPABASE_SERVICE_ROLE_KEY=${credentials.serviceRoleKey}\n`,
+			`SUPABASE_SERVICE_ROLE_KEY=${credentials.serviceRoleKey}\n` +
+			`SYNC_STAGING_PROJECT_REF=${credentials.previewRef}\n`,
 	);
 	log(
 		`Resolved live sync preview ${credentials.previewRef} using ${credentials.source} credentials.`,

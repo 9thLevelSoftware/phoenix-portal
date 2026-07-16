@@ -96,6 +96,20 @@ Both paths require the URL host to exactly match the expected preview ref. The
 production database is never queried or mutated by the resolver or live sync
 tests.
 
+In live mode, the harness creates disposable `sync-test-*@test.local` users
+with the service client's `auth.admin.createUser` API and confirms their email
+without invoking public sign-up. Each user receives one active EMBER
+subscription with a future period end before the anon client signs in for the
+real user session. Tests that intentionally exercise the absent/FREE gate pass
+`{ seedSubscription: false }`; this exception is used only by the validation
+gate tests and the training-cycle test that inserts its own EMBER row.
+
+The live workflow enables sanitized failure labels for non-OK push/pull
+responses and runs an always-run cleanup after the live test step. Cleanup
+revalidates the exact preview host/ref, paginates through Auth users, and
+deletes only the generated test namespace. It logs only the preview ref and
+deletion count, and fails the job if any required cleanup cannot complete.
+
 Live testing provides:
 - Real database behavior
 - RLS policy validation

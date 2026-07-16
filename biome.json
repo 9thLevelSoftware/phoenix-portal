@@ -16,7 +16,8 @@
 			"tests/**/*.ts",
 			"tests/**/*.tsx",
 			"scripts/**/*.ts",
-			"scripts/resolve-sync-preview.mjs"
+			"scripts/resolve-sync-preview.mjs",
+			"scripts/cleanup-sync-preview-users.mjs"
 		]
 	},
 	"formatter": {

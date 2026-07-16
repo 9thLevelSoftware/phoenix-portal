@@ -101,7 +101,9 @@ describe("Training cycle template_id push handling", () => {
 	liveIt(
 		"preserves an existing training_cycles.template_id when SYNC_LWW_ENABLED=false and mobile pushes templateId null",
 		async () => {
-			const testUser = await createTrackedTestUser();
+			const testUser = await createTrackedTestUser(undefined, undefined, {
+				seedSubscription: false,
+			});
 			const serviceClient = getServiceClient();
 			const cycleId = crypto.randomUUID();
 			const startedAt = new Date("2026-07-07T12:00:00.000Z").toISOString();

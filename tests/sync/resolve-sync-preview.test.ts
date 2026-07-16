@@ -581,7 +581,7 @@ describe("sync preview credential resolver", () => {
 			`log:::add-mask::${legacyServiceKey}`,
 		]);
 		expect(events[2]).toBe(
-			`append:${githubEnv}:SUPABASE_URL=https://${previewRef}.supabase.co\nSUPABASE_ANON_KEY=${legacyAnonKey}\nSUPABASE_SERVICE_ROLE_KEY=${legacyServiceKey}\n`,
+			`append:${githubEnv}:SUPABASE_URL=https://${previewRef}.supabase.co\nSUPABASE_ANON_KEY=${legacyAnonKey}\nSUPABASE_SERVICE_ROLE_KEY=${legacyServiceKey}\nSYNC_STAGING_PROJECT_REF=${previewRef}\n`,
 		);
 		expect(events.join("\n")).not.toContain(accessToken);
 	});

@@ -13,6 +13,7 @@ on:
       - 'src/lib/database.types.ts'
       - '.github/workflows/sync-tests.yml'
       - 'scripts/resolve-sync-preview.mjs'
+      - 'scripts/cleanup-sync-preview-users.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vitest.config.ts'
@@ -25,6 +26,7 @@ on:
       - 'src/lib/database.types.ts'
       - '.github/workflows/sync-tests.yml'
       - 'scripts/resolve-sync-preview.mjs'
+      - 'scripts/cleanup-sync-preview-users.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vitest.config.ts'
@@ -88,6 +90,13 @@ jobs:
         env:
           MOCK_EDGE_FUNCTIONS: 'false'
           SYNC_LIVE_TESTS: 'true'
+          SYNC_LIVE_DEBUG_FAILURES: 'true'
+
+      - name: Clean up live sync test users
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.use_mocks == 'false' }}
+        run: node scripts/cleanup-sync-preview-users.mjs
+        env:
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
