@@ -1,7 +1,10 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   parsePreferenceEnvelope,
   parsePreferenceMutation,
+  parseRpcMutationRow,
+  type PortalProfilePreferenceSectionMutation,
   type PreferenceEnvelope,
   PreferenceValidationError,
   scanJsonArrayElementSpans,
@@ -20,6 +23,10 @@ interface ByteGoldens {
 }
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
+type RpcBehavior = (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<unknown>;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -268,6 +275,33 @@ function validVbtMutation(): Record<string, unknown> {
   };
 }
 
+function acceptedRpcResult(
+  args: Record<string, unknown>,
+  overrides: Record<string, unknown> = {},
+): { data: unknown; error: unknown } {
+  const { canonical_section: canonicalOverrides, ...rowOverrides } = overrides;
+  const serverRevision = rowOverrides.server_revision ?? 1;
+  const canonicalSection = {
+    localProfileId: args.p_local_profile_id,
+    section: args.p_section,
+    documentVersion: 1,
+    serverRevision,
+    serverUpdatedAt: "2026-07-11T14:00:01+02:00",
+    payload: args.p_payload,
+    ...((canonicalOverrides as Record<string, unknown> | undefined) ?? {}),
+  };
+  return {
+    data: [{
+      accepted: true,
+      rejection_reason: null,
+      server_revision: serverRevision,
+      canonical_section: canonicalSection,
+      ...rowOverrides,
+    }],
+    error: null,
+  };
+}
+
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -379,11 +413,12 @@ interface PushHarness {
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
   loggerCalls: unknown[][];
+  operationEvents: string[];
 }
 
 function makeHarness(
   authBehavior: AuthBehavior = async () => VALID_AUTH_RESULT,
-  options: { channelError?: unknown } = {},
+  options: { channelError?: unknown; rpcBehavior?: RpcBehavior } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
   const getUserJwts: string[] = [];
@@ -393,16 +428,19 @@ function makeHarness(
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
   const loggerCalls: unknown[][] = [];
+  const operationEvents: string[] = [];
 
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
+        operationEvents.push(`write:${table}:${method}`);
       });
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
+      operationEvents.push(`rpc:${name}`);
       if (name === "check_rate_limit") {
         return {
           data: { allowed: true, remaining: 9, retry_after_seconds: null },
@@ -410,6 +448,7 @@ function makeHarness(
         };
       }
       if (name === "mutate_local_profile_preference_section") {
+        if (options.rpcBehavior) return await options.rpcBehavior(name, args);
         const section = String(args.p_section);
         return {
           data: [{
@@ -476,6 +515,7 @@ function makeHarness(
     adminFromCalls,
     adminWriteCalls,
     loggerCalls,
+    operationEvents,
   };
 }
 
@@ -931,10 +971,10 @@ for (const targetBytes of byteGoldens.requestTargetBytes) {
       assertEquals(response.status, 200);
       assertEquals(harness.adminConstructionCount.value, 1);
       assertEquals(
-        harness.adminRpcCalls.some((call) =>
+        harness.adminRpcCalls.filter((call) =>
           call.name === "mutate_local_profile_preference_section"
-        ),
-        false,
+        ).length,
+        1,
       );
     } else {
       assertEquals(response.status, 413);
@@ -1592,4 +1632,673 @@ Deno.test("unexpected privileged failure returns generic 500 and logs only a saf
   assertEquals(response.status, 500);
   assertEquals(await json(response), { error: "Internal server error" });
   assertEquals(harness.loggerCalls, [[{ name: "NetworkError" }]]);
+});
+
+Deno.test("RPC parser normalizes one strict accepted canonical row", () => {
+  const mutation = parsePreferenceMutation(
+    validCoreMutation(),
+  ) as PortalProfilePreferenceSectionMutation;
+  const result = acceptedRpcResult({
+    p_local_profile_id: mutation.localProfileId,
+    p_section: mutation.section,
+    p_payload: mutation.payload,
+  }, { server_revision: "1" });
+
+  assertEquals(parseRpcMutationRow(result.data, mutation), {
+    accepted: true,
+    rejectionReason: null,
+    serverRevision: 1,
+    canonicalSection: {
+      localProfileId: "profile-a",
+      section: "CORE",
+      documentVersion: 1,
+      serverRevision: 1,
+      serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+      payload: mutation.payload,
+    },
+  });
+});
+
+Deno.test("legacy push response keeps ordinary fields and adds empty preference arrays", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
+  assertEquals(body.sessionsInserted, 0);
+  assertEquals(body.rejections, {
+    sessions: [],
+    routines: [],
+    cycles: [],
+    externalActivities: [],
+    rpgAttributes: [],
+    gamificationStats: [],
+  });
+  assertEquals(body.canonicalProfilePreferenceSections, []);
+  assertEquals(body.profilePreferenceRejections, []);
+  assert(!Object.hasOwn(body, "profilePreferencesAccepted"));
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "mutate_local_profile_preference_section"
+    ),
+    [],
+  );
+});
+
+Deno.test("present empty preference field is evaluated without an RPC", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(await json(response), {
+    syncTime: "2026-07-16T02:00:00.000Z",
+    sessionsInserted: 0,
+    exercisesInserted: 0,
+    setsInserted: 0,
+    repSummariesInserted: 0,
+    telemetryInserted: 0,
+    routinesUpserted: 0,
+    cyclesUpserted: 0,
+    badgesUpserted: 0,
+    exerciseProgressInserted: 0,
+    personalRecordsInserted: 0,
+    phaseStatisticsInserted: 0,
+    exerciseSignaturesUpserted: 0,
+    assessmentsInserted: 0,
+    externalActivitiesUpserted: 0,
+    externalActivityIds: [],
+    externalActivityKeys: [],
+    rejections: {
+      sessions: [],
+      routines: [],
+      cycles: [],
+      externalActivities: [],
+      rpgAttributes: [],
+      gamificationStats: [],
+    },
+    profilePreferencesAccepted: true,
+    canonicalProfilePreferenceSections: [],
+    profilePreferenceRejections: [],
+  });
+});
+
+Deno.test("body userId cannot authorize a preference mutation", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    userId: "00000000-0000-4000-8000-000000000099",
+    profilePreferenceSections: [validCoreMutation()],
+  }));
+
+  assertEquals(response.status, 400);
+  assertNoPrivilegedActivity(harness);
+});
+
+Deno.test("valid unique sections call the authoritative RPC exactly once after ordinary writes", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    profilePreferenceSections: [validCoreMutation(), validRackMutation()],
+  }));
+  const responseBody = await json(response);
+  const preferenceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "mutate_local_profile_preference_section"
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(preferenceCalls, [{
+    name: "mutate_local_profile_preference_section",
+    args: {
+      p_user_id: VALID_USER_ID,
+      p_local_profile_id: "profile-a",
+      p_section: "CORE",
+      p_document_version: 1,
+      p_base_revision: 0,
+      p_payload: (validCoreMutation().payload as Record<string, unknown>),
+    },
+  }, {
+    name: "mutate_local_profile_preference_section",
+    args: {
+      p_user_id: VALID_USER_ID,
+      p_local_profile_id: "profile-a",
+      p_section: "RACK",
+      p_document_version: 1,
+      p_base_revision: 0,
+      p_payload: (validRackMutation().payload as Record<string, unknown>),
+    },
+  }]);
+  const lastOrdinaryWrite = Math.max(
+    ...harness.operationEvents.map((event, index) =>
+      event.startsWith("write:") ? index : -1
+    ),
+  );
+  const firstPreferenceRpc = harness.operationEvents.indexOf(
+    "rpc:mutate_local_profile_preference_section",
+  );
+  assert(lastOrdinaryWrite >= 0);
+  assert(firstPreferenceRpc > lastOrdinaryWrite);
+  assertEquals(responseBody.profilePreferencesAccepted, true);
+  assertEquals(
+    (responseBody.canonicalProfilePreferenceSections as unknown[]).length,
+    2,
+  );
+});
+
+Deno.test("local and domain rejections coexist with an accepted sibling", async () => {
+  const invalidCore = clone(validCoreMutation());
+  (invalidCore.payload as Record<string, unknown>).bodyWeightKg = 19;
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (_name, args) => {
+      if (args.p_section === "RACK") {
+        return {
+          data: [{
+            accepted: false,
+            rejection_reason: "UNKNOWN_PROFILE",
+            server_revision: 0,
+            canonical_section: null,
+          }],
+          error: null,
+        };
+      }
+      return acceptedRpcResult(args);
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [
+      invalidCore,
+      validRackMutation(),
+      validVbtMutation(),
+    ],
+  }));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(responseBody.profilePreferencesAccepted, true);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "mutate_local_profile_preference_section"
+    ).map((call) => call.args.p_section),
+    ["RACK", "VBT"],
+  );
+  assertEquals(responseBody.profilePreferenceRejections, [{
+    localProfileId: "profile-a",
+    section: "CORE",
+    serverRevision: 0,
+    reason: "VALIDATION_FAILED",
+  }, {
+    localProfileId: "profile-a",
+    section: "RACK",
+    serverRevision: 0,
+    reason: "UNKNOWN_PROFILE",
+  }]);
+  assertEquals(
+    (responseBody.canonicalProfilePreferenceSections as Array<
+      Record<string, unknown>
+    >)
+      .map((canonical) => canonical.section),
+    ["VBT"],
+  );
+});
+
+const malformedRpcCases: Array<{
+  label: string;
+  behavior: RpcBehavior;
+  expectedName: string;
+}> = [
+  {
+    label: "returned RPC transport error",
+    behavior: async () => ({
+      data: null,
+      error: { name: "PostgrestError", message: "must stay private" },
+    }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "null rows",
+    behavior: async () => ({ data: null, error: null }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "empty rows",
+    behavior: async () => ({ data: [], error: null }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "multiple rows",
+    behavior: async (_name, args) => ({
+      data: [
+        (acceptedRpcResult(args).data as unknown[])[0],
+        (acceptedRpcResult(args).data as unknown[])[0],
+      ],
+      error: null,
+    }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "malformed row",
+    behavior: async () => ({ data: [null], error: null }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "row with an unknown key",
+    behavior: async (_name, args) => {
+      const result = acceptedRpcResult(args);
+      (result.data as Array<Record<string, unknown>>)[0].extra = true;
+      return result;
+    },
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "accepted row without canonical",
+    behavior: async (_name, args) => {
+      const result = acceptedRpcResult(args);
+      (result.data as Array<Record<string, unknown>>)[0].canonical_section =
+        null;
+      return result;
+    },
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "accepted row with a reason",
+    behavior: async (_name, args) => {
+      const result = acceptedRpcResult(args);
+      (result.data as Array<Record<string, unknown>>)[0].rejection_reason =
+        "VALIDATION_FAILED";
+      return result;
+    },
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "negative revision",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, { server_revision: -1 }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "canonical revision mismatch",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, {
+        server_revision: 2,
+        canonical_section: { serverRevision: 1 },
+      }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "canonical identity mismatch",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, {
+        canonical_section: { localProfileId: "someone-else" },
+      }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "canonical timestamp without timezone",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, {
+        canonical_section: { serverUpdatedAt: "2026-07-11T12:00:01" },
+      }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "canonical payload with an unknown key",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, {
+        canonical_section: {
+          payload: {
+            ...(args.p_payload as Record<string, unknown>),
+            extra: true,
+          },
+        },
+      }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "unknown domain reason",
+    behavior: async () => ({
+      data: [{
+        accepted: false,
+        rejection_reason: "NOT_A_REASON",
+        server_revision: 0,
+        canonical_section: null,
+      }],
+      error: null,
+    }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "revision conflict without canonical",
+    behavior: async () => ({
+      data: [{
+        accepted: false,
+        rejection_reason: "REVISION_CONFLICT",
+        server_revision: 1,
+        canonical_section: null,
+      }],
+      error: null,
+    }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "thrown safe RPC error name",
+    behavior: async () => {
+      throw Object.assign(new Error("private transport message"), {
+        name: "NetworkError",
+      });
+    },
+    expectedName: "NetworkError",
+  },
+  {
+    label: "thrown invalid RPC error name",
+    behavior: async () => {
+      throw Object.assign(new Error("private transport message"), {
+        name:
+          "invalid error name with spaces and a very long private suffix 1234567890",
+      });
+    },
+    expectedName: "PreferenceInfrastructureFailure",
+  },
+];
+
+for (const testCase of malformedRpcCases) {
+  Deno.test(`preference infrastructure: ${testCase.label} is one name-only 503`, async () => {
+    const harness = makeHarness(undefined, { rpcBehavior: testCase.behavior });
+    const response = await harness.handler(requestFromBody({
+      ...validPushBody(),
+      profilePreferenceSections: [validCoreMutation()],
+    }));
+
+    assertEquals(response.status, 503);
+    assertEquals(await json(response), {
+      error: "Sync temporarily unavailable",
+    });
+    assertEquals(harness.loggerCalls, [[{ name: testCase.expectedName }]]);
+  });
+}
+
+interface LocalIntegrationEnvironment {
+  url: string;
+  anonKey: string;
+  serviceRoleKey: string;
+}
+
+const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
+  const url = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  return url && anonKey && serviceRoleKey
+    ? { url, anonKey, serviceRoleKey }
+    : null;
+})();
+
+interface LocalIntegrationFixture {
+  admin: SupabaseClient;
+  ownerId: string;
+  otherUserId: string;
+  profileId: string;
+}
+
+async function deleteLocalIntegrationUsers(
+  admin: SupabaseClient,
+  userIds: string[],
+): Promise<void> {
+  if (userIds.length === 0) return;
+  const preferenceDelete = await admin.from("local_profile_preferences")
+    .delete()
+    .in("user_id", userIds);
+  if (preferenceDelete.error) {
+    throw new Error("preference fixture cleanup failed");
+  }
+  const profileDelete = await admin.from("local_profiles")
+    .delete()
+    .in("user_id", userIds);
+  if (profileDelete.error) throw new Error("profile fixture cleanup failed");
+  for (const userId of userIds) {
+    const deleted = await admin.auth.admin.deleteUser(userId);
+    if (deleted.error) throw new Error("auth fixture cleanup failed");
+  }
+}
+
+async function createLocalIntegrationFixture(): Promise<
+  LocalIntegrationFixture
+> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const createdUserIds: string[] = [];
+  try {
+    const suffix = crypto.randomUUID();
+    const owner = await admin.auth.admin.createUser({
+      email: `task7-owner-${suffix}@example.invalid`,
+      email_confirm: true,
+    });
+    if (owner.error || !owner.data.user) {
+      throw new Error("owner fixture creation failed");
+    }
+    createdUserIds.push(owner.data.user.id);
+    const other = await admin.auth.admin.createUser({
+      email: `task7-other-${suffix}@example.invalid`,
+      email_confirm: true,
+    });
+    if (other.error || !other.data.user) {
+      throw new Error("other fixture creation failed");
+    }
+    createdUserIds.push(other.data.user.id);
+    const profileId = crypto.randomUUID();
+    const profile = await admin.from("local_profiles").insert({
+      user_id: owner.data.user.id,
+      id: profileId,
+      name: "Task 7 integration profile",
+      color_index: 0,
+      device_id: `task7-${suffix}`,
+    });
+    if (profile.error) throw new Error("profile fixture creation failed");
+    return {
+      admin,
+      ownerId: owner.data.user.id,
+      otherUserId: other.data.user.id,
+      profileId,
+    };
+  } catch (error) {
+    await deleteLocalIntegrationUsers(admin, createdUserIds);
+    throw error;
+  }
+}
+
+async function cleanupLocalIntegrationFixture(
+  fixture: LocalIntegrationFixture,
+): Promise<void> {
+  await deleteLocalIntegrationUsers(
+    fixture.admin,
+    [fixture.ownerId, fixture.otherUserId],
+  );
+}
+
+async function realPreferenceRpc(
+  fixture: LocalIntegrationFixture,
+  section: string,
+  payload: Record<string, unknown>,
+  baseRevision = 0,
+  userId = fixture.ownerId,
+): Promise<Record<string, unknown>> {
+  const result = await fixture.admin.rpc(
+    "mutate_local_profile_preference_section",
+    {
+      p_user_id: userId,
+      p_local_profile_id: fixture.profileId,
+      p_section: section,
+      p_document_version: 1,
+      p_base_revision: baseRevision,
+      p_payload: payload,
+    },
+  );
+  if (result.error) throw new Error("real preference RPC failed");
+  assert(Array.isArray(result.data));
+  assertEquals(result.data.length, 1);
+  return result.data[0] as Record<string, unknown>;
+}
+
+Deno.test({
+  name:
+    "integration: same-section concurrent first writes accept one and converge one conflict",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const firstPayload = {
+        bodyWeightKg: 80,
+        weightUnit: "KG",
+        weightIncrement: 1,
+      };
+      const secondPayload = {
+        bodyWeightKg: 90,
+        weightUnit: "LB",
+        weightIncrement: 2,
+      };
+      const rows = await Promise.all([
+        realPreferenceRpc(fixture, "CORE", firstPayload),
+        realPreferenceRpc(fixture, "CORE", secondPayload),
+      ]);
+      const accepted = rows.filter((row) => row.accepted === true);
+      const conflicts = rows.filter((row) =>
+        row.accepted === false && row.rejection_reason === "REVISION_CONFLICT"
+      );
+
+      assertEquals(accepted.length, 1);
+      assertEquals(conflicts.length, 1);
+      assertEquals(accepted[0].server_revision, 1);
+      assertEquals(conflicts[0].server_revision, 1);
+      assertEquals(
+        conflicts[0].canonical_section,
+        accepted[0].canonical_section,
+      );
+      const stored = await fixture.admin.from("local_profile_preferences")
+        .select("core_revision,body_weight_kg,weight_unit,weight_increment")
+        .eq("user_id", fixture.ownerId)
+        .eq("local_profile_id", fixture.profileId)
+        .single();
+      if (stored.error) {
+        throw new Error("same-section verification query failed");
+      }
+      const winningPayload =
+        (accepted[0].canonical_section as Record<string, unknown>)
+          .payload;
+      assertEquals(stored.data.core_revision, 1);
+      assertEquals(
+        stored.data.body_weight_kg,
+        (winningPayload as Record<string, unknown>).bodyWeightKg,
+      );
+      assertEquals(
+        stored.data.weight_unit,
+        (winningPayload as Record<string, unknown>).weightUnit,
+      );
+      assertEquals(
+        stored.data.weight_increment,
+        (winningPayload as Record<string, unknown>).weightIncrement,
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: different-section concurrent first writes both preserve revision-one siblings",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const corePayload = validCoreMutation().payload as Record<
+        string,
+        unknown
+      >;
+      const rackPayload = validRackMutation().payload as Record<
+        string,
+        unknown
+      >;
+      const rows = await Promise.all([
+        realPreferenceRpc(fixture, "CORE", corePayload),
+        realPreferenceRpc(fixture, "RACK", rackPayload),
+      ]);
+
+      assertEquals(rows.map((row) => row.accepted), [true, true]);
+      assertEquals(rows.map((row) => row.server_revision), [1, 1]);
+      const stored = await fixture.admin.from("local_profile_preferences")
+        .select("core_revision,rack_revision,body_weight_kg,equipment_rack")
+        .eq("user_id", fixture.ownerId)
+        .eq("local_profile_id", fixture.profileId)
+        .single();
+      if (stored.error) {
+        throw new Error("different-section verification query failed");
+      }
+      assertEquals(stored.data.core_revision, 1);
+      assertEquals(stored.data.rack_revision, 1);
+      assertEquals(stored.data.body_weight_kg, corePayload.bodyWeightKg);
+      assertEquals(stored.data.equipment_rack, rackPayload);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: lost acknowledgement retry returns winning canonical without overwrite",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const winningPayload = validCoreMutation().payload as Record<
+        string,
+        unknown
+      >;
+      await realPreferenceRpc(fixture, "CORE", winningPayload);
+      const replay = await realPreferenceRpc(fixture, "CORE", winningPayload);
+
+      assertEquals(replay.accepted, false);
+      assertEquals(replay.rejection_reason, "REVISION_CONFLICT");
+      assertEquals(replay.server_revision, 1);
+      assertEquals(
+        (replay.canonical_section as Record<string, unknown>).payload,
+        winningPayload,
+      );
+      const otherOwner = await realPreferenceRpc(
+        fixture,
+        "CORE",
+        winningPayload,
+        0,
+        fixture.otherUserId,
+      );
+      assertEquals(otherOwner, {
+        accepted: false,
+        rejection_reason: "UNKNOWN_PROFILE",
+        server_revision: 0,
+        canonical_section: null,
+      });
+      const stored = await fixture.admin.from("local_profile_preferences")
+        .select("core_revision,body_weight_kg,weight_unit,weight_increment")
+        .eq("user_id", fixture.ownerId)
+        .eq("local_profile_id", fixture.profileId)
+        .single();
+      if (stored.error) throw new Error("lost-ack verification query failed");
+      assertEquals(stored.data, {
+        core_revision: 1,
+        body_weight_kg: winningPayload.bodyWeightKg,
+        weight_unit: winningPayload.weightUnit,
+        weight_increment: winningPayload.weightIncrement,
+      });
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
 });

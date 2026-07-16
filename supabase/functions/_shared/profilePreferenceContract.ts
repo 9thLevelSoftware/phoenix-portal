@@ -1062,6 +1062,142 @@ export function parsePreferenceEnvelope(
   return { present: true, validatedMutations, rejections };
 }
 
+export interface RpcMutationRow {
+  accepted: boolean;
+  rejection_reason: string | null;
+  server_revision: number | string;
+  canonical_section: unknown | null;
+}
+
+export interface ParsedRpcMutationRow {
+  accepted: boolean;
+  rejectionReason: string | null;
+  serverRevision: number;
+  canonicalSection?: PortalProfilePreferenceSectionCanonical;
+}
+
+const RPC_DOMAIN_REASONS = new Set([
+  "REVISION_CONFLICT",
+  "VALIDATION_FAILED",
+  "UNSUPPORTED_SECTION",
+  "UNSUPPORTED_DOCUMENT_VERSION",
+  "UNKNOWN_PROFILE",
+]);
+
+export const infrastructureRevision = (value: unknown): number => {
+  const number = typeof value === "string" && /^[0-9]+$/.test(value)
+    ? Number(value)
+    : value;
+  if (
+    typeof number !== "number" ||
+    !Number.isSafeInteger(number) ||
+    number < 0
+  ) {
+    throw new PreferenceInfrastructureError("malformed revision");
+  }
+  return number;
+};
+
+export function parseInfrastructureCanonical(
+  value: unknown,
+  mutation: PortalProfilePreferenceSectionMutation,
+): PortalProfilePreferenceSectionCanonical {
+  try {
+    requirePostgresTextTree(value, "canonical");
+    const canonical = requireExactRecord(
+      value,
+      [
+        "localProfileId",
+        "section",
+        "documentVersion",
+        "serverRevision",
+        "serverUpdatedAt",
+        "payload",
+      ],
+      "canonical",
+    );
+    if (canonical.localProfileId !== mutation.localProfileId) {
+      fail("canonical.localProfileId");
+    }
+    if (canonical.section !== mutation.section) fail("canonical.section");
+    requireVersionOne(
+      canonical.documentVersion,
+      "canonical.documentVersion",
+    );
+    const serverRevision = infrastructureRevision(canonical.serverRevision);
+    const serverUpdatedAt = requireRfc3339Instant(
+      canonical.serverUpdatedAt,
+      "canonical.serverUpdatedAt",
+    );
+    const payload = ({
+      CORE: validateCorePayload,
+      RACK: validateRackPayload,
+      WORKOUT: validateWorkoutPayload,
+      LED: validateLedPayload,
+      VBT: validateVbtPayload,
+    } as const)[mutation.section](canonical.payload);
+    return {
+      localProfileId: mutation.localProfileId,
+      section: mutation.section,
+      documentVersion: 1,
+      serverRevision,
+      serverUpdatedAt,
+      payload,
+    };
+  } catch (error) {
+    if (error instanceof PreferenceInfrastructureError) throw error;
+    throw new PreferenceInfrastructureError("malformed canonical");
+  }
+}
+
+export function parseRpcMutationRow(
+  data: unknown,
+  mutation: PortalProfilePreferenceSectionMutation,
+): ParsedRpcMutationRow {
+  if (!Array.isArray(data) || data.length !== 1) {
+    throw new PreferenceInfrastructureError("RPC row cardinality");
+  }
+  try {
+    const row = requireExactRecord(
+      data[0],
+      ["accepted", "rejection_reason", "server_revision", "canonical_section"],
+      "rpcRow",
+    ) as unknown as RpcMutationRow;
+    if (typeof row.accepted !== "boolean") fail("rpcRow.accepted");
+    const serverRevision = infrastructureRevision(row.server_revision);
+    const canonicalSection = row.canonical_section === null
+      ? undefined
+      : parseInfrastructureCanonical(row.canonical_section, mutation);
+    if (row.accepted) {
+      if (row.rejection_reason !== null || !canonicalSection) fail("rpcRow");
+    } else {
+      if (
+        typeof row.rejection_reason !== "string" ||
+        !RPC_DOMAIN_REASONS.has(row.rejection_reason)
+      ) {
+        fail("rpcRow.rejection_reason");
+      }
+      if (row.rejection_reason === "REVISION_CONFLICT" && !canonicalSection) {
+        fail("rpcRow.canonical_section");
+      }
+    }
+    if (
+      canonicalSection && canonicalSection.serverRevision !== serverRevision
+    ) {
+      fail("rpcRow");
+    }
+    return {
+      accepted: row.accepted,
+      rejectionReason: row.rejection_reason,
+      serverRevision,
+      canonicalSection,
+    };
+  } catch (error) {
+    if (error instanceof PreferenceInfrastructureError) throw error;
+    throw new PreferenceInfrastructureError("malformed RPC row");
+  }
+}
+
 export const safeErrorName = (error: unknown, fallback: string): string => {
   let candidate = fallback;
   if (error instanceof Error) {

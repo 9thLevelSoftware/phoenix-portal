@@ -35,6 +35,10 @@ import {
   MAX_MOBILE_SYNC_REQUEST_BYTES,
   MAX_PROFILE_PREFERENCE_REQUEST_BYTES,
   parsePreferenceEnvelope,
+  parseRpcMutationRow,
+  type PortalProfilePreferenceSectionCanonical,
+  type ProfilePreferenceSectionRejection,
+  PreferenceInfrastructureError,
   PreferenceValidationError,
   PUSH_BODY_KEYS,
   requireKnownKeys,
@@ -742,7 +746,8 @@ async function mobileSyncPushHandler(
     ) {
       return authOperationalFailure({ name: 'AuthUnexpectedResult' });
     }
-    const userId = (verifiedUser as JsonRecord).id as string;
+    const verifiedUserId = (verifiedUser as JsonRecord).id as string;
+    const userId = verifiedUserId;
 
     let originalBodyBytes: Uint8Array;
     try {
@@ -841,9 +846,6 @@ async function mobileSyncPushHandler(
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
-    // Task 7 consumes this validated envelope after the existing ordinary writes.
-    void preferenceEnvelope;
-
     const rawPlatformInput = body.platform;
     const normalizedPlatform = payload.platform;
     if (normalizedPlatform === 'unknown') {
@@ -2551,6 +2553,49 @@ async function mobileSyncPushHandler(
       }
     }
 
+    const canonicalProfilePreferenceSections: PortalProfilePreferenceSectionCanonical[] = [];
+    const profilePreferenceRejections: ProfilePreferenceSectionRejection[] = [
+      ...preferenceEnvelope.rejections,
+    ];
+    try {
+      for (const mutation of preferenceEnvelope.validatedMutations) {
+        const { data, error } = await supabase.rpc(
+          'mutate_local_profile_preference_section',
+          {
+            p_user_id: verifiedUserId,
+            p_local_profile_id: mutation.localProfileId,
+            p_section: mutation.section,
+            p_document_version: mutation.documentVersion,
+            p_base_revision: mutation.baseRevision,
+            p_payload: mutation.payload,
+          },
+        );
+        if (error) throw new PreferenceInfrastructureError('mutation RPC');
+        const result = parseRpcMutationRow(data, mutation);
+        if (result.accepted) {
+          canonicalProfilePreferenceSections.push(result.canonicalSection!);
+        } else {
+          profilePreferenceRejections.push({
+            localProfileId: mutation.localProfileId,
+            section: mutation.section,
+            serverRevision: result.serverRevision,
+            reason: result.rejectionReason as ProfilePreferenceSectionRejection['reason'],
+            ...(result.canonicalSection
+              ? { canonicalSection: result.canonicalSection }
+              : {}),
+          });
+        }
+      }
+    } catch (error) {
+      dependencies.logOperationalFailure({
+        name: safeErrorName(error, 'PreferenceInfrastructureFailure'),
+      });
+      return new Response(
+        JSON.stringify({ error: 'Sync temporarily unavailable' }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
     // =========================================================================
     // 15. Return sync result
     // =========================================================================
@@ -2629,6 +2674,9 @@ async function mobileSyncPushHandler(
         // is false or when every incoming row cleared the LWW gate. Mobile
         // logs these and repairs convergence via the next pull.
         rejections,
+        ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
+        canonicalProfilePreferenceSections,
+        profilePreferenceRejections,
       }),
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
