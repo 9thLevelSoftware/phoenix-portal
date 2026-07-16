@@ -198,30 +198,27 @@ describe("live test-user provisioning", () => {
 	it.each([
 		["subscription", doubles.insertSubscription],
 		["sign-in", doubles.signInWithPassword],
-	])(
-		"deletes the created auth user after a %s failure",
-		async (_phase, call) => {
-			const sensitiveMessage = "sensitive upstream failure with an identity";
-			call.mockResolvedValueOnce({
-				data: null,
-				error: { message: sensitiveMessage },
-			});
+	])("deletes the created auth user after a %s failure", async (_phase, call) => {
+		const sensitiveMessage = "sensitive upstream failure with an identity";
+		call.mockResolvedValueOnce({
+			data: null,
+			error: { message: sensitiveMessage },
+		});
 
-			let failure: unknown;
-			try {
-				await createTestUser(email, password);
-			} catch (error) {
-				failure = error;
-			}
+		let failure: unknown;
+		try {
+			await createTestUser(email, password);
+		} catch (error) {
+			failure = error;
+		}
 
-			expect(failure).toBeInstanceOf(Error);
-			expect((failure as Error).message).toBe(
-				"Failed to provision disposable sync test user.",
-			);
-			expect((failure as Error).message).not.toContain(sensitiveMessage);
-			expect(doubles.adminDeleteUser).toHaveBeenCalledWith(userId);
-		},
-	);
+		expect(failure).toBeInstanceOf(Error);
+		expect((failure as Error).message).toBe(
+			"Failed to provision disposable sync test user.",
+		);
+		expect((failure as Error).message).not.toContain(sensitiveMessage);
+		expect(doubles.adminDeleteUser).toHaveBeenCalledWith(userId);
+	});
 });
 
 describe("live test-user cleanup logging", () => {
