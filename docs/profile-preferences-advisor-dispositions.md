@@ -6,6 +6,10 @@ squash/deployment SHA is `1b5d9ca`. This record separates the feature-object
 result from unrelated baseline findings. It does not describe the local
 database or any remote environment as globally clean.
 
+The Edge Function local gate was rerun from a fresh database on 2026-07-16
+against local Edge branch head `42089e7` plus the Task 9 documentation/config
+diff. No staging or production resource was read or mutated by that rerun.
+
 ## Outcome
 
 - New findings on `public.local_profile_preferences`,
@@ -93,6 +97,87 @@ Source: read-only Supabase `get_advisors` for project
 Production performance total: 140 notices (116 WARN and 24 INFO). These
 pre-existing warnings/notices remain open and are not evidence of a globally
 clean environment.
+
+## Edge Function authentication boundary
+
+`mobile-sync-push` and `mobile-sync-pull` intentionally retain
+`verify_jwt = false`. This disables only the gateway's pre-handler JWT
+decision; it does not make either handler unauthenticated. Each handler
+requires the exact bearer syntax, calls `auth.getUser(userJwt)` through a
+caller-scoped client, derives the user id only from that verified result, and
+constructs the service-role client only after authentication and strict
+request validation succeed.
+
+The manual boundary is required by mobile retry semantics: definitive bearer
+syntax or returned Auth 400/401/403 failures become 401, while Auth service
+outages, rate limits, malformed results, and thrown calls become sanitized
+503 responses. Enabling the gateway check would allow the gateway to return
+before the handler and erase that distinction. The push and pull test suites
+both prove that every Auth failure constructs and calls zero privileged
+clients. See the official Supabase descriptions of the
+[`verify_jwt` gateway layer](https://supabase.com/docs/guides/functions/auth-headers)
+and [handler-owned authentication](https://supabase.com/docs/guides/troubleshooting/edge-function-401-error-response).
+
+## Task 9 fresh local verification
+
+All commands below used Supabase CLI `2.81.3` and Deno `2.2.15`. The Deno
+integration environment was populated from the running local Supabase stack
+without printing its local keys. The push suite's golden digest guard used the
+least-privilege read grant shown below; the guard was not weakened.
+
+| Command | Result | Disposition |
+| --- | --- | --- |
+| `npx --yes supabase@2.81.3 db reset --local` | PASS | Fresh replay applied `20260715234034_profile_preferences` and completed seed/restart. |
+| `npx --yes supabase@2.81.3 migration list --local` | PASS | Local migration inventory includes `20260715234034` and matches the local database history. |
+| `npx --yes supabase@2.81.3 test db --local` | PASS | 1 file, 38 tests, 0 failures. |
+| `npx --yes deno@2.2.15 test --allow-read=supabase/functions/_shared/profile-preference-byte-goldens.json --allow-env --allow-net supabase/functions/mobile-sync-push` | PASS | 170 passed, 0 failed; all three real local integration tests executed. |
+| `npx --yes deno@2.2.15 test --allow-env --allow-net supabase/functions/mobile-sync-pull` | PASS | 67 passed, 0 failed; the real mutation/pull integration test executed. |
+| `npx --yes supabase@2.81.3 db lint --local --fail-on warning` | BASELINE NONZERO | Exit 1 only for pre-existing SQLSTATE `42703` in `public.upsert_routine_lww`, which references absent `public.routines.created_at`; neither preference function was reported. |
+| `npx --yes supabase@2.81.3 db advisors --local` | PASS WITH BASELINE WARNINGS | Exit 0; 104 known warnings (`auth_rls_initplan` 72, `multiple_permissive_policies` 30, `duplicate_index` 1, `function_search_path_mutable` 1), with `TargetFindings=0`. |
+| `npm run test:sync` | PASS | 18 files; 269 passed and 17 skipped. |
+| `npm run check:edge-functions` | PASS | Exit 0 using the pinned Deno fallback. |
+| `npm run verify:full` | BASELINE NONZERO | The chain stops at Biome 2.5.4 on six formatter errors in unchanged test files; none is in the profile-preference or Task 9 diff. The remaining stages were run explicitly as recorded below. |
+
+The explicit continuation after the repository-wide Biome baseline produced:
+
+- `npm run typecheck`: PASS.
+- `npm test`: 131 files; 1,355 passed and 17 skipped.
+- `npm run build`: PASS; `npm run assert:no-sourcemaps` and
+  `npm run assert:supabase-config` also passed.
+- The exact parallel `npm run test:e2e` run reached every test: 60 passed, the
+  live-Realtime test skipped as designed, and the first four parallel
+  accessibility workers timed out at `page.waitForLoadState("networkidle")`
+  after 30 seconds. The four exact failures passed 4/4 in a one-worker rerun,
+  and the complete `npm run test:e2e -- --workers=1` recovery passed all 64
+  runnable tests with the same one live-Realtime skip. No E2E source or
+  configuration file differs from `origin/main`; the evidence is consistent
+  with local fully-parallel startup/resource contention rather than a feature
+  failure.
+
+## Required portal test manifest mapping
+
+Every handoff manifest key maps to an executable pgTAP diagnostic or Deno test
+below. The fresh Task 9 runs above executed all of them; no row relies on a
+source-string search.
+
+| Manifest key | Executable coverage |
+| --- | --- |
+| `database:exact-function-acls-and-no-client-dml` | `profile_preferences.test.sql` diagnostic of the same name; exact signatures, owners, `SECURITY INVOKER`, empty `search_path`, return shape, function ACLs, table DML ACLs, and RLS policy catalog. |
+| `database:temporary-grant-owner-rls-and-cross-owner-user-id-protection` | `profile_preferences.test.sql` diagnostic of the same name; rolled-back grants exercise owner select/insert/update/delete and the cross-owner `WITH CHECK` failure before privileges are reasserted. |
+| `database:base-revision-accept-and-stale-canonical-conflict` | `profile_preferences.test.sql` diagnostic of the same name; all five base-zero accepts, matching-base increment, sibling preservation, stale canonical conflict, and explicit domain rejections. |
+| `edge:auth-and-cross-user-profile-rejection` | Push `auth: ... definitive 401 before auth or admin construction`, `body userId cannot authorize a preference mutation`, and the real lost-ack integration's other-owner `UNKNOWN_PROFILE`; pull real integration proves cross-owner omission. |
+| `edge:auth-rejection-vs-operational-outage-classification` | The complete push and pull `auth: returned ... definitive 401`, `auth outage: ... generic name-only 503`, and safe-name test tables. |
+| `edge:strict-five-section-validation-and-local-only-rejection` | Push `all five exact section wrappers validate`, `strict preference shape: ...`, `recursive normalized local-only key ...`, duplicate-identity, and valid-sibling isolation tests. |
+| `edge:kotlin-int32-float32-unicode-and-rfc3339-parity` | Push `Kotlin Int32: ...`, `Kotlin Float32 ...`, CORE/RACK original-number boundary, PostgreSQL text safety, and RFC3339 accept/reject tables; pull malformed timestamp/Unicode infrastructure cases. |
+| `edge:fatal-utf8-bom-and-original-byte-enforcement` | Push `raw bytes: ... before admin construction`, U+FFFD acceptance, ordinary original-byte limits, and legacy-capacity tests through the real raw handler. |
+| `edge:section-262143-262144-262145-byte-boundaries` | Push `raw section boundary: 262143/262144/262145 bytes uses the exact element span`. |
+| `edge:envelope-524287-524288-524289-byte-boundaries` | Push `raw request boundary: 524287/524288/524289 original bytes is enforced inclusively`, plus exact scanner offset and duplicate-key tests. |
+| `edge:unexpected-rpc-error-is-sanitized-5xx` | Push `preference infrastructure: ... is one name-only 503` table covers returned/thrown errors, cardinality, malformed canonical/revision/reason matrices, and invalid/oversized names. |
+| `edge:same-section-concurrent-first-write` | Real local Deno integration `same-section concurrent first writes accept one and converge one conflict`. |
+| `edge:different-section-concurrent-first-write` | Real local Deno integration `different-section concurrent first writes both preserve revision-one siblings`. |
+| `edge:lost-ack-retry-canonical-convergence` | Real handler integration `handler lost-ack retry converges committed and failed siblings`. |
+| `edge:mutation-and-first-page-pull-canonical-equality` | Pull real local integration `real mutation canonicals equal isolated first-page pull and absence never creates`, plus first-page exact owner/profile query mapping. |
+| `edge:later-pull-pages-omit-preferences-and-keep-sync-time` | Pull `later page omits preferences and preserves pagination and injected syncTime`, also asserted through the real local integration. |
 
 ## PR disposition
 
