@@ -1,7 +1,4 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import byteGoldensJson from "../_shared/profile-preference-byte-goldens.json" with {
-  type: "json",
-};
 import { createMobileSyncPushHandler } from "./index.ts";
 
 interface ByteGoldens {
@@ -16,14 +13,37 @@ interface ByteGoldens {
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
 
-const byteGoldens = byteGoldensJson as ByteGoldens;
 const encoder = new TextEncoder();
+const decoder = new TextDecoder("utf-8", { fatal: true });
+const EXPECTED_GOLDEN_SHA256 =
+  "F5961867530A4AD464AA17D5798B391AB037611C7F95C46E64161BA8BDC5E97D";
 const VALID_JWT = "test-jwt";
 const VALID_USER_ID = "00000000-0000-4000-8000-000000000001";
 const VALID_AUTH_RESULT = {
   data: { user: { id: VALID_USER_ID } },
   error: null,
 };
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("").toUpperCase();
+}
+
+const byteGoldenResponse = await fetch(
+  new URL("../_shared/profile-preference-byte-goldens.json", import.meta.url),
+);
+assert(byteGoldenResponse.ok, "byte golden file URL must load successfully");
+const byteGoldenBytes = new Uint8Array(await byteGoldenResponse.arrayBuffer());
+assertEquals(byteGoldenBytes.byteLength, 856, "byte golden length");
+assertEquals(
+  await sha256Hex(byteGoldenBytes),
+  EXPECTED_GOLDEN_SHA256,
+  "byte golden SHA-256 must match before decoding or parsing",
+);
+const byteGoldens = JSON.parse(decoder.decode(byteGoldenBytes)) as ByteGoldens;
 
 function validPushBody(): Record<string, unknown> {
   return {
@@ -277,6 +297,12 @@ Deno.test("byte golden metadata and raw lexemes remain exact", () => {
   assert(byteGoldens.sectionRawTemplate.includes("20.0"));
   assert(byteGoldens.sectionRawTemplate.includes("-1e3"));
   assert(byteGoldens.sectionRawTemplate.includes('π界🙂\\"\\\\'));
+});
+
+Deno.test("byte golden digest guard detects a one-byte corruption", async () => {
+  const corrupted = byteGoldenBytes.slice();
+  corrupted[corrupted.byteLength - 1] ^= 0x01;
+  assert((await sha256Hex(corrupted)) !== EXPECTED_GOLDEN_SHA256);
 });
 
 for (
