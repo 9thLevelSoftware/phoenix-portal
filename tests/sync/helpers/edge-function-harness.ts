@@ -14,7 +14,6 @@ import {
 	getAnonClient,
 	getEdgeFunctionUrl,
 	getServiceClient,
-	getSupabaseConfig,
 } from "./supabase-test-client";
 
 // ============================================================================
@@ -841,14 +840,14 @@ export async function callPullEndpoint(
  * Generate a unique ID for test data
  */
 export function generateTestId(): string {
-	return `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+	return crypto.randomUUID();
 }
 
 /**
  * Create a minimal valid push payload for testing
  */
 export function createMinimalPushPayload(
-	userId: string,
+	_userId: string,
 	overrides?: Partial<PushPayload>,
 ): PushPayload {
 	return {

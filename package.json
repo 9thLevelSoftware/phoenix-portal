@@ -19,7 +19,7 @@
     "test": "node scripts/run-without-node-webstorage.mjs vitest run",
     "test:watch": "node scripts/run-without-node-webstorage.mjs vitest",
     "test:sync": "cross-env MOCK_EDGE_FUNCTIONS=true node scripts/run-without-node-webstorage.mjs vitest run tests/sync/",
-    "test:sync:live": "cross-env MOCK_EDGE_FUNCTIONS=false SYNC_LIVE_TESTS=true node scripts/run-without-node-webstorage.mjs vitest run tests/sync/",
+    "test:sync:live": "cross-env MOCK_EDGE_FUNCTIONS=false SYNC_LIVE_TESTS=true node scripts/run-without-node-webstorage.mjs vitest run tests/sync/live/",
     "check:edge-functions": "node scripts/check-edge-functions.mjs",
     "optimize:logo": "node scripts/optimize-logo.mjs",
     "analyze": "cross-env ANALYZE=true vite build",

@@ -8,7 +8,7 @@ Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-p
 # Run all sync tests with mocks (CI-safe, no Supabase required)
 npm run test:sync
 
-# Run all sync tests with live Supabase (local or staging only)
+# Run the bounded real-service smoke suite with live Supabase
 npm run test:sync:live
 
 # Run specific test file
@@ -72,7 +72,9 @@ export SUPABASE_SERVICE_ROLE_KEY=your-service-key
 export MOCK_EDGE_FUNCTIONS=false
 export SYNC_LIVE_TESTS=true
 
-# Run tests
+# Run the bounded real-service smoke suite. The comprehensive sync suite stays
+# in mock mode because it includes mock-only assertions such as in-memory
+# broadcast capture and injected failure behavior.
 npm run test:sync:live
 ```
 
@@ -115,6 +117,12 @@ Live testing provides:
 - RLS policy validation
 - Edge Function runtime testing
 - Performance characteristics
+
+The live command deliberately provisions one disposable user for its legacy
+push/pull and strict workout-hierarchy smoke cases. This keeps Auth traffic
+below its burst limits. The comprehensive `npm run test:sync` suite remains the
+contract and fault-injection gate; profile-preference byte, conflict, and
+cross-owner staging coverage is recorded separately in the Task 10 evidence.
 
 ## Adding New Fixtures
 
