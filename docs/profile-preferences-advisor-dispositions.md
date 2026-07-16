@@ -255,14 +255,40 @@ matrix jobs, migration clean-apply, GitGuardian, Cloudflare preview, and
 Supabase Preview. The three Gemini review threads were fixed in `caee554`,
 replied to, independently re-reviewed as clean, and resolved.
 
-The requested `.github/workflows/sync-tests.yml` live-mode dispatch was **not
-run**. The repository has no `SYNC_STAGING_SUPABASE_URL`,
-`SYNC_STAGING_SUPABASE_ANON_KEY`, `SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY`, or
-`SYNC_STAGING_PROJECT_REF` secrets. Its fail-closed allowlist therefore cannot
-be satisfied. No repository secret was added or overwritten, and the workflow
-was not weakened. The draft PR must remain unmerged until an authorized staging
-secret configuration permits that workflow or the release owner explicitly
-accepts the independently executed preview smoke evidence in its place.
+The repository's existing `SUPABASE_ACCESS_TOKEN` and
+`SUPABASE_PROD_PROJECT_REF` secrets were then used only to resolve and prove
+the exact nondefault child preview. The resolver rejected production/default,
+cross-parent, wrong-Git-branch, and unhealthy targets; masked the retrieved
+preview keys before exporting them; and never consumed the production database
+password. The dedicated `SYNC_STAGING_*` credential path remains supported.
+
+The first two live workflow attempts exposed test-harness defects rather than
+function defects. Public signup hit Auth limits; after switching to
+service-role provisioning, the legacy fixture generator still emitted
+non-UUID entity IDs and the live command ran mock-only assertions against the
+real service. Commit `47a18d2` corrected the fixture contract and bounded live
+mode to two real-service smoke cases using one disposable preview user. The
+complete fault-injection and mock-contract suite remains under
+`npm run test:sync` and passed 329 tests with 19 designed skips.
+
+Live workflow run
+[`29506765765`](https://github.com/9thLevelSoftware/phoenix-portal/actions/runs/29506765765)
+then passed on commit `47a18d2`: preview credential resolution, ordinary legacy
+push/pull, strict workout-hierarchy push/pull, always-run cleanup, and artifact
+handling all completed successfully. The logs identified only preview ref
+`otygdxrzhlzooychegzb`; keys remained masked. An independent post-run preview
+query returned zero `sync-test-*@test.local` Auth users, zero matching
+subscriptions, and zero matching local profiles. No production query,
+mutation, function deployment, or test invocation occurred.
+
+The preview integration redeployed all 22 isolated-preview functions at
+version 7 for the final implementation push. `mobile-sync-push` and
+`mobile-sync-pull` are active with their intentional `verify_jwt = false`
+handler-owned authentication boundary. All PR checks for implementation commit
+`47a18d2` passed, including Supabase Preview, both sync Node jobs, Sync
+Validation, clean database apply, Deno, TypeScript, Vitest, Playwright, Biome,
+build, dependency/security, and Cloudflare gates. All review threads remain
+resolved.
 
 ## PR disposition
 
@@ -270,6 +296,6 @@ The feature adds no local, preview, or production advisor error or warning on
 the target table or functions. The migration is deployed and verified in both
 fresh preview and production, including production no-drift evidence. The
 unrelated non-clean baselines above remain visible for follow-up in their own
-scope. The Edge implementation and preview smoke are complete, but PR #88
-remains draft and unmerged because the fail-closed live workflow cannot run
-without the four authorized staging secrets listed above.
+scope. The Edge implementation, preview smoke, fail-closed live workflow, and
+cleanup audit are complete. PR #88 is ready for the final Task 11 production
+release gate.
