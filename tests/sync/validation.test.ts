@@ -356,6 +356,9 @@ describe("Server-Side Validation Invariants", () => {
 		liveIt(
 			"rejects FREE tier user with 402/403 on push — requires live subscription lookup",
 			async () => {
+				const unsubscribedUser = await createTestUser(undefined, undefined, {
+					seedSubscription: false,
+				});
 				// Gate implementation: supabase/functions/_shared/requireSubscription.ts
 				// and wired in mobile-sync-push/index.ts lines 471-472.
 				// Mock harness does not inspect subscription tier.
@@ -364,8 +367,8 @@ describe("Server-Side Validation Invariants", () => {
 				// test user (or leave the row absent — the gate's default behaviour)
 				// then expect status to be 402 or 403. Audit 01 pins this to 'EMBER+'.
 				const result = await callPushEndpoint(
-					createMinimalPushPayload(testUser.id),
-					testUser.accessToken,
+					createMinimalPushPayload(unsubscribedUser.id),
+					unsubscribedUser.accessToken,
 				);
 				expect([402, 403]).toContain(result.status);
 			},
@@ -374,10 +377,13 @@ describe("Server-Side Validation Invariants", () => {
 		liveIt(
 			"rejects FREE tier user with 402/403 on pull — requires live subscription lookup",
 			async () => {
+				const unsubscribedUser = await createTestUser(undefined, undefined, {
+					seedSubscription: false,
+				});
 				// mobile-sync-pull/index.ts enforces the same gate with a 20 req/min
 				// limit. Document: per audit 01, FREE users should be rejected
 				// consistently across both endpoints.
-				const result = await callPullEndpoint(0, testUser.accessToken);
+				const result = await callPullEndpoint(0, unsubscribedUser.accessToken);
 				expect([402, 403]).toContain(result.status);
 			},
 		);
