@@ -179,10 +179,97 @@ source-string search.
 | `edge:mutation-and-first-page-pull-canonical-equality` | Pull real local integration `real mutation canonicals equal isolated first-page pull and absence never creates`, plus first-page exact owner/profile query mapping. |
 | `edge:later-pull-pages-omit-preferences-and-keep-sync-time` | Pull `later page omits preferences and preserves pagination and injected syncTime`, also asserted through the real local integration. |
 
+## Task 10 nonproduction preview verification
+
+Draft PR [#88](https://github.com/9thLevelSoftware/phoenix-portal/pull/88)
+created Supabase preview branch
+`fcd6308c-6daf-412e-8064-535fe0f23309`, project ref
+`otygdxrzhlzooychegzb`, for Git branch
+`codex/profile-preferences-edge-functions`. The preview parent is production
+`ilzlswmatadlnsuxatcv`; the refs were compared before any preview query or
+mutation. The preview is ephemeral, contains no copied production data, and
+reported `ACTIVE_HEALTHY` / `FUNCTIONS_DEPLOYED`.
+
+The GitHub integration deployed branch commit `caee554` as
+`mobile-sync-push` version 2 with `verify_jwt = false` and bundle SHA-256
+`06a6f132a3be2d818981c175c6b2f55d4bd94ae370f5fbfe3a7be76d883e4de2`,
+and `mobile-sync-pull` version 2 with `verify_jwt = false` and bundle SHA-256
+`2ebfb660a4f029789c64adee76a031152fba32382c720e10fde45c63f42d56b9`.
+Normalized SHA-256 comparison of both retrieved entrypoints and every
+transitive shared source file matched the committed branch files. Because the
+GitHub integration had already deployed an exact bundle, no redundant manual
+function deployment/version bump was performed.
+
+The integration version-bumped all 22 functions in this isolated preview from
+1 to 2 on the `caee554` update, including source-unchanged functions. This is
+the same integration behavior previously observed during the database rollout,
+but it affected only the disposable preview. No production function was
+deployed or changed by Task 10.
+
+Fresh local verification after the bounded-body review fix produced:
+
+- push Deno suite: 174/174, including all three real local integrations;
+- pull Deno suite: 67/67, including the real mutation/pull integration;
+- sync suite: 269 passed and 17 skipped;
+- Edge Function check, Deno type checks, focused formatting, and diff checks:
+  PASS.
+
+Two disposable preview users and profiles then exercised the deployed version-2
+functions. The live smoke result was:
+
+- legacy push and pull both returned 200 without preference acceptance fields;
+- all five sections were accepted at revision 1, and the first-page pull
+  canonical wrappers deep-equaled the mutation canonicals;
+- a stale CORE write returned `REVISION_CONFLICT` with the stored canonical;
+- cross-owner mutation returned `UNKNOWN_PROFILE`, and cross-owner pull omitted
+  preferences;
+- pull of the second user's absent row omitted preferences and left the
+  database row count at zero;
+- a later page omitted preferences while retaining the existing numeric
+  `syncTime` contract;
+- a recursively local-only adult key returned `VALIDATION_FAILED`; the stored
+  documents contained no adult, safeword, local-generation, or legacy-migration
+  key;
+- malformed bearer syntax returned 401;
+- complete request bytes 524,288 returned 200 and 524,289 returned 413;
+- a raw section of 262,144 bytes returned 200 and 262,145 returned
+  `SECTION_TOO_LARGE`.
+
+The post-smoke database audit found exactly one owner preference row, zero
+absent-user rows, all five revisions equal to 1, and no local-only key stored.
+Cleanup removed both disposable Auth users and their related subscription and
+profile rows; the cleanup audit returned zero users, subscriptions, and local
+profiles. Preview Edge logs independently recorded the version-2 invocations.
+
+Fresh preview advisor reads reported zero findings mentioning
+`public.local_profile_preferences`,
+`public.local_profile_preference_section_canonical`, or
+`public.mutate_local_profile_preference_section`. The preview is not globally
+clean: the security advisor reported 26 existing findings (1 ERROR, 25 WARN),
+and the performance advisor reported 144 existing findings (103 WARN, 41
+INFO), all outside the target objects.
+
+All PR #88 checks passed after `caee554`, including CI, Biome, TypeScript,
+Vitest, Playwright, production build, Edge Function Deno check, both sync Node
+matrix jobs, migration clean-apply, GitGuardian, Cloudflare preview, and
+Supabase Preview. The three Gemini review threads were fixed in `caee554`,
+replied to, independently re-reviewed as clean, and resolved.
+
+The requested `.github/workflows/sync-tests.yml` live-mode dispatch was **not
+run**. The repository has no `SYNC_STAGING_SUPABASE_URL`,
+`SYNC_STAGING_SUPABASE_ANON_KEY`, `SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY`, or
+`SYNC_STAGING_PROJECT_REF` secrets. Its fail-closed allowlist therefore cannot
+be satisfied. No repository secret was added or overwritten, and the workflow
+was not weakened. The draft PR must remain unmerged until an authorized staging
+secret configuration permits that workflow or the release owner explicitly
+accepts the independently executed preview smoke evidence in its place.
+
 ## PR disposition
 
 The feature adds no local, preview, or production advisor error or warning on
 the target table or functions. The migration is deployed and verified in both
 fresh preview and production, including production no-drift evidence. The
 unrelated non-clean baselines above remain visible for follow-up in their own
-scope. Edge implementation remains a later task.
+scope. The Edge implementation and preview smoke are complete, but PR #88
+remains draft and unmerged because the fail-closed live workflow cannot run
+without the four authorized staging secrets listed above.
