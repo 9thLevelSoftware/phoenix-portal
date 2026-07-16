@@ -131,8 +131,8 @@ export async function cleanupTrackedTestUser(user: TestUser): Promise<void> {
  */
 export async function cleanupAllTestUsers(): Promise<void> {
 	const cleanupPromises = createdTestUsers.map((user) =>
-		cleanupTestUser(user.id).catch((err) => {
-			console.warn(`Failed to cleanup test user ${user.id}:`, err);
+		cleanupTestUser(user.id).catch(() => {
+			console.warn("[Sync Tests] Tracked test user cleanup failed.");
 		}),
 	);
 

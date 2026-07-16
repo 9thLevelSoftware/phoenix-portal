@@ -667,8 +667,8 @@ export async function cleanupTestUser(userId: string): Promise<void> {
 
 		// Delete the auth user
 		await serviceClient.auth.admin.deleteUser(userId);
-	} catch (err) {
-		console.warn(`Error during test user cleanup (${userId}):`, err);
+	} catch {
+		console.warn("[Sync Tests] Test user cleanup failed.");
 		// Don't throw - cleanup is best effort
 	}
 }

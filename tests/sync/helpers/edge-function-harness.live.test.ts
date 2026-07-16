@@ -41,6 +41,7 @@ vi.mock("./mock-edge-functions", async (importOriginal) => {
 import {
 	callPullEndpoint,
 	callPushEndpoint,
+	cleanupTestUser,
 	createMinimalPushPayload,
 	createTestUser,
 } from "./edge-function-harness";
@@ -221,6 +222,25 @@ describe("live test-user provisioning", () => {
 			expect(doubles.adminDeleteUser).toHaveBeenCalledWith(userId);
 		},
 	);
+});
+
+describe("live test-user cleanup logging", () => {
+	it("never logs a user ID or free-form cleanup error", async () => {
+		const sensitiveMessage = "upstream cleanup exposed a sensitive value";
+		doubles.from.mockImplementationOnce(() => {
+			throw new Error(sensitiveMessage);
+		});
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await expect(cleanupTestUser(userId)).resolves.toBeUndefined();
+
+		expect(warning).toHaveBeenCalledWith(
+			"[Sync Tests] Test user cleanup failed.",
+		);
+		const transcript = warning.mock.calls.flat().join(" ");
+		expect(transcript).not.toContain(userId);
+		expect(transcript).not.toContain(sensitiveMessage);
+	});
 });
 
 describe("opt-in live failure diagnostics", () => {
