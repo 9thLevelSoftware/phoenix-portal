@@ -1,25 +1,25 @@
 # Profile Preference Advisor Dispositions
 
-Captured 2026-07-15 at 20:50 EDT for branch `codex/profile-preferences-db` at
-`60b4412`. This record separates the feature-object result from unrelated
-baseline findings. It does not describe the local database or any remote
-environment as globally clean.
+Initially captured 2026-07-15 at 20:50 EDT and updated after PR #86 deployed
+to production at 22:11 EDT. The reviewed PR head was `8b635b9`; the production
+squash/deployment SHA is `1b5d9ca`. This record separates the feature-object
+result from unrelated baseline findings. It does not describe the local
+database or any remote environment as globally clean.
 
 ## Outcome
 
 - New findings on `public.local_profile_preferences`,
   `public.local_profile_preference_section_canonical`, or
-  `public.mutate_local_profile_preference_section`: **0** in the fresh local
-  advisor rerun.
+  `public.mutate_local_profile_preference_section`: **0** in the fresh local,
+  preview, and post-deployment production advisor reruns.
 - Resolved target findings: **0**. No target finding required a fix.
-- Unrelated findings: the local lint error, all 104 local advisor warnings, and
-  all current production findings below are pre-existing and outside this
-  feature's migration/test/documentation file scope.
-- Production deployment boundary: read-only migration inventory returned 82
-  applied migrations and did not include
-  `20260715234034_profile_preferences`. Production advisor output therefore
-  records the current baseline only; it is not post-deployment verification of
-  the feature.
+- Unrelated findings: the local lint error, all 104 local advisor warnings, all
+  199 preview notices, and all current production findings below are outside
+  the target objects and feature migration scope.
+- Production deployment boundary: read-only migration inventory now contains
+  `20260715234034_profile_preferences`, and the repository drift workflow
+  compared 83 local with 83 remote migrations without drift. The production
+  advisor output below is post-deployment verification.
 
 ## Local database lint
 
@@ -46,19 +46,20 @@ Command: `npx --yes supabase@2.81.3 -o json db advisors --local`
 
 ## Staging or preview baseline
 
-Read-only Supabase discovery listed one accessible project (`Project Phoenix`,
-ref `ilzlswmatadlnsuxatcv`) and only its default `main` branch. There was no
-distinct staging project, development branch, or PR preview available at the
-time of capture.
+Closing and reopening PR #86 deleted the stale preview and caused the Supabase
+GitHub integration to create fresh branch `teeahnjwmkhmvpdjswuh` from final PR
+head `8b635b9`. The preview migration pipeline and clean-apply CI succeeded
+before these read-only advisor reruns.
 
 | Environment | Source/command | Finding ID | Severity | Object | Disposition or fix | Rerun result |
 | --- | --- | --- | --- | --- | --- | --- |
-| Staging/preview | Supabase `list_projects` and `list_branches` (read-only) | `baseline-unavailable` | N/A | N/A | No staging/preview environment exists in the accessible project inventory. No advisor evidence is invented or inferred. | Not run: there was no distinct environment to inspect. |
+| Preview | Supabase `get_advisors(security)` (read-only) | `security_definer_view` (1), `function_search_path_mutable` (1), `anon_security_definer_function_executable` (12), and `authenticated_security_definer_function_executable` (12) | 1 ERROR, 25 WARN | Pre-existing objects outside `public.local_profile_preferences` and its two functions | Outside the target migration scope; no target advisor fix required. | Fresh preview rerun reported 26 notices and `TargetFindings=0`. |
+| Preview | Supabase `get_advisors(performance)` (read-only) | `auth_rls_initplan` (72), `multiple_permissive_policies` (30), `duplicate_index` (1), `unindexed_foreign_keys` (9), `unused_index` (60), and `auth_db_connections_absolute` (1) | 103 WARN, 70 INFO | Existing objects outside `public.local_profile_preferences` | Outside the target migration scope; no target advisor fix required. | Fresh preview rerun reported 173 notices and `TargetFindings=0`. |
 
-An isolated migration preview remains required before merge if the PR does not
-provision one.
+The preview is explicitly non-clean because of unrelated existing findings;
+the feature's target table and functions have zero advisor findings.
 
-## Production security baseline
+## Production security post-deployment baseline
 
 Source: read-only Supabase `get_advisors` for project
 `ilzlswmatadlnsuxatcv`, type `security`.
@@ -75,7 +76,7 @@ Source: read-only Supabase `get_advisors` for project
 Production security total: 51 notices (1 ERROR and 50 WARN). This baseline is
 explicitly non-clean.
 
-## Production performance baseline
+## Production performance post-deployment baseline
 
 Source: read-only Supabase `get_advisors` for project
 `ilzlswmatadlnsuxatcv`, type `performance`.
@@ -95,7 +96,8 @@ clean environment.
 
 ## PR disposition
 
-The feature adds no local advisor error or warning on the target table or
-functions. The unrelated baselines above remain visible for follow-up in their
-own scope. Edge Functions and the mobile release remain gated until the
-migration is deployed and verified in an isolated Supabase environment.
+The feature adds no local, preview, or production advisor error or warning on
+the target table or functions. The migration is deployed and verified in both
+fresh preview and production, including production no-drift evidence. The
+unrelated non-clean baselines above remain visible for follow-up in their own
+scope. Edge implementation remains a later task.
