@@ -329,6 +329,12 @@ the intended composite primary key, backfills missing default profiles, and
 reasserts the signup trigger. Fresh replay and 39 pgTAP assertions pass. A
 disposable local legacy-shape simulation proved the transition from one global
 default to per-user defaults and verified a subsequent signup creates its own
-default row. Production smoke and the mobile backend-ready gate remain paused
-until this reconciliation migration passes preview review and deploys through
-the normal migration pipeline.
+default row.
+
+Draft PR #89 created isolated preview `bfgpylzbilgouskczcen`. The preview
+recorded migration `20260716151000`, reported the exact composite primary key
+and all six referencing foreign keys, and allowed two disposable Auth users to
+receive separate `id = 'default'` rows through the real trigger. Cleanup
+audited zero remaining fixture users and local profiles. Production smoke and
+the mobile backend-ready gate remain paused until PR #89 passes final review,
+merges, and deploys through the normal migration pipeline.
