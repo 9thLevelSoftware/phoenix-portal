@@ -25,10 +25,25 @@ import {
   findPushPayloadIncompleteRoutines,
   formatPushPayloadDuplicateError,
   formatPushPayloadIncompleteRoutinesError,
-  formatPushPayloadError,
   pushPayloadSchema,
+  type PushPayloadParsed,
 } from '../_shared/pushPayloadSchema.ts';
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
+import {
+  failPreferenceValidation,
+  type JsonRecord,
+  MAX_MOBILE_SYNC_REQUEST_BYTES,
+  MAX_PROFILE_PREFERENCE_REQUEST_BYTES,
+  parsePreferenceEnvelope,
+  PreferenceValidationError,
+  PUSH_BODY_KEYS,
+  requireKnownKeys,
+  requireRecord,
+  returnedAuthStatus,
+  safeErrorName,
+  scanJsonArrayElementSpans,
+  scanTopLevelJsonObject,
+} from '../_shared/profilePreferenceContract.ts';
 
 /**
  * Per-row rejection record returned to the mobile client when an LWW RPC
@@ -49,8 +64,6 @@ interface LwwUpsertRow {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_PUSH_BODY_BYTES = 10 * 1024 * 1024;
-const PUSH_BODY_TOO_LARGE_ERROR = 'Payload too large. Maximum size is 10MB.';
 
 /**
  * Defense-in-depth: deduplicate rows by a key field before upserting.
@@ -72,66 +85,6 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
     const key = keyFn(rows[i]).toLowerCase();
     return seen.get(key) === i;
   });
-}
-
-type JsonBodyReadResult =
-  | { ok: true; value: unknown }
-  | { ok: false; status: 400 | 413; error: string };
-
-function declaredContentLengthExceedsLimit(req: Request, maxBytes: number): boolean {
-  const contentLength = req.headers.get('content-length');
-  if (!contentLength) return false;
-
-  const declaredBytes = Number.parseInt(contentLength, 10);
-  return Number.isFinite(declaredBytes) && declaredBytes > maxBytes;
-}
-
-async function readJsonBodyWithLimit(
-  req: Request,
-  maxBytes: number,
-): Promise<JsonBodyReadResult> {
-  if (declaredContentLengthExceedsLimit(req, maxBytes)) {
-    return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
-  }
-
-  if (!req.body) {
-    return { ok: false, status: 400, error: 'Invalid JSON body' };
-  }
-
-  const reader = req.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-
-      receivedBytes += value.byteLength;
-      if (receivedBytes > maxBytes) {
-        await reader.cancel().catch(() => undefined);
-        return { ok: false, status: 413, error: PUSH_BODY_TOO_LARGE_ERROR };
-      }
-
-      chunks.push(value);
-    }
-  } catch {
-    return { ok: false, status: 400, error: 'Invalid JSON body' };
-  }
-
-  const bytes = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  try {
-    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) };
-  } catch {
-    return { ok: false, status: 400, error: 'Invalid JSON body' };
-  }
 }
 
 /**
@@ -654,7 +607,60 @@ function safeJsonParse(value: string | null | undefined): unknown {
 // Handler
 // =============================================================================
 
-Deno.serve(async (req) => {
+export interface MobileSyncAuthClient {
+  auth: {
+    getUser(jwt: string): Promise<unknown>;
+  };
+}
+
+export interface MobileSyncPushHandlerDependencies {
+  createAuthClient(authorization: string): MobileSyncAuthClient;
+  createAdminClient(): SupabaseClient;
+  logOperationalFailure(value: { name: string }): void;
+  now?(): number;
+}
+
+function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        {
+          global: { headers: { Authorization: authorization } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        },
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+    },
+    logOperationalFailure(value: { name: string }) {
+      console.error(value);
+    },
+  };
+}
+
+export function validateExistingMobileSyncPushBody(
+  body: JsonRecord,
+): PushPayloadParsed {
+  requireKnownKeys(body, PUSH_BODY_KEYS, 'body');
+  const ordinaryBody = Object.fromEntries(
+    Object.entries(body).filter(([key]) => key !== 'profilePreferenceSections'),
+  );
+  const parseResult = pushPayloadSchema.strict().safeParse(ordinaryBody);
+  if (!parseResult.success) failPreferenceValidation('body');
+  return parseResult.data as PushPayloadParsed;
+}
+
+async function mobileSyncPushHandler(
+  req: Request,
+  dependencies: MobileSyncPushHandlerDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -670,111 +676,172 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (declaredContentLengthExceedsLimit(req, MAX_PUSH_BODY_BYTES)) {
-    return new Response(
-      JSON.stringify({ error: PUSH_BODY_TOO_LARGE_ERROR }),
-      { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
-  }
-
   try {
     // =========================================================================
     // 1. JWT verification — authenticate the mobile user
     // =========================================================================
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    const authorization = req.headers.get('Authorization');
+    const bearerMatch = authorization === null
+      ? null
+      : /^Bearer ([^\s]+)$/.exec(authorization);
+    if (!bearerMatch) {
       return new Response(
-        JSON.stringify({ error: 'Missing Authorization header' }),
+        JSON.stringify({ error: 'Missing bearer token' }),
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+    const userJwt = bearerMatch[1];
 
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-
-    if (authError) {
-      // Auth service itself failed (network, misconfiguration, etc.) — not a
-      // bad token. Return 503 so mobile classifies this as TRANSIENT and retries
-      // rather than treating it as a PERMANENT auth failure.
+    const authOperationalFailure = (error: unknown): Response => {
+      dependencies.logOperationalFailure({
+        name: safeErrorName(error, 'AuthOperationalFailure'),
+      });
       return new Response(
-        JSON.stringify({ error: 'Auth service unavailable' }),
+        JSON.stringify({ error: 'Authentication service unavailable' }),
         { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
-    }
+    };
 
-    if (!user) {
-      // No authError + no user → token is genuinely invalid/expired.
+    const authClient = dependencies.createAuthClient(authorization!);
+    let authResult: unknown;
+    try {
+      authResult = await authClient.auth.getUser(userJwt);
+    } catch (error) {
+      return authOperationalFailure(error);
+    }
+    if (typeof authResult !== 'object' || authResult === null || Array.isArray(authResult)) {
+      return authOperationalFailure({ name: 'AuthUnexpectedResult' });
+    }
+    const authRecord = authResult as JsonRecord;
+    if (!Object.hasOwn(authRecord, 'error') || !Object.hasOwn(authRecord, 'data')) {
+      return authOperationalFailure({ name: 'AuthUnexpectedResult' });
+    }
+    const userError = authRecord.error;
+    if (userError !== null) {
+      const status = returnedAuthStatus(userError);
+      if (status === 400 || status === 401 || status === 403) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid bearer token' }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      return authOperationalFailure(userError);
+    }
+    const userData = authRecord.data;
+    if (typeof userData !== 'object' || userData === null || Array.isArray(userData)) {
+      return authOperationalFailure({ name: 'AuthUnexpectedResult' });
+    }
+    const verifiedUser = (userData as JsonRecord).user;
+    if (
+      typeof verifiedUser !== 'object' || verifiedUser === null || Array.isArray(verifiedUser) ||
+      typeof (verifiedUser as JsonRecord).id !== 'string' ||
+      ((verifiedUser as JsonRecord).id as string).trim().length === 0
+    ) {
+      return authOperationalFailure({ name: 'AuthUnexpectedResult' });
+    }
+    const userId = (verifiedUser as JsonRecord).id as string;
+
+    let originalBodyBytes: Uint8Array;
+    try {
+      originalBodyBytes = new Uint8Array(await req.arrayBuffer());
+    } catch (error) {
+      dependencies.logOperationalFailure({
+        name: safeErrorName(error, 'RequestBodyReadFailure'),
+      });
       return new Response(
-        JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Request unavailable' }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    const rawBodyBytes = originalBodyBytes.byteLength;
+    if (rawBodyBytes > MAX_MOBILE_SYNC_REQUEST_BYTES) {
+      return new Response(
+        JSON.stringify({ error: 'Request too large' }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    const hasLeadingUtf8Bom =
+      originalBodyBytes.length >= 3 &&
+      originalBodyBytes[0] === 0xef &&
+      originalBodyBytes[1] === 0xbb &&
+      originalBodyBytes[2] === 0xbf;
+    if (hasLeadingUtf8Bom) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid sync request' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    let rawBody: string;
+    try {
+      rawBody = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+        .decode(originalBodyBytes);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid sync request' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (rawBody.startsWith('\uFEFF')) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid sync request' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
-    const userId = user.id;
-
-    // =========================================================================
-    // 2. Service-role client for DB operations (bypasses RLS)
-    // =========================================================================
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // =========================================================================
-    // 2a. Rate/subscription gates before payload parsing
-    // =========================================================================
-    // Keep the abuse controls ahead of JSON parsing and schema validation so
-    // malformed payloads still consume the limiter instead of bypassing it.
-    const rateCheck = await checkRateLimit(supabase, {
-      key: 'mobile-sync-push',
-      userId,
-      maxRequests: 10,
-      windowSeconds: 60,
-    }, cors);
-    if (!rateCheck.allowed) return rateCheck.response!;
-
-    const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
-    if (!gate.allowed) return gate.response;
-
-    // =========================================================================
-    // 3. Parse request body with size validation
-    // =========================================================================
-    const rawBody = await readJsonBodyWithLimit(req, MAX_PUSH_BODY_BYTES);
-    if (!rawBody.ok) {
+    let topLevelScan;
+    try {
+      topLevelScan = scanTopLevelJsonObject(rawBody);
+      for (const duplicateKey of topLevelScan.duplicateKeys) {
+        if (PUSH_BODY_KEYS.has(duplicateKey)) {
+          failPreferenceValidation('body.' + duplicateKey);
+        }
+      }
+    } catch (error) {
+      if (!(error instanceof PreferenceValidationError) && !(error instanceof SyntaxError)) {
+        throw error;
+      }
       return new Response(
-        JSON.stringify({ error: rawBody.error }),
-        { status: rawBody.status, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Invalid sync request' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    const preferenceValueSpan = topLevelScan.valueSpans.get('profilePreferenceSections');
+    if (
+      preferenceValueSpan !== undefined &&
+      rawBodyBytes > MAX_PROFILE_PREFERENCE_REQUEST_BYTES
+    ) {
+      return new Response(
+        JSON.stringify({ error: 'Request too large' }),
+        { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
-    // Parse + normalize the payload through a single Zod schema.
-    // This replaces the previous chain of ad-hoc helpers (shape normalizer,
-    // platform normalizer, profile-id validator, inline scalar guards).
-    // On failure, we return a 400 with a precise list of {path, message}
-    // issues so mobile debugging doesn't require reading edge function logs.
-    const rawPayload = rawBody.value;
-
-    // Capture the raw platform value BEFORE the schema transforms it, so the
-    // diagnostic log (when normalized === "unknown") can still tell us what
-    // the mobile client actually sent.
-    const rawPlatformInput =
-      typeof rawPayload === 'object' && rawPayload !== null
-        ? (rawPayload as Record<string, unknown>).platform
-        : undefined;
-
-    const parseResult = pushPayloadSchema.safeParse(rawPayload);
-    if (!parseResult.success) {
+    let body: JsonRecord;
+    let payload: PushPayloadParsed;
+    let preferenceEnvelope;
+    try {
+      const preferenceElementSpans = preferenceValueSpan === undefined
+        ? []
+        : scanJsonArrayElementSpans(rawBody, preferenceValueSpan);
+      body = requireRecord(JSON.parse(rawBody) as unknown, 'body');
+      preferenceEnvelope = parsePreferenceEnvelope(body, {
+        rawBody,
+        preferenceElementSpans,
+      });
+      payload = validateExistingMobileSyncPushBody(body);
+    } catch (error) {
+      if (!(error instanceof PreferenceValidationError) && !(error instanceof SyntaxError)) {
+        throw error;
+      }
       return new Response(
-        JSON.stringify(formatPushPayloadError(parseResult.error)),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Invalid sync request' }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
-    const payload = parseResult.data;
+    // Task 7 consumes this validated envelope after the existing ordinary writes.
+    void preferenceEnvelope;
+
+    const rawPlatformInput = body.platform;
     const normalizedPlatform = payload.platform;
     if (normalizedPlatform === 'unknown') {
       console.warn(
@@ -837,6 +904,21 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Complete ordinary and preference validation is now finished. Only this
+    // boundary may construct a service-role-backed client.
+    const supabase = dependencies.createAdminClient();
+
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-push',
+      userId,
+      maxRequests: 10,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
+    if (!gate.allowed) return gate.response;
 
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
@@ -2550,20 +2632,22 @@ Deno.serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    // Emit full error + stack to function logs so the next regression is
-    // debuggable from Supabase without guessing at the call site.
-    if (err instanceof Error) {
-      console.error('mobile-sync-push error:', err.message, err.stack);
-    } else {
-      console.error('mobile-sync-push error (non-Error):', err);
-    }
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    // All exceptions caught here originate from server-side DB or processing
-    // failures — never from bad client input. Always return 500 so mobile
-    // classifies them as TRANSIENT (retryable) rather than PERMANENT.
+    dependencies.logOperationalFailure({
+      name: safeErrorName(err, 'MobileSyncPushFailure'),
+    });
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+export function createMobileSyncPushHandler(
+  dependencies: MobileSyncPushHandlerDependencies = defaultMobileSyncPushDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => mobileSyncPushHandler(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createMobileSyncPushHandler());
+}
