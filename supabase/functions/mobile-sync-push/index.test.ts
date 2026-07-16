@@ -353,6 +353,57 @@ function rawRequest(
   });
 }
 
+function streamingRawRequest(
+  chunks: Uint8Array[],
+  options: {
+    authorization?: string | null;
+    contentLength?: string;
+    failAfterChunks?: number;
+    onPull?: () => void;
+    onCancel?: () => void;
+  } = {},
+): Request {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const authorization = options.authorization === undefined
+    ? `Bearer ${VALID_JWT}`
+    : options.authorization;
+  if (authorization !== null) headers.set("Authorization", authorization);
+  if (options.contentLength !== undefined) {
+    headers.set("Content-Length", options.contentLength);
+  }
+
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      options.onPull?.();
+      if (
+        options.failAfterChunks !== undefined &&
+        index >= options.failAfterChunks
+      ) {
+        controller.error(
+          Object.assign(new Error("secret"), { name: "BodyStreamError" }),
+        );
+        return;
+      }
+      if (index >= chunks.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(chunks[index]);
+      index += 1;
+    },
+    cancel() {
+      options.onCancel?.();
+    },
+  }, { highWaterMark: 0 });
+
+  return new Request("http://localhost/functions/v1/mobile-sync-push", {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
 function permissiveQuery(
   table: string,
   onWrite: (method: string) => void,
@@ -1582,6 +1633,67 @@ for (const targetBytes of [9_500_000, 9_500_001]) {
     }
   });
 }
+
+Deno.test("valid oversized Content-Length is rejected before reading the body", async () => {
+  const harness = makeHarness();
+  let pulls = 0;
+  const response = await harness.handler(streamingRawRequest(
+    [encoder.encode(JSON.stringify(validPushBody()))],
+    {
+      contentLength: "9500001",
+      onPull: () => pulls += 1,
+    },
+  ));
+
+  assertEquals(response.status, 413);
+  assertEquals(await json(response), { error: "Request too large" });
+  assertEquals(pulls, 0);
+  assertNoPrivilegedActivity(harness);
+});
+
+for (
+  const [label, contentLength] of [
+    ["absent Content-Length", undefined],
+    ["lying Content-Length", "1"],
+  ] as const
+) {
+  Deno.test(`bounded body reader stops an oversized ${label} stream`, async () => {
+    const harness = makeHarness();
+    let pulls = 0;
+    let canceled = false;
+    const response = await harness.handler(streamingRawRequest(
+      [
+        new Uint8Array(4_750_000),
+        new Uint8Array(4_750_001),
+        new Uint8Array([0x7b]),
+      ],
+      {
+        contentLength,
+        onPull: () => pulls += 1,
+        onCancel: () => canceled = true,
+      },
+    ));
+
+    assertEquals(response.status, 413);
+    assertEquals(await json(response), { error: "Request too large" });
+    assertEquals(pulls, 2);
+    assert(canceled);
+    assertNoPrivilegedActivity(harness);
+  });
+}
+
+Deno.test("body stream read failures are sanitized before privileged work", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(streamingRawRequest(
+    [encoder.encode("{")],
+    { failAfterChunks: 1 },
+  ));
+
+  assertEquals(response.status, 503);
+  assertEquals(await json(response), { error: "Request unavailable" });
+  assertEquals(harness.loggerCalls, [[{ name: "BodyStreamError" }]]);
+  assertNoPrivilegedActivity(harness);
+});
 
 Deno.test("ordinary-only request above the preference cap retains legacy capacity", async () => {
   const harness = makeHarness();

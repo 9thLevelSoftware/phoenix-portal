@@ -664,6 +664,66 @@ export function validateExistingMobileSyncPushBody(
   return parseResult.data as PushPayloadParsed;
 }
 
+type BoundedBodyReadResult =
+  | { kind: 'ok'; bytes: Uint8Array }
+  | { kind: 'too_large' }
+  | { kind: 'read_failure'; error: unknown };
+
+function declaredBodyExceedsLimit(req: Request, limit: number): boolean {
+  const contentLength = req.headers.get('content-length');
+  if (contentLength === null || !/^[0-9]+$/.test(contentLength)) return false;
+  return Number(contentLength) > limit;
+}
+
+async function readBoundedRequestBody(
+  req: Request,
+  limit: number,
+): Promise<BoundedBodyReadResult> {
+  if (declaredBodyExceedsLimit(req, limit)) return { kind: 'too_large' };
+  if (req.body === null) return { kind: 'ok', bytes: new Uint8Array() };
+
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = req.body.getReader();
+  } catch (error) {
+    return { kind: 'read_failure', error };
+  }
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (byteLength + value.byteLength > limit) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size decision is already final; cancellation is best-effort.
+        }
+        return { kind: 'too_large' };
+      }
+      chunks.push(value);
+      byteLength += value.byteLength;
+    }
+  } catch (error) {
+    return { kind: 'read_failure', error };
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // A completed/cancelled reader may already have released its lock.
+    }
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { kind: 'ok', bytes };
+}
+
 async function mobileSyncPushHandler(
   req: Request,
   dependencies: MobileSyncPushHandlerDependencies,
@@ -749,25 +809,27 @@ async function mobileSyncPushHandler(
     const verifiedUserId = (verifiedUser as JsonRecord).id as string;
     const userId = verifiedUserId;
 
-    let originalBodyBytes: Uint8Array;
-    try {
-      originalBodyBytes = new Uint8Array(await req.arrayBuffer());
-    } catch (error) {
+    const bodyRead = await readBoundedRequestBody(
+      req,
+      MAX_MOBILE_SYNC_REQUEST_BYTES,
+    );
+    if (bodyRead.kind === 'read_failure') {
       dependencies.logOperationalFailure({
-        name: safeErrorName(error, 'RequestBodyReadFailure'),
+        name: safeErrorName(bodyRead.error, 'RequestBodyReadFailure'),
       });
       return new Response(
         JSON.stringify({ error: 'Request unavailable' }),
         { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
-    const rawBodyBytes = originalBodyBytes.byteLength;
-    if (rawBodyBytes > MAX_MOBILE_SYNC_REQUEST_BYTES) {
+    if (bodyRead.kind === 'too_large') {
       return new Response(
         JSON.stringify({ error: 'Request too large' }),
         { status: 413, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+    const originalBodyBytes = bodyRead.bytes;
+    const rawBodyBytes = originalBodyBytes.byteLength;
     const hasLeadingUtf8Bom =
       originalBodyBytes.length >= 3 &&
       originalBodyBytes[0] === 0xef &&

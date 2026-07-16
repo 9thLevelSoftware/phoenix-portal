@@ -68,8 +68,9 @@ export const MAX_MOBILE_SYNC_REQUEST_BYTES = 9_500_000;
 export const INT32_MIN = -2_147_483_648;
 export const INT32_MAX = 2_147_483_647;
 
+const textEncoder = new TextEncoder();
 const utf8Bytes = (rawJson: string): number =>
-  new TextEncoder().encode(rawJson).byteLength;
+  textEncoder.encode(rawJson).byteLength;
 
 export const PUSH_BODY_KEYS = new Set([
   "deviceId",
@@ -463,21 +464,12 @@ const RFC3339_INSTANT =
 const isLeapYear = (year: number): boolean =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 
-const daysInMonth = (year: number, month: number): number =>
-  [
-    31,
-    isLeapYear(year) ? 29 : 28,
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ][month - 1] ?? 0;
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+const daysInMonth = (year: number, month: number): number => {
+  if (month === 2 && isLeapYear(year)) return 29;
+  return DAYS_IN_MONTH[month - 1] ?? 0;
+};
 
 export const requireRfc3339Instant = (
   value: unknown,
