@@ -292,10 +292,49 @@ resolved.
 
 ## PR disposition
 
-The feature adds no local, preview, or production advisor error or warning on
-the target table or functions. The migration is deployed and verified in both
-fresh preview and production, including production no-drift evidence. The
-unrelated non-clean baselines above remain visible for follow-up in their own
-scope. The Edge implementation, preview smoke, fail-closed live workflow, and
-cleanup audit are complete. PR #88 is ready for the final Task 11 production
-release gate.
+The profile-preference feature added no local, preview, or production advisor
+finding on its target table or functions. PR #88 merged after its Edge
+implementation, preview smoke, fail-closed live workflow, and cleanup audit
+completed. The final mobile backend-ready decision is now governed by the
+Task 11 reconciliation evidence below.
+
+## Task 11 production preflight reconciliation
+
+The main-only production migration-drift workflow
+[`29507101015`](https://github.com/9thLevelSoftware/phoenix-portal/actions/runs/29507101015)
+passed immediately before Edge Function PR #88 merged. Read-only production
+catalog checks confirmed migration `20260715234034`, the preference table,
+both invoker-security functions with empty search paths, and the intended table
+ACL boundary. PR #88 then squash-merged as `49a36eab`; protected production
+deployment run
+[`29507381498`](https://github.com/9thLevelSoftware/phoenix-portal/actions/runs/29507381498)
+passed from `main`. `mobile-sync-push` version 133 and
+`mobile-sync-pull` version 127 became active with handler-owned authentication.
+
+The designated production smoke did not use a real user account. Its first
+disposable public signup failed with HTTP 500 and left no Auth row. Read-only
+catalog diagnosis found a legacy `PRIMARY KEY (id)` on
+`public.local_profiles`, even though migration `20260321120000` declares
+`PRIMARY KEY (user_id, id)`. The existing `handle_new_user()` trigger inserts
+the mobile sentinel `id = 'default'` for every account, so the global key makes
+that trigger fail after one default row. Aggregate-only evidence at discovery
+time was 144 Auth users, 2 local-profile rows, 1 default row, and 143 users
+missing their default parent. No real-user identity or preference payload was
+read.
+
+Migration `20260716151000_fix_local_profiles_composite_primary_key.sql`
+repairs only the recognized legacy key shape. It fails closed on unexpected
+primary-key or foreign-key catalogs, rebinds all six composite foreign keys to
+the intended composite primary key, backfills missing default profiles, and
+reasserts the signup trigger. Fresh replay and 39 pgTAP assertions pass. A
+disposable local legacy-shape simulation proved the transition from one global
+default to per-user defaults and verified a subsequent signup creates its own
+default row.
+
+Draft PR #89 created isolated preview `bfgpylzbilgouskczcen`. The preview
+recorded migration `20260716151000`, reported the exact composite primary key
+and all six referencing foreign keys, and allowed two disposable Auth users to
+receive separate `id = 'default'` rows through the real trigger. Cleanup
+audited zero remaining fixture users and local profiles. Production smoke and
+the mobile backend-ready gate remain paused until PR #89 passes final review,
+merges, and deploys through the normal migration pipeline.

@@ -13,6 +13,24 @@ SELECT has_table(
     'profile preferences table exists'
 );
 
+SELECT diag('database:local-profiles-composite-primary-key');
+
+SELECT is(
+    (
+        SELECT array_agg(attribute.attname::text ORDER BY key_column.ordinality)
+        FROM pg_constraint constraint_row
+        CROSS JOIN LATERAL unnest(constraint_row.conkey)
+            WITH ORDINALITY AS key_column(attnum, ordinality)
+        JOIN pg_attribute attribute
+          ON attribute.attrelid = constraint_row.conrelid
+         AND attribute.attnum = key_column.attnum
+        WHERE constraint_row.conrelid = 'public.local_profiles'::regclass
+          AND constraint_row.contype = 'p'
+    ),
+    ARRAY['user_id', 'id']::text[],
+    'local_profiles primary key is exactly (user_id, id)'
+);
+
 SELECT is(
     (
         SELECT array_agg(attribute.attname::text ORDER BY key_column.ordinality)
