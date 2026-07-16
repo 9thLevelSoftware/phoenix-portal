@@ -77,8 +77,24 @@ npm run test:sync:live
 ```
 
 Live sync tests intentionally refuse the known production Supabase/API hosts.
-Use local Supabase or a disposable staging project with the
-`SYNC_STAGING_SUPABASE_*` GitHub secrets.
+Use local Supabase or an isolated staging/preview project. The GitHub Actions
+workflow supports two fail-closed credential paths:
+
+- Dedicated staging secrets: configure all three of
+  `SYNC_STAGING_SUPABASE_URL`, `SYNC_STAGING_SUPABASE_ANON_KEY`, and
+  `SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY`, plus
+  `SYNC_STAGING_PROJECT_REF`. A partial credential set is rejected.
+- Existing Supabase repository secrets: dispatch the workflow with
+  `use_mocks=false` and `staging_project_ref` set to the expected isolated
+  preview ref. The resolver uses `SUPABASE_ACCESS_TOKEN` and
+  `SUPABASE_PROD_PROJECT_REF` only to list that production project's branch
+  metadata and retrieve the verified preview's API keys. It rejects the
+  production/default/cross-parent/wrong-Git-branch/unhealthy targets, masks the
+  preview keys, and passes them to the live test step through `GITHUB_ENV`.
+
+Both paths require the URL host to exactly match the expected preview ref. The
+production database is never queried or mutated by the resolver or live sync
+tests.
 
 Live testing provides:
 - Real database behavior

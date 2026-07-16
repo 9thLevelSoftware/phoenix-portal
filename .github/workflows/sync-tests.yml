@@ -12,6 +12,7 @@ on:
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
       - '.github/workflows/sync-tests.yml'
+      - 'scripts/resolve-sync-preview.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vitest.config.ts'
@@ -23,6 +24,7 @@ on:
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
       - '.github/workflows/sync-tests.yml'
+      - 'scripts/resolve-sync-preview.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vitest.config.ts'
@@ -36,6 +38,10 @@ on:
         options:
           - 'true'
           - 'false'
+      staging_project_ref:
+        description: 'Expected isolated Supabase preview project ref for live mode'
+        required: false
+        type: string
 
 jobs:
   sync-tests:
@@ -64,53 +70,22 @@ jobs:
         env:
           MOCK_EDGE_FUNCTIONS: 'true'
 
-      - name: Validate Supabase secrets for live mode
+      - name: Resolve Supabase preview credentials for live mode
         if: ${{ github.event.inputs.use_mocks == 'false' }}
-        run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::Required staging Supabase secrets not configured for live tests. Configure SYNC_STAGING_SUPABASE_URL, SYNC_STAGING_SUPABASE_ANON_KEY, and SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY in repository secrets."
-            exit 1
-          fi
-
-          # Defence in depth: explicitly reject known production hosts...
-          case "$SUPABASE_URL" in
-            *"ilzlswmatadlnsuxatcv.supabase.co"*|*"api.phoenix-portal.com"*)
-              echo "::error::Refusing to run live sync tests against a known production Supabase URL."
-              exit 1
-              ;;
-          esac
-
-          # ...then fail closed: the staging URL must match an explicitly
-          # configured staging ref/host allowlist. This prevents a misconfigured
-          # SYNC_STAGING_SUPABASE_URL (e.g. a new prod ref or custom domain) from
-          # silently being treated as staging.
-          if [ -z "$EXPECTED_STAGING_PROJECT_REF" ]; then
-            echo "::error::SYNC_STAGING_PROJECT_REF is not configured. Set it to the staging project ref to enable live tests (fail-closed allowlist)."
-            exit 1
-          fi
-          case "$SUPABASE_URL" in
-            "https://$EXPECTED_STAGING_PROJECT_REF.supabase.co"*|"https://$EXPECTED_STAGING_PROJECT_REF.supabase.in"*)
-              echo "Live sync target matches the configured staging project ref."
-              ;;
-            *)
-              echo "::error::SYNC_STAGING_SUPABASE_URL does not match SYNC_STAGING_PROJECT_REF ($EXPECTED_STAGING_PROJECT_REF). Refusing to run live tests against an unrecognized host."
-              exit 1
-              ;;
-          esac
-          echo "All required staging Supabase secrets are configured"
+        run: node scripts/resolve-sync-preview.mjs
         env:
-          SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
-          EXPECTED_STAGING_PROJECT_REF: ${{ secrets.SYNC_STAGING_PROJECT_REF }}
+          SYNC_STAGING_SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
+          SYNC_STAGING_SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
+          SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_STAGING_PROJECT_REF: ${{ secrets.SYNC_STAGING_PROJECT_REF }}
+          STAGING_PROJECT_REF_INPUT: ${{ inputs.staging_project_ref }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
       - name: Run sync tests (live mode)
         if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: npm run test:sync:live
         env:
-          SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
           MOCK_EDGE_FUNCTIONS: 'false'
           SYNC_LIVE_TESTS: 'true'
 

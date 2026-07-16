@@ -15,7 +15,8 @@
 			"playwright.config.ts",
 			"tests/**/*.ts",
 			"tests/**/*.tsx",
-			"scripts/**/*.ts"
+			"scripts/**/*.ts",
+			"scripts/resolve-sync-preview.mjs"
 		]
 	},
 	"formatter": {
