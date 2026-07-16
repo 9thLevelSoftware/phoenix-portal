@@ -14,7 +14,6 @@ import {
 	getAnonClient,
 	getEdgeFunctionUrl,
 	getServiceClient,
-	getSupabaseConfig,
 } from "./supabase-test-client";
 
 // ============================================================================
@@ -28,6 +27,10 @@ export interface TestUser {
 	id: string;
 	email: string;
 	accessToken: string;
+}
+
+export interface CreateTestUserOptions {
+	seedSubscription?: boolean;
 }
 
 /**
@@ -451,6 +454,7 @@ export interface CustomExerciseResponseDto extends CustomExerciseDto {}
 export async function createTestUser(
 	email?: string,
 	password?: string,
+	options: CreateTestUserOptions = {},
 ): Promise<TestUser> {
 	if (isMockMode()) {
 		// Return mock user when mocks are enabled
@@ -461,33 +465,73 @@ export async function createTestUser(
 		};
 	}
 
-	const client = getAnonClient();
 	const testEmail =
 		email ||
 		`sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
 	const testPassword =
 		password || `TestPass123!${Math.random().toString(36).slice(2)}`;
 
-	const { data, error } = await client.auth.signUp({
-		email: testEmail,
-		password: testPassword,
-	});
+	let serviceClient: ReturnType<typeof getServiceClient> | undefined;
+	let createdUserId: string | undefined;
+	try {
+		const anonClient = getAnonClient();
+		serviceClient = getServiceClient();
+		const { data: created, error: createError } =
+			await serviceClient.auth.admin.createUser({
+				email: testEmail,
+				password: testPassword,
+				email_confirm: true,
+			});
+		createdUserId = created.user?.id;
+		if (createError || !createdUserId) {
+			throw new Error("Admin user creation failed");
+		}
 
-	if (error) {
-		throw new Error(`Failed to create test user: ${error.message}`);
+		if (options.seedSubscription !== false) {
+			const { error: subscriptionError } = await serviceClient
+				.from("subscriptions")
+				.insert({
+					user_id: createdUserId,
+					tier: "EMBER",
+					status: "active",
+					current_period_end: new Date(
+						Date.now() + 30 * 24 * 60 * 60 * 1000,
+					).toISOString(),
+				});
+			if (subscriptionError) {
+				throw new Error("Subscription seeding failed");
+			}
+		}
+
+		const { data: signedIn, error: signInError } =
+			await anonClient.auth.signInWithPassword({
+				email: testEmail,
+				password: testPassword,
+			});
+		if (
+			signInError ||
+			!signedIn.user ||
+			!signedIn.session ||
+			signedIn.user.id !== createdUserId
+		) {
+			throw new Error("Test user sign-in failed");
+		}
+
+		return {
+			id: createdUserId,
+			email: testEmail,
+			accessToken: signedIn.session.access_token,
+		};
+	} catch {
+		if (createdUserId && serviceClient) {
+			try {
+				await serviceClient.auth.admin.deleteUser(createdUserId);
+			} catch {
+				// Best-effort rollback; the workflow's namespace cleanup is the backstop.
+			}
+		}
+		throw new Error("Failed to provision disposable sync test user.");
 	}
-
-	if (!data.user || !data.session) {
-		throw new Error(
-			"User created but no session returned - email confirmation may be required",
-		);
-	}
-
-	return {
-		id: data.user.id,
-		email: testEmail,
-		accessToken: data.session.access_token,
-	};
 }
 
 /**
@@ -622,8 +666,8 @@ export async function cleanupTestUser(userId: string): Promise<void> {
 
 		// Delete the auth user
 		await serviceClient.auth.admin.deleteUser(userId);
-	} catch (err) {
-		console.warn(`Error during test user cleanup (${userId}):`, err);
+	} catch {
+		console.warn("[Sync Tests] Test user cleanup failed.");
 		// Don't throw - cleanup is best effort
 	}
 }
@@ -631,6 +675,29 @@ export async function cleanupTestUser(userId: string): Promise<void> {
 // ============================================================================
 // Edge Function Callers
 // ============================================================================
+
+function safeFailureLabel(value: unknown): string {
+	return typeof value === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(value)
+		? value
+		: "UNAVAILABLE";
+}
+
+function logLiveFailure(
+	endpoint: "push" | "pull",
+	status: number,
+	code: unknown,
+	error: unknown,
+): void {
+	if (process.env.SYNC_LIVE_DEBUG_FAILURES !== "true") {
+		return;
+	}
+	const safeStatus =
+		Number.isInteger(status) && status >= 0 && status <= 599 ? status : 0;
+	console.warn(
+		`[Sync Live Failure] endpoint=${endpoint} status=${safeStatus} ` +
+			`code=${safeFailureLabel(code)} error=${safeFailureLabel(error)}`,
+	);
+}
 
 /**
  * Call the mobile-sync-push Edge Function
@@ -662,6 +729,7 @@ export async function callPushEndpoint(
 		const data = await response.json();
 
 		if (!response.ok) {
+			logLiveFailure("push", response.status, data.code, data.error);
 			return {
 				success: false,
 				status: response.status,
@@ -736,6 +804,7 @@ export async function callPullEndpoint(
 		const data = await response.json();
 
 		if (!response.ok) {
+			logLiveFailure("pull", response.status, data.code, data.error);
 			return {
 				success: false,
 				status: response.status,
@@ -771,14 +840,14 @@ export async function callPullEndpoint(
  * Generate a unique ID for test data
  */
 export function generateTestId(): string {
-	return `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+	return crypto.randomUUID();
 }
 
 /**
  * Create a minimal valid push payload for testing
  */
 export function createMinimalPushPayload(
-	userId: string,
+	_userId: string,
 	overrides?: Partial<PushPayload>,
 ): PushPayload {
 	return {

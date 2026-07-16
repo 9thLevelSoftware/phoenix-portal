@@ -6,7 +6,10 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vitest";
-import type { TestUser } from "./helpers/edge-function-harness";
+import type {
+	CreateTestUserOptions,
+	TestUser,
+} from "./helpers/edge-function-harness";
 import {
 	cleanupTestUser,
 	createTestUser,
@@ -104,8 +107,9 @@ export function validateEnvVars(): string[] {
 export async function createTrackedTestUser(
 	email?: string,
 	password?: string,
+	options: CreateTestUserOptions = {},
 ): Promise<TestUser> {
-	const user = await createTestUser(email, password);
+	const user = await createTestUser(email, password, options);
 	createdTestUsers.push(user);
 	return user;
 }
@@ -127,8 +131,8 @@ export async function cleanupTrackedTestUser(user: TestUser): Promise<void> {
  */
 export async function cleanupAllTestUsers(): Promise<void> {
 	const cleanupPromises = createdTestUsers.map((user) =>
-		cleanupTestUser(user.id).catch((err) => {
-			console.warn(`Failed to cleanup test user ${user.id}:`, err);
+		cleanupTestUser(user.id).catch(() => {
+			console.warn("[Sync Tests] Tracked test user cleanup failed.");
 		}),
 	);
 

@@ -8,7 +8,7 @@ Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-p
 # Run all sync tests with mocks (CI-safe, no Supabase required)
 npm run test:sync
 
-# Run all sync tests with live Supabase (local or staging only)
+# Run the bounded real-service smoke suite with live Supabase
 npm run test:sync:live
 
 # Run specific test file
@@ -72,19 +72,57 @@ export SUPABASE_SERVICE_ROLE_KEY=your-service-key
 export MOCK_EDGE_FUNCTIONS=false
 export SYNC_LIVE_TESTS=true
 
-# Run tests
+# Run the bounded real-service smoke suite. The comprehensive sync suite stays
+# in mock mode because it includes mock-only assertions such as in-memory
+# broadcast capture and injected failure behavior.
 npm run test:sync:live
 ```
 
 Live sync tests intentionally refuse the known production Supabase/API hosts.
-Use local Supabase or a disposable staging project with the
-`SYNC_STAGING_SUPABASE_*` GitHub secrets.
+Use local Supabase or an isolated staging/preview project. The GitHub Actions
+workflow supports two fail-closed credential paths:
+
+- Dedicated staging secrets: configure all three of
+  `SYNC_STAGING_SUPABASE_URL`, `SYNC_STAGING_SUPABASE_ANON_KEY`, and
+  `SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY`, plus
+  `SYNC_STAGING_PROJECT_REF`. A partial credential set is rejected.
+- Existing Supabase repository secrets: dispatch the workflow with
+  `use_mocks=false` and `staging_project_ref` set to the expected isolated
+  preview ref. The resolver uses `SUPABASE_ACCESS_TOKEN` and
+  `SUPABASE_PROD_PROJECT_REF` only to list that production project's branch
+  metadata and retrieve the verified preview's API keys. It rejects the
+  production/default/cross-parent/wrong-Git-branch/unhealthy targets, masks the
+  preview keys, and passes them to the live test step through `GITHUB_ENV`.
+
+Both paths require the URL host to exactly match the expected preview ref. The
+production database is never queried or mutated by the resolver or live sync
+tests.
+
+In live mode, the harness creates disposable `sync-test-*@test.local` users
+with the service client's `auth.admin.createUser` API and confirms their email
+without invoking public sign-up. Each user receives one active EMBER
+subscription with a future period end before the anon client signs in for the
+real user session. Tests that intentionally exercise the absent/FREE gate pass
+`{ seedSubscription: false }`; this exception is used only by the validation
+gate tests and the training-cycle test that inserts its own EMBER row.
+
+The live workflow enables sanitized failure labels for non-OK push/pull
+responses and runs an always-run cleanup after the live test step. Cleanup
+revalidates the exact preview host/ref, paginates through Auth users, and
+deletes only the generated test namespace. It logs only the preview ref and
+deletion count, and fails the job if any required cleanup cannot complete.
 
 Live testing provides:
 - Real database behavior
 - RLS policy validation
 - Edge Function runtime testing
 - Performance characteristics
+
+The live command deliberately provisions one disposable user for its legacy
+push/pull and strict workout-hierarchy smoke cases. This keeps Auth traffic
+below its burst limits. The comprehensive `npm run test:sync` suite remains the
+contract and fault-injection gate; profile-preference byte, conflict, and
+cross-owner staging coverage is recorded separately in the Task 10 evidence.
 
 ## Adding New Fixtures
 

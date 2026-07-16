@@ -124,7 +124,7 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 		const payload = createMinimalPushPayload(testUser.id);
 		payload.sessions = [
 			{
-				id: "fixed-session-for-channel-test",
+				id: "00000000-0000-4000-8000-000000000001",
 				userId: testUser.id,
 				name: null,
 				startedAt: new Date().toISOString(),
