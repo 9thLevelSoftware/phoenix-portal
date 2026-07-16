@@ -355,6 +355,30 @@ export function scanJsonArrayElementSpans(
 const sameJsonValue = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+const sameJsonSemanticValue = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameJsonSemanticValue(value, right[index]));
+  }
+  if (
+    typeof left !== "object" || left === null ||
+    typeof right !== "object" || right === null
+  ) {
+    return false;
+  }
+  const leftRecord = left as JsonRecord;
+  const rightRecord = right as JsonRecord;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) =>
+      Object.hasOwn(rightRecord, key) &&
+      sameJsonSemanticValue(leftRecord[key], rightRecord[key])
+    );
+};
+
 const requireBoolean = (value: unknown, field: string): boolean => {
   if (typeof value !== "boolean") fail(field);
   return value;
@@ -1170,6 +1194,14 @@ export function parseRpcMutationRow(
       : parseInfrastructureCanonical(row.canonical_section, mutation);
     if (row.accepted) {
       if (row.rejection_reason !== null || !canonicalSection) fail("rpcRow");
+      const expectedRevision = mutation.baseRevision + 1;
+      if (
+        !Number.isSafeInteger(expectedRevision) ||
+        serverRevision !== expectedRevision ||
+        !sameJsonSemanticValue(canonicalSection.payload, mutation.payload)
+      ) {
+        fail("rpcRow");
+      }
     } else {
       if (
         typeof row.rejection_reason !== "string" ||
@@ -1177,8 +1209,12 @@ export function parseRpcMutationRow(
       ) {
         fail("rpcRow.rejection_reason");
       }
-      if (row.rejection_reason === "REVISION_CONFLICT" && !canonicalSection) {
-        fail("rpcRow.canonical_section");
+      if (row.rejection_reason === "REVISION_CONFLICT") {
+        if (!canonicalSection && serverRevision !== 0) {
+          fail("rpcRow.canonical_section");
+        }
+      } else if (serverRevision !== 0 || canonicalSection) {
+        fail("rpcRow");
       }
     }
     if (

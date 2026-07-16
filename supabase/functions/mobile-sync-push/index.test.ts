@@ -6,6 +6,7 @@ import {
   parseRpcMutationRow,
   type PortalProfilePreferenceSectionMutation,
   type PreferenceEnvelope,
+  PreferenceInfrastructureError,
   PreferenceValidationError,
   scanJsonArrayElementSpans,
   scanTopLevelJsonObject,
@@ -1634,30 +1635,160 @@ Deno.test("unexpected privileged failure returns generic 500 and logs only a saf
   assertEquals(harness.loggerCalls, [[{ name: "NetworkError" }]]);
 });
 
-Deno.test("RPC parser normalizes one strict accepted canonical row", () => {
+Deno.test("RPC parser accepts exactly the next revision with semantically equal reordered payload", () => {
+  const rawMutation = clone(validCoreMutation());
+  rawMutation.baseRevision = 41;
   const mutation = parsePreferenceMutation(
-    validCoreMutation(),
+    rawMutation,
   ) as PortalProfilePreferenceSectionMutation;
   const result = acceptedRpcResult({
     p_local_profile_id: mutation.localProfileId,
     p_section: mutation.section,
     p_payload: mutation.payload,
-  }, { server_revision: "1" });
+  }, {
+    server_revision: "42",
+    canonical_section: {
+      payload: {
+        weightIncrement: 1,
+        bodyWeightKg: 80,
+        weightUnit: "KG",
+      },
+    },
+  });
 
   assertEquals(parseRpcMutationRow(result.data, mutation), {
     accepted: true,
     rejectionReason: null,
-    serverRevision: 1,
+    serverRevision: 42,
     canonicalSection: {
       localProfileId: "profile-a",
       section: "CORE",
       documentVersion: 1,
-      serverRevision: 1,
+      serverRevision: 42,
       serverUpdatedAt: "2026-07-11T12:00:01.000Z",
-      payload: mutation.payload,
+      payload: {
+        weightIncrement: 1,
+        bodyWeightKg: 80,
+        weightUnit: "KG",
+      },
     },
   });
 });
+
+Deno.test("RPC parser rejects an accepted revision when base plus one is unsafe", () => {
+  const rawMutation = clone(validCoreMutation());
+  rawMutation.baseRevision = Number.MAX_SAFE_INTEGER;
+  const mutation = parsePreferenceMutation(
+    rawMutation,
+  ) as PortalProfilePreferenceSectionMutation;
+  const result = acceptedRpcResult({
+    p_local_profile_id: mutation.localProfileId,
+    p_section: mutation.section,
+    p_payload: mutation.payload,
+  }, { server_revision: Number.MAX_SAFE_INTEGER });
+
+  assertThrows(
+    () => parseRpcMutationRow(result.data, mutation),
+    PreferenceInfrastructureError,
+  );
+});
+
+Deno.test("RPC parser preserves array order in accepted payload equality", () => {
+  const rawMutation = clone(validRackMutation());
+  const items = (rawMutation.payload as Record<string, unknown>).items as Array<
+    Record<string, unknown>
+  >;
+  items.push({ ...items[0], id: "rack-b", sortOrder: 1 });
+  const mutation = parsePreferenceMutation(
+    rawMutation,
+  ) as PortalProfilePreferenceSectionMutation;
+  const reversedPayload = clone(mutation.payload);
+  (reversedPayload.items as unknown[]).reverse();
+  const result = acceptedRpcResult({
+    p_local_profile_id: mutation.localProfileId,
+    p_section: mutation.section,
+    p_payload: mutation.payload,
+  }, { canonical_section: { payload: reversedPayload } });
+
+  assertThrows(
+    () => parseRpcMutationRow(result.data, mutation),
+    PreferenceInfrastructureError,
+  );
+});
+
+Deno.test("RPC parser accepts both revision-zero conflict forms", () => {
+  const rawMutation = clone(validRackMutation());
+  rawMutation.baseRevision = 1;
+  const mutation = parsePreferenceMutation(
+    rawMutation,
+  ) as PortalProfilePreferenceSectionMutation;
+  const nullCanonical = [{
+    accepted: false,
+    rejection_reason: "REVISION_CONFLICT",
+    server_revision: 0,
+    canonical_section: null,
+  }];
+  assertEquals(parseRpcMutationRow(nullCanonical, mutation), {
+    accepted: false,
+    rejectionReason: "REVISION_CONFLICT",
+    serverRevision: 0,
+    canonicalSection: undefined,
+  });
+
+  const defaultCanonical = [{
+    accepted: false,
+    rejection_reason: "REVISION_CONFLICT",
+    server_revision: 0,
+    canonical_section: {
+      localProfileId: mutation.localProfileId,
+      section: mutation.section,
+      documentVersion: 1,
+      serverRevision: 0,
+      serverUpdatedAt: "2026-07-11T12:00:01Z",
+      payload: { version: 1, items: [] },
+    },
+  }];
+  assertEquals(
+    parseRpcMutationRow(defaultCanonical, mutation).canonicalSection,
+    {
+      localProfileId: "profile-a",
+      section: "RACK",
+      documentVersion: 1,
+      serverRevision: 0,
+      serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+      payload: { version: 1, items: [] },
+    },
+  );
+});
+
+for (
+  const reason of [
+    "VALIDATION_FAILED",
+    "UNSUPPORTED_SECTION",
+    "UNSUPPORTED_DOCUMENT_VERSION",
+    "UNKNOWN_PROFILE",
+  ]
+) {
+  Deno.test(`RPC parser accepts strict zero/null ${reason} domain rejection`, () => {
+    const mutation = parsePreferenceMutation(
+      validCoreMutation(),
+    ) as PortalProfilePreferenceSectionMutation;
+    assertEquals(
+      parseRpcMutationRow([{
+        accepted: false,
+        rejection_reason: reason,
+        server_revision: 0,
+        canonical_section: null,
+      }], mutation),
+      {
+        accepted: false,
+        rejectionReason: reason,
+        serverRevision: 0,
+        canonicalSection: undefined,
+      },
+    );
+  });
+}
 
 Deno.test("legacy push response keeps ordinary fields and adds empty preference arrays", async () => {
   const harness = makeHarness();
@@ -1922,6 +2053,31 @@ const malformedRpcCases: Array<{
     expectedName: "PreferenceInfrastructureError",
   },
   {
+    label: "accepted revision zero",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, { server_revision: 0 }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "accepted unrelated safe revision",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, { server_revision: 2 }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "accepted canonical payload differs from submitted payload",
+    behavior: async (_name, args) =>
+      acceptedRpcResult(args, {
+        canonical_section: {
+          payload: {
+            ...(args.p_payload as Record<string, unknown>),
+            bodyWeightKg: 81,
+          },
+        },
+      }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
     label: "canonical revision mismatch",
     behavior: async (_name, args) =>
       acceptedRpcResult(args, {
@@ -1973,7 +2129,33 @@ const malformedRpcCases: Array<{
     expectedName: "PreferenceInfrastructureError",
   },
   {
-    label: "revision conflict without canonical",
+    label: "non-conflict domain rejection with nonzero revision",
+    behavior: async () => ({
+      data: [{
+        accepted: false,
+        rejection_reason: "VALIDATION_FAILED",
+        server_revision: 1,
+        canonical_section: null,
+      }],
+      error: null,
+    }),
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "non-conflict domain rejection with canonical",
+    behavior: async (_name, args) => {
+      const result = acceptedRpcResult(args);
+      const row = (result.data as Array<Record<string, unknown>>)[0];
+      row.accepted = false;
+      row.rejection_reason = "UNKNOWN_PROFILE";
+      row.server_revision = 0;
+      (row.canonical_section as Record<string, unknown>).serverRevision = 0;
+      return result;
+    },
+    expectedName: "PreferenceInfrastructureError",
+  },
+  {
+    label: "nonzero revision conflict without canonical",
     behavior: async () => ({
       data: [{
         accepted: false,
@@ -2253,29 +2435,121 @@ Deno.test({
 
 Deno.test({
   name:
-    "integration: lost acknowledgement retry returns winning canonical without overwrite",
+    "integration: handler lost-ack retry converges committed and failed siblings",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
-      const winningPayload = validCoreMutation().payload as Record<
-        string,
-        unknown
-      >;
-      await realPreferenceRpc(fixture, "CORE", winningPayload);
-      const replay = await realPreferenceRpc(fixture, "CORE", winningPayload);
+      const coreMutation = clone(validCoreMutation());
+      coreMutation.localProfileId = fixture.profileId;
+      const rackMutation = clone(validRackMutation());
+      rackMutation.localProfileId = fixture.profileId;
+      const requestBody = {
+        ...validPushBody(),
+        profilePreferenceSections: [coreMutation, rackMutation],
+      };
+      const authBehavior: AuthBehavior = async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      });
+      const firstAttempt = makeHarness(authBehavior, {
+        rpcBehavior: async (name, args) => {
+          if (args.p_section === "CORE") {
+            return await fixture.admin.rpc(name, args);
+          }
+          return {
+            data: null,
+            error: {
+              name: "InjectedPreferenceFailure",
+              message: "must never be logged",
+            },
+          };
+        },
+      });
+      const failedResponse = await firstAttempt.handler(
+        requestFromBody(requestBody),
+      );
+      const failedBody = await json(failedResponse);
 
-      assertEquals(replay.accepted, false);
-      assertEquals(replay.rejection_reason, "REVISION_CONFLICT");
-      assertEquals(replay.server_revision, 1);
+      assertEquals(failedResponse.status, 503);
+      assertEquals(failedBody, { error: "Sync temporarily unavailable" });
+      assert(!Object.hasOwn(failedBody, "canonicalProfilePreferenceSections"));
+      assert(!Object.hasOwn(failedBody, "profilePreferenceRejections"));
+      assertEquals(firstAttempt.loggerCalls, [[{
+        name: "PreferenceInfrastructureError",
+      }]]);
       assertEquals(
-        (replay.canonical_section as Record<string, unknown>).payload,
-        winningPayload,
+        firstAttempt.adminRpcCalls.filter((call) =>
+          call.name === "mutate_local_profile_preference_section"
+        ).map((call) => ({
+          userId: call.args.p_user_id,
+          section: call.args.p_section,
+        })),
+        [
+          { userId: fixture.ownerId, section: "CORE" },
+          { userId: fixture.ownerId, section: "RACK" },
+        ],
+      );
+      const afterFailure = await fixture.admin.from(
+        "local_profile_preferences",
+      )
+        .select("core_revision,rack_revision,body_weight_kg,equipment_rack")
+        .eq("user_id", fixture.ownerId)
+        .eq("local_profile_id", fixture.profileId)
+        .single();
+      if (afterFailure.error) {
+        throw new Error("lost-ack first-attempt verification query failed");
+      }
+      assertEquals(afterFailure.data.core_revision, 1);
+      assertEquals(afterFailure.data.rack_revision, 0);
+      assertEquals(
+        afterFailure.data.body_weight_kg,
+        (coreMutation.payload as Record<string, unknown>).bodyWeightKg,
+      );
+
+      const retry = makeHarness(authBehavior, {
+        rpcBehavior: async (name, args) => await fixture.admin.rpc(name, args),
+      });
+      const retryResponse = await retry.handler(requestFromBody(requestBody));
+      const retryBody = await json(retryResponse);
+
+      assertEquals(retryResponse.status, 200);
+      assertEquals(retry.loggerCalls, []);
+      assertEquals(retryBody.profilePreferencesAccepted, true);
+      assertEquals(retryBody.canonicalProfilePreferenceSections, [{
+        localProfileId: fixture.profileId,
+        section: "RACK",
+        documentVersion: 1,
+        serverRevision: 1,
+        serverUpdatedAt: (retryBody.canonicalProfilePreferenceSections as Array<
+          Record<string, unknown>
+        >)[0].serverUpdatedAt,
+        payload: rackMutation.payload,
+      }]);
+      const retryRejections = retryBody.profilePreferenceRejections as Array<
+        Record<string, unknown>
+      >;
+      assertEquals(retryRejections.length, 1);
+      assertEquals({
+        localProfileId: retryRejections[0].localProfileId,
+        section: retryRejections[0].section,
+        serverRevision: retryRejections[0].serverRevision,
+        reason: retryRejections[0].reason,
+      }, {
+        localProfileId: fixture.profileId,
+        section: "CORE",
+        serverRevision: 1,
+        reason: "REVISION_CONFLICT",
+      });
+      assertEquals(
+        (retryRejections[0].canonicalSection as Record<string, unknown>)
+          .payload,
+        coreMutation.payload,
       );
       const otherOwner = await realPreferenceRpc(
         fixture,
         "CORE",
-        winningPayload,
+        coreMutation.payload as Record<string, unknown>,
         0,
         fixture.otherUserId,
       );
@@ -2286,17 +2560,18 @@ Deno.test({
         canonical_section: null,
       });
       const stored = await fixture.admin.from("local_profile_preferences")
-        .select("core_revision,body_weight_kg,weight_unit,weight_increment")
+        .select("core_revision,rack_revision,body_weight_kg,equipment_rack")
         .eq("user_id", fixture.ownerId)
         .eq("local_profile_id", fixture.profileId)
         .single();
       if (stored.error) throw new Error("lost-ack verification query failed");
-      assertEquals(stored.data, {
-        core_revision: 1,
-        body_weight_kg: winningPayload.bodyWeightKg,
-        weight_unit: winningPayload.weightUnit,
-        weight_increment: winningPayload.weightIncrement,
-      });
+      assertEquals(stored.data.core_revision, 1);
+      assertEquals(stored.data.rack_revision, 1);
+      assertEquals(
+        stored.data.body_weight_kg,
+        (coreMutation.payload as Record<string, unknown>).bodyWeightKg,
+      );
+      assertEquals(stored.data.equipment_rack, rackMutation.payload);
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
