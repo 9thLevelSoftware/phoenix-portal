@@ -60,6 +60,7 @@ interface AdminCall {
 interface AdminOptions {
   preferenceResult?: { data: unknown; error: unknown };
   preferenceThrow?: unknown;
+  rpcResults?: Record<string, { data: unknown; error: unknown }>;
 }
 
 function createAdminDouble(
@@ -79,6 +80,7 @@ function createAdminDouble(
       });
     }
     if (name === "get_personal_records_excluding_ids") {
+      const result = options.rpcResults?.[name] ?? { data: [], error: null };
       const builder: Record<string, unknown> = {};
       for (const method of ["order", "limit", "or"]) {
         builder[method] = () => builder;
@@ -87,11 +89,16 @@ function createAdminDouble(
         onFulfilled?: (value: unknown) => unknown,
         onRejected?: (reason: unknown) => unknown,
       ) =>
-        Promise.resolve({ data: [], error: null }).then(
+        Promise.resolve(result).then(
           onFulfilled,
           onRejected,
         );
       return builder;
+    }
+    if (name === "get_personal_record_tombstones") {
+      return Promise.resolve(
+        options.rpcResults?.[name] ?? { data: [], error: null },
+      );
     }
     return Promise.resolve({ data: [], error: null });
   };
@@ -132,6 +139,7 @@ function createAdminDouble(
         "limit",
         "in",
         "is",
+        "not",
       ]
     ) {
       builder[method] = (...args: unknown[]) => {
@@ -598,6 +606,68 @@ Deno.test("strict pull parser rejects every oversize parity list before privileg
     assertEquals(harness.adminConstructionCount.value, 0, field);
     assertEquals(harness.adminCalls, [], field);
   }
+});
+
+Deno.test("known personal record tombstones use the bounded RPC and remain tombstones", async () => {
+  const personalRecordId = "00000000-0000-4000-8000-000000000010";
+  const deletedAt = "2026-07-02T12:00:00.000Z";
+  const harness = makeHarness(undefined, {
+    rpcResults: {
+      get_personal_records_excluding_ids: { data: [], error: null },
+      get_personal_record_tombstones: {
+        data: [{
+          id: personalRecordId,
+          user_id: VALID_USER_ID,
+          local_profile_id: VALID_PROFILE_ID,
+          exercise_id: null,
+          exercise_name: "Bench Press",
+          muscle_group: "Chest",
+          record_type: "MAX_WEIGHT",
+          value: 100,
+          weight_kg: 100,
+          reps: 1,
+          workout_phase: "COMBINED",
+          session_id: null,
+          achieved_at: "2026-06-01T12:00:00.000Z",
+          updated_at: deletedAt,
+          deleted_at: deletedAt,
+        }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: Date.parse("2026-07-01T00:00:00.000Z"),
+    knownEntityIds: {
+      ...validPullBody().knownEntityIds as Record<string, unknown>,
+      personalRecordIds: [personalRecordId],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const tombstoneCall = harness.adminCalls.find((call) =>
+    call.kind === "rpc" && call.name === "get_personal_record_tombstones"
+  );
+  assert(tombstoneCall);
+  assertEquals(tombstoneCall.args?.p_known_ids, [personalRecordId]);
+  assertEquals(tombstoneCall.args?.p_last_sync_at, "2026-07-01T00:00:00.000Z");
+  assertEquals(tombstoneCall.args?.p_profile_id, VALID_PROFILE_ID);
+  assertEquals(tombstoneCall.args?.p_limit, 76);
+  assertEquals(
+    harness.adminCalls.find((call) =>
+      call.kind === "from" && call.name === "personal_records" &&
+      call.operations?.some((operation) =>
+        operation.name === "in" && operation.args[0] === "id"
+      )
+    ),
+    undefined,
+  );
+  const personalRecords = body.personalRecords as Record<string, unknown>[];
+  assertEquals(personalRecords.length, 1);
+  assertEquals(personalRecords[0].id, personalRecordId);
+  assertEquals(personalRecords[0].deletedAt, deletedAt);
 });
 
 Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "gte", "lte", "order"];
+	const methods = ["select", "eq", "is", "gte", "lte", "order"];
 	for (const method of methods) {
 		self[method] = vi.fn();
 	}
@@ -47,6 +47,7 @@ describe("challengeProgressOptions", () => {
 		const result = await opts.queryFn?.({} as never);
 
 		expect(fromFn).toHaveBeenCalledWith("personal_records");
+		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
 		expect(result).toEqual({ current: 3, target: 3, percentage: 100 });
 	});
 });

@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "gte", "lt", "in", "limit"];
+	const methods = ["select", "eq", "is", "order", "gte", "lt", "in", "limit"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -201,6 +201,7 @@ describe("strengthProgressOptions", () => {
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
+		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
 		expect(result).toHaveLength(1);
 		expect(result[0].exercise_name).toBe("Bench Press");
 	});

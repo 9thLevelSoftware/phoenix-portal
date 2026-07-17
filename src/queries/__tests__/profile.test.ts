@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: Record<string, unknown>) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "in", "maybeSingle"];
+	const methods = ["select", "eq", "is", "order", "in", "maybeSingle"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -145,12 +145,18 @@ describe("profileStatsOptions", () => {
 			{ started_at: "2026-03-17T08:00:00Z", total_volume: 400 },
 		];
 
+		const sessionsChain = buildChain({ data: sessions, error: null });
+		const personalRecordsChain = buildChain({
+			data: null,
+			error: null,
+			count: 5,
+		});
 		let callCount = 0;
 		fromFn.mockImplementation(() => {
 			callCount++;
-			if (callCount === 1) return buildChain({ data: sessions, error: null });
+			if (callCount === 1) return sessionsChain;
 			// PR count query uses { count: "exact", head: true }
-			return buildChain({ data: null, error: null, count: 5 });
+			return personalRecordsChain;
 		});
 
 		const { profileStatsOptions } = await import("../profile");
@@ -163,6 +169,7 @@ describe("profileStatsOptions", () => {
 		// 3 consecutive days = streak of 3
 		expect(result.bestStreak).toBe(3);
 		expect(result.prCount).toBe(5);
+		expect(personalRecordsChain.is).toHaveBeenCalledWith("deleted_at", null);
 	});
 
 	it("returns zeros when user has no sessions", async () => {

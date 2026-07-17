@@ -104,6 +104,7 @@ export function challengeProgressOptions(
 						.from("personal_records")
 						.select("id")
 						.eq("user_id", userId)
+						.is("deleted_at", null)
 						.gte("achieved_at", startDate)
 						.lte("achieved_at", endDate);
 					if (error) throw error;

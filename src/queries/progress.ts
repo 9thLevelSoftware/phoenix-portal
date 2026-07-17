@@ -74,7 +74,8 @@ export function progressionWorkbenchOptions(
 			let recordsQuery = supabase
 				.from("personal_records")
 				.select(PERSONAL_RECORD_WITH_CATALOG_SELECT)
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.is("deleted_at", null);
 
 			if (profileId) {
 				progressQuery = progressQuery.eq("local_profile_id", profileId);

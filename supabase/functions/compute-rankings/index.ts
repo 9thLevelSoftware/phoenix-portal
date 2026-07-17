@@ -553,6 +553,7 @@ async function computeWeeklyRankings(
       .from('personal_records')
       .select('user_id')
       .in('user_id', eligibleUserIds)
+      .is('deleted_at', null)
       .gte('achieved_at', `${start}T00:00:00Z`)
       .lte('achieved_at', `${end}T23:59:59Z`);
 

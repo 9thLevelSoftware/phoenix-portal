@@ -809,6 +809,7 @@ export type Database = {
 			personal_records: {
 				Row: {
 					achieved_at: string;
+					deleted_at: string | null;
 					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
@@ -827,6 +828,7 @@ export type Database = {
 				};
 				Insert: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
@@ -845,6 +847,7 @@ export type Database = {
 				};
 				Update: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;
@@ -2386,26 +2389,60 @@ export type Database = {
 					user_value: number;
 				}[];
 			};
-			get_personal_records_excluding_ids: {
+			get_personal_record_tombstones: {
 				Args: {
-					p_known_ids?: number[];
+					p_cursor_id?: string;
+					p_cursor_updated_at?: string;
+					p_known_ids?: string[];
+					p_last_sync_at?: string;
+					p_limit?: number;
 					p_profile_id?: string;
 					p_user_id: string;
 				};
 				Returns: {
 					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
 					exercise_name: string;
-					id: number;
-					local_profile_id: string;
+					id: string;
+					local_profile_id: string | null;
 					muscle_group: string;
+					previous_value: number | null;
 					record_type: string;
-					reps: number;
-					session_id: string;
+					reps: number | null;
+					session_id: string | null;
+					unit: string;
 					updated_at: string;
 					user_id: string;
 					value: number;
-					weight_kg: number;
-					workout_phase: string;
+					weight_kg: number | null;
+					workout_phase: string | null;
+				}[];
+			};
+			get_personal_records_excluding_ids: {
+				Args: {
+					p_known_ids?: string[];
+					p_profile_id?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					muscle_group: string;
+					previous_value: number | null;
+					record_type: string;
+					reps: number | null;
+					session_id: string | null;
+					unit: string;
+					updated_at: string;
+					user_id: string;
+					value: number;
+					weight_kg: number | null;
+					workout_phase: string | null;
 				}[];
 			};
 			get_pr_count_rankings: {
