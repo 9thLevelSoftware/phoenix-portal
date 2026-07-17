@@ -509,6 +509,7 @@ Deno.serve(async (req) => {
       .from('personal_records')
       .select('exercise_name, record_type, workout_phase, value, previous_value')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .gte('achieved_at', currentStart.toISOString())
       .order('achieved_at', { ascending: false });
 

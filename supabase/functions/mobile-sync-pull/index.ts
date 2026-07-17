@@ -1316,27 +1316,16 @@ async function mobileSyncPullHandler(
         // back to that same known ID or the client would retain it forever.
         let knownTombstones: Record<string, unknown>[] = [];
         if (knownPRIds.length > 0) {
-          let tombstoneQuery = supabase
-            .from('personal_records')
-            .select('*')
-            .eq('user_id', userId)
-            .in('id', knownPRIds)
-            .not('deleted_at', 'is', null)
-            .gt('updated_at', lastSyncISO)
-            .order('updated_at', { ascending: true })
-            .order('id', { ascending: true })
-            .limit(remainingPageSize + 1);
-          if (profileId) {
-            tombstoneQuery = tombstoneQuery.or(
-              buildLocalProfileOrNullPostgrestFilter(profileId),
-            );
-          }
-          if (cursorUpdatedAt && cursorId) {
-            tombstoneQuery = tombstoneQuery.or(
-              `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`,
-            );
-          }
-          const { data: tombstoneData, error: tombstoneError } = await tombstoneQuery;
+          const { data: tombstoneData, error: tombstoneError } = await supabase
+            .rpc('get_personal_record_tombstones', {
+              p_user_id: userId,
+              p_known_ids: knownPRIds,
+              p_last_sync_at: lastSyncISO,
+              p_profile_id: profileId,
+              p_cursor_updated_at: cursorUpdatedAt,
+              p_cursor_id: cursorId,
+              p_limit: remainingPageSize + 1,
+            });
           if (tombstoneError) return readFailure('personal-record tombstones', tombstoneError, cors);
           knownTombstones = (tombstoneData as Record<string, unknown>[]) ?? [];
         }

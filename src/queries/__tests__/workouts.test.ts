@@ -11,6 +11,7 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 	const methods = [
 		"select",
 		"eq",
+		"is",
 		"order",
 		"limit",
 		"gte",
@@ -282,6 +283,7 @@ describe("recentPRsOptions", () => {
 		const { recentPRsOptions } = await import("../workouts");
 		const opts = recentPRsOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
+		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
 		expect(result[0].value).toBe(200); // doubled
 		expect(result[0].previous_value).toBe(180); // doubled
 		expect(result[0].achieved_at).toBeInstanceOf(Date);

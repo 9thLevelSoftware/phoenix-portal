@@ -574,7 +574,9 @@ export function buildDedicatedPersonalRecordRows(
 		};
 
 		if (record.id) row.id = record.id;
-		if (record.updatedAt) row.updated_at = record.updatedAt;
+		if (record.updatedAt ?? record.deletedAt) {
+			row.updated_at = record.updatedAt ?? record.deletedAt ?? undefined;
+		}
 		return row;
 	});
 }

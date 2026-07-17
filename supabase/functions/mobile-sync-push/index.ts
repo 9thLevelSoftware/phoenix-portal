@@ -1959,7 +1959,12 @@ async function mobileSyncPushHandler(
         if (!dedicatedPrsPresent || !row.id) return true;
         const existing = existingPrsById.get(row.id);
         if (!existing) return true;
-        const incomingUpdatedAt = Date.parse(row.updated_at ?? row.achieved_at);
+        // Once a UUID has been tombstoned, active writes cannot resurrect it,
+        // even if a stale client assigns the write a later timestamp.
+        if (existing.deleted_at != null && row.deleted_at == null) return false;
+        const incomingUpdatedAt = Date.parse(
+          row.updated_at ?? row.deleted_at ?? row.achieved_at,
+        );
         const storedUpdatedAt = Date.parse(
           String(existing.updated_at ?? existing.achieved_at),
         );

@@ -257,6 +257,23 @@ describe("buildDedicatedPersonalRecordRows", () => {
 		]);
 	});
 
+	it("uses deletedAt as the LWW timestamp when updatedAt is absent", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					id: "11111111-1111-4111-8111-111111111111",
+					exerciseName: "Bench Press",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+					deletedAt: "2026-04-21T12:30:00.000Z",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+
+		expect(out[0]?.updated_at).toBe("2026-04-21T12:30:00.000Z");
+	});
+
 	it("uses volume as the value for MAX_VOLUME records when value is absent", () => {
 		const out = buildDedicatedPersonalRecordRows(
 			[

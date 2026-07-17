@@ -407,9 +407,14 @@ function streamingRawRequest(
 function permissiveQuery(
   table: string,
   onWrite: (method: string) => void,
+  terminalResult: { data: unknown; error: unknown; count?: number } = {
+    data: [],
+    error: null,
+    count: 0,
+  },
 ): Record<string, unknown> {
-  const defaultResult = { data: [], error: null, count: 0 };
   const query: Record<string, unknown> = {};
+  let ownershipProbe = false;
   const chainMethods = [
     "select",
     "eq",
@@ -429,6 +434,7 @@ function permissiveQuery(
   ];
   for (const method of chainMethods) {
     query[method] = (..._args: unknown[]) => {
+      if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method);
       }
@@ -452,7 +458,10 @@ function permissiveQuery(
   query.then = (
     resolve: (value: unknown) => unknown,
     reject?: (reason: unknown) => unknown,
-  ) => Promise.resolve(defaultResult).then(resolve, reject);
+  ) =>
+    Promise.resolve(
+      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+    ).then(resolve, reject);
   return query;
 }
 
@@ -470,7 +479,11 @@ interface PushHarness {
 
 function makeHarness(
   authBehavior: AuthBehavior = async () => VALID_AUTH_RESULT,
-  options: { channelError?: unknown; rpcBehavior?: RpcBehavior } = {},
+  options: {
+    channelError?: unknown;
+    rpcBehavior?: RpcBehavior;
+    personalRecordsResult?: { data: unknown; error: unknown };
+  } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
   const getUserJwts: string[] = [];
@@ -488,7 +501,7 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
-      });
+      }, table === "personal_records" ? options.personalRecordsResult : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -1926,6 +1939,90 @@ Deno.test("legacy push response keeps ordinary fields and adds empty preference 
       call.name === "mutate_local_profile_preference_section"
     ),
     [],
+  );
+});
+
+Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
+  const personalRecordId = "00000000-0000-4000-8000-000000000040";
+  const harness = makeHarness(undefined, {
+    personalRecordsResult: {
+      data: [{
+        id: personalRecordId,
+        user_id: VALID_USER_ID,
+        local_profile_id: null,
+        exercise_id: null,
+        exercise_name: "Bench Press",
+        achieved_at: "2026-06-01T12:00:00.000Z",
+        record_type: "MAX_WEIGHT",
+        workout_phase: "COMBINED",
+        updated_at: "2026-07-02T12:00:00.000Z",
+        deleted_at: "2026-07-02T12:00:00.000Z",
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: personalRecordId,
+      exerciseName: "Bench Press",
+      recordType: "MAX_WEIGHT",
+      value: 105,
+      achievedAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-07-03T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.personalRecordsInserted, 0);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "personal_records"
+    ),
+    [],
+  );
+});
+
+Deno.test("deletedAt is the LWW timestamp when a tombstone omits updatedAt", async () => {
+  const personalRecordId = "00000000-0000-4000-8000-000000000041";
+  const harness = makeHarness(undefined, {
+    personalRecordsResult: {
+      data: [{
+        id: personalRecordId,
+        user_id: VALID_USER_ID,
+        local_profile_id: null,
+        exercise_id: null,
+        exercise_name: "Squat",
+        achieved_at: "2026-06-01T12:00:00.000Z",
+        record_type: "MAX_WEIGHT",
+        workout_phase: "COMBINED",
+        updated_at: "2026-07-01T12:00:00.000Z",
+        deleted_at: null,
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: personalRecordId,
+      exerciseName: "Squat",
+      recordType: "MAX_WEIGHT",
+      value: 150,
+      achievedAt: "2026-06-01T12:00:00.000Z",
+      deletedAt: "2026-07-02T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.personalRecordsInserted, 1);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "personal_records"
+    ),
+    [{ table: "personal_records", method: "upsert" }],
   );
 });
 

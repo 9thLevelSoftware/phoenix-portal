@@ -69,7 +69,8 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 			let prQuery = supabase
 				.from("personal_records")
 				.select("id", { count: "exact", head: true })
-				.eq("user_id", userId);
+				.eq("user_id", userId)
+				.is("deleted_at", null);
 
 			if (profileId) {
 				prQuery = prQuery.eq("local_profile_id", profileId);
