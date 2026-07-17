@@ -106,6 +106,40 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.personalRecords).toEqual([]);
 	});
 
+	it("accepts an optional personal-record tombstone timestamp", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			personalRecords: [
+				{
+					id: UUID,
+					exerciseName: "Bench Press",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+					deletedAt: "2026-04-21T12:30:00.000Z",
+				},
+			],
+		});
+		expect(parsed.personalRecords[0]?.deletedAt).toBe(
+			"2026-04-21T12:30:00.000Z",
+		);
+	});
+
+	it("rejects malformed personal-record tombstone timestamps", () => {
+		expect(() =>
+			pushPayloadSchema.parse({
+				deviceId: "d1",
+				platform: "android",
+				personalRecords: [
+					{
+						exerciseName: "Bench Press",
+						achievedAt: "2026-04-20T12:00:00.000Z",
+						deletedAt: "not-a-date",
+					},
+				],
+			}),
+		).toThrow();
+	});
+
 	it("rejects non-array values in array positions", () => {
 		// arrayOf() intentionally rejects non-array, non-null values to prevent
 		// the client from silently losing sync data (see pushPayloadSchema.ts comment)

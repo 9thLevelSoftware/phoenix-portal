@@ -3,7 +3,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	for (const method of ["select", "eq", "order"]) {
+	for (const method of ["select", "eq", "is", "order"]) {
 		self[method] = vi.fn();
 	}
 	for (const method of Object.keys(self)) {
@@ -64,6 +64,7 @@ describe("progressionWorkbenchOptions", () => {
 			"local_profile_id",
 			"profile-1",
 		);
+		expect(recordsChain.is).toHaveBeenCalledWith("deleted_at", null);
 		expect(result.progressRows).toHaveLength(1);
 		expect(result.records).toEqual([]);
 	});

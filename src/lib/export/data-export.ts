@@ -103,7 +103,11 @@ export async function exportAllUserData(
 		await addTable(
 			"personal_records",
 			"records",
-			supabase.from("personal_records").select("*").eq("user_id", userId),
+			supabase
+				.from("personal_records")
+				.select("*")
+				.eq("user_id", userId)
+				.is("deleted_at", null),
 		);
 
 		await addTable(

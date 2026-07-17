@@ -1912,7 +1912,7 @@ async function mobileSyncPushHandler(
       const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
       const { data: existingPrs, error: existingPrErr } = await supabase
         .from('personal_records')
-        .select('id, local_profile_id, exercise_id, exercise_name, achieved_at, record_type, workout_phase')
+        .select('id, local_profile_id, exercise_id, exercise_name, achieved_at, record_type, workout_phase, updated_at, deleted_at')
         .eq('user_id', userId)
         .in('achieved_at', achievedAtValues);
       if (existingPrErr) {
@@ -1947,8 +1947,38 @@ async function mobileSyncPushHandler(
         return true;
       });
 
-      if (dedupedPrRows.length > 0) {
-        const writePersonalRecords = (rows: typeof dedupedPrRows) => dedicatedPrsPresent
+      // Dedicated records have stable UUIDs, so enforce the tombstone-aware
+      // last-write-wins rule before the ordinary Supabase upsert. An equal-time
+      // tombstone wins to make a delete monotonic rather than resurrectable.
+      const existingPrsById = new Map(
+        (existingPrs ?? [])
+          .filter((row) => typeof row.id === 'string')
+          .map((row) => [row.id as string, row]),
+      );
+      const prRowsToWrite = dedupedPrRows.filter((row) => {
+        if (!dedicatedPrsPresent || !row.id) return true;
+        const existing = existingPrsById.get(row.id);
+        if (!existing) return true;
+        // Once a UUID has been tombstoned, active writes cannot resurrect it,
+        // even if a stale client assigns the write a later timestamp.
+        if (existing.deleted_at != null && row.deleted_at == null) return false;
+        const incomingUpdatedAt = Date.parse(
+          row.updated_at ?? row.deleted_at ?? row.achieved_at,
+        );
+        const storedUpdatedAt = Date.parse(
+          String(existing.updated_at ?? existing.achieved_at),
+        );
+        if (Number.isNaN(incomingUpdatedAt) || Number.isNaN(storedUpdatedAt)) {
+          return false;
+        }
+        if (incomingUpdatedAt !== storedUpdatedAt) {
+          return incomingUpdatedAt > storedUpdatedAt;
+        }
+        return row.deleted_at != null && existing.deleted_at == null;
+      });
+
+      if (prRowsToWrite.length > 0) {
+        const writePersonalRecords = (rows: typeof prRowsToWrite) => dedicatedPrsPresent
           ? supabase
               .from('personal_records')
               .upsert(rows, { onConflict: 'id' })
@@ -1956,16 +1986,16 @@ async function mobileSyncPushHandler(
               .from('personal_records')
               .insert(rows);
 
-        const { error: prErr } = await writePersonalRecords(dedupedPrRows);
+        const { error: prErr } = await writePersonalRecords(prRowsToWrite);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {
           const profilePartition = shouldValidatePersonalRecordProfileIds
             ? partitionPersonalRecordRowsByLocalProfileValidity(
-                dedupedPrRows,
+                prRowsToWrite,
                 validLocalProfileIdsForPush,
               )
             : {
                 invalidProfileRows: [],
-                rowsWithInvalidProfilesNulled: dedupedPrRows,
+                rowsWithInvalidProfilesNulled: prRowsToWrite,
               };
 
           // Issue #532: if the local_profile_id partition is a no-op (no
@@ -2020,7 +2050,7 @@ async function mobileSyncPushHandler(
         } else if (prErr) {
           throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
         } else {
-          personalRecordsInserted = dedupedPrRows.length;
+          personalRecordsInserted = prRowsToWrite.length;
         }
       }
     }

@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "in", "order"];
+	const methods = ["select", "eq", "in", "is", "order"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -164,11 +164,12 @@ describe("personalRecordsOptions", () => {
 		expect(result).toEqual([]);
 	});
 
-	it("queries the personal_records table", async () => {
+	it("queries only active personal records", async () => {
 		chain = buildChain({ data: [], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
 		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("personal_records");
+		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
 	});
 });
