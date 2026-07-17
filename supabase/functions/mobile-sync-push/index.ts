@@ -1948,6 +1948,27 @@ async function mobileSyncPushHandler(
       });
 
       if (dedupedPrRows.length > 0) {
+        // Dedicated rows have stable UUIDs, so route them through the portal LWW
+        // gate. The database function makes a same-timestamp tombstone win and
+        // returns acceptance status without allowing stale clients to resurrect it.
+        if (
+          dedicatedPrsPresent &&
+          SYNC_LWW_ENABLED &&
+          dedupedPrRows.every((row) => typeof row.id === 'string' && row.id.length > 0)
+        ) {
+          const lwwRows = dedupedPrRows.map((row) => ({
+            ...row,
+            updated_at: row.updated_at ?? new Date().toISOString(),
+          }));
+          const { data: lwwData, error: lwwError } = await supabase.rpc(
+            'upsert_personal_records_lww',
+            { p_rows: lwwRows },
+          );
+          if (lwwError) throw new Error(`personal_records LWW RPC failed: ${lwwError.message}`);
+          personalRecordsInserted = ((lwwData ?? []) as LwwUpsertRow[])
+            .filter((row) => row.accepted)
+            .length;
+        } else {
         const writePersonalRecords = (rows: typeof dedupedPrRows) => dedicatedPrsPresent
           ? supabase
               .from('personal_records')
@@ -2021,6 +2042,7 @@ async function mobileSyncPushHandler(
           throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
         } else {
           personalRecordsInserted = dedupedPrRows.length;
+        }
         }
       }
     }

@@ -55,6 +55,7 @@ export interface PersonalRecordRow {
 	session_id?: string | null;
 	achieved_at: string;
 	updated_at?: string;
+	deleted_at?: string | null;
 	workout_phase: string;
 }
 
@@ -73,6 +74,7 @@ export interface DedicatedPersonalRecordInput {
 	sessionId?: string | null;
 	achievedAt?: string | null;
 	updatedAt?: string | null;
+	deletedAt?: string | null;
 	localProfileId?: string | null;
 	workoutMode?: string | null;
 }
@@ -572,6 +574,7 @@ export function buildDedicatedPersonalRecordRows(
 
 		if (record.id) row.id = record.id;
 		if (record.updatedAt) row.updated_at = record.updatedAt;
+		if (record.deletedAt !== undefined) row.deleted_at = record.deletedAt;
 		return row;
 	});
 }

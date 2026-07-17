@@ -255,6 +255,29 @@ describe("buildDedicatedPersonalRecordRows", () => {
 		]);
 	});
 
+	it("preserves a deletion tombstone for the LWW database gate", () => {
+		const deletedAt = "2026-07-16T21:00:00.000Z";
+		const [row] = buildDedicatedPersonalRecordRows(
+			[
+				{
+					id: "11111111-1111-4111-8111-111111111111",
+					exerciseName: "Bench Press",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					workoutPhase: "COMBINED",
+					achievedAt: "2026-07-16T20:00:00.000Z",
+					updatedAt: deletedAt,
+					deletedAt,
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+
+		expect(row?.deleted_at).toBe(deletedAt);
+		expect(row?.updated_at).toBe(deletedAt);
+	});
+
 	it("uses volume as the value for MAX_VOLUME records when value is absent", () => {
 		const out = buildDedicatedPersonalRecordRows(
 			[

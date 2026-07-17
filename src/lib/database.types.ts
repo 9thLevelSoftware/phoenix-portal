@@ -809,6 +809,7 @@ export type Database = {
 			personal_records: {
 				Row: {
 					achieved_at: string;
+					deleted_at: string | null;
 					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
@@ -827,6 +828,7 @@ export type Database = {
 				};
 				Insert: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
@@ -845,6 +847,7 @@ export type Database = {
 				};
 				Update: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;

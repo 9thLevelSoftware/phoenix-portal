@@ -1364,6 +1364,7 @@ async function mobileSyncPullHandler(
         sessionId: pr.session_id,
         achievedAt: pr.achieved_at,
         updatedAt: pr.updated_at,
+        deletedAt: pr.deleted_at ?? null,
       }));
 
       remainingPageSize -= personalRecordDtos.length;
