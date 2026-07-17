@@ -447,6 +447,7 @@ const personalRecordSchema = z.object({
 	sessionId: nullableField(uuid),
 	achievedAt: datetimeWithDefault(() => new Date().toISOString()),
 	updatedAt: nullableDatetime(),
+	deletedAt: nullableDatetime(),
 	localProfileId: localProfileIdSchema.nullable().optional(),
 	// Accepted for wire compatibility; personal_records has no workout_mode
 	// column, so the push handler can only preserve this through session_id.

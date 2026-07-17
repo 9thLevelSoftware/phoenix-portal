@@ -228,6 +228,7 @@ describe("buildDedicatedPersonalRecordRows", () => {
 					sessionId: "22222222-2222-4222-8222-222222222222",
 					achievedAt: "2026-04-21T12:00:00.000Z",
 					updatedAt: "2026-04-21T12:30:00.000Z",
+					deletedAt: "2026-04-21T12:31:00.000Z",
 				},
 			],
 			USER_ID,
@@ -250,6 +251,7 @@ describe("buildDedicatedPersonalRecordRows", () => {
 				session_id: "22222222-2222-4222-8222-222222222222",
 				achieved_at: "2026-04-21T12:00:00.000Z",
 				updated_at: "2026-04-21T12:30:00.000Z",
+				deleted_at: "2026-04-21T12:31:00.000Z",
 				workout_phase: "CONCENTRIC",
 			},
 		]);

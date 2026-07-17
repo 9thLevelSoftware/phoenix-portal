@@ -1309,7 +1309,47 @@ async function mobileSyncPullHandler(
 
         const { data, error } = await prQuery;
         if (error) return readFailure('personal records', error, cors);
-        personalRecordsData = (data as Record<string, unknown>[]) ?? [];
+        const unseenRows = (data as Record<string, unknown>[]) ?? [];
+
+        // The parity RPC intentionally excludes IDs the device already has.
+        // That is correct for active rows, but a later tombstone must be sent
+        // back to that same known ID or the client would retain it forever.
+        let knownTombstones: Record<string, unknown>[] = [];
+        if (knownPRIds.length > 0) {
+          let tombstoneQuery = supabase
+            .from('personal_records')
+            .select('*')
+            .eq('user_id', userId)
+            .in('id', knownPRIds)
+            .not('deleted_at', 'is', null)
+            .gt('updated_at', lastSyncISO)
+            .order('updated_at', { ascending: true })
+            .order('id', { ascending: true })
+            .limit(remainingPageSize + 1);
+          if (profileId) {
+            tombstoneQuery = tombstoneQuery.or(
+              buildLocalProfileOrNullPostgrestFilter(profileId),
+            );
+          }
+          if (cursorUpdatedAt && cursorId) {
+            tombstoneQuery = tombstoneQuery.or(
+              `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`,
+            );
+          }
+          const { data: tombstoneData, error: tombstoneError } = await tombstoneQuery;
+          if (tombstoneError) return readFailure('personal-record tombstones', tombstoneError, cors);
+          knownTombstones = (tombstoneData as Record<string, unknown>[]) ?? [];
+        }
+        const rowsById = new Map<string, Record<string, unknown>>();
+        for (const row of [...unseenRows, ...knownTombstones]) {
+          const id = typeof row.id === 'string' ? row.id : null;
+          if (id) rowsById.set(id, row);
+        }
+        personalRecordsData = [...rowsById.values()].sort((left, right) => {
+          const leftTime = String(left.updated_at ?? '');
+          const rightTime = String(right.updated_at ?? '');
+          return leftTime.localeCompare(rightTime) || String(left.id).localeCompare(String(right.id));
+        });
       } else {
         // Legacy timestamp-based mode
         let personalRecordsQuery = supabase
@@ -1364,6 +1404,7 @@ async function mobileSyncPullHandler(
         sessionId: pr.session_id,
         achievedAt: pr.achieved_at,
         updatedAt: pr.updated_at,
+        deletedAt: pr.deleted_at ?? null,
       }));
 
       remainingPageSize -= personalRecordDtos.length;
