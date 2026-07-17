@@ -280,6 +280,31 @@ describe("buildDedicatedPersonalRecordRows", () => {
 		expect(out[0]?.workout_phase).toBe("COMBINED");
 		expect(out[0]?.local_profile_id).toBeNull();
 	});
+
+	it("preserves the stable ID and mutation timestamps for a tombstone", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					id: "11111111-1111-4111-8111-111111111111",
+					exerciseName: "Bench Press",
+					recordType: "MAX_WEIGHT",
+					value: 125,
+					achievedAt: "2026-04-21T12:00:00.000Z",
+					updatedAt: "2026-04-22T12:00:00.000Z",
+					deletedAt: "2026-04-22T12:00:00.000Z",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({
+			id: "11111111-1111-4111-8111-111111111111",
+			updated_at: "2026-04-22T12:00:00.000Z",
+			deleted_at: "2026-04-22T12:00:00.000Z",
+		});
+	});
 });
 
 describe("buildPersonalRecordRowsForPush", () => {

@@ -1296,6 +1296,7 @@ async function mobileSyncPullHandler(
           p_user_id: userId,
           p_known_ids: knownPRIds,
           p_profile_id: profileId,
+          p_since: lastSyncISO,
         })
           .order('updated_at', { ascending: true })
           .order('id', { ascending: true })
@@ -1364,6 +1365,7 @@ async function mobileSyncPullHandler(
         sessionId: pr.session_id,
         achievedAt: pr.achieved_at,
         updatedAt: pr.updated_at,
+        deletedAt: pr.deleted_at ?? null,
       }));
 
       remainingPageSize -= personalRecordDtos.length;

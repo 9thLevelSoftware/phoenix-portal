@@ -1948,13 +1948,28 @@ async function mobileSyncPushHandler(
       });
 
       if (dedupedPrRows.length > 0) {
-        const writePersonalRecords = (rows: typeof dedupedPrRows) => dedicatedPrsPresent
-          ? supabase
+        const writePersonalRecords = async (rows: typeof dedupedPrRows) => {
+          if (!dedicatedPrsPresent) {
+            return supabase.from('personal_records').insert(rows);
+          }
+
+          // New mobile builds provide stable UUIDs. Route those rows through an
+          // atomic server-side LWW gate so a stale active write cannot resurrect
+          // a newer deletion tombstone. Keep the legacy id-less fallback for
+          // backwards-compatible clients that only send active PR hints.
+          const stableRows = rows.filter((row) => typeof row.id === 'string' && row.id.length > 0);
+          const legacyRows = rows.filter((row) => !(typeof row.id === 'string' && row.id.length > 0));
+          if (stableRows.length > 0) {
+            const { error } = await supabase.rpc('upsert_personal_record_lww', { p_rows: stableRows });
+            if (error) return { error };
+          }
+          if (legacyRows.length > 0) {
+            return supabase
               .from('personal_records')
-              .upsert(rows, { onConflict: 'id' })
-          : supabase
-              .from('personal_records')
-              .insert(rows);
+              .upsert(legacyRows, { onConflict: 'id' });
+          }
+          return { error: null };
+        };
 
         const { error: prErr } = await writePersonalRecords(dedupedPrRows);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {

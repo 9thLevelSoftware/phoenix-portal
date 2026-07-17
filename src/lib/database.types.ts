@@ -809,6 +809,7 @@ export type Database = {
 			personal_records: {
 				Row: {
 					achieved_at: string;
+					deleted_at: string | null;
 					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
@@ -827,6 +828,7 @@ export type Database = {
 				};
 				Insert: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
@@ -845,6 +847,7 @@ export type Database = {
 				};
 				Update: {
 					achieved_at?: string;
+					deleted_at?: string | null;
 					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;
@@ -2388,14 +2391,17 @@ export type Database = {
 			};
 			get_personal_records_excluding_ids: {
 				Args: {
-					p_known_ids?: number[];
+					p_known_ids?: string[];
 					p_profile_id?: string;
+					p_since?: string;
 					p_user_id: string;
 				};
 				Returns: {
 					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
 					exercise_name: string;
-					id: number;
+					id: string;
 					local_profile_id: string;
 					muscle_group: string;
 					record_type: string;
@@ -2406,6 +2412,14 @@ export type Database = {
 					value: number;
 					weight_kg: number;
 					workout_phase: string;
+				}[];
+			};
+			upsert_personal_record_lww: {
+				Args: { p_rows: Json };
+				Returns: {
+					accepted: boolean;
+					id: string;
+					server_updated_at: string | null;
 				}[];
 			};
 			get_pr_count_rankings: {
