@@ -73,9 +73,10 @@ END;
 $$;
 
 -- The legacy RPC is parity-mode's source of truth. Its original signature used BIGINT
--- IDs while dedicated PRs now use UUIDs, so remove that overload before recreating it.
--- Both parity and timestamp pull responses include deleted_at.
+-- IDs, while later parity migrations use UUIDs. Remove both overloads before recreating
+-- the UUID variant with the tombstone field in its return shape.
 DROP FUNCTION IF EXISTS public.get_personal_records_excluding_ids(UUID, BIGINT[], TEXT);
+DROP FUNCTION IF EXISTS public.get_personal_records_excluding_ids(UUID, UUID[], TEXT);
 CREATE FUNCTION public.get_personal_records_excluding_ids(
   p_user_id UUID,
   p_known_ids UUID[] DEFAULT '{}',
