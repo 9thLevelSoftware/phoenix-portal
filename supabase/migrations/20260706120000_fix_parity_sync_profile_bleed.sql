@@ -318,6 +318,32 @@ $$;
 COMMENT ON FUNCTION get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ) IS
 'Fetches training cycles not in the provided ID list OR updated since last sync. Uses POST body via RPC to bypass URL length limits.';
 
+-- Restore service-role-only execution after DROP/CREATE. Newly-created
+-- PostgreSQL functions grant EXECUTE to PUBLIC by default, but these parity
+-- sync RPCs trust caller-supplied user IDs and are Edge Function internals.
+DO $$
+DECLARE
+  fn regprocedure;
+BEGIN
+  FOR fn IN
+    SELECT p.oid::regprocedure
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = ANY (ARRAY[
+        'get_sessions_excluding_ids',
+        'get_routines_excluding_ids',
+        'get_cycles_excluding_ids'
+      ])
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', fn);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM anon', fn);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM authenticated', fn);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', fn);
+  END LOOP;
+END;
+$$;
+
 -- ============================================================================
 -- get_personal_records_excluding_ids
 -- Source: 20260428234500_fix_parity_sync_uuid_badges_prs.sql
