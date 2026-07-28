@@ -338,7 +338,12 @@ Deno.serve(async (req) => {
           .eq('id', task.id);
 
         // Increment rate limit counter
-        await incrementRateLimit(supabase, task.provider);
+        // Charge the request against the same bucket the dispatch check reads.
+        await incrementRateLimit(
+          supabase,
+          task.provider,
+          rateLimitScope(task.provider) === 'user' ? task.user_id : null,
+        );
 
         results.processed++;
       } catch (error) {
@@ -424,21 +429,35 @@ async function callSyncFunction(
 /**
  * Increment the rate limit counter for a provider, resetting the window if expired.
  */
-async function incrementRateLimit(supabase: DbClient, provider: string) {
+async function incrementRateLimit(
+  supabase: DbClient,
+  provider: string,
+  userId: string | null,
+) {
   const now = new Date();
   const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
   if (!limit) return;
 
-  const { data: existing } = await supabase
+  // Accounting MUST target the same row the dispatch check reads, on both axes:
+  //  - the `key` column (the check filters on `key`, not the legacy `provider`)
+  //  - the same user scope (a per-user check against a bucket only ever
+  //    incremented at user_id IS NULL never accumulates, so the limit is
+  //    unenforceable and never blocks dispatch)
+  const scopedQuery = supabase
     .from('rate_limit_tracking')
     .select('*')
-    .eq('provider', provider)
-    .is('user_id', null)
-    .maybeSingle();
+    .eq('key', provider);
+
+  const { data: existing } = await (userId === null
+    ? scopedQuery.is('user_id', null)
+    : scopedQuery.eq('user_id', userId)
+  ).maybeSingle();
 
   if (!existing) {
     await supabase.from('rate_limit_tracking').insert({
+      key: provider,
       provider,
+      user_id: userId,
       requests_this_window: 1,
       window_started_at: now.toISOString(),
       last_request_at: now.toISOString(),
@@ -455,8 +474,7 @@ async function incrementRateLimit(supabase: DbClient, provider: string) {
         last_request_at: now.toISOString(),
         last_reset_at: windowExpired ? now.toISOString() : existing.last_reset_at,
       })
-      .eq('provider', provider)
-      .is('user_id', null);
+      .eq('id', existing.id);
   }
 }
 

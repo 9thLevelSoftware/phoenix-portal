@@ -37,6 +37,8 @@ export interface HevyWorkout {
   title: string;
   start_time: string;
   end_time: string;
+  /** ISO 8601; used as the resume point for truncated event fetches. */
+  updated_at?: string;
   exercises?: Array<{
     title: string;
     sets: Array<{
@@ -71,6 +73,30 @@ export interface HevyFetchResult {
   deletedIds: string[];
   /** True when the page ceiling was hit before the API ran out of pages. */
   truncated: boolean;
+  /**
+   * Latest `updated_at` observed across the fetched events, or null.
+   *
+   * This is the resume point for a truncated incremental fetch: replaying
+   * `events?since=` from here continues after what was already processed,
+   * rather than re-reading the same first pages forever. Only meaningful for
+   * the events path — `/v1/workouts` offers no date filter, so a truncated
+   * backfill has no derivable resume point.
+   */
+  latestEventAt: string | null;
+}
+
+/** Max of two ISO timestamps, tolerating nulls and unparseable values. */
+export function maxIsoTimestamp(
+  a: string | null,
+  b: string | null | undefined,
+): string | null {
+  if (!b) return a;
+  const bMs = Date.parse(b);
+  if (!Number.isFinite(bMs)) return a;
+  if (!a) return b;
+  const aMs = Date.parse(a);
+  if (!Number.isFinite(aMs)) return b;
+  return bMs > aMs ? b : a;
 }
 
 /** Fetches one page and returns its parsed JSON body. */
@@ -160,7 +186,12 @@ export async function fetchHevyBackfill(
     page++;
   }
 
-  return { workouts, deletedIds: [], truncated: page <= pageCount };
+  return {
+    workouts,
+    deletedIds: [],
+    truncated: page <= pageCount,
+    latestEventAt: null,
+  };
 }
 
 /**
@@ -176,6 +207,7 @@ export async function fetchHevyEvents(
   const deletedIds: string[] = [];
   let page = 1;
   let pageCount = 1;
+  let latestEventAt: string | null = null;
 
   while (page <= pageCount && page <= maxPages) {
     const params = new URLSearchParams({
@@ -193,11 +225,20 @@ export async function fetchHevyEvents(
     workouts.push(...folded.workouts);
     deletedIds.push(...folded.deletedIds);
 
+    // Track how far through the event stream we got so a truncated run can
+    // resume rather than replaying from the original `since`.
+    for (const event of data?.events ?? []) {
+      latestEventAt =
+        event?.type === 'deleted'
+          ? maxIsoTimestamp(latestEventAt, event.deleted_at)
+          : maxIsoTimestamp(latestEventAt, event?.workout?.updated_at);
+    }
+
     pageCount = data?.page_count ?? 1;
     page++;
   }
 
-  return { workouts, deletedIds, truncated: page <= pageCount };
+  return { workouts, deletedIds, truncated: page <= pageCount, latestEventAt };
 }
 
 /**

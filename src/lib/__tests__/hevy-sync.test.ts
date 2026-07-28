@@ -9,6 +9,7 @@ import {
 	type HevyWorkout,
 	type HevyWorkoutEvent,
 	hevyExternalId,
+	maxIsoTimestamp,
 	toExternalActivityRow,
 } from "../../../supabase/functions/_shared/hevySync.ts";
 
@@ -135,7 +136,26 @@ describe("fetchHevyBackfill", () => {
 
 		const result = await fetchHevyBackfill(fetchPage);
 
-		expect(result).toEqual({ workouts: [], deletedIds: [], truncated: false });
+		expect(result).toEqual({
+			workouts: [],
+			deletedIds: [],
+			truncated: false,
+			latestEventAt: null,
+		});
+	});
+
+	it("reports no resume point — /v1/workouts has no date filter to resume from", () => {
+		// Guards the asymmetry the sync handler depends on: a truncated backfill
+		// must NOT be retried, because the retry would reissue an identical
+		// request. Only the events feed can resume.
+		return fetchHevyBackfill(
+			pagedFetcher([{ page: 1, page_count: 9, workouts: [makeWorkout("a")] }])
+				.fetchPage,
+			1,
+		).then((result) => {
+			expect(result.truncated).toBe(true);
+			expect(result.latestEventAt).toBeNull();
+		});
 	});
 });
 
@@ -190,6 +210,126 @@ describe("fetchHevyEvents", () => {
 		const result = await fetchHevyEvents(fetchPage, "2026-07-01T00:00:00Z", 1);
 
 		expect(result.truncated).toBe(true);
+	});
+
+	it("reports the newest event processed so a truncated run can resume", async () => {
+		// Without this the retry replays the original `since`, truncates
+		// identically, and burns the queue's retry cap without progressing.
+		const { fetchPage } = pagedFetcher([
+			{
+				page: 1,
+				page_count: 5,
+				events: [
+					{
+						type: "updated",
+						workout: makeWorkout("a", {
+							updated_at: "2026-07-02T00:00:00Z",
+						}),
+					},
+					{
+						type: "updated",
+						workout: makeWorkout("b", {
+							updated_at: "2026-07-05T00:00:00Z",
+						}),
+					},
+				],
+			},
+		]);
+
+		const result = await fetchHevyEvents(fetchPage, "2026-07-01T00:00:00Z", 1);
+
+		expect(result.truncated).toBe(true);
+		expect(result.latestEventAt).toBe("2026-07-05T00:00:00Z");
+	});
+
+	it("advances the resume point past deletions too", async () => {
+		const { fetchPage } = pagedFetcher([
+			{
+				page: 1,
+				page_count: 1,
+				events: [
+					{ type: "deleted", id: "x", deleted_at: "2026-07-09T00:00:00Z" },
+				],
+			},
+		]);
+
+		const result = await fetchHevyEvents(fetchPage, "2026-07-01T00:00:00Z");
+
+		expect(result.latestEventAt).toBe("2026-07-09T00:00:00Z");
+	});
+
+	it("leaves the resume point null when no event carries a timestamp", async () => {
+		const { fetchPage } = pagedFetcher([
+			{
+				page: 1,
+				page_count: 1,
+				events: [{ type: "updated", workout: makeWorkout("a") }],
+			},
+		]);
+
+		const result = await fetchHevyEvents(fetchPage, "2026-07-01T00:00:00Z");
+
+		expect(result.latestEventAt).toBeNull();
+	});
+
+	it("takes the newest timestamp across pages regardless of arrival order", async () => {
+		const { fetchPage } = pagedFetcher([
+			{
+				page: 1,
+				page_count: 2,
+				events: [
+					{
+						type: "updated",
+						workout: makeWorkout("a", {
+							updated_at: "2026-07-20T00:00:00Z",
+						}),
+					},
+				],
+			},
+			{
+				page: 2,
+				page_count: 2,
+				events: [
+					{
+						type: "updated",
+						workout: makeWorkout("b", {
+							updated_at: "2026-07-11T00:00:00Z",
+						}),
+					},
+				],
+			},
+		]);
+
+		const result = await fetchHevyEvents(fetchPage, "2026-07-01T00:00:00Z");
+
+		expect(result.latestEventAt).toBe("2026-07-20T00:00:00Z");
+	});
+});
+
+describe("maxIsoTimestamp", () => {
+	it("returns the later of two timestamps", () => {
+		expect(
+			maxIsoTimestamp("2026-07-01T00:00:00Z", "2026-07-02T00:00:00Z"),
+		).toBe("2026-07-02T00:00:00Z");
+		expect(
+			maxIsoTimestamp("2026-07-03T00:00:00Z", "2026-07-02T00:00:00Z"),
+		).toBe("2026-07-03T00:00:00Z");
+	});
+
+	it("tolerates nulls on either side", () => {
+		expect(maxIsoTimestamp(null, "2026-07-02T00:00:00Z")).toBe(
+			"2026-07-02T00:00:00Z",
+		);
+		expect(maxIsoTimestamp("2026-07-02T00:00:00Z", null)).toBe(
+			"2026-07-02T00:00:00Z",
+		);
+		expect(maxIsoTimestamp(null, null)).toBeNull();
+	});
+
+	it("ignores unparseable candidates rather than poisoning the watermark", () => {
+		expect(maxIsoTimestamp("2026-07-02T00:00:00Z", "not-a-date")).toBe(
+			"2026-07-02T00:00:00Z",
+		);
 	});
 });
 

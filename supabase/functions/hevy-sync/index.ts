@@ -175,6 +175,7 @@ Deno.serve(async (req) => {
     let workouts: HevyWorkout[] = [];
     let deletedIds: string[] = [];
     let truncated = false;
+    let latestEventAt: string | null = null;
     try {
       const fetchPage = createHevyPageFetcher(storedApiKey);
       const result = useEvents
@@ -184,6 +185,7 @@ Deno.serve(async (req) => {
       workouts = result.workouts;
       deletedIds = result.deletedIds;
       truncated = result.truncated;
+      latestEventAt = result.latestEventAt;
     } catch (fetchError) {
       console.error('Hevy API fetch error:', fetchError);
       const fetchMessage = errorMessage(fetchError);
@@ -302,24 +304,63 @@ Deno.serve(async (req) => {
       );
     }
 
-    // A truncated fetch means pages remain unread. Advancing the watermark here
-    // would move `since` past workouts we never saw, stranding them permanently.
-    // Fail retryably instead. Resumable backfill needs a persisted page cursor
-    // (planned with the integration_sync_cursors table).
+    // A truncated fetch means pages remain unread, so the watermark cannot jump
+    // to `syncStartedAt` — that would move `since` past events we never saw.
+    //
+    // Whether a retry can make progress depends on which endpoint we were on:
+    //
+    //  - Events feed: the stream is date-ordered, so advancing `since` to the
+    //    newest event actually processed lets the next attempt continue from
+    //    there. Retry is productive; ask for one.
+    //
+    //  - Backfill: /v1/workouts is paged only, with no date filter and no
+    //    resume point derivable from what is already stored. A retry would
+    //    reissue the identical request, truncate identically, and repeat until
+    //    the queue's retry cap — so fail terminally and say why instead of
+    //    burning ten attempts. Resuming properly needs a persisted page cursor
+    //    (planned with the integration_sync_cursors table).
     if (truncated) {
-      const truncMessage =
-        `Hevy fetch exceeded the ${HEVY_MAX_PAGES}-page budget; ` +
-        `${importedCount} workouts stored, watermark not advanced`;
+      const canResume = useEvents && !!latestEventAt;
+
+      if (canResume) {
+        await supabase
+          .from('user_integrations')
+          .update({
+            last_sync_at: latestEventAt,
+            status: 'connected',
+            error_message:
+              `Hevy fetch hit the ${HEVY_MAX_PAGES}-page budget; ` +
+              `${importedCount} workouts stored, resuming from ${latestEventAt}`,
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      } else {
+        await supabase
+          .from('user_integrations')
+          .update({
+            status: 'error',
+            error_message:
+              `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget ` +
+              `(${importedCount} workouts stored). Retrying would repeat the ` +
+              'same request; resumable backfill is required for accounts this large.',
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      }
+
+      const truncMessage = canResume
+        ? `Hevy fetch exceeded the ${HEVY_MAX_PAGES}-page budget; resuming from ${latestEventAt}`
+        : `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget and cannot resume`;
       console.warn(truncMessage);
-      await supabase
-        .from('user_integrations')
-        .update({ status: 'error', error_message: truncMessage })
-        .eq('user_id', userId)
-        .eq('provider', 'hevy');
 
       return new Response(
-        JSON.stringify({ error: truncMessage, imported: importedCount }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: truncMessage, imported: importedCount, deleted: deletedCount }),
+        {
+          // 502 is retryable per process-sync-queue; 500 is not. Only request a
+          // retry when the next attempt will behave differently.
+          status: canResume ? 502 : 500,
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        }
       );
     }
 

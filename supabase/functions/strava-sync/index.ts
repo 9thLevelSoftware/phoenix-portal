@@ -349,12 +349,48 @@ Deno.serve(async (req) => {
     // ---------------------------------------------------------------
     const baseParams = new URLSearchParams({ per_page: '200' });
 
-    // For incremental sync, only fetch activities after last sync
-    if (sync_type !== 'initial' && integration.last_sync_at) {
+    // Two modes:
+    //
+    // Incremental (last_sync_at set): walk forward from the watermark. The
+    //   volume per run is small, so the page ceiling is never reached.
+    //
+    // Backfill (no watermark yet): Strava returns activities newest-first, so
+    //   each page walks further into the past. A run that hits the page ceiling
+    //   stops partway, and because last_sync_at is only set once the backfill
+    //   COMPLETES, the retry would otherwise re-request page 1 forever and burn
+    //   the retry cap without ever reaching the older tail.
+    //
+    //   The resume point does not need to be persisted separately: the oldest
+    //   Strava activity already stored for this user IS how far back we got.
+    //   Passing it as `before` makes each retry continue from there.
+    const isBackfill = sync_type === 'initial' || !integration.last_sync_at;
+
+    if (!isBackfill) {
       const afterEpoch = Math.floor(
         new Date(integration.last_sync_at as string).getTime() / 1000
       );
       baseParams.set('after', String(afterEpoch));
+    } else {
+      const { data: oldestStored } = await supabase
+        .from('external_activities')
+        .select('started_at')
+        .eq('user_id', userId)
+        .eq('provider', 'strava')
+        .order('started_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (oldestStored?.started_at) {
+        // `before` is exclusive; the boundary activity is already stored, and
+        // upserts are idempotent even if Strava treats it as inclusive.
+        const beforeEpoch = Math.floor(
+          new Date(oldestStored.started_at as string).getTime() / 1000
+        );
+        baseParams.set('before', String(beforeEpoch));
+        console.log(
+          `Strava backfill resuming before ${oldestStored.started_at}`,
+        );
+      }
     }
 
     const rawActivities: StravaActivityRaw[] = [];
@@ -510,9 +546,19 @@ Deno.serve(async (req) => {
     // failure above: report retryably and let the queue resume.
     // ---------------------------------------------------------------
     if (moreRemaining) {
-      const partialMessage =
-        `Fetched ${rawActivities.length} activities before reaching the Strava ` +
-        'request budget; sync will resume on the next queue pass';
+      // A retry is only safe to schedule if THIS run actually advanced the
+      // resume point. During backfill the resume point is the oldest stored
+      // activity, so persisting at least one older activity guarantees the next
+      // attempt requests a strictly earlier `before` window. If nothing was
+      // persisted the retry would reissue an identical request and spin until
+      // the retry cap, so fail terminally with a message that says why.
+      const madeProgress = syncedCount > 0;
+      const partialMessage = madeProgress
+        ? `Fetched ${rawActivities.length} activities before reaching the Strava ` +
+          'request budget; sync will resume from this point on the next queue pass'
+        : `Reached the Strava request budget without persisting any activities; ` +
+          'retrying would repeat the same request. Sync stopped.';
+
       console.warn(partialMessage);
       await supabase
         .from('user_integrations')
@@ -526,7 +572,13 @@ Deno.serve(async (req) => {
           synced_count: syncedCount,
           partial: true,
         }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        {
+          // 502 is retryable per process-sync-queue's RETRYABLE_STATUSES; 500 is
+          // not. Only ask for a retry when the next attempt will do something
+          // different from this one.
+          status: madeProgress ? 502 : 500,
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        }
       );
     }
 
