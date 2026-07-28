@@ -1,6 +1,13 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import {
+  checkReadBudget,
+  parseRetryAfterSeconds,
+  parseStravaRateLimitHeaders,
+  recordStravaUsage,
+  type StravaRateLimitSnapshot,
+} from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
@@ -352,10 +359,21 @@ Deno.serve(async (req) => {
 
     const rawActivities: StravaActivityRaw[] = [];
     let page = 1;
-    const maxPages = 50;
     const delayBetweenPagesMs = 350;
 
-    while (page <= maxPages) {
+    // Strava's quotas are application-wide (100 reads / 15 min, 1,000 / day), so
+    // a single user's backfill spends budget every other user shares. Cap the
+    // pages one invocation may take, and stop early once Strava's own reported
+    // usage says we are close to the ceiling.
+    const MAX_PAGES_PER_RUN = 10;
+    // Requests deliberately left unspent so an in-flight backfill cannot starve
+    // other users' syncs (or the webhook path) of quota.
+    const RESERVED_REQUESTS = 20;
+
+    let budgetExhausted = false;
+    let lastSnapshot: StravaRateLimitSnapshot | null = null;
+
+    while (page <= MAX_PAGES_PER_RUN) {
       const params = new URLSearchParams(baseParams);
       params.set('page', String(page));
 
@@ -365,6 +383,24 @@ Deno.serve(async (req) => {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
+
+      // Record what Strava reports about our quota on every response, success
+      // or failure — a 429 is exactly when this information matters most.
+      lastSnapshot = parseStravaRateLimitHeaders(activitiesResponse.headers);
+      await recordStravaUsage(supabase, lastSnapshot);
+
+      if (activitiesResponse.status === 429) {
+        const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
+        console.warn(
+          `Strava rate limited; retry-after=${retryAfter ?? 'unspecified'}s, ` +
+            `${rawActivities.length} activities fetched before the limit`,
+        );
+        // Stop cleanly rather than erroring: activities already fetched are
+        // persisted below, and last_sync_at is withheld so the queue retry
+        // resumes from the same cutoff.
+        budgetExhausted = true;
+        break;
+      }
 
       if (!activitiesResponse.ok) {
         const errorText = await activitiesResponse.text();
@@ -390,9 +426,27 @@ Deno.serve(async (req) => {
       if (pageActivities.length < 200) {
         break;
       }
+
+      // Consult Strava's reported headroom before spending another request.
+      const budget = checkReadBudget(lastSnapshot, RESERVED_REQUESTS);
+      if (!budget.hasHeadroom) {
+        console.warn(
+          `Strava read budget reserve reached (remaining=${budget.remaining}); ` +
+            'pausing pagination until the window rolls over',
+        );
+        budgetExhausted = true;
+        break;
+      }
+
       page++;
       await new Promise((r) => setTimeout(r, delayBetweenPagesMs));
     }
+
+    // Ran out of pages (or budget) with a full final page: more activities
+    // remain upstream. Treat exactly like a partial failure below — persist
+    // what we have, withhold the last_sync_at advance, let the queue resume.
+    const moreRemaining =
+      budgetExhausted || (page > MAX_PAGES_PER_RUN && rawActivities.length > 0);
 
     // ---------------------------------------------------------------
     // Normalize and upsert activities
@@ -445,6 +499,33 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ error: failMessage, synced_count: syncedCount, errors }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ---------------------------------------------------------------
+    // Pagination stopped short of the end (page ceiling or rate-limit reserve).
+    // Everything fetched IS persisted, but activities remain upstream, so the
+    // `after` cutoff must not advance past them. Same contract as the partial
+    // failure above: report retryably and let the queue resume.
+    // ---------------------------------------------------------------
+    if (moreRemaining) {
+      const partialMessage =
+        `Fetched ${rawActivities.length} activities before reaching the Strava ` +
+        'request budget; sync will resume on the next queue pass';
+      console.warn(partialMessage);
+      await supabase
+        .from('user_integrations')
+        .update({ error_message: partialMessage })
+        .eq('user_id', userId)
+        .eq('provider', 'strava');
+
+      return new Response(
+        JSON.stringify({
+          error: partialMessage,
+          synced_count: syncedCount,
+          partial: true,
+        }),
         { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
