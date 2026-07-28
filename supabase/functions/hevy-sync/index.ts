@@ -1,6 +1,16 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
+import {
+  createHevyPageFetcher,
+  fetchHevyBackfill,
+  fetchHevyEvents,
+  HEVY_MAX_PAGES,
+  HevyAuthError,
+  hevyExternalId,
+  toExternalActivityRow,
+  type HevyWorkout,
+} from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
@@ -14,27 +24,14 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * - Falls back gracefully if API returns 401/403
  * - Normalizes and upserts to external_activities
  *
- * Note: Hevy API documentation is limited. The CSV import path in
- * the portal UI is the primary import mechanism for most users.
+ * Two fetch modes (see fetchHevyBackfill / fetchHevyEvents):
+ * - Initial / no prior sync: full paginated backfill via GET /v1/workouts.
+ * - Incremental: GET /v1/workouts/events?since=<last_sync_at>, which reports
+ *   both updates and deletions so removed Hevy workouts stop lingering here.
+ *
+ * The CSV import path in the portal UI remains available for non-PRO users.
  */
 
-const HEVY_API_BASE = 'https://api.hevyapp.com/v1';
-
-interface HevyWorkout {
-  id: string;
-  title: string;
-  start_time: string;
-  end_time: string;
-  exercises: Array<{
-    title: string;
-    sets: Array<{
-      set_type: string;
-      weight_kg: number;
-      reps: number;
-      rpe: number | null;
-    }>;
-  }>;
-}
 
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
@@ -159,22 +156,41 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Attempt to fetch workouts from Hevy API
-    // TODO: incremental sync — Hevy API currently provides no date-range filter,
-    // so every sync is a full re-import of all workouts. When/if Hevy exposes a
-    // `since` or `after` parameter, thread `integration.last_sync_at` through as
-    // a query param here to avoid redundant fetches on large accounts.
-    // See: https://api.hevyapp.com/docs (check for updated filter support)
-    let workouts: HevyWorkout[] = [];
-    try {
-      const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-        headers: {
-          'api-key': storedApiKey,
-          'Content-Type': 'application/json',
-        },
-      });
+    // Read the prior watermark to decide between backfill and incremental fetch.
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at')
+      .eq('user_id', userId)
+      .eq('provider', 'hevy')
+      .maybeSingle();
 
-      if (response.status === 401 || response.status === 403) {
+    const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
+    const useEvents = sync_type !== 'initial' && !!lastSyncAt;
+
+    // Capture the watermark *before* fetching. Anything Hevy records while this
+    // run is in flight then falls inside the next run's `since` window instead
+    // of being skipped. Upserts are idempotent, so the small overlap is free.
+    const syncStartedAt = new Date().toISOString();
+
+    let workouts: HevyWorkout[] = [];
+    let deletedIds: string[] = [];
+    let truncated = false;
+    let latestEventAt: string | null = null;
+    try {
+      const fetchPage = createHevyPageFetcher(storedApiKey);
+      const result = useEvents
+        ? await fetchHevyEvents(fetchPage, lastSyncAt!)
+        : await fetchHevyBackfill(fetchPage);
+
+      workouts = result.workouts;
+      deletedIds = result.deletedIds;
+      truncated = result.truncated;
+      latestEventAt = result.latestEventAt;
+    } catch (fetchError) {
+      console.error('Hevy API fetch error:', fetchError);
+      const fetchMessage = errorMessage(fetchError);
+
+      if (fetchError instanceof HevyAuthError) {
         // API key invalid or Hevy PRO required
         await supabase
           .from('user_integrations')
@@ -186,26 +202,10 @@ Deno.serve(async (req) => {
           .eq('provider', 'hevy');
 
         return new Response(
-          JSON.stringify({
-            error: 'Hevy API access denied. Verify your API key and Hevy PRO subscription.',
-            requires_pro: true,
-          }),
-          {
-            status: 403,
-            headers: { ...cors, 'Content-Type': 'application/json' },
-          }
+          JSON.stringify({ error: fetchMessage, requires_pro: true }),
+          { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
-
-      if (!response.ok) {
-        throw new Error(`Hevy API returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      workouts = data.workouts ?? data ?? [];
-    } catch (fetchError) {
-      console.error('Hevy API fetch error:', fetchError);
-      const fetchMessage = errorMessage(fetchError);
 
       await supabase
         .from('user_integrations')
@@ -225,36 +225,65 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Apply deletions reported by the events feed. These are hard deletes: the
+    // workout no longer exists in Hevy, so leaving it here would strand a row
+    // that no future sync can reconcile.
+    // NOTE: mobile clients that already pulled the activity will not learn of
+    // the removal until external_activities carries a `deleted_at` tombstone
+    // (planned alongside the health data model migration).
+    let deletedCount = 0;
+    if (deletedIds.length > 0) {
+      const externalIds = deletedIds.map(hevyExternalId);
+      const { error: deleteError, count } = await supabase
+        .from('external_activities')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId)
+        .eq('provider', 'hevy')
+        .in('external_id', externalIds);
+
+      if (deleteError) {
+        console.error('Failed to apply Hevy deletions:', deleteError);
+        await supabase
+          .from('user_integrations')
+          .update({
+            status: 'error',
+            error_message: `Failed to apply ${deletedIds.length} deletion(s)`,
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+
+        return new Response(
+          JSON.stringify({ error: 'Failed to apply Hevy deletions' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+      deletedCount = count ?? 0;
+    }
+
     // Normalize and upsert workouts to external_activities
     let importedCount = 0;
     let failedCount = 0;
-    for (const workout of workouts) {
-      const startTime = new Date(workout.start_time);
-      const endTime = new Date(workout.end_time);
-      const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
+    // Upsert in chunks rather than one round trip per workout — a full backfill
+    // can run to hundreds of workouts and per-row round trips exhaust the Edge
+    // Function wall clock long before the data is in.
+    const UPSERT_CHUNK_SIZE = 100;
+    const rows = workouts.map((workout) => toExternalActivityRow(userId, workout));
+
+    for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
       const { error: activityError } = await supabase
         .from('external_activities')
-        .upsert(
-          {
-            user_id: userId,
-            external_id: `hevy-${workout.id}`,
-            provider: 'hevy',
-            name: workout.title,
-            activity_type: 'strength',
-            started_at: startTime.toISOString(),
-            duration_seconds: durationSeconds > 0 ? durationSeconds : null,
-            calories: null, // Hevy API does not provide calorie data
-            raw_data: workout,
-          },
-          { onConflict: 'user_id,provider,external_id' }
-        );
+        .upsert(chunk, { onConflict: 'user_id,provider,external_id' });
 
       if (activityError) {
-        failedCount++;
-        console.error(`Failed to persist Hevy workout ${workout.id}:`, activityError);
+        failedCount += chunk.length;
+        console.error(
+          `Failed to persist Hevy workouts ${i}-${i + chunk.length - 1}:`,
+          activityError,
+        );
       } else {
-        importedCount++;
+        importedCount += chunk.length;
       }
     }
 
@@ -275,11 +304,72 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Update last sync timestamp and status (all activities persisted)
+    // A truncated fetch means pages remain unread, so the watermark cannot jump
+    // to `syncStartedAt` — that would move `since` past events we never saw.
+    //
+    // Whether a retry can make progress depends on which endpoint we were on:
+    //
+    //  - Events feed: the stream is date-ordered, so advancing `since` to the
+    //    newest event actually processed lets the next attempt continue from
+    //    there. Retry is productive; ask for one.
+    //
+    //  - Backfill: /v1/workouts is paged only, with no date filter and no
+    //    resume point derivable from what is already stored. A retry would
+    //    reissue the identical request, truncate identically, and repeat until
+    //    the queue's retry cap — so fail terminally and say why instead of
+    //    burning ten attempts. Resuming properly needs a persisted page cursor
+    //    (planned with the integration_sync_cursors table).
+    if (truncated) {
+      const canResume = useEvents && !!latestEventAt;
+
+      if (canResume) {
+        await supabase
+          .from('user_integrations')
+          .update({
+            last_sync_at: latestEventAt,
+            status: 'connected',
+            error_message:
+              `Hevy fetch hit the ${HEVY_MAX_PAGES}-page budget; ` +
+              `${importedCount} workouts stored, resuming from ${latestEventAt}`,
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      } else {
+        await supabase
+          .from('user_integrations')
+          .update({
+            status: 'error',
+            error_message:
+              `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget ` +
+              `(${importedCount} workouts stored). Retrying would repeat the ` +
+              'same request; resumable backfill is required for accounts this large.',
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      }
+
+      const truncMessage = canResume
+        ? `Hevy fetch exceeded the ${HEVY_MAX_PAGES}-page budget; resuming from ${latestEventAt}`
+        : `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget and cannot resume`;
+      console.warn(truncMessage);
+
+      return new Response(
+        JSON.stringify({ error: truncMessage, imported: importedCount, deleted: deletedCount }),
+        {
+          // 502 is retryable per process-sync-queue; 500 is not. Only request a
+          // retry when the next attempt will behave differently.
+          status: canResume ? 502 : 500,
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Update last sync timestamp and status (all activities persisted). Uses the
+    // pre-fetch timestamp so concurrent Hevy writes land in the next window.
     await supabase
       .from('user_integrations')
       .update({
-        last_sync_at: new Date().toISOString(),
+        last_sync_at: syncStartedAt,
         status: 'connected',
         error_message: null,
       })
@@ -302,7 +392,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        mode: useEvents ? 'incremental' : 'backfill',
         imported: importedCount,
+        deleted: deletedCount,
         total: workouts.length,
       }),
       {

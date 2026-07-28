@@ -64,6 +64,13 @@ export function ProviderCard({
 	const meta = PROVIDER_METADATA[provider];
 	const Icon = ICON_MAP[meta.icon] ?? Activity;
 
+	// A lapsed connection is distinct from never having connected. `token_expired`
+	// means the provider revoked or aged out our grant; `error` means syncing hit
+	// a failure the sync function could not recover from. Both need a reconnect
+	// prompt rather than the first-run Connect button.
+	const isTokenExpired = integration?.status === "token_expired";
+	const needsAttention = isTokenExpired || integration?.status === "error";
+
 	return (
 		<Card className="border-border/50">
 			<CardHeader>
@@ -110,6 +117,41 @@ export function ProviderCard({
 									Sync Now
 								</Button>
 							)}
+							<Button onClick={onDisconnect} variant="outline" size="sm">
+								Disconnect
+							</Button>
+						</div>
+					</div>
+				) : needsAttention ? (
+					// token_expired / error are NOT the same as "never connected": the
+					// user granted access and it has since lapsed. Rendering a bare
+					// Connect button here left them with no indication anything had
+					// broken, and no way to clear the stale connection.
+					<div className="space-y-4">
+						<Badge
+							className={
+								isTokenExpired
+									? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+									: "bg-destructive/20 text-destructive border-destructive/30"
+							}
+						>
+							{isTokenExpired ? "Reconnection needed" : "Sync error"}
+						</Badge>
+						<Alert variant="destructive">
+							<AlertDescription>
+								{integration?.error_message ??
+									(isTokenExpired
+										? `Your ${meta.name} authorization has expired. Reconnect to resume syncing.`
+										: `${meta.name} syncing stopped after an error. Reconnect to try again.`)}
+							</AlertDescription>
+						</Alert>
+						<p className="text-sm text-muted-foreground">
+							Last synced: {formatRelative(integration?.last_sync_at ?? null)}
+						</p>
+						<div className="flex gap-2">
+							<Button onClick={onConnect} size="sm" disabled={isLoading}>
+								Reconnect {meta.name}
+							</Button>
 							<Button onClick={onDisconnect} variant="outline" size="sm">
 								Disconnect
 							</Button>

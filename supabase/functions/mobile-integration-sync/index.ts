@@ -1,5 +1,10 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import {
+  createHevyPageFetcher,
+  fetchHevyBackfill,
+  HevyAuthError,
+} from '../_shared/hevySync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
@@ -34,7 +39,6 @@ type DbClient = SupabaseClient<any, any, any>;
 // Provider API configuration
 // =============================================================================
 
-const HEVY_API_BASE = 'https://api.hevyapp.com/v1';
 const LIFTOSAUR_API_BASE = 'https://www.liftosaur.com/api/v1';
 
 const ALLOWED_PROVIDERS = new Set(['hevy', 'liftosaur']);
@@ -137,41 +141,22 @@ function parseLiftoscriptMetadata(text: string): {
 // Provider fetch logic
 // =============================================================================
 
-const HEVY_PAGE_SIZE = 10;
-const HEVY_MAX_PAGES = 20;
-
+/**
+ * Shares the paginator with hevy-sync (../_shared/hevySync.ts) so the mobile
+ * and portal import paths cannot drift on page size or termination logic.
+ * Only the returned DTO shape differs — mobile takes camelCase.
+ */
 async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
-  const allWorkouts: HevyWorkout[] = [];
-  let page = 1;
-
-  while (page <= HEVY_MAX_PAGES) {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      pageSize: HEVY_PAGE_SIZE.toString(),
-    });
-
-    const response = await fetch(`${HEVY_API_BASE}/workouts?${params.toString()}`, {
-      headers: {
-        'api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      throw new ApiKeyError('Hevy API access denied. Verify your API key and Hevy PRO subscription.');
+  let allWorkouts: HevyWorkout[];
+  try {
+    const fetchPage = createHevyPageFetcher(apiKey);
+    const result = await fetchHevyBackfill(fetchPage);
+    allWorkouts = result.workouts as HevyWorkout[];
+  } catch (err) {
+    if (err instanceof HevyAuthError) {
+      throw new ApiKeyError(err.message);
     }
-    if (!response.ok) {
-      throw new Error(`Hevy API returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const workouts: HevyWorkout[] = data.workouts ?? data ?? [];
-    allWorkouts.push(...workouts);
-
-    // Fewer results than requested means this was the last page
-    if (workouts.length < HEVY_PAGE_SIZE) break;
-
-    page++;
+    throw err;
   }
 
   return allWorkouts.map((w) => {

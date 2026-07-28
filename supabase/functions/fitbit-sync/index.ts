@@ -14,6 +14,27 @@ type DbClient = SupabaseClient<any, any, any>;
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
 
+/**
+ * Fitbit's documented ceiling: 150 requests per hour, per authorized user,
+ * resetting at the top of each hour.
+ * https://dev.fitbit.com/build/reference/web-api/troubleshooting-guide/rate-limits/
+ */
+const FITBIT_HOURLY_LIMIT = 150;
+
+/**
+ * Start of the current clock hour, in UTC.
+ *
+ * Fitbit's quota resets on the hour, so a 429 should mark the window as having
+ * begun at the last hour boundary. Stamping `now` instead would hold the user
+ * out for a full hour from the moment they were throttled — up to 59 minutes
+ * longer than Fitbit actually requires.
+ */
+function topOfCurrentHour(): string {
+  const now = new Date();
+  now.setUTCMinutes(0, 0, 0);
+  return now.toISOString();
+}
+
 interface FitbitTokens {
   access_token: string;
   refresh_token: string;
@@ -155,22 +176,32 @@ function mapFitbitActivityType(typeId: number): string {
   return mapping[typeId] ?? 'other';
 }
 
-/** Global provider row uses key + user_id IS NULL (see rate_limit_tracking migration). */
+/**
+ * Fitbit meters 150 requests/hour for EACH authorized user, resetting at the
+ * top of the hour — the quota is not shared across the application. The row is
+ * therefore keyed (key='fitbit', user_id=<user>), matching the
+ * `uq_rate_limit_key_user` unique index.
+ *
+ * This previously wrote a single user_id IS NULL row, which made every Fitbit
+ * user contend for one 120/hour bucket and capped total throughput at a single
+ * user's allowance no matter how many users connected.
+ */
 async function upsertFitbitRateLimitRow(
   supabase: DbClient,
+  userId: string,
   fields: Record<string, unknown>,
 ) {
   const { data: existing } = await supabase
     .from('rate_limit_tracking')
     .select('id')
     .eq('key', 'fitbit')
-    .is('user_id', null)
+    .eq('user_id', userId)
     .maybeSingle();
   if (!existing) {
     await supabase.from('rate_limit_tracking').insert({
       key: 'fitbit',
       provider: 'fitbit',
-      user_id: null,
+      user_id: userId,
       requests_this_window: 0,
       window_started_at: new Date().toISOString(),
       ...fields,
@@ -389,9 +420,12 @@ Deno.serve(async (req) => {
 
         // Handle rate limiting
         if (activitiesResponse.status === 429) {
-          await upsertFitbitRateLimitRow(supabase, {
-            requests_this_window: 150,
-            window_started_at: new Date().toISOString(),
+          await upsertFitbitRateLimitRow(supabase, userId, {
+            requests_this_window: FITBIT_HOURLY_LIMIT,
+            // Fitbit resets on the hour, not on a rolling window from the 429.
+            // Anchoring to the top of the current hour releases this user at
+            // the real reset instead of blocking them for a further hour.
+            window_started_at: topOfCurrentHour(),
             last_request_at: new Date().toISOString(),
           });
 
@@ -449,7 +483,7 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'fitbit');
 
-    await upsertFitbitRateLimitRow(supabase, {
+    await upsertFitbitRateLimitRow(supabase, userId, {
       last_request_at: new Date().toISOString(),
     });
 

@@ -197,6 +197,24 @@ Deno.serve(async (req) => {
 			);
 		}
 
+		// Read the prior watermark so incremental syncs can ask Liftosaur for a
+		// date range instead of re-scanning the user's entire history every run.
+		const { data: integration } = await supabase
+			.from("user_integrations")
+			.select("last_sync_at")
+			.eq("user_id", userId)
+			.eq("provider", "liftosaur")
+			.maybeSingle();
+
+		const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
+		const incrementalSince =
+			sync_type !== "initial" && lastSyncAt ? lastSyncAt : null;
+
+		// Capture the watermark before fetching so records Liftosaur writes while
+		// this run is in flight fall inside the next window rather than being
+		// skipped. Upserts are idempotent, so the overlap costs nothing.
+		const syncStartedAt = new Date().toISOString();
+
 		// Fetch workout history from Liftosaur API with pagination
 		let allRecords: LiftosaurRecord[] = [];
 		let cursor: number | null = null;
@@ -207,6 +225,11 @@ Deno.serve(async (req) => {
 		try {
 			while (hasMore && page < MAX_PAGES) {
 				const params = new URLSearchParams({ limit: "200" });
+				// GET /history supports startDate/endDate (ISO 8601) alongside the
+				// cursor. Passing it turns a full-history rescan into a delta fetch.
+				if (incrementalSince) {
+					params.set("startDate", incrementalSince);
+				}
 				if (cursor !== null) {
 					params.set("cursor", cursor.toString());
 				}
@@ -352,11 +375,12 @@ Deno.serve(async (req) => {
 			);
 		}
 
-		// Update last sync timestamp and status (all records persisted)
+		// Update last sync timestamp and status (all records persisted). Uses the
+		// pre-fetch timestamp so concurrent Liftosaur writes land in the next window.
 		await supabase
 			.from("user_integrations")
 			.update({
-				last_sync_at: new Date().toISOString(),
+				last_sync_at: syncStartedAt,
 				status: "connected",
 				error_message: null,
 			})

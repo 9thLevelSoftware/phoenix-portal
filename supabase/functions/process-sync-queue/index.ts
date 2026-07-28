@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { dailyRateLimitKey } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 /**
@@ -24,6 +25,9 @@ const PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
+/** Maximum sync tasks dispatched per provider per cron pass. */
+const TASKS_PER_PROVIDER = 5;
+
 const RETRYABLE_STATUSES = [429, 502, 503, 504];
 
 const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
@@ -36,6 +40,47 @@ const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   // publish a hard rate limit, so we use a conservative ceiling in line with
   // the other lightweight clients.
   liftosaur: { requests: 40, windowMs: 60 * 60 * 1000 },
+};
+
+/**
+ * Whether a provider's published quota is charged against the whole
+ * application or against each authorizing user independently.
+ *
+ * This distinction is load-bearing. Modelling a per-user quota as an app-wide
+ * bucket silently caps the ENTIRE user base at one user's allowance — Fitbit
+ * grants 150 requests/hour per authorized user, so a shared 120/hour bucket
+ * meant the second concurrent Fitbit user could starve the first.
+ *
+ *  - 'app'  — quota is per registered application (keyed with user_id NULL).
+ *  - 'user' — quota is per authorizing user / per API key (keyed by user_id).
+ */
+const RATE_LIMIT_SCOPE: Record<string, 'app' | 'user'> = {
+  // Strava's documented limits are per-application across all athletes.
+  strava: 'app',
+  // Garmin meters per consumer key.
+  garmin: 'app',
+  // Fitbit: 150 requests/hour for EACH authorized user, reset on the hour.
+  fitbit: 'user',
+  // Hevy and Liftosaur authenticate with a per-user API key, so any quota
+  // they enforce is inherently scoped to that key.
+  hevy: 'user',
+  liftosaur: 'user',
+};
+
+function rateLimitScope(provider: string): 'app' | 'user' {
+  return RATE_LIMIT_SCOPE[provider] ?? 'app';
+}
+
+/**
+ * Second, longer quota window for providers that meter one.
+ *
+ * Strava publishes 100 reads/15min AND 1,000 reads/day. Tracking only the
+ * 15-minute window let a steady trickle of syncs exhaust the daily allowance
+ * and start collecting 429s with nothing in the config able to explain why.
+ * Values carry the same ~20% safety margin as RATE_LIMITS.
+ */
+const DAILY_RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
+  strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 }, // reserve 20% of 1,000
 };
 
 function timingSafeEqualString(a: string, b: string): boolean {
@@ -91,17 +136,41 @@ Deno.serve(async (req) => {
   // Process tasks per-provider to prevent queue starvation (SQ-05).
   // A rate-limited provider no longer blocks tasks from other providers.
   for (const provider of PROVIDERS) {
-    // Check this provider's rate limit before fetching tasks
     const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
-    if (limit) {
+    const scope = rateLimitScope(provider);
+
+    // App-scoped providers can be short-circuited for the whole provider before
+    // any task is read: one exhausted bucket blocks every user equally.
+    // User-scoped providers must NOT be checked here — a single throttled user
+    // would skip the entire provider for everyone. They are checked per task
+    // against their own bucket just before the claim, below.
+    if (limit && scope === 'app') {
       const { data: rateLimit } = await supabase
         .from('rate_limit_tracking')
         .select('*')
-        .eq('provider', provider)
+        .eq('key', provider)
         .is('user_id', null)
         .maybeSingle();
 
       if (isRateLimited(rateLimit, limit)) {
+        continue;
+      }
+    }
+
+    // Some providers meter a second, longer window on top of the short one.
+    // Strava caps reads at 1,000/day as well as 100/15min; exhausting the daily
+    // budget must halt dispatch even though the 15-minute bucket looks healthy.
+    const dailyLimit = DAILY_RATE_LIMITS[provider as keyof typeof DAILY_RATE_LIMITS];
+    if (dailyLimit) {
+      const { data: dailyTracking } = await supabase
+        .from('rate_limit_tracking')
+        .select('*')
+        .eq('key', dailyRateLimitKey(provider))
+        .is('user_id', null)
+        .maybeSingle();
+
+      if (isRateLimited(dailyTracking, dailyLimit)) {
+        console.warn(`[SYNC_QUEUE] ${provider} daily quota exhausted; skipping`);
         continue;
       }
     }
@@ -151,16 +220,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Fetch pending tasks for this provider only
+    // Fetch pending tasks for this provider only.
+    //
+    // User-scoped providers read a wider candidate window than they will
+    // process: tasks belonging to a throttled user are skipped rather than
+    // claimed, and with a window of exactly TASKS_PER_PROVIDER one busy user
+    // sitting at the head of the queue would stall every other user until
+    // their window rolled over. Reading deeper lets the processor step past
+    // them to tasks it can actually run.
+    const candidateLimit =
+      scope === 'user' ? TASKS_PER_PROVIDER * 5 : TASKS_PER_PROVIDER;
     const { data: tasks } = await supabase
       .from('sync_queue')
       .select('*')
       .eq('provider', provider)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(5);
+      .limit(candidateLimit);
+
+    let claimedThisProvider = 0;
 
     for (const task of tasks ?? []) {
+      // Honour the per-provider dispatch budget regardless of how many
+      // candidates were read above.
+      if (claimedThisProvider >= TASKS_PER_PROVIDER) break;
+
       // SQ-04: Enforce max retry cap before processing
       if ((task.retry_count ?? 0) >= MAX_RETRIES) {
         await supabase
@@ -174,6 +258,24 @@ Deno.serve(async (req) => {
         console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
         results.failed++;
         continue;
+      }
+
+      // User-scoped quotas are checked per task, against this user's own
+      // bucket, so one throttled user cannot stall the provider for everyone.
+      // Leave the task `pending` — the next cron pass retries it once the
+      // user's window rolls over.
+      if (limit && scope === 'user') {
+        const { data: userRateLimit } = await supabase
+          .from('rate_limit_tracking')
+          .select('*')
+          .eq('key', provider)
+          .eq('user_id', task.user_id)
+          .maybeSingle();
+
+        if (isRateLimited(userRateLimit, limit)) {
+          results.skipped++;
+          continue;
+        }
       }
 
       // Atomically claim the task: only transition pending -> processing, and
@@ -192,6 +294,8 @@ Deno.serve(async (req) => {
         // Another concurrent invocation already claimed this task — skip it.
         continue;
       }
+
+      claimedThisProvider++;
 
       // Check subscription before calling sync function
       const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
@@ -234,7 +338,12 @@ Deno.serve(async (req) => {
           .eq('id', task.id);
 
         // Increment rate limit counter
-        await incrementRateLimit(supabase, task.provider);
+        // Charge the request against the same bucket the dispatch check reads.
+        await incrementRateLimit(
+          supabase,
+          task.provider,
+          rateLimitScope(task.provider) === 'user' ? task.user_id : null,
+        );
 
         results.processed++;
       } catch (error) {
@@ -320,21 +429,35 @@ async function callSyncFunction(
 /**
  * Increment the rate limit counter for a provider, resetting the window if expired.
  */
-async function incrementRateLimit(supabase: DbClient, provider: string) {
+async function incrementRateLimit(
+  supabase: DbClient,
+  provider: string,
+  userId: string | null,
+) {
   const now = new Date();
   const limit = RATE_LIMITS[provider as keyof typeof RATE_LIMITS];
   if (!limit) return;
 
-  const { data: existing } = await supabase
+  // Accounting MUST target the same row the dispatch check reads, on both axes:
+  //  - the `key` column (the check filters on `key`, not the legacy `provider`)
+  //  - the same user scope (a per-user check against a bucket only ever
+  //    incremented at user_id IS NULL never accumulates, so the limit is
+  //    unenforceable and never blocks dispatch)
+  const scopedQuery = supabase
     .from('rate_limit_tracking')
     .select('*')
-    .eq('provider', provider)
-    .is('user_id', null)
-    .maybeSingle();
+    .eq('key', provider);
+
+  const { data: existing } = await (userId === null
+    ? scopedQuery.is('user_id', null)
+    : scopedQuery.eq('user_id', userId)
+  ).maybeSingle();
 
   if (!existing) {
     await supabase.from('rate_limit_tracking').insert({
+      key: provider,
       provider,
+      user_id: userId,
       requests_this_window: 1,
       window_started_at: now.toISOString(),
       last_request_at: now.toISOString(),
@@ -351,8 +474,7 @@ async function incrementRateLimit(supabase: DbClient, provider: string) {
         last_request_at: now.toISOString(),
         last_reset_at: windowExpired ? now.toISOString() : existing.last_reset_at,
       })
-      .eq('provider', provider)
-      .is('user_id', null);
+      .eq('id', existing.id);
   }
 }
 

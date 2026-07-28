@@ -3,10 +3,20 @@ import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
-const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = [
+/**
+ * Providers with a `<provider>-sync` Edge Function that the portal may invoke
+ * on demand. Garmin is excluded because it is webhook-driven (there is nothing
+ * to pull); Strong is a local file import; Apple Health and Health Connect are
+ * pushed from the mobile app.
+ *
+ * Must stay aligned with the sync functions that actually exist under
+ * `supabase/functions/` — enforced by src/mutations/__tests__/integrations.test.ts.
+ */
+export const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = [
 	"strava",
 	"fitbit",
 	"hevy",
+	"liftosaur",
 ];
 
 /**
