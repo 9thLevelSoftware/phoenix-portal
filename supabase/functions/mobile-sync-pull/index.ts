@@ -1289,25 +1289,16 @@ async function mobileSyncPullHandler(
       let personalRecordsData: Record<string, unknown>[] = [];
 
       if (useRpcPR) {
-        // RPC path: excludes IDs the client already has; chain order + limit
-        // client-side because get_personal_records_excluding_ids has no p_limit
-        // or cursor params (unlike get_cycles_excluding_ids / get_badges_excluding_ids).
-        let prQuery = supabase.rpc('get_personal_records_excluding_ids', {
+        // RPC path: excludes IDs the client already has.
+        // Cursor/limit params are now server-side (fix #97).
+        const { data, error } = await supabase.rpc('get_personal_records_excluding_ids', {
           p_user_id: userId,
           p_known_ids: knownPRIds,
           p_profile_id: profileId,
-        })
-          .order('updated_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(remainingPageSize + 1);
-
-        if (cursorUpdatedAt && cursorId) {
-          prQuery = prQuery.or(
-            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-          );
-        }
-
-        const { data, error } = await prQuery;
+          p_cursor_updated_at: cursorUpdatedAt,
+          p_cursor_id: cursorId,
+          p_limit: remainingPageSize + 1,
+        });
         if (error) return readFailure('personal records', error, cors);
         const unseenRows = (data as Record<string, unknown>[]) ?? [];
 
