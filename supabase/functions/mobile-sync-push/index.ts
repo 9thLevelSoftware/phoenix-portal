@@ -1754,15 +1754,21 @@ async function mobileSyncPushHandler(
 
       // =====================================================================
       // 5. Compute exercise_progress (mobile-provided 1RM, hybrid fallback)
+      // Defense-in-depth: filter sessions through childAllowed like every
+      // other child path (exercises/sets/rep_summaries/rep_telemetry) so
+      // progress rows for LWW-rejected sessions are never inserted.
+      // (Issue #99 RCA layer 3)
       // =====================================================================
+      const acceptedSessions = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id));
       const progressRows = buildExerciseProgressRows(
-        payload.sessions,
+        acceptedSessions,
         userId,
         localProfileId,
       );
 
       if (progressRows.length > 0) {
-        const sessionIds = [...new Set(payload.sessions.map((session) => session.id))];
+        const sessionIds = [...new Set(acceptedSessions.map((session) => session.id))];
         const { data: existingProgress, error: existingProgressErr } = await supabase
           .from('exercise_progress')
           .select('session_id, exercise_id, exercise_name')
@@ -1988,7 +1994,14 @@ async function mobileSyncPushHandler(
 
         const { error: prErr } = await writePersonalRecords(prRowsToWrite);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {
-          const profilePartition = shouldValidatePersonalRecordProfileIds
+          // Issue #99 RCA layer 2: always partition by local_profile_id
+          // validity when the valid set is populated, even for derived PR
+          // rows (sessions[].sets[].isPr). The dedicated-records path
+          // already covers this via buildDedicatedPersonalRecordRows, but
+          // the derived path uses the handler-level localProfileId which
+          // can reference a profile not in validLocalProfileIdsForPush
+          // when allProfiles is empty in non-final batches.
+          const profilePartition = (shouldValidatePersonalRecordProfileIds || validLocalProfileIdsForPush.size > 0)
             ? partitionPersonalRecordRowsByLocalProfileValidity(
                 prRowsToWrite,
                 validLocalProfileIdsForPush,
@@ -2776,8 +2789,19 @@ async function mobileSyncPushHandler(
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
+    // Surface the underlying error only in known non-production environments
+    // so future occurrences of this class are actionable (Issue #99 RCA layer 1).
+    // Kilo review: opt-in to verbose errors via allowlist; unknown values default to opaque.
+    const VERBOSE_ENVIRONMENTS = ['development', 'staging', 'preview', 'local'];
+    const isVerbose = VERBOSE_ENVIRONMENTS.includes(Deno.env.get('ENVIRONMENT') ?? '');
+    const errorBody: Record<string, unknown> = {
+      error: isVerbose ? (err instanceof Error ? err.message : String(err)) : 'Internal server error',
+    };
+    if (isVerbose && err && typeof err === 'object' && 'code' in err) {
+      errorBody.code = (err as { code: unknown }).code;
+    }
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify(errorBody),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }

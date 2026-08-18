@@ -2786,3 +2786,77 @@ Deno.test({
     }
   },
 });
+
+// Issue #99 regression: top-level catch surfaces underlying error in
+// known non-production environments and returns opaque message otherwise.
+// Helper: builds the pushed session object shared by every ENVIRONMENT case.
+function makePrSession() {
+  return {
+    id: SESSION_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [{
+      id: EXERCISE_ID,
+      name: "Bench Press",
+      exerciseId: "bench-press-id",
+      muscleGroup: "Chest",
+      sets: [{
+        id: SET_ID,
+        exerciseId: EXERCISE_ID,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 80,
+        isPr: true,
+        prType: "1RM",
+        prPhase: "COMBINED",
+      }],
+    }],
+  };
+}
+
+// Helper: temporarily set ENVIRONMENT, restore it on scope exit.
+function withEnvironment<T>(value: string, body: () => Promise<T>): Promise<T> {
+  const savedEnv = Deno.env.get("ENVIRONMENT");
+  Deno.env.set("ENVIRONMENT", value);
+  return (async () => {
+    try {
+      return await body();
+    } finally {
+      if (savedEnv !== undefined) {
+        Deno.env.set("ENVIRONMENT", savedEnv);
+      } else {
+        Deno.env.delete("ENVIRONMENT");
+      }
+    }
+  })();
+}
+
+const ENV_CASES = [
+  { name: "known verbose (development)", env: "development", expectedError: "Batch 2/3 failed: FK violation on personal_records" },
+  { name: "production", env: "production", expectedError: "Internal server error" },
+  { name: "unknown value (custom-staging)", env: "custom-staging", expectedError: "Internal server error" },
+];
+
+for (const tc of ENV_CASES) {
+  Deno.test(`Issue #99: top-level catch [${tc.name}] returns ${tc.expectedError}`, async () => {
+    const errorMessage = "Batch 2/3 failed: FK violation on personal_records";
+    await withEnvironment(tc.env, async () => {
+      const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+        rpcBehavior: async () => {
+          throw new Error(errorMessage);
+        },
+      });
+
+      const body = validPushBody();
+      (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+      const response = await harness.handler(requestFromBody(body));
+      const responseBody = await json(response);
+
+      assertEquals(response.status, 500);
+      assertEquals(responseBody.error, tc.expectedError);
+    });
+  });
+}
