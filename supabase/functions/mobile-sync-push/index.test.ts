@@ -2786,3 +2786,113 @@ Deno.test({
     }
   },
 });
+
+// Issue #99 regression: top-level catch surfaces underlying error in
+// non-production and returns opaque message in production.
+Deno.test("Issue #99: top-level catch surfaces error in non-production", async () => {
+  // Save and clear ENVIRONMENT to simulate non-production
+  const savedEnv = Deno.env.get("ENVIRONMENT");
+  Deno.env.delete("ENVIRONMENT");
+
+  try {
+    const errorMessage = "Batch 2/3 failed: FK violation on personal_records";
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      // Make the RPC throw to trigger the top-level catch
+      rpcBehavior: async () => {
+        throw new Error(errorMessage);
+      },
+    });
+
+    // Build a body with a session that will trigger the RPC path
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push({
+      id: SESSION_ID,
+      startedAt: "2026-01-20T10:00:00.000Z",
+      updatedAt: "2026-01-20T10:30:00.000Z",
+      workoutMode: "OLD_SCHOOL",
+      exercises: [{
+        id: EXERCISE_ID,
+        name: "Bench Press",
+        exerciseId: "bench-press-id",
+        muscleGroup: "Chest",
+        sets: [{
+          id: SET_ID,
+          exerciseId: EXERCISE_ID,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 80,
+          isPr: true,
+          prType: "1RM",
+          prPhase: "COMBINED",
+        }],
+      }],
+    });
+
+    const response = await harness.handler(requestFromBody(body));
+    const responseBody = await json(response);
+
+    assertEquals(response.status, 500);
+    // In non-production, the actual error message should be surfaced
+    assertEquals(responseBody.error, errorMessage);
+  } finally {
+    // Restore ENVIRONMENT
+    if (savedEnv !== undefined) {
+      Deno.env.set("ENVIRONMENT", savedEnv);
+    }
+  }
+});
+
+Deno.test("Issue #99: top-level catch returns opaque error in production", async () => {
+  // Set ENVIRONMENT to production
+  const savedEnv = Deno.env.get("ENVIRONMENT");
+  Deno.env.set("ENVIRONMENT", "production");
+
+  try {
+    const errorMessage = "Batch 2/3 failed: FK violation on personal_records";
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      rpcBehavior: async () => {
+        throw new Error(errorMessage);
+      },
+    });
+
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push({
+      id: SESSION_ID,
+      startedAt: "2026-01-20T10:00:00.000Z",
+      updatedAt: "2026-01-20T10:30:00.000Z",
+      workoutMode: "OLD_SCHOOL",
+      exercises: [{
+        id: EXERCISE_ID,
+        name: "Bench Press",
+        exerciseId: "bench-press-id",
+        muscleGroup: "Chest",
+        sets: [{
+          id: SET_ID,
+          exerciseId: EXERCISE_ID,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 80,
+          isPr: true,
+          prType: "1RM",
+          prPhase: "COMBINED",
+        }],
+      }],
+    });
+
+    const response = await harness.handler(requestFromBody(body));
+    const responseBody = await json(response);
+
+    assertEquals(response.status, 500);
+    // In production, the error should be opaque
+    assertEquals(responseBody.error, "Internal server error");
+  } finally {
+    // Restore ENVIRONMENT
+    if (savedEnv !== undefined) {
+      Deno.env.set("ENVIRONMENT", savedEnv);
+    } else {
+      Deno.env.delete("ENVIRONMENT");
+    }
+  }
+});
