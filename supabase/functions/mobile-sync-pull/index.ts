@@ -157,7 +157,7 @@ const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 
 
 interface DecodedCursor {
   type: EntityType;
-  updatedAt: number; // epoch ms
+  updatedAt: string; // raw timestamptz / ISO; never Date-normalized
   id: string;
 }
 
@@ -165,9 +165,10 @@ interface DecodedCursor {
  * Encodes pagination state into an opaque cursor string.
  * Format: base64(JSON({type, updatedAt, id}))
  */
-function encodeCursor(type: EntityType, updatedAt: number, id: string): string {
+function encodeCursor(type: EntityType, updatedAt: string, id: string): string {
+  // Keep the raw DB timestamptz string. Date#toISOString() truncates to
+  // milliseconds and makes `updated_at > cursor` match an entire µs cluster.
   const payload = JSON.stringify({ type, updatedAt, id });
-  // Use btoa for base64 encoding (available in Deno)
   return btoa(payload);
 }
 
@@ -183,15 +184,18 @@ function decodeCursor(cursor: string): DecodedCursor | null {
     if (
       typeof parsed.type !== 'string' ||
       !ENTITY_ORDER.includes(parsed.type as EntityType) ||
-      typeof parsed.updatedAt !== 'number' ||
-      !Number.isFinite(parsed.updatedAt) ||
       typeof parsed.id !== 'string'
     ) {
       return null;
     }
-    try {
-      new Date(parsed.updatedAt).toISOString();
-    } catch {
+    // Legacy cursors stored epoch ms. New cursors store the raw timestamptz
+    // string so microsecond precision survives the round-trip.
+    if (typeof parsed.updatedAt === 'number') {
+      if (!Number.isFinite(parsed.updatedAt)) return null;
+      parsed.updatedAt = new Date(parsed.updatedAt).toISOString();
+    } else if (typeof parsed.updatedAt === 'string') {
+      if (!Number.isFinite(Date.parse(parsed.updatedAt))) return null;
+    } else {
       return null;
     }
     // Most paged entity ids are UUIDs. Custom exercise ids are mobile-minted
@@ -619,7 +623,7 @@ async function mobileSyncPullHandler(
         return { cursorUpdatedAt: null, cursorId: null };
       }
       return {
-        cursorUpdatedAt: new Date(cursorData.updatedAt).toISOString(),
+        cursorUpdatedAt: cursorData.updatedAt,
         cursorId: cursorData.id,
       };
     }
@@ -697,10 +701,10 @@ async function mobileSyncPullHandler(
         hasMore = true;
         const lastSession = sessionsRaw[remainingPageSize - 1];
         const updatedAtRaw = lastSession.updated_at ?? lastSession.started_at;
-        const updatedAtMs = updatedAtRaw
-          ? new Date(updatedAtRaw as string).getTime()
-          : dependencies.now();
-        nextCursor = encodeCursor('sessions', updatedAtMs, lastSession.id as string);
+        const updatedAtStr = updatedAtRaw
+          ? String(updatedAtRaw)
+          : new Date(dependencies.now()).toISOString();
+        nextCursor = encodeCursor('sessions', updatedAtStr, lastSession.id as string);
         sessionsRaw.splice(remainingPageSize); // Trim to pageSize
       }
 
@@ -918,8 +922,7 @@ async function mobileSyncPullHandler(
       if (routinesData.length > remainingPageSize) {
         hasMore = true;
         const lastRoutine = routinesData[remainingPageSize - 1];
-        const updatedAtMs = new Date(lastRoutine.updated_at as string).getTime();
-        nextCursor = encodeCursor('routines', updatedAtMs, lastRoutine.id as string);
+        nextCursor = encodeCursor('routines', String(lastRoutine.updated_at), lastRoutine.id as string);
         routinesData.splice(remainingPageSize);
       }
 
@@ -1053,8 +1056,7 @@ async function mobileSyncPullHandler(
       if (cyclesData.length > remainingPageSize) {
         hasMore = true;
         const lastCycle = cyclesData[remainingPageSize - 1];
-        const updatedAtMs = new Date(lastCycle.updated_at as string).getTime();
-        nextCursor = encodeCursor('cycles', updatedAtMs, lastCycle.id as string);
+        nextCursor = encodeCursor('cycles', String(lastCycle.updated_at), lastCycle.id as string);
         cyclesData.splice(remainingPageSize);
       }
 
@@ -1159,8 +1161,7 @@ async function mobileSyncPullHandler(
       if (badgesData.length > remainingPageSize) {
         hasMore = true;
         const lastBadge = badgesData[remainingPageSize - 1];
-        const earnedAtMs = new Date(lastBadge.earned_at as string).getTime();
-        nextCursor = encodeCursor('badges', earnedAtMs, String(lastBadge.id));
+        nextCursor = encodeCursor('badges', String(lastBadge.earned_at), String(lastBadge.id));
         badgesData.splice(remainingPageSize);
       }
 
@@ -1361,8 +1362,7 @@ async function mobileSyncPullHandler(
       if (personalRecordsData.length > remainingPageSize) {
         hasMore = true;
         const lastPR = personalRecordsData[remainingPageSize - 1];
-        const updatedAtMs = new Date(lastPR.updated_at as string).getTime();
-        nextCursor = encodeCursor('personalRecords', updatedAtMs, lastPR.id as string);
+        nextCursor = encodeCursor('personalRecords', String(lastPR.updated_at), lastPR.id as string);
         personalRecordsData.splice(remainingPageSize);
       }
 
@@ -1430,8 +1430,7 @@ async function mobileSyncPullHandler(
       if (customExercisesPage.length > remainingPageSize) {
         hasMore = true;
         const lastCustomExercise = customExercisesPage[remainingPageSize - 1];
-        const updatedAtMs = new Date(lastCustomExercise.updated_at as string).getTime();
-        nextCursor = encodeCursor('customExercises', updatedAtMs, lastCustomExercise.id as string);
+        nextCursor = encodeCursor('customExercises', String(lastCustomExercise.updated_at), lastCustomExercise.id as string);
         customExercisesPage.splice(remainingPageSize);
       }
 

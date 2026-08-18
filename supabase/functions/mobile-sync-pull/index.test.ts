@@ -61,6 +61,10 @@ interface AdminOptions {
   preferenceResult?: { data: unknown; error: unknown };
   preferenceThrow?: unknown;
   rpcResults?: Record<string, { data: unknown; error: unknown }>;
+  rpcImpl?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => { data: unknown; error: unknown } | undefined;
 }
 
 function createAdminDouble(
@@ -69,6 +73,10 @@ function createAdminDouble(
 ): Record<string, unknown> {
   const rpc = (name: string, args: Record<string, unknown>) => {
     calls.push({ kind: "rpc", name, args });
+    const implResult = options.rpcImpl?.(name, args);
+    if (implResult) {
+      return Promise.resolve(implResult);
+    }
     if (name === "check_rate_limit") {
       return Promise.resolve({
         data: {
@@ -668,6 +676,104 @@ Deno.test("known personal record tombstones use the bounded RPC and remain tombs
   assertEquals(personalRecords.length, 1);
   assertEquals(personalRecords[0].id, personalRecordId);
   assertEquals(personalRecords[0].deletedAt, deletedAt);
+});
+
+// Issue #97 follow-up: 200 PRs sharing one microsecond timestamp must still
+// produce distinct page cursors. JS Date truncates µs → ms, which makes
+// `updated_at > cursor` match the entire cluster and replay page 1.
+function timestampSortKey(value: string): string {
+  const millis = Date.parse(value);
+  const frac = (value.match(/\.(\d+)/)?.[1] ?? "").padEnd(6, "0").slice(0, 6);
+  return `${Number.isFinite(millis) ? millis : 0}:${frac}`;
+}
+
+function applyPersonalRecordCursor(
+  rows: Array<Record<string, unknown>>,
+  args: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const cursorAt = typeof args.p_cursor_updated_at === "string"
+    ? args.p_cursor_updated_at
+    : null;
+  const cursorId = typeof args.p_cursor_id === "string" ? args.p_cursor_id : null;
+  const limit = typeof args.p_limit === "number" ? args.p_limit : 76;
+  const sorted = [...rows].sort((left, right) => {
+    const timeCmp = timestampSortKey(String(left.updated_at)).localeCompare(
+      timestampSortKey(String(right.updated_at)),
+    );
+    return timeCmp || String(left.id).localeCompare(String(right.id));
+  });
+  const filtered = cursorAt
+    ? sorted.filter((row) => {
+      const rowKey = timestampSortKey(String(row.updated_at));
+      const cursorKey = timestampSortKey(cursorAt);
+      return rowKey > cursorKey ||
+        (rowKey === cursorKey && String(row.id) > String(cursorId ?? ""));
+    })
+    : sorted;
+  return filtered.slice(0, limit);
+}
+
+Deno.test("identical-microsecond personal records produce a distinct nextCursor", async () => {
+  const sharedUpdatedAt = "2026-07-08T14:24:09.648091+00:00";
+  const dataset = Array.from({ length: 200 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    user_id: VALID_USER_ID,
+    local_profile_id: VALID_PROFILE_ID,
+    exercise_id: null,
+    exercise_name: `Lift ${index}`,
+    muscle_group: "Chest",
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    weight_kg: 100,
+    reps: 1,
+    workout_phase: "COMBINED",
+    session_id: null,
+    achieved_at: sharedUpdatedAt,
+    updated_at: sharedUpdatedAt,
+    deleted_at: null,
+  }));
+
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name, args) => {
+      if (name !== "get_personal_records_excluding_ids") return undefined;
+      return {
+        data: applyPersonalRecordCursor(dataset, args),
+        error: null,
+      };
+    },
+  });
+
+  const pageSize = 75;
+  const first = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    pageSize,
+  }));
+  const firstBody = await json(first);
+  assertEquals(first.status, 200, JSON.stringify(firstBody));
+  assertEquals(firstBody.hasMore, true);
+  const firstCursor = firstBody.nextCursor;
+  assert(typeof firstCursor === "string" && firstCursor.length > 0);
+  const firstIds = (firstBody.personalRecords as Array<{ id: string }>).map((row) => row.id);
+  assertEquals(firstIds.length, pageSize);
+
+  const second = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    pageSize,
+    cursor: firstCursor,
+  }));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  const secondIds = (secondBody.personalRecords as Array<{ id: string }>).map((row) => row.id);
+  assertEquals(secondIds.length, pageSize);
+  assertEquals(
+    firstIds.filter((id) => secondIds.includes(id)),
+    [],
+    "second page must not replay first-page personal records",
+  );
+  assert(
+    secondBody.nextCursor !== firstCursor,
+    "nextCursor must advance when more identical-timestamp PRs remain",
+  );
 });
 
 Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {
