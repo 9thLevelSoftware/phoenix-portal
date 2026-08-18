@@ -2789,13 +2789,15 @@ async function mobileSyncPushHandler(
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
-    // Surface the underlying error in non-production so future occurrences
-    // of this class are actionable (Issue #99 RCA layer 1).
-    const isProduction = Deno.env.get('ENVIRONMENT') === 'production';
+    // Surface the underlying error only in known non-production environments
+    // so future occurrences of this class are actionable (Issue #99 RCA layer 1).
+    // Kilo review: opt-in to verbose errors via allowlist; unknown values default to opaque.
+    const VERBOSE_ENVIRONMENTS = ['development', 'staging', 'preview', 'local'];
+    const isVerbose = VERBOSE_ENVIRONMENTS.includes(Deno.env.get('ENVIRONMENT') ?? '');
     const errorBody: Record<string, unknown> = {
-      error: isProduction ? 'Internal server error' : (err instanceof Error ? err.message : String(err)),
+      error: isVerbose ? (err instanceof Error ? err.message : String(err)) : 'Internal server error',
     };
-    if (!isProduction && err && typeof err === 'object' && 'code' in err) {
+    if (isVerbose && err && typeof err === 'object' && 'code' in err) {
       errorBody.code = (err as { code: unknown }).code;
     }
     return new Response(
