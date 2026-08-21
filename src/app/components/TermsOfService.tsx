@@ -276,7 +276,8 @@ export function TermsOfService() {
 							</p>
 							<p className="text-secondary-foreground leading-relaxed mt-4">
 								Project Phoenix is a community project and is not affiliated
-								with or endorsed by Phoenix Investments Pty Ltd.
+						Project Phoenix is a community project and is not affiliated
+						with or endorsed by Vitruvian Investments Pty Ltd.
 							</p>
 						</section>
 
