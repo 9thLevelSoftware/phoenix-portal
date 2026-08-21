@@ -47,18 +47,18 @@ export function resolveDropSetUpsertFields(
 	incoming: IncomingDropSetFields,
 	existing: ExistingDropSetFields | null,
 ): DropSetUpsertFields {
-	const enabledProvided = typeof incoming.dropSetEnabled === "boolean";
-	const minProvided = incoming.dropSetMinWeightKg !== undefined;
 	const existingEnabled = existing?.drop_set_enabled ?? false;
 	const existingMin = existing?.drop_set_min_weight_kg ?? null;
 
-	const drop_set_enabled = enabledProvided
-		? incoming.dropSetEnabled
-		: existingEnabled;
+	const drop_set_enabled =
+		typeof incoming.dropSetEnabled === "boolean"
+			? incoming.dropSetEnabled
+			: existingEnabled;
 
-	let drop_set_min_weight_kg = minProvided
-		? incoming.dropSetMinWeightKg
-		: existingMin;
+	let drop_set_min_weight_kg =
+		incoming.dropSetMinWeightKg !== undefined
+			? incoming.dropSetMinWeightKg
+			: existingMin;
 
 	// Never persist enabled=true with a null floor. Legacy null/omitted
 	// payloads would otherwise keep the existing true flag and blank the
