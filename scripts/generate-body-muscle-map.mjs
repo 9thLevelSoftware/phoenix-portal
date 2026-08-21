@@ -216,13 +216,13 @@ const entries = source
 	.map((exercise) => {
 		const aliases = [
 			exercise.name,
-			exercise.display_name ?? exercise.displayName,
+			exercise.display_name,
 			...(exercise.aliases ?? []),
 		]
 			.filter((value) => typeof value === "string" && value.trim().length > 0)
 			.map((value) => value.trim());
 		const normalizedAliases = [...new Set(aliases.map(normalizeExerciseName).filter(Boolean))];
-		const muscleGroups = exercise.muscle_groups ?? exercise.muscleGroups ?? [];
+		const muscleGroups = exercise.muscle_groups ?? [];
 		return {
 			exerciseId: exercise.id,
 			name: String(exercise.name ?? "").trim(),
@@ -237,7 +237,7 @@ const entries = source
 			],
 			bodyMuscles: buildBodyMuscles({
 				muscles: exercise.muscles,
-				muscleGroups,
+				muscleGroups: exercise.muscle_groups,
 			}),
 		};
 	})
