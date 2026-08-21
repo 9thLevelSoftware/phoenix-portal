@@ -10,7 +10,6 @@ import {
 	Eye,
 	GripVertical,
 	Loader2,
-	PlayCircle,
 	Plus,
 	Save,
 	Search,
@@ -40,7 +39,6 @@ import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
-import { getPrimaryExerciseDemoMedia } from "@/lib/exercise-demo-media";
 import {
 	convertWeight,
 	formatWeight,
@@ -1367,19 +1365,19 @@ function ExercisePickerModal({
 
 	// Fetch exercises from the exercise_catalog table
 	const { data: catalogExercises, isLoading: catalogLoading } =
-		useExerciseCatalog({ includeArchived: true });
+		useExerciseCatalog();
 
 	const allExercises = useMemo(() => {
 		return (catalogExercises ?? []).map((ex) => {
-			const demoMedia = getPrimaryExerciseDemoMedia(ex.id);
-
 			return {
 				name: ex.display_name,
 				muscleGroup: ex.muscle_group,
 				exerciseId: ex.id,
 				equipment: ex.equipment,
-				demoThumbnailUrl: ex.thumbnail_url ?? demoMedia?.thumbnailUrl ?? null,
-				demoVideoUrl: demoMedia?.videoUrl ?? null,
+				demoThumbnailUrl: ex.thumbnail_url ?? null,
+				source: ex.source ?? null,
+				license: ex.license ?? null,
+				licenseAuthor: ex.license_author ?? null,
 			};
 		});
 	}, [catalogExercises]);
@@ -1497,12 +1495,6 @@ function ExercisePickerModal({
 														loading="lazy"
 														className="h-full w-full object-cover"
 													/>
-													<div
-														aria-hidden="true"
-														className="absolute inset-0 flex items-center justify-center bg-black/20"
-													>
-														<PlayCircle className="h-5 w-5 text-white drop-shadow" />
-													</div>
 												</div>
 											)}
 											<div className="min-w-0">
@@ -1519,6 +1511,15 @@ function ExercisePickerModal({
 														</Badge>
 													)}
 												</div>
+												{exercise.source === "wger" && (
+													<p className="mt-1 text-[10px] text-muted-foreground">
+														wger
+														{exercise.licenseAuthor
+															? ` · ${exercise.licenseAuthor}`
+															: ""}
+														{exercise.license ? ` · ${exercise.license}` : ""}
+													</p>
+												)}
 											</div>
 										</div>
 										<Plus className="ml-3 h-5 w-5 flex-shrink-0 text-muted-foreground" />

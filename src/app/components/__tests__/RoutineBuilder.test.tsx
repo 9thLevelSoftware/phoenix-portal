@@ -111,26 +111,27 @@ vi.mock("sonner", () => ({
 
 function tricepPushdownCatalogRow() {
 	return {
-		id: "BUxuV42l6oolZVde",
-		name: "Tricep Pushdown",
-		display_name: "Tricep Pushdown",
+		id: "Triceps_Pushdown",
+		name: "Triceps Pushdown",
+		display_name: "Triceps Pushdown",
 		description: null,
 		muscle_group: "ARMS",
 		muscle_groups: ["ARMS"],
 		muscles: ["triceps"],
-		equipment: ["SHORT_BAR"],
-		movement: "tricep_extension",
+		equipment: ["CABLE"],
+		movement: "strength",
 		sidedness: "bilateral",
-		grip: "pronated",
+		grip: null,
 		grip_width: null,
-		default_cable_config: "DOUBLE",
+		default_cable_config: "EITHER",
 		min_rep_range: 5,
 		popularity: 0,
 		aliases: [],
 		thumbnail_url:
-			"https://example.invalid/XMK02bqNtt76JAbEvjknvG69J01KKPVYaDp6FWOPV9La8/thumbnail.jpg",
-		archived: true,
+			"https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/Triceps_Pushdown/0.jpg",
+		archived: false,
 		is_custom: false,
+		source: "free-exercise-db",
 	};
 }
 
@@ -273,20 +274,18 @@ describe("RoutineBuilder", () => {
 		});
 	});
 
-	it("requests archived catalog exercises for routine creation parity with mobile", async () => {
+	it("requests the active catalog for routine creation", async () => {
 		const user = userEvent.setup();
 		renderWithProviders(<RoutineBuilder />);
 
 		await user.click(screen.getByRole("button", { name: /add exercise/i }));
 
 		await waitFor(() => {
-			expect(mockCatalog.useExerciseCatalog).toHaveBeenCalledWith({
-				includeArchived: true,
-			});
+			expect(mockCatalog.useExerciseCatalog).toHaveBeenCalledWith();
 		});
 	});
 
-	it("allows selecting archived catalog exercises and preserves the catalog ID in the saved routine", async () => {
+	it("allows selecting catalog exercises and preserves the catalog ID in the saved routine", async () => {
 		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
 		const user = userEvent.setup();
 		renderWithProviders(<RoutineBuilder />);
@@ -294,10 +293,10 @@ describe("RoutineBuilder", () => {
 		await user.click(screen.getByRole("button", { name: /add exercise/i }));
 		await user.type(
 			await screen.findByPlaceholderText(/search exercises/i),
-			"tricep pushdown",
+			"triceps pushdown",
 		);
 		await user.click(
-			await screen.findByRole("button", { name: /tricep pushdown/i }),
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
 		);
 		await user.click(screen.getByRole("button", { name: /save routine/i }));
 
@@ -305,9 +304,9 @@ describe("RoutineBuilder", () => {
 			expect.objectContaining({
 				exercises: [
 					expect.objectContaining({
-						name: "Tricep Pushdown",
+						name: "Triceps Pushdown",
 						muscle_group: "ARMS",
-						exercise_id: "BUxuV42l6oolZVde",
+						exercise_id: "Triceps_Pushdown",
 					}),
 				],
 			}),
@@ -324,11 +323,11 @@ describe("RoutineBuilder", () => {
 
 		expect(
 			await screen.findByRole("img", {
-				name: /demo preview for tricep pushdown/i,
+				name: /demo preview for triceps pushdown/i,
 			}),
 		).toHaveAttribute(
 			"src",
-			"https://example.invalid/XMK02bqNtt76JAbEvjknvG69J01KKPVYaDp6FWOPV9La8/thumbnail.jpg",
+			"https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/Triceps_Pushdown/0.jpg",
 		);
 	});
 

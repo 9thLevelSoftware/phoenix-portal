@@ -28,7 +28,10 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config",
     "verify:full": "npm run verify && npm run test:e2e",
-    "gen:types": "node scripts/gen-types.mjs"
+    "gen:types": "node scripts/gen-types.mjs",
+    "catalog:build": "node scripts/build-open-exercise-catalog.mjs --write-migration",
+    "catalog:check": "node scripts/build-open-exercise-catalog.mjs --check",
+    "catalog:mirror": "node scripts/mirror-exercise-images.mjs"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.3.0",
@@ -99,7 +102,7 @@
     "react-muscle-highlighter": "^1.2.0",
     "react-papaparse": "^4.4.0",
     "react-resizable-panels": "2.1.7",
-    "react-router": "^7.17.0",
+    "react-router": "^7.18.2",
     "recharts": "^3.7.0",
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
@@ -110,7 +113,11 @@
   },
   "overrides": {
     "@rollup/plugin-terser": ">=1.0.0",
-    "serialize-javascript": ">=7.0.3"
+    "serialize-javascript": ">=7.0.3",
+    "fast-uri": "^3.1.5",
+    "nanoid": "^3.3.18",
+    "postcss": "^8.5.23",
+    "undici": "^7.29.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
@@ -130,7 +137,7 @@
     "cross-env": "^10.1.0",
     "jsdom": "^28.1.0",
     "rollup-plugin-visualizer": "^6.0.5",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.7.0",
     "vite": "^7.3.1",

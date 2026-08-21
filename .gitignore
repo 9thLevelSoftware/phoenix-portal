@@ -59,3 +59,6 @@ test-results/
 # Generated analysis/cache outputs
 stats.html
 *.tsbuildinfo
+
+# Open-catalogue fetch cache (images + upstream JSON)
+supabase/seed-data/.cache/

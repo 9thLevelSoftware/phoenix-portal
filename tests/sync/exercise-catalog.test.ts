@@ -162,6 +162,9 @@ describe("Exercise Catalog Sync", () => {
 			expect(formatEquipment(["LONG_BAR"])).toBe("Long Bar");
 			expect(formatEquipment(["HANDLES", "BENCH"])).toBe("Handles, Bench");
 			expect(formatEquipment(["GREY_CABLES"])).toBe("Cables");
+			expect(formatEquipment(["BARBELL", "BODYWEIGHT"])).toBe(
+				"Barbell, Bodyweight",
+			);
 		});
 
 		it("should pass through unknown equipment codes", () => {
@@ -176,9 +179,9 @@ describe("Exercise Catalog Sync", () => {
 	describe("catalogExerciseSchema", () => {
 		it("should parse a valid catalog exercise", () => {
 			const raw = {
-				id: "4kmhj9yyZcBI54Vi",
-				name: "Bicep Curl",
-				display_name: "Bicep Curl (Long Bar)",
+				id: "Barbell_Curl",
+				name: "Barbell Curl",
+				display_name: "Barbell Curl",
 				description: null,
 				muscle_group: "Arms",
 				muscle_groups: ["Arms"],
@@ -198,8 +201,8 @@ describe("Exercise Catalog Sync", () => {
 			};
 
 			const parsed = catalogExerciseSchema.parse(raw);
-			expect(parsed.id).toBe("4kmhj9yyZcBI54Vi");
-			expect(parsed.display_name).toBe("Bicep Curl (Long Bar)");
+			expect(parsed.id).toBe("Barbell_Curl");
+			expect(parsed.display_name).toBe("Barbell Curl");
 			expect(parsed.equipment).toEqual(["LONG_BAR"]);
 			expect(parsed.is_custom).toBe(false);
 		});
