@@ -28,7 +28,10 @@
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config",
     "verify:full": "npm run verify && npm run test:e2e",
-    "gen:types": "node scripts/gen-types.mjs"
+    "gen:types": "node scripts/gen-types.mjs",
+    "catalog:build": "node scripts/build-open-exercise-catalog.mjs --write-migration",
+    "catalog:check": "node scripts/build-open-exercise-catalog.mjs --check",
+    "catalog:mirror": "node scripts/mirror-exercise-images.mjs"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.3.0",

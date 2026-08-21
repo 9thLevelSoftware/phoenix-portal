@@ -1,26 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const catalogRow = {
-	id: "BUxuV42l6oolZVde",
-	name: "Tricep Pushdown",
-	display_name: "Tricep Pushdown",
+	id: "Triceps_Pushdown",
+	name: "Triceps Pushdown",
+	display_name: "Triceps Pushdown",
 	description: null,
 	muscle_group: "ARMS",
 	muscle_groups: ["ARMS"],
 	muscles: ["triceps"],
-	equipment: ["SHORT_BAR"],
-	movement: "tricep_extension",
+	equipment: ["CABLE"],
+	movement: "strength",
 	sidedness: "bilateral",
-	grip: "pronated",
+	grip: null,
 	grip_width: null,
-	default_cable_config: "DOUBLE",
+	default_cable_config: "EITHER",
 	min_rep_range: 5,
 	popularity: 0,
 	aliases: [],
 	thumbnail_url:
-		"https://image.mux.com/XMK02bqNtt76JAbEvjknvG69J01KKPVYaDp6FWOPV9La8/thumbnail.jpg",
+		"https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/Triceps_Pushdown/0.jpg",
 	archived: true,
 	is_custom: false,
+	source: "free-exercise-db",
 };
 
 type AwaitableQuery = Promise<{ data: unknown; error: unknown }> & {
@@ -73,6 +74,6 @@ describe("fetchExerciseCatalog", () => {
 		const result = await fetchExerciseCatalog({ includeArchived: true });
 
 		expect(query.eq).not.toHaveBeenCalledWith("archived", false);
-		expect(result[0]?.id).toBe("BUxuV42l6oolZVde");
+		expect(result[0]?.id).toBe("Triceps_Pushdown");
 	});
 });

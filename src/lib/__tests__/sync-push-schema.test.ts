@@ -238,7 +238,7 @@ describe("pushPayloadSchema", () => {
 	});
 
 	it("preserves catalog exercise IDs on session and routine exercises", () => {
-		const catalogExerciseId = "4kmhj9yyZcBI54Vi";
+		const catalogExerciseId = "Barbell_Squat";
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",
 			platform: "android",

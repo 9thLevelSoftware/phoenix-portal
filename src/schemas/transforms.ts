@@ -54,6 +54,19 @@ export const equipmentDisplayMap: Record<string, string> = {
 	BENCH: "Bench",
 	STRAPS: "Straps",
 	GREY_CABLES: "Cables",
+	BARBELL: "Barbell",
+	DUMBBELL: "Dumbbell",
+	CABLE: "Cable",
+	MACHINE: "Machine",
+	BODYWEIGHT: "Bodyweight",
+	KETTLEBELL: "Kettlebell",
+	BANDS: "Bands",
+	EZ_BAR: "EZ Bar",
+	MEDICINE_BALL: "Medicine Ball",
+	EXERCISE_BALL: "Exercise Ball",
+	FOAM_ROLL: "Foam Roll",
+	PULL_UP_BAR: "Pull-up Bar",
+	OTHER: "Other",
 };
 
 export function formatEquipment(codes: string[]): string {
@@ -452,6 +465,11 @@ export const catalogExerciseSchema = z.object({
 	thumbnail_url: z.string().nullable(),
 	archived: z.boolean(),
 	is_custom: z.boolean(),
+	source: z.string().nullable().optional(),
+	source_id: z.string().nullable().optional(),
+	license: z.string().nullable().optional(),
+	license_author: z.string().nullable().optional(),
+	license_url: z.string().nullable().optional(),
 });
 
 export const catalogExerciseListSchema = z.array(catalogExerciseSchema);

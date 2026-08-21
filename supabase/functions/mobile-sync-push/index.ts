@@ -30,6 +30,13 @@ import {
 } from '../_shared/pushPayloadSchema.ts';
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
 import {
+  catalogLookupFromUnknown,
+  resolveCatalogExerciseId,
+  resolveCatalogExerciseIds,
+  buildCatalogIndexes,
+  type CatalogLookupRow,
+} from '../_shared/catalogExerciseIds.ts';
+import {
   failPreferenceValidation,
   type JsonRecord,
   MAX_MOBILE_SYNC_REQUEST_BYTES,
@@ -1126,6 +1133,67 @@ async function mobileSyncPushHandler(
       }
     }
 
+    async function fetchAccessibleCatalogRows(
+      client: typeof supabase,
+      ownerId: string,
+    ): Promise<CatalogLookupRow[]> {
+      const pageSize = 1000;
+      const rows: CatalogLookupRow[] = [];
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await client
+          .from('exercise_catalog')
+          .select('id, name, display_name, aliases, user_id, is_custom')
+          .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
+          .range(from, from + pageSize - 1);
+        if (error) {
+          throw new Error(`exercise_catalog lookup failed: ${error.message}`);
+        }
+        const batch = catalogLookupFromUnknown(data);
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      return rows;
+    }
+
+    const catalogIndexes = buildCatalogIndexes(
+      await fetchAccessibleCatalogRows(supabase, userId),
+      userId,
+    );
+    const catalogResolution = resolveCatalogExerciseIds(catalogIndexes, [
+      ...(payload.sessions ?? []).flatMap((session) =>
+        (session.exercises ?? []).map((exercise) => ({
+          id: exercise.exerciseId,
+          name: exercise.name,
+        })),
+      ),
+      ...(payload.routines ?? []).flatMap((routine) =>
+        (routine.exercises ?? []).map((exercise) => ({
+          id: exercise.exerciseId,
+          name: exercise.name,
+        })),
+      ),
+      ...(payload.exerciseSignatures ?? []).map((signature) => ({
+        id: signature.exerciseId,
+      })),
+      ...(payload.assessments ?? []).map((assessment) => ({
+        id: assessment.exerciseId,
+      })),
+      ...(payload.personalRecords ?? []).map((record) => ({
+        id: record.exerciseId,
+        name: record.exerciseName,
+      })),
+    ]);
+    console.log(
+      'catalog exercise_id resolution',
+      JSON.stringify({
+        matched: catalogResolution.matched,
+        nameMatched: catalogResolution.nameMatched,
+        unmatched: catalogResolution.unmatched,
+      }),
+    );
+    const catalogId = (id?: string | null, name?: string | null) =>
+      resolveCatalogExerciseId(catalogIndexes, id, name);
+
     // =========================================================================
     // 3a. Sync local profiles
     //
@@ -1588,7 +1656,7 @@ async function mobileSyncPushHandler(
             session_id: e.sessionId,
             user_id: userId,
             name: e.name,
-            exercise_id: e.exerciseId ?? null,
+            exercise_id: catalogId(e.exerciseId, e.name),
             muscle_group: e.muscleGroup ?? 'General',
             order_index: e.orderIndex ?? 0,
           }))
@@ -1765,7 +1833,10 @@ async function mobileSyncPushHandler(
         acceptedSessions,
         userId,
         localProfileId,
-      );
+      ).map((row) => ({
+        ...row,
+        exercise_id: catalogId(row.exercise_id, row.exercise_name),
+      }));
 
       if (progressRows.length > 0) {
         const sessionIds = [...new Set(acceptedSessions.map((session) => session.id))];
@@ -1825,6 +1896,10 @@ async function mobileSyncPushHandler(
     );
 
     if (prRows.length > 0) {
+      prRows = prRows.map((row) => ({
+        ...row,
+        exercise_id: catalogId(row.exercise_id, row.exercise_name),
+      }));
       prRows = hydratePersonalRecordExerciseNamesFromSessionExercises(
         prRows,
         (payload.sessions ?? []).flatMap((session) =>
@@ -2132,7 +2207,7 @@ async function mobileSyncPushHandler(
           id: e.id,
           routine_id: e.routineId,
           name: e.name,
-          exercise_id: e.exerciseId ?? null,
+          exercise_id: catalogId(e.exerciseId, e.name),
           muscle_group: e.muscleGroup ?? 'General',
           sets: e.sets ?? 3,
           reps: e.reps ?? 10,
@@ -2508,9 +2583,12 @@ async function mobileSyncPushHandler(
     // 12. Exercise signatures (GAP 8)
     // =========================================================================
     if (payload.exerciseSignatures && payload.exerciseSignatures.length > 0) {
-      const sigRows = payload.exerciseSignatures.map((es) => ({
+      const sigRows = payload.exerciseSignatures.flatMap((es) => {
+        const exerciseId = catalogId(es.exerciseId);
+        if (!exerciseId) return [];
+        return [{
         user_id: userId,
-        exercise_id: es.exerciseId,
+        exercise_id: exerciseId,
         rom_mm: es.romMm,
         duration_ms: es.durationMs,
         symmetry_ratio: es.symmetryRatio,
@@ -2519,7 +2597,8 @@ async function mobileSyncPushHandler(
         sample_count: es.sampleCount,
         confidence: es.confidence,
         updated_at: es.updatedAt ?? new Date().toISOString(),
-      }));
+        }];
+      });
 
       const { error: sigErr } = await supabase
         .from('exercise_signatures')
@@ -2532,15 +2611,19 @@ async function mobileSyncPushHandler(
     // 13. VBT assessment results (GAP 9)
     // =========================================================================
     if (payload.assessments && payload.assessments.length > 0) {
-      const assessRows = payload.assessments.map((a) => ({
+      const assessRows = payload.assessments.flatMap((a) => {
+        const exerciseId = catalogId(a.exerciseId);
+        if (!exerciseId) return [];
+        return [{
         user_id: userId,
-        exercise_id: a.exerciseId,
+        exercise_id: exerciseId,
         estimated_1rm_kg: a.estimatedOneRepMaxKg,
         load_velocity_data: safeJsonParse(a.loadVelocityData),
         assessment_session_id: a.assessmentSessionId,
         user_override_kg: a.userOverrideKg,
         created_at: a.createdAt,
-      }));
+        }];
+      });
 
       // Dedup by exercise_id + created_at
       const { data: existingAssess } = await supabase

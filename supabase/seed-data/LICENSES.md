@@ -1,0 +1,259 @@
+# Exercise catalogue licenses
+
+## free-exercise-db
+
+Source: https://github.com/yuhonas/free-exercise-db
+
+This is free and unencumbered software released into the public domain (Unlicense).
+See http://unlicense.org/
+
+## wger
+
+Source: https://wger.de/api/v2/exerciseinfo/
+
+Exercise entries from wger are licensed under Creative Commons Attribution-ShareAlike 4.0
+International (CC-BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+
+Authors recorded at generation time:
+
+- 2dPREtEZP221u68Akf0JImv5L48
+- 3leh
+- 54str
+- 6LXBO
+- Aleid
+- AlucardEvil40
+- Anastasious
+- Anon#2
+- Antsy6277
+- BFad07
+- BeLikeWater
+- BePieToday
+- Behrooz
+- Blablabla
+- Boertie
+- Bret Contreras
+- Brigade7938
+- Cerin
+- Cf
+- CptnFatbeard
+- Croak6728
+- Davidgj32
+- Deflation
+- Dexter
+- DiscoCop
+- Dulive
+- Epiphany8424
+- ExRx
+- Expenses7000
+- FEFFO
+- Fittness69
+- Franpol
+- G. Johnson
+- Gavru
+- GiglioRosso
+- GrosseHund
+- Happy
+- ISSACS
+- Iko
+- Imobard
+- Insight
+- J120290,cerin
+- JackSparrow
+- James Mackay
+- Jhonatan
+- Joculari
+- JohnPreston
+- Konsumopfer
+- LEBRERO
+- Lynn_McIntyre
+- M9
+- MU5H
+- MaddieBeasley
+- Mahoney
+- Manu, wikipedia
+- Mariano_O
+- Marius
+- McMarcel13
+- Me
+- Mens Fitness
+- Metin
+- Mike Mentzer
+- Mikko Ruohola
+- MisterPinnacle
+- Moffi
+- MrAlfaRobot
+- MrSteele
+- Nallitnas
+- Nash
+- OGhTebfCxhexZXuf35mUxV9C--A
+- Papazit
+- PaukOne
+- Paul@Chemistry
+- Pete-E automation
+- Pete-E automation probe
+- Raj
+- Rehab Hero
+- RiccaBaro
+- Robertcoop
+- Rottekongen
+- Settebello
+- Shiladree
+- Skadi
+- ThisGirl0819
+- Tierrasverdes
+- TobiasFalk
+- Torsten Linnecke
+- Trix
+- Vasco Custom
+- Vazco
+- Vilhelmo
+- Whythebigpaws
+- WiNNiE
+- YYCfit
+- YYCfit / BFad07
+- Yderkone
+- aahuja
+- abeworld
+- aboksz
+- abuono
+- admin
+- amaesc
+- amwang4
+- andikeller
+- anon1337
+- anto.kreegyr
+- apeschel
+- arson
+- ataraxie67
+- baldurmen
+- barry
+- bbayuwega
+- beagle
+- benjamin.yildiz@proton.me
+- bizyguy
+- bl0sh
+- bobbyprince89
+- brucem
+- burenl
+- cal.zabel
+- captive0592
+- carlos3c
+- cgoob883
+- clafal
+- cleen
+- colundrum
+- cozyGalvinism
+- cshep442
+- cybro
+- cynomops
+- daiben
+- damnlost
+- daniel.escada
+- delta@romeo
+- deusinvictus
+- djblitzd
+- donaddon
+- dookie1481
+- drthurlow
+- ege
+- er0355
+- erikocobra
+- eriktrinkle
+- eufvksruh
+- evtimovgeorg
+- fabrice
+- flanny
+- fletchgraham
+- flori
+- florian.bussmann
+- foguinho.peruca
+- geraldbaeck
+- hektkaso
+- hpmbala@gmail.com
+- http://www.bodybuilding.com/
+- http://www.carinatum.com/
+- http://www.exrx.net/WeightExercises/Brachialis/DBC
+- http://www.realsimple.com/health/fitness-exercise/
+- hurr99
+- intelman
+- jayninja
+- jesusd
+- jigglychipmunk
+- karly
+- klabautermann
+- kmcalderwood
+- koreyhinton
+- krisbbb
+- kwrindy
+- lakerbeezel
+- lauroernesto
+- lbroggi
+- lh1701
+- lhegedus
+- lion
+- lxmx
+- m4k3r
+- magdy
+- manuher89
+- marcelbader
+- matpn
+- mbozi1
+- meldun
+- mike6426
+- minifigmaster125
+- mountain.potato
+- nate303303
+- nishant0712
+- notdefine
+- novadani
+- oboema
+- painDpice
+- pera_perkan
+- personal use
+- philip
+- phpi
+- pjwirth
+- polloperro
+- powerade69
+- prevail90
+- probablyforging
+- pwiltrout
+- ricardodavidrd
+- richmr2174@gmail.com
+- ricwheatley
+- robhoyt
+- roneydya
+- sTiKyt
+- schweezer
+- schwolfar
+- sebk
+- sevae
+- shushu
+- sistab2
+- sophialj
+- spacetowaste
+- student1234
+- taylorbarbell
+- tdprice12
+- tekknokrat@gmx.de
+- tenebrizz
+- teus_ergaster
+- tinman
+- treder
+- tregga
+- trzr23
+- tuckerm
+- tuninx
+- utkb
+- vdrb
+- vince63
+- vkylamba
+- wakanda90
+- wger.de
+- wgerpott
+- workout@rooven.anonaddy.me
+- xWan
+- zdelko
+
+The merged catalog JSON in this directory is therefore shared under CC-BY-SA 4.0
+where it includes wger rows. Application source code is not.

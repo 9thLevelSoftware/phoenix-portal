@@ -4,4 +4,6 @@ This Figma Make file includes photos from [Unsplash](https://unsplash.com) used 
 
 Phoenix Portal includes [body-muscles](https://www.npmjs.com/package/body-muscles) for anatomical muscle-map rendering, used under the Apache License 2.0.
 
-The free-exercise-db project was reviewed as source reference material only. Its generated artifacts, images, and data files are not vendored into Phoenix Portal.
+Phoenix Portal vendors the [free-exercise-db](https://github.com/yuhonas/free-exercise-db) exercise list under the Unlicense (public domain).
+
+Exercise entries merged from [wger](https://wger.de/) are licensed under [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Author credits are listed in `supabase/seed-data/LICENSES.md`.

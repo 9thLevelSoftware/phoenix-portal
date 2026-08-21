@@ -72,10 +72,10 @@ describe("personalRecordsOptions", () => {
 			data: [
 				{
 					...recordRow,
-					exercise_name: "1vS7ZNfrz2qF6KId",
-					exercise_id: "1vS7ZNfrz2qF6KId",
+					exercise_name: "Barbell_Curl",
+					exercise_id: "Barbell_Curl",
 					catalog: {
-						id: "1vS7ZNfrz2qF6KId",
+						id: "Barbell_Curl",
 						name: "Bayesian Curl",
 						display_name: "Bayesian Curl (Handles)",
 					},
