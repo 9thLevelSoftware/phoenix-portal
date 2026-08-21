@@ -360,6 +360,68 @@ describe("RoutineBuilder", () => {
 		expect(mockSaveMutate).not.toHaveBeenCalled();
 	});
 
+	it("clears drop-set fields when the exercise leaves Old School so save stays CHECK-safe", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		await user.selectOptions(screen.getByDisplayValue("Old School"), "Echo");
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).not.toHaveBeenCalled();
+		expect(mockSaveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						mode: "Echo",
+						drop_set_enabled: false,
+						drop_set_min_weight_kg: null,
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
+	it("clears drop-set fields when the exercise becomes bodyweight", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		await user.click(screen.getByRole("switch", { name: /bodyweight/i }));
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).not.toHaveBeenCalled();
+		expect(mockSaveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						is_bodyweight: true,
+						drop_set_enabled: false,
+						drop_set_min_weight_kg: null,
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
 	it("renders a demo thumbnail affordance for catalog exercises with media", async () => {
 		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
 		const user = userEvent.setup();

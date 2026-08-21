@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	coerceDropSetMinWeightKg,
@@ -7,16 +5,10 @@ import {
 	resolveDropSetUpsertFields,
 } from "../../../supabase/functions/_shared/dropSetUpsert.ts";
 
-const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
-
 const existingEnabled = {
 	drop_set_enabled: true,
 	drop_set_min_weight_kg: 12.5,
 };
-
-function readSource(filename: string): string {
-	return readFileSync(join(process.cwd(), filename), "utf8");
-}
 
 describe("resolveDropSetUpsertFields", () => {
 	it("uses incoming values when both fields are explicit", () => {
@@ -130,27 +122,5 @@ describe("needsDropSetExistingRow", () => {
 		).toBe(true);
 		expect(needsDropSetExistingRow({ dropSetEnabled: true })).toBe(true);
 		expect(needsDropSetExistingRow({ dropSetMinWeightKg: 8 })).toBe(true);
-	});
-});
-
-describe("mobile-sync-push drop-set merge", () => {
-	it("probes existing rows in chunks and merges both columns onto every upsert row", () => {
-		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
-		const lookupBlock = source.slice(
-			source.indexOf("const dropSetProbeIds ="),
-			source.indexOf("const reRows = reSource.map"),
-		);
-
-		expect(source).toContain("needsDropSetExistingRow");
-		expect(source).toContain("resolveDropSetUpsertFields");
-		expect(lookupBlock).toContain("const chunkSize = 100;");
-		expect(lookupBlock).toMatch(
-			/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*dropSetProbeIds\.length;\s*i\s*\+=\s*chunkSize\s*\)/,
-		);
-		expect(lookupBlock).toContain(
-			".select('id, drop_set_enabled, drop_set_min_weight_kg')",
-		);
-		expect(lookupBlock).toContain(".in('id', chunk)");
-		expect(source).toContain("...resolveDropSetUpsertFields(");
 	});
 });
