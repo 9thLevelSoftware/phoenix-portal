@@ -558,11 +558,23 @@ WHERE is_custom = FALSE
 	fs.writeFileSync(filePath, `${header}${values}${footer}`);
 }
 
-function writeLicenses(authors) {
+function writeLicenses(authors, wgerRows) {
 	const authorList =
 		authors.length > 0
 			? authors.map((author) => `- ${author}`).join("\n")
 			: "- (see wger exerciseinfo license_author per row)";
+	const licenseCounts = new Map();
+	for (const row of wgerRows ?? []) {
+		const name = row.license?.trim() || "unknown";
+		licenseCounts.set(name, (licenseCounts.get(name) ?? 0) + 1);
+	}
+	const licenseLines =
+		licenseCounts.size > 0
+			? [...licenseCounts.entries()]
+					.sort((a, b) => a[0].localeCompare(b[0]))
+					.map(([name, count]) => `- ${name}: ${count} rows`)
+					.join("\n")
+			: "- (none)";
 	const content = `# Exercise catalogue licenses
 
 ## free-exercise-db
@@ -576,15 +588,18 @@ See http://unlicense.org/
 
 Source: https://wger.de/api/v2/exerciseinfo/
 
-Exercise entries from wger are licensed under Creative Commons Attribution-ShareAlike 4.0
-International (CC-BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+Wger rows are licensed per exercise, not under a single Creative Commons version.
+Distinct licenses in the generated catalog:
+
+${licenseLines}
 
 Authors recorded at generation time:
 
 ${authorList}
 
-The merged catalog JSON in this directory is therefore shared under CC-BY-SA 4.0
-where it includes wger rows. Application source code is not.
+Treat the merged catalog JSON as a mixed-license collection and consult each
+row's \`license\` / \`license_author\` / \`license_url\` fields. Application
+source code is not.
 `;
 	fs.writeFileSync(outputLicenses, content);
 }
@@ -636,7 +651,7 @@ async function main() {
 			2,
 		)}\n`,
 	);
-	writeLicenses(wger.authors);
+	writeLicenses(wger.authors, wger.rows);
 	if (args.writeMigration) {
 		writeMigration(rows, args.migrationPath);
 		console.log(`Wrote migration ${path.relative(root, args.migrationPath)}`);

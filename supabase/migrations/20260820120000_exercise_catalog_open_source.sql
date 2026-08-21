@@ -22,7 +22,7 @@ VALUES (
   'exercise-media',
   TRUE,
   5242880,
-  ARRAY['image/jpeg', 'image/png', 'image/webp']::text[]
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']::text[]
 )
 ON CONFLICT (id) DO UPDATE
 SET

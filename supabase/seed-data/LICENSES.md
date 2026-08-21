@@ -11,8 +11,12 @@ See http://unlicense.org/
 
 Source: https://wger.de/api/v2/exerciseinfo/
 
-Exercise entries from wger are licensed under Creative Commons Attribution-ShareAlike 4.0
-International (CC-BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+Wger rows are licensed per exercise, not under a single Creative Commons version.
+Distinct licenses in the generated catalog:
+
+- CC-BY-SA 3: 113 rows
+- CC-BY-SA 4: 657 rows
+- CC0: 17 rows
 
 Authors recorded at generation time:
 
@@ -238,5 +242,6 @@ Authors recorded at generation time:
 - workout@rooven.anonaddy.me
 - xWan
 
-The merged catalog JSON in this directory is therefore shared under CC-BY-SA 4.0
-where it includes wger rows. Application source code is not.
+Treat the merged catalog JSON as a mixed-license collection and consult each
+row's `license` / `license_author` / `license_url` fields. Application
+source code is not.
