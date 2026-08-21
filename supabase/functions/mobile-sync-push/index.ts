@@ -1144,6 +1144,7 @@ async function mobileSyncPushHandler(
           .from('exercise_catalog')
           .select('id, name, display_name, aliases, user_id, is_custom')
           .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
+          .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (error) {
           throw new Error(`exercise_catalog lookup failed: ${error.message}`);
@@ -1896,10 +1897,6 @@ async function mobileSyncPushHandler(
     );
 
     if (prRows.length > 0) {
-      prRows = prRows.map((row) => ({
-        ...row,
-        exercise_id: catalogId(row.exercise_id, row.exercise_name),
-      }));
       prRows = hydratePersonalRecordExerciseNamesFromSessionExercises(
         prRows,
         (payload.sessions ?? []).flatMap((session) =>
@@ -1911,6 +1908,10 @@ async function mobileSyncPushHandler(
           }))
         ),
       );
+      prRows = prRows.map((row) => ({
+        ...row,
+        exercise_id: catalogId(row.exercise_id, row.exercise_name),
+      }));
 
       const personalRecordExerciseCatalogIdsToLookup = [
         ...new Set(
