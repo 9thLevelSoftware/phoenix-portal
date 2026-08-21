@@ -1376,6 +1376,7 @@ function ExercisePickerModal({
 				equipment: ex.equipment,
 				demoThumbnailUrl: ex.thumbnail_url ?? null,
 				source: ex.source ?? null,
+				license: ex.license ?? null,
 				licenseAuthor: ex.license_author ?? null,
 			};
 		});
@@ -1515,8 +1516,8 @@ function ExercisePickerModal({
 														wger
 														{exercise.licenseAuthor
 															? ` · ${exercise.licenseAuthor}`
-															: ""}{" "}
-														· CC-BY-SA 4.0
+															: ""}
+														{exercise.license ? ` · ${exercise.license}` : ""}
 													</p>
 												)}
 											</div>
