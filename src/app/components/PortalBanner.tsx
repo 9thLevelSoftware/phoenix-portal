@@ -23,7 +23,7 @@ export function PortalBanner() {
 									Phoenix Portal
 								</span>{" "}
 								displays workout data synced from your mobile app. Create and
-								share routines that sync back to your Vitruvian trainer.
+								share routines that sync back to your Phoenix trainer.
 							</p>
 						</div>
 						<button

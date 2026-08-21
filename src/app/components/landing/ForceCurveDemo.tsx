@@ -338,9 +338,9 @@ export function ForceCurveDemo() {
 
 			{/* Explanatory copy */}
 			<p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-				Force output and velocity zones from a single Vitruvian rep. Every rep
-				is captured at millisecond resolution so you can analyze concentric vs
-				eccentric phases.
+				Force output and velocity zones from a single rep. Every rep is captured
+				at millisecond resolution so you can analyze concentric vs eccentric
+				phases.
 			</p>
 		</div>
 	);

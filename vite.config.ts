@@ -29,7 +29,7 @@ export default defineConfig({
 			manifest: {
 				name: "Phoenix Portal",
 				short_name: "Phoenix",
-				description: "Training companion dashboard for Vitruvian Trainer",
+				description: "Training companion dashboard for Phoenix fitness machine",
 				theme_color: "#0D0D0D",
 				background_color: "#0D0D0D",
 				display: "standalone",

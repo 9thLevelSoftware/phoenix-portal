@@ -2,7 +2,7 @@
  * Display helpers for telemetry data.
  *
  * The canonical wire format for cable identifiers is "A" | "B", matching the
- * BLE convention used by Vitruvian hardware and the mobile app (authoritative
+ * BLE convention used by Phoenix hardware and the mobile app (authoritative
  * for BLE-captured data per monorepo CLAUDE.md).
  *
  * Use these helpers at the presentation boundary when the UI needs a

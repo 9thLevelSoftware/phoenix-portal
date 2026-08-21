@@ -1,4 +1,4 @@
--- Demo Data Seed: Enrich existing vitruvianredux workout data for analytics testing
+-- Demo Data Seed: Enrich existing phoenixredux workout data for analytics testing
 -- Applied manually via Supabase MCP on 2026-03-18
 --
 -- What this migration does:

@@ -348,7 +348,7 @@ export function createCorrelatedWeightActivity(
 			return createStravaActivityFixture("WeightTraining", {
 				user_id: userId,
 				started_at: externalTime.toISOString(),
-				name: "Vitruvian Session",
+				name: "Phoenix Session",
 				duration_seconds: 3600,
 				calories: 450,
 			});

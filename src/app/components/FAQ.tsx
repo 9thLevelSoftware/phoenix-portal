@@ -35,10 +35,11 @@ const faqCategories: FAQCategory[] = [
 				answer: (
 					<p>
 						Phoenix Portal is a web companion dashboard for Project Phoenix, a
-						community rescue project for Vitruvian Trainer workout machines. It
-						provides a view-only interface for tracking your training data,
-						analytics, and progress. All workout control happens in the mobile
-						app — the portal gives you deeper insights on a larger screen.
+						community rescue project for Phoenix fitness machine workout
+						machines. It provides a view-only interface for tracking your
+						training data, analytics, and progress. All workout control happens
+						in the mobile app — the portal gives you deeper insights on a larger
+						screen.
 					</p>
 				),
 			},
@@ -48,7 +49,7 @@ const faqCategories: FAQCategory[] = [
 					<p>
 						Sign up for an account, connect your mobile app, and your workouts
 						will sync automatically. Once linked, every session recorded on your
-						Vitruvian Trainer appears in the portal within seconds.
+						Phoenix fitness machine appears in the portal within seconds.
 					</p>
 				),
 			},
@@ -164,9 +165,9 @@ const faqCategories: FAQCategory[] = [
 				question: "How does workout syncing work?",
 				answer: (
 					<p>
-						When you complete a workout on your Vitruvian Trainer, the mobile
-						app sends the data to Supabase. The portal picks up changes in
-						real-time via broadcast, so your latest sessions appear almost
+						When you complete a workout on your Phoenix fitness machine, the
+						mobile app sends the data to Supabase. The portal picks up changes
+						in real-time via broadcast, so your latest sessions appear almost
 						instantly on the dashboard.
 					</p>
 				),

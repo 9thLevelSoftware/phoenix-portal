@@ -4,7 +4,7 @@
 
 **Goal:** Transform the Phoenix Portal from a workout control interface to a pure analytics/community companion site that displays synced data without implying machine control.
 
-**Architecture:** Remove or repurpose all "Start Workout" / "Play" action buttons across components. Replace workout-control language with view/analytics language. Clarify that the portal displays data synced from the mobile app, not controls the Vitruvian machine directly.
+**Architecture:** Remove or repurpose all "Start Workout" / "Play" action buttons across components. Replace workout-control language with view/analytics language. Clarify that the portal displays data synced from the mobile app, not controls the Phoenix machine directly.
 
 **Tech Stack:** React, TypeScript, Tailwind CSS, Framer Motion, shadcn/ui components
 
@@ -249,7 +249,7 @@ export function PortalBanner() {
             <p className="text-sm text-[#E5E7EB]">
               <span className="font-semibold text-[#FF6B35]">Phoenix Portal</span> displays
               workout data synced from your mobile app. Create and share routines that sync
-              back to your Vitruvian trainer.
+              back to your Phoenix fitness machine.
             </p>
           </div>
           <button

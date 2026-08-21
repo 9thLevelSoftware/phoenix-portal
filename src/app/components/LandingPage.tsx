@@ -306,7 +306,7 @@ export function LandingPage() {
 			title: "Records & Leaderboards",
 			badge: "EMBER",
 			description:
-				"Personal records tracked per exercise, phase, and weight. See where you rank against other Vitruvian athletes on community leaderboards.",
+				"Personal records tracked per exercise, phase, and weight. See where you rank against other Phoenix athletes on community leaderboards.",
 		},
 		{
 			icon: Share2,
@@ -741,7 +741,7 @@ export function LandingPage() {
 							Pricing
 						</button>
 						<a
-							href="https://ko-fi.com/vitruvianredux"
+							href="https://ko-fi.com/phoenixredux"
 							target="_blank"
 							rel="noopener noreferrer"
 							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
@@ -802,7 +802,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						Phoenix Portal turns your Vitruvian Force data into force curves,
+						Phoenix Portal turns your Phoenix Force data into force curves,
 						biomechanics insights, recovery readiness scores, and a community of
 						athletes — all synced from the Project Phoenix app.
 					</motion.p>
@@ -1118,7 +1118,7 @@ export function LandingPage() {
 						</div>
 						<div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-muted-foreground">
 							<a
-								href="https://ko-fi.com/vitruvianredux"
+								href="https://ko-fi.com/phoenixredux"
 								target="_blank"
 								rel="noopener noreferrer"
 								className="hover:text-primary transition-colors"
@@ -1140,7 +1140,7 @@ export function LandingPage() {
 								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
-								Performance data for Vitruvian athletes.
+								Performance data for Phoenix athletes.
 							</p>
 						</div>
 						<div>
@@ -1171,7 +1171,7 @@ export function LandingPage() {
 							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<a
-										href="https://ko-fi.com/vitruvianredux"
+										href="https://ko-fi.com/phoenixredux"
 										target="_blank"
 										rel="noopener noreferrer"
 										className="hover:text-primary"
@@ -1223,9 +1223,10 @@ export function LandingPage() {
 							<p>
 								Project Phoenix is an independent, community-developed
 								application and is not affiliated with, endorsed by, sponsored
-								by, or supported by Vitruvian Investments Pty Ltd (in
-								Liquidation), managed by Merchants Advisory. Vitruvian and
-								related marks are trademarks of their respective owners.
+								by, or supported by Phoenix Investments Pty Ltd (in
+								Liquidation), managed by Merchants Advisory. Vitruvian
+								Investments Pty Ltd and related marks are trademarks of their
+								respective owners.
 							</p>
 							<p>
 								By downloading or using Project Phoenix, you agree to our{" "}

@@ -2789,15 +2789,15 @@ async function mobileSyncPushHandler(
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
-    // Surface the underlying error only in known non-production environments
-    // so future occurrences of this class are actionable (Issue #99 RCA layer 1).
-    // Kilo review: opt-in to verbose errors via allowlist; unknown values default to opaque.
-    const VERBOSE_ENVIRONMENTS = ['development', 'staging', 'preview', 'local'];
-    const isVerbose = VERBOSE_ENVIRONMENTS.includes(Deno.env.get('ENVIRONMENT') ?? '');
+    // TEMPORARY DIAGNOSTIC (Issue #99): surface application error messages
+    // in ALL environments. Our own thrown errors always contain ' failed';
+    // anything else stays opaque to prevent leaking sensitive details.
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const isApplicationError = rawMessage.includes(' failed');
     const errorBody: Record<string, unknown> = {
-      error: isVerbose ? (err instanceof Error ? err.message : String(err)) : 'Internal server error',
+      error: isApplicationError ? rawMessage : 'Internal server error',
     };
-    if (isVerbose && err && typeof err === 'object' && 'code' in err) {
+    if (err && typeof err === 'object' && 'code' in err) {
       errorBody.code = (err as { code: unknown }).code;
     }
     return new Response(
