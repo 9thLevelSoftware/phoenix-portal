@@ -106,25 +106,15 @@ function isDropSetEligible(exercise: Pick<Exercise, "mode" | "isBodyweight">) {
 	return isOldSchoolMode(exercise.mode) && !exercise.isBodyweight;
 }
 
-function withEligibleDropSet<T extends Exercise>(exercise: T): T {
-	if (isDropSetEligible(exercise)) return exercise;
-	if (!exercise.dropSetEnabled && exercise.dropSetMinWeightKg == null) {
-		return exercise;
-	}
-	return {
-		...exercise,
-		dropSetEnabled: false,
-		dropSetMinWeightKg: null,
-	};
-}
-
 function isDropSetConfigValid(exercise: Exercise) {
-	const normalized = withEligibleDropSet(exercise);
-	if (!normalized.dropSetEnabled) return true;
+	if (!exercise.dropSetEnabled) return true;
+	// Floor is required whenever the stored flag is true. Leaving Old School
+	// (Echo/bodyweight) hides the control but keeps dropSetEnabled /
+	// dropSetMinWeightKg so mobile can reactivate them.
 	return (
-		normalized.dropSetMinWeightKg != null &&
-		Number.isFinite(normalized.dropSetMinWeightKg) &&
-		normalized.dropSetMinWeightKg > 0
+		exercise.dropSetMinWeightKg != null &&
+		Number.isFinite(exercise.dropSetMinWeightKg) &&
+		exercise.dropSetMinWeightKg > 0
 	);
 }
 
@@ -419,37 +409,34 @@ export function RoutineBuilder() {
 	};
 
 	const buildExercisePayload = () =>
-		exercises.map((ex, i) => {
-			const normalized = withEligibleDropSet(ex);
-			return {
-				name: normalized.name,
-				muscle_group: normalized.muscleGroup,
-				exercise_id: normalized.exerciseId ?? null,
-				sets: normalized.sets,
-				reps: normalized.reps,
-				weight: normalized.weight,
-				rest_seconds: normalized.rest,
-				duration_seconds: normalized.durationSeconds,
-				mode: normalized.mode,
-				order_index: i,
-				superset_id: normalized.supersetId,
-				superset_color: normalized.supersetColor,
-				superset_order: normalized.supersetOrder,
-				per_set_weights: normalized.perSetWeights,
-				per_set_rest: normalized.perSetRest,
-				per_set_reps: normalized.perSetReps,
-				is_amrap: normalized.isAmrap,
-				is_bodyweight: normalized.isBodyweight,
-				pr_percentage: normalized.prPercentage,
-				rep_count_timing: normalized.repCountTiming,
-				stop_at_position: normalized.stopAtPosition,
-				stall_detection: normalized.stallDetection,
-				eccentric_load: normalized.eccentricLoad,
-				echo_level: normalized.echoLevel,
-				drop_set_enabled: normalized.dropSetEnabled,
-				drop_set_min_weight_kg: normalized.dropSetMinWeightKg,
-			};
-		});
+		exercises.map((ex, i) => ({
+			name: ex.name,
+			muscle_group: ex.muscleGroup,
+			exercise_id: ex.exerciseId ?? null,
+			sets: ex.sets,
+			reps: ex.reps,
+			weight: ex.weight,
+			rest_seconds: ex.rest,
+			duration_seconds: ex.durationSeconds,
+			mode: ex.mode,
+			order_index: i,
+			superset_id: ex.supersetId,
+			superset_color: ex.supersetColor,
+			superset_order: ex.supersetOrder,
+			per_set_weights: ex.perSetWeights,
+			per_set_rest: ex.perSetRest,
+			per_set_reps: ex.perSetReps,
+			is_amrap: ex.isAmrap,
+			is_bodyweight: ex.isBodyweight,
+			pr_percentage: ex.prPercentage,
+			rep_count_timing: ex.repCountTiming,
+			stop_at_position: ex.stopAtPosition,
+			stall_detection: ex.stallDetection,
+			eccentric_load: ex.eccentricLoad,
+			echo_level: ex.echoLevel,
+			drop_set_enabled: ex.dropSetEnabled,
+			drop_set_min_weight_kg: ex.dropSetMinWeightKg,
+		}));
 
 	// Resolve the selected exercise; may be undefined if the id went stale after
 	// a deletion/mutation, in which case the detail panel shows its empty state.
@@ -713,9 +700,7 @@ export function RoutineBuilder() {
 									onUpdate={(updated) => {
 										setExercises(
 											exercises.map((ex) =>
-												ex.id === selectedExercise
-													? withEligibleDropSet({ ...ex, ...updated })
-													: ex,
+												ex.id === selectedExercise ? { ...ex, ...updated } : ex,
 											),
 										);
 										setHasUnsavedChanges(true);
