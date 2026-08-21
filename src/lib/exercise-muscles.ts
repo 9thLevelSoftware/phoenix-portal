@@ -58,7 +58,9 @@ const CANONICAL_MUSCLE_GROUPS: Record<string, string> = {
 	general: "General",
 };
 
-export function canonicalizeMuscleGroup(group: string | null | undefined): string | undefined {
+export function canonicalizeMuscleGroup(
+	group: string | null | undefined,
+): string | undefined {
 	if (!group) return undefined;
 	const trimmed = group.trim();
 	if (!trimmed) return undefined;
