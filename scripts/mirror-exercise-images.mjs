@@ -21,6 +21,8 @@ function contentTypeFor(filePath) {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".png") return "image/png";
 	if (ext === ".webp") return "image/webp";
+	if (ext === ".gif") return "image/gif";
+	if (ext === ".avif") return "image/avif";
 	return "image/jpeg";
 }
 
