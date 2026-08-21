@@ -29,8 +29,7 @@ export interface CatalogIdIndexes {
 export function normalizeCatalogKey(name: string | null | undefined): string {
 	return String(name ?? "")
 		.toLowerCase()
-		.replace(/\([^)]*\)/g, " ")
-		.replace(/[-_/]+/g, " ")
+		.replace(/[-_/()]+/g, " ")
 		.replace(/[^a-z0-9\s]/g, "")
 		.replace(/\s+/g, " ")
 		.trim();

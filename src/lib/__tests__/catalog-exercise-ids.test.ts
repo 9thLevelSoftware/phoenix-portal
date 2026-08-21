@@ -25,9 +25,12 @@ const custom = {
 };
 
 describe("normalizeCatalogKey", () => {
-	it("strips punctuation, parens, and equipment separators", () => {
+	it("keeps parenthetical variants distinct while stripping separators", () => {
 		expect(normalizeCatalogKey("Barbell Squat (Machine)")).toBe(
-			"barbell squat",
+			"barbell squat machine",
+		);
+		expect(normalizeCatalogKey("Band Good Morning (Pull Through)")).not.toBe(
+			normalizeCatalogKey("Band Good Morning"),
 		);
 		expect(normalizeCatalogKey("Barbell_Bench_Press_-_Medium_Grip")).toBe(
 			"barbell bench press medium grip",
