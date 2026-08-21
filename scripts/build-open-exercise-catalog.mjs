@@ -255,6 +255,25 @@ function sidednessFromName(name) {
 	return null;
 }
 
+function defaultCableConfig(sidedness, equipment) {
+	if (sidedness === "alternating" || sidedness === "unilateral") return "SINGLE";
+	if (sidedness === "bilateral") return "DOUBLE";
+	if (equipment.includes("BARBELL") || equipment.includes("CABLE")) return "DOUBLE";
+	if (equipment.includes("DUMBBELL") || equipment.includes("KETTLEBELL")) {
+		return "EITHER";
+	}
+	return "EITHER";
+}
+
+function popularityFor({ id, source, imagePath }) {
+	let score = 0;
+	if (COMMON_LIFT_IDS.has(id)) score += 8;
+	if (source === "free-exercise-db") score += 4;
+	if (imagePath) score += 2;
+	if ((COMMON_ALIASES[id] ?? []).length > 0) score += 1;
+	return score;
+}
+
 function titleCase(value) {
 	return String(value ?? "")
 		.trim()
@@ -366,6 +385,7 @@ function toCatalogRow({
 			? uniqueRegions
 			: [GROUP_TO_DEFAULT_REGION[groups[0]]].filter(Boolean);
 	const equipment = mapEquipment(equipmentRaw);
+	const sidedness = sidednessFromName(name);
 	return {
 		id,
 		name,
@@ -376,12 +396,12 @@ function toCatalogRow({
 		muscles,
 		equipment,
 		movement: movement ?? null,
-		sidedness: sidednessFromName(name),
+		sidedness,
 		grip: null,
 		grip_width: null,
-		default_cable_config: "EITHER",
+		default_cable_config: defaultCableConfig(sidedness, equipment),
 		min_rep_range: null,
-		popularity: COMMON_LIFT_IDS.has(id) ? 1 : 0,
+		popularity: popularityFor({ id, source, imagePath }),
 		aliases: COMMON_ALIASES[id] ?? [],
 		thumbnail_url: thumbnailUrl(id, imagePath),
 		archived: false,
