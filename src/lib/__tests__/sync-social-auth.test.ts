@@ -18,12 +18,11 @@ import {
 } from "../../../scripts/sync-social-auth.mjs";
 
 describe("Cloudflare Pages build guard", () => {
+	const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
 	it("runs the stale Supabase config guard after building deploy artifacts", () => {
 		const wranglerConfig = readFileSync(
-			resolve(
-				dirname(fileURLToPath(import.meta.url)),
-				"../../../wrangler.toml",
-			),
+			resolve(repoRoot, "wrangler.toml"),
 			"utf8",
 		);
 
@@ -36,6 +35,18 @@ describe("Cloudflare Pages build guard", () => {
 		expect(
 			buildCommand?.indexOf("npm run assert:supabase-config"),
 		).toBeGreaterThan(buildCommand?.indexOf("npm run build") ?? -1);
+	});
+
+	it("pins wrangler locally so Workers Builds does not fetch it at deploy time", () => {
+		const pkg = JSON.parse(
+			readFileSync(resolve(repoRoot, "package.json"), "utf8"),
+		) as {
+			devDependencies?: Record<string, string>;
+			scripts?: Record<string, string>;
+		};
+
+		expect(pkg.devDependencies?.wrangler).toMatch(/^\^?\d+\.\d+\.\d+/);
+		expect(pkg.scripts?.deploy).toBe("wrangler deploy");
 	});
 });
 

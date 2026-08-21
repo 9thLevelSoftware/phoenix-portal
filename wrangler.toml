@@ -1,5 +1,8 @@
-# Cloudflare Pages configuration
-# Auto-deployed on push to main via Cloudflare GitHub integration
+# Cloudflare Pages / Workers Builds configuration
+# Auto-deployed on push to main via Cloudflare GitHub integration.
+# Workers Builds runs `npx wrangler deploy`; wrangler is pinned in
+# package.json so that command uses the local binary.
+
 
 name = "phoenix-portal"
 compatibility_date = "2025-12-01"
