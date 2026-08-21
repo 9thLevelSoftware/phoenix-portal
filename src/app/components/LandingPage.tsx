@@ -1233,10 +1233,9 @@ export function LandingPage() {
 							<p>
 								Project Phoenix is an independent, community-developed
 								application and is not affiliated with, endorsed by, sponsored
-								by, or supported by Phoenix Investments Pty Ltd (in
-								Liquidation), managed by Merchants Advisory. Vitruvian
-								Investments Pty Ltd and related marks are trademarks of their
-								respective owners.
+								by, or supported by Vitruvian Investments Pty Ltd (in
+								Liquidation), managed by Merchants Advisory. Vitruvian and
+								related marks are trademarks of their respective owners.
 							</p>
 							<p>
 								By downloading or using Project Phoenix, you agree to our{" "}

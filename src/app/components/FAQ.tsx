@@ -35,7 +35,7 @@ const faqCategories: FAQCategory[] = [
 				answer: (
 					<p>
 						Phoenix Portal is a web companion dashboard for Project Phoenix, a
-						community rescue project for Phoenix fitness machine workout
+						community-developed companion project for Phoenix-compatible fitness
 						machines. It provides a view-only interface for tracking your
 						training data, analytics, and progress. All workout control happens
 						in the mobile app — the portal gives you deeper insights on a larger

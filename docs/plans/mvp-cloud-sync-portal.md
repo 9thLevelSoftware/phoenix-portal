@@ -282,7 +282,7 @@ All integrations require **ELITE tier** subscription to access (gated by `Subscr
    - **Category:** `Training Analysis`
    - **Club:** *(leave blank)*
    - **Website:** `https://your-production-domain.com`
-   - **Application Description:** `Sync Phoenix fitness machine workouts with Strava`
+   - **Application Description:** `Sync Phoenix workouts with Strava`
    - **Authorization Callback Domain:** `ilzlswmatadlnsuxatcv.supabase.co`
      - **Important:** Strava wants just the domain, not a full URL. The actual callback URL is `https://ilzlswmatadlnsuxatcv.supabase.co/functions/v1/strava-oauth`
 4. Click **Create**
