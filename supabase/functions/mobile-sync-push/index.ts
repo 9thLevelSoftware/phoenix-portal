@@ -525,8 +525,8 @@ interface RoutineExerciseDto {
   echoLevel: string | null;
   perSetEchoLevels: string | null;
   warmupSets: string | null;
-  dropSetEnabled: boolean;
-  dropSetMinWeightKg: number | null;
+  dropSetEnabled?: boolean | null;
+  dropSetMinWeightKg?: number | null;
 }
 
 interface CustomExerciseDto {
@@ -2234,8 +2234,14 @@ async function mobileSyncPushHandler(
           echo_level: e.echoLevel,
           per_set_echo_levels: e.perSetEchoLevels ?? null,
           warmup_sets: e.warmupSets ?? null,
-          drop_set_enabled: e.dropSetEnabled,
-          drop_set_min_weight_kg: e.dropSetMinWeightKg,
+          // Omit when the client did not send the field so PostgREST keeps the
+          // existing row value (inserts still pick up the column DEFAULT).
+          ...(typeof e.dropSetEnabled === 'boolean'
+            ? { drop_set_enabled: e.dropSetEnabled }
+            : {}),
+          ...(e.dropSetMinWeightKg !== undefined
+            ? { drop_set_min_weight_kg: e.dropSetMinWeightKg }
+            : {}),
         }))
       );
 

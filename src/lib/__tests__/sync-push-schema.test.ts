@@ -237,7 +237,7 @@ describe("pushPayloadSchema", () => {
 		).toEqual([true, true, true, false]);
 	});
 
-	it("defaults missing or null drop-set flags and preserves explicit values", () => {
+	it("keeps omitted drop-set flags distinct from explicit false", () => {
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",
 			platform: "android",
@@ -283,8 +283,8 @@ describe("pushPayloadSchema", () => {
 				min: ex.dropSetMinWeightKg,
 			})),
 		).toEqual([
-			{ enabled: false, min: undefined },
-			{ enabled: false, min: null },
+			{ enabled: undefined, min: undefined },
+			{ enabled: null, min: null },
 			{ enabled: true, min: 12.5 },
 			{ enabled: false, min: undefined },
 		]);
