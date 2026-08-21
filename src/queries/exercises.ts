@@ -12,14 +12,15 @@ export interface ExerciseCatalogFilters {
 	includeArchived?: boolean;
 }
 
-export async function fetchExerciseCatalog(
-	filters?: ExerciseCatalogFilters,
-): Promise<CatalogExercise[]> {
-	let query = supabase
-		.from("exercise_catalog")
-		.select("*")
-		.order("popularity", { ascending: false });
+export const CATALOG_PAGE_SIZE = 1000;
 
+function applyCatalogFilters<
+	Q extends {
+		eq: (column: string, value: unknown) => Q;
+		overlaps: (column: string, value: string[]) => Q;
+		or: (filters: string) => Q;
+	},
+>(query: Q, filters?: ExerciseCatalogFilters): Q {
 	if (!filters?.includeArchived) {
 		query = query.eq("archived", false);
 	}
@@ -45,9 +46,32 @@ export async function fetchExerciseCatalog(
 		query = query.or(`name.ilike.${term},display_name.ilike.${term}`);
 	}
 
-	const { data, error } = await query;
-	if (error) throw error;
-	return catalogExerciseListSchema.parse(data);
+	return query;
+}
+
+export async function fetchExerciseCatalog(
+	filters?: ExerciseCatalogFilters,
+): Promise<CatalogExercise[]> {
+	const rows: unknown[] = [];
+	for (let from = 0; ; from += CATALOG_PAGE_SIZE) {
+		const pageQuery = applyCatalogFilters(
+			supabase
+				.from("exercise_catalog")
+				.select("*")
+				.order("popularity", { ascending: false })
+				.order("id", { ascending: true }),
+			filters,
+		);
+		const { data, error } = await pageQuery.range(
+			from,
+			from + CATALOG_PAGE_SIZE - 1,
+		);
+		if (error) throw error;
+		const page = data ?? [];
+		rows.push(...page);
+		if (page.length < CATALOG_PAGE_SIZE) break;
+	}
+	return catalogExerciseListSchema.parse(rows);
 }
 
 export async function fetchExerciseById(

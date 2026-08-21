@@ -24,24 +24,33 @@ const catalogRow = {
 	source: "free-exercise-db",
 };
 
-type AwaitableQuery = Promise<{ data: unknown; error: unknown }> & {
+type CatalogQuery = {
 	select: ReturnType<typeof vi.fn>;
 	order: ReturnType<typeof vi.fn>;
 	eq: ReturnType<typeof vi.fn>;
 	overlaps: ReturnType<typeof vi.fn>;
 	or: ReturnType<typeof vi.fn>;
+	range: ReturnType<typeof vi.fn>;
 	maybeSingle: ReturnType<typeof vi.fn>;
 };
 
-function buildAwaitableQuery(terminal: { data: unknown; error: unknown }) {
-	const query = Promise.resolve(terminal) as AwaitableQuery;
+function buildAwaitableQuery(
+	getTerminal: (
+		from?: number,
+		to?: number,
+	) => { data: unknown; error: unknown },
+) {
+	const query = {} as CatalogQuery;
 
 	query.select = vi.fn(() => query);
 	query.order = vi.fn(() => query);
 	query.eq = vi.fn(() => query);
 	query.overlaps = vi.fn(() => query);
 	query.or = vi.fn(() => query);
-	query.maybeSingle = vi.fn(() => Promise.resolve(terminal));
+	query.range = vi.fn((from: number, to: number) =>
+		Promise.resolve(getTerminal(from, to)),
+	);
+	query.maybeSingle = vi.fn(() => Promise.resolve(getTerminal()));
 
 	return query;
 }
@@ -56,7 +65,7 @@ vi.mock("@/lib/supabase", () => ({
 describe("fetchExerciseCatalog", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		query = buildAwaitableQuery({ data: [catalogRow], error: null });
+		query = buildAwaitableQuery(() => ({ data: [catalogRow], error: null }));
 	});
 
 	it("filters archived exercises by default", async () => {
@@ -66,6 +75,11 @@ describe("fetchExerciseCatalog", () => {
 
 		expect(fromFn).toHaveBeenCalledWith("exercise_catalog");
 		expect(query.eq).toHaveBeenCalledWith("archived", false);
+		expect(query.order).toHaveBeenCalledWith("popularity", {
+			ascending: false,
+		});
+		expect(query.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(query.range).toHaveBeenCalledWith(0, 999);
 	});
 
 	it("omits the archived filter when includeArchived is true", async () => {
@@ -75,5 +89,35 @@ describe("fetchExerciseCatalog", () => {
 
 		expect(query.eq).not.toHaveBeenCalledWith("archived", false);
 		expect(result[0]?.id).toBe("Triceps_Pushdown");
+	});
+
+	it("pages past the PostgREST 1000-row cap with a stable secondary order", async () => {
+		const { CATALOG_PAGE_SIZE, fetchExerciseCatalog } = await import(
+			"../exercises"
+		);
+		const pageOne = Array.from({ length: CATALOG_PAGE_SIZE }, (_, i) => ({
+			...catalogRow,
+			id: `ex_${String(i).padStart(4, "0")}`,
+			name: `Exercise ${i}`,
+			display_name: `Exercise ${i}`,
+		}));
+		const pageTwo = [
+			{ ...catalogRow, id: "ex_1000", name: "Tail", display_name: "Tail" },
+		];
+		query = buildAwaitableQuery((from = 0) => ({
+			data: from === 0 ? pageOne : pageTwo,
+			error: null,
+		}));
+
+		const result = await fetchExerciseCatalog();
+
+		expect(query.range).toHaveBeenCalledWith(0, CATALOG_PAGE_SIZE - 1);
+		expect(query.range).toHaveBeenCalledWith(
+			CATALOG_PAGE_SIZE,
+			CATALOG_PAGE_SIZE * 2 - 1,
+		);
+		expect(result).toHaveLength(CATALOG_PAGE_SIZE + 1);
+		expect(result[0]?.id).toBe("ex_0000");
+		expect(result.at(-1)?.id).toBe("ex_1000");
 	});
 });
