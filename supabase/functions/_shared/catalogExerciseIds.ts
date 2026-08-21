@@ -13,6 +13,7 @@ export interface CatalogLookupRow {
 	aliases?: string[] | null;
 	user_id?: string | null;
 	is_custom?: boolean | null;
+	archived?: boolean | null;
 }
 
 export interface CatalogIdRef {
@@ -55,6 +56,9 @@ export function buildCatalogIndexes(
 	for (const row of rows) {
 		if (!row.id || !isAccessibleCatalogRow(row, userId)) continue;
 		byId.set(row.id, row.id);
+		// Archived rows stay valid FK targets but must never win a name match
+		// against an active open-source row with the same normalized name.
+		if (row.archived === true) continue;
 		const labels = [row.name, row.display_name, ...(row.aliases ?? [])];
 		for (const label of labels) {
 			const key = normalizeCatalogKey(label);
@@ -136,6 +140,7 @@ export function catalogLookupFromUnknown(data: unknown): CatalogLookupRow[] {
 				: null,
 			user_id: typeof row.user_id === "string" ? row.user_id : null,
 			is_custom: typeof row.is_custom === "boolean" ? row.is_custom : null,
+			archived: typeof row.archived === "boolean" ? row.archived : null,
 		});
 	}
 	return rows;

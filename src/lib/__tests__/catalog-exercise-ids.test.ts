@@ -64,6 +64,37 @@ describe("resolveCatalogExerciseId", () => {
 			resolveCatalogExerciseId(indexes, "missing-id", "Totally Unknown Lift"),
 		).toBeNull();
 	});
+
+	it("keeps archived ids as FK targets but does not resolve names to them", () => {
+		const archivedLegacy = {
+			id: "Bent_Over_Barbell_Row",
+			name: "Bent Over Row",
+			display_name: "Bent Over Row",
+			aliases: [],
+			user_id: null,
+			is_custom: false,
+			archived: true,
+		};
+		const activeOpen = {
+			id: "bent-over-row",
+			name: "Bent Over Row",
+			display_name: "Bent Over Row",
+			aliases: [],
+			user_id: null,
+			is_custom: false,
+			archived: false,
+		};
+		const withArchived = buildCatalogIndexes(
+			[archivedLegacy, activeOpen],
+			"user-a",
+		);
+		expect(
+			resolveCatalogExerciseId(withArchived, "Bent_Over_Barbell_Row"),
+		).toBe("Bent_Over_Barbell_Row");
+		expect(
+			resolveCatalogExerciseId(withArchived, "legacy-name-id", "Bent Over Row"),
+		).toBe("bent-over-row");
+	});
 });
 
 describe("resolveCatalogExerciseIds", () => {

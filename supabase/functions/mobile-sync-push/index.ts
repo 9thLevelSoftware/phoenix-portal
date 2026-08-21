@@ -1142,7 +1142,7 @@ async function mobileSyncPushHandler(
       for (let from = 0; ; from += pageSize) {
         const { data, error } = await client
           .from('exercise_catalog')
-          .select('id, name, display_name, aliases, user_id, is_custom')
+          .select('id, name, display_name, aliases, user_id, is_custom, archived')
           .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
