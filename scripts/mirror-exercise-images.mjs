@@ -45,9 +45,8 @@ function sourceUrl(row) {
 }
 
 async function loadWgerImageIndex() {
-	const cachePath = path.join(root, "supabase", "seed-data", ".cache", "wger-exerciseinfo.json");
-	if (!fs.existsSync(cachePath)) return new Map();
-	const results = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+	const { fetchWger } = await import("./build-open-exercise-catalog.mjs");
+	const results = await fetchWger();
 	const index = new Map();
 	for (const info of results) {
 		const images = [...(info.images ?? [])].sort(
@@ -55,6 +54,11 @@ async function loadWgerImageIndex() {
 		);
 		const url = images[0]?.image;
 		if (url) index.set(`wger_${info.id}`, url);
+	}
+	if (index.size === 0) {
+		throw new Error(
+			"Wger image index is empty. catalog:mirror needs network access to https://wger.de/api/v2/exerciseinfo/ (or a populated supabase/seed-data/.cache/wger-exerciseinfo.json).",
+		);
 	}
 	return index;
 }

@@ -89,6 +89,23 @@ describe("fetchExerciseCatalog", () => {
 
 		expect(query.eq).not.toHaveBeenCalledWith("archived", false);
 		expect(result[0]?.id).toBe("Triceps_Pushdown");
+		expect(result[0]?.thumbnail_url).toBe(
+			"https://test-project.supabase.co/storage/v1/object/public/exercise-media/Triceps_Pushdown/0.jpg",
+		);
+	});
+
+	it("resolves relative exercise-media keys onto the active Supabase host", async () => {
+		query = buildAwaitableQuery(() => ({
+			data: [{ ...catalogRow, thumbnail_url: "Triceps_Pushdown/0.jpg" }],
+			error: null,
+		}));
+		const { fetchExerciseCatalog } = await import("../exercises");
+
+		const result = await fetchExerciseCatalog({ includeArchived: true });
+
+		expect(result[0]?.thumbnail_url).toBe(
+			"https://test-project.supabase.co/storage/v1/object/public/exercise-media/Triceps_Pushdown/0.jpg",
+		);
 	});
 
 	it("pages past the PostgREST 1000-row cap with a stable secondary order", async () => {

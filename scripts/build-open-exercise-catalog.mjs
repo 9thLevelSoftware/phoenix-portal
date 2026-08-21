@@ -29,8 +29,7 @@ const FREE_EXERCISE_URL =
 	"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json";
 const WGER_URL = "https://wger.de/api/v2/exerciseinfo/?language=2&limit=100";
 const WGER_ENGLISH_LANGUAGE = 2;
-const DEFAULT_IMAGE_BASE =
-	"https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media";
+const EXERCISE_MEDIA_BUCKET = "exercise-media";
 
 const COMMON_ALIASES = {
 	Barbell_Squat: ["Squat", "Back Squat"],
@@ -186,12 +185,7 @@ function parseArgs(argv) {
 }
 
 function imageBase() {
-	if (process.env.IMAGE_BASE) return process.env.IMAGE_BASE.replace(/\/$/, "");
-	const supabaseUrl = process.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
-	if (supabaseUrl) {
-		return `${supabaseUrl}/storage/v1/object/public/exercise-media`;
-	}
-	return DEFAULT_IMAGE_BASE;
+	return EXERCISE_MEDIA_BUCKET;
 }
 
 export function normalizeCatalogKey(name) {
@@ -292,7 +286,7 @@ async function fetchFreeExerciseDb() {
 	return readCacheOrFetch("free-exercise-db.json", FREE_EXERCISE_URL, fetchJson);
 }
 
-async function fetchWger() {
+export async function fetchWger() {
 	const cachePath = path.join(cacheDir, "wger-exerciseinfo.json");
 	if (fs.existsSync(cachePath)) {
 		return JSON.parse(fs.readFileSync(cachePath, "utf8"));
@@ -337,9 +331,7 @@ function displayNamesForFreeExercises(exercises) {
 
 function thumbnailUrl(id, imagePath) {
 	if (!imagePath) return null;
-	const base = imageBase();
-	const objectPath = `${id}/0${path.posix.extname(String(imagePath).split("?")[0]) || ".jpg"}`;
-	return `${base}/${objectPath}`;
+	return `${id}/0${path.posix.extname(String(imagePath).split("?")[0]) || ".jpg"}`;
 }
 
 function toCatalogRow({

@@ -14,6 +14,37 @@ export interface ExerciseCatalogFilters {
 
 export const CATALOG_PAGE_SIZE = 1000;
 
+const EXERCISE_MEDIA_MARKER = "/storage/v1/object/public/exercise-media/";
+
+/** Rewrite stored object keys or stale-project URLs onto the active Supabase host. */
+export function resolveExerciseMediaUrl(
+	value: string | null | undefined,
+): string | null {
+	if (!value) return null;
+	let objectPath = value;
+	const markerAt = value.indexOf(EXERCISE_MEDIA_MARKER);
+	if (markerAt >= 0) {
+		objectPath = value.slice(markerAt + EXERCISE_MEDIA_MARKER.length);
+	} else if (/^https?:\/\//i.test(value)) {
+		return value;
+	}
+	const base = String(import.meta.env.VITE_SUPABASE_URL ?? "").replace(
+		/\/$/,
+		"",
+	);
+	if (!base) return value;
+	return `${base}${EXERCISE_MEDIA_MARKER}${objectPath.replace(/^\/+/, "")}`;
+}
+
+function withResolvedMedia<T extends { thumbnail_url?: string | null }>(
+	row: T,
+): T {
+	return {
+		...row,
+		thumbnail_url: resolveExerciseMediaUrl(row.thumbnail_url),
+	};
+}
+
 function applyCatalogFilters<
 	Q extends {
 		eq: (column: string, value: unknown) => Q;
@@ -71,7 +102,7 @@ export async function fetchExerciseCatalog(
 		rows.push(...page);
 		if (page.length < CATALOG_PAGE_SIZE) break;
 	}
-	return catalogExerciseListSchema.parse(rows);
+	return catalogExerciseListSchema.parse(rows).map(withResolvedMedia);
 }
 
 export async function fetchExerciseById(
@@ -85,5 +116,5 @@ export async function fetchExerciseById(
 
 	if (error) throw error;
 	if (!data) return null;
-	return catalogExerciseSchema.parse(data);
+	return withResolvedMedia(catalogExerciseSchema.parse(data));
 }
