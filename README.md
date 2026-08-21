@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-7-purple)](https://vite.dev)
 
-Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP) — the community rescue project keeping Vitruvian Trainer workout machines alive after company bankruptcy. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
+Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP), an open-source companion for Phoenix-compatible fitness machines. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
 
 ![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-0D0D0D?style=flat&labelColor=FF6B35)
 
@@ -176,4 +176,4 @@ MIT
 
 ---
 
-*This project exists because of the Vitruvian Trainer community's refusal to let great hardware die.*
+*This project exists because a community of lifters wanted their training data and tools to keep working, no matter what.*

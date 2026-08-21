@@ -1,5 +1,5 @@
 -- =============================================================
--- Legacy Vitruvian catalog seed removed.
+-- Legacy third-party catalog seed removed.
 -- Filename kept so schema_migrations stays consistent.
 -- Open-source catalog is applied by
 -- 20260820120000_exercise_catalog_open_source.sql and

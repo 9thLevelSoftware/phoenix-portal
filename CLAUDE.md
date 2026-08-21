@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Phoenix Portal is a React web companion dashboard for Project Phoenix, a community rescue project for Vitruvian Trainer workout machines. It supports both viewing synced data and creating routines/cycles that sync back to the mobile app. It is a full-stack application with a Supabase backend (PostgreSQL, Auth, Realtime, Storage), 18 Edge Functions, and Paddle subscription billing (Merchant of Record for EU/AU tax compliance).
+Phoenix Portal is a React web companion dashboard for Project Phoenix, a community project supporting Phoenix-compatible fitness machines. It supports both viewing synced data and creating routines/cycles that sync back to the mobile app. It is a full-stack application with a Supabase backend (PostgreSQL, Auth, Realtime, Storage), 18 Edge Functions, and Paddle subscription billing (Merchant of Record for EU/AU tax compliance).
 
 ## Commands
 

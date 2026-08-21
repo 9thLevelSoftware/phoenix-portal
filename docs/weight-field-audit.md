@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Vitruvian Trainer has dual cables. All weight values are stored in the database as **per-cable values** (0-220kg range). The portal applies a **x2 multiplier** for display to show total weight lifted.
+The Phoenix fitness machine has dual cables. All weight values are stored in the database as **per-cable values** (0-220kg range). The portal applies a **x2 multiplier** for display to show total weight lifted.
 
 - **WEIGHT_MULTIPLIER**: 2 (defined in `src/schemas/transforms.ts` line 6)
 - **MAX_PER_CABLE_KG**: 110 (220kg machine max / 2 cables = 110kg per cable in actual usage)

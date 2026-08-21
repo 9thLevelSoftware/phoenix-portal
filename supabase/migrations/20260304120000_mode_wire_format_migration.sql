@@ -17,8 +17,8 @@ BEGIN;
 -- =============================================================================
 -- Section 1: routine_exercises.mode — convert display names to wire format
 -- =============================================================================
--- The six official modes are: OLD_SCHOOL, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY, ECHO
--- POWER and CLASSIC are not official modes; map to OLD_SCHOOL (closest equivalent).
+-- The six canonical modes are: OLD_SCHOOL, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY, ECHO
+-- POWER and CLASSIC are not canonical modes; map to OLD_SCHOOL (closest equivalent).
 
 UPDATE routine_exercises SET mode = 'OLD_SCHOOL' WHERE mode = 'Old School';
 UPDATE routine_exercises SET mode = 'PUMP' WHERE mode = 'Pump';
