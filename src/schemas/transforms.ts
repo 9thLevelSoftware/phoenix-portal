@@ -292,6 +292,15 @@ export const routineExerciseSchema = z.object({
 		.transform((v) => v ?? true),
 	eccentric_load: z.string().nullable().optional(),
 	echo_level: z.string().nullable().optional(),
+	drop_set_enabled: z
+		.boolean()
+		.nullish()
+		.transform((v) => v ?? false),
+	drop_set_min_weight_kg: z
+		.number()
+		.nullable()
+		.optional()
+		.transform((v) => (v == null ? null : v * WEIGHT_MULTIPLIER)),
 	created_at: z.coerce.date(),
 });
 

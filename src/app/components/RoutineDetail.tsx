@@ -53,6 +53,7 @@ function exerciseBadges(exercise: {
 	stall_detection?: boolean;
 	rep_count_timing?: string | null;
 	stop_at_position?: string | null;
+	drop_set_enabled?: boolean;
 }) {
 	return [
 		exercise.is_amrap ? "AMRAP" : null,
@@ -60,6 +61,7 @@ function exerciseBadges(exercise: {
 		exercise.eccentric_load ? `Eccentric: ${exercise.eccentric_load}` : null,
 		exercise.echo_level ? `Echo: ${exercise.echo_level}` : null,
 		exercise.stall_detection ? "Stall Detection" : null,
+		exercise.drop_set_enabled ? "Drop set" : null,
 		exercise.rep_count_timing ? `Timing: ${exercise.rep_count_timing}` : null,
 		exercise.stop_at_position ? `Stop: ${exercise.stop_at_position}` : null,
 	].filter(Boolean) as string[];

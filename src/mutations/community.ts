@@ -122,6 +122,8 @@ function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
 		eccentric_load: exercise.eccentric_load,
 		echo_level: exercise.echo_level,
 		warmup_sets: exercise.warmup_sets,
+		drop_set_enabled: exercise.drop_set_enabled,
+		drop_set_min_weight_kg: exercise.drop_set_min_weight_kg,
 	};
 }
 

@@ -369,6 +369,75 @@ describe("Entity Round-Trip Tests", () => {
 			expect(disabled?.stallDetection).toBe(false);
 		});
 
+		it("should preserve drop-set settings through round-trip", async () => {
+			const routineId = generateTestId();
+
+			const exercises: RoutineExerciseDto[] = [
+				{
+					id: generateTestId(),
+					routineId,
+					name: "Enabled Drop Set",
+					muscleGroup: "Chest",
+					sets: 3,
+					reps: 10,
+					weight: 60,
+					restSeconds: 90,
+					mode: "OLD_SCHOOL",
+					orderIndex: 0,
+					dropSetEnabled: true,
+					dropSetMinWeightKg: 12.5,
+				},
+				{
+					id: generateTestId(),
+					routineId,
+					name: "Disabled Drop Set",
+					muscleGroup: "Back",
+					sets: 3,
+					reps: 10,
+					weight: 55,
+					restSeconds: 90,
+					mode: "OLD_SCHOOL",
+					orderIndex: 1,
+					dropSetEnabled: false,
+					dropSetMinWeightKg: null,
+				},
+			];
+
+			const routine: RoutineDto = {
+				id: routineId,
+				userId: testUser.id,
+				name: "Drop Set Routine",
+				description: "Exercises with both drop-set states",
+				exerciseCount: 2,
+				estimatedDuration: 30,
+				timesCompleted: 0,
+				isFavorite: false,
+				exercises,
+			};
+
+			const payload = createMinimalPushPayload(testUser.id, {
+				routines: [routine],
+			});
+
+			await callPushEndpoint(payload, testUser.accessToken);
+			const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+			expect(pullResult.success).toBe(true);
+
+			const pulledExercises = pullResult.data!.routines[0].exercises;
+			const enabled = pulledExercises.find(
+				(e) => e.name === "Enabled Drop Set",
+			);
+			const disabled = pulledExercises.find(
+				(e) => e.name === "Disabled Drop Set",
+			);
+
+			expect(enabled?.dropSetEnabled).toBe(true);
+			expect(enabled?.dropSetMinWeightKg).toBe(12.5);
+			expect(disabled?.dropSetEnabled).toBe(false);
+			expect(disabled?.dropSetMinWeightKg ?? null).toBeNull();
+		});
+
 		it("should preserve all-AMRAP per-set reps", async () => {
 			// Arrange
 			const routineId = generateTestId();

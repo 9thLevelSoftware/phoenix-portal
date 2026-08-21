@@ -54,6 +54,7 @@ function exerciseBadges(exercise: RoutineExerciseSnapshot) {
 		exercise.rep_count_timing ? `Timing ${exercise.rep_count_timing}` : null,
 		exercise.stop_at_position ? `Stop ${exercise.stop_at_position}` : null,
 		exercise.stall_detection === false ? "Stall off" : null,
+		exercise.drop_set_enabled ? "Drop set" : null,
 	].filter(Boolean) as string[];
 }
 

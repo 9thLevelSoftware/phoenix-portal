@@ -267,6 +267,11 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
+	// Do not manufacture `false` for an omitted flag. Older mobile builds omit
+	// this field; defaulting it would upsert `drop_set_enabled=false` over a
+	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
+	dropSetEnabled: nullableField(z.boolean()),
+	dropSetMinWeightKg: nullableField(z.number()),
 });
 
 const customExerciseSchema = z.object({

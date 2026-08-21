@@ -40,6 +40,8 @@ export const routineExerciseSnapshotSchema = z.object({
 	eccentric_load: z.string().nullable().optional(),
 	echo_level: z.string().nullable().optional(),
 	warmup_sets: nullableUnknownSchema,
+	drop_set_enabled: z.boolean().nullable().optional().default(false),
+	drop_set_min_weight_kg: z.number().finite().nullable().optional(),
 });
 
 export const routineExercisesSnapshotSchema = z.array(

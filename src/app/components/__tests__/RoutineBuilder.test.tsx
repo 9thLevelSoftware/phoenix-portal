@@ -105,8 +105,12 @@ vi.mock("@dnd-kit/helpers", () => ({
 }));
 
 // --- Sonner mock ---
+const mockToast = vi.hoisted(() => ({
+	success: vi.fn(),
+	error: vi.fn(),
+}));
 vi.mock("sonner", () => ({
-	toast: { success: vi.fn(), error: vi.fn() },
+	toast: mockToast,
 }));
 
 function tricepPushdownCatalogRow() {
@@ -307,11 +311,135 @@ describe("RoutineBuilder", () => {
 						name: "Triceps Pushdown",
 						muscle_group: "ARMS",
 						exercise_id: "Triceps_Pushdown",
+						drop_set_enabled: false,
+						drop_set_min_weight_kg: null,
 					}),
 				],
 			}),
 			expect.any(Object),
 		);
+	});
+
+	it("shows drop-set settings for Old School exercises and keeps them off Echo", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+
+		expect(
+			screen.getByText(/offer drop set after failure/i),
+		).toBeInTheDocument();
+
+		await user.selectOptions(screen.getByDisplayValue("Old School"), "Echo");
+		expect(
+			screen.queryByText(/offer drop set after failure/i),
+		).not.toBeInTheDocument();
+	});
+
+	it("blocks save when drop set is enabled without a minimum weight", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).toHaveBeenCalled();
+		expect(mockSaveMutate).not.toHaveBeenCalled();
+	});
+
+	it("blocks save when drop set is enabled without a floor after switching to Echo", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		await user.selectOptions(screen.getByDisplayValue("Old School"), "Echo");
+		expect(
+			screen.queryByText(/offer drop set after failure/i),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).toHaveBeenCalled();
+		expect(mockSaveMutate).not.toHaveBeenCalled();
+	});
+
+	it("keeps stored drop-set values when switching to Echo with a valid floor", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		const minWeightInput = screen.getAllByPlaceholderText("20").at(-1);
+		expect(minWeightInput).toBeDefined();
+		await user.type(minWeightInput as HTMLElement, "15");
+		await user.selectOptions(screen.getByDisplayValue("Old School"), "Echo");
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).not.toHaveBeenCalled();
+		expect(mockSaveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						mode: "Echo",
+						drop_set_enabled: true,
+						drop_set_min_weight_kg: 15,
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
+	it("blocks save when drop set is enabled without a floor after switching to bodyweight", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		await user.click(screen.getByRole("switch", { name: /bodyweight/i }));
+		expect(
+			screen.queryByText(/offer drop set after failure/i),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).toHaveBeenCalled();
+		expect(mockSaveMutate).not.toHaveBeenCalled();
 	});
 
 	it("renders a demo thumbnail affordance for catalog exercises with media", async () => {

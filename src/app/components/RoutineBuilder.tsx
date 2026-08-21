@@ -18,6 +18,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { SelectionModeBar } from "@/app/components/routine-builder/SelectionModeBar";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -45,6 +46,7 @@ import {
 	getUnitLabel,
 	toKg,
 	type WeightUnit,
+	weightInputValue,
 } from "@/lib/units";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
@@ -79,6 +81,8 @@ interface Exercise {
 	stallDetection: boolean;
 	eccentricLoad: string | null;
 	echoLevel: string | null;
+	dropSetEnabled: boolean;
+	dropSetMinWeightKg: number | null;
 }
 
 type GroupedExerciseItem =
@@ -89,6 +93,30 @@ type GroupedExerciseItem =
 			color: string | null;
 			exercises: Exercise[];
 	  };
+
+function isOldSchoolMode(mode: string) {
+	const key = mode
+		.trim()
+		.toUpperCase()
+		.replace(/[\s-]+/g, "_");
+	return key === "OLD_SCHOOL" || key === "CLASSIC";
+}
+
+function isDropSetEligible(exercise: Pick<Exercise, "mode" | "isBodyweight">) {
+	return isOldSchoolMode(exercise.mode) && !exercise.isBodyweight;
+}
+
+function isDropSetConfigValid(exercise: Exercise) {
+	if (!exercise.dropSetEnabled) return true;
+	// Floor is required whenever the stored flag is true. Leaving Old School
+	// (Echo/bodyweight) hides the control but keeps dropSetEnabled /
+	// dropSetMinWeightKg so mobile can reactivate them.
+	return (
+		exercise.dropSetMinWeightKg != null &&
+		Number.isFinite(exercise.dropSetMinWeightKg) &&
+		exercise.dropSetMinWeightKg > 0
+	);
+}
 
 function getDisplayWeight(weightKg: number, unit: WeightUnit) {
 	const converted = convertWeight(weightKg, unit);
@@ -230,6 +258,8 @@ export function RoutineBuilder() {
 					stallDetection: ex.stall_detection ?? true,
 					eccentricLoad: ex.eccentric_load ?? null,
 					echoLevel: ex.echo_level ?? null,
+					dropSetEnabled: ex.drop_set_enabled ?? false,
+					dropSetMinWeightKg: ex.drop_set_min_weight_kg ?? null,
 				})),
 			);
 		}
@@ -404,6 +434,8 @@ export function RoutineBuilder() {
 			stall_detection: ex.stallDetection,
 			eccentric_load: ex.eccentricLoad,
 			echo_level: ex.echoLevel,
+			drop_set_enabled: ex.dropSetEnabled,
+			drop_set_min_weight_kg: ex.dropSetMinWeightKg,
 		}));
 
 	// Resolve the selected exercise; may be undefined if the id went stale after
@@ -413,6 +445,13 @@ export function RoutineBuilder() {
 		: undefined;
 
 	const handleSave = () => {
+		if (exercises.some((exercise) => !isDropSetConfigValid(exercise))) {
+			toast.error(
+				"Drop-set exercises need a minimum weight greater than zero.",
+			);
+			return;
+		}
+
 		const payload = {
 			name: routineName,
 			description,
@@ -713,6 +752,8 @@ export function RoutineBuilder() {
 								stallDetection: true,
 								eccentricLoad: null,
 								echoLevel: null,
+								dropSetEnabled: false,
+								dropSetMinWeightKg: null,
 							};
 							setExercises([...exercises, newExercise]);
 							setShowExercisePicker(false);
@@ -885,6 +926,14 @@ function SortableExerciseItem({
 									Bodyweight
 								</Badge>
 							)}
+							{exercise.dropSetEnabled && (
+								<Badge
+									variant="outline"
+									className="border-primary/40 text-primary text-xs"
+								>
+									Drop set
+								</Badge>
+							)}
 						</div>
 						<p className="text-sm text-muted-foreground">
 							{formatExerciseSummary(exercise, unit)}
@@ -904,6 +953,7 @@ function SortableExerciseItem({
 							}}
 							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 							disabled={isSelectionMode}
+							aria-label="Edit exercise"
 						>
 							<Edit className="w-4 h-4" />
 						</Button>
@@ -1028,6 +1078,7 @@ function ExerciseDetailPanel({
 										perSetWeights: checked ? null : exercise.perSetWeights,
 									})
 								}
+								aria-label="Bodyweight"
 							/>
 						</div>
 
@@ -1232,6 +1283,63 @@ function ExerciseDetailPanel({
 												: "Traditional resistance training"}
 						</p>
 					</div>
+
+					{isDropSetEligible(exercise) && (
+						<div className="space-y-3 rounded-lg border border-secondary/70 bg-background/60 px-4 py-3">
+							<div className="flex items-center justify-between gap-4">
+								<div>
+									<Label className="text-white">
+										Offer drop set after failure
+									</Label>
+									<p className="text-xs text-muted-foreground">
+										After an Old School stall, rest can offer a 10/20/30% retry.
+										Saved programmed weights stay unchanged.
+									</p>
+								</div>
+								<Switch
+									checked={exercise.dropSetEnabled}
+									onCheckedChange={(checked) =>
+										onUpdate({ dropSetEnabled: checked })
+									}
+									aria-label="Offer drop set after failure"
+								/>
+							</div>
+							{exercise.dropSetEnabled && (
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Minimum weight ({getUnitLabel(unit)})
+									</Label>
+									<Input
+										type="number"
+										min={0}
+										step={unit === "lbs" ? "0.5" : "1"}
+										value={weightInputValue(exercise.dropSetMinWeightKg, unit)}
+										onChange={(e) => {
+											const raw = e.target.value;
+											if (raw.trim() === "") {
+												onUpdate({ dropSetMinWeightKg: null });
+												return;
+											}
+											const parsed = Number(raw);
+											if (!Number.isFinite(parsed)) return;
+											onUpdate({
+												dropSetMinWeightKg:
+													unit === "lbs" ? toKg(parsed) : parsed,
+											});
+										}}
+										className="bg-background border-secondary text-white"
+										placeholder={unit === "lbs" ? "45.0" : "20"}
+									/>
+									{(exercise.dropSetMinWeightKg == null ||
+										exercise.dropSetMinWeightKg <= 0) && (
+										<p className="text-xs text-destructive">
+											Enter a minimum weight greater than zero.
+										</p>
+									)}
+								</div>
+							)}
+						</div>
+					)}
 
 					<Collapsible>
 						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-white">

@@ -175,6 +175,8 @@ describe("useShareContent", () => {
 						eccentric_load: null,
 						echo_level: null,
 						warmup_sets: null,
+						drop_set_enabled: true,
+						drop_set_min_weight_kg: 12.5,
 					},
 				],
 			},
@@ -208,7 +210,12 @@ describe("useShareContent", () => {
 				exercise_count: 1,
 				estimated_duration: 45,
 				exercises_snapshot: [
-					expect.objectContaining({ name: "Bench Press", weight: 40 }),
+					expect.objectContaining({
+						name: "Bench Press",
+						weight: 40,
+						drop_set_enabled: true,
+						drop_set_min_weight_kg: 12.5,
+					}),
 				],
 			}),
 		);

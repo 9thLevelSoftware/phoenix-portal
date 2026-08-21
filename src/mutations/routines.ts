@@ -56,6 +56,8 @@ interface RoutineExerciseInput {
 	stall_detection?: boolean;
 	eccentric_load?: string | null;
 	echo_level?: string | null;
+	drop_set_enabled?: boolean;
+	drop_set_min_weight_kg?: number | null;
 }
 
 type RoutineExerciseInsert =
@@ -91,6 +93,11 @@ function toRoutineExerciseRows(
 		stall_detection: ex.stall_detection ?? true,
 		eccentric_load: ex.eccentric_load ?? null,
 		echo_level: ex.echo_level ?? null,
+		drop_set_enabled: ex.drop_set_enabled ?? false,
+		drop_set_min_weight_kg:
+			ex.drop_set_min_weight_kg == null
+				? null
+				: ex.drop_set_min_weight_kg / WEIGHT_MULTIPLIER,
 	}));
 }
 

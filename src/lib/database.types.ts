@@ -1080,6 +1080,8 @@ export type Database = {
 			routine_exercises: {
 				Row: {
 					created_at: string;
+					drop_set_enabled: boolean;
+					drop_set_min_weight_kg: number | null;
 					duration_seconds: number | null;
 					eccentric_load: string | null;
 					echo_level: string | null;
@@ -1110,6 +1112,8 @@ export type Database = {
 				};
 				Insert: {
 					created_at?: string;
+					drop_set_enabled?: boolean;
+					drop_set_min_weight_kg?: number | null;
 					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;
@@ -1140,6 +1144,8 @@ export type Database = {
 				};
 				Update: {
 					created_at?: string;
+					drop_set_enabled?: boolean;
+					drop_set_min_weight_kg?: number | null;
 					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;

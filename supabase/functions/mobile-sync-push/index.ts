@@ -28,6 +28,11 @@ import {
   pushPayloadSchema,
   type PushPayloadParsed,
 } from '../_shared/pushPayloadSchema.ts';
+import {
+  coerceDropSetMinWeightKg,
+  needsDropSetExistingRow,
+  resolveDropSetUpsertFields,
+} from '../_shared/dropSetUpsert.ts';
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
 import {
   catalogLookupFromUnknown,
@@ -525,6 +530,8 @@ interface RoutineExerciseDto {
   echoLevel: string | null;
   perSetEchoLevels: string | null;
   warmupSets: string | null;
+  dropSetEnabled?: boolean | null;
+  dropSetMinWeightKg?: number | null;
 }
 
 interface CustomExerciseDto {
@@ -2201,39 +2208,81 @@ async function mobileSyncPushHandler(
       // generated on mobile, so onConflict: 'id' safely updates existing rows.
       // When LWW is enabled, skip children of routines whose parent was
       // rejected to avoid orphan FK rows.
-      const reRows = payload.routines
+      const reSource = payload.routines
         .filter((r) => childAllowed(acceptedRoutineIds, r.id))
-        .flatMap((r) =>
-        r.exercises.map((e) => ({
-          id: e.id,
-          routine_id: e.routineId,
-          name: e.name,
-          exercise_id: catalogId(e.exerciseId, e.name),
-          muscle_group: e.muscleGroup ?? 'General',
-          sets: e.sets ?? 3,
-          reps: e.reps ?? 10,
-          weight: e.weight ?? 0,
-          rest_seconds: e.restSeconds ?? 90,
-          mode: e.mode ?? 'OLD_SCHOOL',
-          order_index: e.orderIndex ?? 0,
-          superset_id: e.supersetId,
-          superset_color: e.supersetColor,
-          superset_order: e.supersetOrder,
-          per_set_weights: safeJsonParse(e.perSetWeights),
-          per_set_rest: safeJsonParse(e.perSetRest),
-          per_set_reps: safeJsonParse(e.perSetReps),
-          is_amrap: e.isAmrap,
-          is_bodyweight: e.isBodyweight,
-          pr_percentage: e.prPercentage,
-          rep_count_timing: e.repCountTiming,
-          stop_at_position: e.stopAtPosition,
-          stall_detection: e.stallDetection,
-          eccentric_load: e.eccentricLoad,
-          echo_level: e.echoLevel,
-          per_set_echo_levels: e.perSetEchoLevels ?? null,
-          warmup_sets: e.warmupSets ?? null,
-        }))
-      );
+        .flatMap((r) => r.exercises);
+
+      // Merge drop-set columns per row. Omission/`null` must not write a null
+      // floor over an existing enabled row, and every upsert object needs both
+      // keys so defaultToNull cannot NULL a sibling row's omitted flag.
+      const dropSetProbeIds = [...new Set(
+        reSource.filter((e) => needsDropSetExistingRow(e)).map((e) => e.id),
+      )];
+      const existingDropSets = new Map<string, {
+        drop_set_enabled: boolean;
+        drop_set_min_weight_kg: number | null;
+      }>();
+      if (dropSetProbeIds.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
+          const chunk = dropSetProbeIds.slice(i, i + chunkSize);
+          const { data: existingExercises, error: existingDropSetErr } = await supabase
+            .from('routine_exercises')
+            .select('id, drop_set_enabled, drop_set_min_weight_kg')
+            .in('id', chunk);
+          if (existingDropSetErr) {
+            throw new Error(
+              `routine_exercises drop-set probe failed: ${existingDropSetErr.message}`,
+            );
+          }
+          for (const row of existingExercises ?? []) {
+            if (typeof row.id !== 'string') continue;
+            existingDropSets.set(row.id, {
+              drop_set_enabled: row.drop_set_enabled === true,
+              drop_set_min_weight_kg: coerceDropSetMinWeightKg(
+                row.drop_set_min_weight_kg,
+              ),
+            });
+          }
+        }
+      }
+
+      const reRows = reSource.map((e) => ({
+        id: e.id,
+        routine_id: e.routineId,
+        name: e.name,
+        exercise_id: catalogId(e.exerciseId, e.name),
+        muscle_group: e.muscleGroup ?? 'General',
+        sets: e.sets ?? 3,
+        reps: e.reps ?? 10,
+        weight: e.weight ?? 0,
+        rest_seconds: e.restSeconds ?? 90,
+        mode: e.mode ?? 'OLD_SCHOOL',
+        order_index: e.orderIndex ?? 0,
+        superset_id: e.supersetId,
+        superset_color: e.supersetColor,
+        superset_order: e.supersetOrder,
+        per_set_weights: safeJsonParse(e.perSetWeights),
+        per_set_rest: safeJsonParse(e.perSetRest),
+        per_set_reps: safeJsonParse(e.perSetReps),
+        is_amrap: e.isAmrap,
+        is_bodyweight: e.isBodyweight,
+        pr_percentage: e.prPercentage,
+        rep_count_timing: e.repCountTiming,
+        stop_at_position: e.stopAtPosition,
+        stall_detection: e.stallDetection,
+        eccentric_load: e.eccentricLoad,
+        echo_level: e.echoLevel,
+        per_set_echo_levels: e.perSetEchoLevels ?? null,
+        warmup_sets: e.warmupSets ?? null,
+        ...resolveDropSetUpsertFields(
+          {
+            dropSetEnabled: e.dropSetEnabled,
+            dropSetMinWeightKg: e.dropSetMinWeightKg,
+          },
+          existingDropSets.get(e.id) ?? null,
+        ),
+      }));
 
       if (reRows.length > 0) {
         const { error: reErr } = await supabase
