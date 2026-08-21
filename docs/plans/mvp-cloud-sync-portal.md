@@ -282,7 +282,7 @@ All integrations require **ELITE tier** subscription to access (gated by `Subscr
    - **Category:** `Training Analysis`
    - **Club:** *(leave blank)*
    - **Website:** `https://your-production-domain.com`
-   - **Application Description:** `Sync Vitruvian Trainer workouts with Strava`
+   - **Application Description:** `Sync Phoenix fitness machine workouts with Strava`
    - **Authorization Callback Domain:** `ilzlswmatadlnsuxatcv.supabase.co`
      - **Important:** Strava wants just the domain, not a full URL. The actual callback URL is `https://ilzlswmatadlnsuxatcv.supabase.co/functions/v1/strava-oauth`
 4. Click **Create**
@@ -350,7 +350,7 @@ VITE_STRAVA_CLIENT_ID=your-client-id
 3. Click **Register an App** (https://dev.fitbit.com/apps/new)
 4. Fill in the application form:
    - **Application Name:** `Phoenix Portal`
-   - **Description:** `Sync fitness activities from Fitbit to Phoenix Portal for Vitruvian Trainer users`
+   - **Description:** `Sync fitness activities from Fitbit to Phoenix Portal for Phoenix fitness machine users`
    - **Application Website URL:** `https://your-production-domain.com`
    - **Organization:** `9th Level Software` (or your org name)
    - **Organization Website URL:** `https://your-production-domain.com`
@@ -416,7 +416,7 @@ Authorization: Basic base64(client_id:client_secret)
 5. Fill in the application:
    - **Company Name:** `9th Level Software`
    - **Application Name:** `Phoenix Portal`
-   - **Application Description:** `Sync fitness activities from Garmin Connect to Phoenix Portal for Vitruvian Trainer strength training users`
+   - **Application Description:** `Sync fitness activities from Garmin Connect to Phoenix Portal for Phoenix fitness machine strength training users`
    - **Use Case:** Health/fitness data synchronization for strength training analytics
    - **APIs Requested:** Activity data (activities, activity details)
    - **OAuth Callback URL:** `https://ilzlswmatadlnsuxatcv.supabase.co/functions/v1/garmin-oauth`
@@ -739,7 +739,7 @@ This is the critical happy path — test it manually:
 
 1. **Portal sign-up:** Visit portal → Create account → Verify email
 2. **Mobile sign-in:** Open app → Settings → Link Portal Account → Sign in with same email
-3. **Do a workout:** Complete a short workout on the Vitruvian trainer
+3. **Do a workout:** Complete a short workout on the Phoenix fitness machine
 4. **Verify push:** Wait for auto-sync (or tap "Sync Now") → Check portal Dashboard for new workout
 5. **Create routine on portal:** Go to `/routines/new` → Build a routine → Save
 6. **Verify pull:** On mobile, trigger sync → Verify routine appears in mobile routine list

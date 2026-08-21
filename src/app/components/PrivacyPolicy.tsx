@@ -38,7 +38,7 @@ export function PrivacyPolicy() {
 				>
 					<h1 className="text-display-1 mb-4 text-white">Privacy Policy</h1>
 					<p className="text-xl text-muted-foreground mb-2">
-						Project Phoenix - Vitruvian Trainer Companion App
+						Project Phoenix - Phoenix fitness machine Companion App
 					</p>
 					<p className="text-sm text-muted-foreground mb-8">
 						Effective Date: February 20, 2026
@@ -61,9 +61,9 @@ export function PrivacyPolicy() {
 							<h2 className="text-2xl mb-4 text-primary">1. Introduction</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								Project Phoenix ("we," "our," or "the App") is a
-								community-developed companion application for Vitruvian Trainer
-								fitness equipment. We are committed to protecting your privacy
-								and being transparent about our data practices.
+								community-developed companion application for Phoenix fitness
+								machine fitness equipment. We are committed to protecting your
+								privacy and being transparent about our data practices.
 							</p>
 							<p className="text-secondary-foreground leading-relaxed mt-4">
 								This Privacy Policy explains what information the App accesses,
@@ -277,14 +277,14 @@ export function PrivacyPolicy() {
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed mb-3">
 								The App requires Bluetooth Low Energy (BLE) permissions to
-								connect to your Vitruvian Trainer equipment. This connection is
-								used exclusively for:
+								connect to your Phoenix fitness machine equipment. This
+								connection is used exclusively for:
 							</p>
 							<ul className="space-y-2 text-secondary-foreground ml-6 mb-4">
 								<li className="flex items-start gap-2">
 									<span className="text-primary mt-1">•</span>
 									<span>
-										Discovering and connecting to your Vitruvian machine
+										Discovering and connecting to your Phoenix machine
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -380,7 +380,7 @@ export function PrivacyPolicy() {
 										</span>{" "}
 										Strava, Fitbit, Garmin, and Hevy. When you connect these
 										services, we import activity data (duration, distance, heart
-										rate) to display alongside your Vitruvian workouts. You can
+										rate) to display alongside your Phoenix workouts. You can
 										disconnect at any time.
 									</span>
 								</li>
@@ -732,8 +732,8 @@ export function PrivacyPolicy() {
 							<p className="text-secondary-foreground leading-relaxed">
 								The App is not directed at children under the age of 13. We do
 								not knowingly collect any information from children. The App is
-								designed for adult fitness enthusiasts using Vitruvian Trainer
-								equipment.
+								designed for adult fitness enthusiasts using Phoenix fitness
+								machine equipment.
 							</p>
 						</section>
 
@@ -785,12 +785,12 @@ export function PrivacyPolicy() {
 									<span>
 										Support the project:{" "}
 										<a
-											href="https://ko-fi.com/vitruvianredux"
+											href="https://ko-fi.com/phoenixredux"
 											target="_blank"
 											rel="noopener noreferrer"
 											className="text-primary hover:text-accent underline"
 										>
-											ko-fi.com/vitruvianredux
+											ko-fi.com/phoenixredux
 										</a>
 									</span>
 								</li>

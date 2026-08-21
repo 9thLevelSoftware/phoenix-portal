@@ -129,7 +129,7 @@ export function createEmptyCycleFixture(userId?: string): NestedCycleFixture {
 // ============================================================================
 
 /**
- * Maximum weight per-cable (Vitruvian max is 220kg per cable).
+ * Maximum weight per-cable (Phoenix max is 220kg per cable).
  */
 export const MAX_WEIGHT_KG = 220;
 

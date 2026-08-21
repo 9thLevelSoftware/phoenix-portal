@@ -5,7 +5,7 @@
  * - Database storage: Per-cable values (0-220kg range)
  * - Portal display: Total values (per-cable * 2)
  *
- * The Vitruvian Trainer has dual cables, so the database stores per-cable weights
+ * The Phoenix fitness machine has dual cables, so the database stores per-cable weights
  * but users see total weight lifted. This is a parity-critical transform.
  *
  * Key test scenarios:
@@ -298,7 +298,7 @@ describe("Weight Transform Tests", () => {
 		});
 
 		it("should validate machine physical limits", () => {
-			// The Vitruvian Trainer has physical limits
+			// The Phoenix fitness machine has physical limits
 			expect(MAX_PER_CABLE_KG).toBe(110);
 			expect(MAX_TOTAL_KG).toBe(220);
 

@@ -12,7 +12,7 @@ import {
 /**
  * Weight Transform Validation Tests (Plan 04-01)
  *
- * The Vitruvian Trainer has dual cables. All weight values are stored
+ * The Phoenix fitness machine has dual cables. All weight values are stored
  * in the database as per-cable values (0-220kg range). The portal
  * applies a x2 multiplier for display to show total weight lifted.
  *

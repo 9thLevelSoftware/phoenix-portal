@@ -865,7 +865,7 @@ export function Dashboard() {
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
 									<p className="text-sm text-muted-foreground">
-										Sync from the Vitruvian mobile app to see your activity
+										Sync from the Phoenix mobile app to see your activity
 									</p>
 								</div>
 							</Card>
@@ -1200,7 +1200,7 @@ export function Dashboard() {
 												No workouts yet
 											</p>
 											<p className="text-sm text-muted-foreground">
-												Sync your first workout from the Vitruvian mobile app
+												Sync your first workout from the Phoenix mobile app
 											</p>
 										</div>
 									) : (

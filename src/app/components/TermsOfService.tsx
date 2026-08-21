@@ -40,7 +40,7 @@ export function TermsOfService() {
 						<span className="text-primary">Terms of Service</span>
 					</h1>
 					<p className="text-xl text-muted-foreground mb-2">
-						Project Phoenix - Vitruvian Trainer Companion App
+						Project Phoenix - Phoenix fitness machine Companion App
 					</p>
 					<p className="text-sm text-muted-foreground mb-8">
 						Effective Date: February 27, 2026
@@ -51,8 +51,8 @@ export function TermsOfService() {
 						<p className="text-lg text-secondary-foreground">
 							<span className="font-semibold text-primary">Summary:</span> These
 							terms govern your use of Phoenix Portal, a community-developed
-							companion dashboard for Vitruvian Trainer workout machines. By
-							using the service, you agree to these terms.
+							companion dashboard for Phoenix fitness machine workout machines.
+							By using the service, you agree to these terms.
 						</p>
 					</div>
 
@@ -88,7 +88,7 @@ export function TermsOfService() {
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								Phoenix Portal is a companion web dashboard for Project Phoenix,
-								a community rescue project for Vitruvian Trainer workout
+								a community rescue project for Phoenix fitness machine workout
 								machines. The portal provides workout data visualization,
 								analytics, community features, and training tools.
 							</p>
@@ -96,7 +96,7 @@ export function TermsOfService() {
 								All workout control happens via the mobile app -- the web portal
 								is a view-only companion for reviewing your training data. The
 								Service is provided on a best-effort basis by the community and
-								is not affiliated with or endorsed by Vitruvian.
+								is not affiliated with or endorsed by Phoenix.
 							</p>
 						</section>
 
@@ -271,12 +271,12 @@ export function TermsOfService() {
 							</h2>
 							<p className="text-secondary-foreground leading-relaxed">
 								The Phoenix Portal service, its design, code, and branding are
-								the property of 9th Level Software LLC. The Vitruvian Trainer
-								name and trademarks belong to their respective owners.
+								the property of 9th Level Software LLC. The Phoenix fitness
+								machine name and trademarks belong to their respective owners.
 							</p>
 							<p className="text-secondary-foreground leading-relaxed mt-4">
 								Project Phoenix is a community project and is not affiliated
-								with or endorsed by Vitruvian Investments Pty Ltd.
+								with or endorsed by Phoenix Investments Pty Ltd.
 							</p>
 						</section>
 
@@ -363,12 +363,12 @@ export function TermsOfService() {
 									<span>
 										Support the project:{" "}
 										<a
-											href="https://ko-fi.com/vitruvianredux"
+											href="https://ko-fi.com/phoenixredux"
 											target="_blank"
 											rel="noopener noreferrer"
 											className="text-primary hover:text-accent underline"
 										>
-											ko-fi.com/vitruvianredux
+											ko-fi.com/phoenixredux
 										</a>
 									</span>
 								</li>

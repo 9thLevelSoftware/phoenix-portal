@@ -26,7 +26,7 @@ const steps = [
 	{
 		title: "Welcome to Phoenix Portal",
 		description:
-			"Your companion dashboard for tracking, analyzing, and sharing your Vitruvian training journey. Everything you need to train smarter is right here.",
+			"Your companion dashboard for tracking, analyzing, and sharing your Phoenix training journey. Everything you need to train smarter is right here.",
 		features: [
 			{
 				icon: BarChart3,
@@ -48,7 +48,7 @@ const steps = [
 	{
 		title: "Your Training Dashboard",
 		description:
-			"All your training data from the Vitruvian app syncs here automatically. Explore your progress and discover insights.",
+			"All your training data from the Phoenix app syncs here automatically. Explore your progress and discover insights.",
 		features: [
 			{
 				icon: LayoutDashboard,
