@@ -237,6 +237,8 @@ export interface RoutineExerciseDto {
 	echoLevel?: number | null;
 	perSetEchoLevels?: number[] | null;
 	warmupSets?: number | null;
+	dropSetEnabled?: boolean | null;
+	dropSetMinWeightKg?: number | null;
 }
 
 export interface CustomExerciseDto {

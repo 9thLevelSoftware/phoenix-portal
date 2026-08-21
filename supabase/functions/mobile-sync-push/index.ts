@@ -525,6 +525,8 @@ interface RoutineExerciseDto {
   echoLevel: string | null;
   perSetEchoLevels: string | null;
   warmupSets: string | null;
+  dropSetEnabled: boolean;
+  dropSetMinWeightKg: number | null;
 }
 
 interface CustomExerciseDto {
@@ -2232,6 +2234,8 @@ async function mobileSyncPushHandler(
           echo_level: e.echoLevel,
           per_set_echo_levels: e.perSetEchoLevels ?? null,
           warmup_sets: e.warmupSets ?? null,
+          drop_set_enabled: e.dropSetEnabled,
+          drop_set_min_weight_kg: e.dropSetMinWeightKg,
         }))
       );
 

@@ -237,6 +237,59 @@ describe("pushPayloadSchema", () => {
 		).toEqual([true, true, true, false]);
 	});
 
+	it("defaults missing or null drop-set flags and preserves explicit values", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			routines: [
+				{
+					id: UUID,
+					userId: "u1",
+					name: "Drop Set Routine",
+					exercises: [
+						{
+							id: UUID2,
+							routineId: UUID,
+							name: "Missing",
+						},
+						{
+							id: "22222222-2222-4222-8222-222222222222",
+							routineId: UUID,
+							name: "Null",
+							dropSetEnabled: null,
+							dropSetMinWeightKg: null,
+						},
+						{
+							id: "33333333-3333-4333-8333-333333333333",
+							routineId: UUID,
+							name: "Enabled",
+							dropSetEnabled: true,
+							dropSetMinWeightKg: 12.5,
+						},
+						{
+							id: "44444444-4444-4444-8444-444444444444",
+							routineId: UUID,
+							name: "Disabled",
+							dropSetEnabled: false,
+						},
+					],
+				},
+			],
+		});
+
+		expect(
+			parsed.routines[0]?.exercises.map((ex) => ({
+				enabled: ex.dropSetEnabled,
+				min: ex.dropSetMinWeightKg,
+			})),
+		).toEqual([
+			{ enabled: false, min: undefined },
+			{ enabled: false, min: null },
+			{ enabled: true, min: 12.5 },
+			{ enabled: false, min: undefined },
+		]);
+	});
+
 	it("preserves catalog exercise IDs on session and routine exercises", () => {
 		const catalogExerciseId = "Barbell_Squat";
 		const parsed = pushPayloadSchema.parse({

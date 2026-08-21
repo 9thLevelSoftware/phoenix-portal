@@ -121,6 +121,13 @@ export function createRoutineExerciseFixture(
 
 		// Warmup configuration
 		warmup_sets: null, // JSON for warmup set structure
+
+		// Drop-set retry (mobile #673). Floor is per-cable kg.
+		is_bodyweight: false,
+		duration_seconds: null,
+		per_set_reps: null,
+		drop_set_enabled: false,
+		drop_set_min_weight_kg: null,
 		...overrides,
 	} satisfies RoutineExerciseRow;
 }

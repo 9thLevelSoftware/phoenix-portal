@@ -26,12 +26,15 @@ describe("CommunityContentPreview", () => {
 						is_amrap: false,
 						is_bodyweight: false,
 						stall_detection: true,
+						drop_set_enabled: true,
+						drop_set_min_weight_kg: 12.5,
 					},
 				]}
 			/>,
 		);
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
+		expect(screen.getByText("Drop set")).toBeInTheDocument();
 		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
 		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();

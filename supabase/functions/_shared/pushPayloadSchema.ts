@@ -267,6 +267,8 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
+	dropSetEnabled: z.boolean().nullish().transform((v) => v ?? false),
+	dropSetMinWeightKg: nullableField(z.number()),
 });
 
 const customExerciseSchema = z.object({

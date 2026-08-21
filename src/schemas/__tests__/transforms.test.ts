@@ -373,6 +373,21 @@ describe("routineExerciseSchema", () => {
 		});
 		expect(result.per_set_weights).toBeNull();
 	});
+
+	it("defaults omitted drop-set fields and doubles the stored floor", () => {
+		expect(routineExerciseSchema.parse(validRoutineExercise)).toMatchObject({
+			drop_set_enabled: false,
+			drop_set_min_weight_kg: null,
+		});
+
+		const enabled = routineExerciseSchema.parse({
+			...validRoutineExercise,
+			drop_set_enabled: true,
+			drop_set_min_weight_kg: 12.5,
+		});
+		expect(enabled.drop_set_enabled).toBe(true);
+		expect(enabled.drop_set_min_weight_kg).toBe(25);
+	});
 });
 
 // === Plan 04-01: Analytics Summary Weight Tests ===

@@ -34,11 +34,33 @@ describe("community snapshot schemas", () => {
 				eccentric_load: "medium",
 				echo_level: null,
 				warmup_sets: null,
+				drop_set_enabled: true,
+				drop_set_min_weight_kg: 12.5,
 			},
 		]);
 
 		expect(result[0]?.name).toBe("Bench Press");
 		expect(result[0]?.per_set_weights).toEqual([40, 42.5, 45]);
+		expect(result[0]?.drop_set_enabled).toBe(true);
+		expect(result[0]?.drop_set_min_weight_kg).toBe(12.5);
+	});
+
+	it("defaults omitted drop-set snapshot fields to disabled", () => {
+		const result = routineExercisesSnapshotSchema.parse([
+			{
+				name: "Bench Press",
+				muscle_group: "Chest",
+				sets: 3,
+				reps: 8,
+				weight: 40,
+				rest_seconds: 90,
+				mode: "OLD_SCHOOL",
+				order_index: 0,
+			},
+		]);
+
+		expect(result[0]?.drop_set_enabled).toBe(false);
+		expect(result[0]?.drop_set_min_weight_kg).toBeUndefined();
 	});
 
 	it("accepts full cycle snapshots with embedded routines", () => {

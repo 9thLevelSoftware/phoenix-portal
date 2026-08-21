@@ -994,6 +994,8 @@ async function mobileSyncPullHandler(
             echoLevel: re.echo_level,
             perSetEchoLevels: re.per_set_echo_levels ?? null,
             warmupSets: re.warmup_sets ?? null,
+            dropSetEnabled: re.drop_set_enabled ?? false,
+            dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
           })),
         };
       });
