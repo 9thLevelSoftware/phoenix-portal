@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Per-cable to total weight conversion
-// Phoenix has dual cables; DB stores per-cable, portal shows total
+// The trainer has dual cables; DB stores per-cable, portal shows total
 // Change to 1 if DB convention changes to store total
 export const WEIGHT_MULTIPLIER = 2;
 
