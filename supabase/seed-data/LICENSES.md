@@ -41,8 +41,6 @@ Authors recorded at generation time:
 - Deflation
 - Dexter
 - DiscoCop
-- Dulive
-- Epiphany8424
 - ExRx
 - Expenses7000
 - FEFFO
@@ -110,7 +108,6 @@ Authors recorded at generation time:
 - Whythebigpaws
 - WiNNiE
 - YYCfit
-- YYCfit / BFad07
 - Yderkone
 - aahuja
 - abeworld
@@ -123,16 +120,13 @@ Authors recorded at generation time:
 - anon1337
 - anto.kreegyr
 - apeschel
-- arson
 - ataraxie67
-- baldurmen
 - barry
 - bbayuwega
 - beagle
 - benjamin.yildiz@proton.me
 - bizyguy
 - bl0sh
-- bobbyprince89
 - brucem
 - burenl
 - cal.zabel
@@ -161,13 +155,11 @@ Authors recorded at generation time:
 - eriktrinkle
 - eufvksruh
 - evtimovgeorg
-- fabrice
 - flanny
 - fletchgraham
 - flori
 - florian.bussmann
 - foguinho.peruca
-- geraldbaeck
 - hektkaso
 - hpmbala@gmail.com
 - http://www.bodybuilding.com/
@@ -190,10 +182,8 @@ Authors recorded at generation time:
 - lbroggi
 - lh1701
 - lhegedus
-- lion
 - lxmx
 - m4k3r
-- magdy
 - manuher89
 - marcelbader
 - matpn
@@ -208,18 +198,13 @@ Authors recorded at generation time:
 - novadani
 - oboema
 - painDpice
-- pera_perkan
-- personal use
 - philip
 - phpi
-- pjwirth
 - polloperro
 - powerade69
-- prevail90
 - probablyforging
 - pwiltrout
 - ricardodavidrd
-- richmr2174@gmail.com
 - ricwheatley
 - robhoyt
 - roneydya
@@ -250,10 +235,8 @@ Authors recorded at generation time:
 - vkylamba
 - wakanda90
 - wger.de
-- wgerpott
 - workout@rooven.anonaddy.me
 - xWan
-- zdelko
 
 The merged catalog JSON in this directory is therefore shared under CC-BY-SA 4.0
 where it includes wger rows. Application source code is not.

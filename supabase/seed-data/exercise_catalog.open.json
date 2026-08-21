@@ -35898,38 +35898,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1002",
-    "name": "Child's pose",
-    "display_name": "Child's pose",
-    "description": "Starting position:\n\nStart on all fours, knees, toes, and hands touching the ground. Your two big toes should be touching.\n\nSteps:\n\nMove your knees so that they're about hip-width apart.\nOn an exhale, move your pelvis back to sit on your heels. Your hands should still be touching the ground.\nRelax your upper body, lowering your forehead to the floor and letting your hands move forward naturally.\nStay in this pose.\n\nTips:\n\nTo leave the pose, walk your arms back under your shoulders and move your upper body up into a seated position.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1002/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1002",
-    "license": "CC-BY-SA 4",
-    "license_author": null,
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1003",
     "name": "Kettlebell deadlifts",
     "display_name": "Kettlebell deadlifts",
@@ -35970,11 +35938,13 @@
     "name": "Forward shoulder rotation",
     "display_name": "Forward shoulder rotation",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nPlace your hands on your shoulders.\nRepeatedly rotate both shoulder joints in a circular motion at a moderate pace.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36002,11 +35972,13 @@
     "name": "Backward shoulder rotation",
     "display_name": "Backward shoulder rotation",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nPlace your hands on your shoulders.\nRepeatedly rotate both shoulder joints in a circular motion at a moderate pace.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36034,11 +36006,13 @@
     "name": "Chin tuck",
     "display_name": "Chin tuck",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nUse fingers on your chin to slowly tuck your chin in, moving your head back to align it with your spine.\nHold for 5 seconds.\nGo back to normal head position and repeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36066,11 +36040,13 @@
     "name": "Head turns",
     "display_name": "Head turns",
     "description": "Starting position:\n\nSit or stand with your back straight and shoulders down.\n\nSteps:\n\nSit or stand up straight, shoulders dropped.\nTurn your head to the side as far as possible. Stop when you hit a barrier and hold for 5 seconds.\nReturn to center position and repeat, changing sides.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36098,11 +36074,13 @@
     "name": "Left neck stretch",
     "display_name": "Left neck stretch",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nTilt your head to the side.\nTake the hand closer to your head and use it to grab your head from the other side.\nPush with your hand against your head and with your head against your hand so that the forces balance out and your head stays still.\nMaintain this tension until the end of the exercise.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36130,11 +36108,13 @@
     "name": "Right neck stretch",
     "display_name": "Right neck stretch",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nTilt your head to the side.\nTake the hand closer to your head and use it to grab your head from the other side.\nPush with your hand against your head and with your head against your hand so that the forces balance out and your head stays still.\nMaintain this tension until the end of the exercise.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36162,11 +36142,13 @@
     "name": "Back neck stretch",
     "display_name": "Back neck stretch",
     "description": "Starting position:\n\nSit upright on a chair or a firm pillow.\n\nSteps:\n\nBreathe out and tilt your head forward, chin to chest, putting hands behind your head.\nUse your hands to pull your head down lightly and press against your hands with your head to balance out the force.\nHold for a bit.\nRelax your arms and head, opening up a bit with your shoulders.\nKeep repeating this from step 2 onward.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36194,11 +36176,13 @@
     "name": "Front neck stretch",
     "display_name": "Front neck stretch",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nOpen mouth wide.\nSlowly tilt head back with mouth opened. If you feel the need for support, clasp your hands behind your head.\nVery slowly close and open your mouth.\nAt the end, slowly return to starting position and close mouth.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36260,11 +36244,13 @@
     "name": "Left levator scapulae stretch",
     "display_name": "Left levator scapulae stretch",
     "description": "Starting position:\n\nStart standing up or sitting down. Turn your head to the left, around 45 degrees or just above your nipple. Place your right hand behind your back or sit on it. Take your left hand and use it to hold the back of your head. Lean your head down slightly.\n\nSteps:\n\nAfter assuming the starting position, press your head against your left hand with slight force. Your hand should press back with equal force, so that your head doesn't move. Hold this position.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36292,11 +36278,13 @@
     "name": "Right levator scapulae stretch",
     "display_name": "Right levator scapulae stretch",
     "description": "Starting position:\n\nStart standing up or sitting down. Turn your head to the right, around 45 degrees or just above your nipple. Place your left hand behind your back or sit on it. Take your right hand and use it to hold the back of your head. Lean your head down slightly.\n\nSteps:\n\nAfter assuming the starting position, press your head against your right hand with slight force. Your hand should press back with equal force, so that your head doesn't move. Hold this position.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36324,11 +36312,13 @@
     "name": "Clockwise neck circles",
     "display_name": "Clockwise neck circles",
     "description": "Starting position:\n\nStart sitting or standing. Drop your head down, bringing your chin toward your chest, but not pushing.\n\nSteps:\n\nIn a slower fluid motion and with your head relaxed and not pushing in any direction:\n\nlean toward your right shoulder.\nthen bring your head back, facing up.\nthen lean toward your left shoulder.4.and back toward the starting position.\n\nKeep repeating this as part of one slower fluid motion.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36356,11 +36346,13 @@
     "name": "Counterclockwise neck circles",
     "display_name": "Counterclockwise neck circles",
     "description": "Starting position:\n\nStart sitting or standing. Drop your head down, bringing your chin toward your chest, but not pushing.\n\nSteps:\n\nIn a slower fluid motion and with your head relaxed and not pushing in any direction:\n\nlean toward your left shoulder.\nthen bring your head back, facing up.\nthen lean toward your right shoulder.4.and back toward the starting position.\n\nKeep repeating this as part of one slower fluid motion.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36388,11 +36380,13 @@
     "name": "Neck half circles",
     "display_name": "Neck half circles",
     "description": "Starting position:\n\nStart sitting or standing. Lean your head against one of your shoulders, but don't push.\n\nSteps:\n\nIn one slower fluid motion and with your head relaxed and not pushing in any direction:\n\nbring your head down toward your chest.\nthen lean back aganst your other shoulder.\nthen back toward the chest again.4.and finally toward the starting position.\n\nKeep repeating this.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36420,11 +36414,13 @@
     "name": "Head tilts",
     "display_name": "Head tilts",
     "description": "Starting position:\n\nSit or stand with your back straight.\n\nSteps:\n\nTilt your head to one side and hold for a bit.2.Return your head to neutral position and hold for a bit.\nTilt your head to the other side and hold for a bit.\nReturn your head to neutral position yet again and hold for a bit.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36633,11 +36629,13 @@
     "name": "Quadruped thoracic rotation left",
     "display_name": "Quadruped thoracic rotation left",
     "description": "Starting position:\nStart kneeling on all fours, knees shoulder-width apart. Place your left hand behind your head while keeping your right hand outstretched and touching the floor.\nSteps:\n\nOn inhale, move your left elbow toward your right hand, keeping your left hand behind your head.\nOn exhale, move your left elbow to point up toward the ceiling.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36665,11 +36663,13 @@
     "name": "Quadruped thoracic rotation right",
     "display_name": "Quadruped thoracic rotation right",
     "description": "Starting position:\n\nStart kneeling on all fours, knees shoulder-width apart. Place your right hand behind your head while keeping your left hand outstretched and touching the floor.\n\nSteps:\n\nOn inhale, move your right elbow toward your left hand, keeping your right hand behind your head.\nOn exhale, move your right elbow to point up toward the ceiling.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -36733,11 +36733,13 @@
     "name": "Shoulder dislocates",
     "display_name": "Shoulder dislocates",
     "description": "Starting position:\nStand up with your back straight and a resistance band, towel, or broomstick handle in hand. With your hands straight in front of your body and the band between your hands, push your hands apart to both be at around 45 degrees from your body, thumbs facing down. If using a towel or broomstick handle instead, grab it with an overhand grip.\nSteps:\n\nKeeping your arms outstretched, rotate at the shoulders to bring your arms overhead and then down toward your glutes.\nRotate at the shoulders in the opposite direction — overhead and then toward your groin.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [],
     "movement": "Shoulders",
     "sidedness": null,
@@ -36763,11 +36765,13 @@
     "name": "Bent over row to external rotation",
     "display_name": "Bent over row to external rotation",
     "description": "Starting position:\nStand behind a chair or in front of a table. Bend at the waist to put your forehead on the chair's headrest or table, keeping your back straight. Your arms should be hanging straight down, pointed at the floor.\nSteps:\n\nBring your elbows up to shoulder height. Your forearms should be pointing down, perpendicular to your biceps. Your biceps should be at the same height as your back and perpendicular to your spine.\nHold for a bit.\nRotate at your elbows to bring your hands as far up as you can.\nHold for a bit.\nRotate at your elbows back to the previous position.\nBring your arms down to the original position.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -36793,11 +36797,13 @@
     "name": "YWTs",
     "display_name": "YWTs",
     "description": "Starting position:\nLie down, preferably on a mat. Stretch your arms above your head in a \"Y\" position (arms pointing up diagonally at around 45 degrees). Your thumbs should be pointing up.\nSteps:\n\nWith arms in the Y position, lift your chest slightly from the ground, creating a pull tension in your arms upward.\nHold this position for several seconds (15–30 is ideal).\nKeeping your chest up, bend at your elbows to move from a Y position to a \"W\" position, with arms bent at the elbows and maintaining the upward tension.\nHold for around as long as with the Y position.\nStill with your chest up, move to a \"T\" position, straightening your arms out to the side to be perpendicular to your body.\nHold for around as long as you held the W position.\nMove from the T position to the W position, then from the W position to the Y position.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -36815,45 +36821,6 @@
     "source_id": "1083",
     "license": "CC-BY-SA 4",
     "license_author": "tinman",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1084",
-    "name": "Dumbbell Floor Press",
-    "display_name": "Dumbbell Floor Press",
-    "description": "Grab your dumbbells and lay flat on your back with your knees bent and your feet flat on the ground (use a bench if you have one). Press the weights up, locking out your elbows (A). Lower them slowly until your upper arms are resting on the floor (B) close to your body. Pause here before explosively pressing back up. Squeeze your chest hard and repeat.",
-    "muscle_group": "CHEST",
-    "muscle_groups": [
-      "CHEST",
-      "SHOULDERS",
-      "ARMS"
-    ],
-    "muscles": [
-      "chest",
-      "shoulders",
-      "biceps",
-      "triceps"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Chest",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1084/0.jpg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1084",
-    "license": "CC-BY-SA 4",
-    "license_author": "admin",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -37214,11 +37181,13 @@
     "name": "Abduction while standing",
     "display_name": "Abduction while standing",
     "description": "Training a stable stance, predominantly on one leg, is crucial for both sides. On the one hand, it prevents discomfort and, on the other, it establishes a stable foundation. The practitioner assumes the usual standing position and, with a stable upper body, attempts to repeatedly lift the unloaded leg, bend it at the hip and knee, and then lower it again. The movement is also repeated on the other side. The exercise trains the stability of the hip-surrounding muscles.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -37695,11 +37664,13 @@
     "name": "Rest (for timed workouts)",
     "display_name": "Rest (for timed workouts)",
     "description": "When creating a workout based on time, add this to add rest time in the program",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -37729,7 +37700,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -37757,11 +37730,13 @@
     "name": "Dumbbell farmer's carry",
     "display_name": "Dumbbell farmer's carry",
     "description": "Grab half your body weight in each hand and walk.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -38232,40 +38207,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1185",
-    "name": "Triceps Pushdown",
-    "display_name": "Triceps Pushdown",
-    "description": "Triceps pushdown on cable using lat bar.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1185/0.jpg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1185",
-    "license": "CC-BY-SA 4",
-    "license_author": "anto.kreegyr",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1186",
     "name": "One Arm Bent Row",
     "display_name": "One Arm Bent Row",
@@ -38366,85 +38307,6 @@
     "source_id": "1192",
     "license": "CC-BY-SA 4",
     "license_author": "Franpol",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1193",
-    "name": "Russian Twist",
-    "display_name": "Russian Twist",
-    "description": "Hold a dumbbell, barbell weight or something else that is heavy with both hands, but make sure it is not too heavy and you are able to keep in form.\nLean back to a 45-degree angle from the floor. For an extra challenge, lift your feet off the floor.\nRotate your arms to one side to the same level as your chest, touch the floor for a little extra challenge, and then do the same to the other side. When you're back in your original position after doing both sides it will count as 1 rep.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK",
-      "CORE"
-    ],
-    "muscles": [
-      "lats",
-      "core"
-    ],
-    "equipment": [
-      "DUMBBELL",
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1193/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1193",
-    "license": "CC-BY-SA 4",
-    "license_author": "lion",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1194",
-    "name": "Pallof Press",
-    "display_name": "Pallof Press",
-    "description": "The Pallof press is an anti-rotation exercise that trains the larger and smaller muscles around the spine to resist rotation.\n\nStand parallel to the cable machine or to the anchor point to the\nresistance band and clasp with the handle or band with both hands.\nMake sure your torso is front on and bring your hands to the center of your chest and slowly press out.\nSlowly return your hands to the chest and repeat.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS",
-      "LEGS",
-      "CORE",
-      "CHEST",
-      "ARMS"
-    ],
-    "muscles": [
-      "shoulders",
-      "glutes",
-      "core",
-      "chest",
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1194/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1194",
-    "license": "CC-BY-SA 4",
-    "license_author": "prevail90",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -38596,11 +38458,13 @@
     "name": "Tibialis raises",
     "display_name": "Tibialis raises",
     "description": "Stand up straight\nLift the balls of your feet, resting on your heels.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -38665,11 +38529,13 @@
     "name": "Side Lying Hip Abduction",
     "display_name": "Side Lying Hip Abduction",
     "description": "Begin by lying down on your side with your top leg straight and your bottom leg bent for support.\nLift your top leg off the ground\n(optional) - Hold position at the top\n\nResources:\n\n40 seconds YouTube video: https://www.youtube.com/watch?v=g9FtnmsIYgI",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -38735,7 +38601,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -38761,11 +38629,13 @@
     "name": "Wrist curl, dumbbells",
     "display_name": "Wrist curl, dumbbells",
     "description": "Sitting on a bench, grab the dumbbell with your palms facing up\nand your hands shoulder-width apart. Rest your forearms on your thighs\nand allow your wrists to hang over your knees.\nPerform the movement by\ncurling your palms and wrists towards your face.\n(optional/variable) Pause at the top.\nSlowly return to the starting position.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -38793,11 +38663,13 @@
     "name": "Scorpion Kick",
     "display_name": "Scorpion Kick",
     "description": "Get into the push-up position with your shoulders directly above your hands and your feet hip-width apart.\n\nMake sure that your body forms a straight line from your head to your heels.\n\nNow pull your right knee towards your chest. While keeping your knee bent, lift your right leg as high as possible with your lower right leg pointing straight up.\n\nNow rotate your hips so that your right foot swings over your left leg.\n\nContinue to rotate and move your right foot towards the floor until you are forced to roll onto the outside of your left standing foot. Make sure that you do not rotate your upper body.\n\nNow return to the starting position and repeat the exercise with your left leg.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -38901,11 +38773,13 @@
     "name": "Skydiver with arms in T-position",
     "display_name": "Skydiver with arms in T-position",
     "description": "Lie on your stomach with your legs more than shoulder-width apart and your feet up. Your arms are stretched out to the side and form a T with your upper body, your palms are on the floor. Now raise your upper body, arms and legs as high as you can while keeping your body under tension. Turn your thumbs towards the ceiling and pull your shoulder blades together. While keeping your upper body and all limbs in the air, bring your legs together and then spread them again, keeping them constantly in the air. For the remaining repetitions, only move your legs open and closed.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -39011,11 +38885,13 @@
     "name": "Recruitment Pulls",
     "display_name": "Recruitment Pulls",
     "description": "Find a few specific edge sizes on a hangboard, get fixed underneath them with the board overhead, and pull with max effort, 1 arm at a time, for 3-5 seconds. When positioning for this get set up with a large elbow angle (120-150 degrees) and not in full extension.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -39648,11 +39524,13 @@
     "name": "Standing Soleus Stretch",
     "display_name": "Standing Soleus Stretch",
     "description": "This stretch targets the Soleus part of your calf. It may be performed with a wall or chair.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -39680,11 +39558,13 @@
     "name": "Exercise Band Dorsiflexion",
     "display_name": "Exercise Band Dorsiflexion",
     "description": "This exercise uses an exercise band. It targets the Soleus and Tibialis anterior.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -40311,11 +40191,13 @@
     "name": "Plantarflexion Stretch with Band",
     "display_name": "Plantarflexion Stretch with Band",
     "description": "This stretch is for the ankles, as well as Tibialis anterior.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -40904,43 +40786,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1302",
-    "name": "JM Press",
-    "display_name": "JM Press",
-    "description": "The JM press keeps your shoulders stationary, relying on the elbow flexion and extension to move the weight using your triceps strength. That means you get all the benefits of the best triceps-strengthening exercises without overtaxing that delicate shoulder joint. Classic win-win!",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS",
-      "CHEST"
-    ],
-    "muscles": [
-      "triceps",
-      "biceps",
-      "chest"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1302",
-    "license": "CC-BY-SA 4",
-    "license_author": "Epiphany8424",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1303",
     "name": "Helms Row",
     "display_name": "Helms Row",
@@ -41170,11 +41015,13 @@
     "name": "Burpees",
     "display_name": "Burpees",
     "description": "Jump, lay down on your chest, do a pushup then jump, repeat",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [],
     "movement": "Chest",
     "sidedness": null,
@@ -41309,11 +41156,13 @@
     "name": "Forearm Curls (underhand grip)",
     "display_name": "Forearm Curls (underhand grip)",
     "description": "Engage the muscles\nDon't use momentum\nControlled movement\nSlow movement",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -41371,49 +41220,17 @@
     "instructions": []
   },
   {
-    "id": "wger_1338",
-    "name": "Shoulder Raise (Dumbbell)",
-    "display_name": "Shoulder Raise (Dumbbell)",
-    "description": "Engage the muscles\nDon't use momentum\nControlled movement\nSlow movement\nAlways keep the arms bent\nDon't overextend",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "shoulders"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1338/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1338",
-    "license": "CC-BY-SA 4",
-    "license_author": "Anastasious",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1348",
     "name": "Lower Back Extensions",
     "display_name": "Lower Back Extensions",
     "description": "Engage the muscles\nLift your bottom slightly\nControlled movement\nSlow movement\nDon't use momentum\nKeep your upper body straight",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -41431,40 +41248,6 @@
     "source_id": "1348",
     "license": "CC-BY-SA 4",
     "license_author": "Anastasious",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_135",
-    "name": "Butterfly",
-    "display_name": "Butterfly",
-    "description": "Sit on the butterfly machine, the feet have a good contact with the floor, the upper arms are parallel to the floor. Press your arms together till the handles are practically together (but aren't!). Go slowly back. The weights should stay all the time in the air.",
-    "muscle_group": "CHEST",
-    "muscle_groups": [
-      "CHEST",
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "chest",
-      "shoulders"
-    ],
-    "equipment": [],
-    "movement": "Chest",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_135/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "135",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -41595,11 +41378,13 @@
     "name": "Blackroll",
     "display_name": "Blackroll",
     "description": "Controlled movements\nSlow movements\nDon't use momentum",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -41827,41 +41612,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1376",
-    "name": "Recumbent Bike",
-    "display_name": "Recumbent Bike",
-    "description": "For this exercise Recumbent Bike is needed. You just sit on it, set level and time and start the workout",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "calves",
-      "glutes",
-      "quads"
-    ],
-    "equipment": [],
-    "movement": "Cardio",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1376",
-    "license": "CC-BY-SA 4",
-    "license_author": "pera_perkan",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1377",
     "name": "Torso Twist",
     "display_name": "Torso Twist",
@@ -41934,11 +41684,13 @@
     "name": "Band pull-aparts",
     "display_name": "Band pull-aparts",
     "description": "Hold the band with your arms extended in front of you at shoulder height.\nKeep your elbows slightly bent but fixed throughout the movement.\nPull the band apart by spreading your arms until the band touches or comes close to your chest.\nSlowly bring your arms back to the starting position, controlling the tension on the band.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -42201,40 +41953,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "1391",
-    "license": "CC-BY-SA 4",
-    "license_author": "captive0592",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1392",
-    "name": "Good Morning",
-    "display_name": "Good Morning",
-    "description": "Stand with your feet more than shoulder-width apart (wider stance) and place your hands on your hips. Hinge at your hips and lower your upper body towards the ground while keeping your back straight then come back up.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1392/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1392",
     "license": "CC-BY-SA 4",
     "license_author": "captive0592",
     "license_url": "https://wger.de/en/software/api",
@@ -43223,46 +42941,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1438",
-    "name": "Clean",
-    "display_name": "Clean",
-    "description": "Regular olympic lift clean.\nPull bar from ground, catch on shoulders performing a front squat.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "BACK",
-      "CORE"
-    ],
-    "muscles": [
-      "glutes",
-      "quads",
-      "hamstrings",
-      "lats",
-      "core"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1438",
-    "license": "CC-BY-SA 4",
-    "license_author": "M9",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1439",
     "name": "Pin OHP",
     "display_name": "Pin OHP",
@@ -43649,7 +43327,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -44065,40 +43745,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1465",
-    "name": "Spider Curl",
-    "display_name": "Spider Curl",
-    "description": "To get the most out of DB Spider Curls, you need an\nadjustable weight bench set at a 45-degree incline. This inclined position\nallows your arms to hang freely, putting them in an extended start position\nwith elbows slightly in front of your torso, which is the key to maintaining\nlow-level isometric tension throughout the movement pattern.\n\nLie face-down on an adjustable\nweight bench with your chest fully supported, holding a pair of dumbbells.\nKeep a neutral head position\nand don’t crane your neck.\nLet your arms hang straight\ndown with your palms facing forward (for a standard Spider Curl) or palms\nfacing inward for a Hammer Curl exercise variation.\nKeep a stable foot position on\nthe floor to maintain balance and control.\nStart the curl motion by\nflexing your biceps muscles and lifting the pair of dumbbells or curl bar\ntoward your shoulders.\nKeep your elbow flexion\ncontrolled. Your arms should stay locked in position with no unnecessary\nmovement.\nSqueeze hard at the top for 1-2 seconds. This\nis where maximum tension hits the biceps muscle fibers.\nLower the weight under control\nfor 3-4 seconds to keep muscles under tension for the entire range of\nmotion.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "biceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1465",
-    "license": "CC-BY-SA 4",
-    "license_author": "Moffi",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1466",
     "name": "Calf Raise using Hack Squat Machine",
     "display_name": "Calf Raise using Hack Squat Machine",
@@ -44307,11 +43953,13 @@
     "name": "Cable Shrug-In",
     "display_name": "Cable Shrug-In",
     "description": "Attach two D-Handles to two low cables and shrug in using your upper traps.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -45569,11 +45217,13 @@
     "name": "Overhead Triceps Extension",
     "display_name": "Overhead Triceps Extension",
     "description": "Overhead Triceps Extension with EZ Bar – Quick Guide\n\nThe overhead position emphasizes the long head of the triceps (because it's stretched under load), the exercise does engage all three triceps heads (long, lateral, and medial) to some degree during extension.\n\nSetup:\nSit on a bench (or stand) and hold an EZ bar with a narrow, overhand\ngrip. Lift the bar overhead, arms fully extended. Keep your core tight\nand elbows close to your head.\nExecution:\nSlowly lower the bar behind your head by bending your elbows until they\nreach ~90°. Keep elbows pointed forward (not flaring out).\nFinish: Extend your arms back up to the starting position, squeezing your triceps at the top.\n\nTips:\n\nControl the movement to avoid straining your shoulders.\nUse a moderate weight for full range of motion.\nKeep your back straight and avoid arching.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -45597,51 +45247,17 @@
     "instructions": []
   },
   {
-    "id": "wger_152",
-    "name": "Chin Up",
-    "display_name": "Chin Up",
-    "description": "The chin-up (also known as a chin or chinup) is a strength training exercise. People frequently do this exercise with the intention of strengthening muscles such as the latissimus dorsi and biceps, which extend the shoulder and flex the elbow, respectively. In this maneuver, the palms are faced towards the body. It is a form of pull-up in which the range of motion is established in relation to a person's chin.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS",
-      "BACK"
-    ],
-    "muscles": [
-      "biceps",
-      "lats"
-    ],
-    "equipment": [
-      "PULL_UP_BAR"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_152/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "152",
-    "license": "CC0",
-    "license_author": "BFad07",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1521",
     "name": "Pendular hack",
     "display_name": "Pendular hack",
     "description": "Pendulum hack, made on a pendulum machine",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -45659,45 +45275,6 @@
     "source_id": "1521",
     "license": "CC-BY-SA 4",
     "license_author": "polloperro",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1523",
-    "name": "Sled Push",
-    "display_name": "Sled Push",
-    "description": "Load the sled with 25% of your maximum load. If you don’t know this, choose a weight you can push for 10 minutes with short breaks. Beginners may choose to push the sled with no weight.\nStand behind the sled and grab the poles with a high-grip hand position.\nEngage your core muscles and start pushing the sled forward as fast as you can, powering through your entire leg. Extend your hips and knees as you move the sled forward. Your foot stance should resemble your natural running position.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "SHOULDERS",
-      "ARMS"
-    ],
-    "muscles": [
-      "calves",
-      "glutes",
-      "quads",
-      "shoulders",
-      "hamstrings",
-      "triceps"
-    ],
-    "equipment": [],
-    "movement": "Cardio",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1523",
-    "license": "CC-BY-SA 4",
-    "license_author": "flanny",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -46415,7 +45992,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -46441,11 +46020,13 @@
     "name": "Standing Dowel Shoulder press",
     "display_name": "Standing Dowel Shoulder press",
     "description": "Mobility - prone dowel press or standing dowel shoulder press alternating between front andback",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BARBELL"
     ],
@@ -46592,7 +46173,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -46686,11 +46269,13 @@
     "name": "Trap press",
     "display_name": "Trap press",
     "description": "Laying flat with arm pointing straight upwards, elbow fully extended, use only your shoulder to raise the weight as high as comfortable and back to rest.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BARBELL",
       "BENCH",
@@ -46720,11 +46305,13 @@
     "name": "Side-laying interior rotation",
     "display_name": "Side-laying interior rotation",
     "description": "Laying on your side and using the arm closest to the bench, maintain a 90 degree bend at the elbow and allow the weight to fall towards the ground past the bench as low as comfortable. Bring the weight up using only rotation of the shoulder to the opposing shoulder.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BARBELL",
       "BENCH",
@@ -46754,11 +46341,13 @@
     "name": "Supine press",
     "display_name": "Supine press",
     "description": "Take a close grip and push perpendicular to the bench. Keep back flat.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "BARBELL",
       "BENCH"
@@ -46945,7 +46534,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -47000,40 +46591,6 @@
     "source_id": "1593",
     "license": "CC-BY-SA 4",
     "license_author": "workout@rooven.anonaddy.me",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1602",
-    "name": "Dumbbell Scaption",
-    "display_name": "Dumbbell Scaption",
-    "description": "Starting position:\n\nStand upright with your feet shoulder-width apart.\n\nHold a dumbbell in each hand with a neutral grip (palms facing each other).\n\nKeep a slight bend in your elbows, shoulders relaxed and shoulder blades pulled back.\n\nExecution:\n\nSlowly raise the dumbbells forward and slightly to the side, at about a 30–45° angle from your body (between a front raise and a lateral raise).\n\nLift until your arms are about shoulder height (do not go overhead).\n\nPause for a second at the top and feel the activation in your shoulders and scapular stabilizers.\n\nLower the dumbbells back down under control to the starting position.\n\nBreathing:\n\nInhale as you lower the dumbbells.\n\nExhale as you lift them.\n\nCommon mistakes:\n\nUsing dumbbells that are too heavy (causing jerky movements).\n\nLifting above shoulder height (puts unnecessary stress on the shoulder joint).\n\nArching the lower back instead of keeping the movement controlled at the shoulders.\n\nPurpose of the exercise:\n\nActivates the lower trapezius, serratus anterior, and scapular stabilizers.\n\nHelps correct posture and improve shoulder balance.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "shoulders"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1602",
-    "license": "CC-BY-SA 4",
-    "license_author": "zdelko",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -47365,7 +46922,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -47432,7 +46991,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -47786,41 +47347,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1641",
-    "name": "Kettlebell One Legged Deadlift",
-    "display_name": "Kettlebell One Legged Deadlift",
-    "description": "This exercise involves holding a kettlebell in one hand and standing on one leg while bending forward to touch the kettlebell to the ground. It targets the hamstrings, glutes, and lower back while also improving balance and stability.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes"
-    ],
-    "equipment": [
-      "DUMBBELL",
-      "KETTLEBELL"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1641/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1641",
-    "license": "CC-BY-SA 4",
-    "license_author": "AlucardEvil40",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1642",
     "name": "Dumbbell Hip Thrust",
     "display_name": "Dumbbell Hip Thrust",
@@ -47864,7 +47390,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -47916,73 +47444,6 @@
     "source_id": "165",
     "license": "CC-BY-SA 4",
     "license_author": "Konsumopfer",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1650",
-    "name": "Dumbbell Side Bend",
-    "display_name": "Dumbbell Side Bend",
-    "description": "This exercise involves holding a dumbbell in one hand and bending sideways to work the oblique muscles on the side of the body. It can be done standing or seated and is often used as a core strengthening exercise.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1650/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1650",
-    "license": "CC-BY-SA 4",
-    "license_author": "AlucardEvil40",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1651",
-    "name": "Dumbbell Rear Lunge",
-    "display_name": "Dumbbell Rear Lunge",
-    "description": "This exercise involves holding a dumbbell in each hand and stepping back into a lunge position, then returning to standing. It primarily targets the glutes, hamstrings, and quadriceps.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes",
-      "quads"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1651/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1651",
-    "license": "CC-BY-SA 4",
-    "license_author": "AlucardEvil40",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -48400,40 +47861,6 @@
     "instructions": []
   },
   {
-    "id": "wger_167",
-    "name": "Crunches",
-    "display_name": "Crunches",
-    "description": "Lay down on your back a soft surface, the feet are on the floor. Ask a partner or use some other help (barbell, etc.) to keep them fixed, your hands are behind your head. From this position move your upper body up till your head or elbows touch your knees. Do this movement by rolling up your back.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [
-      "core"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_167/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "167",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1670",
     "name": "Leg Swings (Front–Back)",
     "display_name": "Leg Swings (Front–Back)",
@@ -48566,40 +47993,6 @@
     "source_id": "1680",
     "license": "CC-BY-SA 4",
     "license_author": "ricardodavidrd",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1683",
-    "name": "Zottman curl",
-    "display_name": "Zottman curl",
-    "description": "With your palms facing forward, curl the weights up to your shoulders. Turn your hands so that that your palms downwards and slowly return the weights back down. Finally face your palms back forward.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "biceps"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1683",
-    "license": "CC-BY-SA 4",
-    "license_author": "meldun",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -48929,72 +48322,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1695",
-    "name": "Pull-Ups (Wide Grip)",
-    "display_name": "Pull-Ups (Wide Grip)",
-    "description": "Execution\n\nPulling phase (concentric):\n\nDrive your elbows down and slightly back, pulling your chest toward the bar.\nFocus on leading with your chest, not your chin.\nKeep your shoulders depressed (avoid shrugging).\n\nTop position:\n\nChin should clear the bar (or at least reach bar level).\nPause for a brief squeeze in your lats.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1695",
-    "license": "CC-BY-SA 4",
-    "license_author": "daiben",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1696",
-    "name": "Pull-Ups (Neutral Grip)",
-    "display_name": "Pull-Ups (Neutral Grip)",
-    "description": "Execution\n\nPulling phase (concentric):\n\nDrive your elbows down and back, pulling your chest toward your hands.\nKeep your shoulders depressed and retracted (avoid shrugging).\nFocus on squeezing your lats and upper back at the top.\n\nTop position:\n\nChin should clear or reach the level of your hands.\nPause briefly and contract your lats hard.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1696",
-    "license": "CC-BY-SA 4",
-    "license_author": "daiben",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1698",
     "name": "Barbell Row (Overhand)",
     "display_name": "Barbell Row (Overhand)",
@@ -49023,40 +48350,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "1698",
-    "license": "CC-BY-SA 4",
-    "license_author": "daiben",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1699",
-    "name": "Barbell Row (Underhand)",
-    "display_name": "Barbell Row (Underhand)",
-    "description": "Execution\n\nStarting position:\n\nHold the barbell with arms fully extended toward the floor.\nMaintain tension in your lats and back muscles.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1699",
     "license": "CC-BY-SA 4",
     "license_author": "daiben",
     "license_url": "https://wger.de/en/software/api",
@@ -49699,11 +48992,13 @@
     "name": "Jalon caballero unialteral",
     "display_name": "Jalon caballero unialteral",
     "description": "Pull performed in knight's stance",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -49759,47 +49054,17 @@
     "instructions": []
   },
   {
-    "id": "wger_1723",
-    "name": "Glute Kickback (Machine)",
-    "display_name": "Glute Kickback (Machine)",
-    "description": "Drive through your heel, not your toes, to hit the glute.\n\nDon’t hyperextend your lower back at the top.",
+    "id": "wger_1724",
+    "name": "Standing Adduction (Cable)",
+    "display_name": "Standing Adduction (Cable)",
+    "description": "Keep your hips square and still, pulling the cable across your opposing leg using only your inner thigh.\n\nDon’t let your torso lean or twist — no side bending to help the rep.",
     "muscle_group": "LEGS",
     "muscle_groups": [
       "LEGS"
     ],
     "muscles": [
-      "glutes"
+      "quads"
     ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1723",
-    "license": "CC-BY-SA 4",
-    "license_author": "barry",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1724",
-    "name": "Standing Adduction (Cable)",
-    "display_name": "Standing Adduction (Cable)",
-    "description": "Keep your hips square and still, pulling the cable across your opposing leg using only your inner thigh.\n\nDon’t let your torso lean or twist — no side bending to help the rep.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
     "equipment": [
       "OTHER"
     ],
@@ -49851,40 +49116,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "1725",
-    "license": "CC-BY-SA 4",
-    "license_author": "barry",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1726",
-    "name": "Straight-Arm Pulldown (Cable)",
-    "display_name": "Straight-Arm Pulldown (Cable)",
-    "description": "Keep arms straight but not locked, pulling with your lats, not your shoulders.\n\nDon’t let your shoulders shrug up during the movement.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1726/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1726",
     "license": "CC-BY-SA 4",
     "license_author": "barry",
     "license_url": "https://wger.de/en/software/api",
@@ -50023,40 +49254,6 @@
     "source_id": "173",
     "license": "CC-BY-SA 3",
     "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1730",
-    "name": "Side Lateral Raise (Cable)",
-    "display_name": "Side Lateral Raise (Cable)",
-    "description": "Lift with your elbows leading, not your hands.\n\nDon’t shrug your shoulders; keep traps quiet.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1730",
-    "license": "CC-BY-SA 4",
-    "license_author": "barry",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -50410,40 +49607,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1740",
-    "name": "Single Leg Glute Bridge",
-    "display_name": "Single Leg Glute Bridge",
-    "description": "A glute bridge, where you use just one leg at a time.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Legs",
-    "sidedness": "unilateral",
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1740",
-    "license": "CC-BY-SA 4",
-    "license_author": "Happy",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1741",
     "name": "L-Sit Pull-ups",
     "display_name": "L-Sit Pull-ups",
@@ -50486,11 +49649,13 @@
     "name": "Back Lever",
     "display_name": "Back Lever",
     "description": "Hanging from a pull-up bar facing downwards with your arms extended",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "PULL_UP_BAR"
     ],
@@ -50608,39 +49773,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "1745",
-    "license": "CC-BY-SA 4",
-    "license_author": "Tierrasverdes",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1747",
-    "name": "Smith machine squat",
-    "display_name": "Smith machine squat",
-    "description": "Technique and Execution\n\nThe Smith machine squat is a variation of the traditional barbell squat that uses a guided, fixed-path barbell. Here's a detailed breakdown of the proper technique:\n\nStarting Position\n\nFoot Placement: Position feet slightly forward of the bar, about shoulder-width apart\n\nBar Position: Rest the bar on your upper trapezius/shoulders, similar to a traditional back squat\n\nStance: Feet can be slightly angled outward for natural hip rotation\n\nSquat Movement\n\nUnrack the bar by rotating it to release from the safety hooks\n\nSlowly lower your body by bending knees and hips\n\nDescend until thighs are parallel to the ground (or slightly below)\n\nPause briefly at the bottom of the movement\n\nDrive through your heels to return to the starting position\n\nBenefits and Considerations\n\nAdvantages\n\nReduced Balance Requirements: Fixed bar path makes it easier for beginners\n\nControlled Movement: Less risk of improper form compared to free weight squats\n\nIsolation: Allows focused leg muscle development",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes",
-      "quads"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1747/0.jpg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1747",
     "license": "CC-BY-SA 4",
     "license_author": "Tierrasverdes",
     "license_url": "https://wger.de/en/software/api",
@@ -50788,11 +49920,13 @@
     "name": "45° lateral raises",
     "display_name": "45° lateral raises",
     "description": "dumbbell raise in the space between front and side raises",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -50820,11 +49954,13 @@
     "name": "Shoulder Y-pull cable",
     "display_name": "Shoulder Y-pull cable",
     "description": "on a cable rack cross the cables and pull elbows to ceiling close to the body.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -50956,40 +50092,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1772",
-    "name": "Reverse crunch",
-    "display_name": "Reverse crunch",
-    "description": "Lay down\nPlace your hands near your butt (often slightly in front or under or both)\nRaise your legs, but about 70% of the way you should be able to also raise your pelvis\n(optional/variable) Hold 1/2 seconds at the top\nGo back to starting position",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [
-      "core"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1772",
-    "license": "CC-BY-SA 4",
-    "license_author": "eufvksruh",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1773",
     "name": "Legend Incline Bench Press",
     "display_name": "Legend Incline Bench Press",
@@ -51068,11 +50170,13 @@
     "name": "Pec deck rear delt fly",
     "display_name": "Pec deck rear delt fly",
     "description": "Seated rear delt fly on pec deck machine (facing the machine and extending arms backwards, the hands should be at the height of the shoulders)",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [],
     "movement": "Shoulders",
     "sidedness": null,
@@ -51304,45 +50408,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1801",
-    "name": "Barbell Full Squat",
-    "display_name": "Barbell Full Squat",
-    "description": "The barbell full squat is a compound exercise that targets multiple muscle groups in the lower body, including the quadriceps, hamstrings, and glutes.\nProper form is crucial for maximizing results and preventing injuries during the barbell full squat. This includes maintaining a shoulder-width stance, creating whole body tension, controlling your descent, and maintaining proper depth and knee positioning.\nAssistance moves such as the front squat, goblet squat, split squat, and Bulgarian split squat can help improve your performance in the barbell full squat by targeting specific muscle groups and improving overall technique.\nTo achieve new personal records in your back squat, gradually increase weight over time, vary rep ranges and sets to stimulate muscle growth, and prioritize rest and recovery between training sessions.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "CORE"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes",
-      "quads",
-      "calves",
-      "core"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1801/0.jpg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1801",
-    "license": "CC-BY-SA 4",
-    "license_author": "fabrice",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1803",
     "name": "Trap Bar Squat",
     "display_name": "Trap Bar Squat",
@@ -51484,41 +50549,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1809",
-    "name": "Reverse Hyperextension",
-    "display_name": "Reverse Hyperextension",
-    "description": "Lie face-down on a bench with your legs hanging off the edge.\n\nBend your hips so your thighs are vertical, bending your knees at the same time so your shins stay horizontal.\nStraighten out your legs so they are not bent and your toes are pointing backwards horizontally.\nReturn to the original position, and repeat.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes"
-    ],
-    "equipment": [
-      "BENCH"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1809",
-    "license": "CC-BY-SA 4",
-    "license_author": "Croak6728",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1810",
     "name": "Sphinx",
     "display_name": "Sphinx",
@@ -51557,11 +50587,13 @@
     "name": "Deadhang",
     "display_name": "Deadhang",
     "description": "Deadhang performed on an edge either with or without added weight (adujst edge or weight to adjust difficulty)",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -51587,11 +50619,13 @@
     "name": "Open Book",
     "display_name": "Open Book",
     "description": "Basic exercise\n\nFocus: enhances thoracic mobility and\nspinal segmentation while opening the shoulders and chest.\n**Position:**kneeling on the floor with your right side facing a wall. Hips are square and stable, with the right knee down and the left foot forward. Lengthen your spine and align your head comfortably.\nBegin with your arms relaxed and open in front of your chest, palms\nfacing each other and hands apart.\nInhale\nto initiate the movement, allowing your left arm —the one farther from\nthe wall— to open outward and backward. Lead the twist from your thoracic\nspine, rotating your upper back progressively while keeping your pelvis\nstill.\nExhale as you complete the rotation, guiding your left hand\ntoward the wall as your gaze follows your hand.\nReturn by inhaling and\nslowly bringing your arm forward, reversing the spinal rotation segment\nby segment.\nRepeat on the opposite side.\n\nProgression\n\n**Position:**kneeling on the floor with your right side facing a wall. Left knee down and right foot forward.\nBefore the basic exercise: inhale, exhalewhile moving the right arm along the wall with a circle upwards and backwards, inhalewhile bringing back the arm.\nBasic exercise.\nRepeat on the opposite side.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -51941,11 +50975,13 @@
     "name": "Ring Support Hold",
     "display_name": "Ring Support Hold",
     "description": "Hold yourself in a support position on gymnastic rings with arms straight at sides. Focus on keeping rings turned out slightly and maintaining hollow body position. This is an isometric hold for chest, shoulders, and triceps.",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [],
     "movement": "Chest",
     "sidedness": null,
@@ -52005,11 +51041,13 @@
     "name": "Trap-3 Raise",
     "display_name": "Trap-3 Raise",
     "description": "Hinge forwards and bend your knees slightly. Depress and retract the shoulder you will use. Rest the other hand on your knee.\nRaise your hand about 15 degrees overhead, maintaining the position of your shoulder.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52107,11 +51145,13 @@
     "name": "Solo Hip Flexor Stretch",
     "display_name": "Solo Hip Flexor Stretch",
     "description": "See this instructive video: https://www.youtube.com/watch?v=qHwyBHS6MQs .",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52175,11 +51215,13 @@
     "name": "Bent-Leg Hamstring Stretch",
     "display_name": "Bent-Leg Hamstring Stretch",
     "description": "See this instructional video from Stretch Therapy: https://www.youtube.com/watch?v=CrF2iMnn09w .",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52280,11 +51322,13 @@
     "name": "Butterfly Stretch",
     "display_name": "Butterfly Stretch",
     "description": "Sit in a prayer position with the soles of your feet gently pressed together.\nUse your hands to slowly pull your feet inwards towards your groin. Hold for as long as required.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52527,48 +51571,6 @@
     "instructions": []
   },
   {
-    "id": "wger_1853",
-    "name": "L-Sit (Foot Supported)",
-    "display_name": "L-Sit (Foot Supported)",
-    "description": "As with an L-sit, but allow your feet to touch the floor to support the some of the weight of your legs.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK",
-      "CHEST",
-      "CORE",
-      "LEGS",
-      "ARMS"
-    ],
-    "muscles": [
-      "lats",
-      "chest",
-      "core",
-      "quads",
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1853",
-    "license": "CC-BY-SA 4",
-    "license_author": "Croak6728",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1854",
     "name": "Calves foam roller",
     "display_name": "Calves foam roller",
@@ -52607,11 +51609,13 @@
     "name": "Hamstring Foam roller",
     "display_name": "Hamstring Foam roller",
     "description": "Move your hamstrings slowly over the foam roller",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52639,11 +51643,13 @@
     "name": "Foam Roller Anterior tibialis",
     "display_name": "Foam Roller Anterior tibialis",
     "description": "Use the foam roller slowly in the tibial anterioris. This is english, please",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52808,11 +51814,13 @@
     "name": "Foam Roller Adductors",
     "display_name": "Foam Roller Adductors",
     "description": "Slide the Foam Roller over your Adductors. Is english please",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52840,11 +51848,13 @@
     "name": "Side stretch",
     "display_name": "Side stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -52868,45 +51878,17 @@
     "instructions": []
   },
   {
-    "id": "wger_1862",
-    "name": "Hip Circles",
-    "display_name": "Hip Circles",
-    "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1862/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1862",
-    "license": "CC-BY-SA 4",
-    "license_author": "Davidgj32",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1863",
     "name": "Hip Crossover",
     "display_name": "Hip Crossover",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -52932,11 +51914,13 @@
     "name": "Ankle Roll",
     "display_name": "Ankle Roll",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -52962,11 +51946,13 @@
     "name": "Banded Ankle Mobility",
     "display_name": "Banded Ankle Mobility",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -52992,11 +51978,13 @@
     "name": "Hip Flexor Stretch",
     "display_name": "Hip Flexor Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53024,11 +52012,13 @@
     "name": "Lunge with Twist Stretch",
     "display_name": "Lunge with Twist Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53056,11 +52046,13 @@
     "name": "Lying Figure Four Stretch",
     "display_name": "Lying Figure Four Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53088,11 +52080,13 @@
     "name": "Lying Hamstring Stretch with Band",
     "display_name": "Lying Hamstring Stretch with Band",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53120,11 +52114,13 @@
     "name": "Pigeon Stretch",
     "display_name": "Pigeon Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53148,47 +52144,17 @@
     "instructions": []
   },
   {
-    "id": "wger_1873",
-    "name": "Quad Stretch",
-    "display_name": "Quad Stretch",
-    "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1873/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1873",
-    "license": "CC-BY-SA 4",
-    "license_author": "Davidgj32",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1874",
     "name": "Runners Lunge Stretch",
     "display_name": "Runners Lunge Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53216,11 +52182,13 @@
     "name": "Standing IT Band Stretch",
     "display_name": "Standing IT Band Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53248,11 +52216,13 @@
     "name": "Supported Calf Stretch",
     "display_name": "Supported Calf Stretch",
     "description": "View the video to undestand the exercise",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -53348,11 +52318,13 @@
     "name": "DB Wrist Extension",
     "display_name": "DB Wrist Extension",
     "description": ":   Grab two dumbbells with an overhand grip and lay your forearms across your knees.\n\n:   Let your wrists flex fully, then extend your wrists.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -53550,45 +52522,6 @@
     "instructions": []
   },
   {
-    "id": "wger_189",
-    "name": "Deficit Deadlift",
-    "display_name": "Deficit Deadlift",
-    "description": "Preparation\n\nStand on weight plate, bumper plate, or shallow elevated platform with loaded bar above feet. Squat down and grasp bar with shoulder width or slightly wider overhand or mixed grip.\n\nExecution\n\nLift bar by extending hips and knees to full extension. Pull shoulders back at top of lift if rounded. Return weights to floor by bending hips back while allowing knees to bend forward, keeping back straight and knees pointed same direction as feet. Repeat.\n\nComments\n\nThroughout lift, keep hips low, shoulders high, arms and back straight. Knees should point same direction as feet throughout movement. Keep bar close to body to improve mechanical leverage. Grip strength and strength endurance often limit ability to perform multiple reps at heavy resistances. Gym chalk, wrist straps, grip work, and mixed grip can be used to enhance grip. Mixed grip indicates one hand holding with overhand grip and other hand holding with underhand grip. Lever barbell jack can be used to lift barbell from floor for easier loading and unloading of weight plates.\n\nBarbell Deficit Deadlift emphasizes building strength through lowest portion of Deadlift. Target muscle is exercised isometrically. Heavy barbell deadlifts significantly engages Latissmus Dorsi. See Barbell Deficit Deadlift under Gluteus Maximus. Also see Deadlift Analysis.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "BACK",
-      "CORE"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes",
-      "lats",
-      "core"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "189",
-    "license": "CC-BY-SA 4",
-    "license_author": "bobbyprince89",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1893",
     "name": "Overhead Barbell Press",
     "display_name": "Overhead Barbell Press",
@@ -53653,42 +52586,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "1900",
-    "license": "CC-BY-SA 4",
-    "license_author": "nishant0712",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1901",
-    "name": "Clean and Press",
-    "display_name": "Clean and Press",
-    "description": "The First Pull: Lift the bar from the floor to knee-height by driving with the legs, keeping the angle of your back constant.\nThe \"Power\" Position: As the bar reaches mid-thigh, explosively shrug and extend your hips to create vertical momentum.\nThe Quick Elbow Turnover: In the catch phase, rotate your elbows rapidly under the bar to create a \"shelf\" on your front deltoids.\nThe Vertical Press: Press the bar in a straight line; your head should shift slightly forward once the bar clears your forehead to reach full lockout.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS",
-      "LEGS"
-    ],
-    "muscles": [
-      "shoulders",
-      "quads"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_1901/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1901",
     "license": "CC-BY-SA 4",
     "license_author": "nishant0712",
     "license_url": "https://wger.de/en/software/api",
@@ -53875,11 +52772,13 @@
     "name": "Butterfly Superman",
     "display_name": "Butterfly Superman",
     "description": "Lie on stomach, intertwine fingers behind the head and start raising your head and raise elbows as far as they go.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -54119,11 +53018,13 @@
     "name": "Quadruped Hip Abduction",
     "display_name": "Quadruped Hip Abduction",
     "description": "Distribute your body weight evenly on all knees and arms.\nKeep the torso stable, with the abdomen engaged and the lumbar spine\nstraight without twisting the back (imagine: a glass on your lower back\nwon't fall off). Raise one leg outwards without twisting it.\n\nPay attention to the right angle at the hips and knees. Always train both sides of the body.\n\nTo increase resistance, a resistance band can be used.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -54227,11 +53128,13 @@
     "name": "Extreme Pec Stretch",
     "display_name": "Extreme Pec Stretch",
     "description": "Deep loaded stretch for pectorals, typically performed at end of chest work.",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -54259,11 +53162,13 @@
     "name": "Extreme Shoulder Stretch",
     "display_name": "Extreme Shoulder Stretch",
     "description": "Deep loaded stretch for deltoids, performed after pressing movements.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -54291,11 +53196,13 @@
     "name": "Extreme Lat Stretch",
     "display_name": "Extreme Lat Stretch",
     "description": "Deep loaded stretch for latissimus dorsi, performed after pulling movements.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -54391,11 +53298,13 @@
     "name": "Barbell Silverback Shrug",
     "display_name": "Barbell Silverback Shrug",
     "description": "Stand with your feet shoulder width apart holding the barbell with both hands in front just past shoulder width.\nBend forward at the hips with a slight bend in your knees, keeping your back straight.\nEngage your shoulder blades, as if you are trying to touch them together.\nRelease the shrug.\nDescription taken from MuscleWiki",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BARBELL"
     ],
@@ -54541,11 +53450,13 @@
     "name": "Diagonal Shoulder Press",
     "display_name": "Diagonal Shoulder Press",
     "description": "You sit at the bench press device, back slightly tilted to the back. The bar should be about 20 cm in front of you. Then you push the bar and take it back again, as you would with a bench press.\n\nIn this position you strain your chest muscles a lot less, which is nice if you want to train, but your chest hasn't recovered yet.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BENCH"
     ],
@@ -54675,47 +53586,17 @@
     "instructions": []
   },
   {
-    "id": "wger_1936",
-    "name": "Cable Rear-Delt Fly (single arm)",
-    "display_name": "Cable Rear-Delt Fly (single arm)",
-    "description": "Cable rear delt fly (single arm):\nStand sideways to a cable machine with the handle set around shoulder height. With a slight bend in the elbow, pull the handle out and back in a wide arc so the upper arm moves away from the body. Keep your torso still and focus on the rear delt doing the work. Use light to moderate weight and controlled reps.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Shoulders",
-    "sidedness": "unilateral",
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1936",
-    "license": "CC-BY-SA 4",
-    "license_author": "Dulive",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_1938",
     "name": "Cat-Cow",
     "display_name": "Cat-Cow",
     "description": "On all fours. Arch spine up (cat) then drop it down (cow). Breathe with movement.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -54741,11 +53622,13 @@
     "name": "Neck CARs",
     "display_name": "Neck CARs",
     "description": "Controlled Articular Rotations. Slow full circles 3 each way. Cervical mobility.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [],
     "movement": "Shoulders",
     "sidedness": null,
@@ -54811,7 +53694,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -54908,11 +53793,13 @@
     "name": "Limber 11",
     "display_name": "Limber 11",
     "description": "Limber 11\nSource: Joe DeFranco\n\n1. Foam Roll IT Band [soft_tissue] - 10-15 passes\n2. Foam Roll Adductors [soft_tissue] - 10-15 passes\n3. SMR Glutes (lax ball) [soft_tissue] - 30 sec-2 min\n4. Bent-knee Iron Cross [dynamic] - 5-10 reps each side\n5. Roll-overs into V-sits [dynamic] - 10 reps\n6. Rocking Frog Stretch [dynamic] - 10 reps\n7. Fire Hydrant Circles [dynamic] - 10 forward / 10 backward\n8. Mountain Climbers [dynamic] - 10 reps each leg\n9. Cossack Squats [dynamic] - 5-10 reps each side\n10. Seated Piriformis Stretch [isometric] - 20-30 sec each side\n11. Rear-foot-elevated Hip Flexor Stretch [dynamic + 3s hold] - 5-10 reps each side",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -54938,11 +53825,13 @@
     "name": "Foam Roll IT Band",
     "display_name": "Foam Roll IT Band",
     "description": "Foam Roll IT Band\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 10-15 passes\nType: soft_tissue",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -54968,11 +53857,13 @@
     "name": "SMR Glutes (lax ball)",
     "display_name": "SMR Glutes (lax ball)",
     "description": "SMR Glutes (lax ball)\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 30 sec-2 min\nType: soft_tissue",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -54998,11 +53889,13 @@
     "name": "Bent-knee Iron Cross",
     "display_name": "Bent-knee Iron Cross",
     "description": "Bent-knee Iron Cross\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 5-10 reps each side\nType: dynamic",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -55028,11 +53921,13 @@
     "name": "Roll-overs into V-sits",
     "display_name": "Roll-overs into V-sits",
     "description": "Roll-overs into V-sits\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 10 reps\nType: dynamic",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -55058,11 +53953,13 @@
     "name": "Fire Hydrant Circles",
     "display_name": "Fire Hydrant Circles",
     "description": "Fire Hydrant Circles\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 10 forward / 10 backward\nType: dynamic",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [],
     "movement": "Legs",
     "sidedness": null,
@@ -55088,11 +53985,13 @@
     "name": "Seated Piriformis Stretch",
     "display_name": "Seated Piriformis Stretch",
     "description": "Seated Piriformis Stretch\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 20-30 sec each side\nType: static\nIncludes isometric hold.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -55120,11 +54019,13 @@
     "name": "Rear-foot-elevated Hip Flexor Stretch",
     "display_name": "Rear-foot-elevated Hip Flexor Stretch",
     "description": "Rear-foot-elevated Hip Flexor Stretch\nPart of: Limber 11\nSource: Joe DeFranco\nPrescription: 5-10 reps each side\nType: dynamic\nIncludes dynamic movement plus 3s hold.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -55309,7 +54210,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -55471,44 +54374,6 @@
     "source_id": "197",
     "license": "CC-BY-SA 3",
     "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_1970",
-    "name": "Kettlebell sumo high pull",
-    "display_name": "Kettlebell sumo high pull",
-    "description": "A compound exercise combining elements of a sumo deadlift and a high pull. It targets the posterior chain, particularly the glutes, hamstrings, and upper back. The sumo stance increases hip engagement, while the high pull adds an explosive element, promoting power development.\n\nStand upright overtop of a kettlebell with your feet wider than shoulder-width apart angled out slightly.\nMaintain a braced core and neutral spine throughout the exercise.\nHinge your hips backward and extend your arms to grab ahold the kettlebell with a double overhand grip.\nWith you lower legs nearly vertical to the ground, extend your hips to raise the kettlebell with your elbows high keeping it close to your body.\nOnce the kettlebell has reached shoulder height, lower back to the starting position.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS",
-      "LEGS"
-    ],
-    "muscles": [
-      "shoulders",
-      "hamstrings",
-      "glutes",
-      "quads"
-    ],
-    "equipment": [
-      "KETTLEBELL"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "1970",
-    "license": "CC-BY-SA 4",
-    "license_author": "wgerpott",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -55869,11 +54734,13 @@
     "name": "Facepull",
     "display_name": "Facepull",
     "description": "Attach a rope to a pulley station set at about chest level.\n\nStep back so you're supporting the weight with arms completely outstretched and assume a staggered (one foot forward) stance. Bend the knees slightly for a stable base.\n\nRetract the scapulae (squeeze your partner's finger with your shoulder blades) and pull the center of the rope slightly up towards the face. A good cue is to think about pulling the ends of the rope apart, not just pulling back.\n\nAs you near your face, externally rotate so your knuckles are facing the ceiling.\n\nHold for one second at the top position and slowly lower.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -55893,38 +54760,6 @@
     "source_id": "222",
     "license": "CC-BY-SA 4",
     "license_author": "abeworld",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_235",
-    "name": "Flutter Kicks",
-    "display_name": "Flutter Kicks",
-    "description": "-Laying on the back, lift your straightened legs from the ground at a 45 degree angle.\n\n-As your Left foot travels downward and nearly touches the floor, your Right foot should seek to reach a 90 degree angle, or as close to one as possible.\n\n-Bring your R foot down until it nearly touches the floor, and bring your L foot upwards.  Maintain leg rigidity throughout the exercise.  Your head should stay off the ground, supported by tightened upper abdominals.\n\n-(L up R down, L down R up, x2)  ^v, v^, ^v, v^ = 1 rep\n\n-Primarily works the Rectus Abdominus, the hip flexors and the lower back. Secondarily works the Obliques.  Emphasis placed on the lower quadrant of the abs.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [
-      "core"
-    ],
-    "equipment": [],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "235",
-    "license": "CC-BY-SA 4",
-    "license_author": "nate303303",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -56175,11 +55010,13 @@
     "name": "Curl De Muñeca Con Barra",
     "display_name": "Curl De Muñeca Con Barra",
     "description": "This is a variation of the flat bench press designed to emphasize the clavicular head of the pectoralis major (the upper portion). By tilting the torso, the angle of the push changes, shifting more tension to the upper chest and shoulders, which helps achieve a more aesthetic, balanced, and three-dimensional development of the torso.\n\nStarting Position: Grip a bar with an overhand grip (palms facing up) at a width similar to your shoulders.\n\nPosition on the Bench: Kneel in front of a flat bench and rest the backs of your forearms on it. Your wrists and hands should extend slightly beyond the edge of the bench to allow for a full range of motion.\n\nEccentric Phase (Lowering): Lower the bar in a controlled manner by extending your wrists toward the floor. At the bottom of the movement, slightly spread your fingers to let the bar roll down a bit, maximizing the stretch.\n\nConcentric Phase (Lift): First, close your fingers to secure the bar, then flex your wrists upward explosively but in a controlled manner, bringing the bar as high as possible. Strongly contract your forearms at the top position for one second.\n\nForm: Keep your forearms firmly pressed against the bench throughout the exercise; only your wrists and fingers should move.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "BARBELL",
       "BENCH"
@@ -56269,41 +55106,6 @@
     "source_id": "246",
     "license": "CC-BY-SA 3",
     "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_2478",
-    "name": "Glute-Ham Raise",
-    "display_name": "Glute-Ham Raise",
-    "description": "Kneel on a glute-ham developer or have a partner hold your ankles. Keeping hips straight, lower your torso toward the floor under control, then curl back up by contracting the hamstrings and glutes.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes"
-    ],
-    "equipment": [
-      "BENCH"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "2478",
-    "license": "CC0",
-    "license_author": "personal use",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -56943,40 +55745,6 @@
     "instructions": []
   },
   {
-    "id": "wger_2498",
-    "name": "Pike Push-ups (Vasco L1)",
-    "display_name": "Pike Push-ups (Vasco L1)",
-    "description": "Vasco custom pike push-up for shoulder development in beginner home training. Bodyweight only. Part of Monday Push day.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "shoulders"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "2498",
-    "license": "CC-BY-SA 4",
-    "license_author": "Vasco Custom",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_2499",
     "name": "Incline Push-ups (Vasco L2)",
     "display_name": "Incline Push-ups (Vasco L2)",
@@ -57153,40 +55921,6 @@
     "instructions": []
   },
   {
-    "id": "wger_2505",
-    "name": "Dead Bug (Core L1)",
-    "display_name": "Dead Bug (Core L1)",
-    "description": "Vasco custom dead bug - foundational deep core stability and anti-extension. Teaches lumbar-pelvic dissociation, breath-coordination, and proximal stability for distal mobility. Prerequisite for all core training.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [
-      "core"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "2505",
-    "license": "CC-BY-SA 4",
-    "license_author": "Vasco Custom",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_2507",
     "name": "Forearm Plank (Core L1)",
     "display_name": "Forearm Plank (Core L1)",
@@ -57215,80 +55949,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "2507",
-    "license": "CC-BY-SA 4",
-    "license_author": "Vasco Custom",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_2508",
-    "name": "Bird Dog (Core L1)",
-    "display_name": "Bird Dog (Core L1)",
-    "description": "Vasco custom bird dog - foundational contralateral limb coordination and lumbar stability. Teaches hip dissociation from spine, glute activation, and scapular control.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [
-      "core"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "2508",
-    "license": "CC-BY-SA 4",
-    "license_author": "Vasco Custom",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_2509",
-    "name": "Side Plank (Core L1)",
-    "display_name": "Side Plank (Core L1)",
-    "description": "Vasco custom side plank - foundational lateral core stability. Targets obliques, QL, and hip abductors. Essential for spinal stability and rotational control.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS",
-      "BACK",
-      "CHEST",
-      "ARMS"
-    ],
-    "muscles": [
-      "shoulders",
-      "lats",
-      "chest",
-      "biceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "2509",
     "license": "CC-BY-SA 4",
     "license_author": "Vasco Custom",
     "license_url": "https://wger.de/en/software/api",
@@ -57376,11 +56036,13 @@
     "name": "Serratus Wall Slide Stretch",
     "display_name": "Serratus Wall Slide Stretch",
     "description": "Stand facing a wall. Place your forearms vertically against the wall so your elbows and wrists are both touching it.\nPoint your arms slightly outwards from \"straight up\".\nProtract your shoulders had, then slide your forearms up the wall until your elbows are about level with your chin.\nSlide your forearms back down the wall. Repeat as necessary.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [],
     "movement": "Shoulders",
     "sidedness": null,
@@ -57406,11 +56068,13 @@
     "name": "Straddle Stance Good Morning",
     "display_name": "Straddle Stance Good Morning",
     "description": "Hold the barbell on your shoulders as if to squat.\nTake a half-step forwards with one leg, placing your foot on the ground.\nLock the front leg, and either lock your back leg or allow it to bend very slightly.\nBend forwards under control to stretch the rear of your front leg, then return to your standing position.\n\nRepeat as necessary for reps/time. You should also repeat for the other leg.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "BARBELL"
     ],
@@ -57438,11 +56102,13 @@
     "name": "Couch Stretch",
     "display_name": "Couch Stretch",
     "description": "Stand facing away from a bench, couch or similar-height object.\nExtend one leg backwards, resting your foot \"laces-down\" on the edge of the bench.\nLower yourself until your rear knee is on the floor and you are in a lunge position, with your torso hanging forwards slightly.\nBrace your core, tense your rear glute, and straighten up your torso to vertical, under control. Relax and repeat.\n\nRepeat for the other leg, too.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "BENCH"
     ],
@@ -57470,11 +56136,13 @@
     "name": "Long Lunge Pulse Stretch",
     "display_name": "Long Lunge Pulse Stretch",
     "description": "Hold the resistance band (or any other rope-like object, the elasticity is not necessary) above your head, between your hands, with your arms straight. Pull it taught to engage your lats.\nStep forwards into a lunge, dropping until your knee is almost touching the floor.\nSlowly and controlledly pulse your body up and down by about an inch. Repeat for required reps.\nRepeat for other leg.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -57972,40 +56640,6 @@
     "instructions": []
   },
   {
-    "id": "wger_272",
-    "name": "Hammer Curls",
-    "display_name": "Hammer Curls",
-    "description": "Start: Hold dumbbells at your sides with palms facing your torso.\nCurl: Lift the weights toward your shoulders while maintaining the neutral grip (like holding a hammer).\nSqueeze: Contract the biceps at the top without moving your elbows forward.\nLower: Slowly return to the starting position with full control.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "biceps"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_272/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "272",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_275",
     "name": "Hammercurls on Cable",
     "display_name": "Hammercurls on Cable",
@@ -58044,11 +56678,13 @@
     "name": "Hand Grip",
     "display_name": "Hand Grip",
     "description": "chrome Hand Flex Grip to build up forearms muscles",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -58384,36 +57020,6 @@
     "instructions": []
   },
   {
-    "id": "wger_301",
-    "name": "Hyperextensions",
-    "display_name": "Hyperextensions",
-    "description": "Lie on the hyperextension pillow with your navel at the front edge, allowing your upper body to hang freely. Tighten all your back muscles and raise your torso until you're horizontal, but no higher. Lower yourself slowly, maintaining a steady flow of muscles.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_301/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "301",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_308",
     "name": "Incline Dumbbell Fly",
     "display_name": "Incline Dumbbell Fly",
@@ -58453,11 +57059,13 @@
     "name": "Axe Hold",
     "display_name": "Axe Hold",
     "description": "Grab dumbbells and extend arms to side and hold as long as you can",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -58550,42 +57158,6 @@
     "instructions": []
   },
   {
-    "id": "wger_314",
-    "name": "Isometric Wipers",
-    "display_name": "Isometric Wipers",
-    "description": "Assume push-up position, with hands slightly wider than shoulder width.\n\nShift body weight as far as possible to one side, allowing the elbow on that side to flex.\n\nReverse the motion, moving completely over to the other side.\n\nReturn to the starting position, and repeat for the desired number of repetitions.",
-    "muscle_group": "CHEST",
-    "muscle_groups": [
-      "CHEST",
-      "CORE"
-    ],
-    "muscles": [
-      "chest",
-      "core"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Chest",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "314",
-    "license": "CC-BY-SA 4",
-    "license_author": "cal.zabel",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_319",
     "name": "Jogging",
     "display_name": "Jogging",
@@ -58594,7 +57166,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -58924,38 +57498,6 @@
     "instructions": []
   },
   {
-    "id": "wger_355",
-    "name": "Lat Pull Down (Straight Back)",
-    "display_name": "Lat Pull Down (Straight Back)",
-    "description": "The lat pull down is an exercise used to build the muscles of the back. While the exercise will primarily target the lats, you will also notice a fair amount of bicep and middle back activation.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "355",
-    "license": "CC-BY-SA 3",
-    "license_author": "drthurlow",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_364",
     "name": "Leg Curl",
     "display_name": "Leg Curl",
@@ -59021,70 +57563,6 @@
     "instructions": []
   },
   {
-    "id": "wger_366",
-    "name": "Leg Curls (sitting)",
-    "display_name": "Leg Curls (sitting)",
-    "description": null,
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_366/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "366",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_367",
-    "name": "Leg Curls (standing)",
-    "display_name": "Leg Curls (standing)",
-    "description": null,
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_367/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "367",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_369",
     "name": "Leg Extension",
     "display_name": "Leg Extension",
@@ -59111,41 +57589,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "369",
-    "license": "CC0",
-    "license_author": "BFad07",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_371",
-    "name": "Leg Press",
-    "display_name": "Leg Press",
-    "description": "The leg press is a weight training exercise in which the individual pushes a weight or resistance away from them using their legs.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "calves",
-      "glutes",
-      "quads"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_371/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "371",
     "license": "CC0",
     "license_author": "BFad07",
     "license_url": "https://wger.de/en/software/api",
@@ -59179,39 +57622,6 @@
     "user_id": null,
     "source": "wger",
     "source_id": "373",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_374",
-    "name": "Leg Presses (wide)",
-    "display_name": "Leg Presses (wide)",
-    "description": "Sit on the machine and put your feet on the platform, a bit more than shoulder wide. The feet are turned outwards by a few degrees.\n\nLower the weight so much, that the knees form a right angle. Push immediately the platform up again, without any pause. When in the lower position, the knees point a bit outwards and the movement should be always fluid.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "quads",
-      "glutes"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "374",
     "license": "CC-BY-SA 3",
     "license_author": "wger.de",
     "license_url": "https://wger.de/en/software/api",
@@ -59420,7 +57830,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -59591,11 +58003,13 @@
     "name": "Lying Rotator Cuff Exercise",
     "display_name": "Lying Rotator Cuff Exercise",
     "description": "This is an excercise for problems with the rotator cuff. Primary  Infraspinatus, secondary Teres Minor.\n\nLying on side. Keep elbow on waist and in 90 dgr angle. Rotate towards stomach. Add weight as fit.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -59615,38 +58029,6 @@
     "source_id": "406",
     "license": "CC-BY-SA 4",
     "license_author": "Trix",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_41",
-    "name": "Barbell Ab Rollout",
-    "display_name": "Barbell Ab Rollout",
-    "description": "Place a barbell on the floor at your feet.\n\nBending at the waist, grip the barbell with a shoulder with overhand grip.\n\nWith a slow controlled motion, roll the bar out so that your back is straight.\n\nRoll back up raising your hips and butt as you return to the starting position.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_41/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "41",
-    "license": "CC-BY-SA 4",
-    "license_author": "sevae",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -59683,45 +58065,6 @@
     "source_id": "418",
     "license": "CC-BY-SA 3",
     "license_author": "mbozi1",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_423",
-    "name": "Muscle up",
-    "display_name": "Muscle up",
-    "description": "The body is then explosively pulled up by the arms in a radial pull-up, with greater speed than a regular pull-up. When the bar approaches the upper chest, the wrists are swiftly flexed to bring the forearms above the bar. The body is leaned forward, and the elbows are straightened by activating the triceps. The routine is considered complete when the bar is at the level of the waist and the arms are fully straight.\n\nTo dismount, the arms are bent at the elbow, and the body is lowered to the floor, and the exercise can be repeated.\n\nAs a relatively advanced exercise, muscle-ups are typically first learned with an assistive kip. The legs swing (kip) up and provide momentum to assist in the explosive upward force needed to ascend above the bar. More advanced athletes can perform a strict variation of the muscle-up which is done slowly, without any kip. This variation begins with a still dead hang and uses isometric muscle contraction to ascend above the bar in a slow, controlled fashion.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS",
-      "BACK",
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "biceps",
-      "lats",
-      "shoulders",
-      "triceps"
-    ],
-    "equipment": [
-      "PULL_UP_BAR"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "423",
-    "license": "CC-BY-SA 4",
-    "license_author": "arson",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -59824,42 +58167,6 @@
     "source_id": "439",
     "license": "CC-BY-SA 3",
     "license_author": "ThisGirl0819",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_441",
-    "name": "Overhead Squat",
-    "display_name": "Overhead Squat",
-    "description": "The barbell is held overhead in a wide-arm snatch grip; however, it is also possible to use a closer grip if balance allows.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "glutes",
-      "quads",
-      "shoulders",
-      "hamstrings"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "441",
-    "license": "CC-BY-SA 4",
-    "license_author": "geraldbaeck",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -60011,45 +58318,6 @@
     "instructions": []
   },
   {
-    "id": "wger_458",
-    "name": "Plank",
-    "display_name": "Plank",
-    "description": "Get into a position on the floor supporting your weight on your forearms and toes. Arms are bent and directly below the shoulder.\n\nKeep your body straight at all times and hold this position as long as possible. To increase difficulty an arm or leg can be raised while performing this exercise.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE",
-      "ARMS",
-      "LEGS"
-    ],
-    "muscles": [
-      "core",
-      "biceps",
-      "quads",
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Abs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_458/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "458",
-    "license": "CC-BY-SA 3",
-    "license_author": "YYCfit / BFad07",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_46",
     "name": "Barbell Lunges Standing",
     "display_name": "Barbell Lunges Standing",
@@ -60089,11 +58357,13 @@
     "name": "Preacher Curls",
     "display_name": "Preacher Curls",
     "description": "Place the EZ curl bar on the rest handles in front of the preacher bench. Lean over the bench and grab the EZ curl bar with palms up. Sit down on the preacher bench seat so your upper arms rest on top of the pad and your chest is pressed against the pad. Lower the weight until your elbows are extended and arms are straight. Bring the weights back up to the starting point by contracting biceps. Repeat",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -60121,11 +58391,13 @@
     "name": "Prone Scapular Retraction - Arms at Side",
     "display_name": "Prone Scapular Retraction - Arms at Side",
     "description": "Lying on stomach with head on towel.\n\nStretch arms straight out to your sides.\n\nSlowly lift your arms, pulling your shoulderblades together, hold for 3 seconds.",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -60221,47 +58493,17 @@
     "instructions": []
   },
   {
-    "id": "wger_478",
-    "name": "Push Press",
-    "display_name": "Push Press",
-    "description": "Clean your dumbbells onto your shoulders, palms facing in. Take a breath and brace your core. (picture 1)Dip at the knees and use your legs to help (picture 2) press your dumbbells overhead. Lower under control with a slow tempo to your shoulders and repeat.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes"
-    ],
-    "equipment": [],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_478/0.jpg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "478",
-    "license": "CC-BY-SA 3",
-    "license_author": "sistab2",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_48",
     "name": "Barbell Reverse Wrist Curl",
     "display_name": "Barbell Reverse Wrist Curl",
     "description": "Sitting on a bench, grab a barbell with your palms facing down and your hands shoulder-width apart. Rest your forearms on your thighs and allow your wrists to hang over your knees.\n\nCurl your knuckles towards your face, lifting the barbell. Pause for a moment in the top position, then slowly return the barbell to the starting position.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "BARBELL",
       "BENCH"
@@ -60324,11 +58566,13 @@
     "name": "Rear Delt Raises",
     "display_name": "Rear Delt Raises",
     "description": "Seated on a bench with the dumbbells on the floor bend over at 45 Degrees and then slowly raise each dumbbell to shoulder height and hold for a couple seconds before lowering to the starting position.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -60540,7 +58784,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -60560,38 +58806,6 @@
     "source_id": "500",
     "license": "CC-BY-SA 4",
     "license_author": "spacetowaste",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_501",
-    "name": "Ring Dips",
-    "display_name": "Ring Dips",
-    "description": "Dips peformed on gymnastic rings.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "triceps"
-    ],
-    "equipment": [],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "501",
-    "license": "CC-BY-SA 4",
-    "license_author": "Nash",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -60624,41 +58838,6 @@
     "source_id": "505",
     "license": "CC-BY-SA 3",
     "license_author": "MaddieBeasley",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_507",
-    "name": "Romanian Deadlift",
-    "display_name": "Romanian Deadlift",
-    "description": "DL from top to pos 2: https://www.youtube.com/watch?v=WtWtjViRsKo",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "507",
-    "license": "CC-BY-SA 4",
-    "license_author": "pjwirth",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -60840,11 +59019,13 @@
     "name": "Front Wood Chop",
     "display_name": "Front Wood Chop",
     "description": null,
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [],
     "movement": "Back",
     "sidedness": null,
@@ -60874,7 +59055,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -60906,7 +59089,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -60938,7 +59123,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -61140,41 +59327,6 @@
     "instructions": []
   },
   {
-    "id": "wger_549",
-    "name": "Seated Triceps Press",
-    "display_name": "Seated Triceps Press",
-    "description": "Sit down on a back (better with back support). Take a dumbbell firmly with both hands and hold it with extended arms over your head. With your palms facing upward and holding the weight of the dumbbell, slowly lower the weight behind your head.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "triceps"
-    ],
-    "equipment": [
-      "BENCH",
-      "DUMBBELL"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "549",
-    "license": "CC-BY-SA 4",
-    "license_author": "richmr2174@gmail.com",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_556",
     "name": "Side Bends on Machine",
     "display_name": "Side Bends on Machine",
@@ -61239,40 +59391,6 @@
     "source_id": "56",
     "license": "CC-BY-SA 3",
     "license_author": "andikeller",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_562",
-    "name": "Shotgun Row",
-    "display_name": "Shotgun Row",
-    "description": "Attach a single handle to a low cable.\nAfter selecting the correct weight, stand a couple feet back with a wide-split stance. Your arm should be extended and your shoulder forward. This will be your starting position.\nPerform the movement by retracting the shoulder and flexing the elbow. As you pull, supinate the wrist, turning the palm upward as you go.\nAfter a brief pause, return to the starting position.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK"
-    ],
-    "muscles": [
-      "lats"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "562",
-    "license": "CC-BY-SA 4",
-    "license_author": "cal.zabel",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -61427,11 +59545,13 @@
     "name": "Shoulder Shrug",
     "display_name": "Shoulder Shrug",
     "description": "The shoulder shrug (usually called simply the shrug) is an exercise in weight training used to develop the upper trapezius muscle. The lifter stands erect, hands about shoulder width apart, and raises the shoulders as high as possible, and then lowers them, while not bending the elbows, or moving the body at all. The lifter may not have as large a range of motion as in a normal shrug done for active flexibility. It is usually considered good form if the slope of the shoulders is horizontal in the elevated position.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -61629,11 +59749,13 @@
     "name": "Side-lying External Rotation",
     "display_name": "Side-lying External Rotation",
     "description": "With a weight in one hand, lie on your side opposite the weight. Keep your knees slightly bent. Hold your elbow against your side, and extend your upper arm straight ahead of you. While continuing to hold your elbow against your side, rotate your upper arm 90 degrees upwards.\n\nIt is helpful to place a towel under your armpit to help with the form on this exercise. Placing a support under your head for the duration of the exercise is also a good idea.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [],
     "movement": "Shoulders",
     "sidedness": null,
@@ -61855,74 +59977,6 @@
     "instructions": []
   },
   {
-    "id": "wger_598",
-    "name": "Smith Machine Close-grip Bench Press",
-    "display_name": "Smith Machine Close-grip Bench Press",
-    "description": "Perform a standard bench press on the smith machine, but have your hands on the bar about shoulder width apart, and keep your elbows close to your body.",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS",
-      "CHEST"
-    ],
-    "muscles": [
-      "triceps",
-      "chest"
-    ],
-    "equipment": [],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "598",
-    "license": "CC-BY-SA 3",
-    "license_author": "tuckerm",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_599",
-    "name": "Snatch",
-    "display_name": "Snatch",
-    "description": "Stand with your feet at hip width and your shins against the bar. Grasp the bar at double shoulder width and, keeping your lower back flat, drive your heels into the floor to begin lifting the bar. When it's above your knees, explosively extend your hips and shrug your shoulders. Let the momentum carry the weight overhead.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS"
-    ],
-    "muscles": [
-      "shoulders"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "599",
-    "license": "CC0",
-    "license_author": "Mens Fitness",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_604",
     "name": "Speed Deadlift",
     "display_name": "Speed Deadlift",
@@ -61965,7 +60019,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Abs",
     "sidedness": null,
@@ -62125,47 +60181,17 @@
     "instructions": []
   },
   {
-    "id": "wger_622",
-    "name": "Standing Calf Raises",
-    "display_name": "Standing Calf Raises",
-    "description": "Get onto the calf raises machine, you should able to completely push your calves down. Stand straight, don't make a hollow back and don't bend your legs. Pull yourself up as high as you can. Make a small pause of 1 - 2 seconds and go slowly down.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "calves"
-    ],
-    "equipment": [],
-    "movement": "Calves",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_622/0.jpeg",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "622",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_623",
     "name": "Standing Rope Forearm",
     "display_name": "Standing Rope Forearm",
     "description": "Grab a wrist roller tool with both hands while standing with your feet about shoulder width apart. If your gym does not have a wrist roller tool, you can easily put one together. All you need is a 5 or 10 pound weight plate, a strong thin rope about 3 feet long and a 6-8 inch stick or bar. Securely fasten the rope to the middle of the bar/stick and tie the other end of the rope to the weight plate. To begin this exercise, grab the bar/stick with both hands using an overhand grip. Extend both arms straight out in front of you, parallel to the floor. Next, roll the weight up from the floor by rapidly twisting the bar/stick with your hands and wrists. Once the weight reaches the top, slowly lower the plate back to the floor by reversing the motion of your hands and wrists. Repeat (if you can!).",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -62195,7 +60221,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -62288,76 +60316,6 @@
     "instructions": []
   },
   {
-    "id": "wger_629",
-    "name": "Straight-arm Pull Down (rope Attachment)",
-    "display_name": "Straight-arm Pull Down (rope Attachment)",
-    "description": "Use the rope attachment on a high pulley. Grasp the two ends of the rope with your arms straight out in front of you. Pull your hands down towards your hips, while keeping your arms straight, then raise them back up to the starting position.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK",
-      "ARMS"
-    ],
-    "muscles": [
-      "lats",
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "629",
-    "license": "CC-BY-SA 3",
-    "license_author": "tuckerm",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_630",
-    "name": "Sumo Deadlift",
-    "display_name": "Sumo Deadlift",
-    "description": "Begin with a bar loaded on the ground. Approach the bar so that the bar intersects the middle of the feet. The feet should be set very wide, near the collars. Bend at the hips to grip the bar. The arms should be directly below the shoulders, inside the legs, and you can use a pronated grip, a mixed grip, or hook grip. Relax the shoulders, which in effect lengthens your arms.\nTake a breath, and then lower your hips, looking forward with your head with your chest up. Drive through the floor, spreading your feet apart, with your weight on the back half of your feet. Extend through the hips and knees.\nAs the bar passes through the knees, lean back and drive the hips into the bar, pulling your shoulder blades together.\nReturn the weight to the ground by bending at the hips and controlling the weight on the way down.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "hamstrings",
-      "glutes",
-      "quads"
-    ],
-    "equipment": [],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_630/0.webp",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "630",
-    "license": "CC-BY-SA 4",
-    "license_author": "magdy",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_632",
     "name": "Sumo Squats",
     "display_name": "Sumo Squats",
@@ -62393,42 +60351,6 @@
     "instructions": []
   },
   {
-    "id": "wger_636",
-    "name": "Superman",
-    "display_name": "Superman",
-    "description": "Lay flat on your stomach with your arms extended in front of you on the ground as your legs are lying flat. Lift both your arms and legs at the same time, as if you were flying, and contract the lower back. Make sure that you are breathing and, depending on your fitness level, hold the movement for at least two to five seconds per repetition.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS",
-      "BACK"
-    ],
-    "muscles": [
-      "glutes",
-      "lats"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "636",
-    "license": "CC-BY-SA 4",
-    "license_author": "baldurmen",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_650",
     "name": "Thruster",
     "display_name": "Thruster",
@@ -62459,40 +60381,6 @@
     "source_id": "650",
     "license": "CC0",
     "license_author": "BeLikeWater",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_655",
-    "name": "Tricep Dumbbell Kickback",
-    "display_name": "Tricep Dumbbell Kickback",
-    "description": "Start with a dumbbell in each hand and your palms facing your torso. Keep your back straight with a slight bend in the knees and bend forward at the waist. Your torso should be almost parallel to the floor. Make sure to keep your head up. Your upper arms should be close to your torso and parallel to the floor. Your forearms should be pointed towards the floor as you hold the weights. There should be a 90-degree angle formed between your forearm and upper arm. This is your starting position.\nNow, while keeping your upper arms stationary, exhale and use your triceps to lift the weights until the arm is fully extended. Focus on moving the forearm.\nAfter a brief pause at the top contraction, inhale and slowly lower the dumbbells back down to the starting position.\nRepeat the movement for the prescribed amount of repetitions.\n\nVariations: This exercise can be executed also one arm at a time much like the one arm rows are performed.\n\nAlso, if you like the one arm variety, you can use a low pulley handle instead of a dumbbell for better peak contraction. In this case, the palms should be facing up (supinated grip) as opposed to the torso (neutral grip).",
-    "muscle_group": "ARMS",
-    "muscle_groups": [
-      "ARMS"
-    ],
-    "muscles": [
-      "triceps"
-    ],
-    "equipment": [
-      "DUMBBELL"
-    ],
-    "movement": "Arms",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "655",
-    "license": "CC-BY-SA 3",
-    "license_author": "http://www.bodybuilding.com/",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -62703,40 +60591,6 @@
     "instructions": []
   },
   {
-    "id": "wger_683",
-    "name": "Power Clean",
-    "display_name": "Power Clean",
-    "description": "Olympic weight lifting",
-    "muscle_group": "CHEST",
-    "muscle_groups": [
-      "CHEST"
-    ],
-    "muscles": [
-      "chest"
-    ],
-    "equipment": [
-      "BARBELL"
-    ],
-    "movement": "Chest",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "683",
-    "license": "CC-BY-SA 3",
-    "license_author": "wger.de",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_684",
     "name": "Underhand Lat Pull Down",
     "display_name": "Underhand Lat Pull Down",
@@ -62809,11 +60663,13 @@
     "name": "Upper External Oblique",
     "display_name": "Upper External Oblique",
     "description": "Exercise for upper external oblique muscles",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [
       "PULL_UP_BAR"
     ],
@@ -62943,42 +60799,6 @@
     "instructions": []
   },
   {
-    "id": "wger_695",
-    "name": "V-Bar Pulldown",
-    "display_name": "V-Bar Pulldown",
-    "description": "Pulldowns using close grip v-bar.",
-    "muscle_group": "BACK",
-    "muscle_groups": [
-      "BACK",
-      "ARMS"
-    ],
-    "muscles": [
-      "lats",
-      "biceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Back",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "695",
-    "license": "CC-BY-SA 4",
-    "license_author": "apeschel",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_702",
     "name": "Calf raises, one legged",
     "display_name": "Calf raises, one legged",
@@ -63047,11 +60867,13 @@
     "name": "Wall Handstand",
     "display_name": "Wall Handstand",
     "description": "Handstand against a wall for support (chest facing wall).",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -63383,11 +61205,13 @@
     "name": "Bent High Pulls",
     "display_name": "Bent High Pulls",
     "description": "Bend over slightly while holding two dumbbells.  Pull the dumbbells up to your chest, keeping your elbows as high as you can.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "DUMBBELL"
     ],
@@ -63524,11 +61348,13 @@
     "name": "Sloper hanging",
     "display_name": "Sloper hanging",
     "description": "Hanging on sloper holds of a fingerboard for a amount of seconds",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -63625,11 +61451,13 @@
     "name": "Bent-over Lateral Raises",
     "display_name": "Bent-over Lateral Raises",
     "description": "Sit on bench while holding weights. Bend forward as far as possible, with arms slightly bent at the elbow. Perform a lateral raise while maintaining the bend in your elbow.",
-    "muscle_group": "CORE",
+    "muscle_group": "SHOULDERS",
     "muscle_groups": [
-      "CORE"
+      "SHOULDERS"
     ],
-    "muscles": [],
+    "muscles": [
+      "shoulders"
+    ],
     "equipment": [
       "BENCH",
       "DUMBBELL"
@@ -63658,11 +61486,13 @@
     "name": "Fingerboard 20 mm edge",
     "display_name": "Fingerboard 20 mm edge",
     "description": "Hang for 10 seconds on a fingerboard with a 20 mm edge",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [],
     "movement": "Arms",
     "sidedness": null,
@@ -63716,42 +61546,6 @@
     "source_id": "821",
     "license": "CC-BY-SA 4",
     "license_author": "marcelbader",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
-    "id": "wger_822",
-    "name": "Cable Rear Delt Fly",
-    "display_name": "Cable Rear Delt Fly",
-    "description": "The reverse cable fly, also known as the cable rear delt fly, is a deltoid muscle strengthening and definition exercise. It’s one of the best isolation exercises for your back and posterior deltoid.This workout targets your posterior (back) deltoids while using a range of upper body muscles.\n\nAdjust the weight and the pulleys to the right height. You should be able to see the pulleys because they should be above your head.\nWith your right hand, grab the left pulley, and with your left hand, grab the right pulley, crossing them in front of you. This is where you’ll begin your journey.\nStart the movement by moving your arms back and forth while keeping your arms straight.\nPause at the finish of the move for a brief moment before returning the handles to their starting positions.",
-    "muscle_group": "SHOULDERS",
-    "muscle_groups": [
-      "SHOULDERS",
-      "ARMS"
-    ],
-    "muscles": [
-      "shoulders",
-      "triceps"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Shoulders",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_822/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "822",
-    "license": "CC-BY-SA 4",
-    "license_author": "cshep442",
     "license_url": "https://wger.de/en/software/api",
     "instructions": []
   },
@@ -63913,7 +61707,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -64377,11 +62173,13 @@
     "name": "Seated Cable Mid Trap Shrug",
     "display_name": "Seated Cable Mid Trap Shrug",
     "description": "seated straight back, slight hold at top",
-    "muscle_group": "CORE",
+    "muscle_group": "BACK",
     "muscle_groups": [
-      "CORE"
+      "BACK"
     ],
-    "muscles": [],
+    "muscles": [
+      "upper_back"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -64764,7 +62562,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [],
     "movement": "Cardio",
     "sidedness": null,
@@ -64928,41 +62728,6 @@
     "instructions": []
   },
   {
-    "id": "wger_977",
-    "name": "Box squat",
-    "display_name": "Box squat",
-    "description": "Set up the box: Position the box behind you, about 3 feet from a squat rack if you're using a barbell. Choose a height that allows you to squat down and gently tap your glutes on the box with your back straight.\nStand with proper form: Stand with your feet shoulder-width apart, toes pointed slightly outward. Engage your core and keep your back neutral. If using a barbell, rack it at shoulder height.\nLower down: Sit back as if going to sit on a chair, bending your knees and lowering your hips towards the box. Keep your core tight and back straight throughout the movement.\nControlled descent: Descend in a controlled manner until your glutes gently touch the box. Don't plop down.\nPause and press up: Briefly pause at the bottom with your back straight and core engaged. Then, press through your heels to drive yourself back up to the starting position.\n\nImprovements in coordination, balance and endurance, toning of the leg and buttock muscles and an overall increase in bone density eliminating the risk of osteoporosis.",
-    "muscle_group": "LEGS",
-    "muscle_groups": [
-      "LEGS"
-    ],
-    "muscles": [
-      "glutes",
-      "quads"
-    ],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Legs",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media/wger_977/0.png",
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "977",
-    "license": "CC-BY-SA 4",
-    "license_author": "clafal",
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_978",
     "name": "Knee Raises",
     "display_name": "Knee Raises",
@@ -65116,7 +62881,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65218,11 +62985,13 @@
     "name": "Side split squats left",
     "display_name": "Side split squats left",
     "description": "Starting position:\n\nStand tall and take a wide lateral stride, just greater than shoulder width.\n\nSteps:\n\nBend one knee until your thigh is parallel to the floor. The bent knee must be in line with the foot.\nPush back to the starting position.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65250,11 +63019,13 @@
     "name": "Side split squats right",
     "display_name": "Side split squats right",
     "description": "Starting position:\n\nStand tall and take a wide lateral stride, just greater than shoulder width.\n\nSteps:\n\nBend one knee until your thigh is parallel to the floor. The bent knee must be in line with the foot.\nPush back to the starting position.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "LEGS",
     "muscle_groups": [
-      "CORE"
+      "LEGS"
     ],
-    "muscles": [],
+    "muscles": [
+      "quads"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65465,7 +63236,9 @@
     "muscle_groups": [
       "CORE"
     ],
-    "muscles": [],
+    "muscles": [
+      "core"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65493,11 +63266,13 @@
     "name": "Forward arm circles",
     "display_name": "Forward arm circles",
     "description": "Starting position:\n\nStand tall with your back straight.\n\nSteps:\n\nKeeping your arms straight, bring them in front of you, move them down, behind your back, then over your head, and back to the initial position.\nKeep circling your arms as described in step 1.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65525,11 +63300,13 @@
     "name": "Backward arm circles",
     "display_name": "Backward arm circles",
     "description": "Starting position:\n\nStand tall with your back straight.\n\nSteps:\n\nKeeping your arms straight, bring them in front of you, raise them over your head, then continue the motion behind your back and down to the initial position.\nKeep circling your arms as described in step 1.",
-    "muscle_group": "CORE",
+    "muscle_group": "ARMS",
     "muscle_groups": [
-      "CORE"
+      "ARMS"
     ],
-    "muscles": [],
+    "muscles": [
+      "biceps"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65553,47 +63330,17 @@
     "instructions": []
   },
   {
-    "id": "wger_996",
-    "name": "Mountain climbers",
-    "display_name": "Mountain climbers",
-    "description": "Starting position:\n\nStart in the upright push-up position, aka. the high plank position.Hands should be directly under your shoulders.Keep your head in line with your back, facing the floor.Feet should be about hip-width apart.\n\nSteps:\n\nMove one knee toward the center of your body, towards your elbows, keeping the other leg extended.\nIn a quick jumping movement, straighten the bent leg out and pull the other knee toward your body.\nKeep repeating step 2, alternating legs.\n\nNotes:\n\nThroughout the exercise, your back should remain as straight as possible – avoid a hump or a sagging back.",
-    "muscle_group": "CORE",
-    "muscle_groups": [
-      "CORE"
-    ],
-    "muscles": [],
-    "equipment": [
-      "OTHER"
-    ],
-    "movement": "Chest",
-    "sidedness": null,
-    "grip": null,
-    "grip_width": null,
-    "default_cable_config": "EITHER",
-    "min_rep_range": null,
-    "popularity": 0,
-    "aliases": [],
-    "thumbnail_url": null,
-    "archived": false,
-    "is_custom": false,
-    "user_id": null,
-    "source": "wger",
-    "source_id": "996",
-    "license": "CC-BY-SA 4",
-    "license_author": null,
-    "license_url": "https://wger.de/en/software/api",
-    "instructions": []
-  },
-  {
     "id": "wger_997",
     "name": "4-count burpees",
     "display_name": "4-count burpees",
     "description": "Starting position:\n\nStand straight, feet hip-width apart.\n\nSteps:\n\nSquat low and support yourself on the floor with your hands between the knees and in front of your feet, your back straight.\nKeeping your hands on the floor, jump your legs backward into high plank position.\nJump your feet forward to return to the squat position.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [
       "OTHER"
     ],
@@ -65621,11 +63368,13 @@
     "name": "No push-up burpees",
     "display_name": "No push-up burpees",
     "description": "Starting position:\n\nStand straight, feet hip-width apart.\n\nSteps:\n\nSquat low and support yourself on the floor with your hands between the knees and in front of your feet, your back straight.\nKeeping your hands on the floor, jump your legs backward into high plank position.\nJump your feet forward to return to the squat position.\nJump up.\nRepeat.",
-    "muscle_group": "CORE",
+    "muscle_group": "CHEST",
     "muscle_groups": [
-      "CORE"
+      "CHEST"
     ],
-    "muscles": [],
+    "muscles": [
+      "chest"
+    ],
     "equipment": [
       "OTHER"
     ],

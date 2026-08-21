@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-08-20T23:55:03.815Z",
+  "generatedAt": "2026-08-21T00:34:38.911Z",
   "imageBase": "https://ilzlswmatadlnsuxatcv.supabase.co/storage/v1/object/public/exercise-media",
   "counts": {
-    "total": 1733,
+    "total": 1660,
     "freeExerciseDb": 873,
-    "wger": 860
+    "wger": 787
   }
 }

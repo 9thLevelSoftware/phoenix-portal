@@ -125,6 +125,34 @@ const REGION_TO_GROUP = {
 	abductors: "LEGS",
 };
 
+const CATEGORY_TO_GROUP = {
+	abs: "CORE",
+	abdominals: "CORE",
+	core: "CORE",
+	cardio: "CORE",
+	stretching: "CORE",
+	yoga: "CORE",
+	arms: "ARMS",
+	biceps: "ARMS",
+	triceps: "ARMS",
+	back: "BACK",
+	lats: "BACK",
+	calves: "LEGS",
+	legs: "LEGS",
+	glutes: "LEGS",
+	chest: "CHEST",
+	shoulders: "SHOULDERS",
+};
+
+const GROUP_TO_DEFAULT_REGION = {
+	CHEST: "chest",
+	ARMS: "biceps",
+	SHOULDERS: "shoulders",
+	BACK: "upper_back",
+	CORE: "core",
+	LEGS: "quads",
+};
+
 const EQUIPMENT_MAP = {
 	barbell: "BARBELL",
 	dumbbell: "DUMBBELL",
@@ -201,6 +229,18 @@ function muscleGroupsFromRegions(regions) {
 	return [
 		...new Set(regions.map((region) => REGION_TO_GROUP[region]).filter(Boolean)),
 	];
+}
+
+function groupFromCategory(movement) {
+	const key = String(movement ?? "")
+		.trim()
+		.toLowerCase();
+	if (!key) return null;
+	const fromMuscle = mapMuscle(key);
+	if (fromMuscle && REGION_TO_GROUP[fromMuscle]) {
+		return REGION_TO_GROUP[fromMuscle];
+	}
+	return CATEGORY_TO_GROUP[key] ?? null;
 }
 
 function mapEquipment(raw) {
@@ -323,16 +363,25 @@ function toCatalogRow({
 		.map(mapMuscle)
 		.filter(Boolean);
 	const uniqueRegions = [...new Set(regions)];
-	const groups = muscleGroupsFromRegions(uniqueRegions);
+	let groups = muscleGroupsFromRegions(uniqueRegions);
+	if (groups.length === 0) {
+		const fromCategory = groupFromCategory(movement);
+		if (fromCategory) groups = [fromCategory];
+	}
+	if (groups.length === 0) groups = ["CORE"];
+	const muscles =
+		uniqueRegions.length > 0
+			? uniqueRegions
+			: [GROUP_TO_DEFAULT_REGION[groups[0]]].filter(Boolean);
 	const equipment = mapEquipment(equipmentRaw);
 	return {
 		id,
 		name,
 		display_name: displayName,
 		description: description || null,
-		muscle_group: groups[0] ?? "CORE",
-		muscle_groups: groups.length > 0 ? groups : ["CORE"],
-		muscles: uniqueRegions,
+		muscle_group: groups[0],
+		muscle_groups: groups,
+		muscles,
 		equipment,
 		movement: movement ?? null,
 		sidedness: sidednessFromName(name),
@@ -391,7 +440,8 @@ function buildFromWger(results, existingIds, existingNames) {
 		const name = translation?.name?.trim();
 		if (!name) continue;
 		const id = `wger_${info.id}`;
-		if (existingIds.has(id)) continue;
+		const nameKey = normalizeCatalogKey(name);
+		if (existingIds.has(id) || existingNames.has(nameKey)) continue;
 		const licenseName =
 			info.license?.short_name || info.license?.full_name || "CC-BY-SA 4.0";
 		const author = info.license_author?.trim() || null;
