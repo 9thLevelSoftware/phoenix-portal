@@ -6,4 +6,4 @@ Phoenix Portal includes [body-muscles](https://www.npmjs.com/package/body-muscle
 
 Phoenix Portal vendors the [free-exercise-db](https://github.com/yuhonas/free-exercise-db) exercise list under the Unlicense (public domain).
 
-Exercise entries merged from [wger](https://wger.de/) are licensed under [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Author credits are listed in `supabase/seed-data/LICENSES.md`.
+Exercise entries merged from [wger](https://wger.de/) are a mixed-license collection ([CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), and [CC0](https://creativecommons.org/publicdomain/zero/1.0/)). Per-row licenses and authors are listed in `supabase/seed-data/LICENSES.md`.
