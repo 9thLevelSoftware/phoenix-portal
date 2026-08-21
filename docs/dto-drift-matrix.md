@@ -31,7 +31,7 @@ scaffolded across portal + mobile. Specifically:
 - Phase 4.2 (#9) — Mobile self-cap + sliding-window rate limiter shipped
 - **Phase 3.3 — Mobile SQLDelight LWW pull merge for the 10 shared-edit
   entities. Required for #1 to be fully resolved; scoped to a follow-up
-  session because it touches `PhoenixDatabase.sq` (10 new
+  session because it touches the mobile SQLDelight schema file (`shared/src/commonMain/sqldelight/com/devil/phoenixproject/database/*Database.sq`) (10 new
   `mergeXxxLww` queries) and `SqlDelightSyncRepository.mergeAllPullData`
   (call-site swap for each entity, keep INSERT OR IGNORE for
   rep_telemetry / personal_records / earned_badges).**
@@ -67,7 +67,7 @@ Portal uses `upsert onConflict=id` (server-authoritative). Mobile uses `INSERT O
   PortalTrainingCycleSyncDto) carry `updatedAt` so the LWW gate sees real
   timestamps.
 - ⏳ **Phase 3.3 — mobile SQLDelight LWW pull merge.** Add per-entity
-  `mergeXxxLww` queries in `PhoenixDatabase.sq` (conditional upsert
+  `mergeXxxLww` queries in the mobile SQLDelight schema file (conditional upsert
   on `excluded.updatedAt >= <table>.updatedAt`) for sessions, exercises,
   sets, rep_summaries, routines, training_cycles, cycle_days,
   external_activities, rpg_attributes, gamification_stats. Swap call
@@ -93,7 +93,7 @@ Phase breakdown:
 - **3.2** Portal push handler wraps each LWW entity upsert behind
   `SYNC_LWW_ENABLED` feature flag. Response extended with `rejections` per
   entity so mobile can log stale pushes.
-- **3.3** Mobile SQLDelight `mergeXxxLww` queries in `PhoenixDatabase.sq`
+- **3.3** Mobile SQLDelight `mergeXxxLww` queries in the mobile SQLDelight schema file
   using `ON CONFLICT(id) DO UPDATE SET ... WHERE excluded.updatedAt >=
   <table>.updatedAt`. Swap call sites in `SqlDelightSyncRepository.mergeAllPullData`.
 - **3.4** Staging soak (1 week), prod enable, flag retirement after ≥70%
