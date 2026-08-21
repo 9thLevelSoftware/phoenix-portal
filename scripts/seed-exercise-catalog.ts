@@ -1,5 +1,5 @@
 /**
- * Seed the exercise_catalog table from exercise_dump.json.
+ * Upsert exercise_catalog from the generated open-source JSON.
  *
  * Usage:
  *   npx tsx scripts/seed-exercise-catalog.ts
@@ -7,8 +7,7 @@
  * Requires env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 import { createClient } from "@supabase/supabase-js";
-import { equipmentDisplayMap } from "../src/schemas/transforms";
-import exerciseDump from "../supabase/seed-data/exercise_dump.json";
+import catalog from "../supabase/seed-data/exercise_catalog.open.json";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -20,119 +19,62 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-interface RawExercise {
-	id: string;
-	name: string;
-	description?: string;
-	muscleGroups: string[];
-	muscles?: string[];
-	equipment: string[];
-	movement?: string | null;
-	sidedness?: string | null;
-	grip?: string | null;
-	gripWidth?: string | null;
-	aliases?: string[];
-	archived?: string | null;
-	range?: { minimum?: number } | null;
-	popularity?: number;
-	videos?: Array<{ thumbnail?: string }>;
-}
-
-function generateDisplayNames(exercises: RawExercise[]): Map<string, string> {
-	const groups = new Map<string, RawExercise[]>();
-	for (const ex of exercises) {
-		const key = ex.name.trim().toLowerCase();
-		const group = groups.get(key) ?? [];
-		group.push(ex);
-		groups.set(key, group);
-	}
-
-	const result = new Map<string, string>();
-	for (const ex of exercises) {
-		const key = ex.name.trim().toLowerCase();
-		const siblings = groups.get(key) ?? [ex];
-		if (siblings.length > 1 && ex.equipment.length > 0) {
-			const primaryEquip = ex.equipment[0];
-			const label =
-				equipmentDisplayMap[primaryEquip] ??
-				primaryEquip
-					.toLowerCase()
-					.replace(/_/g, " ")
-					.replace(/\b\w/g, (c) => c.toUpperCase());
-			result.set(ex.id, `${ex.name.trim()} (${label})`);
-		} else {
-			result.set(ex.id, ex.name.trim());
-		}
-	}
-	return result;
-}
-
 async function main() {
-	const exercises = exerciseDump as RawExercise[];
-	const displayNames = generateDisplayNames(exercises);
-
-	console.log(`Processing ${exercises.length} exercises...`);
-
-	const active = exercises.filter((e) => !e.archived);
-	const archived = exercises.filter((e) => !!e.archived);
-	console.log(`Active: ${active.length}, Archived: ${archived.length}`);
-
-	const rows = exercises.map((ex) => ({
-		id: ex.id,
-		name: ex.name.trim(),
-		display_name: displayNames.get(ex.id) ?? ex.name.trim(),
-		description: ex.description || null,
-		muscle_group: ex.muscleGroups[0] ?? "General",
-		muscle_groups: ex.muscleGroups,
-		muscles: ex.muscles ?? [],
-		equipment: ex.equipment,
-		movement: ex.movement ?? null,
-		sidedness: ex.sidedness ?? null,
-		grip: ex.grip ?? null,
-		grip_width: ex.gripWidth ?? null,
-		default_cable_config: "DOUBLE",
-		min_rep_range: ex.range?.minimum ?? null,
-		popularity: ex.popularity ?? 0,
-		aliases: ex.aliases ?? [],
-		thumbnail_url: ex.videos?.[0]?.thumbnail ?? null,
-		archived: !!ex.archived,
+	const rows = (catalog as Array<Record<string, unknown>>).map((row) => ({
+		id: row.id,
+		name: row.name,
+		display_name: row.display_name,
+		description: row.description ?? null,
+		muscle_group: row.muscle_group,
+		muscle_groups: row.muscle_groups,
+		muscles: row.muscles ?? [],
+		equipment: row.equipment,
+		movement: row.movement ?? null,
+		sidedness: row.sidedness ?? null,
+		grip: row.grip ?? null,
+		grip_width: row.grip_width ?? null,
+		default_cable_config: row.default_cable_config ?? "EITHER",
+		min_rep_range: row.min_rep_range ?? null,
+		popularity: row.popularity ?? 0,
+		aliases: row.aliases ?? [],
+		thumbnail_url: row.thumbnail_url ?? null,
+		archived: false,
 		is_custom: false,
 		user_id: null,
+		source: row.source,
+		source_id: row.source_id,
+		license: row.license,
+		license_author: row.license_author,
+		license_url: row.license_url,
 	}));
 
+	console.log(`Upserting ${rows.length} open-catalog exercises...`);
 	const BATCH_SIZE = 200;
-	let inserted = 0;
+	let upserted = 0;
 	for (let i = 0; i < rows.length; i += BATCH_SIZE) {
 		const batch = rows.slice(i, i + BATCH_SIZE);
 		const { error } = await supabase
 			.from("exercise_catalog")
 			.upsert(batch, { onConflict: "id" });
-
 		if (error) {
 			console.error(`Batch ${i / BATCH_SIZE + 1} failed:`, error);
 			process.exit(1);
 		}
-		inserted += batch.length;
-		console.log(`  Inserted ${inserted}/${rows.length}`);
+		upserted += batch.length;
+		console.log(`  Upserted ${upserted}/${rows.length}`);
 	}
 
-	const { count, error: countError } = await supabase
+	const { error: archiveError } = await supabase
 		.from("exercise_catalog")
-		.select("*", { count: "exact", head: true });
-
-	if (countError) {
-		console.error("Verification failed:", countError);
+		.update({ archived: true })
+		.eq("is_custom", false)
+		.is("source", null);
+	if (archiveError) {
+		console.error("Failed to archive legacy library rows:", archiveError);
 		process.exit(1);
 	}
 
-	console.log(`\nDone. exercise_catalog now has ${count} rows.`);
-
-	const disambiguated = [...displayNames.values()].filter((dn) =>
-		dn.includes("("),
-	);
-	console.log(
-		`${disambiguated.length} exercises have disambiguated display names.`,
-	);
+	console.log("Done.");
 }
 
 main().catch((err) => {

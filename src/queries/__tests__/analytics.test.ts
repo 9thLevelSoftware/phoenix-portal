@@ -209,14 +209,14 @@ describe("strengthProgressOptions", () => {
 	it("uses catalog display names for strength PR rows whose exercise_name is a catalog ID", async () => {
 		const raw = [
 			{
-				exercise_name: "1vS7ZNfrz2qF6KId",
-				exercise_id: "1vS7ZNfrz2qF6KId",
+				exercise_name: "Barbell_Curl",
+				exercise_id: "Barbell_Curl",
 				record_type: "MAX_WEIGHT",
 				workout_phase: "CONCENTRIC",
 				value: 40,
 				achieved_at: "2026-03-01T00:00:00Z",
 				catalog: {
-					id: "1vS7ZNfrz2qF6KId",
+					id: "Barbell_Curl",
 					name: "Bayesian Curl",
 					display_name: "Bayesian Curl (Handles)",
 				},

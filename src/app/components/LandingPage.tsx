@@ -1205,6 +1205,16 @@ export function LandingPage() {
 										Terms of Service
 									</Link>
 								</li>
+								<li>
+									<a
+										href="https://github.com/9thLevelSoftware/phoenix-portal/blob/main/ATTRIBUTIONS.md"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="hover:text-primary transition-colors"
+									>
+										Licenses
+									</a>
+								</li>
 							</ul>
 						</div>
 					</div>

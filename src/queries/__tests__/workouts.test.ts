@@ -294,8 +294,8 @@ describe("recentPRsOptions", () => {
 			{
 				id: "11111111-1111-4111-8111-111111111111",
 				user_id: "22222222-2222-4222-8222-222222222222",
-				exercise_name: "1vS7ZNfrz2qF6KId",
-				exercise_id: "1vS7ZNfrz2qF6KId",
+				exercise_name: "Barbell_Curl",
+				exercise_id: "Barbell_Curl",
 				muscle_group: "Arms",
 				record_type: "MAX_WEIGHT",
 				value: 40,
@@ -303,7 +303,7 @@ describe("recentPRsOptions", () => {
 				achieved_at: "2026-03-15T10:00:00Z",
 				previous_value: null,
 				catalog: {
-					id: "1vS7ZNfrz2qF6KId",
+					id: "Barbell_Curl",
 					name: "Bayesian Curl",
 					display_name: "Bayesian Curl (Handles)",
 				},

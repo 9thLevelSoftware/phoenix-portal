@@ -156,6 +156,13 @@ describe("getExerciseProfile", () => {
 		expect(profile.secondary).toEqual([]);
 	});
 
+	it("canonicalizes uppercase catalog muscle_group hints", () => {
+		expect(getExerciseProfile("100s", "CORE").primary.group).toBe("Core");
+		expect(getExerciseProfile("Unknown Press", "CHEST").primary.group).toBe(
+			"Chest",
+		);
+	});
+
 	it("falls back to General when no match and no dbMuscleGroup", () => {
 		const profile = getExerciseProfile("Totally Unknown");
 		expect(profile.primary.group).toBe("General");

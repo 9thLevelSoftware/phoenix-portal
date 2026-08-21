@@ -1105,7 +1105,7 @@ describe("personal_records exercise_id catalog partition", () => {
 describe("personal_records catalog display-name hydration", () => {
 	const catalogRows = [
 		{
-			id: "1vS7ZNfrz2qF6KId",
+			id: "Barbell_Curl",
 			name: "Bayesian Curl",
 			display_name: "Bayesian Curl (Handles)",
 		},
@@ -1115,7 +1115,7 @@ describe("personal_records catalog display-name hydration", () => {
 	}
 
 	it("replaces leaked catalog IDs in exercise_name when exercise_id is valid", () => {
-		const row = rowWithExercise("1vS7ZNfrz2qF6KId", "1vS7ZNfrz2qF6KId");
+		const row = rowWithExercise("Barbell_Curl", "Barbell_Curl");
 
 		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
 			[row],
@@ -1124,12 +1124,12 @@ describe("personal_records catalog display-name hydration", () => {
 
 		expect(hydrated[0]).toMatchObject({
 			exercise_name: "Bayesian Curl (Handles)",
-			exercise_id: "1vS7ZNfrz2qF6KId",
+			exercise_id: "Barbell_Curl",
 		});
 	});
 
 	it("recovers exercise_id when the catalog ID landed only in exercise_name", () => {
-		const row = rowWithExercise("1vS7ZNfrz2qF6KId", null);
+		const row = rowWithExercise("Barbell_Curl", null);
 
 		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
 			[row],
@@ -1138,12 +1138,12 @@ describe("personal_records catalog display-name hydration", () => {
 
 		expect(hydrated[0]).toMatchObject({
 			exercise_name: "Bayesian Curl (Handles)",
-			exercise_id: "1vS7ZNfrz2qF6KId",
+			exercise_id: "Barbell_Curl",
 		});
 	});
 
 	it("preserves explicit exercise names even when a catalog row is available", () => {
-		const row = rowWithExercise("Bayesian Curl", "1vS7ZNfrz2qF6KId");
+		const row = rowWithExercise("Bayesian Curl", "Barbell_Curl");
 
 		const hydrated = hydratePersonalRecordExerciseNamesFromCatalog(
 			[row],
@@ -1152,7 +1152,7 @@ describe("personal_records catalog display-name hydration", () => {
 
 		expect(hydrated[0]).toMatchObject({
 			exercise_name: "Bayesian Curl",
-			exercise_id: "1vS7ZNfrz2qF6KId",
+			exercise_id: "Barbell_Curl",
 		});
 	});
 });
