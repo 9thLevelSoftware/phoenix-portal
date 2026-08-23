@@ -38,6 +38,8 @@ interface SubscriptionData {
 	/** True when the subscription query failed and no cached data is available. */
 	isError: boolean;
 	error: Error | null;
+	/** Refetch billing status. Use this for retry UI — never treat isError as FREE. */
+	refetch: () => Promise<unknown>;
 	isPremium: boolean;
 	isFlame: boolean;
 	isInferno: boolean;
@@ -91,7 +93,7 @@ export function useSubscription(): SubscriptionData {
 
 	const subscriptionKey = queryKeys.subscription.byUser(user?.id ?? "");
 
-	const { data, isLoading, isError, error } = useQuery({
+	const { data, isLoading, isError, error, refetch } = useQuery({
 		queryKey: subscriptionKey,
 		queryFn: () => fetchSubscription(user?.id),
 		enabled: !!user,
@@ -141,6 +143,10 @@ export function useSubscription(): SubscriptionData {
 		};
 	}, [user, queryClient]);
 
+	// Missing data defaults to FREE for the typed fields, but consumers MUST
+	// check `isError` first. Mapping `data?.tier ?? "FREE"` into an upgrade
+	// wall or skipped realtime channel treats a billing outage as unpaid.
+	const billingUnavailable = isError && data === undefined;
 	const rawTier: SubscriptionTier = data?.tier ?? "FREE";
 	const status: SubscriptionStatus = data?.status ?? "none";
 	const currentPeriodEnd = data?.currentPeriodEnd ?? null;
@@ -150,7 +156,7 @@ export function useSubscription(): SubscriptionData {
 		status,
 		currentPeriodEnd,
 	);
-	const isEntitled = tier !== "FREE";
+	const isEntitled = !billingUnavailable && tier !== "FREE";
 
 	return {
 		tier,
@@ -164,10 +170,11 @@ export function useSubscription(): SubscriptionData {
 		isLoading,
 		// Only report an error when the query failed AND we have no cached data to
 		// fall back on; otherwise consumers keep using the last-known entitlement.
-		isError: isError && data === undefined,
+		isError: billingUnavailable,
 		error: error instanceof Error ? error : null,
+		refetch,
 		isPremium: isEntitled,
-		isFlame: tier === "FLAME" || tier === "INFERNO",
-		isInferno: tier === "INFERNO",
+		isFlame: !billingUnavailable && (tier === "FLAME" || tier === "INFERNO"),
+		isInferno: !billingUnavailable && tier === "INFERNO",
 	};
 }

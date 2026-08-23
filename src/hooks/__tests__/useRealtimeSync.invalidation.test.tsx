@@ -93,9 +93,11 @@ const mocks = vi.hoisted(() => {
 	const subscriptionState: {
 		tier: "FREE" | "EMBER" | "FLAME" | "INFERNO";
 		isLoading: boolean;
+		isError: boolean;
 	} = {
 		tier: "EMBER",
 		isLoading: false,
+		isError: false,
 	};
 
 	return {
@@ -165,6 +167,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		mocks.authState.user = { id: USER_ID };
 		mocks.subscriptionState.tier = "EMBER";
 		mocks.subscriptionState.isLoading = false;
+		mocks.subscriptionState.isError = false;
 	});
 
 	it.each(
@@ -275,8 +278,9 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		}
 	});
 
-	it("does NOT subscribe when user tier is FREE", async () => {
+	it("does NOT subscribe when user tier is confirmed FREE", async () => {
 		mocks.subscriptionState.tier = "FREE";
+		mocks.subscriptionState.isError = false;
 		vi.useFakeTimers();
 		try {
 			const { unmount } = await renderHook();
@@ -290,6 +294,22 @@ describe("useRealtimeSync — invalidation coverage", () => {
 			unmount();
 			// Nothing to remove because nothing was ever subscribed.
 			expect(mocks.removeChannel).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("subscribes when billing status isError even if last-known tier is FREE", async () => {
+		mocks.subscriptionState.tier = "FREE";
+		mocks.subscriptionState.isError = true;
+		vi.useFakeTimers();
+		try {
+			const { unmount } = await renderHook();
+			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
+				`sync:${USER_ID}`,
+				{ config: { private: true } },
+			);
+			unmount();
 		} finally {
 			vi.useRealTimers();
 		}

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildGarminWebhookPersistRow,
@@ -8,6 +10,7 @@ import {
 } from "../../supabase/functions/_shared/garminIdentity.ts";
 import { hmacSha256Hex } from "../../supabase/functions/_shared/hmac.ts";
 import {
+	findCrossTierDuplicatePriceIds,
 	getConfiguredPriceIdForTierInterval,
 	parsePaddleBillingInterval,
 	parsePaddlePaidTier,
@@ -186,6 +189,71 @@ describe("Paddle webhook security helpers", () => {
 		expect(
 			getConfiguredPriceIdForTierInterval("FLAME", "monthly", env),
 		).toBeNull();
+	});
+
+	it("detects price IDs configured under more than one tier", () => {
+		const env = {
+			get: (key: string) =>
+				({
+					PADDLE_EMBER_PRICE_IDS: "pri_shared,pri_ember",
+					PADDLE_FLAME_PRICE_IDS: "pri_shared,pri_flame",
+					PADDLE_INFERNO_PRICE_IDS: "pri_inferno",
+				})[key],
+		};
+
+		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
+	});
+
+	it("returns no duplicates when every price ID is unique across tiers", () => {
+		const env = {
+			get: (key: string) =>
+				({
+					PADDLE_EMBER_PRICE_IDS: "pri_ember_m,pri_ember_y",
+					PADDLE_FLAME_PRICE_IDS: "pri_flame_m,pri_flame_y",
+					PADDLE_INFERNO_PRICE_IDS: "pri_inferno_m,pri_inferno_y",
+				})[key],
+		};
+
+		expect(findCrossTierDuplicatePriceIds(env)).toEqual([]);
+	});
+
+	it("detects extraIds collisions across monthly/annual env keys", () => {
+		const env = {
+			get: (key: string) =>
+				({
+					PADDLE_EMBER_MONTHLY_PRICE_ID: "pri_shared",
+					PADDLE_FLAME_MONTHLY_PRICE_ID: "pri_shared",
+					PADDLE_INFERNO_ANNUAL_PRICE_ID: "pri_inferno_y",
+				})[key],
+		};
+
+		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
+	});
+
+	it("locks webhook and refresh to reject duplicate price IDs before apply", () => {
+		const webhook = readFileSync(
+			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
+			"utf8",
+		);
+		const refresh = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/paddle-refresh-subscription/index.ts",
+			),
+			"utf8",
+		);
+
+		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
+		const webhookApply = webhook.indexOf("apply_subscription_event");
+		expect(webhookDup).toBeGreaterThan(-1);
+		expect(webhookApply).toBeGreaterThan(webhookDup);
+		expect(webhook).toMatch(/Billing configuration invalid/);
+
+		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
+		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
+		expect(refreshDup).toBeGreaterThan(-1);
+		expect(refreshMap).toBeGreaterThan(refreshDup);
+		expect(refresh).toMatch(/Billing configuration invalid/);
 	});
 
 	it("maps fully canceled Paddle subscriptions to closed local state", () => {

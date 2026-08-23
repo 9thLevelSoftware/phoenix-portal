@@ -29,8 +29,8 @@ export const TIER_PRICING: TierPricing[] = [
 		features: [
 			"Cloud sync & backup",
 			"Restore workouts across devices",
-			"Workout history & personal records",
-			"Leaderboards & challenges",
+			"Workout history, dashboard & personal records",
+			"Session detail, goals & recovery",
 		],
 	},
 	{
@@ -45,9 +45,9 @@ export const TIER_PRICING: TierPricing[] = [
 			import.meta.env.VITE_PADDLE_FLAME_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Everything in Ember",
-			"Community hub & routine sharing",
-			"Advanced analytics & charts",
-			"Third-party connections (Strava, Hevy, Liftosaur)",
+			"Community hub, routines & cycles",
+			"Analytics, leaderboards, challenges & compare",
+			"Integrations (Strava, Hevy, Liftosaur) & session replay",
 		],
 	},
 	{
@@ -62,10 +62,9 @@ export const TIER_PRICING: TierPricing[] = [
 			import.meta.env.VITE_PADDLE_INFERNO_ANNUAL_PRICE_ID ?? "",
 		features: [
 			"Everything in Flame",
-			"Advanced analytics & biomechanics",
+			"Advanced biomechanics (force, VBT, ROM, SRA, form)",
 			"Force curves & VBT zones",
-			"Session replay with 50Hz telemetry",
 		],
-		comingSoon: true,
+		comingSoon: false,
 	},
 ];

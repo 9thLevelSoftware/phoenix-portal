@@ -26,14 +26,15 @@ const channelTeardown = new Map<string, Promise<unknown>>();
  * Subscribes to the exact private topic `sync:{userId}`. CHANNEL_ERROR toasts
  * via sonner and does not fall back to a public topic.
  *
- * Only subscribes for EMBER+ users. Free users skip the broadcast channel
- * to avoid unnecessary WebSocket connections.
+ * Subscribes for last-known EMBER+ users. A billing fetch error does not
+ * skip the channel (error is not treated as FREE). Confirmed FREE users skip
+ * the broadcast channel to avoid unnecessary WebSocket connections.
  *
  * Must be mounted once in the app shell (AppLayout), not per-page.
  */
 export function useRealtimeSync() {
 	const { user } = useAuth();
-	const { tier, isLoading } = useSubscription();
+	const { tier, isLoading, isError } = useSubscription();
 	const queryClient = useQueryClient();
 	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,8 +44,10 @@ export function useRealtimeSync() {
 		// Wait for subscription data to resolve before deciding
 		if (isLoading) return;
 
-		// Free users don't get sync — skip the broadcast channel
-		if (tier === "FREE") return;
+		// Confirmed FREE users skip the broadcast channel. A billing outage
+		// (`isError`) must not be treated as FREE — subscribe on last-known
+		// EMBER+ or when entitlement is unknown.
+		if (!isError && tier === "FREE") return;
 
 		const userId = user.id;
 
@@ -163,5 +166,5 @@ export function useRealtimeSync() {
 				}
 			});
 		};
-	}, [user, tier, isLoading, queryClient]);
+	}, [user, tier, isLoading, isError, queryClient]);
 }

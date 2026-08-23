@@ -1,9 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
+import { paddleWebhookResponseForCustomUserId } from "../_shared/paddleWebhookUserId.ts";
 import {
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
@@ -108,6 +110,17 @@ Deno.serve(async (req) => {
         { status: 500, headers: responseHeaders },
       );
     }
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(Deno.env);
+    if (duplicatePriceIds.length > 0) {
+      console.error(
+        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
+        duplicatePriceIds,
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration invalid" }),
+        { status: 500, headers: responseHeaders },
+      );
+    }
     const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
     if (!customDataSecret) {
       console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");
@@ -188,37 +201,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Extract user_id from custom_data
-    const userId = event.data.custom_data?.user_id;
-    if (!userId) {
-      console.error(
-        "[BILLING_ALERT] Missing custom_data.user_id in Paddle event:",
-        event.event_id,
-        "event_type:",
-        event.event_type,
-      );
-      return new Response(
-        JSON.stringify({ error: "Missing user_id in custom_data" }),
-        { status: 500, headers: responseHeaders },
-      );
+    // Extract user_id from custom_data. HMAC is already valid here.
+    // Missing user_id is unbindable — 200 ignored so Paddle does not retry.
+    // Malformed UUID stays 400. DB failures later still return 500.
+    const userIdBinding = paddleWebhookResponseForCustomUserId(
+      event.data.custom_data?.user_id,
+      responseHeaders,
+    );
+    if (userIdBinding.kind === "response") {
+      if (userIdBinding.response.status === 200) {
+        console.warn(
+          "[Paddle] Ignoring event with missing custom_data.user_id:",
+          event.event_id,
+          "event_type:",
+          event.event_type,
+        );
+      } else {
+        console.error(
+          "[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:",
+          event.event_id,
+        );
+      }
+      return userIdBinding.response;
     }
-
-    // Reject a present-but-malformed user_id BEFORE any DB lookup.
-    // `subscriptions.user_id` is a UUID column, so a non-UUID value (e.g. forged
-    // custom_data) makes the lookup error; without this guard that error would
-    // be misclassified as a retryable 500 and Paddle would redeliver forever.
-    const UUID_RE =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_RE.test(userId)) {
-      console.error(
-        "[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:",
-        event.event_id,
-      );
-      return new Response(
-        JSON.stringify({ error: "Invalid user_id in custom_data" }),
-        { status: 400, headers: responseHeaders },
-      );
-    }
+    const userId = userIdBinding.userId;
 
     // Load the existing row before custom_data trust checks. New checkouts must
     // carry cd_sig; legacy subscriptions may omit it only when the Paddle

@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { SubscriptionGate } from "../SubscriptionGate";
@@ -41,7 +42,12 @@ vi.mock("@/app/components/UpgradePrompt", () => ({
 	),
 }));
 
-function setupSubscription(overrides: { tier?: string; isLoading?: boolean }) {
+function setupSubscription(overrides: {
+	tier?: string;
+	isLoading?: boolean;
+	isError?: boolean;
+	refetch?: () => Promise<unknown>;
+}) {
 	mockUseSubscription.useSubscription.mockReturnValue({
 		tier: overrides.tier ?? "FREE",
 		rawTier: overrides.tier ?? "FREE",
@@ -49,6 +55,8 @@ function setupSubscription(overrides: { tier?: string; isLoading?: boolean }) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isLoading: overrides.isLoading ?? false,
+		isError: overrides.isError ?? false,
+		refetch: overrides.refetch ?? vi.fn(),
 		isPremium: (overrides.tier ?? "FREE") !== "FREE",
 		isFlame: overrides.tier === "FLAME" || overrides.tier === "INFERNO",
 		isInferno: overrides.tier === "INFERNO",
@@ -189,5 +197,31 @@ describe("SubscriptionGate", () => {
 		);
 		expect(screen.getByTestId("upgrade-prompt")).toBeInTheDocument();
 		expect(screen.queryByTestId("feature-name")).not.toBeInTheDocument();
+	});
+
+	it("shows retry instead of UpgradePrompt when billing status fails to load", () => {
+		setupSubscription({ tier: "FREE", isError: true });
+		renderWithProviders(
+			<SubscriptionGate requiredTier="EMBER">
+				<p>Protected content</p>
+			</SubscriptionGate>,
+		);
+		expect(screen.getByTestId("subscription-error")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+		expect(screen.queryByTestId("upgrade-prompt")).not.toBeInTheDocument();
+		expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+	});
+
+	it("retries the subscription query from the error state", async () => {
+		const refetch = vi.fn().mockResolvedValue(undefined);
+		setupSubscription({ tier: "FREE", isError: true, refetch });
+		const user = userEvent.setup();
+		renderWithProviders(
+			<SubscriptionGate requiredTier="EMBER">
+				<p>Protected content</p>
+			</SubscriptionGate>,
+		);
+		await user.click(screen.getByRole("button", { name: /retry/i }));
+		expect(refetch).toHaveBeenCalledTimes(1);
 	});
 });

@@ -249,6 +249,8 @@ export function PricingPlans() {
 		tier: currentTier,
 		priceId: currentPriceId,
 		isLoading: subscriptionLoading,
+		isError: subscriptionError,
+		refetch: refetchSubscription,
 		cancelAtPeriodEnd,
 		currentPeriodEnd,
 		isEntitled,
@@ -272,6 +274,7 @@ export function PricingPlans() {
 		if (
 			!user ||
 			subscriptionLoading ||
+			subscriptionError ||
 			!isStale ||
 			refreshAttemptedForUser === user.id
 		) {
@@ -294,6 +297,7 @@ export function PricingPlans() {
 	}, [
 		user,
 		subscriptionLoading,
+		subscriptionError,
 		isStale,
 		refreshAttemptedForUser,
 		queryClient,
@@ -665,113 +669,137 @@ export function PricingPlans() {
 					)}
 				</div>
 
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-					{TIERS.map((tierConfig) => {
-						const Icon = tierConfig.icon;
-						const isCurrent = isEntitled && currentTier === tierConfig.tier;
-						const currentPriceMismatch =
-							isCurrent &&
-							Boolean(currentPriceId) &&
-							currentPriceId !== selectedPriceId(tierConfig, isAnnual);
+				{subscriptionError ? (
+					<div
+						className="max-w-lg mx-auto text-center py-16"
+						data-testid="billing-status-error"
+					>
+						<p className="text-lg text-white mb-2">
+							Couldn't load billing status
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Subscription details are unavailable. Retry instead of assuming a
+							free plan.
+						</p>
+						<Button
+							variant="outline"
+							onClick={() => void refetchSubscription()}
+						>
+							<RefreshCw className="w-4 h-4 mr-2" />
+							Retry
+						</Button>
+					</div>
+				) : (
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+						{TIERS.map((tierConfig) => {
+							const Icon = tierConfig.icon;
+							const isCurrent = isEntitled && currentTier === tierConfig.tier;
+							const currentPriceMismatch =
+								isCurrent &&
+								Boolean(currentPriceId) &&
+								currentPriceId !== selectedPriceId(tierConfig, isAnnual);
 
-						return (
-							<Card
-								key={tierConfig.tier}
-								className={`relative bg-gradient-to-b ${tierConfig.accentBg} border-2 ${
-									isCurrent ? tierConfig.accentBorder : "border-secondary"
-								} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
-							>
-								{tierConfig.popular && (
-									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-primary text-white border-0 px-3">
-											Most Popular
-										</Badge>
-									</div>
-								)}
-
-								{tierConfig.comingSoon && (
-									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
-											<Sparkles className="w-3 h-3 mr-1" />
-											Coming Soon
-										</Badge>
-									</div>
-								)}
-
-								{isCurrent && (
-									<div className="absolute -top-3 right-4">
-										<Badge
-											variant="outline"
-											className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
-										>
-											{currentPriceMismatch ? "Current Tier" : "Current"}
-										</Badge>
-									</div>
-								)}
-
-								<CardHeader className="text-center pt-8">
-									<div className="flex justify-center mb-3">
-										<div
-											className={`p-3 rounded-full bg-gradient-to-b ${tierConfig.accentBg}`}
-										>
-											<Icon className={`w-6 h-6 ${tierConfig.accentText}`} />
+							return (
+								<Card
+									key={tierConfig.tier}
+									className={`relative bg-gradient-to-b ${tierConfig.accentBg} border-2 ${
+										isCurrent ? tierConfig.accentBorder : "border-secondary"
+									} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
+								>
+									{tierConfig.popular && (
+										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
+											<Badge className="bg-primary text-white border-0 px-3">
+												Most Popular
+											</Badge>
 										</div>
-									</div>
-									<CardTitle
-										className={`text-xl font-bold ${tierConfig.accentText}`}
-									>
-										{tierConfig.name}
-									</CardTitle>
-								</CardHeader>
-
-								<CardContent className="text-center">
-									<div className="mb-6">
-										<div className="flex items-baseline justify-center gap-1">
-											<span className="text-4xl font-bold text-white font-data">
-												{isAnnual
-													? tierConfig.annualMonthly
-													: tierConfig.monthlyPrice}
-											</span>
-											<span className="text-muted-foreground text-sm">/mo</span>
-										</div>
-										{isAnnual && (
-											<p className="text-muted-foreground text-xs mt-1">
-												{tierConfig.annualPrice}/year billed annually
-											</p>
-										)}
-									</div>
-
-									<ul className="space-y-3 text-left">
-										{tierConfig.features.map((feature) => (
-											<li
-												key={feature.label}
-												className="flex items-start gap-2"
-											>
-												<Check
-													className={`w-4 h-4 mt-0.5 shrink-0 ${tierConfig.accentText}`}
-												/>
-												<span className="text-sm text-secondary-foreground">
-													{feature.label}
-												</span>
-											</li>
-										))}
-									</ul>
-								</CardContent>
-
-								<CardFooter className="mt-auto">
-									{subscriptionLoading ? (
-										<Button variant="outline" className="w-full" disabled>
-											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-											Loading...
-										</Button>
-									) : (
-										renderCTA(tierConfig)
 									)}
-								</CardFooter>
-							</Card>
-						);
-					})}
-				</div>
+
+									{tierConfig.comingSoon && (
+										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
+											<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
+												<Sparkles className="w-3 h-3 mr-1" />
+												Coming Soon
+											</Badge>
+										</div>
+									)}
+
+									{isCurrent && (
+										<div className="absolute -top-3 right-4">
+											<Badge
+												variant="outline"
+												className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
+											>
+												{currentPriceMismatch ? "Current Tier" : "Current"}
+											</Badge>
+										</div>
+									)}
+
+									<CardHeader className="text-center pt-8">
+										<div className="flex justify-center mb-3">
+											<div
+												className={`p-3 rounded-full bg-gradient-to-b ${tierConfig.accentBg}`}
+											>
+												<Icon className={`w-6 h-6 ${tierConfig.accentText}`} />
+											</div>
+										</div>
+										<CardTitle
+											className={`text-xl font-bold ${tierConfig.accentText}`}
+										>
+											{tierConfig.name}
+										</CardTitle>
+									</CardHeader>
+
+									<CardContent className="text-center">
+										<div className="mb-6">
+											<div className="flex items-baseline justify-center gap-1">
+												<span className="text-4xl font-bold text-white font-data">
+													{isAnnual
+														? tierConfig.annualMonthly
+														: tierConfig.monthlyPrice}
+												</span>
+												<span className="text-muted-foreground text-sm">
+													/mo
+												</span>
+											</div>
+											{isAnnual && (
+												<p className="text-muted-foreground text-xs mt-1">
+													{tierConfig.annualPrice}/year billed annually
+												</p>
+											)}
+										</div>
+
+										<ul className="space-y-3 text-left">
+											{tierConfig.features.map((feature) => (
+												<li
+													key={feature.label}
+													className="flex items-start gap-2"
+												>
+													<Check
+														className={`w-4 h-4 mt-0.5 shrink-0 ${tierConfig.accentText}`}
+													/>
+													<span className="text-sm text-secondary-foreground">
+														{feature.label}
+													</span>
+												</li>
+											))}
+										</ul>
+									</CardContent>
+
+									<CardFooter className="mt-auto">
+										{subscriptionLoading ? (
+											<Button variant="outline" className="w-full" disabled>
+												<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+												Loading...
+											</Button>
+										) : (
+											renderCTA(tierConfig)
+										)}
+									</CardFooter>
+								</Card>
+							);
+						})}
+					</div>
+				)}
 			</div>
 
 			<AlertDialog
