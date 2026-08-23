@@ -10,9 +10,10 @@
 
 /**
  * Gate the Last-Write-Wins upsert path in mobile-sync-push. When false
- * (default), the push handler uses its historical server-wins `.upsert()`
- * behavior. When true, the handler routes each shared-edit entity upsert
- * through the corresponding `upsert_<entity>_lww(p_rows jsonb)` RPC
+ * (default), the push handler uses last-push-wins `.upsert()` — the incoming
+ * push overwrites the server row on `id`. When true, the handler routes each
+ * shared-edit entity upsert through the corresponding
+ * `upsert_<entity>_lww(p_rows jsonb)` RPC
  * (Phase 3.1 migration, 20260419120000_lww_upsert_functions.sql) and
  * returns per-entity `rejections` in the response so the mobile client can
  * detect stale-push cases and log them.

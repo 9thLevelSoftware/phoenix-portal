@@ -158,6 +158,8 @@ export function WorkoutHistory() {
 		isFetchingNextPage,
 		isFetchNextPageError,
 		isPending,
+		isError,
+		refetch,
 	} = useInfiniteQuery({
 		...workoutListInfiniteOptions(user?.id ?? "", activeProfileId),
 		enabled: !!user?.id,
@@ -171,24 +173,8 @@ export function WorkoutHistory() {
 		enabled: !!user?.id,
 	});
 
-	const { isPremium, tier } = useSubscription();
+	const { isFlame } = useSubscription();
 	const [dateRange, setDateRange] = useState("Last 30 days");
-
-	// Free-tier history gating: 30-day limit
-	const FREE_HISTORY_DAYS = 30;
-	const PREMIUM_DATE_RANGES = ["Last 90 days", "Last 6 months", "All Time"];
-	const isFreeTierExtendedRange =
-		tier === "FREE" && PREMIUM_DATE_RANGES.includes(dateRange);
-
-	const isEntryLocked = useCallback(
-		(startedAt: Date) => {
-			if (tier !== "FREE") return false;
-			const cutoff = new Date();
-			cutoff.setDate(cutoff.getDate() - FREE_HISTORY_DAYS);
-			return startedAt < cutoff;
-		},
-		[tier],
-	);
 
 	const [compareMode, setCompareMode] = useState(false);
 	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
@@ -300,6 +286,35 @@ export function WorkoutHistory() {
 		return allWorkouts.filter((w) => w.started_at >= cutoff);
 	}, [allWorkouts, dateRange]);
 
+	// Failed fetch is an error, not “no workouts yet.”
+	if (isError && data == null) {
+		return (
+			<div className="min-h-screen pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
+					<div className="max-w-7xl mx-auto">
+						<h1 className="text-display-2 mb-2 text-white">Workout History</h1>
+						<p className="text-muted-foreground">
+							Your training journey, documented
+						</p>
+					</div>
+				</div>
+				<PageShell>
+					<div className="text-center py-16">
+						<p className="text-lg text-white mb-2">
+							Couldn't load your workout history
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Something went wrong. Your sessions are safe — please try again.
+						</p>
+						<Button onClick={() => void refetch()} variant="outline">
+							Retry
+						</Button>
+					</div>
+				</PageShell>
+			</div>
+		);
+	}
+
 	// Loading state
 	if (isPending) {
 		return (
@@ -343,11 +358,6 @@ export function WorkoutHistory() {
 		);
 	}
 
-	const unlocked = filteredWorkouts.filter((w) => !isEntryLocked(w.started_at));
-	const locked = filteredWorkouts.filter((w) => isEntryLocked(w.started_at));
-	const lockedPreview = locked.slice(0, 3);
-	const hiddenLockedCount = Math.max(0, locked.length - lockedPreview.length);
-
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
@@ -368,8 +378,8 @@ export function WorkoutHistory() {
 						</div>
 
 						<div className="flex flex-col sm:flex-row gap-3">
-							{/* Compare Toggle */}
-							{isPremium ? (
+							{/* Compare Toggle — Flame route /compare, not Ember */}
+							{isFlame ? (
 								<Button
 									size="sm"
 									variant={compareMode ? "default" : "outline"}
@@ -403,7 +413,7 @@ export function WorkoutHistory() {
 											variant="outline"
 											className="ml-2 border-primary/30 text-primary text-[10px] px-1.5 py-0"
 										>
-											{tier === "FREE" ? "EMBER" : "UPGRADE"}
+											FLAME
 										</Badge>
 									</Link>
 								</Button>
@@ -423,33 +433,6 @@ export function WorkoutHistory() {
 							</select>
 						</div>
 					</motion.div>
-
-					{/* Free-tier upgrade banner for extended date ranges */}
-					{isFreeTierExtendedRange && (
-						<div className="pt-4">
-							<Card className="p-4 border-primary/20 bg-primary/5">
-								<div className="flex items-center gap-3">
-									<Lock className="w-5 h-5 text-primary shrink-0" />
-									<div className="flex-1">
-										<p className="text-sm font-medium text-zinc-200">
-											Extended history requires Phoenix
-										</p>
-										<p className="text-xs text-zinc-400">
-											Free accounts can view the last 30 days of workout history
-										</p>
-									</div>
-									<Button
-										asChild
-										size="sm"
-										variant="outline"
-										className="ml-auto border-primary text-primary hover:bg-primary/10 shrink-0"
-									>
-										<Link to="/pricing">Upgrade</Link>
-									</Button>
-								</div>
-							</Card>
-						</div>
-					)}
 				</div>
 			</div>
 
@@ -477,8 +460,7 @@ export function WorkoutHistory() {
 							</div>
 						)}
 
-						{/* Unlocked workout cards */}
-						{unlocked.map((workout, index) => {
+						{filteredWorkouts.map((workout, index) => {
 							const isSelected = selectedForCompare.includes(workout.id);
 							return (
 								<motion.div
@@ -503,61 +485,6 @@ export function WorkoutHistory() {
 								</motion.div>
 							);
 						})}
-
-						{/* Locked preview entries (free-tier) */}
-						{lockedPreview.map((workout, index) => (
-							<motion.div
-								key={workout.id}
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 0.5, y: 0 }}
-								transition={{ delay: (unlocked.length + index) * 0.05 }}
-							>
-								<Card className="relative p-4 sm:p-6 bg-surface-2 border-secondary pointer-events-none select-none">
-									{/* Lock overlay */}
-									<div className="absolute inset-0 flex items-center justify-center z-10">
-										<Lock className="w-6 h-6 text-primary/60" />
-									</div>
-									<div className="flex flex-col sm:flex-row sm:items-center gap-4 opacity-40">
-										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary/30 to-chart-2/30 flex items-center justify-center">
-												<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white/50" />
-											</div>
-											<div>
-												<h3 className="text-lg font-semibold text-white/60 mb-1">
-													{workout.name}
-												</h3>
-												<div className="text-sm text-muted-foreground/60">
-													{workout.started_at.toLocaleDateString("en-US", {
-														weekday: "short",
-														month: "short",
-														day: "numeric",
-													})}
-												</div>
-											</div>
-										</div>
-									</div>
-								</Card>
-							</motion.div>
-						))}
-
-						{/* Upgrade banner after locked entries */}
-						{locked.length > 0 && (
-							<Card className="p-6 border-primary/20 bg-primary/5 text-center">
-								<Lock className="w-8 h-8 text-primary mx-auto mb-3" />
-								<h3 className="text-lg font-semibold text-zinc-200 mb-1">
-									Unlock your full workout history
-								</h3>
-								<p className="text-sm text-zinc-400 mb-4">
-									{hiddenLockedCount > 0
-										? `${locked.length} older workouts are locked. `
-										: `${locked.length} older workout${locked.length === 1 ? " is" : "s are"} locked. `}
-									Upgrade to Phoenix for unlimited history.
-								</p>
-								<Button asChild variant="cta">
-									<Link to="/pricing">View Plans</Link>
-								</Button>
-							</Card>
-						)}
 
 						{/* Load More */}
 						{hasNextPage && (
@@ -606,7 +533,6 @@ export function WorkoutHistory() {
 									setSelectedDay(date);
 								}
 							}}
-							isDateLocked={isEntryLocked}
 						/>
 
 						<WorkoutQuickStats

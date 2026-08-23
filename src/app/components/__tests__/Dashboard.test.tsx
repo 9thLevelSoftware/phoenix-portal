@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { Dashboard } from "../Dashboard";
 
@@ -17,6 +17,31 @@ const mockRecentPr = vi.hoisted(() => ({
 		previous_value: null,
 		workout_phase: "Concentric",
 		local_profile_id: null,
+	},
+}));
+
+const mockWorkoutList = vi.hoisted(() => ({
+	result: {
+		data: [
+			{
+				id: "00000000-0000-4000-8000-000000000010",
+				user_id: "00000000-0000-4000-8000-000000000999",
+				name: "Strength Session",
+				started_at: new Date(),
+				duration_seconds: 30,
+				total_volume: 1000,
+				set_count: 3,
+				exercise_count: 1,
+				pr_count: 1,
+				routine_name: null,
+				workout_mode: "Old School",
+				notes: null,
+			},
+		] as unknown[] | undefined,
+		isPending: false,
+		isLoading: false,
+		isError: false,
+		refetch: () => Promise.resolve(),
 	},
 }));
 
@@ -64,27 +89,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 				};
 			}
 			if (key[0] === "workouts" && key[1] === "list") {
-				return {
-					data: [
-						{
-							id: "00000000-0000-4000-8000-000000000010",
-							user_id: "00000000-0000-4000-8000-000000000999",
-							name: "Strength Session",
-							started_at: new Date(),
-							duration_seconds: 30,
-							total_volume: 1000,
-							set_count: 3,
-							exercise_count: 1,
-							pr_count: 1,
-							routine_name: null,
-							workout_mode: "Old School",
-							notes: null,
-						},
-					],
-					isPending: false,
-					isLoading: false,
-					isError: false,
-				};
+				return mockWorkoutList.result;
 			}
 			if (key[0] === "profile" && key[1] === "badges") {
 				return {
@@ -112,7 +117,32 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 	};
 });
 
+const populatedWorkout = {
+	id: "00000000-0000-4000-8000-000000000010",
+	user_id: "00000000-0000-4000-8000-000000000999",
+	name: "Strength Session",
+	started_at: new Date(),
+	duration_seconds: 30,
+	total_volume: 1000,
+	set_count: 3,
+	exercise_count: 1,
+	pr_count: 1,
+	routine_name: null,
+	workout_mode: "Old School",
+	notes: null,
+};
+
 describe("Dashboard", () => {
+	beforeEach(() => {
+		mockWorkoutList.result = {
+			data: [populatedWorkout],
+			isPending: false,
+			isLoading: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+	});
+
 	it("renders without crashing", () => {
 		renderWithProviders(<Dashboard />);
 		expect(
@@ -125,5 +155,49 @@ describe("Dashboard", () => {
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
 		expect(screen.getByText("Concentric")).toBeInTheDocument();
+	});
+
+	it("shows an error, not the welcome empty, when the workout list fails", () => {
+		mockWorkoutList.result = {
+			data: undefined,
+			isPending: false,
+			isLoading: false,
+			isError: true,
+			refetch: () => Promise.resolve(),
+		};
+
+		renderWithProviders(<Dashboard />);
+
+		expect(
+			screen.getByText(/couldn't load your workouts/i),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("heading", { name: /welcome to phoenix portal/i }),
+		).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+	});
+
+	it("shows the welcome empty only after a successful zero-row fetch", () => {
+		mockWorkoutList.result = {
+			data: [],
+			isPending: false,
+			isLoading: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+
+		renderWithProviders(<Dashboard />);
+
+		expect(
+			screen.getAllByRole("heading", { name: /welcome to phoenix portal/i })
+				.length,
+		).toBeGreaterThan(0);
+		expect(screen.getAllByText(/set training goals/i).length).toBeGreaterThan(
+			0,
+		);
+		expect(screen.queryByText(/join challenges/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/couldn't load your workouts/i),
+		).not.toBeInTheDocument();
 	});
 });

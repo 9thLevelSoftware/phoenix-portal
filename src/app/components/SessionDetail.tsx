@@ -10,6 +10,7 @@ import {
 	Clock,
 	Dumbbell,
 	Flame,
+	Play,
 	Printer,
 	Settings,
 	Share2,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { ComparisonSessionPicker } from "@/app/components/ComparisonSessionPicker";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
@@ -43,6 +44,7 @@ export function SessionDetail() {
 		data: session,
 		isPending,
 		error,
+		refetch,
 	} = useQuery({
 		...sessionDetailOptions(sessionId ?? ""),
 		enabled: !!sessionId,
@@ -51,7 +53,7 @@ export function SessionDetail() {
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
-	const { isPremium } = useSubscription();
+	const { isFlame } = useSubscription();
 	const [expandedExercises, setExpandedExercises] = useState<string[] | null>(
 		null,
 	);
@@ -129,8 +131,40 @@ export function SessionDetail() {
 		);
 	}
 
-	// Error state
-	if (error || !session) {
+	// Failed fetch is an error, not a missing session.
+	if (error && session == null) {
+		return (
+			<div className="min-h-screen pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
+					<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => navigate("/history")}
+							className="mb-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+						>
+							<ArrowLeft className="w-4 h-4 mr-2" />
+							Back to History
+						</Button>
+					</div>
+				</div>
+				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
+					<h2 className="text-xl font-semibold text-white mb-2">
+						Couldn't load this session
+					</h2>
+					<p className="text-muted-foreground mb-6">
+						Something went wrong while loading this workout. Please try again.
+					</p>
+					<Button onClick={() => void refetch()} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
+
+	if (!session) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
@@ -152,9 +186,7 @@ export function SessionDetail() {
 						Session Not Found
 					</h2>
 					<p className="text-muted-foreground">
-						{error
-							? error.message
-							: "This workout session could not be loaded."}
+						This workout session could not be loaded.
 					</p>
 					<Button
 						onClick={() => navigate("/history")}
@@ -700,7 +732,7 @@ export function SessionDetail() {
 					transition={{ delay: 0.4 }}
 					className="flex flex-col sm:flex-row gap-3 print:hidden"
 				>
-					{isPremium ? (
+					{isFlame ? (
 						<Button
 							variant="cta"
 							className="flex-1"
@@ -714,10 +746,28 @@ export function SessionDetail() {
 							className="flex-1 border-secondary text-muted-foreground"
 							variant="outline"
 							disabled
-							title="Upgrade to compare sessions"
+							title="Compare is a Flame feature"
 						>
 							<BarChart3 className="w-4 h-4 mr-2" />
 							Compare with...
+						</Button>
+					)}
+					{isFlame ? (
+						<Button variant="outline" className="flex-1" asChild>
+							<Link to={`/replay/${sessionId}`}>
+								<Play className="w-4 h-4 mr-2" />
+								Session Replay
+							</Link>
+						</Button>
+					) : (
+						<Button
+							className="flex-1 border-secondary text-muted-foreground"
+							variant="outline"
+							disabled
+							title="Session replay is a Flame feature"
+						>
+							<Play className="w-4 h-4 mr-2" />
+							Session Replay
 						</Button>
 					)}
 					<Button

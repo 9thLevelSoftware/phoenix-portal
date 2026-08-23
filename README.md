@@ -47,20 +47,26 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 - **Challenges** — Time-limited competitions
 
 ### Integrations
-- **Strava** — Bidirectional activity sync
-- **Fitbit** — Wearable data import
-- **Garmin** — Webhook-based activity import
+- **Strava** — Import activities (pull-only)
+- **Fitbit** — Wearable import *(coming soon; pending developer-program approval)*
+- **Garmin Connect** — Webhook activity import *(coming soon; pending Garmin developer program / GCPP approval)*
 - **Hevy** — Workout history migration
 - **Liftosaur** — Program and log migration
+- **Strong** — CSV workout import
+- **Apple Health / Google Health Connect** — mobile-only cards (sync from the app, not portal OAuth)
 
 ## Subscription Tiers
 
-| Tier        | Monthly | Annual  | Access                                                |
-| ----------- | ------- | ------- | ----------------------------------------------------- |
-| **FREE**    | $0      | $0      | Landing, pricing                                      |
-| **EMBER**   | $5      | $49/yr  | Cloud sync, history, dashboard, goals                 |
-| **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations  |
-| **INFERNO** | $25     | $249/yr | Session replay, advanced biomechanics *(coming soon)* |
+Single matrix matching `src/lib/pricing.ts` and `src/app/routes/index.tsx`. Ember is not sold leaderboards.
+
+| Tier        | Monthly | Annual  | Access                                                                                          |
+| ----------- | ------- | ------- | ----------------------------------------------------------------------------------------------- |
+| **FREE**    | $0      | $0      | Landing, pricing; signed-in users are a conversion funnel (dashboard upgrade wall), not a local-history SKU |
+| **EMBER**   | $5      | $49/yr  | Cloud sync, dashboard, history, session detail, goals, recovery                                 |
+| **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations (Strava/Hevy/Liftosaur), leaderboards, challenges, compare, session replay |
+| **INFERNO** | $25     | $249/yr | Advanced biomechanics (force, VBT, ROM, SRA, form). Purchasable; inner INFERNO gates stay.      |
+
+Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program approval. Do not treat README as a Connect un-block.
 
 ## Tech Stack
 
@@ -139,10 +145,9 @@ Mobile (SQLite) → POST mobile-sync-push → Supabase DB
 Portal ← useRealtimeSync hook ← Channel sync:{userId}
 ```
 
-- **Push**: Workouts → Supabase (realtime broadcast triggers portal cache invalidation)
-- **Pull**: Routines, cycles → Mobile SQLite
-- **Conflict Resolution**: Domain-aware (mobile authoritative for BLE-captured data)
-- **Pagination**: Cursor-based, 100 entities/page
+- **Push**: Workouts → `mobile-sync-push` Edge upsert (realtime broadcast on private `sync:{userId}` invalidates portal cache)
+- **Pull**: Routines, cycles, and other delta entities → Mobile SQLite. Cursor-based, **75** entities/page (max **300**). `rep_telemetry` is **not** pulled — session replay restores telemetry in the portal only.
+- **Conflict Resolution**: Default is **last-push-wins** (incoming push overwrites the server row). `SYNC_LWW_ENABLED` is a hosted flag; do not assume server-wins.
 
 ## Phoenix Theme
 
@@ -160,11 +165,7 @@ Custom animations: `flame-flicker`, `ember-rise`, `phoenix-glow`
 
 ## Deployment
 
-Build outputs to `dist/`. Deploy to any static host:
-- Vercel
-- Netlify
-- Cloudflare Pages
-- GitHub Pages
+Hosted on **Cloudflare Pages** (`wrangler.toml`; `npm run deploy` via wrangler). Build outputs to `dist/`. Other static hosts are possible but not the supported path.
 
 ## Related Projects
 

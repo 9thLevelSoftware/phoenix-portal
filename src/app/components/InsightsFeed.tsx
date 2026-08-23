@@ -15,6 +15,8 @@ export interface InsightItem {
 export interface InsightsFeedProps {
 	insights: InsightItem[];
 	loading?: boolean;
+	/** Failed fetch is an error, not “complete more workouts.” */
+	isError?: boolean;
 }
 
 const TYPE_CONFIG = {
@@ -58,7 +60,11 @@ function InsightSkeleton() {
 	);
 }
 
-export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
+export function InsightsFeed({
+	insights,
+	loading = false,
+	isError = false,
+}: InsightsFeedProps) {
 	if (loading) {
 		return (
 			<div className="flex flex-col gap-3">
@@ -66,6 +72,14 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 				<InsightSkeleton />
 				<InsightSkeleton />
 			</div>
+		);
+	}
+
+	if (isError && insights.length === 0) {
+		return (
+			<Card className="border-border p-6 text-center text-sm text-muted-foreground">
+				Couldn't load insights. Please try again.
+			</Card>
 		);
 	}
 

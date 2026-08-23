@@ -129,8 +129,10 @@ describe("LandingPage", () => {
 		const badges = screen.getAllByText(/^(EMBER|FLAME|INFERNO)$/);
 		expect(badges.length).toBeGreaterThanOrEqual(6);
 		expect(screen.getAllByText("EMBER")).toHaveLength(2);
-		expect(screen.getAllByText("FLAME")).toHaveLength(2);
-		expect(screen.getAllByText("INFERNO")).toHaveLength(2);
+		expect(screen.getAllByText("FLAME")).toHaveLength(3);
+		expect(screen.getAllByText("INFERNO")).toHaveLength(1);
+		expect(screen.getByText("Session Replay")).toBeInTheDocument();
+		expect(screen.getByText("Records, Goals & Recovery")).toBeInTheDocument();
 	});
 
 	it("renders section eyebrow labels", async () => {

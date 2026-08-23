@@ -10,8 +10,9 @@ linked source files over guessing when scope or behavior is unclear.
 - `WORKFLOW.md`: Symphony runtime config, Linear state routing, workpad format,
   validation policy, and PR handoff rules.
 - `docs/runbooks/symphony.md`: operator setup and runner checklist.
-- `docs/review/go-no-go-checklist.md`: launch readiness criteria and accepted
-  risks.
+- `docs/review/go-no-go-checklist.md`: historical 2026-03-18 GO (**not HEAD**).
+  Re-derive launch readiness from FP-1–FP-12 and CI; do not treat that
+  checklist as a current pass.
 - `.github/workflows/ci.yml`: pull request validation gates.
 
 ## Working Rules

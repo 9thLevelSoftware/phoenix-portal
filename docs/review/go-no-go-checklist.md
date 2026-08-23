@@ -1,8 +1,15 @@
 # Go/No-Go Checklist — Beta Launch
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This GO is a dated snapshot of
+> `beta-readiness-review`, not a current launch bar. Do not treat checked
+> blockers (18 Edge Functions, 37-table RLS, realtime E2E, empty states) as
+> passing on this tree. Re-derive readiness from FP-1–FP-12 and CI.
+> Garmin GCPP remains an accepted **gate** (`comingSoon`); it does not
+> authorize README to claim Garmin/Fitbit live.
+
 **Date:** 2026-03-18
 **Branch:** beta-readiness-review (28 commits ahead of main)
-**Verdict:** ✅ **GO** with accepted risks documented below
+**Verdict:** ✅ **GO** with accepted risks documented below *(historical)*
 
 ---
 

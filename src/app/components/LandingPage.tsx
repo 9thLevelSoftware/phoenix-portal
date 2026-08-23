@@ -303,10 +303,10 @@ export function LandingPage() {
 		},
 		{
 			icon: Trophy,
-			title: "Records & Leaderboards",
+			title: "Records, Goals & Recovery",
 			badge: "EMBER",
 			description:
-				"Personal records tracked per exercise, phase, and weight. See where you rank against other Phoenix athletes on community leaderboards.",
+				"Personal records tracked per exercise, phase, and weight. Set training goals and watch recovery readiness on the Ember dashboard.",
 		},
 		{
 			icon: Share2,
@@ -332,7 +332,7 @@ export function LandingPage() {
 		{
 			icon: Play,
 			title: "Session Replay",
-			badge: "INFERNO",
+			badge: "FLAME",
 			description:
 				"50Hz telemetry playback of every rep. Scrub through sets on a Canvas timeline, overlay force curves, and spot fatigue patterns.",
 		},

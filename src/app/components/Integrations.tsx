@@ -105,7 +105,10 @@ export function Integrations() {
 					<div>
 						<h1 className="text-display-2">Integrations</h1>
 						<p className="text-muted-foreground">
-							Connect your fitness services to see all your data in one place
+							Connect your fitness services to see all your data in one place.
+							Strava import is pull-only. Fitbit and Garmin Connect are
+							implemented but gated coming-soon pending developer-program
+							approval.
 						</p>
 					</div>
 					<div className="w-full md:w-80 shrink-0">

@@ -1,12 +1,14 @@
 import NumberFlow from "@number-flow/react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
+	AlertCircle,
 	ArrowRight,
 	Award,
 	Calendar,
 	ChevronRight,
 	Dumbbell,
 	Flame,
+	HeartPulse,
 	Target,
 	TrendingUp,
 	Trophy,
@@ -352,7 +354,12 @@ export function Dashboard() {
 	const userId = user?.id ?? "";
 	const { activeProfileId } = useProfileFilterStore();
 
-	const { data: workouts, isPending: workoutsLoading } = useQuery({
+	const {
+		data: workouts,
+		isPending: workoutsLoading,
+		isError: workoutsError,
+		refetch: refetchWorkouts,
+	} = useQuery({
 		...workoutListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
@@ -409,9 +416,30 @@ export function Dashboard() {
 	const maxVolume = Math.max(...dailyVolumes, 1);
 	const barHeights = dailyVolumes.map((v) => Math.round((v / maxVolume) * 100));
 
-	// Zero-session welcome view
+	// Failed fetch is an error, not “no workouts yet.”
+	if (workoutsError && workouts == null) {
+		return (
+			<div className="min-h-screen pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
+					<h1 className="text-xl font-semibold text-white mb-2">
+						Couldn't load your workouts
+					</h1>
+					<p className="text-sm text-muted-foreground mb-6">
+						Something went wrong while loading your dashboard. Your sessions are
+						safe — please try again.
+					</p>
+					<Button onClick={() => void refetchWorkouts()} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
+
+	// Zero-session welcome view — only after a successful empty fetch.
 	const hasNoWorkouts =
-		!workoutsLoading && (!workouts || workouts.length === 0);
+		!workoutsLoading && !workoutsError && (workouts?.length ?? 0) === 0;
 
 	if (hasNoWorkouts) {
 		return (
@@ -463,18 +491,18 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.2 }}
 						>
-							<Link to="/routines/new">
+							<Link to="/goals">
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
-											<Dumbbell className="w-5 h-5 text-white" />
+											<Target className="w-5 h-5 text-white" />
 										</div>
 										<div>
 											<h3 className="font-semibold text-white">
-												Build custom routines
+												Set training goals
 											</h3>
 											<p className="text-xs text-muted-foreground">
-												Create tailored workout programs
+												Frequency, volume, and PR targets
 											</p>
 										</div>
 										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
@@ -488,18 +516,18 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.3 }}
 						>
-							<Link to="/challenges">
+							<Link to="/recovery">
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-											<Trophy className="w-5 h-5 text-white" />
+											<HeartPulse className="w-5 h-5 text-white" />
 										</div>
 										<div>
 											<h3 className="font-semibold text-white">
-												Join challenges
+												Check recovery
 											</h3>
 											<p className="text-xs text-muted-foreground">
-												Compete with other athletes
+												Readiness after your sessions
 											</p>
 										</div>
 										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
@@ -551,34 +579,33 @@ export function Dashboard() {
 						</motion.div>
 
 						<motion.div variants={fadeUp}>
-							<Link to="/routines/new" className="block h-full">
+							<Link to="/goals" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
-										<Dumbbell className="w-6 h-6 text-white" />
+										<Target className="w-6 h-6 text-white" />
 									</div>
 									<h3 className="text-lg font-semibold text-white mb-2">
-										Build custom routines
+										Set training goals
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Create workout routines tailored to your goals with
-										drag-and-drop exercise management.
+										Track workout frequency, volume, or personal-record targets
+										on Ember.
 									</p>
 								</Card>
 							</Link>
 						</motion.div>
 
 						<motion.div variants={fadeUp}>
-							<Link to="/challenges" className="block h-full">
+							<Link to="/recovery" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
-										<Trophy className="w-6 h-6 text-white" />
+										<HeartPulse className="w-6 h-6 text-white" />
 									</div>
 									<h3 className="text-lg font-semibold text-white mb-2">
-										Join challenges
+										Check recovery
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Compete with other athletes in community challenges and earn
-										recognition.
+										See recovery readiness after sessions without leaving Ember.
 									</p>
 								</Card>
 							</Link>

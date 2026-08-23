@@ -555,6 +555,7 @@ export function Analytics() {
 		isFetching: volumeFetching,
 		dataUpdatedAt: volumeUpdatedAt,
 		error: volumeError,
+		refetch: refetchVolume,
 	} = useQuery(volumeTrendOptions(userId, queryPeriod, activeProfileId));
 	const {
 		data: muscleGroupRaw,
@@ -562,6 +563,7 @@ export function Analytics() {
 		isFetching: muscleFetching,
 		dataUpdatedAt: muscleUpdatedAt,
 		error: muscleError,
+		refetch: refetchMuscle,
 	} = useQuery(muscleGroupOptions(userId, activeProfileId));
 	const {
 		data: strengthRaw,
@@ -569,6 +571,7 @@ export function Analytics() {
 		isFetching: strengthFetching,
 		dataUpdatedAt: strengthUpdatedAt,
 		error: strengthError,
+		refetch: refetchStrength,
 	} = useQuery(strengthProgressOptions(userId, activeProfileId));
 	const {
 		data: phaseStatsRaw,
@@ -576,6 +579,7 @@ export function Analytics() {
 		isFetching: phaseStatsFetching,
 		dataUpdatedAt: phaseStatsUpdatedAt,
 		error: phaseStatsError,
+		refetch: refetchPhaseStats,
 	} = useQuery(
 		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
@@ -587,7 +591,11 @@ export function Analytics() {
 		...volumeComparisonOptions(userId, queryPeriod, activeProfileId),
 		enabled: !!userId,
 	});
-	const { data: insightsData, isPending: insightsPending } = useQuery({
+	const {
+		data: insightsData,
+		isPending: insightsPending,
+		isError: insightsError,
+	} = useQuery({
 		...insightsOptions(userId, insightPeriod),
 		enabled: !!userId,
 	});
@@ -1264,6 +1272,36 @@ export function Analytics() {
 		muscleGroupData.length > 0 ||
 		externalCount > 0 ||
 		hasTabData;
+	const hasLoadError =
+		!hasData &&
+		(volumeError != null ||
+			muscleError != null ||
+			strengthError != null ||
+			phaseStatsError != null);
+	const retryAnalytics = () => {
+		void refetchVolume();
+		void refetchMuscle();
+		void refetchStrength();
+		void refetchPhaseStats();
+	};
+
+	const analyticsEmpty = hasLoadError ? (
+		<div className="text-center py-16">
+			<p className="text-lg text-white mb-2">Couldn't load analytics</p>
+			<p className="text-sm text-muted-foreground mb-6">
+				Something went wrong while loading your training data. Please try again.
+			</p>
+			<Button onClick={retryAnalytics} variant="outline">
+				Retry
+			</Button>
+		</div>
+	) : (
+		<EmptyState
+			icon={TrendingUp}
+			title="Your analytics await"
+			description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
+		/>
+	);
 
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
@@ -1394,11 +1432,7 @@ export function Analytics() {
 				{/* Mobile Content */}
 				<div className="px-4 py-4 space-y-4">
 					{!mobileHasData ? (
-						<EmptyState
-							icon={TrendingUp}
-							title="Your analytics await"
-							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
-						/>
+						analyticsEmpty
 					) : (
 						<>
 							{activeTab === "overview" && (
@@ -1409,6 +1443,7 @@ export function Analytics() {
 										consistencyData={consistencyData}
 										insightsFeedItems={insightsFeedItems}
 										insightsPending={insightsPending}
+										insightsError={insightsError}
 									/>
 								</Suspense>
 							)}
@@ -1519,11 +1554,7 @@ export function Analytics() {
 					<DataFreshnessStrip state={analyticsFreshness} className="mb-8" />
 
 					{!hasData ? (
-						<EmptyState
-							icon={TrendingUp}
-							title="Your analytics await"
-							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
-						/>
+						analyticsEmpty
 					) : (
 						<>
 							{/* Hero Stats Row -- 5 cards */}
@@ -1642,6 +1673,7 @@ export function Analytics() {
 											consistencyData={consistencyData}
 											insightsFeedItems={insightsFeedItems}
 											insightsPending={insightsPending}
+											insightsError={insightsError}
 										/>
 									</Suspense>
 								</TabsContent>
