@@ -30,5 +30,6 @@ describe("generateRecordsCSV record type labels", () => {
 	it("maps 1RM to 'Estimated 1RM'", () => {
 		const csv = generateRecordsCSV([record("1RM")] as Records);
 		expect(csv).toContain("Estimated 1RM");
+		expect(csv).not.toContain("Max Weight");
 	});
 });

@@ -362,6 +362,35 @@ describe("pushPayloadSchema", () => {
 		]);
 	});
 
+	it("defaults missing personalRecords.recordType to MAX_WEIGHT", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			personalRecords: [
+				{
+					exerciseName: "Bench Press",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+				},
+			],
+		});
+		expect(parsed.personalRecords[0]?.recordType).toBe("MAX_WEIGHT");
+	});
+
+	it("rejects unknown personalRecords.recordType", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			personalRecords: [
+				{
+					exerciseName: "Bench Press",
+					recordType: "NOT_A_TYPE",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+				},
+			],
+		});
+		expect(result.success).toBe(false);
+	});
+
 	it("preserves top-level mobile personalRecords through validation", () => {
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",

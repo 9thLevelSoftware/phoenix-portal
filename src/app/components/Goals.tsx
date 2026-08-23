@@ -65,8 +65,35 @@ import { goalsOptions } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
+import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
+
+const PR_GOAL_RECORD_TYPES = new Set(["MAX_WEIGHT", "1RM"]);
+
+export type PrGoalRecord = Pick<
+	PersonalRecord,
+	"exercise_name" | "exercise_id" | "record_type" | "value"
+>;
+
+/** Strength PR progress: MAX_WEIGHT and 1RM only — never MAX_VOLUME. */
+export function computePrGoalProgress(
+	goal: Pick<Goal, "exercise_name" | "exercise_id" | "target_value">,
+	records: readonly PrGoalRecord[],
+): number {
+	if (!goal.exercise_name) return 0;
+	const exercisePRs = records.filter((r) => {
+		const recordType = (r.record_type ?? "MAX_WEIGHT").toUpperCase();
+		if (!PR_GOAL_RECORD_TYPES.has(recordType)) return false;
+		if (goal.exercise_id && r.exercise_id) {
+			return r.exercise_id === goal.exercise_id;
+		}
+		return r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase();
+	});
+	if (exercisePRs.length === 0) return 0;
+	const bestPR = Math.max(...exercisePRs.map((r) => r.value));
+	return Math.min((bestPR / goal.target_value) * 100, 100);
+}
 
 // ---------- Progress computation hook (exported for Dashboard widget) ----------
 
@@ -114,23 +141,7 @@ export function useGoalProgress(
 				);
 				progress = (totalVolume / goal.target_value) * 100;
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
-				// Goals do not persist a target phase yet, so any combined,
-				// concentric, or eccentric PR for the exercise can satisfy the target.
-				// PR values are already Zod-transformed (doubled).
-				const exercisePRs = records.filter((r) => {
-					// Prefer exercise_id match if both sides have it
-					if (goal.exercise_id && r.exercise_id) {
-						return r.exercise_id === goal.exercise_id;
-					}
-					// Fall back to case-insensitive name match
-					return (
-						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase()
-					);
-				});
-				if (exercisePRs.length > 0) {
-					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
-					progress = (bestPR / goal.target_value) * 100;
-				}
+				progress = computePrGoalProgress(goal, records);
 			}
 
 			map.set(goal.id, Math.min(progress, 100));
