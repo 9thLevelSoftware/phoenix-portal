@@ -208,14 +208,6 @@ export function mockPushEndpoint(
 	const userId = payload.sessions?.[0]?.userId ?? "mock-user";
 	recordBroadcast(`sync:${userId}`, "sync_complete", {
 		syncTime: new Date(syncTime).toISOString(),
-		deviceId: payload.deviceId,
-		platform: payload.platform,
-		profileId: payload.profileId ?? null,
-		profileName: payload.profileName ?? null,
-		sessionsInserted: payload.sessions?.length ?? 0,
-		routinesUpserted: payload.routines?.length ?? 0,
-		cyclesUpserted: payload.cycles?.length ?? 0,
-		badgesUpserted: payload.badges?.length ?? 0,
 	});
 
 	return {

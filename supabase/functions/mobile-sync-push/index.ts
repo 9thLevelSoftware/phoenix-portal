@@ -2841,7 +2841,7 @@ async function mobileSyncPushHandler(
     // Use HTTP broadcast so the edge function doesn't need an active WebSocket
     // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
     const channel = supabase.channel(`sync:${userId}`, {
-      config: { broadcast: { self: false } },
+      config: { private: true, broadcast: { self: false } },
     });
     try {
       await new Promise<void>((resolve) => {
@@ -2866,14 +2866,6 @@ async function mobileSyncPushHandler(
         event: 'sync_complete',
         payload: {
           syncTime,
-          deviceId: payload.deviceId,
-          platform: normalizedPlatform,
-          profileId: localProfileId,
-          profileName: payload.profileName ?? null,
-          sessionsInserted,
-          routinesUpserted,
-          cyclesUpserted,
-          badgesUpserted,
         },
       });
       if (broadcastStatus !== 'ok') {

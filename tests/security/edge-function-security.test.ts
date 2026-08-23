@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	extractGarminProviderUserId,
 	type GarminIdentityCandidate,
+	redactGarminRawData,
 	resolveGarminWebhookIdentity,
 } from "../../supabase/functions/_shared/garminIdentity.ts";
 import { hmacSha256Hex } from "../../supabase/functions/_shared/hmac.ts";
@@ -295,6 +296,29 @@ describe("Garmin webhook identity helpers", () => {
 			ok: true,
 			userId: "user-1",
 			bindProviderUserId: true,
+		});
+	});
+
+	it("strips userAccessToken and token-shaped keys from stored Garmin raw_data", () => {
+		expect(
+			redactGarminRawData({
+				userId: "garmin-1",
+				userAccessToken: "must-not-persist",
+				accessToken: "also-secret",
+				activityId: 42,
+				activityName: "Easy run",
+				summary: {
+					refresh_token: "nested-secret",
+					hrv: 62,
+				},
+			}),
+		).toEqual({
+			userId: "garmin-1",
+			activityId: 42,
+			activityName: "Easy run",
+			summary: {
+				hrv: 62,
+			},
 		});
 	});
 });

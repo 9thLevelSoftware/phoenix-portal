@@ -1,12 +1,26 @@
-const ALLOWED_ORIGINS: string[] = (() => {
-  const appUrl = Deno.env.get('APP_URL');
-  const origins: string[] = appUrl ? [appUrl] : [];
-  // Always allow localhost in non-production
-  if (Deno.env.get('ENVIRONMENT') !== 'production') {
-    origins.push('http://localhost:5173', 'http://localhost:3000');
+import { buildAllowedOrigins } from './corsOrigins.ts';
+
+export {
+  buildAllowedOrigins,
+  isHostedSupabaseUrl,
+  shouldAllowLocalhostOrigins,
+} from './corsOrigins.ts';
+
+function readEnv(name: string): string | undefined {
+  try {
+    return Deno.env.get(name);
+  } catch {
+    return undefined;
   }
-  return origins;
-})();
+}
+
+function getAllowedOrigins(): string[] {
+  return buildAllowedOrigins(
+    readEnv('APP_URL'),
+    readEnv('ENVIRONMENT'),
+    readEnv('SUPABASE_URL'),
+  );
+}
 
 /**
  * Generate CORS headers with dynamic origin validation and security headers.
@@ -26,7 +40,7 @@ const ALLOWED_ORIGINS: string[] = (() => {
  */
 export function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin') ?? '';
-  const isAllowed = ALLOWED_ORIGINS.includes(origin);
+  const isAllowed = getAllowedOrigins().includes(origin);
 
   return {
     ...(isAllowed ? { 'Access-Control-Allow-Origin': origin } : {}),
@@ -40,7 +54,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     // HSTS only in production
-    ...(Deno.env.get('ENVIRONMENT') === 'production'
+    ...(readEnv('ENVIRONMENT') === 'production'
       ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
       : {}),
   };
@@ -52,7 +66,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
  * Includes basic security headers for webhook endpoints.
  */
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('APP_URL') ?? 'http://localhost:5173',
+  'Access-Control-Allow-Origin': readEnv('APP_URL') ?? 'http://localhost:5173',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
   'X-Frame-Options': 'DENY',

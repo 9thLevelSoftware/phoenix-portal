@@ -96,3 +96,26 @@ export async function resolveGarminWebhookIdentity(
     bindProviderUserId: !match.provider_user_id,
   };
 }
+
+const TOKEN_SHAPED_KEY = /token/i;
+
+/**
+ * Strip OAuth tokens from Garmin webhook JSON before it is stored in
+ * browser-readable `external_activities.raw_data`.
+ */
+export function redactGarminRawData(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (TOKEN_SHAPED_KEY.test(key)) {
+      continue;
+    }
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      out[key] = redactGarminRawData(nested as Record<string, unknown>);
+    } else {
+      out[key] = nested;
+    }
+  }
+  return out;
+}

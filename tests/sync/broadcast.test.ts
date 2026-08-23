@@ -66,18 +66,13 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 		expect(evt.channel).toMatch(/^sync:/);
 		expect(evt.event).toBe("sync_complete");
 
-		// Payload shape matches Edge Function (index.ts lines 1454-1464)
-		expect(evt.payload).toMatchObject({
-			deviceId: "device-broadcast-1",
-			platform: "android",
-			profileId: null,
-			profileName: null,
-			sessionsInserted: expect.any(Number),
-			routinesUpserted: expect.any(Number),
-			cyclesUpserted: expect.any(Number),
-			badgesUpserted: expect.any(Number),
+		// Private Broadcast payload is { syncTime } only — no training metadata.
+		expect(evt.payload).toEqual({
+			syncTime: expect.any(String),
 		});
-		expect(evt.payload.syncTime).toBeDefined();
+		expect(evt.payload).not.toHaveProperty("deviceId");
+		expect(evt.payload).not.toHaveProperty("profileName");
+		expect(evt.payload).not.toHaveProperty("sessionsInserted");
 	});
 
 	it("does NOT broadcast when push fails (missing Authorization)", async () => {
