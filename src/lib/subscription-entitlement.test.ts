@@ -73,4 +73,32 @@ describe("subscription entitlement", () => {
 		expect(isStaleActiveSubscription("active", null, now)).toBe(true);
 		expect(isStaleActiveSubscription("active", "not-a-date", now)).toBe(true);
 	});
+
+	it("grants a trialing subscription with a future period end", () => {
+		expect(
+			getEffectiveSubscriptionTier(
+				"EMBER",
+				"trialing",
+				"2026-06-01T00:00:00Z",
+				now,
+			),
+		).toBe("EMBER");
+		expect(
+			hasCurrentPeriodAccess("trialing", "2026-06-01T00:00:00Z", now),
+		).toBe(true);
+	});
+
+	it("denies when current_period_end equals now", () => {
+		expect(hasCurrentPeriodAccess("active", "2026-05-17T12:00:00Z", now)).toBe(
+			false,
+		);
+		expect(
+			getEffectiveSubscriptionTier(
+				"FLAME",
+				"active",
+				"2026-05-17T12:00:00Z",
+				now,
+			),
+		).toBe("FREE");
+	});
 });

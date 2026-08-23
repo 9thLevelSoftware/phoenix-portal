@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildGarminWebhookPersistRow,
 	extractGarminProviderUserId,
 	type GarminIdentityCandidate,
+	redactGarminRawData,
 	resolveGarminWebhookIdentity,
 } from "../../supabase/functions/_shared/garminIdentity.ts";
 import { hmacSha256Hex } from "../../supabase/functions/_shared/hmac.ts";
@@ -108,7 +110,13 @@ describe("Paddle webhook security helpers", () => {
 		expect(isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", now)).toBe(
 			true,
 		);
+		expect(
+			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", now),
+		).toBe(true);
 		expect(isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", now)).toBe(
+			false,
+		);
+		expect(isSubscriptionEntitled("active", "2026-05-17T12:00:00Z", now)).toBe(
 			false,
 		);
 		expect(isSubscriptionEntitled("active", null, now)).toBe(false);
@@ -237,6 +245,84 @@ describe("Garmin webhook identity helpers", () => {
 		).toBe("garmin-456");
 	});
 
+	it("rejects missing Garmin identity fields", async () => {
+		await expect(
+			resolveGarminWebhookIdentity({}, [], decrypt),
+		).resolves.toEqual({ ok: false, reason: "missing_identity" });
+		await expect(
+			resolveGarminWebhookIdentity({ userId: "garmin-1" }, [], decrypt),
+		).resolves.toEqual({ ok: false, reason: "missing_identity" });
+		await expect(
+			resolveGarminWebhookIdentity(
+				{ userAccessToken: "input-only-token" },
+				[],
+				decrypt,
+			),
+		).resolves.toEqual({ ok: false, reason: "missing_identity" });
+	});
+
+	it("rejects a token match whose bound provider_user_id differs", async () => {
+		await expect(
+			resolveGarminWebhookIdentity(
+				{ userId: "garmin-A", userAccessToken: "input-only-token" },
+				[
+					{
+						user_id: "user-1",
+						provider_user_id: "garmin-B",
+						access_token: "input-only-token",
+					},
+				],
+				decrypt,
+			),
+		).resolves.toEqual({ ok: false, reason: "provider_user_id_mismatch" });
+	});
+
+	it("skips a decrypt failure and continues with remaining candidates", async () => {
+		const decryptSkip = async (stored: string | null | undefined) => {
+			if (stored === "corrupt-blob") {
+				throw new Error("decrypt failed");
+			}
+			return stored;
+		};
+
+		await expect(
+			resolveGarminWebhookIdentity(
+				{ userId: "garmin-1", userAccessToken: "input-only-token" },
+				[
+					{
+						user_id: "corrupt-user",
+						provider_user_id: null,
+						access_token: "corrupt-blob",
+					},
+					{
+						user_id: "good-user",
+						provider_user_id: null,
+						access_token: "input-only-token",
+					},
+				],
+				decryptSkip,
+			),
+		).resolves.toEqual({
+			ok: true,
+			userId: "good-user",
+			bindProviderUserId: true,
+		});
+
+		await expect(
+			resolveGarminWebhookIdentity(
+				{ userId: "garmin-1", userAccessToken: "input-only-token" },
+				[
+					{
+						user_id: "only-corrupt",
+						provider_user_id: "garmin-1",
+						access_token: "corrupt-blob",
+					},
+				],
+				decryptSkip,
+			),
+		).resolves.toEqual({ ok: false, reason: "unbound" });
+	});
+
 	it("does not trust provider_user_id without a matching server-held access token", async () => {
 		await expect(
 			resolveGarminWebhookIdentity(
@@ -296,5 +382,56 @@ describe("Garmin webhook identity helpers", () => {
 			userId: "user-1",
 			bindProviderUserId: true,
 		});
+	});
+
+	it("strips userAccessToken and token-shaped keys from stored Garmin raw_data", () => {
+		expect(
+			redactGarminRawData({
+				userId: "garmin-1",
+				userAccessToken: "must-not-persist",
+				accessToken: "also-secret",
+				activityId: 42,
+				activityName: "Easy run",
+				summary: {
+					refresh_token: "nested-secret",
+					hrv: 62,
+				},
+				samples: [{ userAccessToken: "array-secret", watts: 200 }, { hrv: 55 }],
+			}),
+		).toEqual({
+			userId: "garmin-1",
+			activityId: 42,
+			activityName: "Easy run",
+			summary: {
+				hrv: 62,
+			},
+			samples: [{ watts: 200 }, { hrv: 55 }],
+		});
+	});
+
+	it("persist-path upsert row never contains token-shaped keys", () => {
+		const row = buildGarminWebhookPersistRow(
+			"user-1",
+			{
+				userId: "garmin-1",
+				userAccessToken: "must-not-persist",
+				summary: { access_token: "nested", hrv: 70 },
+				laps: [{ refreshToken: "lap-secret", distance: 400 }],
+			},
+			{
+				external_id: "42",
+				provider: "garmin",
+				name: "Easy run",
+			},
+			"2026-08-23T00:00:00.000Z",
+		);
+
+		expect(row.user_id).toBe("user-1");
+		expect(row.raw_data).toEqual({
+			userId: "garmin-1",
+			summary: { hrv: 70 },
+			laps: [{ distance: 400 }],
+		});
+		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
 	});
 });

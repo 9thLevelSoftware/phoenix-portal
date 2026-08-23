@@ -8,7 +8,8 @@
  *
  * Invariants asserted:
  *   1. A successful push emits exactly one `sync_complete` event on
- *      `sync:{userId}` with the documented payload shape.
+ *      `sync:{userId}` (send-side; portal still uses a UUID suffix until PR2)
+ *      with payload `{ syncTime }` on a private channel.
  *   2. A failed push (e.g., validation error pre-broadcast) emits NO event.
  *   3. Broadcast is fire-and-forget: if the channel.send() call throws,
  *      the push still returns 200 with its syncTime.
@@ -21,6 +22,8 @@
  * without live Supabase credentials.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	callPushEndpoint,
@@ -66,18 +69,30 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 		expect(evt.channel).toMatch(/^sync:/);
 		expect(evt.event).toBe("sync_complete");
 
-		// Payload shape matches Edge Function (index.ts lines 1454-1464)
-		expect(evt.payload).toMatchObject({
-			deviceId: "device-broadcast-1",
-			platform: "android",
-			profileId: null,
-			profileName: null,
-			sessionsInserted: expect.any(Number),
-			routinesUpserted: expect.any(Number),
-			cyclesUpserted: expect.any(Number),
-			badgesUpserted: expect.any(Number),
+		// Private Broadcast payload is { syncTime } only — no training metadata.
+		expect(evt.payload).toEqual({
+			syncTime: expect.any(String),
 		});
-		expect(evt.payload.syncTime).toBeDefined();
+		expect(evt.payload).not.toHaveProperty("deviceId");
+		expect(evt.payload).not.toHaveProperty("profileName");
+		expect(evt.payload).not.toHaveProperty("sessionsInserted");
+		expect(evt.private).toBe(true);
+	});
+
+	it("locks mobile-sync-push to private: true channel config", () => {
+		const source = readFileSync(
+			join(
+				process.cwd(),
+				"supabase",
+				"functions",
+				"mobile-sync-push",
+				"index.ts",
+			),
+			"utf8",
+		);
+		expect(source).toMatch(
+			/supabase\.channel\(`sync:\$\{userId\}`,\s*\{\s*config:\s*\{\s*private:\s*true/,
+		);
 	});
 
 	it("does NOT broadcast when push fails (missing Authorization)", async () => {
@@ -119,8 +134,8 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 
 	it("channel name encodes userId (sync:{userId})", async () => {
 		// Use a distinctive userId via a session's userId field so the mock
-		// can derive it. This asserts the channel-naming invariant that
-		// useRealtimeSync relies on: `supabase.channel(`sync:${user.id}`)`.
+		// can derive it. Send-side topic is `sync:{userId}` (private). Portal
+		// subscribe still uses a UUID suffix until PR2.
 		const payload = createMinimalPushPayload(testUser.id);
 		payload.sessions = [
 			{

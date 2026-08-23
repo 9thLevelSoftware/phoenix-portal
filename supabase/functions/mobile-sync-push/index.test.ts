@@ -475,6 +475,8 @@ interface PushHarness {
   adminWriteCalls: Array<{ table: string; method: string }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
+  channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
+  broadcastPayloads: unknown[];
 }
 
 function makeHarness(
@@ -494,6 +496,9 @@ function makeHarness(
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
+  const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
+    [];
+  const broadcastPayloads: unknown[] = [];
 
   const admin = {
     from(table: string) {
@@ -534,14 +539,16 @@ function makeHarness(
       }
       return { data: [], error: null };
     },
-    channel() {
+    channel(topic: string, channelOptions?: { config?: Record<string, unknown> }) {
       if (options.channelError !== undefined) throw options.channelError;
+      channelCalls.push({ topic, config: channelOptions?.config });
       return {
         subscribe(callback: (status: string) => void) {
           callback("SUBSCRIBED");
           return {};
         },
-        async send() {
+        async send(message: { payload?: unknown }) {
+          broadcastPayloads.push(message.payload);
           return "ok";
         },
       };
@@ -581,6 +588,8 @@ function makeHarness(
     adminWriteCalls,
     loggerCalls,
     operationEvents,
+    channelCalls,
+    broadcastPayloads,
   };
 }
 
@@ -1722,6 +1731,19 @@ Deno.test("syncTime uses the injected current time", async () => {
 
   assertEquals(response.status, 200);
   assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
+});
+
+Deno.test("broadcasts private sync_complete with { syncTime } only", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.channelCalls.length, 1);
+  assertEquals(harness.channelCalls[0]?.topic, `sync:${VALID_USER_ID}`);
+  assertEquals(harness.channelCalls[0]?.config?.private, true);
+  assertEquals(harness.broadcastPayloads, [{
+    syncTime: "2026-07-16T02:00:00.000Z",
+  }]);
 });
 
 Deno.test("complete validation precedes every privileged construction and call", async () => {

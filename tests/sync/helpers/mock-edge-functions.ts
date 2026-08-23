@@ -206,17 +206,14 @@ export function mockPushEndpoint(
 	// The real implementation is at mobile-sync-push/index.ts lines 1449-1471.
 	// We derive a userId from the sessions payload or fall back to 'mock-user'.
 	const userId = payload.sessions?.[0]?.userId ?? "mock-user";
-	recordBroadcast(`sync:${userId}`, "sync_complete", {
-		syncTime: new Date(syncTime).toISOString(),
-		deviceId: payload.deviceId,
-		platform: payload.platform,
-		profileId: payload.profileId ?? null,
-		profileName: payload.profileName ?? null,
-		sessionsInserted: payload.sessions?.length ?? 0,
-		routinesUpserted: payload.routines?.length ?? 0,
-		cyclesUpserted: payload.cycles?.length ?? 0,
-		badgesUpserted: payload.badges?.length ?? 0,
-	});
+	recordBroadcast(
+		`sync:${userId}`,
+		"sync_complete",
+		{
+			syncTime: new Date(syncTime).toISOString(),
+		},
+		{ private: true },
+	);
 
 	return {
 		success: true,
