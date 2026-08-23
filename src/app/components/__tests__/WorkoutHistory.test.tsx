@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { WorkoutHistory } from "../WorkoutHistory";
 
@@ -11,6 +11,25 @@ const mockAuth = vi.hoisted(() => ({
 		signOut: () => Promise.resolve(),
 	}),
 }));
+
+const mockSub = vi.hoisted(() => ({
+	isFlame: false,
+}));
+
+const sampleWorkout = {
+	id: "00000000-0000-4000-8000-000000000010",
+	user_id: "00000000-0000-4000-8000-000000000999",
+	name: "Strength Session",
+	started_at: new Date(),
+	duration_seconds: 1800,
+	total_volume: 1000,
+	set_count: 3,
+	exercise_count: 1,
+	pr_count: 1,
+	routine_name: null,
+	workout_mode: "Old School",
+	notes: null,
+};
 
 const mockInfinite = vi.hoisted(() => ({
 	result: {
@@ -29,9 +48,9 @@ vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
 vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => ({
-		isFlame: false,
+		isFlame: mockSub.isFlame,
 		isPremium: true,
-		tier: "EMBER",
+		tier: mockSub.isFlame ? "FLAME" : "EMBER",
 		isError: false,
 		isLoading: false,
 	}),
@@ -50,13 +69,20 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 describe("WorkoutHistory", () => {
-	it("renders without crashing", () => {
+	beforeEach(() => {
+		mockSub.isFlame = false;
 		mockInfinite.result = {
 			...mockInfinite.result,
 			isPending: true,
 			isError: false,
 			data: undefined,
+			hasNextPage: false,
+			isFetchingNextPage: false,
+			isFetchNextPageError: false,
 		};
+	});
+
+	it("renders without crashing", () => {
 		const { container } = renderWithProviders(<WorkoutHistory />);
 		expect(container.firstChild).toBeTruthy();
 	});
@@ -86,6 +112,40 @@ describe("WorkoutHistory", () => {
 		expect(screen.getByText(/no workouts yet/i)).toBeInTheDocument();
 		expect(
 			screen.queryByText(/couldn't load your workout history/i),
+		).not.toBeInTheDocument();
+	});
+
+	it("does not present Compare as an Ember journey — Flame badge links to pricing", () => {
+		mockSub.isFlame = false;
+		mockInfinite.result = {
+			...mockInfinite.result,
+			isPending: false,
+			isError: false,
+			data: { pages: [[sampleWorkout]] },
+		};
+		renderWithProviders(<WorkoutHistory />);
+		const compareLink = screen.getByRole("link", { name: /compare/i });
+		expect(compareLink).toHaveAttribute("href", "/pricing");
+		expect(screen.getByText("FLAME")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /^compare$/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows the Compare control for Flame, not a pricing upgrade chip", () => {
+		mockSub.isFlame = true;
+		mockInfinite.result = {
+			...mockInfinite.result,
+			isPending: false,
+			isError: false,
+			data: { pages: [[sampleWorkout]] },
+		};
+		renderWithProviders(<WorkoutHistory />);
+		expect(
+			screen.getByRole("button", { name: /^compare$/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: /compare/i }),
 		).not.toBeInTheDocument();
 	});
 });

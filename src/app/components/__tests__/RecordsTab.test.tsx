@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
-import { RoutinesEnhanced } from "../RoutinesEnhanced";
+import RecordsTab from "../analytics/RecordsTab";
 
 const mockAuth = vi.hoisted(() => ({
 	useAuth: () => ({
@@ -31,7 +31,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 	};
 });
 
-describe("RoutinesEnhanced", () => {
+describe("RecordsTab", () => {
 	beforeEach(() => {
 		mockQuery.result = {
 			data: undefined,
@@ -41,25 +41,20 @@ describe("RoutinesEnhanced", () => {
 		};
 	});
 
-	it("renders without crashing", () => {
-		renderWithProviders(<RoutinesEnhanced />);
-		expect(screen.getAllByText(/my routines/i).length).toBeGreaterThan(0);
-	});
-
-	it("shows an error, not the athlete-empty copy, when the list query fails", () => {
+	it("shows an error, not the athlete-empty copy, when records fail to load", () => {
 		mockQuery.result = {
 			data: undefined,
 			isPending: false,
 			isError: true,
 			refetch: () => Promise.resolve(),
 		};
-		renderWithProviders(<RoutinesEnhanced />);
+		renderWithProviders(<RecordsTab unit="kg" />);
 		expect(
-			screen.getByText(/couldn't load your routines/i),
+			screen.getByText(/couldn't load personal records/i),
 		).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
 		expect(
-			screen.queryByText(/build your first routine/i),
+			screen.queryByText(/no personal records yet/i),
 		).not.toBeInTheDocument();
 	});
 
@@ -70,10 +65,10 @@ describe("RoutinesEnhanced", () => {
 			isError: false,
 			refetch: () => Promise.resolve(),
 		};
-		renderWithProviders(<RoutinesEnhanced />);
-		expect(screen.getByText(/build your first routine/i)).toBeInTheDocument();
+		renderWithProviders(<RecordsTab unit="kg" />);
+		expect(screen.getByText(/no personal records yet/i)).toBeInTheDocument();
 		expect(
-			screen.queryByText(/couldn't load your routines/i),
+			screen.queryByText(/couldn't load personal records/i),
 		).not.toBeInTheDocument();
 	});
 });
