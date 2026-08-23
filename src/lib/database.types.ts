@@ -2557,6 +2557,10 @@ export type Database = {
 					total_volume: number;
 				}[];
 			};
+			workout_current_streak: {
+				Args: { p_user_id: string };
+				Returns: number;
+			};
 			get_volume_rolling_avg: {
 				Args: {
 					p_lookback_days?: number;

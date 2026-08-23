@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import type { SessionSummary } from "@/lib/comparison";
 import { supabase } from "@/lib/supabase";
@@ -73,6 +73,58 @@ export function workoutListPageOptions(
 			if (error) throw error;
 			return workoutListSchema.parse(data);
 		},
+	});
+}
+
+/**
+ * Infinite workout history. Query key sits under `queryKeys.workouts.all` so
+ * realtime invalidation drops extra pages instead of leaving a shadow list.
+ */
+export function workoutListInfiniteOptions(
+	userId: string,
+	profileId?: string | null,
+) {
+	return infiniteQueryOptions({
+		queryKey: queryKeys.workouts.infinite(userId, profileId),
+		queryFn: async ({ pageParam = 0 }) => {
+			let query = supabase
+				.from("workout_sessions")
+				.select("*")
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
+				.order("started_at", { ascending: false })
+				.range(pageParam, pageParam + WORKOUTS_PAGE_SIZE - 1);
+			if (error) throw error;
+			return workoutListSchema.parse(data);
+		},
+		initialPageParam: 0,
+		getNextPageParam: (lastPage, allPages) => {
+			if (lastPage.length < WORKOUTS_PAGE_SIZE) return undefined;
+			return allPages.reduce((total, page) => total + page.length, 0);
+		},
+	});
+}
+
+/**
+ * SQL streak matching `useStreak` UTC unique-date + today-skip semantics.
+ * Invalidated with the rest of the workouts family on mobile sync.
+ */
+export function workoutStreakOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.workouts.streak(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase.rpc("workout_current_streak", {
+				p_user_id: userId,
+			});
+			if (error) throw error;
+			return typeof data === "number" && Number.isFinite(data) ? data : 0;
+		},
+		enabled: !!userId,
 	});
 }
 
