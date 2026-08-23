@@ -750,7 +750,11 @@ END
 $function$;
 
 -- ---------------------------------------------------------------------------
--- 7. Private Broadcast SELECT on realtime.messages (CI-safe if relation absent)
+-- 7. Private Broadcast SELECT on realtime.messages
+--    CI-safe if the relation is absent. Hosted branching cannot ALTER/GRANT/
+--    CREATE POLICY on realtime.messages (postgres is not the owner) — catch
+--    insufficient_privilege (SQLSTATE 42501), RAISE NOTICE, and continue.
+--    Local supabase start owns the catalog, so the policy still applies.
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
@@ -759,28 +763,44 @@ BEGIN
     RETURN;
   END IF;
 
-  EXECUTE 'ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY';
-  -- KD-29: private Broadcast SELECT needs a table grant; service-role still
-  -- sends (no authenticated INSERT policy).
-  EXECUTE 'GRANT SELECT ON realtime.messages TO authenticated';
+  BEGIN
+    EXECUTE 'ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'skip ALTER TABLE realtime.messages ENABLE RLS: not table owner (SQLSTATE 42501)';
+  END;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'realtime'
-      AND tablename = 'messages'
-      AND policyname = 'phoenix_sync_broadcast_select'
-  ) THEN
-    EXECUTE $policy$
-      CREATE POLICY phoenix_sync_broadcast_select
-      ON realtime.messages
-      FOR SELECT
-      TO authenticated
-      USING (
-        realtime.messages.extension = 'broadcast'
-        AND realtime.topic() = 'sync:' || auth.uid()::text
-      )
-    $policy$;
-  END IF;
+  BEGIN
+    -- KD-29: private Broadcast SELECT needs a table grant; service-role still
+    -- sends (no authenticated INSERT policy).
+    EXECUTE 'GRANT SELECT ON realtime.messages TO authenticated';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'skip GRANT SELECT ON realtime.messages: not table owner (SQLSTATE 42501)';
+  END;
+
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE schemaname = 'realtime'
+        AND tablename = 'messages'
+        AND policyname = 'phoenix_sync_broadcast_select'
+    ) THEN
+      EXECUTE $policy$
+        CREATE POLICY phoenix_sync_broadcast_select
+        ON realtime.messages
+        FOR SELECT
+        TO authenticated
+        USING (
+          realtime.messages.extension = 'broadcast'
+          AND realtime.topic() = 'sync:' || auth.uid()::text
+        )
+      $policy$;
+    END IF;
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'skip CREATE POLICY phoenix_sync_broadcast_select: not table owner (SQLSTATE 42501)';
+  END;
 END $$;
 
 -- ---------------------------------------------------------------------------
