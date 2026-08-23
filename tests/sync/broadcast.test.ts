@@ -8,7 +8,7 @@
  *
  * Invariants asserted:
  *   1. A successful push emits exactly one `sync_complete` event on
- *      `sync:{userId}` (send-side; portal still uses a UUID suffix until PR2)
+ *      `sync:{userId}` (same string as the portal subscribe topic)
  *      with payload `{ syncTime }` on a private channel.
  *   2. A failed push (e.g., validation error pre-broadcast) emits NO event.
  *   3. Broadcast is fire-and-forget: if the channel.send() call throws,
@@ -91,7 +91,7 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 			"utf8",
 		);
 		expect(source).toMatch(
-			/supabase\.channel\(`sync:\$\{userId\}`,\s*\{\s*config:\s*\{\s*private:\s*true/,
+			/supabase\.channel\(syncBroadcastTopic\(userId\),\s*\{\s*config:\s*\{\s*private:\s*true/,
 		);
 	});
 
@@ -134,8 +134,7 @@ describe("mobile-sync-push → Supabase Broadcast", () => {
 
 	it("channel name encodes userId (sync:{userId})", async () => {
 		// Use a distinctive userId via a session's userId field so the mock
-		// can derive it. Send-side topic is `sync:{userId}` (private). Portal
-		// subscribe still uses a UUID suffix until PR2.
+		// can derive it. Send-side and portal subscribe share `sync:{userId}`.
 		const payload = createMinimalPushPayload(testUser.id);
 		payload.sessions = [
 			{

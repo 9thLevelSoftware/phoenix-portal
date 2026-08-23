@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 import { useRealtimeSync } from "../useRealtimeSync";
 
@@ -19,13 +19,16 @@ const TARGETED_INVALIDATIONS = [
 	queryKeys.challenges.all,
 	queryKeys.integrations.external(USER_ID),
 	queryKeys.localProfiles.byUser(USER_ID),
+	queryKeys.onboarding.all,
+	queryKeys.insights.all,
 ];
 
 const mocks = vi.hoisted(() => {
 	let broadcastHandler: ((payload: unknown) => void) | undefined;
 	let subscribeHandler: ((status: string) => void) | undefined;
 	const invalidateQueries = vi.fn();
-	const removeChannel = vi.fn();
+	const removeChannel = vi.fn(() => Promise.resolve("ok"));
+	const toastError = vi.fn();
 	const mockChannel = {
 		on: vi.fn(
 			(
@@ -52,6 +55,7 @@ const mocks = vi.hoisted(() => {
 		},
 		invalidateQueries,
 		removeChannel,
+		toastError,
 		mockChannel,
 		mockSupabase: {
 			channel: vi.fn(() => mockChannel),
@@ -79,20 +83,40 @@ vi.mock("@/lib/supabase", () => ({
 	supabase: mocks.mockSupabase,
 }));
 
+vi.mock("sonner", () => ({
+	toast: { error: (...args: unknown[]) => mocks.toastError(...args) },
+}));
+
 function TestComponent() {
 	useRealtimeSync();
 	return null;
 }
 
+async function renderHook() {
+	const view = render(<TestComponent />);
+	await act(async () => {
+		await Promise.resolve();
+	});
+	return view;
+}
+
 describe("useRealtimeSync", () => {
+	beforeEach(() => {
+		mocks.invalidateQueries.mockClear();
+		mocks.removeChannel.mockClear();
+		mocks.mockChannel.on.mockClear();
+		mocks.mockChannel.subscribe.mockClear();
+		mocks.mockSupabase.channel.mockClear();
+		mocks.toastError.mockClear();
+	});
+
 	it("invalidates targeted query keys on sync_complete", async () => {
 		vi.useFakeTimers();
-		const { unmount } = render(<TestComponent />);
+		const { unmount } = await renderHook();
 
-		// Topic carries a per-mount unique suffix to avoid remount channel collisions.
-		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-			expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
-		);
+		expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(`sync:${USER_ID}`, {
+			config: { private: true },
+		});
 		expect(mocks.subscribeHandler).toBeTypeOf("function");
 
 		mocks.broadcastHandler?.({});
@@ -109,5 +133,39 @@ describe("useRealtimeSync", () => {
 
 		expect(mocks.removeChannel).toHaveBeenCalledWith(mocks.mockChannel);
 		vi.useRealTimers();
+	});
+
+	it("invalidates on SUBSCRIBED catch-up", async () => {
+		vi.useFakeTimers();
+		try {
+			const { unmount } = await renderHook();
+			mocks.subscribeHandler?.("SUBSCRIBED");
+			await vi.advanceTimersByTimeAsync(400);
+			expect(mocks.invalidateQueries).toHaveBeenCalledTimes(
+				TARGETED_INVALIDATIONS.length,
+			);
+			unmount();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("toasts CHANNEL_ERROR and does not fall back to a public topic", async () => {
+		vi.useFakeTimers();
+		try {
+			const { unmount } = await renderHook();
+			const callsBefore = mocks.mockSupabase.channel.mock.calls.length;
+			mocks.subscribeHandler?.("CHANNEL_ERROR");
+			expect(mocks.toastError).toHaveBeenCalledWith(
+				"Live sync unavailable. Refresh to retry.",
+			);
+			expect(mocks.mockSupabase.channel.mock.calls.length).toBe(callsBefore);
+			for (const call of mocks.mockSupabase.channel.mock.calls) {
+				expect(call[1]).toEqual({ config: { private: true } });
+			}
+			unmount();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler } from "./index.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
@@ -65,12 +66,14 @@ interface AdminOptions {
     name: string,
     args: Record<string, unknown>,
   ) => { data: unknown; error: unknown } | undefined;
+  fromPages?: Record<string, Array<{ data: unknown; error: unknown }>>;
 }
 
 function createAdminDouble(
   calls: AdminCall[],
   options: AdminOptions,
 ): Record<string, unknown> {
+  const fromPageIndex: Record<string, number> = {};
   const rpc = (name: string, args: Record<string, unknown>) => {
     calls.push({ kind: "rpc", name, args });
     const implResult = options.rpcImpl?.(name, args);
@@ -131,6 +134,12 @@ function createAdminDouble(
         }
         return options.preferenceResult ?? { data: null, error: null };
       }
+      const pages = options.fromPages?.[name];
+      if (pages) {
+        const index = fromPageIndex[name] ?? 0;
+        fromPageIndex[name] = index + 1;
+        return pages[index] ?? { data: [], error: null };
+      }
       return { data: [], error: null };
     };
     const builder: Record<string, unknown> = {};
@@ -145,6 +154,7 @@ function createAdminDouble(
         "lte",
         "order",
         "limit",
+        "range",
         "in",
         "is",
         "not",
@@ -1310,3 +1320,105 @@ Deno.test({
     }
   },
 });
+
+const OVERFLOW_SESSION_ID = "00000000-0000-4000-8000-0000000000aa";
+
+function sessionRpcRow(): Record<string, unknown> {
+  return {
+    id: OVERFLOW_SESSION_ID,
+    user_id: VALID_USER_ID,
+    name: "Paged",
+    started_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-01T00:00:00.000Z",
+    duration_seconds: 60,
+    total_volume: 0,
+    set_count: 0,
+    exercise_count: 1,
+    pr_count: 0,
+  };
+}
+
+function exerciseRows(count: number): Record<string, unknown>[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+    session_id: OVERFLOW_SESSION_ID,
+    name: `Ex ${i}`,
+    muscle_group: "Chest",
+    order_index: i,
+  }));
+}
+
+Deno.test("child paging: exact PAGE for one parent is HTTP 200", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_sessions_excluding_ids") {
+        return { data: [sessionRpcRow()], error: null };
+      }
+      return undefined;
+    },
+    fromPages: {
+      exercises: [{ data: exerciseRows(CHILD_PAGE_SIZE), error: null }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals((body.sessions as unknown[]).length, 1);
+  assertEquals(
+    ((body.sessions as Array<{ exercises: unknown[] }>)[0].exercises).length,
+    CHILD_PAGE_SIZE,
+  );
+});
+
+Deno.test("child paging: one parent PAGE+1 then Range refused is HTTP 503", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_sessions_excluding_ids") {
+        return { data: [sessionRpcRow()], error: null };
+      }
+      return undefined;
+    },
+    fromPages: {
+      exercises: [
+        { data: exerciseRows(CHILD_PAGE_SIZE + 1), error: null },
+        {
+          data: null,
+          error: { message: "Requested range not satisfiable", code: "PGRST103" },
+        },
+      ],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 503);
+  const body = await json(response);
+  assertEquals(body.code, "CHILD_OVERFLOW");
+});
+
+Deno.test("external_activities hasMore is true when the 500-row cap is hit", async () => {
+  const activities = Array.from({ length: 500 }, (_, i) => ({
+    id: `act-${i}`,
+    external_id: `ext-${i}`,
+    provider: "strava",
+    name: "Run",
+    activity_type: "Run",
+    started_at: "2026-08-01T00:00:00.000Z",
+    duration_seconds: 60,
+    distance_meters: 1000,
+    calories: 10,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: null,
+  }));
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      external_activities: [{ data: activities, error: null }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals(body.externalActivitiesHasMore, true);
+  assertEquals((body.externalActivities as unknown[]).length, 500);
+});
+

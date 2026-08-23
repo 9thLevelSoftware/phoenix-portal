@@ -92,6 +92,7 @@ export interface PullResponse {
 	gamificationStats: GamificationStatsResponseDto | null;
 	localProfiles: LocalProfileResponseDto[];
 	externalActivities: ExternalActivityResponseDto[];
+	externalActivitiesHasMore?: boolean;
 	customExercises?: CustomExerciseResponseDto[];
 }
 

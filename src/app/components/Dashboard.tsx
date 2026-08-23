@@ -59,6 +59,7 @@ import {
 	dashboardStatsOptions,
 	recentPRsOptions,
 	workoutListOptions,
+	workoutStreakOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -355,6 +356,10 @@ export function Dashboard() {
 		...workoutListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	const { data: rpcStreak } = useQuery({
+		...workoutStreakOptions(userId),
+		enabled: !!userId,
+	});
 	const { data: weeklyStats, isPending: statsLoading } = useQuery({
 		...dashboardStatsOptions(userId, activeProfileId),
 		enabled: !!userId,
@@ -380,7 +385,8 @@ export function Dashboard() {
 		enabled: !!userId,
 	});
 
-	const streak = useStreak(workouts);
+	const listStreak = useStreak(workouts);
+	const streak = typeof rpcStreak === "number" ? rpcStreak : listStreak;
 	const activeCycle = cycles?.find((c) => c.status === "active");
 	const activeGoalCount =
 		goals?.filter((g) => g.status === "active").length ?? 0;

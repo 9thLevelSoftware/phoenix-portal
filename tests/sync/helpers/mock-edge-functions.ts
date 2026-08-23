@@ -7,12 +7,14 @@
  * Enable mocks by setting MOCK_EDGE_FUNCTIONS=true environment variable.
  */
 
+import { CHILD_PAGE_SIZE } from "../../../supabase/functions/_shared/pagedByParent.ts";
 import {
 	findPushPayloadDuplicateConflictKeys,
 	findPushPayloadIncompleteRoutines,
 	formatPushPayloadDuplicateError,
 	formatPushPayloadIncompleteRoutinesError,
 } from "../../../supabase/functions/_shared/pushPayloadSchema.ts";
+import { syncBroadcastTopic } from "../../../supabase/functions/_shared/syncBroadcast.ts";
 import type {
 	BadgeResponseDto,
 	CycleResponseDto,
@@ -55,6 +57,42 @@ const mockStore: MockStore = {
 	lastPushTime: 0,
 };
 
+/** Test-only PAGE override so overflow tests need not allocate 501 children. */
+let mockChildPageSize = CHILD_PAGE_SIZE;
+
+export function setMockChildPageSize(size: number): void {
+	mockChildPageSize = size;
+}
+
+function findOverflowParentId(): string | null {
+	for (const session of mockStore.sessions.values()) {
+		if ((session.exercises?.length ?? 0) > mockChildPageSize) {
+			return session.id;
+		}
+		for (const exercise of session.exercises ?? []) {
+			if ((exercise.sets?.length ?? 0) > mockChildPageSize) {
+				return exercise.id;
+			}
+			for (const set of exercise.sets ?? []) {
+				if ((set.repSummaries?.length ?? 0) > mockChildPageSize) {
+					return set.id;
+				}
+			}
+		}
+	}
+	for (const routine of mockStore.routines.values()) {
+		if ((routine.exercises?.length ?? 0) > mockChildPageSize) {
+			return routine.id;
+		}
+	}
+	for (const cycle of mockStore.cycles.values()) {
+		if ((cycle.days?.length ?? 0) > mockChildPageSize) {
+			return cycle.id;
+		}
+	}
+	return null;
+}
+
 /**
  * Reset mock store state (useful between tests)
  */
@@ -64,6 +102,7 @@ export function resetMockStore(): void {
 	mockStore.cycles.clear();
 	mockStore.badges.clear();
 	mockStore.lastPushTime = 0;
+	mockChildPageSize = CHILD_PAGE_SIZE;
 }
 
 // ============================================================================
@@ -207,7 +246,7 @@ export function mockPushEndpoint(
 	// We derive a userId from the sessions payload or fall back to 'mock-user'.
 	const userId = payload.sessions?.[0]?.userId ?? "mock-user";
 	recordBroadcast(
-		`sync:${userId}`,
+		syncBroadcastTopic(userId),
 		"sync_complete",
 		{
 			syncTime: new Date(syncTime).toISOString(),
@@ -244,6 +283,18 @@ export function mockPullEndpoint(
 			error: {
 				message: "Missing Authorization header",
 				code: "UNAUTHORIZED",
+			},
+		};
+	}
+
+	const overflowParentId = findOverflowParentId();
+	if (overflowParentId) {
+		return {
+			success: false,
+			status: 503,
+			error: {
+				message: "Failed to fetch session exercises",
+				code: "CHILD_OVERFLOW",
 			},
 		};
 	}
@@ -295,6 +346,7 @@ export function mockPullEndpoint(
 		gamificationStats: null,
 		localProfiles: [],
 		externalActivities: [],
+		externalActivitiesHasMore: false,
 		customExercises: [],
 	};
 

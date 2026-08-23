@@ -33,9 +33,13 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
+const rpcFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from: (...args: unknown[]) => fromFn(...args) },
+	supabase: {
+		from: (...args: unknown[]) => fromFn(...args),
+		rpc: (...args: unknown[]) => rpcFn(...args),
+	},
 }));
 
 // --- Tests ----------------------------------------------------------------
@@ -248,6 +252,51 @@ describe("workoutListPageOptions", () => {
 		const opts = workoutListPageOptions("user-1", 50);
 		expect(opts.queryKey).toContain("page");
 		expect(opts.queryKey).toContain(50);
+	});
+});
+
+describe("workoutListInfiniteOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
+	});
+
+	it("uses a query key under workouts.all", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListInfiniteOptions } = await import("../workouts");
+		const opts = workoutListInfiniteOptions("user-abc");
+		expect(opts.queryKey[0]).toBe("workouts");
+		expect(opts.queryKey).toContain("infinite");
+	});
+
+	it("stops paging when the last page is short", async () => {
+		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } =
+			await import("../workouts");
+		const opts = workoutListInfiniteOptions("user-abc");
+		const shortPage = Array.from({ length: 3 }, () => ({}));
+		expect(opts.getNextPageParam(shortPage as never, [])).toBeUndefined();
+		const fullPage = Array.from({ length: WORKOUTS_PAGE_SIZE }, () => ({}));
+		expect(opts.getNextPageParam(fullPage as never, [fullPage as never])).toBe(
+			WORKOUTS_PAGE_SIZE,
+		);
+	});
+});
+
+describe("workoutStreakOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("calls workout_current_streak with the user id", async () => {
+		rpcFn.mockResolvedValue({ data: 51, error: null });
+		const { workoutStreakOptions } = await import("../workouts");
+		const opts = workoutStreakOptions("user-abc");
+		expect(opts.queryKey).toEqual(["workouts", "streak", "user-abc"]);
+		const result = await opts.queryFn?.({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("workout_current_streak", {
+			p_user_id: "user-abc",
+		});
+		expect(result).toBe(51);
 	});
 });
 

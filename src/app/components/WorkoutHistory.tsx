@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Award,
 	BarChart3,
@@ -10,7 +10,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { CalendarWidget } from "@/app/components/CalendarWidget";
 import { PageShell } from "@/app/components/PageShell";
@@ -26,9 +26,8 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { formatVolume } from "@/lib/units";
 import { profileOptions } from "@/queries/profile";
 import {
-	WORKOUTS_PAGE_SIZE,
-	workoutListOptions,
-	workoutListPageOptions,
+	workoutListInfiniteOptions,
+	workoutStreakOptions,
 } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -152,16 +151,27 @@ export function WorkoutHistory() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: workouts, isPending } = useQuery(
-		workoutListOptions(user?.id ?? "", activeProfileId),
-	);
+	const {
+		data,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		isFetchNextPageError,
+		isPending,
+	} = useInfiniteQuery({
+		...workoutListInfiniteOptions(user?.id ?? "", activeProfileId),
+		enabled: !!user?.id,
+	});
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
+	const { data: rpcStreak } = useQuery({
+		...workoutStreakOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
 	const { isPremium, tier } = useSubscription();
-	const queryClient = useQueryClient();
 	const [dateRange, setDateRange] = useState("Last 30 days");
 
 	// Free-tier history gating: 30-day limit
@@ -182,18 +192,9 @@ export function WorkoutHistory() {
 
 	const [compareMode, setCompareMode] = useState(false);
 	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
-
-	// Pagination: load additional pages on demand
-	const [loadedPages, setLoadedPages] = useState(0);
-	const [extraWorkouts, setExtraWorkouts] = useState<WorkoutSession[]>([]);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const [hasMore, setHasMore] = useState(true);
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	const allWorkouts = useMemo(() => {
-		if (!workouts) return [];
-		return [...workouts, ...extraWorkouts];
-	}, [workouts, extraWorkouts]);
+	const allWorkouts = useMemo(() => data?.pages.flat() ?? [], [data]);
 
 	// Sidebar stats
 	const workoutDates = useMemo(() => {
@@ -241,39 +242,13 @@ export function WorkoutHistory() {
 		return workoutsByDate.get(key) ?? [];
 	};
 
-	const streak = useStreak(allWorkouts);
+	const listStreak = useStreak(allWorkouts);
+	const streak = typeof rpcStreak === "number" ? rpcStreak : listStreak;
 
-	const handleLoadMore = useCallback(async () => {
-		if (!user?.id || isLoadingMore) return;
-		setIsLoadingMore(true);
-		const nextOffset = (loadedPages + 1) * WORKOUTS_PAGE_SIZE;
-		try {
-			const opts = workoutListPageOptions(user.id, nextOffset, activeProfileId);
-			const page = await queryClient.fetchQuery({
-				...opts,
-				queryKey: opts.queryKey,
-				// biome-ignore lint/style/noNonNullAssertion: queryFn always defined in workoutListPageOptions
-				queryFn: opts.queryFn!,
-			});
-			setExtraWorkouts((prev) => [...prev, ...page]);
-			setLoadedPages((prev) => prev + 1);
-			if (page.length < WORKOUTS_PAGE_SIZE) {
-				setHasMore(false);
-			}
-		} finally {
-			setIsLoadingMore(false);
-		}
-	}, [user?.id, isLoadingMore, loadedPages, queryClient, activeProfileId]);
-
-	// Reset pagination when the active profile filter changes, so additional
-	// pages are fetched for the selected profile rather than appended across
-	// profiles (which would corrupt stats, calendar markers, and history).
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on profile change
-	useEffect(() => {
-		setExtraWorkouts([]);
-		setLoadedPages(0);
-		setHasMore(true);
-	}, [activeProfileId]);
+	const handleLoadMore = useCallback(() => {
+		if (!hasNextPage || isFetchingNextPage) return;
+		void fetchNextPage();
+	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
 	const toggleCompareSelection = (sessionId: string) => {
 		setSelectedForCompare((prev) => {
@@ -346,7 +321,7 @@ export function WorkoutHistory() {
 	}
 
 	// Empty state
-	if (!workouts || workouts.length === 0) {
+	if (allWorkouts.length === 0) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
@@ -367,9 +342,6 @@ export function WorkoutHistory() {
 			</div>
 		);
 	}
-
-	// Whether the initial page was full (could be more)
-	const initialPageFull = workouts.length >= WORKOUTS_PAGE_SIZE;
 
 	const unlocked = filteredWorkouts.filter((w) => !isEntryLocked(w.started_at));
 	const locked = filteredWorkouts.filter((w) => isEntryLocked(w.started_at));
@@ -588,15 +560,15 @@ export function WorkoutHistory() {
 						)}
 
 						{/* Load More */}
-						{initialPageFull && hasMore && (
-							<div className="text-center pt-4">
+						{hasNextPage && (
+							<div className="text-center pt-4 space-y-2">
 								<Button
 									variant="outline"
 									onClick={handleLoadMore}
-									disabled={isLoadingMore}
+									disabled={isFetchingNextPage}
 									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
-									{isLoadingMore ? (
+									{isFetchingNextPage ? (
 										<>
 											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 											Loading more workouts...
@@ -605,6 +577,18 @@ export function WorkoutHistory() {
 										"Load more workouts"
 									)}
 								</Button>
+								{isFetchNextPageError && (
+									<p className="text-sm text-destructive">
+										Could not load more workouts.{" "}
+										<button
+											type="button"
+											onClick={handleLoadMore}
+											className="underline text-primary"
+										>
+											Retry
+										</button>
+									</p>
+								)}
 							</div>
 						)}
 					</div>

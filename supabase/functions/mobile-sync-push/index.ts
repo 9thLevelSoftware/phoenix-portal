@@ -35,6 +35,8 @@ import {
   resolveDropSetUpsertFields,
 } from '../_shared/dropSetUpsert.ts';
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
+import { fetchAllByParentIds } from '../_shared/pagedByParent.ts';
+import { syncBroadcastTopic } from '../_shared/syncBroadcast.ts';
 import {
   catalogLookupFromUnknown,
   resolveCatalogExerciseId,
@@ -1849,13 +1851,20 @@ async function mobileSyncPushHandler(
 
       if (progressRows.length > 0) {
         const sessionIds = [...new Set(acceptedSessions.map((session) => session.id))];
-        const { data: existingProgress, error: existingProgressErr } = await supabase
-          .from('exercise_progress')
-          .select('session_id, exercise_id, exercise_name')
-          .in('session_id', sessionIds);
-        if (existingProgressErr) {
-          throw new Error(`exercise_progress lookup failed: ${existingProgressErr.message}`);
+        const existingProgressResult = await fetchAllByParentIds(supabase, {
+          table: 'exercise_progress',
+          parentColumn: 'session_id',
+          parentIds: sessionIds,
+          entity: 'exercise_progress',
+          select: 'session_id, exercise_id, exercise_name',
+        });
+        if (!existingProgressResult.ok) {
+          const detail = existingProgressResult.kind === 'overflow'
+            ? `child overflow for parent ${existingProgressResult.parentId}`
+            : (existingProgressResult.error.message ?? 'lookup failed');
+          throw new Error(`exercise_progress lookup failed: ${detail}`);
         }
+        const existingProgress = existingProgressResult.rows;
 
         const progressIdentityKey = (row: {
           session_id?: unknown;
@@ -2676,14 +2685,24 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      // Dedup by exercise_id + created_at
-      const { data: existingAssess } = await supabase
-        .from('vbt_assessments')
-        .select('exercise_id, created_at')
-        .eq('user_id', userId);
+      // Dedup by exercise_id + created_at. Page the existence lookup (no unique index).
+      const existingAssessResult = await fetchAllByParentIds(supabase, {
+        table: 'vbt_assessments',
+        parentColumn: 'user_id',
+        parentIds: [userId],
+        entity: 'vbt assessments',
+        select: 'exercise_id, created_at',
+      });
+      if (!existingAssessResult.ok) {
+        const detail = existingAssessResult.kind === 'overflow'
+          ? `child overflow for parent ${existingAssessResult.parentId}`
+          : (existingAssessResult.error.message ?? 'lookup failed');
+        throw new Error(`vbt_assessments lookup failed: ${detail}`);
+      }
+      const existingAssess = existingAssessResult.rows;
 
       const existingKeys = new Set(
-        (existingAssess ?? []).map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
+        existingAssess.map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
       );
       const newAssess = assessRows.filter((r) => {
         const key = `${r.exercise_id}:${r.created_at}`;
@@ -2843,7 +2862,7 @@ async function mobileSyncPushHandler(
     const syncTime = new Date(dependencies.now()).toISOString();
     // Use HTTP broadcast so the edge function doesn't need an active WebSocket
     // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
-    const channel = supabase.channel(`sync:${userId}`, {
+    const channel = supabase.channel(syncBroadcastTopic(userId), {
       config: { private: true, broadcast: { self: false } },
     });
     try {

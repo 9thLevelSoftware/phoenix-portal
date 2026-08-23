@@ -52,6 +52,8 @@ const TARGETED_INVALIDATIONS = [
 		queryKey: queryKeys.localProfiles.byUser(USER_ID),
 		label: "localProfiles.byUser",
 	},
+	{ queryKey: queryKeys.onboarding.all, label: "onboarding" },
+	{ queryKey: queryKeys.insights.all, label: "insights" },
 ] as const;
 
 const mocks = vi.hoisted(() => {
@@ -62,7 +64,8 @@ const mocks = vi.hoisted(() => {
 	let broadcastHandler: ((payload: unknown) => void) | undefined;
 	let subscribeHandler: ((status: string) => void) | undefined;
 	const invalidateQueries = vi.fn();
-	const removeChannel = vi.fn();
+	const removeChannel = vi.fn(() => Promise.resolve("ok"));
+	const toastError = vi.fn();
 
 	const mockChannel = {
 		on: vi.fn(
@@ -107,6 +110,7 @@ const mocks = vi.hoisted(() => {
 		},
 		invalidateQueries,
 		removeChannel,
+		toastError,
 		mockChannel,
 		authState,
 		subscriptionState,
@@ -133,9 +137,21 @@ vi.mock("@/lib/supabase", () => ({
 	supabase: mocks.mockSupabase,
 }));
 
+vi.mock("sonner", () => ({
+	toast: { error: (...args: unknown[]) => mocks.toastError(...args) },
+}));
+
 function TestComponent() {
 	useRealtimeSync();
 	return null;
+}
+
+async function renderHook() {
+	const view = render(<TestComponent />);
+	await act(async () => {
+		await Promise.resolve();
+	});
+	return view;
 }
 
 describe("useRealtimeSync — invalidation coverage", () => {
@@ -158,7 +174,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 	}) => {
 		vi.useFakeTimers();
 		try {
-			const { unmount } = render(<TestComponent />);
+			const { unmount } = await renderHook();
 			mocks.broadcastHandler?.({});
 			await vi.advanceTimersByTimeAsync(400);
 
@@ -172,7 +188,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 	it("collapses rapid broadcasts into one invalidation burst within the 400ms debounce window", async () => {
 		vi.useFakeTimers();
 		try {
-			const { unmount } = render(<TestComponent />);
+			const { unmount } = await renderHook();
 
 			// Fire three broadcasts inside the debounce window
 			mocks.broadcastHandler?.({});
@@ -200,9 +216,10 @@ describe("useRealtimeSync — invalidation coverage", () => {
 	it("removes the channel on unmount and clears any in-flight debounce timer", async () => {
 		vi.useFakeTimers();
 		try {
-			const { unmount } = render(<TestComponent />);
+			const { unmount } = await renderHook();
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
+				`sync:${USER_ID}`,
+				{ config: { private: true } },
 			);
 
 			// Queue a broadcast inside the debounce window, then unmount
@@ -229,9 +246,10 @@ describe("useRealtimeSync — invalidation coverage", () => {
 	it("re-subscribes with a new channel after the auth user changes", async () => {
 		vi.useFakeTimers();
 		try {
-			const { rerender, unmount } = render(<TestComponent />);
+			const { rerender, unmount } = await renderHook();
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				expect.stringMatching(new RegExp(`^sync:${USER_ID}:`)),
+				`sync:${USER_ID}`,
+				{ config: { private: true } },
 			);
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledTimes(1);
 
@@ -240,12 +258,16 @@ describe("useRealtimeSync — invalidation coverage", () => {
 				mocks.authState.user = { id: ALT_USER_ID };
 			});
 			rerender(<TestComponent />);
+			await act(async () => {
+				await Promise.resolve();
+			});
 
 			// The prior channel should be torn down and a new one opened for
 			// the new user ID.
 			expect(mocks.removeChannel).toHaveBeenCalled();
 			expect(mocks.mockSupabase.channel).toHaveBeenCalledWith(
-				expect.stringMatching(new RegExp(`^sync:${ALT_USER_ID}:`)),
+				`sync:${ALT_USER_ID}`,
+				{ config: { private: true } },
 			);
 			unmount();
 		} finally {
@@ -257,7 +279,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		mocks.subscriptionState.tier = "FREE";
 		vi.useFakeTimers();
 		try {
-			const { unmount } = render(<TestComponent />);
+			const { unmount } = await renderHook();
 			// useRealtimeSync short-circuits before .channel() is called.
 			expect(mocks.mockSupabase.channel).not.toHaveBeenCalled();
 
@@ -277,7 +299,7 @@ describe("useRealtimeSync — invalidation coverage", () => {
 		mocks.subscriptionState.isLoading = true;
 		vi.useFakeTimers();
 		try {
-			const { unmount } = render(<TestComponent />);
+			const { unmount } = await renderHook();
 			expect(mocks.mockSupabase.channel).not.toHaveBeenCalled();
 			unmount();
 		} finally {
