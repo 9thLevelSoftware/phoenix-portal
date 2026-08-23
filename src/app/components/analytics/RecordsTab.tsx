@@ -128,7 +128,12 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	const userId = user?.id ?? "";
 	const activeProfileId = useProfileFilterStore((s) => s.activeProfileId);
 
-	const { data: records, isPending } = useQuery({
+	const {
+		data: records,
+		isPending,
+		isError,
+		refetch,
+	} = useQuery({
 		...personalRecordsOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
@@ -232,6 +237,22 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<CardSkeleton key={i} />
 					))}
 				</div>
+			</div>
+		);
+	}
+
+	if (isError && records == null) {
+		return (
+			<div className="text-center py-16">
+				<p className="text-lg text-white mb-2">
+					Couldn't load personal records
+				</p>
+				<p className="text-sm text-muted-foreground mb-6">
+					Something went wrong while loading your PRs. Please try again.
+				</p>
+				<Button onClick={() => void refetch()} variant="outline">
+					Retry
+				</Button>
 			</div>
 		);
 	}

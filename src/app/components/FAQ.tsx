@@ -74,13 +74,15 @@ const faqCategories: FAQCategory[] = [
 				answer: (
 					<p>
 						We offer three tiers: <strong>Ember</strong> ($5/mo — cloud sync,
-						workout history &amp; personal records, leaderboards &amp;
-						challenges), <strong>Flame</strong> ($15/mo — everything in Ember
-						plus community hub &amp; routine sharing, advanced analytics, and
-						third-party connections like Strava, Hevy, and Liftosaur), and{" "}
-						<strong>Inferno</strong> ($25/mo — everything in Flame plus advanced
-						biomechanics, force curves, VBT zones, and session replay). Inferno
-						is coming soon. See the{" "}
+						dashboard, workout history, session detail, goals, and recovery),{" "}
+						<strong>Flame</strong> ($15/mo — everything in Ember plus analytics,
+						community, routines, cycles, leaderboards, challenges, compare,
+						session replay, and third-party connections like Strava, Hevy, and
+						Liftosaur), and <strong>Inferno</strong> ($25/mo — everything in
+						Flame plus advanced biomechanics: force, VBT, ROM, SRA, and form).
+						Inferno is purchasable; inner Inferno feature gates stay. Fitbit and
+						Garmin Connect are implemented but gated coming-soon pending
+						developer-program approval. See the{" "}
 						<Link to="/pricing" className="text-primary hover:underline">
 							Pricing page
 						</Link>{" "}
@@ -109,10 +111,11 @@ const faqCategories: FAQCategory[] = [
 				question: "Is there a free trial?",
 				answer: (
 					<p>
-						There is no time-limited trial, but the Free tier is available
-						permanently with core tracking features. You can upgrade to a paid
-						tier whenever you&apos;re ready for advanced analytics and premium
-						features.
+						There is no time-limited trial. Unauthenticated visitors see landing
+						and pricing. After sign-in, Ember is required for cloud sync, the
+						dashboard, and history — authenticated Free is a conversion funnel,
+						not a local-only history SKU. You can upgrade whenever you&apos;re
+						ready.
 					</p>
 				),
 			},
@@ -166,9 +169,12 @@ const faqCategories: FAQCategory[] = [
 				answer: (
 					<p>
 						When you complete a workout on your Phoenix fitness machine, the
-						mobile app sends the data to Supabase. The portal picks up changes
-						in real-time via broadcast, so your latest sessions appear almost
-						instantly on the dashboard.
+						mobile app POSTs it to <code>mobile-sync-push</code>. The Edge
+						function broadcasts <code>sync_complete</code> on private channel{" "}
+						<code>sync:{"{userId}"}</code>. The portal invalidates its cache
+						when that event arrives (and on reconnect). Session replay reads{" "}
+						<code>rep_telemetry</code> in the portal; pull does not return
+						telemetry.
 					</p>
 				),
 			},
@@ -176,10 +182,10 @@ const faqCategories: FAQCategory[] = [
 				question: "What analytics are available?",
 				answer: (
 					<p>
-						Depending on your subscription tier, you can access force curves,
-						velocity trends, muscle balance analysis, and progressive overload
-						tracking. Premium tiers unlock biomechanics analysis and session
-						replay for deeper training insights.
+						Flame unlocks analytics (volume, muscle balance, training load) and
+						session replay. Inferno unlocks advanced biomechanics (force curves,
+						VBT zones, ROM, SRA, form). Ember covers dashboard, history, goals,
+						and recovery — not leaderboards or replay.
 					</p>
 				),
 			},

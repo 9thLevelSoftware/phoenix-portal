@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Phoenix Portal is a React web companion dashboard for Project Phoenix, a community project supporting Phoenix-compatible fitness machines. It supports both viewing synced data and creating routines/cycles that sync back to the mobile app. It is a full-stack application with a Supabase backend (PostgreSQL, Auth, Realtime, Storage), 18 Edge Functions, and Paddle subscription billing (Merchant of Record for EU/AU tax compliance).
+Phoenix Portal is a React web companion dashboard for Project Phoenix, a community project supporting Phoenix-compatible fitness machines. It supports both viewing synced data and creating routines/cycles that sync back to the mobile app. It is a full-stack application with a Supabase backend (PostgreSQL, Auth, Realtime, Storage), 22 Edge Functions, and Paddle subscription billing (Merchant of Record for EU/AU tax compliance).
 
 ## Commands
 
@@ -98,11 +98,13 @@ src/
 
 ### Mobile-to-Portal Sync Pipeline
 1. User completes workout on mobile app
-2. Mobile app writes workout data to `workout_sessions` table (via Supabase client)
-3. Mobile app sends Supabase Broadcast event on channel `sync:{userId}` with event type `sync_complete`
-4. Portal's `useRealtimeSync` hook (in `src/hooks/useRealtimeSync.ts`) listens for Broadcast events
-5. On receiving `sync_complete`, hook invalidates relevant TanStack Query caches (workouts, records, analytics, routines, cycles)
+2. Mobile app POSTs the session graph to `mobile-sync-push` (Edge upsert; not a browser PostgREST write)
+3. Edge broadcasts `sync_complete` on private channel `sync:{userId}`
+4. Portal's `useRealtimeSync` hook (in `src/hooks/useRealtimeSync.ts`) listens on that exact topic
+5. On receiving `sync_complete`, hook invalidates relevant TanStack Query caches (workouts, records, analytics, routines, cycles, insights, …)
 6. UI components re-render with fresh data from cache refetch
+
+`rep_telemetry` and `exercise_progress` snapshots used by session replay are **portal-only**. `mobile-sync-pull` does not return telemetry; do not add a telemetry pull in this stack.
 
 ### Edge Functions
 22 Supabase Edge Functions in `supabase/functions/`:
@@ -127,7 +129,7 @@ src/
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
 - Returns data modified since `lastSync` timestamp (delta sync)
-- Cursor-based pagination with 100 entities per page (max 500)
+- Cursor-based pagination with 75 entities per page (max 300)
 - Entity order: sessions -> routines -> cycles -> badges -> stats
 - Uses composite cursor (updated_at, id) for stable ordering across pages
 - Child entities fetched based on parent presence, not their own timestamps
@@ -170,13 +172,13 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 ### Navigation Flow
 1. `LandingPage` (unauthenticated) -- also /privacy, /terms, /faq as public routes
 2. `Dashboard` (authenticated default)
-3. Feature pages via desktop `Navigation` (grouped dropdown menus) or `MobileBottomNav` (mobile)
-4. Detail views (SessionDetail, RoutineBuilder, CycleBuilder, SessionReplay) from list pages
+3. Feature pages via desktop `AppSidebar` or `MobileBottomNav` (mobile). Ember Training includes Goals and Recovery.
+4. Detail views (SessionDetail, RoutineBuilder, CycleBuilder) from list pages. Session Replay is Flame and entered from Session Detail.
 
 ### Mobile Responsiveness
 - 768px breakpoint for mobile detection
 - Separate mobile component variants exist for Dashboard, Analytics, Challenges, Community
-- `MobileBottomNav` replaces desktop Navigation on small screens
+- `MobileBottomNav` replaces desktop `AppSidebar` on small screens
 
 ## Key Files
 - `src/app/routes/index.tsx` - Route definitions and lazy imports

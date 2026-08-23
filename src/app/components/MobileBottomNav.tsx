@@ -4,11 +4,13 @@ import {
 	CreditCard,
 	Dumbbell,
 	Flame,
+	HeartPulse,
 	History,
 	LayoutDashboard,
 	Link2,
 	MoreHorizontal,
 	Repeat,
+	Target,
 	Trophy,
 	User,
 	Users,
@@ -37,6 +39,8 @@ const moreGroups = [
 	{
 		label: "Training",
 		items: [
+			{ path: "/goals", label: "Goals", icon: Target },
+			{ path: "/recovery", label: "Recovery", icon: HeartPulse },
 			{ path: "/routines", label: "Routines", icon: Dumbbell },
 			{ path: "/cycles", label: "Cycles", icon: Repeat },
 		],

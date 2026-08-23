@@ -31,6 +31,7 @@ export interface MobileOverviewTabProps {
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
+	insightsError?: boolean;
 }
 
 export default function MobileOverviewTab({
@@ -39,6 +40,7 @@ export default function MobileOverviewTab({
 	consistencyData,
 	insightsFeedItems,
 	insightsPending,
+	insightsError = false,
 }: MobileOverviewTabProps) {
 	return (
 		<>
@@ -114,7 +116,11 @@ export default function MobileOverviewTab({
 			</MobileChartCard>
 
 			<MobileChartCard title="INSIGHTS">
-				<InsightsFeed insights={insightsFeedItems} loading={insightsPending} />
+				<InsightsFeed
+					insights={insightsFeedItems}
+					loading={insightsPending}
+					isError={insightsError}
+				/>
 			</MobileChartCard>
 		</>
 	);

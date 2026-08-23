@@ -301,7 +301,12 @@ export function Goals() {
 	const unit = usePreferredWeightUnit();
 	const { isPremium, isInferno } = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
+	const {
+		data: goals,
+		isPending,
+		isError,
+		refetch,
+	} = useQuery(goalsOptions(user?.id ?? ""));
 	const { data: records } = useQuery({
 		...personalRecordsOptions(user?.id ?? "", activeProfileId),
 		enabled: !!user?.id,
@@ -420,6 +425,24 @@ export function Goals() {
 			}
 		}
 	}, [activeGoals, progressMap, handleGoalComplete]);
+
+	if (isError && goals == null) {
+		return (
+			<div className="min-h-screen pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<h1 className="text-xl font-semibold text-white mb-2">
+						Couldn't load your goals
+					</h1>
+					<p className="text-sm text-muted-foreground mb-6">
+						Something went wrong. Your goals are safe — please try again.
+					</p>
+					<Button onClick={() => void refetch()} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
 
 	// Tier gate for FREE users
 	if (!isPremium && !isPending) {

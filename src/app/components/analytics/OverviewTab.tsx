@@ -40,6 +40,7 @@ export interface OverviewTabProps {
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
+	insightsError?: boolean;
 }
 
 export default function OverviewTab({
@@ -52,6 +53,7 @@ export default function OverviewTab({
 	consistencyData,
 	insightsFeedItems,
 	insightsPending,
+	insightsError = false,
 }: OverviewTabProps) {
 	return (
 		<>
@@ -159,6 +161,7 @@ export default function OverviewTab({
 					<InsightsFeed
 						insights={insightsFeedItems.slice(0, 3)}
 						loading={insightsPending}
+						isError={insightsError}
 					/>
 				</Card>
 			</div>

@@ -210,7 +210,7 @@ export function AppRoutes() {
 							/>
 						</Route>
 
-						{/* FLAME tier — session replay (INFERNO not yet purchasable) */}
+						{/* FLAME tier — session replay (KD-9; Inferno differentiator is biomechanics) */}
 						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
 							<Route path="/replay/:sessionId" element={<SessionReplay />} />
 						</Route>

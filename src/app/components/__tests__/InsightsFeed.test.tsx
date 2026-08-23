@@ -27,6 +27,15 @@ describe("InsightsFeed", () => {
 		expect(screen.getByText("+22 lbs")).toBeInTheDocument();
 	});
 
+	it("shows an error, not the athlete-empty copy, when the feed failed", () => {
+		render(<InsightsFeed insights={[]} isError />);
+
+		expect(screen.getByText(/couldn't load insights/i)).toBeInTheDocument();
+		expect(
+			screen.queryByText(/complete more workouts/i),
+		).not.toBeInTheDocument();
+	});
+
 	it("keeps compact formatting for non-weight metrics", () => {
 		render(
 			<InsightsFeed
