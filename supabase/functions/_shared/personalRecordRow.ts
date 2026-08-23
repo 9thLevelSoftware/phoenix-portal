@@ -9,7 +9,7 @@
  *
  * NOT-NULL-DEFAULT columns on personal_records (see
  * information_schema.columns, confirmed 2026-04-20):
- *   - record_type (DEFAULT '1RM')
+ *   - record_type (DB DEFAULT '1RM'; this builder writes MAX_WEIGHT when missing)
  *   - muscle_group (DEFAULT 'General')
  *   - unit (DEFAULT 'kg')
  *   - achieved_at (DEFAULT now())
@@ -18,6 +18,37 @@
  * workout_phase is NULLABLE with DEFAULT 'COMBINED'; we still fill it so
  * the dedup key built in the caller is stable regardless of NULL handling.
  */
+
+export const PERSONAL_RECORD_TYPES = [
+	"MAX_WEIGHT",
+	"MAX_VOLUME",
+	"1RM",
+	"MAX_REPS",
+	"MAX_DURATION",
+	"MAX_FORCE",
+	"MAX_VELOCITY",
+	"FASTEST_TIME",
+	"LONGEST_DISTANCE",
+] as const;
+
+export type PersonalRecordType = (typeof PERSONAL_RECORD_TYPES)[number];
+
+const PERSONAL_RECORD_TYPE_SET = new Set<string>(PERSONAL_RECORD_TYPES);
+
+/**
+ * Missing/blank → MAX_WEIGHT. Known types are uppercased. Unknown → null
+ * (caller must reject; do not invent a 1RM record).
+ */
+export function resolvePersonalRecordType(
+	raw: string | null | undefined,
+): PersonalRecordType | null {
+	if (raw == null || raw.trim() === "") return "MAX_WEIGHT";
+	const upper = raw.trim().toUpperCase();
+	if (PERSONAL_RECORD_TYPE_SET.has(upper)) {
+		return upper as PersonalRecordType;
+	}
+	return null;
+}
 
 export interface PrSetInput {
 	isPr?: boolean | null;
@@ -550,8 +581,9 @@ export function buildDedicatedPersonalRecordRows(
 	localProfileId: string | null,
 	validLocalProfileIds: ReadonlySet<string> | null = null,
 ): PersonalRecordRow[] {
-	return records.map((record) => {
-		const recordType = record.recordType ?? "1RM";
+	return records.flatMap((record) => {
+		const recordType = resolvePersonalRecordType(record.recordType);
+		if (recordType == null) return [];
 		const row: PersonalRecordRow = {
 			user_id: userId,
 			local_profile_id: resolveDedicatedRecordLocalProfileId(
@@ -577,7 +609,7 @@ export function buildDedicatedPersonalRecordRows(
 		if (record.updatedAt ?? record.deletedAt) {
 			row.updated_at = record.updatedAt ?? record.deletedAt ?? undefined;
 		}
-		return row;
+		return [row];
 	});
 }
 
@@ -612,7 +644,8 @@ export function buildPersonalRecordRows(
 			for (const set of exercise.sets) {
 				if (!set.isPr) continue;
 
-				const recordType = set.prType ?? "1RM";
+				const recordType = resolvePersonalRecordType(set.prType);
+				if (recordType == null) continue;
 				const value = recordType === "MAX_VOLUME"
 					? (set.prVolume ?? set.weightKg * set.actualReps)
 					: set.weightKg;

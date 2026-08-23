@@ -29,6 +29,7 @@
 // Deno edge runtime resolves "npm:" specifiers directly. Vitest maps this
 // alias to the node_modules "zod" package via vitest.config.ts.
 import { z } from "npm:zod@4.3.6";
+import { PERSONAL_RECORD_TYPES, resolvePersonalRecordType } from "./personalRecordRow.ts";
 
 // ─── Primitives ──────────────────────────────────────────────────────────
 
@@ -443,7 +444,11 @@ const personalRecordSchema = z.object({
 	exerciseName: z.string(),
 	exerciseId: nullableField(z.string()),
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
-	recordType: z.string().nullish().transform((v) => v ?? "1RM"),
+	recordType: z
+		.string()
+		.nullish()
+		.transform((v) => resolvePersonalRecordType(v))
+		.pipe(z.enum(PERSONAL_RECORD_TYPES)),
 	value: nullableField(nonNegNumber),
 	volume: nullableField(nonNegNumber),
 	weightKg: nullableField(nonNegNumber),

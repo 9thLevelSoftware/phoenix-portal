@@ -58,13 +58,18 @@ export function estimateOneRepMaxKg(weightKg: number, reps: number): number {
 	return weightKg * (1 + reps / 30);
 }
 
+/** 2dp only for the sets fallback — never applied to a mobile verbatim value. */
+function roundTo2dp(value: number): number {
+	return Math.round(value * 100) / 100;
+}
+
 function bestEstimateFromSets(sets: ProgressSetInput[]): number {
 	let best = 0;
 	for (const s of sets) {
 		const e1rm = estimateOneRepMaxKg(s.weightKg, s.actualReps);
 		if (e1rm > best) best = e1rm;
 	}
-	return best;
+	return roundTo2dp(best);
 }
 
 export function buildExerciseProgressRows(
@@ -95,8 +100,10 @@ export function buildExerciseProgressRows(
 			);
 			const setCount = exercise.sets.length;
 
+			// Mobile estimate is stored verbatim, including 0. Only recompute
+			// (and round to 2dp) when the field is absent from the payload.
 			const estimated1rm =
-				exercise.estimatedOneRepMaxKg != null && exercise.estimatedOneRepMaxKg > 0
+				exercise.estimatedOneRepMaxKg != null
 					? exercise.estimatedOneRepMaxKg
 					: bestEstimateFromSets(exercise.sets);
 
@@ -109,7 +116,7 @@ export function buildExerciseProgressRows(
 				recorded_at: session.startedAt,
 				max_weight_kg: maxWeight,
 				total_volume_kg: totalVolume,
-				estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
+				estimated_1rm_kg: estimated1rm,
 				// Velocity-based estimate stored verbatim — never recomputed, no
 				// fallback. Null when the mobile payload omits it (legacy / no
 				// passing VBT estimate). Distinct from estimated_1rm_kg above.

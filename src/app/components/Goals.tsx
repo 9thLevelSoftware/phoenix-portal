@@ -114,10 +114,13 @@ export function useGoalProgress(
 				);
 				progress = (totalVolume / goal.target_value) * 100;
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
-				// Goals do not persist a target phase yet, so any combined,
-				// concentric, or eccentric PR for the exercise can satisfy the target.
-				// PR values are already Zod-transformed (doubled).
+				// Goals have no record_type column. Strength PRs are MAX_WEIGHT and
+				// 1RM only — never mix in MAX_VOLUME (kg×reps) with a kg target.
 				const exercisePRs = records.filter((r) => {
+					const recordType = (r.record_type ?? "MAX_WEIGHT").toUpperCase();
+					if (recordType !== "MAX_WEIGHT" && recordType !== "1RM") {
+						return false;
+					}
 					// Prefer exercise_id match if both sides have it
 					if (goal.exercise_id && r.exercise_id) {
 						return r.exercise_id === goal.exercise_id;

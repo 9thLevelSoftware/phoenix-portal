@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { estimateOneRepMaxKg } from "../../../supabase/functions/_shared/exerciseProgressRows.ts";
 import {
 	ASYMMETRY_THRESHOLD,
 	calculateAsymmetry,
@@ -6,6 +7,13 @@ import {
 	calculateRom,
 	estimateOneRepMax,
 } from "../biomechanics";
+
+/** Mobile OneRepMaxCalculator.estimate goldens (unrounded hybrid). */
+const HYBRID_1RM_GOLDENS = [
+	{ weight: 100, reps: 5, expected: 112.5 },
+	{ weight: 100, reps: 10, expected: 133.333 },
+	{ weight: 100, reps: 11, expected: 136.666 },
+] as const;
 
 describe("calculateAsymmetry", () => {
 	it("returns 0 when both forces are 0", () => {
@@ -67,15 +75,24 @@ describe("estimateOneRepMax", () => {
 	});
 
 	it("estimateOneRepMax uses Brzycki at or below 10 reps", () => {
-		expect(estimateOneRepMax(100, 5)).toBe(113); // 112.5 -> 113
+		expect(estimateOneRepMax(100, 5)).toBeCloseTo(112.5);
 	});
 
 	it("estimateOneRepMax is continuous at 10 reps", () => {
-		expect(estimateOneRepMax(100, 10)).toBe(133); // 133.33 -> 133
+		expect(estimateOneRepMax(100, 10)).toBeCloseTo(133.333);
 	});
 
 	it("estimateOneRepMax uses Epley above 10 reps", () => {
-		expect(estimateOneRepMax(100, 11)).toBe(137); // 136.67 -> 137
+		expect(estimateOneRepMax(100, 11)).toBeCloseTo(136.666);
+	});
+
+	it("matches Edge estimateOneRepMaxKg for hybrid goldens", () => {
+		for (const { weight, reps, expected } of HYBRID_1RM_GOLDENS) {
+			const portal = estimateOneRepMax(weight, reps);
+			const edge = estimateOneRepMaxKg(weight, reps);
+			expect(portal).toBe(edge);
+			expect(portal).toBeCloseTo(expected);
+		}
 	});
 
 	it("estimateOneRepMax returns weight for 1 rep and 0 for invalid", () => {
@@ -84,8 +101,8 @@ describe("estimateOneRepMax", () => {
 	});
 
 	it("calculates correctly for higher reps (Brzycki)", () => {
-		// 80 * (36 / (37 - 10)) = 80 * (36/27) = 80 * 1.3333 = 106.67 -> 107
-		expect(estimateOneRepMax(80, 10)).toBe(107);
+		// 80 * (36 / (37 - 10)) = 80 * (36/27) = 106.666...
+		expect(estimateOneRepMax(80, 10)).toBeCloseTo(106.667);
 	});
 });
 

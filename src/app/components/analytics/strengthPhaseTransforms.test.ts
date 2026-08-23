@@ -30,12 +30,12 @@ describe("buildStrengthPhaseSeries", () => {
 		);
 
 		expect(result.series.map((s) => s.name)).toEqual([
-			"Bench Press Concentric",
-			"Bench Press Eccentric",
+			"Bench Press Concentric · Max Weight",
+			"Bench Press Eccentric · Max Weight",
 		]);
 		expect(result.points[0]).toMatchObject({
-			"bench::Concentric": 100,
-			"bench::Eccentric": 130,
+			"bench::Concentric::MAX_WEIGHT": 100,
+			"bench::Eccentric::MAX_WEIGHT": 130,
 		});
 	});
 
@@ -62,7 +62,9 @@ describe("buildStrengthPhaseSeries", () => {
 			"Concentric",
 		);
 
-		expect(result.series.map((s) => s.name)).toEqual(["Squat Concentric"]);
+		expect(result.series.map((s) => s.name)).toEqual([
+			"Squat Concentric · Max Weight",
+		]);
 	});
 
 	it("excludes non-weight personal records from strength charts", () => {
@@ -133,11 +135,11 @@ describe("buildStrengthPhaseSeries", () => {
 		);
 
 		expect(result.map((item) => item.exercise)).toEqual([
-			"Zulu Press Concentric",
-			"Echo Press Concentric",
-			"Delta Press Concentric",
-			"Charlie Press Concentric",
-			"Bravo Press Concentric",
+			"Zulu Press Concentric · Max Weight",
+			"Echo Press Concentric · Max Weight",
+			"Delta Press Concentric · Max Weight",
+			"Charlie Press Concentric · Max Weight",
+			"Bravo Press Concentric · Max Weight",
 		]);
 	});
 
@@ -169,6 +171,39 @@ describe("buildStrengthPhaseSeries", () => {
 		const dates = result.points.map((p) => p.date as string);
 		expect(dates.some((d) => d.includes("2025"))).toBe(true);
 		expect(dates.some((d) => d.includes("2026"))).toBe(true);
+	});
+
+	it("keeps MAX_WEIGHT and 1RM as separate series instead of max() mixing them", () => {
+		const result = buildStrengthPhaseSeries(
+			[
+				{
+					exercise_name: "Bench Press",
+					exercise_id: "bench",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "COMBINED",
+					value: 100,
+					achieved_at: "2026-05-01T00:00:00Z",
+				},
+				{
+					exercise_name: "Bench Press",
+					exercise_id: "bench",
+					record_type: "1RM",
+					workout_phase: "COMBINED",
+					value: 112.5,
+					achieved_at: "2026-05-01T00:00:00Z",
+				},
+			],
+			"all",
+		);
+
+		expect(result.series.map((s) => s.name)).toEqual([
+			"Bench Press Combined · Max Weight",
+			"Bench Press Combined · 1RM",
+		]);
+		expect(result.points[0]).toMatchObject({
+			"bench::Combined::MAX_WEIGHT": 100,
+			"bench::Combined::1RM": 112.5,
+		});
 	});
 
 	it("summarizes PR count and recency from the selected strength phase", () => {

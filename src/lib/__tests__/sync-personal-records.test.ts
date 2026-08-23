@@ -108,7 +108,7 @@ describe("buildPersonalRecordRows", () => {
 		expect(out).toHaveLength(1);
 		// biome-ignore lint/style/noNonNullAssertion: length asserted above
 		const row = out[0]!;
-		expect(row.record_type).toBe("1RM");
+		expect(row.record_type).toBe("MAX_WEIGHT");
 		expect(row.workout_phase).toBe("COMBINED");
 		expect(row.muscle_group).toBe("General");
 		expect(row.unit).toBe("kg");
@@ -150,6 +150,15 @@ describe("buildPersonalRecordRows", () => {
 			PROFILE_ID,
 		);
 		expect(out[0]?.value).toBe(500);
+	});
+
+	it("skips unknown set prType values", () => {
+		const out = buildPersonalRecordRows(
+			[baseSession({ prType: "NOT_A_TYPE" })],
+			USER_ID,
+			PROFILE_ID,
+		);
+		expect(out).toEqual([]);
 	});
 
 	it("uses weightKg as value for non-MAX_VOLUME record types", () => {
@@ -272,6 +281,36 @@ describe("buildDedicatedPersonalRecordRows", () => {
 		);
 
 		expect(out[0]?.updated_at).toBe("2026-04-21T12:30:00.000Z");
+	});
+
+	it("defaults missing recordType to MAX_WEIGHT", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Squat",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+		expect(out).toHaveLength(1);
+		expect(out[0]?.record_type).toBe("MAX_WEIGHT");
+	});
+
+	it("skips unknown record types instead of storing them as 1RM", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					exerciseName: "Squat",
+					recordType: "NOT_A_TYPE",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+		expect(out).toEqual([]);
 	});
 
 	it("uses volume as the value for MAX_VOLUME records when value is absent", () => {

@@ -17,6 +17,7 @@ export interface StrengthPhaseSeries {
 	name: string;
 	exerciseName: string;
 	phase: string;
+	recordType: string;
 	latestValue: number;
 }
 
@@ -31,10 +32,26 @@ const phaseOrder = new Map([
 	["Concentric", 1],
 	["Eccentric", 2],
 ]);
+const recordTypeOrder = new Map([
+	["MAX_WEIGHT", 0],
+	["1RM", 1],
+]);
+
+function normalizeStrengthRecordType(
+	recordType: string | null | undefined,
+): string {
+	if (!recordType) return "MAX_WEIGHT";
+	return recordType.toUpperCase();
+}
+
+function strengthRecordTypeLabel(recordType: string): string {
+	if (recordType === "1RM") return "1RM";
+	if (recordType === "MAX_WEIGHT") return "Max Weight";
+	return recordType;
+}
 
 function isStrengthRecord(recordType: string | null | undefined): boolean {
-	if (!recordType) return true;
-	return strengthRecordTypes.has(recordType.toUpperCase());
+	return strengthRecordTypes.has(normalizeStrengthRecordType(recordType));
 }
 
 function filterStrengthPhaseRecords(
@@ -67,9 +84,10 @@ export function buildStrengthPhaseSeries(
 
 	for (const item of filtered) {
 		const phase = normalizeWorkoutPhase(item.workout_phase);
+		const recordType = normalizeStrengthRecordType(item.record_type);
 		const baseKey = item.exercise_id ?? item.exercise_name;
-		const key = `${baseKey}::${phase}`;
-		const name = `${item.exercise_name} ${phase}`;
+		const key = `${baseKey}::${phase}::${recordType}`;
+		const name = `${item.exercise_name} ${phase} · ${strengthRecordTypeLabel(recordType)}`;
 		const achievedAt = new Date(item.achieved_at);
 		const date = achievedAt.toLocaleDateString("en-US", {
 			month: "short",
@@ -98,6 +116,7 @@ export function buildStrengthPhaseSeries(
 				name,
 				exerciseName: item.exercise_name,
 				phase,
+				recordType,
 				latestValue: item.value,
 				at,
 			});
@@ -112,7 +131,13 @@ export function buildStrengthPhaseSeries(
 		.sort((a, b) => {
 			const exerciseCompare = a.exerciseName.localeCompare(b.exerciseName);
 			if (exerciseCompare !== 0) return exerciseCompare;
-			return (phaseOrder.get(a.phase) ?? 99) - (phaseOrder.get(b.phase) ?? 99);
+			const phaseCompare =
+				(phaseOrder.get(a.phase) ?? 99) - (phaseOrder.get(b.phase) ?? 99);
+			if (phaseCompare !== 0) return phaseCompare;
+			return (
+				(recordTypeOrder.get(a.recordType) ?? 99) -
+				(recordTypeOrder.get(b.recordType) ?? 99)
+			);
 		})
 		.map(({ at: _at, ...item }) => item);
 
