@@ -7,13 +7,11 @@ import {
 	calculateRom,
 	estimateOneRepMax,
 } from "../biomechanics";
-
-/** Mobile OneRepMaxCalculator.estimate goldens (unrounded hybrid). */
-const HYBRID_1RM_GOLDENS = [
-	{ weight: 100, reps: 5, expected: 112.5 },
-	{ weight: 100, reps: 10, expected: 133.333 },
-	{ weight: 100, reps: 11, expected: 136.666 },
-] as const;
+import {
+	expectHybrid1rm,
+	HYBRID_1RM_DIGITS,
+	HYBRID_1RM_GOLDENS,
+} from "./hybrid-1rm-goldens";
 
 describe("calculateAsymmetry", () => {
 	it("returns 0 when both forces are 0", () => {
@@ -75,15 +73,15 @@ describe("estimateOneRepMax", () => {
 	});
 
 	it("estimateOneRepMax uses Brzycki at or below 10 reps", () => {
-		expect(estimateOneRepMax(100, 5)).toBeCloseTo(112.5);
+		expectHybrid1rm(estimateOneRepMax(100, 5), 112.5);
 	});
 
 	it("estimateOneRepMax is continuous at 10 reps", () => {
-		expect(estimateOneRepMax(100, 10)).toBeCloseTo(133.333);
+		expectHybrid1rm(estimateOneRepMax(100, 10), 100 * (36 / 27));
 	});
 
 	it("estimateOneRepMax uses Epley above 10 reps", () => {
-		expect(estimateOneRepMax(100, 11)).toBeCloseTo(136.666);
+		expectHybrid1rm(estimateOneRepMax(100, 11), 100 * (1 + 11 / 30));
 	});
 
 	it("matches Edge estimateOneRepMaxKg for hybrid goldens", () => {
@@ -91,8 +89,19 @@ describe("estimateOneRepMax", () => {
 			const portal = estimateOneRepMax(weight, reps);
 			const edge = estimateOneRepMaxKg(weight, reps);
 			expect(portal).toBe(edge);
-			expect(portal).toBeCloseTo(expected);
+			expectHybrid1rm(portal, expected);
 		}
+	});
+
+	it("rejects 2dp stand-ins that default toBeCloseTo would accept", () => {
+		expect(estimateOneRepMax(100, 10)).not.toBeCloseTo(
+			133.33,
+			HYBRID_1RM_DIGITS,
+		);
+		expect(estimateOneRepMax(100, 11)).not.toBeCloseTo(
+			136.67,
+			HYBRID_1RM_DIGITS,
+		);
 	});
 
 	it("estimateOneRepMax returns weight for 1 rep and 0 for invalid", () => {
@@ -102,7 +111,7 @@ describe("estimateOneRepMax", () => {
 
 	it("calculates correctly for higher reps (Brzycki)", () => {
 		// 80 * (36 / (37 - 10)) = 80 * (36/27) = 106.666...
-		expect(estimateOneRepMax(80, 10)).toBeCloseTo(106.667);
+		expectHybrid1rm(estimateOneRepMax(80, 10), 80 * (36 / 27));
 	});
 });
 

@@ -3,30 +3,38 @@ import {
 	buildExerciseProgressRows,
 	estimateOneRepMaxKg,
 } from "../../../supabase/functions/_shared/exerciseProgressRows.ts";
+import {
+	expectHybrid1rm,
+	HYBRID_1RM_DIGITS,
+	HYBRID_1RM_GOLDENS,
+} from "./hybrid-1rm-goldens";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 
-/** Mobile OneRepMaxCalculator.estimate goldens (unrounded hybrid). */
-const HYBRID_1RM_GOLDENS = [
-	{ weight: 100, reps: 5, expected: 112.5 },
-	{ weight: 100, reps: 10, expected: 133.333 },
-	{ weight: 100, reps: 11, expected: 136.666 },
-] as const;
-
 describe("estimateOneRepMaxKg (hybrid)", () => {
 	it("uses Brzycki at or below 10 reps", () => {
-		expect(estimateOneRepMaxKg(100, 5)).toBeCloseTo(112.5);
+		expectHybrid1rm(estimateOneRepMaxKg(100, 5), 112.5);
 	});
 	it("is continuous at 10 reps", () => {
-		expect(estimateOneRepMaxKg(100, 10)).toBeCloseTo(133.333);
+		expectHybrid1rm(estimateOneRepMaxKg(100, 10), 100 * (36 / 27));
 	});
 	it("uses Epley above 10 reps", () => {
-		expect(estimateOneRepMaxKg(100, 11)).toBeCloseTo(136.666);
+		expectHybrid1rm(estimateOneRepMaxKg(100, 11), 100 * (1 + 11 / 30));
 	});
 	it("matches mobile hybrid goldens without rounding", () => {
 		for (const { weight, reps, expected } of HYBRID_1RM_GOLDENS) {
-			expect(estimateOneRepMaxKg(weight, reps)).toBeCloseTo(expected);
+			expectHybrid1rm(estimateOneRepMaxKg(weight, reps), expected);
 		}
+	});
+	it("rejects 2dp stand-ins that default toBeCloseTo would accept", () => {
+		expect(estimateOneRepMaxKg(100, 10)).not.toBeCloseTo(
+			133.33,
+			HYBRID_1RM_DIGITS,
+		);
+		expect(estimateOneRepMaxKg(100, 11)).not.toBeCloseTo(
+			136.67,
+			HYBRID_1RM_DIGITS,
+		);
 	});
 	it("returns 0 for invalid input and weight for a single rep", () => {
 		expect(estimateOneRepMaxKg(0, 5)).toBe(0);
