@@ -5,7 +5,7 @@
  * assert `sync_complete` is fired with the expected payload shape.
  *
  * The real Edge Function does:
- *   const channel = supabase.channel(`sync:${userId}`);
+ *   const channel = supabase.channel(`sync:${userId}`, { config: { private: true } });
  *   await channel.send({ type: 'broadcast', event: 'sync_complete', payload });
  *
  * Our mock-edge-functions.ts intercepts the push call before it ever reaches
@@ -17,6 +17,7 @@ export interface CapturedBroadcast {
 	channel: string;
 	event: string;
 	payload: Record<string, unknown>;
+	private: boolean;
 	/** Wall-clock timestamp in ms when the broadcast was captured. */
 	timestamp: number;
 }
@@ -35,6 +36,7 @@ export function recordBroadcast(
 	channel: string,
 	event: string,
 	payload: Record<string, unknown>,
+	options: { private?: boolean } = {},
 ): void {
 	if (broadcastShouldThrow) {
 		// Real Edge Function wraps broadcast in try/catch — error is logged,
@@ -45,6 +47,7 @@ export function recordBroadcast(
 		channel,
 		event,
 		payload,
+		private: options.private === true,
 		timestamp: Date.now(),
 	});
 }

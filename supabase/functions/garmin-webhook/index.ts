@@ -2,7 +2,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
-  redactGarminRawData,
+  buildGarminWebhookPersistRow,
   resolveGarminWebhookIdentity,
   type GarminIdentityCandidate,
 } from '../_shared/garminIdentity.ts';
@@ -291,14 +291,12 @@ Deno.serve(async (req) => {
         const { error: upsertError } = await supabase
           .from('external_activities')
           .upsert(
-            {
-              user_id: identity.userId,
-              ...normalized,
-              raw_data: redactGarminRawData(
-                activity as unknown as Record<string, unknown>,
-              ),
-              synced_at: new Date().toISOString(),
-            },
+            buildGarminWebhookPersistRow(
+              identity.userId,
+              activity as unknown as Record<string, unknown>,
+              normalized,
+              new Date().toISOString(),
+            ),
             { onConflict: 'user_id,provider,external_id' },
           );
 

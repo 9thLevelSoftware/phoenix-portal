@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import {
   createHevyPageFetcher,
   fetchHevyBackfill,
@@ -612,7 +613,9 @@ async function persistActivities(
           avg_heart_rate: activity.avgHeartRate ?? null,
           max_heart_rate: activity.maxHeartRate ?? null,
           elevation_gain_meters: activity.elevationGainMeters ?? null,
-          raw_data: activity.rawData ? JSON.parse(activity.rawData) : null,
+          raw_data: activity.rawData
+            ? redactTokenShapedJson(JSON.parse(activity.rawData))
+            : null,
           synced_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,provider,external_id' }

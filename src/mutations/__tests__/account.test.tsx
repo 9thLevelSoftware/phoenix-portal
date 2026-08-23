@@ -81,6 +81,7 @@ describe("useRequestDeletion", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("deletion_requests");
+		expect(mockChain.insert).toHaveBeenCalledWith({ user_id: TEST_USER_ID });
 		expect(mockToast.success).toHaveBeenCalledWith(
 			"Account deletion scheduled. You have 30 days to cancel.",
 		);

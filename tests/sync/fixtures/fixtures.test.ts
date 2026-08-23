@@ -196,6 +196,7 @@ describe("External Activity Fixtures", () => {
 
 		const garmin = createGarminActivityFixture("running");
 		expect(garmin.raw_data).toBeDefined();
+		expect(JSON.stringify(garmin.raw_data)).not.toMatch(/userAccessToken/i);
 	});
 });
 

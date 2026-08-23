@@ -54,6 +54,8 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.user_subscription_tier() TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.user_has_min_tier(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.user_has_min_tier(text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.user_has_min_tier(text) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
@@ -631,6 +633,14 @@ GRANT EXECUTE ON FUNCTION public.import_shared_cycle(UUID, TEXT) TO authenticate
 -- ---------------------------------------------------------------------------
 -- 5. deletion_requests: 30-day floor + freeze scheduled_for
 -- ---------------------------------------------------------------------------
+-- Drop the freeze trigger first so a re-run can floor leftover short-grace
+-- rows without the UPDATE being rejected.
+DROP TRIGGER IF EXISTS enforce_deletion_request_grace ON public.deletion_requests;
+
+UPDATE public.deletion_requests
+SET scheduled_for = requested_at + INTERVAL '30 days'
+WHERE scheduled_for < requested_at + INTERVAL '30 days';
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -675,11 +685,19 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS enforce_deletion_request_grace ON public.deletion_requests;
 CREATE TRIGGER enforce_deletion_request_grace
   BEFORE INSERT OR UPDATE ON public.deletion_requests
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_deletion_request_grace();
+
+DROP POLICY IF EXISTS "Users can insert own deletion request" ON public.deletion_requests;
+CREATE POLICY "Users can insert own deletion request"
+  ON public.deletion_requests FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    (select auth.uid()) = user_id
+    AND status = 'pending'
+  );
 
 DROP POLICY IF EXISTS "Users can update own deletion request" ON public.deletion_requests;
 CREATE POLICY "Users can update own deletion request"
@@ -708,8 +726,13 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 BEGIN
-    INSERT INTO public.profiles (id, display_name)
-    VALUES (NEW.id, 'Athlete')
+    INSERT INTO public.profiles (
+      id,
+      display_name,
+      profile_visible,
+      leaderboard_participation
+    )
+    VALUES (NEW.id, 'Athlete', false, false)
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO public.local_profiles (user_id, id, name, device_id)
@@ -731,6 +754,8 @@ BEGIN
   END IF;
 
   EXECUTE 'ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY';
+  -- KD-29: private Broadcast SELECT needs a table grant; service-role still
+  -- sends (no authenticated INSERT policy).
   EXECUTE 'GRANT SELECT ON realtime.messages TO authenticated';
 
   IF NOT EXISTS (
@@ -754,8 +779,10 @@ END $$;
 
 -- ---------------------------------------------------------------------------
 -- 8. Avatars storage: path-scoped writes (idempotent)
---    Bucket stays publicly readable so Profile getPublicUrl keeps working;
---    writes are owner-folder only.
+--    Bucket stays public so Profile getPublicUrl keeps working. Do NOT add a
+--    SELECT policy — listing must fail closed. Public URLs do not need one.
+--    Unknown dashboard-created avatars policies cannot be probed here; drop
+--    leftovers named other than the three write policies below by hand.
 -- ---------------------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -770,87 +797,91 @@ SET
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'Public can read avatars'
-  ) THEN
-    CREATE POLICY "Public can read avatars"
-      ON storage.objects
-      FOR SELECT
-      USING (bucket_id = 'avatars');
-  END IF;
+DROP POLICY IF EXISTS "Public can read avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Users can upload own avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update own avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own avatars" ON storage.objects;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'Users can upload own avatars'
-  ) THEN
-    CREATE POLICY "Users can upload own avatars"
-      ON storage.objects
-      FOR INSERT
-      TO authenticated
-      WITH CHECK (
-        bucket_id = 'avatars'
-        AND name LIKE (select auth.uid())::text || '/%'
-      );
-  END IF;
+CREATE POLICY "Users can upload own avatars"
+  ON storage.objects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'avatars'
+    AND name LIKE (select auth.uid())::text || '/%'
+  );
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'Users can update own avatars'
-  ) THEN
-    CREATE POLICY "Users can update own avatars"
-      ON storage.objects
-      FOR UPDATE
-      TO authenticated
-      USING (
-        bucket_id = 'avatars'
-        AND name LIKE (select auth.uid())::text || '/%'
-      )
-      WITH CHECK (
-        bucket_id = 'avatars'
-        AND name LIKE (select auth.uid())::text || '/%'
-      );
-  END IF;
+CREATE POLICY "Users can update own avatars"
+  ON storage.objects
+  FOR UPDATE
+  TO authenticated
+  USING (
+    bucket_id = 'avatars'
+    AND name LIKE (select auth.uid())::text || '/%'
+  )
+  WITH CHECK (
+    bucket_id = 'avatars'
+    AND name LIKE (select auth.uid())::text || '/%'
+  );
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'Users can delete own avatars'
-  ) THEN
-    CREATE POLICY "Users can delete own avatars"
-      ON storage.objects
-      FOR DELETE
-      TO authenticated
-      USING (
-        bucket_id = 'avatars'
-        AND name LIKE (select auth.uid())::text || '/%'
-      );
-  END IF;
-END $$;
+CREATE POLICY "Users can delete own avatars"
+  ON storage.objects
+  FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'avatars'
+    AND name LIKE (select auth.uid())::text || '/%'
+  );
 
 -- ---------------------------------------------------------------------------
 -- 9. Backfill-null Garmin tokens already stored in browser-readable JSONB
+--    Walks nested objects and arrays, not only top-level keys.
 -- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.jsonb_redact_token_keys(data jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  result jsonb;
+  entry record;
+  i int;
+  len int;
+BEGIN
+  IF data IS NULL THEN
+    RETURN NULL;
+  ELSIF jsonb_typeof(data) = 'array' THEN
+    result := '[]'::jsonb;
+    len := jsonb_array_length(data);
+    FOR i IN 0 .. GREATEST(len - 1, -1) LOOP
+      result := result || jsonb_build_array(public.jsonb_redact_token_keys(data -> i));
+    END LOOP;
+    RETURN result;
+  ELSIF jsonb_typeof(data) = 'object' THEN
+    result := '{}'::jsonb;
+    FOR entry IN SELECT key, value FROM jsonb_each(data) LOOP
+      IF entry.key ~* 'token' THEN
+        CONTINUE;
+      END IF;
+      result := result || jsonb_build_object(
+        entry.key,
+        public.jsonb_redact_token_keys(entry.value)
+      );
+    END LOOP;
+    RETURN result;
+  ELSE
+    RETURN data;
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.jsonb_redact_token_keys(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.jsonb_redact_token_keys(jsonb) FROM anon;
+REVOKE ALL ON FUNCTION public.jsonb_redact_token_keys(jsonb) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.jsonb_redact_token_keys(jsonb) TO service_role;
+
 UPDATE public.external_activities
-SET raw_data = raw_data
-  - 'userAccessToken'
-  - 'accessToken'
-  - 'access_token'
-  - 'refreshToken'
-  - 'refresh_token'
-WHERE raw_data ?| ARRAY[
-  'userAccessToken',
-  'accessToken',
-  'access_token',
-  'refreshToken',
-  'refresh_token'
-];
+SET raw_data = public.jsonb_redact_token_keys(raw_data)
+WHERE raw_data IS NOT NULL
+  AND raw_data::text ~* 'token';

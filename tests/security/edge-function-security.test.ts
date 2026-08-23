@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildGarminWebhookPersistRow,
 	extractGarminProviderUserId,
 	type GarminIdentityCandidate,
 	redactGarminRawData,
@@ -109,7 +110,13 @@ describe("Paddle webhook security helpers", () => {
 		expect(isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", now)).toBe(
 			true,
 		);
+		expect(
+			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", now),
+		).toBe(true);
 		expect(isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", now)).toBe(
+			false,
+		);
+		expect(isSubscriptionEntitled("active", "2026-05-17T12:00:00Z", now)).toBe(
 			false,
 		);
 		expect(isSubscriptionEntitled("active", null, now)).toBe(false);
@@ -311,6 +318,7 @@ describe("Garmin webhook identity helpers", () => {
 					refresh_token: "nested-secret",
 					hrv: 62,
 				},
+				samples: [{ userAccessToken: "array-secret", watts: 200 }, { hrv: 55 }],
 			}),
 		).toEqual({
 			userId: "garmin-1",
@@ -319,6 +327,33 @@ describe("Garmin webhook identity helpers", () => {
 			summary: {
 				hrv: 62,
 			},
+			samples: [{ watts: 200 }, { hrv: 55 }],
 		});
+	});
+
+	it("persist-path upsert row never contains token-shaped keys", () => {
+		const row = buildGarminWebhookPersistRow(
+			"user-1",
+			{
+				userId: "garmin-1",
+				userAccessToken: "must-not-persist",
+				summary: { access_token: "nested", hrv: 70 },
+				laps: [{ refreshToken: "lap-secret", distance: 400 }],
+			},
+			{
+				external_id: "42",
+				provider: "garmin",
+				name: "Easy run",
+			},
+			"2026-08-23T00:00:00.000Z",
+		);
+
+		expect(row.user_id).toBe("user-1");
+		expect(row.raw_data).toEqual({
+			userId: "garmin-1",
+			summary: { hrv: 70 },
+			laps: [{ distance: 400 }],
+		});
+		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
 	});
 });

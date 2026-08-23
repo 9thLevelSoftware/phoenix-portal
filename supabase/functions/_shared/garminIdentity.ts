@@ -99,6 +99,24 @@ export async function resolveGarminWebhookIdentity(
 
 const TOKEN_SHAPED_KEY = /token/i;
 
+/** Strip token-shaped keys from objects and arrays before persisting JSONB. */
+export function redactTokenShapedJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactTokenShapedJson);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (TOKEN_SHAPED_KEY.test(key)) {
+        continue;
+      }
+      out[key] = redactTokenShapedJson(nested);
+    }
+    return out;
+  }
+  return value;
+}
+
 /**
  * Strip OAuth tokens from Garmin webhook JSON before it is stored in
  * browser-readable `external_activities.raw_data`.
@@ -106,16 +124,20 @@ const TOKEN_SHAPED_KEY = /token/i;
 export function redactGarminRawData(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(value)) {
-    if (TOKEN_SHAPED_KEY.test(key)) {
-      continue;
-    }
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-      out[key] = redactGarminRawData(nested as Record<string, unknown>);
-    } else {
-      out[key] = nested;
-    }
-  }
-  return out;
+  return redactTokenShapedJson(value) as Record<string, unknown>;
+}
+
+/** Persist-path shape used by garmin-webhook upserts. */
+export function buildGarminWebhookPersistRow(
+  userId: string,
+  activity: Record<string, unknown>,
+  normalized: Record<string, unknown>,
+  syncedAt: string,
+): Record<string, unknown> {
+  return {
+    user_id: userId,
+    ...normalized,
+    raw_data: redactGarminRawData(activity),
+    synced_at: syncedAt,
+  };
 }

@@ -59,17 +59,3 @@ export function getCorsHeaders(req: Request): Record<string, string> {
       : {}),
   };
 }
-
-/**
- * Static CORS headers for non-browser endpoints (webhooks, cron).
- * Uses APP_URL directly. Prefer getCorsHeaders(req) for browser-facing functions.
- * Includes basic security headers for webhook endpoints.
- */
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': readEnv('APP_URL') ?? 'http://localhost:5173',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'X-Frame-Options': 'DENY',
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-};

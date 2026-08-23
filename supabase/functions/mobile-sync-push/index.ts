@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
@@ -2718,7 +2719,9 @@ async function mobileSyncPushHandler(
         avg_heart_rate: a.avgHeartRate ?? null,
         max_heart_rate: a.maxHeartRate ?? null,
         elevation_gain_meters: a.elevationGainMeters ?? null,
-        raw_data: a.rawData ? safeJsonParse(a.rawData) : null,
+        raw_data: a.rawData
+          ? redactTokenShapedJson(safeJsonParse(a.rawData))
+          : null,
         synced_at: a.syncedAt ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));

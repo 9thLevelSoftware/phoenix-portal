@@ -42,4 +42,23 @@ describe("CORS localhost fail-closed", () => {
 			buildAllowedOrigins(undefined, undefined, "http://127.0.0.1:54321"),
 		).toEqual(["http://localhost:5173", "http://localhost:3000"]);
 	});
+
+	it("denies localhost when ENVIRONMENT is development against a hosted project", () => {
+		expect(
+			shouldAllowLocalhostOrigins(
+				"development",
+				"https://abcdefgh.supabase.co",
+			),
+		).toBe(false);
+	});
+
+	it("does not treat spoofed supabase.co hostnames as hosted", () => {
+		expect(isHostedSupabaseUrl("https://abcdefgh.supabase.co.evil.com")).toBe(
+			false,
+		);
+		expect(isHostedSupabaseUrl("https://not-supabase.co")).toBe(false);
+		expect(
+			isHostedSupabaseUrl("https://evil.example/?host=foo.supabase.co"),
+		).toBe(false);
+	});
 });
