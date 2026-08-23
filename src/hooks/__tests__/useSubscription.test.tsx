@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type SubscriptionStatus,
 	type SubscriptionTier,
@@ -20,6 +20,7 @@ let mockSubscriptionRow: {
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
 } | null = null;
+let mockSubscriptionError: { message: string } | null = null;
 
 const mockChannel = {
 	on: vi.fn(() => mockChannel),
@@ -32,7 +33,10 @@ vi.mock("@/lib/supabase", () => ({
 			select: () => ({
 				eq: () => ({
 					maybeSingle: () =>
-						Promise.resolve({ data: mockSubscriptionRow, error: null }),
+						Promise.resolve({
+							data: mockSubscriptionError ? null : mockSubscriptionRow,
+							error: mockSubscriptionError,
+						}),
 				}),
 			}),
 		}),
@@ -69,6 +73,11 @@ function createWrapper() {
 // ---------------------------------------------------------------------------
 
 describe("useSubscription effective tier", () => {
+	beforeEach(() => {
+		mockSubscriptionError = null;
+		mockSubscriptionRow = null;
+	});
+
 	it("returns the stored tier when status is 'active'", async () => {
 		mockSubscriptionRow = {
 			tier: "FLAME",
@@ -235,8 +244,27 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.isPremium).toBe(false);
 	});
 
+	it("reports isError without treating a failed fetch as an entitled FREE plan", async () => {
+		mockSubscriptionRow = null;
+		mockSubscriptionError = { message: "network down" };
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.isError).toBe(true);
+		expect(result.current.isEntitled).toBe(false);
+		expect(result.current.isPremium).toBe(false);
+		expect(result.current.isFlame).toBe(false);
+		expect(result.current.isInferno).toBe(false);
+		expect(result.current.tier).toBe("FREE");
+	});
+
 	it("subscribes without crashing when global crypto is unavailable", async () => {
 		mockSubscriptionRow = null;
+		mockSubscriptionError = null;
 		mockChannel.subscribe.mockClear();
 		vi.stubGlobal("crypto", undefined);
 

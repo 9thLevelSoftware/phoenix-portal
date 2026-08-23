@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { paddleWebhookResponseForCustomUserId } from "../../../supabase/functions/_shared/paddleWebhookUserId.ts";
 import {
 	buildSubscriptionUpsert,
 	mapPaddleStatusToSubscriptionStatus,
@@ -270,5 +271,73 @@ describe("verifyPaddleSignature", () => {
 
 		const result = await verifyPaddleSignature(tamperedBody, header, secret);
 		expect(result).toBe(false);
+	});
+});
+
+describe("paddle webhook missing user_id after HMAC", () => {
+	const secret = "pdl_ntf_test_secret_01abc";
+
+	async function computeHmac(payload: string, key: string): Promise<string> {
+		const encoder = new TextEncoder();
+		const cryptoKey = await crypto.subtle.importKey(
+			"raw",
+			encoder.encode(key),
+			{ name: "HMAC", hash: "SHA-256" },
+			false,
+			["sign"],
+		);
+		const sig = await crypto.subtle.sign(
+			"HMAC",
+			cryptoKey,
+			encoder.encode(payload),
+		);
+		return Array.from(new Uint8Array(sig))
+			.map((b) => b.toString(16).padStart(2, "0"))
+			.join("");
+	}
+
+	it("returns 200 { ignored: true } for missing user_id after a valid HMAC", async () => {
+		const body = JSON.stringify({
+			event_id: "evt_missing_user",
+			event_type: "subscription.updated",
+			data: { custom_data: {} },
+		});
+		const ts = String(Math.floor(Date.now() / 1000));
+		const hmac = await computeHmac(`${ts}:${body}`, secret);
+		const hmacValid = await verifyPaddleSignature(
+			body,
+			`ts=${ts};h1=${hmac}`,
+			secret,
+		);
+		expect(hmacValid).toBe(true);
+
+		const parsed = JSON.parse(body) as {
+			data: { custom_data?: { user_id?: string } };
+		};
+		const result = paddleWebhookResponseForCustomUserId(
+			parsed.data.custom_data?.user_id,
+		);
+		expect(result.kind).toBe("response");
+		if (result.kind !== "response") return;
+		expect(result.response.status).toBe(200);
+		await expect(result.response.json()).resolves.toEqual({ ignored: true });
+	});
+
+	it("keeps malformed user_id as 400 after a valid HMAC", async () => {
+		const body = JSON.stringify({
+			event_id: "evt_bad_user",
+			event_type: "subscription.updated",
+			data: { custom_data: { user_id: "not-a-uuid" } },
+		});
+		const ts = String(Math.floor(Date.now() / 1000));
+		const hmac = await computeHmac(`${ts}:${body}`, secret);
+		expect(
+			await verifyPaddleSignature(body, `ts=${ts};h1=${hmac}`, secret),
+		).toBe(true);
+
+		const result = paddleWebhookResponseForCustomUserId("not-a-uuid");
+		expect(result.kind).toBe("response");
+		if (result.kind !== "response") return;
+		expect(result.response.status).toBe(400);
 	});
 });

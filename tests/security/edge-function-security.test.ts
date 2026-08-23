@@ -8,6 +8,7 @@ import {
 } from "../../supabase/functions/_shared/garminIdentity.ts";
 import { hmacSha256Hex } from "../../supabase/functions/_shared/hmac.ts";
 import {
+	findCrossTierDuplicatePriceIds,
 	getConfiguredPriceIdForTierInterval,
 	parsePaddleBillingInterval,
 	parsePaddlePaidTier,
@@ -186,6 +187,19 @@ describe("Paddle webhook security helpers", () => {
 		expect(
 			getConfiguredPriceIdForTierInterval("FLAME", "monthly", env),
 		).toBeNull();
+	});
+
+	it("detects price IDs configured under more than one tier", () => {
+		const env = {
+			get: (key: string) =>
+				({
+					PADDLE_EMBER_PRICE_IDS: "pri_shared,pri_ember",
+					PADDLE_FLAME_PRICE_IDS: "pri_shared,pri_flame",
+					PADDLE_INFERNO_PRICE_IDS: "pri_inferno",
+				})[key],
+		};
+
+		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
 	});
 
 	it("maps fully canceled Paddle subscriptions to closed local state", () => {

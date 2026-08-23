@@ -16,6 +16,8 @@ const mockSubscription = vi.hoisted(() => ({
 		isEntitled: false,
 		isStale: false,
 		isLoading: false,
+		isError: false,
+		refetch: vi.fn(),
 		isPremium: false,
 		isFlame: false,
 		isInferno: false,
@@ -47,7 +49,7 @@ vi.mock("@/lib/paddle-client", () => ({
 	openCheckout: mockOpenCheckout,
 }));
 
-vi.mock("@/lib/pricing", () => ({
+const mockPricing = vi.hoisted(() => ({
 	TIER_PRICING: [
 		{
 			name: "Ember",
@@ -78,10 +80,11 @@ vi.mock("@/lib/pricing", () => ({
 			paddleMonthlyPriceId: "pri_inferno_monthly",
 			paddleAnnualPriceId: "pri_inferno_annual",
 			features: ["Everything in Flame"],
-			comingSoon: true,
+			comingSoon: false,
 		},
 	],
 }));
+vi.mock("@/lib/pricing", () => mockPricing);
 
 vi.mock("sonner", () => ({
 	toast: {
@@ -101,6 +104,8 @@ function setSubscription(overrides: Partial<typeof mockSubscription.current>) {
 		isEntitled: false,
 		isStale: false,
 		isLoading: false,
+		isError: false,
+		refetch: vi.fn(),
 		isPremium: false,
 		isFlame: false,
 		isInferno: false,
@@ -114,6 +119,9 @@ describe("PricingPlans billing actions", () => {
 		mockInvoke.mockResolvedValue({ data: { success: true }, error: null });
 		mockOpenCheckout.mockResolvedValue(undefined);
 		setSubscription({});
+		mockPricing.TIER_PRICING[2].paddleMonthlyPriceId = "pri_inferno_monthly";
+		mockPricing.TIER_PRICING[2].paddleAnnualPriceId = "pri_inferno_annual";
+		mockPricing.TIER_PRICING[2].comingSoon = false;
 	});
 
 	it("treats expired scheduled cancellations as subscribable and refreshes once", async () => {
@@ -134,7 +142,7 @@ describe("PricingPlans billing actions", () => {
 			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
 		});
 		expect(screen.getAllByRole("button", { name: /subscribe/i }).length).toBe(
-			2,
+			3,
 		);
 		expect(
 			screen.queryByRole("button", { name: /keep plan/i }),
@@ -268,7 +276,7 @@ describe("PricingPlans billing actions", () => {
 		const subscribeButtons = screen.getAllByRole("button", {
 			name: /subscribe/i,
 		});
-		expect(subscribeButtons).toHaveLength(2);
+		expect(subscribeButtons).toHaveLength(3);
 		await user.click(subscribeButtons[1]);
 
 		await waitFor(() => {
@@ -276,5 +284,43 @@ describe("PricingPlans billing actions", () => {
 				body: { transaction_id: "txn_01h00000000000000000000000" },
 			});
 		});
+	});
+
+	it("offers Inferno checkout when price IDs are configured", () => {
+		renderWithProviders(<PricingPlans />);
+
+		expect(screen.getAllByRole("button", { name: /subscribe/i })).toHaveLength(
+			3,
+		);
+		expect(
+			screen.queryByRole("button", { name: /coming soon/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows Unavailable for Inferno when price IDs are empty", () => {
+		mockPricing.TIER_PRICING[2].paddleMonthlyPriceId = "";
+		mockPricing.TIER_PRICING[2].paddleAnnualPriceId = "";
+
+		renderWithProviders(<PricingPlans />);
+
+		expect(screen.getByRole("button", { name: /unavailable/i })).toBeDisabled();
+		expect(
+			screen.queryByRole("button", { name: /coming soon/i }),
+		).not.toBeInTheDocument();
+		expect(screen.getAllByRole("button", { name: /subscribe/i })).toHaveLength(
+			2,
+		);
+	});
+
+	it("shows retry instead of Subscribe when billing status fails to load", () => {
+		setSubscription({ isError: true, tier: "FREE" });
+
+		renderWithProviders(<PricingPlans />);
+
+		expect(screen.getByTestId("billing-status-error")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /subscribe/i }),
+		).not.toBeInTheDocument();
 	});
 });
