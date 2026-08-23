@@ -270,8 +270,9 @@ describe("workoutListInfiniteOptions", () => {
 	});
 
 	it("stops paging when the last page is short", async () => {
-		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } =
-			await import("../workouts");
+		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } = await import(
+			"../workouts"
+		);
 		const opts = workoutListInfiniteOptions("user-abc");
 		const shortPage = Array.from({ length: 3 }, () => ({}));
 		expect(opts.getNextPageParam(shortPage as never, [])).toBeUndefined();
