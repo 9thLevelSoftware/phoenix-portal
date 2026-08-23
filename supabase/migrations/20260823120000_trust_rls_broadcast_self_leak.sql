@@ -637,9 +637,15 @@ GRANT EXECUTE ON FUNCTION public.import_shared_cycle(UUID, TEXT) TO authenticate
 -- rows without the UPDATE being rejected.
 DROP TRIGGER IF EXISTS enforce_deletion_request_grace ON public.deletion_requests;
 
+-- Floor against wall clock as well as requested_at so a past requested_at
+-- plus requested_at+30d cannot skip grace (CHECK would still pass).
 UPDATE public.deletion_requests
-SET scheduled_for = requested_at + INTERVAL '30 days'
-WHERE scheduled_for < requested_at + INTERVAL '30 days';
+SET
+  requested_at = GREATEST(requested_at, now()),
+  scheduled_for = GREATEST(
+    scheduled_for,
+    GREATEST(requested_at, now()) + INTERVAL '30 days'
+  );
 
 DO $$
 BEGIN
@@ -781,8 +787,9 @@ END $$;
 -- 8. Avatars storage: path-scoped writes (idempotent)
 --    Bucket stays public so Profile getPublicUrl keeps working. Do NOT add a
 --    SELECT policy — listing must fail closed. Public URLs do not need one.
---    Unknown dashboard-created avatars policies cannot be probed here; drop
---    leftovers named other than the three write policies below by hand.
+--    Drop every storage.objects policy whose USING/WITH CHECK mentions
+--    avatars (unknown dashboard names included). Keep exercise-media.
+--    No Public SELECT — listing stays fail-closed.
 -- ---------------------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -797,7 +804,31 @@ SET
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
-DROP POLICY IF EXISTS "Public can read avatars" ON storage.objects;
+DO $$
+DECLARE
+  pol record;
+BEGIN
+  FOR pol IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname NOT ILIKE '%exercise-media%'
+      AND COALESCE(qual, '') NOT ILIKE '%exercise-media%'
+      AND COALESCE(with_check, '') NOT ILIKE '%exercise-media%'
+      AND (
+        COALESCE(qual, '') ILIKE '%avatars%'
+        OR COALESCE(with_check, '') ILIKE '%avatars%'
+        OR policyname ILIKE '%avatar%'
+      )
+  LOOP
+    EXECUTE format(
+      'DROP POLICY IF EXISTS %I ON storage.objects',
+      pol.policyname
+    );
+  END LOOP;
+END $$;
+
 DROP POLICY IF EXISTS "Users can upload own avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can update own avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete own avatars" ON storage.objects;
