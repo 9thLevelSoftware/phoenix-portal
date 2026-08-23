@@ -607,10 +607,10 @@ describe("sync preview credential resolver", () => {
 		);
 		expect(workflow).not.toContain("SUPABASE_PROD_DB_PASSWORD");
 		expect(workflow).toMatch(
-			/- name: Run sync tests \(live mode\)[\s\S]*?run: npm run test:sync:live\s*\n\s*env:\s*\n\s*MOCK_EDGE_FUNCTIONS:/,
+			/- name: Run sync tests \(live mode, dispatch-only\)[\s\S]*?run: npm run test:sync:live\s*\n\s*env:\s*\n\s*MOCK_EDGE_FUNCTIONS:/,
 		);
 		expect(workflow).not.toMatch(
-			/- name: Run sync tests \(live mode\)[\s\S]*?SUPABASE_(?:URL|ANON_KEY|SERVICE_ROLE_KEY):/,
+			/- name: Run sync tests \(live mode, dispatch-only\)[\s\S]*?SUPABASE_(?:URL|ANON_KEY|SERVICE_ROLE_KEY):/,
 		);
 		expect(resolver).toContain("api.phoenix-portal.com");
 		expect(resolver).toContain(".supabase.co");

@@ -49,17 +49,20 @@ jobs:
       - run: npm run typecheck
 
   edge-functions:
-    name: Edge Function Deno Check
+    name: Edge Function Deno Check and Handler Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: denoland/setup-deno@v2
         with:
           deno-version: 2.2.15
-      - run: npm run check:edge-functions
+      - name: Type-check Edge Functions
+        run: npm run check:edge-functions
+      - name: Run mobile-sync-push/pull handler tests (in-process doubles)
+        run: npm run test:edge
 
   unit-test:
-    name: Vitest Unit Tests
+    name: Vitest Unit Tests (mock Edge default)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -71,7 +74,7 @@ jobs:
       - run: npm test
 
   e2e:
-    name: Playwright E2E
+    name: Playwright E2E (mocked REST)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:

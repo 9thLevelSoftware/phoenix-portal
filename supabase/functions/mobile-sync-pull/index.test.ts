@@ -927,6 +927,7 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
     "customExercises",
     "cycles",
     "externalActivities",
+    "externalActivitiesHasMore",
     "gamificationStats",
     "hasMore",
     "localProfiles",

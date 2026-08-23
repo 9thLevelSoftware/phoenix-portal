@@ -517,8 +517,8 @@ function makeHarness(
           error: null,
         };
       }
+      if (options.rpcBehavior) return await options.rpcBehavior(name, args);
       if (name === "mutate_local_profile_preference_section") {
-        if (options.rpcBehavior) return await options.rpcBehavior(name, args);
         const section = String(args.p_section);
         return {
           data: [{
@@ -2815,11 +2815,13 @@ Deno.test({
 function makePrSession() {
   return {
     id: SESSION_ID,
+    userId: VALID_USER_ID,
     startedAt: "2026-01-20T10:00:00.000Z",
     updatedAt: "2026-01-20T10:30:00.000Z",
     workoutMode: "OLD_SCHOOL",
     exercises: [{
       id: EXERCISE_ID,
+      sessionId: SESSION_ID,
       name: "Bench Press",
       exerciseId: "bench-press-id",
       muscleGroup: "Chest",
@@ -2831,7 +2833,7 @@ function makePrSession() {
         actualReps: 10,
         weightKg: 80,
         isPr: true,
-        prType: "1RM",
+        prType: "MAX_WEIGHT",
         prPhase: "COMBINED",
       }],
     }],

@@ -15,6 +15,26 @@ npm run test:sync:live
 npm test -- --run tests/sync/round-trip/workout-roundtrip.test.ts
 ```
 
+## CI labeling (mock vs live)
+
+`npm run test:sync` and the GitHub Actions **Sync Validation Tests (mock)** job
+are **mock Edge**. `MOCK_EDGE_FUNCTIONS=true` is the default in `vitest.config.ts`
+and on every push/PR. That job is not a live `mobile-sync-push` / `mobile-sync-pull`
+run.
+
+Live mode (`npm run test:sync:live`, `MOCK_EDGE_FUNCTIONS=false`) is
+**workflow_dispatch only** (`sync-tests.yml` with `use_mocks=false`). Push and
+`pull_request` never start live tests.
+
+`ci.yml` still splits jobs. `npm run verify:full` is the local handoff command;
+it is not one CI job. Playwright E2E uses a mocked REST harness — the
+DEV `CustomEvent` spec (`e2e/dev-custom-event-cross-tab.spec.ts`) is **not**
+Supabase Broadcast proof.
+
+Deno handler tests (`npm run test:edge`) run `mobile-sync-push/index.test.ts`
+and `mobile-sync-pull/index.test.ts` against in-process doubles (no live
+secrets) in the **Edge Function Deno Check and Handler Tests** job.
+
 ## Test Organization
 
 ```

@@ -47,7 +47,7 @@ on:
 
 jobs:
   sync-tests:
-    name: Sync Validation Tests
+    name: Sync Validation Tests (${{ github.event_name == 'workflow_dispatch' && github.event.inputs.use_mocks == 'false' && 'live dispatch-only' || 'mock' }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -84,7 +84,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
-      - name: Run sync tests (live mode)
+      # Live Edge is dispatch-only (`use_mocks=false`). Push/PR never take this path.
+      - name: Run sync tests (live mode, dispatch-only)
         if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: npm run test:sync:live
         env:
@@ -108,7 +109,7 @@ jobs:
           retention-days: 7
 
   sync-tests-matrix:
-    name: Sync Tests (Node ${{ matrix.node-version }})
+    name: Sync Tests mock (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     strategy:
