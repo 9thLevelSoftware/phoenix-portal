@@ -20,6 +20,14 @@ export type PostgrestErrorLike = {
   hint?: string;
 };
 
+/** PostgREST Range/offset refusal (PGRST103 / 416), not a generic read error. */
+export function isRangeRefused(error: PostgrestErrorLike): boolean {
+  const code = (error.code ?? "").toUpperCase();
+  if (code === "PGRST103" || code === "416") return true;
+  const text = `${error.message ?? ""} ${error.hint ?? ""}`;
+  return /range not satisfiable|requested range|416/i.test(text);
+}
+
 export type PagedQueryResult = {
   data: Record<string, unknown>[] | null;
   error: PostgrestErrorLike | null;
@@ -115,7 +123,7 @@ async function fetchOneChunk(
         }
         return { ok: true, rows: merged };
       }
-      if (sawFullPage) {
+      if (sawFullPage && isRangeRefused(error)) {
         return {
           ok: false,
           kind: "overflow",

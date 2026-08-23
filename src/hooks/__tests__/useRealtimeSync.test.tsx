@@ -158,6 +158,7 @@ describe("useRealtimeSync", () => {
 			mocks.subscribeHandler?.("CHANNEL_ERROR");
 			expect(mocks.toastError).toHaveBeenCalledWith(
 				"Live sync unavailable. Refresh to retry.",
+				{ id: "phoenix-realtime-sync-unavailable" },
 			);
 			expect(mocks.mockSupabase.channel.mock.calls.length).toBe(callsBefore);
 			for (const call of mocks.mockSupabase.channel.mock.calls) {

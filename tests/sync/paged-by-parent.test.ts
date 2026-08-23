@@ -28,6 +28,7 @@ function fakeClient(
 		ranges.push([from, to]);
 		return builder;
 	};
+	// biome-ignore lint/suspicious/noThenProperty: PostgREST builders are thenable
 	builder.then = (
 		resolve: (value: unknown) => unknown,
 		reject?: (reason: unknown) => unknown,
@@ -106,11 +107,25 @@ describe("fetchAllByParentIds KD-28", () => {
 		}
 	});
 
+	it("keeps a generic error when PAGE+1 is followed by a non-Range failure", async () => {
+		const client = fakeClient([
+			{ data: rows(CHILD_PAGE_SIZE + 1, "s1"), error: null },
+			{ data: null, error: { message: "connection reset", code: "57014" } },
+		]);
+		const result = await fetchAllByParentIds(client, {
+			table: "exercises",
+			parentColumn: "session_id",
+			parentIds: ["s1"],
+			entity: "session exercises",
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.kind).toBe("error");
+		}
+	});
+
 	it("does not overflow when a multi-parent chunk is full and pageable", async () => {
-		const firstPage = [
-			...rows(CHILD_PAGE_SIZE, "s1"),
-			rows(1, "s2")[0],
-		];
+		const firstPage = [...rows(CHILD_PAGE_SIZE, "s1"), rows(1, "s2")[0]];
 		const client = fakeClient([
 			{ data: firstPage, error: null },
 			{ data: rows(3, "s2"), error: null },

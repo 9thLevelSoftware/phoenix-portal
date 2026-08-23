@@ -1394,6 +1394,30 @@ Deno.test("child paging: one parent PAGE+1 then Range refused is HTTP 503", asyn
   assertEquals(body.code, "CHILD_OVERFLOW");
 });
 
+Deno.test("child paging: PAGE+1 then a non-Range error is generic 503", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_sessions_excluding_ids") {
+        return { data: [sessionRpcRow()], error: null };
+      }
+      return undefined;
+    },
+    fromPages: {
+      exercises: [
+        { data: exerciseRows(CHILD_PAGE_SIZE + 1), error: null },
+        {
+          data: null,
+          error: { message: "connection reset", code: "57014" },
+        },
+      ],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 503);
+  const body = await json(response);
+  assertEquals(body.code, "57014");
+});
+
 Deno.test("external_activities hasMore is true when the 500-row cap is hit", async () => {
   const activities = Array.from({ length: 500 }, (_, i) => ({
     id: `act-${i}`,

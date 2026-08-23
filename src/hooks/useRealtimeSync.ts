@@ -125,7 +125,9 @@ export function useRealtimeSync() {
 						scheduleInvalidation();
 					}
 					if (status === "CHANNEL_ERROR") {
-						toast.error("Live sync unavailable. Refresh to retry.");
+						toast.error("Live sync unavailable. Refresh to retry.", {
+							id: "phoenix-realtime-sync-unavailable",
+						});
 						// Do NOT fall back to a public unsuffixed sync:{userId} topic.
 					}
 				});
