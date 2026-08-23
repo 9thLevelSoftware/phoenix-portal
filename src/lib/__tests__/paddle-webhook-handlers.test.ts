@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { paddleWebhookResponseForCustomUserId } from "../../../supabase/functions/_shared/paddleWebhookUserId.ts";
 import {
@@ -339,5 +341,33 @@ describe("paddle webhook missing user_id after HMAC", () => {
 		expect(result.kind).toBe("response");
 		if (result.kind !== "response") return;
 		expect(result.response.status).toBe(400);
+	});
+
+	it("binds a valid UUID instead of ignoring it", () => {
+		const userId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+		expect(paddleWebhookResponseForCustomUserId(userId)).toEqual({
+			kind: "bound",
+			userId,
+		});
+	});
+
+	it("locks paddle-webhooks to HMAC then ignore missing user_id (not 500)", () => {
+		const source = readFileSync(
+			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
+			"utf8",
+		);
+		const hmacIdx = source.indexOf(
+			"const isValid = await verifyPaddleSignature(",
+		);
+		const ignoreIdx = source.indexOf("paddleWebhookResponseForCustomUserId(");
+		const applyIdx = source.indexOf("apply_subscription_event");
+
+		expect(hmacIdx).toBeGreaterThan(-1);
+		expect(ignoreIdx).toBeGreaterThan(hmacIdx);
+		expect(applyIdx).toBeGreaterThan(ignoreIdx);
+		expect(source).toMatch(
+			/if\s*\(\s*!isValid\s*\)[\s\S]*Invalid signature[\s\S]*paddleWebhookResponseForCustomUserId/,
+		);
+		expect(source).not.toMatch(/Missing user_id in custom_data/);
 	});
 });

@@ -2,6 +2,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import {
+  findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
   paddlePriceIdsConfigured,
@@ -82,6 +83,18 @@ Deno.serve(async (req) => {
       console.error("[FATAL] Paddle price IDs are not configured");
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(Deno.env);
+    if (duplicatePriceIds.length > 0) {
+      console.error(
+        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
+        duplicatePriceIds,
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration invalid" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
