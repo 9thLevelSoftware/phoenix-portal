@@ -3,28 +3,15 @@ import { mockAuthenticatedApp } from "./support/mockSupabase";
 import { E2E_SUPABASE_URL } from "./support/supabase";
 
 /**
- * Cross-tab realtime sync E2E — covers audit 05 priority gap #13.
+ * DEV CustomEvent cross-tab invalidation — NOT live Supabase Broadcast (A-028).
  *
- * Scenario: the same user is logged into two browser contexts (tab A and
- * tab B). Mobile finishes a workout and broadcasts `sync_complete` on
- * `sync:{userId}`. Tab B must refresh within ~1s without a full page
- * reload.
+ * Playwright E2E has a mocked REST surface and no Realtime WebSocket. This
+ * spec dispatches `phoenix:e2e-sync-complete` (DEV-only listener in
+ * `useRealtimeSync`) after swapping the mock workout list. Passing it does
+ * not prove FP-6 / Broadcast topic `sync:{userId}`.
  *
- * Implementation strategy:
- *   - Two isolated browser contexts simulate two tabs.
- *   - Each context mounts `mockAuthenticatedApp` to seed a user session,
- *     subscription tier, and a starter workout list.
- *   - Supabase realtime uses WebSockets which are not available against the
- *     test support mock. We therefore bypass the realtime layer and
- *     directly invoke the `useRealtimeSync` invalidation code path in tab B
- *     by mutating the mocked workout dataset (new row appears in the GET
- *     response) and triggering a cache invalidation via a synthetic
- *     broadcast simulated inside the page.
- *
- * The test that asserts end-to-end across a real Supabase Realtime channel
- * is marked test.skip with a note — it requires live credentials and
- * cannot run in the standard mocked E2E harness. The mocked-path test
- * runs as a normal Playwright test.
+ * The skipped case below is a regression marker for a live Broadcast run;
+ * it is not executed in this harness.
  */
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
@@ -78,22 +65,21 @@ function workoutHeading(page: Page, name: string) {
 	return page.getByRole("heading", { name, exact: true });
 }
 
-test.describe("Cross-tab realtime sync", () => {
+test.describe("DEV CustomEvent cross-tab invalidation (not Broadcast)", () => {
 	test.skip(
-		"real Supabase broadcast drives cross-tab invalidation — requires live Realtime",
+		"live Supabase Broadcast drives cross-tab invalidation — not covered here",
 		async () => {
 			// Would require VITE_SUPABASE_URL pointing to a real project that
-			// authorises WebSocket connections. Our E2E harness only has a
-			// mocked REST surface. Flag as a regression marker and document
-			// the manual validation path:
+			// authorises WebSocket connections. This file is not that proof.
+			// Manual path if operators ever need it:
 			//   1. Log in as the same user in two tabs.
-			//   2. From tab A, complete a mobile workout (or simulate via
-			//      supabase.channel(`sync:<userId>`).send(sync_complete)).
+			//   2. From tab A, complete a mobile workout (or send
+			//      sync_complete on private sync:{userId}).
 			//   3. Observe tab B's dashboard workout list refreshes within 1s.
 		},
 	);
 
-	test("mocked broadcast: tab B reloads workout list after simulated sync", async ({
+	test("DEV CustomEvent: tab B reloads workout list after simulated sync", async ({
 		browser,
 	}) => {
 		// Two isolated contexts — each gets its own cookies/storage.
@@ -158,10 +144,7 @@ test.describe("Cross-tab realtime sync", () => {
 				},
 			);
 
-			// Step 3: simulate the invalidation path that useRealtimeSync
-			// listens for. The mocked E2E harness has no live Realtime
-			// socket, so the app exposes a development-only custom event
-			// that triggers the same query invalidation logic.
+			// Step 3: DEV-only CustomEvent. This is not a Broadcast send.
 			await pageB.evaluate((userId) => {
 				window.dispatchEvent(
 					new CustomEvent("phoenix:e2e-sync-complete", {
