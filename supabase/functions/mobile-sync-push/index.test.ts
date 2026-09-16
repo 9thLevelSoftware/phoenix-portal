@@ -2884,3 +2884,82 @@ for (const tc of ENV_CASES) {
     });
   });
 }
+
+Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", async () => {
+  const sessionId = (index: number) =>
+    `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+  const makeSession = (index: number, epochZero: boolean) => {
+    const id = sessionId(index);
+    const exerciseId = sessionId(10_000 + index);
+    const setId = sessionId(20_000 + index);
+    return {
+      id,
+      userId: VALID_USER_ID,
+      name: epochZero ? "Epoch zero workout" : `Workout ${index}`,
+      startedAt: epochZero
+        ? "1970-01-01T00:00:00.000Z"
+        : "2026-01-20T10:00:00.000Z",
+      updatedAt: "2026-01-20T10:30:00.000Z",
+      workoutMode: "OLD_SCHOOL",
+      exercises: [{
+        id: exerciseId,
+        sessionId: id,
+        name: `Bench Press ${index}`,
+        exerciseId: `bench-press-${index}`,
+        muscleGroup: "Chest",
+        sets: [{
+          id: setId,
+          exerciseId,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 80,
+          isPr: epochZero,
+          prType: epochZero ? "MAX_WEIGHT" : null,
+          prPhase: epochZero ? "COMBINED" : null,
+        }],
+      }],
+    };
+  };
+
+  const allSessions = Array.from({ length: 729 }, (_, index) =>
+    makeSession(index + 1, index >= 293 && index < 296)
+  );
+  const batchSizes = [243, 243, 243];
+  let offset = 0;
+  const harness = makeHarness();
+
+  for (const size of batchSizes) {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = allSessions.slice(offset, offset + size);
+    const response = await harness.handler(requestFromBody(body));
+    const responseBody = await json(response);
+
+    assertEquals(response.status, 200);
+    assertEquals(responseBody.sessionsInserted, size);
+    if (offset === 243) {
+      assertEquals(responseBody.personalRecordsInserted, 3);
+    }
+    offset += size;
+  }
+
+  assertEquals(offset, 729);
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 3);
+  assertEquals(
+    replaceCalls[0].args.p_session_ids,
+    allSessions.slice(0, 243).map((session) => session.id),
+  );
+  const secondBatchExercises = replaceCalls[1].args.p_exercises as Array<Record<string, unknown>>;
+  assertEquals(secondBatchExercises.length, 243);
+  assertEquals(
+    secondBatchExercises.filter((row) =>
+      [allSessions[293].id, allSessions[294].id, allSessions[295].id]
+        .includes(row.session_id as string)
+    ).length,
+    3,
+  );
+});

@@ -67,6 +67,7 @@ export interface PrExerciseInput {
 }
 
 export interface PrSessionInput {
+	id?: string;
 	startedAt: string;
 	exercises: PrExerciseInput[];
 }
@@ -661,6 +662,7 @@ export function buildPersonalRecordRows(
 					weight_kg: set.weightKg,
 					reps: set.actualReps,
 					unit: unitForRecordType(recordType),
+					session_id: session.id ?? null,
 					achieved_at: session.startedAt,
 					workout_phase: set.prPhase ?? "COMBINED",
 				});
