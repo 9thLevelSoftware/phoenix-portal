@@ -688,6 +688,31 @@ Deno.test("known personal record tombstones use the bounded RPC and remain tombs
   assertEquals(personalRecords[0].deletedAt, deletedAt);
 });
 
+Deno.test("sessions RPC includes p_last_sync_at matching request lastSync", async () => {
+  const lastSyncISO = "2026-07-01T00:00:00.000Z";
+  const knownSessionId = "00000000-0000-4000-8000-0000000000aa";
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: Date.parse(lastSyncISO),
+    knownEntityIds: {
+      ...validPullBody().knownEntityIds as Record<string, unknown>,
+      sessionIds: [knownSessionId],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const sessionCall = harness.adminCalls.find((call) =>
+    call.kind === "rpc" && call.name === "get_sessions_excluding_ids"
+  );
+  assert(sessionCall);
+  assertEquals(sessionCall.args?.p_known_ids, [knownSessionId]);
+  assertEquals(sessionCall.args?.p_last_sync_at, lastSyncISO);
+  assertEquals(sessionCall.args?.p_profile_id, VALID_PROFILE_ID);
+  assertEquals(sessionCall.args?.p_limit, 76);
+});
+
 // Issue #97 follow-up: 200 PRs sharing one microsecond timestamp must still
 // produce distinct page cursors. JS Date truncates µs → ms, which makes
 // `updated_at > cursor` match the entire cluster and replay page 1.
