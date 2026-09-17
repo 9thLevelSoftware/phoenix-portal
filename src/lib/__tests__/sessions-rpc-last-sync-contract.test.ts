@@ -16,7 +16,9 @@ describe("sessions excluding-ids last-sync migration", () => {
 			/CREATE\s+FUNCTION\s+get_sessions_excluding_ids[\s\S]*?\$\$;/i,
 		);
 		expect(match).not.toBeNull();
-		expect(match?.[0]).toMatch(/p_last_sync_at\s+TIMESTAMPTZ\s+DEFAULT\s+NULL/i);
+		expect(match?.[0]).toMatch(
+			/p_last_sync_at\s+TIMESTAMPTZ\s+DEFAULT\s+NULL/i,
+		);
 		expect(match?.[0]).toMatch(/ws\.updated_at\s*>\s*p_last_sync_at/i);
 		expect(match?.[0]).toMatch(/ws\.started_at\s*>\s*p_last_sync_at/i);
 		expect(match?.[0]).toMatch(/ws\.id\s*!=\s*ALL\s*\(p_known_ids\)/i);
