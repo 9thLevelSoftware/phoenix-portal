@@ -682,6 +682,7 @@ async function mobileSyncPullHandler(
           p_cursor_updated_at: cursorUpdatedAt,
           p_cursor_id: cursorId,
           p_limit: remainingPageSize + 1, // +1 to detect hasMore
+          p_last_sync_at: lastSyncISO,
         });
         sessionsRaw = (data as Record<string, unknown>[]) ?? [];
         sessionsError = error;
