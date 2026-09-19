@@ -89,7 +89,16 @@ export interface PersonalRecordRow {
 	updated_at?: string;
 	deleted_at?: string | null;
 	workout_phase: string;
+	/**
+	 * Which push path produced the row (personal_records.source). Set-derived
+	 * rows are written through upsert_set_derived_personal_records, whose
+	 * partial unique index makes a re-push idempotent; dedicated rows keep the
+	 * id-keyed upsert (F335: same derived identity, different id = distinct).
+	 */
+	source: PersonalRecordSource;
 }
+
+export type PersonalRecordSource = "set_derived" | "dedicated";
 
 export interface DedicatedPersonalRecordInput {
 	id?: string | null;
@@ -604,6 +613,7 @@ export function buildDedicatedPersonalRecordRows(
 			achieved_at: record.achievedAt ?? new Date().toISOString(),
 			deleted_at: record.deletedAt ?? null,
 			workout_phase: record.workoutPhase ?? "COMBINED",
+			source: "dedicated",
 		};
 
 		if (record.id) row.id = record.id;
@@ -665,6 +675,7 @@ export function buildPersonalRecordRows(
 					session_id: session.id ?? null,
 					achieved_at: session.startedAt,
 					workout_phase: set.prPhase ?? "COMBINED",
+					source: "set_derived",
 				});
 			}
 		}

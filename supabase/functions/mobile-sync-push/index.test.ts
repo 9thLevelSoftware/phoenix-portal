@@ -407,7 +407,7 @@ function streamingRawRequest(
 
 function permissiveQuery(
   table: string,
-  onWrite: (method: string) => void,
+  onWrite: (method: string, payload: unknown) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
@@ -434,10 +434,10 @@ function permissiveQuery(
     "returns",
   ];
   for (const method of chainMethods) {
-    query[method] = (..._args: unknown[]) => {
+    query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method);
+        onWrite(method, args[0]);
       }
       return query;
     };
@@ -474,6 +474,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -485,6 +486,7 @@ function makeHarness(
   options: {
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
+    /** Result of the get_personal_record_identity_candidates probe RPC. */
     personalRecordsResult?: { data: unknown; error: unknown };
   } = {},
 ): PushHarness {
@@ -495,6 +497,9 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWritePayloads: Array<
+    { table: string; method: string; payload: unknown }
+  > = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -504,10 +509,11 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method) => {
+      return permissiveQuery(table, (method, payload) => {
         adminWriteCalls.push({ table, method });
+        adminWritePayloads.push({ table, method, payload });
         operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      });
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -519,6 +525,12 @@ function makeHarness(
         };
       }
       if (options.rpcBehavior) return await options.rpcBehavior(name, args);
+      if (
+        name === "get_personal_record_identity_candidates" &&
+        options.personalRecordsResult
+      ) {
+        return options.personalRecordsResult;
+      }
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
         return {
@@ -587,6 +599,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWritePayloads,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -2049,6 +2062,184 @@ Deno.test("deletedAt is the LWW timestamp when a tombstone omits updatedAt", asy
   );
 });
 
+// PR 57: in-memory stand-in for personal_records behind the two service-role
+// RPCs. The identity mirrors uq_personal_records_set_derived_identity
+// (20260920005700_personal_records_source_identity.sql).
+type StoredPersonalRecord = Record<string, unknown> & { id: string };
+
+function setDerivedSqlIdentity(row: Record<string, unknown>): string {
+  return JSON.stringify([
+    row.local_profile_id ?? "default",
+    row.exercise_id ? `id:${row.exercise_id}` : `name:${row.exercise_name}`,
+    Date.parse(String(row.achieved_at)),
+    row.record_type,
+    row.workout_phase ?? "COMBINED",
+  ]);
+}
+
+function personalRecordRpcStore() {
+  const rows = new Map<string, StoredPersonalRecord>();
+  let nextId = 0x100;
+  const rpcBehavior: RpcBehavior = async (name, args) => {
+    if (name === "get_personal_record_identity_candidates") {
+      const wanted = new Set(
+        (args.p_achieved_at as string[]).map((value) => Date.parse(value)),
+      );
+      const after = args.p_after_id as string | null;
+      const page = [...rows.values()]
+        .filter((row) => wanted.has(Date.parse(String(row.achieved_at))))
+        .filter((row) => after === null || row.id > after)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, args.p_limit as number);
+      return { data: page, error: null };
+    }
+    if (name === "upsert_set_derived_personal_records") {
+      let affected = 0;
+      for (const incoming of args.p_rows as Record<string, unknown>[]) {
+        const identity = setDerivedSqlIdentity(incoming);
+        const existing = [...rows.values()].find((row) =>
+          row.source === "set_derived" && row.deleted_at == null &&
+          setDerivedSqlIdentity(row) === identity
+        );
+        if (existing) {
+          Object.assign(existing, { value: incoming.value });
+        } else {
+          const id = `00000000-0000-4000-8000-${(nextId++).toString(16).padStart(12, "0")}`;
+          rows.set(id, {
+            ...incoming,
+            id,
+            user_id: args.p_user_id,
+            source: "set_derived",
+            deleted_at: null,
+          });
+        }
+        affected += 1;
+      }
+      return { data: affected, error: null };
+    }
+    return { data: [], error: null };
+  };
+  return { rows, rpcBehavior };
+}
+
+Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicated PR with the same identity is still written (F335)", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const setDerivedBody = () => {
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push(makePrSession());
+    return body;
+  };
+
+  const first = await harness.handler(requestFromBody(setDerivedBody()));
+  const firstBody = await json(first);
+  assertEquals(first.status, 200, JSON.stringify(firstBody));
+  assertEquals(firstBody.personalRecordsInserted, 1);
+
+  const second = await harness.handler(requestFromBody(setDerivedBody()));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals(secondBody.personalRecordsInserted, 0);
+
+  assertEquals(store.rows.size, 1);
+  const [stored] = [...store.rows.values()];
+  assertEquals(stored.source, "set_derived");
+  const upsertCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_set_derived_personal_records"
+  );
+  assertEquals(upsertCalls.length, 1);
+  assertEquals(upsertCalls[0].args.p_user_id, VALID_USER_ID);
+  const sentRow = (upsertCalls[0].args.p_rows as Record<string, unknown>[])[0];
+  assertEquals(sentRow.source, "set_derived");
+  assert(!Object.hasOwn(sentRow, "id"));
+  // Set-derived rows never use the PostgREST table write (it cannot target
+  // the partial unique index).
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "personal_records"),
+    [],
+  );
+  // The probe travels as an RPC body, not a GET `.in('achieved_at', ...)`.
+  assert(!harness.adminFromCalls.includes("personal_records"));
+
+  const dedicatedId = "00000000-0000-4000-8000-000000000057";
+  const dedicated = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: dedicatedId,
+      exerciseName: stored.exercise_name,
+      exerciseId: stored.exercise_id ?? null,
+      recordType: stored.record_type,
+      workoutPhase: stored.workout_phase,
+      value: 82.5,
+      weightKg: 82.5,
+      reps: 5,
+      achievedAt: stored.achieved_at,
+      updatedAt: "2026-01-20T11:00:00.000Z",
+    }],
+  }));
+  const dedicatedBody = await json(dedicated);
+  assertEquals(dedicated.status, 200, JSON.stringify(dedicatedBody));
+  assertEquals(dedicatedBody.personalRecordsInserted, 1);
+  const dedicatedWrites = harness.adminWritePayloads.filter((call) =>
+    call.table === "personal_records"
+  );
+  assertEquals(dedicatedWrites.length, 1);
+  assertEquals(dedicatedWrites[0].method, "upsert");
+  const dedicatedRows = dedicatedWrites[0].payload as Record<string, unknown>[];
+  assertEquals(dedicatedRows.length, 1);
+  assertEquals(dedicatedRows[0].id, dedicatedId);
+  assertEquals(dedicatedRows[0].source, "dedicated");
+  assertEquals(
+    setDerivedSqlIdentity(dedicatedRows[0]),
+    setDerivedSqlIdentity(stored),
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_set_derived_personal_records"
+    ).length,
+    1,
+  );
+});
+
+Deno.test("PR 57: the personal record probe pages by id through the RPC body", async () => {
+  const achievedAt = "2026-01-20T10:00:00.000Z";
+  const probeCalls: Record<string, unknown>[] = [];
+  const fullPage = Array.from({ length: 500 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${(0x1000 + index).toString(16).padStart(12, "0")}`,
+    local_profile_id: null,
+    exercise_id: null,
+    exercise_name: `Other ${index}`,
+    achieved_at: achievedAt,
+    record_type: "MAX_WEIGHT",
+    workout_phase: "COMBINED",
+    updated_at: achievedAt,
+    deleted_at: null,
+  }));
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name === "get_personal_record_identity_candidates") {
+        probeCalls.push(args);
+        return { data: probeCalls.length === 1 ? fullPage : [], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const body = validPushBody();
+  (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(probeCalls.length, 2);
+  assertEquals(probeCalls[0].p_after_id, null);
+  assertEquals(probeCalls[0].p_limit, 500);
+  assertEquals(probeCalls[0].p_user_id, VALID_USER_ID);
+  assertEquals(probeCalls[0].p_achieved_at, [achievedAt]);
+  assertEquals(probeCalls[1].p_after_id, fullPage[499].id);
+  assertEquals(responseBody.personalRecordsInserted, 1);
+});
+
 Deno.test("present empty preference field is evaluated without an RPC", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -2790,6 +2981,204 @@ Deno.test({
       );
       assertEquals(stored.data.equipment_rack, rackMutation.payload);
     } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: set-derived PR re-pushes and a same-identity RPC write under a new id converge to one row; a dedicated twin stays distinct",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = crypto.randomUUID();
+      const session = await fixture.admin.from("workout_sessions").insert({
+        id: sessionId,
+        user_id: fixture.ownerId,
+        started_at: "2026-01-20T10:00:00.000Z",
+      });
+      if (session.error) throw new Error("session fixture creation failed");
+
+      const prSession = {
+        ...makePrSession(),
+        id: sessionId,
+        userId: fixture.ownerId,
+      };
+      prSession.exercises = prSession.exercises.map((exercise) => ({
+        ...exercise,
+        sessionId,
+      }));
+      const pushBody = () => ({ ...validPushBody(), sessions: [prSession] });
+      const realPrRpcs = new Set([
+        "get_personal_record_identity_candidates",
+        "upsert_set_derived_personal_records",
+      ]);
+      const harness = makeHarness(async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      }), {
+        rpcBehavior: async (name, args) =>
+          realPrRpcs.has(name)
+            ? await fixture.admin.rpc(name, args)
+            : { data: [], error: null },
+      });
+
+      for (const expectedInserted of [1, 0]) {
+        const response = await harness.handler(requestFromBody(pushBody()));
+        const body = await json(response);
+        assertEquals(response.status, 200, JSON.stringify(body));
+        assertEquals(body.personalRecordsInserted, expectedInserted);
+      }
+
+      const afterPushes = await fixture.admin.from("personal_records")
+        .select("id,source,session_id,exercise_name,exercise_id,achieved_at,record_type,workout_phase,local_profile_id,value")
+        .eq("user_id", fixture.ownerId);
+      if (afterPushes.error) throw new Error("post-push verification failed");
+      assertEquals(afterPushes.data.length, 1);
+      const stored = afterPushes.data[0];
+      assertEquals(stored.source, "set_derived");
+      assertEquals(stored.session_id, sessionId);
+
+      // The actual RPC path twice more under explicit, different ids (the
+      // concurrent-push case the TS probe cannot see): still one row, no
+      // error, and the stored id is kept.
+      const identity = {
+        local_profile_id: stored.local_profile_id,
+        exercise_name: stored.exercise_name,
+        exercise_id: stored.exercise_id,
+        record_type: stored.record_type,
+        workout_phase: stored.workout_phase,
+        // A different textual form of the same instant.
+        achieved_at: "2026-01-20T10:00:00+00:00",
+        weight_kg: 80,
+        reps: 10,
+        session_id: sessionId,
+      };
+      for (const value of [90, 95]) {
+        const rpc = await fixture.admin.rpc(
+          "upsert_set_derived_personal_records",
+          {
+            p_user_id: fixture.ownerId,
+            p_rows: [{ ...identity, id: crypto.randomUUID(), value }],
+          },
+        );
+        if (rpc.error) throw new Error(`set-derived RPC failed: ${rpc.error.message}`);
+        assertEquals(rpc.data, 1);
+      }
+      const unchanged = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.ownerId,
+          p_rows: [
+            { ...identity, id: crypto.randomUUID(), value: 94 },
+            { ...identity, id: crypto.randomUUID(), value: 95 },
+          ],
+        },
+      );
+      if (unchanged.error) {
+        throw new Error(`duplicate-in-batch RPC failed: ${unchanged.error.message}`);
+      }
+      // Same identity twice in one batch: last wins, and it equals the stored
+      // value, so nothing is rewritten.
+      assertEquals(unchanged.data, 0);
+
+      const afterRpc = await fixture.admin.from("personal_records")
+        .select("id,value,source")
+        .eq("user_id", fixture.ownerId);
+      if (afterRpc.error) throw new Error("post-RPC verification failed");
+      assertEquals(afterRpc.data.length, 1);
+      assertEquals(afterRpc.data[0].id, stored.id);
+      assertEquals(Number(afterRpc.data[0].value), 95);
+
+      // F335: a dedicated PR with the same derived identity and its own id
+      // is a distinct row; the partial index does not constrain it.
+      const dedicatedId = crypto.randomUUID();
+      const dedicated = await fixture.admin.from("personal_records")
+        .upsert({
+          ...identity,
+          id: dedicatedId,
+          user_id: fixture.ownerId,
+          value: 100,
+          muscle_group: "Chest",
+          unit: "kg",
+          source: "dedicated",
+        }, { onConflict: "id" });
+      if (dedicated.error) {
+        throw new Error(`dedicated upsert failed: ${dedicated.error.message}`);
+      }
+      const probe = await fixture.admin.rpc(
+        "get_personal_record_identity_candidates",
+        {
+          p_user_id: fixture.ownerId,
+          p_achieved_at: ["2026-01-20T10:00:00.000Z"],
+          p_after_id: null,
+          p_limit: 1,
+        },
+      );
+      if (probe.error) throw new Error(`probe RPC failed: ${probe.error.message}`);
+      assertEquals(probe.data.length, 1);
+      const probeNext = await fixture.admin.rpc(
+        "get_personal_record_identity_candidates",
+        {
+          p_user_id: fixture.ownerId,
+          p_achieved_at: ["2026-01-20T10:00:00.000Z"],
+          p_after_id: probe.data[0].id,
+          p_limit: 1,
+        },
+      );
+      if (probeNext.error) {
+        throw new Error(`probe RPC page 2 failed: ${probeNext.error.message}`);
+      }
+      assertEquals(probeNext.data.length, 1);
+      assertEquals(
+        new Set([probe.data[0].id, probeNext.data[0].id]),
+        new Set([stored.id, dedicatedId]),
+      );
+
+      // Another user's write never touches the owner's row.
+      const other = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.otherUserId,
+          p_rows: [{ ...identity, session_id: null, value: 1 }],
+        },
+      );
+      if (other.error) throw new Error(`other-user RPC failed: ${other.error.message}`);
+      const ownerRows = await fixture.admin.from("personal_records")
+        .select("id,value,source")
+        .eq("user_id", fixture.ownerId)
+        .order("source");
+      if (ownerRows.error) throw new Error("final verification failed");
+      assertEquals(
+        ownerRows.data.map((row) => [row.source, Number(row.value)]),
+        [["dedicated", 100], ["set_derived", 95]],
+      );
+
+      // Both RPCs are service_role-only.
+      const anon = createClient(
+        localIntegrationEnvironment!.url,
+        localIntegrationEnvironment!.anonKey,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      for (const [name, args] of [
+        ["upsert_set_derived_personal_records", {
+          p_user_id: fixture.ownerId,
+          p_rows: [],
+        }],
+        ["get_personal_record_identity_candidates", {
+          p_user_id: fixture.ownerId,
+          p_achieved_at: [],
+        }],
+      ] as const) {
+        const denied = await anon.rpc(name, args);
+        assert(denied.error, `${name} must not be executable by anon`);
+      }
+    } finally {
+      await fixture.admin.from("personal_records")
+        .delete()
+        .in("user_id", [fixture.ownerId, fixture.otherUserId]);
       await cleanupLocalIntegrationFixture(fixture);
     }
   },
