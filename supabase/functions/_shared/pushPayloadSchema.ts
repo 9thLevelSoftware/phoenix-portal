@@ -325,6 +325,10 @@ const cycleSchema = z.object({
 	startedAt: nullableDatetime(),
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),
+	// KD-6: server updatedAt the device last received for this cycle.
+	// Optional and nested, so older builds (absent) and older servers
+	// (stripped) keep working.
+	baseUpdatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
 	deloadSettings: nullableField(z.string()),
 	templateId: nullableField(z.string()),

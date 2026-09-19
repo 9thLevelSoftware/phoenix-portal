@@ -2155,9 +2155,7 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
-    if (
-      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
-    ) {
+    if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
         data: (args.p_rows as Array<{ id: string }>).map((row) => ({
@@ -2168,8 +2166,26 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
+    if (name === "merge_training_cycles_from_push") {
+      return {
+        data: (args.p_cycles as Array<{ id: string }>).map((row) => ({
+          id: row.id,
+          accepted: true,
+          server_updated_at: "2026-07-16T02:00:00.123456+00:00",
+          structure_applied: true,
+        })),
+        error: null,
+      };
+    }
     return { data: [], error: null };
   };
+}
+
+/** Cycles sent to the merge RPC (both flag paths use it). */
+function mergedCycles(harness: PushHarness): Array<Record<string, unknown>> {
+  return harness.adminRpcCalls
+    .filter((call) => call.name === "merge_training_cycles_from_push")
+    .flatMap((call) => call.args.p_cycles as Array<Record<string, unknown>>);
 }
 
 /** Ids written to a parent table through either flag path. */
@@ -2177,24 +2193,39 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
-  const rpcName = table === "routines"
-    ? "upsert_routine_lww"
-    : "upsert_training_cycle_lww";
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
+  if (table === "training_cycles") {
+    // KD-6: cycles only go through the merge RPC (never a direct upsert).
+    return [...viaUpsert, ...mergedCycles(harness).map((r) => r.id as string)];
+  }
   const viaRpc = harness.adminRpcCalls
-    .filter((call) => call.name === rpcName)
+    .filter((call) => call.name === "upsert_routine_lww")
     .flatMap((call) =>
       (call.args.p_rows as Array<{ id: string }>).map((r) => r.id)
     );
   return [...viaUpsert, ...viaRpc];
 }
 
+/**
+ * Rows upserted into a table. cycle_days rows travel nested in the merge
+ * RPC's p_cycles (KD-6), so they are read from there too.
+ */
 function upsertedRows(
   harness: PushHarness,
   table: string,
 ): Array<Record<string, unknown>> {
+  if (table === "cycle_days") {
+    return [
+      ...harness.adminWriteArgs
+        .filter((call) => call.table === table && call.method === "upsert")
+        .flatMap((call) => call.args[0] as Array<Record<string, unknown>>),
+      ...mergedCycles(harness).flatMap((cycle) =>
+        cycle.days as Array<Record<string, unknown>>
+      ),
+    ];
+  }
   return harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => call.args[0] as Array<Record<string, unknown>>);
@@ -2279,6 +2310,7 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle is skipped with
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
   );
+  assertEquals(upsertedRows(harness, "cycle_days"), []);
   // The live routine is still written.
   assertEquals(parentWriteIds(harness, "routines"), [TOMB_ROUTINE_ID]);
 });
@@ -2453,12 +2485,11 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
-  // Orphan-day cleanup only touches the live cycle.
+  // Orphan-day cleanup runs inside the merge, which only received the live
+  // cycle; nothing touches cycle_days directly.
   assertEquals(
-    harness.adminWriteArgs.filter((call) =>
-      call.table === "cycle_days" && call.method === "delete"
-    ).length,
-    1,
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
   );
 });
 
@@ -2593,6 +2624,181 @@ Deno.test("tombstones: a failed lookup fails the push before any routine or cycl
   assertEquals(upsertedRows(harness, "cycle_days"), []);
 });
 
+// ---------------------------------------------------------------------------
+// KD-6 (PR 18): cycles go through merge_training_cycles_from_push for both
+// SYNC_LWW_ENABLED values. The SQL behaviour is covered by the real-SQL
+// "integration: " tests below and supabase/tests/database/cycle_merge.test.sql.
+// ---------------------------------------------------------------------------
+
+const MERGE_CYCLE_2_ID = "00000000-0000-4000-8000-000000000180";
+const MERGE_CYCLE_3_ID = "00000000-0000-4000-8000-000000000181";
+
+function cycleMergeRpcBehavior(
+  rows: (pCycles: Array<{ id: string }>) => unknown[],
+  mergeError: unknown = null,
+): RpcBehavior {
+  const base = tombstoneRpcBehavior([]);
+  return async (name, args) => {
+    if (name === "merge_training_cycles_from_push") {
+      if (mergeError) return { data: null, error: mergeError };
+      return { data: rows(args.p_cycles as Array<{ id: string }>), error: null };
+    }
+    return await base(name, args);
+  };
+}
+
+Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): one RPC carries the cycles, their days and the base; no direct cycle writes`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const cycle = (requestBody.cycles as Record<string, unknown>[])[0];
+  cycle.baseUpdatedAt = "2026-07-15T10:00:00.123456+00:00";
+  cycle.progressionSettings = '{"frequencyCycles":"2"}';
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const calls = harness.adminRpcCalls.filter((call) =>
+    call.name === "merge_training_cycles_from_push"
+  );
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].args.p_user_id, VALID_USER_ID);
+  assertEquals(calls[0].args.p_use_lww, SYNC_LWW_ENABLED);
+  const [sent] = calls[0].args.p_cycles as Array<Record<string, unknown>>;
+  assertEquals(sent.id, TOMB_CYCLE_ID);
+  assertEquals(sent.user_id, VALID_USER_ID);
+  assertEquals(sent.base_updated_at, "2026-07-15T10:00:00.123456+00:00");
+  assertEquals(sent.progression_settings, { frequencyCycles: "2" });
+  assertEquals(sent.deload_settings, null);
+  assertEquals(sent.days, [{
+    cycle_id: TOMB_CYCLE_ID,
+    day_number: 1,
+    day_type: "workout",
+    routine_id: TOMB_ROUTINE_ID,
+    weight_adjustment: 0,
+    rep_modifier: 0,
+    rest_override: undefined,
+    rest_type: undefined,
+    notes: undefined,
+  }]);
+  // The old direct writes and the LWW wrapper are gone from the push path.
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" || call.table === "cycle_days"
+    ),
+    [],
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_training_cycle_lww"
+    ),
+    [],
+  );
+  assertEquals(body.cyclesUpserted, 1);
+  assertEquals(body.cycleVersions, {
+    [TOMB_CYCLE_ID]: "2026-07-16T02:00:00.123456+00:00",
+  });
+});
+
+Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent without a base`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const [sent] = mergedCycles(harness);
+  assertEquals(sent.base_updated_at, null);
+  // LWW compares updated_at; without LWW the merge inserts now().
+  if (SYNC_LWW_ENABLED) {
+    assertEquals(typeof sent.updated_at, "string");
+  } else {
+    assertEquals(sent.updated_at, null);
+  }
+});
+
+Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycles whose structure was applied`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: cycleMergeRpcBehavior(() => [
+      {
+        id: TOMB_CYCLE_ID,
+        accepted: true,
+        server_updated_at: "2026-07-16T02:00:00.5+00:00",
+        structure_applied: true,
+      },
+      {
+        // Portal edited after the device's base: config merged, structure
+        // kept. The device must pull before advancing its base.
+        id: MERGE_CYCLE_2_ID,
+        accepted: true,
+        server_updated_at: "2026-07-16T02:00:01+00:00",
+        structure_applied: false,
+      },
+      {
+        id: MERGE_CYCLE_3_ID,
+        accepted: false,
+        server_updated_at: "2026-07-16T02:00:02+00:00",
+        structure_applied: false,
+      },
+    ]),
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const cycles = requestBody.cycles as Record<string, unknown>[];
+  for (const id of [MERGE_CYCLE_2_ID, MERGE_CYCLE_3_ID]) {
+    cycles.push({ id, userId: VALID_USER_ID, name: "Other", status: "draft", days: [] });
+  }
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.cycleVersions, {
+    [TOMB_CYCLE_ID]: "2026-07-16T02:00:00.5+00:00",
+  });
+  assertEquals(body.cyclesUpserted, 2);
+  assertEquals((body.rejections as Record<string, unknown>).cycles, [{
+    id: MERGE_CYCLE_3_ID,
+    serverUpdatedAt: "2026-07-16T02:00:02+00:00",
+  }]);
+});
+
+Deno.test("cycle merge: a push without cycles reports empty cycleVersions and makes no merge call", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.cycleVersions, {});
+  assertEquals(mergedCycles(harness), []);
+});
+
+Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): a merge RPC error is a retryable 500`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: cycleMergeRpcBehavior(() => [], {
+      name: "PostgrestError",
+      message: "merge failed",
+    }),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await json(response), { error: "Internal server error" });
+  assertEquals(harness.broadcastPayloads, []);
+});
+
+Deno.test("cycle merge: a malformed baseUpdatedAt is a 400 before any privileged work", async () => {
+  const harness = makeHarness();
+  const requestBody = oldBuildRoutineAndCycleBody();
+  (requestBody.cycles as Record<string, unknown>[])[0].baseUpdatedAt = "not a date";
+  const response = await harness.handler(requestFromBody(requestBody));
+
+  assertEquals(response.status, 400);
+  assertEquals(mergedCycles(harness), []);
+});
+
 Deno.test("present empty preference field is evaluated without an RPC", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -2628,6 +2834,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
       gamificationStats: [],
     },
     skippedDeleted: { routines: [], cycles: [] },
+    cycleVersions: {},
     profilePreferencesAccepted: true,
     canonicalProfilePreferenceSections: [],
     profilePreferenceRejections: [],
@@ -3956,6 +4163,556 @@ Deno.test({
         await storedCycleDayRoutineId(fixture, live.cycleId),
         live.routineId,
       );
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// KD-6 (PR 18): real-SQL cycle merge through the push handler, under the
+// SYNC_LWW_ENABLED value of the run (CI runs both). Portal edits go through
+// PostgREST as the signed-in user, so the portal_edited_at triggers fire as
+// they do in production; the push uses the service role.
+// ---------------------------------------------------------------------------
+
+type CycleRow = Record<string, unknown>;
+
+/** Run `body` with a PostgREST client signed in as the fixture owner. */
+async function asPortalUser<T>(
+  fixture: TombstonePushFixture,
+  body: (browser: SupabaseClient) => Promise<T>,
+): Promise<T> {
+  assert(localIntegrationEnvironment);
+  const browser = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.anonKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const signIn = await browser.auth.signInWithPassword({
+    email: fixture.email,
+    password: fixture.password,
+  });
+  if (signIn.error) throw new Error("portal sign-in failed");
+  try {
+    return await body(browser);
+  } finally {
+    await browser.auth.signOut();
+  }
+}
+
+async function storedCycle(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+): Promise<CycleRow> {
+  const cycle = await fixture.admin.from("training_cycles")
+    .select("*")
+    .eq("id", cycleId)
+    .single();
+  if (cycle.error) throw new Error(`cycle lookup failed: ${cycle.error.message}`);
+  return cycle.data as CycleRow;
+}
+
+async function storedDays(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+): Promise<CycleRow[]> {
+  const days = await fixture.admin.from("cycle_days")
+    .select("day_number, day_type, routine_id, weight_adjustment, rep_modifier, rest_override, rest_type, notes")
+    .eq("cycle_id", cycleId)
+    .order("day_number", { ascending: true });
+  if (days.error) throw new Error("cycle days lookup failed");
+  return days.data as CycleRow[];
+}
+
+async function seedRoutines(
+  fixture: TombstonePushFixture,
+  count: number,
+): Promise<string[]> {
+  const ids = Array.from({ length: count }, () => crypto.randomUUID());
+  const inserted = await fixture.admin.from("routines").insert(
+    ids.map((id, index) => ({ id, user_id: fixture.ownerId, name: `R${index + 1}` })),
+  );
+  if (inserted.error) throw new Error("routine seed failed");
+  return ids;
+}
+
+/** Service-role seed of a 4-day cycle, day N using routines[N-1]. */
+async function seedFourDayCycle(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+  routineIds: string[],
+): Promise<void> {
+  const cycle = await fixture.admin.from("training_cycles").insert({
+    id: cycleId,
+    user_id: fixture.ownerId,
+    name: "Seeded cycle",
+    description: "",
+    duration_weeks: 1,
+    workout_days: 4,
+    rest_days: 0,
+    status: "draft",
+  });
+  if (cycle.error) throw new Error("cycle seed failed");
+  const days = await fixture.admin.from("cycle_days").insert(
+    [1, 2, 3, 4].map((n) => ({
+      cycle_id: cycleId,
+      day_number: n,
+      routine_id: routineIds[n - 1],
+    })),
+  );
+  if (days.error) throw new Error("cycle day seed failed");
+}
+
+/**
+ * The shape the shipping mobile adapter pushes for a cycle
+ * (PortalSyncAdapter.toPortalTrainingCycle): derived durationWeeks, null
+ * deload, stringly progression, null restType. updatedAt is set ahead of the
+ * server clock so the LWW gate (flag on) accepts it.
+ */
+function mobileCyclePush(
+  cycleId: string,
+  name: string,
+  days: Array<{ dayNumber: number; routineId: string | null }>,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: Date.now() - 60_000,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: [],
+    cycles: [{
+      id: cycleId,
+      userId: "mobile-local-user",
+      name,
+      description: "",
+      templateId: null,
+      durationWeeks: days.length === 0 ? 1 : Math.ceil(days.length / 7),
+      workoutDays: days.length,
+      restDays: 0,
+      currentWeek: 1,
+      status: "draft",
+      updatedAt: new Date(Date.now() + 60_000).toISOString(),
+      progressionSettings: null,
+      deloadSettings: null,
+      days: days.map((day) => ({
+        id: crypto.randomUUID(),
+        cycleId,
+        dayNumber: day.dayNumber,
+        dayType: "workout",
+        routineId: day.routineId,
+        weightAdjustment: 0,
+        repModifier: 0,
+        restOverride: null,
+        restType: null,
+        notes: null,
+      })),
+      ...extra,
+    }],
+  };
+}
+
+async function pushOk(
+  handler: (request: Request) => Promise<Response>,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  return responseBody;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) a mobile push keeps portal deload, progression keys, rest_type and duration`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const cycleId = crypto.randomUUID();
+      const routineIds = await seedRoutines(fixture, 4);
+
+      // Authored on the portal: 8 weeks, deload, a portal-only progression
+      // key, and a rest_type on day 2.
+      await asPortalUser(fixture, async (browser) => {
+        const cycle = await browser.from("training_cycles").insert({
+          id: cycleId,
+          user_id: fixture.ownerId,
+          name: "Portal block",
+          description: "",
+          duration_weeks: 8,
+          workout_days: 4,
+          rest_days: 0,
+          status: "draft",
+          deload_settings: { week: 4, volumePercent: 60 },
+          progression_settings: { frequencyCycles: "1", portalAutoRegulate: true },
+        });
+        if (cycle.error) throw new Error(`portal cycle insert failed: ${cycle.error.message}`);
+        const days = await browser.from("cycle_days").insert(
+          [1, 2, 3, 4].map((n) => ({
+            cycle_id: cycleId,
+            day_number: n,
+            routine_id: routineIds[n - 1],
+            rest_type: n === 2 ? "active_recovery" : null,
+          })),
+        );
+        if (days.error) throw new Error(`portal day insert failed: ${days.error.message}`);
+      });
+      const portalAuthored = await storedCycle(fixture, cycleId);
+      assert(portalAuthored.portal_edited_at !== null, "portal insert stamps portal_edited_at");
+
+      // The phone pushes it back (legacy build: no base) with its derived
+      // defaults and a changed mobile progression key.
+      const body = mobileCyclePush(
+        cycleId,
+        "Portal block",
+        [1, 2, 3, 4].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { progressionSettings: '{"frequencyCycles":"3"}' },
+      );
+      const response = await pushOk(handler, body);
+      assertEquals(response.cyclesUpserted, 1);
+
+      const merged = await storedCycle(fixture, cycleId);
+      assertEquals(merged.duration_weeks, 8);
+      assertEquals(merged.deload_settings, { week: 4, volumePercent: 60 });
+      assertEquals(merged.progression_settings, {
+        frequencyCycles: "3",
+        portalAutoRegulate: true,
+      });
+      assertEquals(merged.portal_edited_at, portalAuthored.portal_edited_at);
+      const days = await storedDays(fixture, cycleId);
+      assertEquals(days.map((d) => d.rest_type), [null, "active_recovery", null, null]);
+      assertEquals(days.map((d) => d.routine_id), routineIds);
+
+      // A non-derived duration from the phone is still applied.
+      await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Portal block",
+        [1, 2, 3, 4].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { durationWeeks: 6 },
+      ));
+      assertEquals((await storedCycle(fixture, cycleId)).duration_weeks, 6);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) a current-base push deletes a removed middle day; a legacy push keeps it`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const routineIds = await seedRoutines(fixture, 4);
+      const withoutDay3 = [1, 2, 4].map((n) => ({
+        dayNumber: n,
+        routineId: routineIds[n - 1],
+      }));
+
+      // Legacy build (no baseUpdatedAt): only days above the payload max go.
+      const legacyCycleId = crypto.randomUUID();
+      await seedFourDayCycle(fixture, legacyCycleId, routineIds);
+      const legacy = await pushOk(handler, mobileCyclePush(legacyCycleId, "Seeded cycle", withoutDay3));
+      assertEquals(
+        (await storedDays(fixture, legacyCycleId)).map((d) => d.day_number),
+        [1, 2, 3, 4],
+      );
+      assert(
+        typeof (legacy.cycleVersions as Record<string, unknown>)[legacyCycleId] === "string",
+        "a legacy push still reports the version",
+      );
+
+      // Current base (the device's last pulled updatedAt).
+      const currentCycleId = crypto.randomUUID();
+      await seedFourDayCycle(fixture, currentCycleId, routineIds);
+      const base = String((await storedCycle(fixture, currentCycleId)).updated_at);
+      await pushOk(handler, mobileCyclePush(currentCycleId, "Seeded cycle", withoutDay3, {
+        baseUpdatedAt: base,
+      }));
+      assertEquals(
+        (await storedDays(fixture, currentCycleId)).map((d) => d.day_number),
+        [1, 2, 4],
+      );
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) a portal edit after the device's base survives a stale push`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const routineIds = await seedRoutines(fixture, 5);
+      const cycleId = crypto.randomUUID();
+      await seedFourDayCycle(fixture, cycleId, routineIds);
+      // The device pulled this version.
+      const deviceBase = String((await storedCycle(fixture, cycleId)).updated_at);
+      await sleep(20);
+
+      // Portal: rename, reassign day 2, add day 5.
+      await asPortalUser(fixture, async (browser) => {
+        const renamed = await browser.from("training_cycles")
+          .update({ name: "Renamed on portal" })
+          .eq("id", cycleId);
+        if (renamed.error) throw new Error("portal rename failed");
+        const reassigned = await browser.from("cycle_days")
+          .update({ routine_id: routineIds[4] })
+          .eq("cycle_id", cycleId)
+          .eq("day_number", 2);
+        if (reassigned.error) throw new Error("portal reassign failed");
+        const added = await browser.from("cycle_days").insert({
+          cycle_id: cycleId,
+          day_number: 5,
+          routine_id: routineIds[4],
+        });
+        if (added.error) throw new Error("portal day insert failed");
+      });
+      const afterPortal = await storedCycle(fixture, cycleId);
+
+      // The phone pushes its old structure with the old base, plus a
+      // progression change (config still merges).
+      const response = await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Seeded cycle",
+        [1, 2, 3, 4].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { baseUpdatedAt: deviceBase, progressionSettings: '{"frequencyCycles":"2"}' },
+      ));
+      assertEquals(response.cyclesUpserted, 1);
+      // Structure not applied: no version, so the device pulls first.
+      assertEquals(response.cycleVersions, {});
+
+      const merged = await storedCycle(fixture, cycleId);
+      assertEquals(merged.name, "Renamed on portal");
+      assertEquals(merged.progression_settings, { frequencyCycles: "2" });
+      assertEquals(merged.portal_edited_at, afterPortal.portal_edited_at);
+      const days = await storedDays(fixture, cycleId);
+      assertEquals(days.map((d) => d.day_number), [1, 2, 3, 4, 5]);
+      assertEquals(days[1].routine_id, routineIds[4]);
+      assertEquals(days[4].routine_id, routineIds[4]);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) a base truncated to milliseconds that equals the stored version is current`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const routineIds = await seedRoutines(fixture, 4);
+      const cycleId = crypto.randomUUID();
+      await seedFourDayCycle(fixture, cycleId, routineIds);
+      await asPortalUser(fixture, async (browser) => {
+        const renamed = await browser.from("training_cycles")
+          .update({ name: "Portal name" })
+          .eq("id", cycleId);
+        if (renamed.error) throw new Error("portal rename failed");
+      });
+      const stored = await storedCycle(fixture, cycleId);
+      // portal_edited_at and updated_at come from the same now().
+      assertEquals(stored.portal_edited_at, stored.updated_at);
+      // A client that keeps only milliseconds (JS Date / epoch ms).
+      const msBase = new Date(String(stored.updated_at)).toISOString();
+
+      const response = await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Phone name",
+        [1, 2, 3].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { baseUpdatedAt: msBase },
+      ));
+      const merged = await storedCycle(fixture, cycleId);
+      assertEquals(merged.name, "Phone name");
+      assertEquals(
+        (await storedDays(fixture, cycleId)).map((d) => d.day_number),
+        [1, 2, 3],
+      );
+      assertEquals(response.cycleVersions, { [cycleId]: merged.updated_at });
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) an unchanged push leaves updated_at alone and reports the stored version`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const routineIds = await seedRoutines(fixture, 2);
+      const cycleId = crypto.randomUUID();
+      const body = mobileCyclePush(
+        cycleId,
+        "Phone cycle",
+        [1, 2].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { progressionSettings: '{"frequencyCycles":"1"}' },
+      );
+      const first = await pushOk(handler, body);
+      const afterFirst = await storedCycle(fixture, cycleId);
+      assertEquals(first.cycleVersions, { [cycleId]: afterFirst.updated_at });
+
+      await sleep(20);
+      const second = await pushOk(handler, body);
+      const afterSecond = await storedCycle(fixture, cycleId);
+      assertEquals(afterSecond.updated_at, afterFirst.updated_at);
+      assertEquals(second.cycleVersions, { [cycleId]: afterFirst.updated_at });
+
+      // A day-only change does advance the pull cursor.
+      await sleep(20);
+      await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Phone cycle",
+        [{ dayNumber: 1, routineId: routineIds[1] }, { dayNumber: 2, routineId: routineIds[1] }],
+        { progressionSettings: '{"frequencyCycles":"1"}' },
+      ));
+      const afterDayEdit = await storedCycle(fixture, cycleId);
+      assert(
+        String(afterDayEdit.updated_at) !== String(afterFirst.updated_at),
+        "a day-only change moves updated_at",
+      );
+      // Service-role writes never stamp the portal clock.
+      assertEquals(afterDayEdit.portal_edited_at, null);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) a second phone edit pushed with the old base still applies (R-202)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const routineIds = await seedRoutines(fixture, 4);
+      const cycleId = crypto.randomUUID();
+      await seedFourDayCycle(fixture, cycleId, routineIds);
+      // A portal edit happened before the device's pull.
+      await asPortalUser(fixture, async (browser) => {
+        const renamed = await browser.from("training_cycles")
+          .update({ name: "Portal name" })
+          .eq("id", cycleId);
+        if (renamed.error) throw new Error("portal rename failed");
+      });
+      await sleep(20);
+      const pulledBase = String((await storedCycle(fixture, cycleId)).updated_at);
+
+      await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Phone edit 1",
+        [1, 2, 3, 4].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { baseUpdatedAt: pulledBase },
+      ));
+      await sleep(20);
+      // No pull in between: the same old base.
+      const second = await pushOk(handler, mobileCyclePush(
+        cycleId,
+        "Phone edit 2",
+        [1, 2, 3].map((n) => ({ dayNumber: n, routineId: routineIds[n - 1] })),
+        { baseUpdatedAt: pulledBase },
+      ));
+      const merged = await storedCycle(fixture, cycleId);
+      assertEquals(merged.name, "Phone edit 2");
+      assertEquals(
+        (await storedDays(fixture, cycleId)).map((d) => d.day_number),
+        [1, 2, 3],
+      );
+      assertEquals(second.cycleVersions, { [cycleId]: merged.updated_at });
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: cycle merge (LWW=${SYNC_LWW_ENABLED}) the shipping build's first push stores the same rows as before`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      // Pre-change fixture (routine + cycle with one day), verbatim shape.
+      const body = tombstoneMobilePushBody(ids, { includeRoutine: true });
+      const cycle = (body.cycles as Record<string, unknown>[])[0];
+      cycle.description = "Mobile description";
+      cycle.startedAt = "2026-07-01T08:00:00.000Z";
+      cycle.progressionSettings = '{"frequencyCycles":"2"}';
+      cycle.templateId = "template_18";
+      cycle.updatedAt = "2026-07-02T09:30:00.000Z";
+      (cycle.days as Record<string, unknown>[])[0].weightAdjustment = 2.5;
+      (cycle.days as Record<string, unknown>[])[0].restType = "full";
+      (cycle.days as Record<string, unknown>[])[0].notes = "Heavy";
+      await pushOk(handler, body);
+
+      const stored = await storedCycle(fixture, ids.cycleId);
+      assertEquals({
+        user_id: stored.user_id,
+        local_profile_id: stored.local_profile_id,
+        name: stored.name,
+        description: stored.description,
+        duration_weeks: stored.duration_weeks,
+        workout_days: stored.workout_days,
+        rest_days: stored.rest_days,
+        current_week: stored.current_week,
+        status: stored.status,
+        started_at: new Date(String(stored.started_at)).toISOString(),
+        last_used_at: stored.last_used_at,
+        progression_settings: stored.progression_settings,
+        deload_settings: stored.deload_settings,
+        template_id: stored.template_id,
+        updated_at: new Date(String(stored.updated_at)).toISOString(),
+        portal_edited_at: stored.portal_edited_at,
+      }, {
+        user_id: fixture.ownerId,
+        local_profile_id: "default",
+        name: "PR16 cycle",
+        description: "Mobile description",
+        duration_weeks: 1,
+        workout_days: 1,
+        rest_days: 0,
+        current_week: 1,
+        status: "active",
+        started_at: "2026-07-01T08:00:00.000Z",
+        last_used_at: null,
+        progression_settings: { frequencyCycles: "2" },
+        deload_settings: null,
+        template_id: "template_18",
+        updated_at: "2026-07-02T09:30:00.000Z",
+        portal_edited_at: null,
+      });
+      assertEquals(await storedDays(fixture, ids.cycleId), [{
+        day_number: 1,
+        day_type: "workout",
+        routine_id: ids.routineId,
+        weight_adjustment: 2.5,
+        rep_modifier: 0,
+        rest_override: null,
+        rest_type: "full",
+        notes: "Heavy",
+      }]);
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
     }
