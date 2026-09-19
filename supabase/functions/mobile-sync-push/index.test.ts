@@ -507,6 +507,8 @@ function makeHarness(
     tableResults?: Record<string, { data: unknown; error: unknown }>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
+    /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
+    tableClients?: Record<string, SupabaseClient>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -526,6 +528,8 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
+      const realClient = options.tableClients?.[table];
+      if (realClient) return realClient.from(table);
       const record: AdminQueryRecord = { table, calls: [] };
       adminQueries.push(record);
       return permissiveQuery(
@@ -2121,7 +2125,7 @@ const CATALOG_RESULT = {
 Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
   const harness = makeHarness(undefined, {
     tableResults: { exercise_catalog: CATALOG_RESULT },
-    writeErrors: { "vbt_assessments:insert": INJECTED_DB_ERROR },
+    writeErrors: { "vbt_assessments:upsert": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(requestFromBody(assessmentBody()));
   const body = await json(response);
@@ -2153,9 +2157,9 @@ Deno.test("successful push reports an empty failed map", async () => {
     externalActivities: [],
   });
   // The client id used for failure reporting must never reach PostgREST.
-  const inserts = writeQueries(harness, "vbt_assessments", "insert");
-  assertEquals(inserts.length, 1);
-  const rows = callArgs(inserts[0]!, "insert")[0] as Array<
+  const upserts = writeQueries(harness, "vbt_assessments", "upsert");
+  assertEquals(upserts.length, 1);
+  const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
     Record<string, unknown>
   >;
   assertEquals(rows.length, 1);
@@ -2163,6 +2167,57 @@ Deno.test("successful push reports an empty failed map", async () => {
   assertEquals(rows[0]!.exercise_id, CATALOG_EXERCISE_ID);
   assertEquals(rows[0]!.estimated_1rm_kg, 100);
   assertEquals(rows[0]!.user_id, VALID_USER_ID);
+});
+
+Deno.test("VBT push of a Z timestamp against a stored +00:00 row writes no duplicate", async () => {
+  // The stored row reads back from PostgREST as "+00:00"; mobile sends the
+  // same instant as "Z". The old string-compare dedupe treated them as
+  // different and inserted a copy on every push. The push must instead hand
+  // the row to ON CONFLICT (user_id, exercise_id, created_at) DO NOTHING,
+  // where Postgres compares timestamptz values. (The mock proves the call
+  // shape; the real-SQL test below proves the database behaviour.)
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      exercise_catalog: CATALOG_RESULT,
+      vbt_assessments: {
+        data: [{
+          exercise_id: CATALOG_EXERCISE_ID,
+          created_at: "2026-07-11T12:00:00+00:00",
+        }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(
+    (body.failed as Record<string, unknown>).assessments,
+    [],
+  );
+  assertEquals(writeQueries(harness, "vbt_assessments", "insert"), []);
+  // No full-table existence re-page any more.
+  assertEquals(
+    harness.adminQueries.filter((query) =>
+      query.table === "vbt_assessments" &&
+      query.calls.some((call) => call.method === "select")
+    ),
+    [],
+  );
+  const upserts = writeQueries(harness, "vbt_assessments", "upsert");
+  assertEquals(upserts.length, 1);
+  const [rows, options] = callArgs(upserts[0]!, "upsert") as [
+    Array<Record<string, unknown>>,
+    Record<string, unknown>,
+  ];
+  assertEquals(options, {
+    onConflict: "user_id,exercise_id,created_at",
+    ignoreDuplicates: true,
+  });
+  assertEquals(rows.length, 1);
+  assert(!Object.hasOwn(rows[0]!, "clientId"));
+  assertEquals(rows[0]!.created_at, "2026-07-11T12:00:00.000Z");
 });
 
 function manyIds(prefix: string, count: number): string[] {
@@ -3352,4 +3407,89 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+Deno.test({
+  name:
+    "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const authBehavior: AuthBehavior = async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      });
+      const vbtCount = async (): Promise<number> => {
+        const result = await fixture.admin.from("vbt_assessments")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", fixture.ownerId);
+        if (result.error) throw new Error("vbt count query failed");
+        return result.count ?? -1;
+      };
+      const push = async (body: Record<string, unknown>) => {
+        const harness = makeHarness(authBehavior, {
+          tableResults: { exercise_catalog: CATALOG_RESULT },
+          tableClients: { vbt_assessments: fixture.admin },
+        });
+        const response = await harness.handler(requestFromBody(body));
+        const responseBody = await json(response);
+        assertEquals(response.status, 200, JSON.stringify(responseBody));
+        assertEquals(
+          (responseBody.failed as Record<string, unknown>).assessments,
+          [],
+        );
+      };
+
+      // A row stored earlier with a numeric offset. PostgREST reads it back
+      // as "+00:00"; the wire value is the same instant written with "Z".
+      const stored = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        load_velocity_data: [],
+        created_at: "2026-07-11T12:00:00+00:00",
+      });
+      if (stored.error) throw new Error("vbt fixture insert failed");
+      assertEquals(await vbtCount(), 1);
+
+      // "Z" payload against the stored "+00:00" row: no new row.
+      await push(assessmentBody());
+      assertEquals(await vbtCount(), 1);
+      // Second identical push: still a no-op.
+      await push(assessmentBody());
+      assertEquals(await vbtCount(), 1);
+
+      // A new assessment (different instant) is inserted exactly once.
+      const withNew = {
+        ...assessmentBody(),
+        assessments: [
+          ...(assessmentBody().assessments as unknown[]),
+          {
+            id: "00000000-0000-4000-8000-000000000052",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 105,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-12T12:00:00.000Z",
+          },
+        ],
+      };
+      await push(withNew);
+      await push(withNew);
+      assertEquals(await vbtCount(), 2);
+
+      // The unique index exists: a plain duplicate insert (same instant,
+      // different text form) is rejected with unique_violation.
+      const duplicate = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        created_at: "2026-07-11T12:00:00.000Z",
+      });
+      assertEquals(duplicate.error?.code, "23505");
+      assertEquals(await vbtCount(), 2);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
 });

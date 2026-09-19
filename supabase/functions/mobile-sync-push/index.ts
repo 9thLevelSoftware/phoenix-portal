@@ -2737,38 +2737,29 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      // Dedup by exercise_id + created_at. Page the existence lookup (no unique index).
-      const existingAssessResult = await fetchAllByParentIds(supabase, {
-        table: 'vbt_assessments',
-        parentColumn: 'user_id',
-        parentIds: [userId],
-        entity: 'vbt assessments',
-        select: 'exercise_id, created_at',
-      });
-      if (!existingAssessResult.ok) {
-        const detail = existingAssessResult.kind === 'overflow'
-          ? `child overflow for parent ${existingAssessResult.parentId}`
-          : (existingAssessResult.error.message ?? 'lookup failed');
-        throw new Error(`vbt_assessments lookup failed: ${detail}`);
-      }
-      const existingAssess = existingAssessResult.rows;
-
-      const existingKeys = new Set(
-        existingAssess.map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
-      );
-      const newAssess = assessRows.filter((r) => {
-        const key = `${r.exercise_id}:${r.created_at}`;
-        return !existingKeys.has(key);
-      });
-
-      if (newAssess.length > 0) {
+      // Idempotent on the natural key (PR 23). ON CONFLICT compares the
+      // timestamptz VALUE, so mobile's "...Z" and a stored row that reads
+      // back as "...+00:00" are the same assessment (the old string compare
+      // missed this and duplicated every assessment on every push). DO
+      // NOTHING (ignoreDuplicates) also tolerates two payload rows that hit
+      // one key, e.g. different mobile exercise ids resolving to one catalog
+      // id, which DO UPDATE would reject. Assessments are immutable on
+      // mobile, so there is nothing to update. Needs the
+      // vbt_assessments_identity unique index (migration 20260920002300).
+      // assessmentsInserted counts rows accepted (new or already stored);
+      // mobile does not read it. clientId is stripped before the write and
+      // kept for `failed` reporting (PR 22).
+      if (assessRows.length > 0) {
         const { error: aErr } = await supabase
           .from('vbt_assessments')
-          .insert(newAssess.map(({ clientId: _clientId, ...row }) => row));
+          .upsert(
+            assessRows.map(({ clientId: _clientId, ...row }) => row),
+            { onConflict: 'user_id,exercise_id,created_at', ignoreDuplicates: true },
+          );
         if (aErr) {
-          console.warn('vbt_assessments insert warning:', aErr.message);
-          failed.assessments.push(...newAssess.map((r) => r.clientId));
-        } else assessmentsInserted = newAssess.length;
+          console.warn('vbt_assessments upsert warning:', aErr.message);
+          failed.assessments.push(...assessRows.map((r) => r.clientId));
+        } else assessmentsInserted = assessRows.length;
       }
     }
 
