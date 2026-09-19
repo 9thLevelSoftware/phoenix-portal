@@ -424,7 +424,9 @@ export function Profile() {
 									</div>
 									{isStale && (
 										<div className="text-sm text-muted-foreground">
-											Subscription expired. Refreshing billing status...
+											{subscriptionStatus === "past_due"
+												? "Payment past due. Checking billing status..."
+												: "Subscription expired. Refreshing billing status..."}
 										</div>
 									)}
 									{isEntitled && currentPeriodEnd && (
