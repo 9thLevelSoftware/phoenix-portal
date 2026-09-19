@@ -14,11 +14,24 @@
 -- `<auth.uid()>/` prefix rule as the write policies. Users can only read or
 -- list their own folder. anon and other users still see nothing.
 --
--- The bucket stays public (storage.buckets.public = true). Storage serves
--- public avatar URLs without checking RLS, so getPublicUrl rendering is
--- unchanged.
+-- This migration does not touch storage.buckets. It leaves the avatars
+-- bucket's `public` flag as it is (20260823120000 creates the bucket with
+-- public = true). Storage serves public avatar URLs without checking RLS, so
+-- getPublicUrl rendering is unchanged.
 --
--- Idempotent: running it again drops and recreates the same policy.
+-- Drop-and-recreate is deliberate. The spec said "create only if absent",
+-- but always recreating the policy makes it match this exact definition,
+-- even if an older or dashboard-made policy with the same name has a
+-- different predicate. It is idempotent: re-running it gives the same single
+-- policy.
+--
+-- Ordering hazard: 20260823120000 section 8 has a DO-loop that drops every
+-- storage.objects policy whose name matches '%avatar%' (or whose predicate
+-- mentions avatars), and then recreates only INSERT/UPDATE/DELETE. That loop
+-- would drop this policy. Keep this migration after 20260823120000. If that
+-- file (or its section 8) is ever replayed by hand, for example during drift
+-- reconciliation, replay this file afterwards too, or NF-5 comes back.
+-- storage_avatars.test.sql asserts that the policy exists.
 
 DROP POLICY IF EXISTS "Users can read own avatars" ON storage.objects;
 
