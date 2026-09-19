@@ -686,6 +686,17 @@ Deno.test("subscription gate: a lookup error fails closed with 503 before any da
   assertStoppedAtSubscriptionGate(harness);
 });
 
+Deno.test("subscription gate: the same body from an EMBER user reaches the data queries with 200", async () => {
+  // Positive control for the deny tests above.
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const calls = harness.adminCalls.map((call) => `${call.kind}:${call.name}`);
+  assertEquals(calls.slice(0, 2), ["rpc:check_rate_limit", "from:subscriptions"]);
+  assert(calls.includes("rpc:get_sessions_excluding_ids"), JSON.stringify(calls));
+});
+
 Deno.test("known personal record tombstones use the bounded RPC and remain tombstones", async () => {
   const personalRecordId = "00000000-0000-4000-8000-000000000010";
   const deletedAt = "2026-07-02T12:00:00.000Z";
@@ -1381,6 +1392,70 @@ Deno.test({
       assertEquals(laterBody.syncTime, 1_784_167_200_000);
       assertEquals(laterBody.hasMore, false);
       assert(!Object.hasOwn(laterBody, "profilePreferenceSections"));
+      assertEquals(otherLogs, []);
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
+// the real `subscriptions` table, service-role grants and RLS decide 402 vs
+// the data path. The fixture seeds both users with an active EMBER row.
+Deno.test({
+  name:
+    "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const ownerLogs: unknown[][] = [];
+      const ownerRequest = () =>
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.ownerProfileId,
+        });
+
+      const allowed = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const allowedBody = await json(allowed);
+      assertEquals(allowed.status, 200, JSON.stringify(allowedBody));
+      assert(Array.isArray(allowedBody.sessions));
+
+      const removed = await fixture.admin.from("subscriptions").delete().eq(
+        "user_id",
+        fixture.ownerId,
+      );
+      if (removed.error) throw new Error("subscription row removal failed");
+      const noRow = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const noRowBody = await json(noRow);
+      assertEquals(noRow.status, 402, JSON.stringify(noRowBody));
+      assertEquals(noRowBody.error, "subscription_required");
+      assertEquals(noRowBody.currentTier, "FREE");
+
+      const downgraded = await fixture.admin.from("subscriptions")
+        .update({ tier: "FREE" })
+        .eq("user_id", fixture.otherId);
+      if (downgraded.error) throw new Error("subscription downgrade failed");
+      const otherLogs: unknown[][] = [];
+      const free = await realPullHandler(fixture, fixture.otherId, otherLogs)(
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.otherProfileId,
+        }),
+      );
+      const freeBody = await json(free);
+      assertEquals(free.status, 402, JSON.stringify(freeBody));
+      assertEquals(freeBody.error, "subscription_required");
+      assertEquals(freeBody.currentTier, "FREE");
+      assertEquals(ownerLogs, []);
       assertEquals(otherLogs, []);
     } finally {
       await deleteLocalPullFixtureRows(
