@@ -611,12 +611,15 @@ async function stravaSyncHandler(
     // failure above: report retryably and let the queue resume.
     // ---------------------------------------------------------------
     if (moreRemaining) {
-      // A retry is only safe to schedule if THIS run actually advanced the
-      // resume point. During backfill the resume point is the oldest stored
-      // activity, so persisting at least one older activity guarantees the next
-      // attempt requests a strictly earlier `before` window. If nothing was
-      // persisted the retry would reissue an identical request and spin until
-      // the retry cap, so fail terminally with a message that says why.
+      // A retry is only worth scheduling if THIS run advanced the resume point.
+      // `madeProgress` is a heuristic: for the backward backfill pass the resume
+      // point is the oldest stored activity, so persisting an older activity
+      // moves the next `before` window strictly earlier. It does NOT hold when
+      // the forward (incremental/gap) pass alone hits the page ceiling: its
+      // `after` is anchored on last_sync_at, which is withheld here, so the
+      // retry re-requests the same window (re-upserts count as progress). A
+      // gap larger than the page ceiling therefore relies on the queue's retry
+      // cap. If nothing was persisted at all, fail terminally rather than spin.
       const madeProgress = syncedCount > 0;
       const partialMessage = madeProgress
         ? `Fetched ${rawActivities.length} activities before reaching the Strava ` +
