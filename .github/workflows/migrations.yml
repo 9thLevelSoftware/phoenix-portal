@@ -15,11 +15,13 @@ on:
       - "supabase/migrations/**"
       - "supabase/seed.sql"
       - "supabase/config.toml"
+      - "supabase/tests/**"
       - ".github/workflows/migrations.yml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/**"
+      - "supabase/tests/**"
 
 permissions:
   contents: read
@@ -74,6 +76,13 @@ jobs:
             echo "::error::Migration file count ($file_count) != applied count ($applied_count). Drift between supabase/migrations and schema_migrations."
             exit 1
           fi
+
+      # SECURITY DEFINER grant guard: fails if any definer function in public
+      # is executable by anon/authenticated outside the browser allow-list,
+      # or lacks a pinned search_path. The full pgTAP suite is enabled
+      # separately; this runs only the guard file.
+      - name: pgTAP definer function grant guard
+        run: supabase test db supabase/tests/database/definer_function_grants.test.sql
 
       - name: Stop stack
         if: always()
