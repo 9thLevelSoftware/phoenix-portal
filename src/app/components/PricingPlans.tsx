@@ -269,6 +269,24 @@ export function PricingPlans() {
 	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
 		string | null
 	>(null);
+	// Set when post-checkout reconciliation exhausts its attempts before the
+	// webhook lands. Cleared once the realtime `subscriptions` update (via
+	// useSubscription) shows the purchased plan as entitled.
+	const [pendingActivation, setPendingActivation] = useState<{
+		tier: SubscriptionTier;
+		priceId: string;
+	} | null>(null);
+
+	useEffect(() => {
+		if (
+			pendingActivation &&
+			isEntitled &&
+			currentTier === pendingActivation.tier &&
+			currentPriceId === pendingActivation.priceId
+		) {
+			setPendingActivation(null);
+		}
+	}, [pendingActivation, isEntitled, currentTier, currentPriceId]);
 
 	useEffect(() => {
 		if (
@@ -366,6 +384,10 @@ export function PricingPlans() {
 					return;
 				}
 			}
+
+			// Payment went through but the webhook hasn't activated the plan yet.
+			// Say so instead of leaving the user on the upgrade wall in silence.
+			setPendingActivation({ tier, priceId });
 		};
 
 		// Mark this checkout in-flight so the Subscribe button can disable and
@@ -668,6 +690,20 @@ export function PricingPlans() {
 						</Badge>
 					)}
 				</div>
+
+				{pendingActivation && (
+					<div
+						role="status"
+						data-testid="checkout-activation-pending"
+						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+					>
+						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
+						<span>
+							Payment received — activation can take a minute. This page updates
+							automatically.
+						</span>
+					</div>
+				)}
 
 				{subscriptionError ? (
 					<div
