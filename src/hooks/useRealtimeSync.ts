@@ -10,6 +10,9 @@ import { queryKeys } from "@/queries/keys";
 /** Coalesce rapid mobile broadcasts into a single invalidation burst. */
 const INVALIDATION_DEBOUNCE_MS = 400;
 const E2E_SYNC_COMPLETE_EVENT = "phoenix:e2e-sync-complete";
+/** While the channel is down, poll workouts at this interval until SUBSCRIBED. */
+export const DEGRADED_POLL_INTERVAL_MS = 60_000;
+const DEGRADED_STATUSES = new Set(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]);
 
 /**
  * Per-user teardown so a StrictMode remount awaits removeChannel instead of
@@ -21,10 +24,13 @@ const channelTeardown = new Map<string, Promise<unknown>>();
  * Realtime sync bridge — listens for Supabase Broadcast events from the mobile app.
  * On `sync_complete`, invalidates only query families that mobile sync can change
  * (workouts, records, routines, cycles, analytics, profile, challenges, external
- * activities, local profiles, onboarding, and insights).
+ * activities, local profiles, onboarding, goals, and insights).
  *
- * Subscribes to the exact private topic `sync:{userId}`. CHANNEL_ERROR toasts
- * via sonner and does not fall back to a public topic.
+ * Subscribes to the exact private topic `sync:{userId}`. The first SUBSCRIBED
+ * for a user in this mount does not invalidate (queries just fetched on mount);
+ * a later re-subscribe does, to catch up on broadcasts missed while down.
+ * CHANNEL_ERROR, TIMED_OUT and CLOSED toast via sonner and poll workouts every
+ * 60s until the next SUBSCRIBED. There is no fallback to a public topic.
  *
  * Subscribes for last-known EMBER+ users. A billing fetch error does not
  * skip the channel (error is not treated as FREE). Confirmed FREE users skip
@@ -37,6 +43,8 @@ export function useRealtimeSync() {
 	const { tier, isLoading, isError } = useSubscription();
 	const queryClient = useQueryClient();
 	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// userId whose channel has reached SUBSCRIBED at least once in this mount.
+	const subscribedUserRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		if (!user) return;
@@ -87,6 +95,7 @@ export function useRealtimeSync() {
 					queryClient.invalidateQueries({
 						queryKey: queryKeys.onboarding.all,
 					}),
+					queryClient.invalidateQueries({ queryKey: queryKeys.goals.all }),
 					queryClient.invalidateQueries({ queryKey: queryKeys.insights.all }),
 				]);
 			}, INVALIDATION_DEBOUNCE_MS);
@@ -109,6 +118,25 @@ export function useRealtimeSync() {
 
 		let cancelled = false;
 		let channel: ReturnType<typeof supabase.channel> | null = null;
+		let pollTimer: ReturnType<typeof setInterval> | null = null;
+		// Set once the channel has been down; the next SUBSCRIBED must catch up.
+		let wasDegraded = false;
+
+		const stopPolling = () => {
+			if (pollTimer) {
+				clearInterval(pollTimer);
+				pollTimer = null;
+			}
+		};
+
+		const startPolling = () => {
+			if (pollTimer) return;
+			pollTimer = setInterval(() => {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.workouts.all,
+				});
+			}, DEGRADED_POLL_INTERVAL_MS);
+		};
 
 		const start = async () => {
 			const previousTeardown = channelTeardown.get(userId);
@@ -125,12 +153,22 @@ export function useRealtimeSync() {
 				.subscribe((status) => {
 					if (cancelled) return;
 					if (status === "SUBSCRIBED") {
-						scheduleInvalidation();
+						stopPolling();
+						if (subscribedUserRef.current === userId || wasDegraded) {
+							// Re-subscribe: catch up on anything missed while down.
+							scheduleInvalidation();
+						}
+						// First clean subscribe: queries just fetched on mount; skip the burst.
+						subscribedUserRef.current = userId;
+						wasDegraded = false;
+						return;
 					}
-					if (status === "CHANNEL_ERROR") {
+					if (DEGRADED_STATUSES.has(status)) {
 						toast.error("Live sync unavailable. Refresh to retry.", {
 							id: "phoenix-realtime-sync-unavailable",
 						});
+						wasDegraded = true;
+						startPolling();
 						// Do NOT fall back to a public unsuffixed sync:{userId} topic.
 					}
 				});
@@ -145,6 +183,7 @@ export function useRealtimeSync() {
 
 		return () => {
 			cancelled = true;
+			stopPolling();
 			if (import.meta.env.DEV) {
 				window.removeEventListener(
 					E2E_SYNC_COMPLETE_EVENT,
