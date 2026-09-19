@@ -7,6 +7,9 @@
  * capped full page would look short and end the loop early.
  */
 
+// Must stay <= the server's `max_rows`. Hosted Supabase defaults to 1,000 and
+// supabase/config.toml sets no `[api] max_rows` override; if a deployment ever
+// lowers it, lower this too or every "all rows" read truncates silently.
 export const SUPABASE_PAGE_SIZE = 1000;
 export const SUPABASE_FILTER_CHUNK_SIZE = 100;
 
@@ -76,8 +79,10 @@ export async function fetchAllSupabasePagesForChunks<T, V>(
 
 /**
  * Keyset paging: each page asks for rows strictly after the cursor of the last
- * row already received, so cost stays O(page) instead of O(offset). The query
- * must be ordered by the same unique key that `cursorOf` extracts.
+ * row already received. The query must be ordered by the same unique key that
+ * `cursorOf` extracts. Each page costs O(page) rather than O(offset) only when
+ * the caller's cursor predicate is index-sargable (e.g. a `gte` on the leading
+ * sort column next to the exact tiebreak `or`).
  */
 export async function fetchAllKeysetPages<T, C>(
 	fetchPage: FetchSupabaseKeysetPage<T, C>,

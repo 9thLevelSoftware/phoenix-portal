@@ -26,6 +26,9 @@ export async function fetchSetTelemetry(
 	source: "rep_telemetry" | "telemetry_points",
 	setId: string,
 ): Promise<TelemetryPointRow[]> {
+	// Page size must not exceed the server's max_rows (hosted default 1,000; no
+	// override in supabase/config.toml), or a capped full page looks short and
+	// paging stops early. See SUPABASE_PAGE_SIZE.
 	const rows = await fetchAllKeysetPages<
 		Record<string, unknown>,
 		TelemetryCursor
@@ -36,9 +39,14 @@ export async function fetchSetTelemetry(
 				.select(TELEMETRY_CHART_COLUMNS)
 				.eq("set_id", setId);
 			if (after) {
-				query = query.or(
-					`timestamp_ms.gt.${after.timestamp_ms},and(timestamp_ms.eq.${after.timestamp_ms},id.gt.${after.id})`,
-				);
+				// The redundant gte gives Postgres an index range start on
+				// (set_id, timestamp_ms); the OR alone would only be a filter,
+				// so every page would rescan the set from its first sample.
+				query = query
+					.gte("timestamp_ms", after.timestamp_ms)
+					.or(
+						`timestamp_ms.gt.${after.timestamp_ms},and(timestamp_ms.eq.${after.timestamp_ms},id.gt.${after.id})`,
+					);
 			}
 			return query
 				.order("timestamp_ms", { ascending: true })
@@ -50,8 +58,34 @@ export async function fetchSetTelemetry(
 			id: row.id as string,
 		}),
 	);
-	// The schema strips the cursor-only `id` column.
-	return z.array(telemetryPointSchema).parse(rows);
+	return parseTelemetryRows(rows, setId);
+}
+
+/**
+ * Validate rows one by one and drop the invalid ones. The table and the push
+ * payload allow null metrics and free-form `cable` values, so one bad sample
+ * must not fail the whole set. The schema also strips the cursor-only `id`.
+ */
+function parseTelemetryRows(
+	rows: Record<string, unknown>[],
+	setId: string,
+): TelemetryPointRow[] {
+	const points: TelemetryPointRow[] = [];
+	let dropped = 0;
+	for (const row of rows) {
+		const parsed = telemetryPointSchema.safeParse(row);
+		if (parsed.success) {
+			points.push(parsed.data);
+		} else {
+			dropped++;
+		}
+	}
+	if (dropped > 0) {
+		console.warn(
+			`[telemetry] dropped ${dropped} of ${rows.length} invalid samples for set ${setId}`,
+		);
+	}
+	return points;
 }
 
 /** Per-set raw telemetry points for force/velocity curve rendering */
