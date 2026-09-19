@@ -17,9 +17,9 @@ name: Prod Migration Drift
 #   in the schema cache
 #
 # Scope and limits of THIS workflow (please read before merging):
-#   - This is a *detector* only. It does NOT gate or block the Edge Function
-#     deploy path. `.github/workflows/deploy-edge-functions.yml` continues to
-#     deploy independently of this workflow's result.
+#   - This is a *detector* only; its result blocks nothing. The Edge Function
+#     deploy path is gated separately: `.github/workflows/deploy-edge-functions.yml`
+#     runs its own copy of this check before every deploy.
 #   - It runs on a daily schedule, on `workflow_dispatch`, and on `main` push
 #     only when this very file changes. It does NOT run on PRs (PR-side forks
 #     cannot reach the prod secrets required by `supabase migration list --linked`).
@@ -210,7 +210,7 @@ jobs:
           # not in the remote list is unapplied to prod. Drift like
           # `20260627000000_add_velocity_estimated_1rm_kg.sql` shows up here.
           # NOTE: this is a detection/reporting step only. It does not block
-          # any deploy path; the Edge Function deploy workflow is independent.
+          # any deploy path; the Edge deploy workflow runs its own copy of it.
           : > local_sorted.txt
           : > applied_sorted.txt
           echo "$LOCAL" | sort -u > local_sorted.txt
@@ -232,7 +232,7 @@ jobs:
           echo "After applying, reload the PostgREST schema if clients still report cache errors:"
           echo "  NOTIFY pgrst, 'reload schema';"
           echo ""
-          echo "Reminder: this detector does not gate Edge Function deploys. Issue"
+          echo "Reminder: Edge Function deploys are blocked by their own copy of this check until this drift is fixed. Issue"
           echo "9thLevelSoftware/Project-Phoenix-MP#602 stays open until the migration"
           echo "is applied AND the reporter's Android Sync Now path is verified."
           exit 1
