@@ -1139,7 +1139,7 @@ Deno.test("tombstones: shipping client (lastSync 0 + known ids) gets tombstoned 
   }]);
 });
 
-Deno.test("tombstones: real lastSync without known ids gets tombstones since lastSync", async () => {
+Deno.test("tombstones: real lastSync without known ids gets tombstones since lastSync minus the 2-minute overlap", async () => {
   const lastSync = 1_784_000_000_000;
   const harness = makeHarness(undefined, {
     rpcImpl: tombstoneRpcImpl([
@@ -1156,7 +1156,8 @@ Deno.test("tombstones: real lastSync without known ids gets tombstones since las
   assertEquals(response.status, 200);
   assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_B]);
   assertEquals(body.deletedCycleIds, []);
-  const since = new Date(lastSync).toISOString();
+  // Looks back 2 minutes past lastSync to absorb device/server clock skew.
+  const since = new Date(lastSync - 2 * 60 * 1000).toISOString();
   assertEquals(tombstoneCalls(harness), [{
     p_user_id: VALID_USER_ID,
     p_entity: "routine",

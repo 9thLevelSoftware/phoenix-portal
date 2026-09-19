@@ -166,6 +166,9 @@ function isParityMode(body: PullRequest): boolean {
 
 // ─── Pagination Configuration ───────────────────────────────────────
 
+/** Look-back applied to since-mode tombstone lookups (client-clock skew). */
+const TOMBSTONE_SINCE_OVERLAP_MS = 2 * 60 * 1000;
+
 const DEFAULT_PAGE_SIZE = 75;
 const MAX_PAGE_SIZE = 300;
 
@@ -1513,18 +1516,32 @@ async function mobileSyncPullHandler(
     //     shipping client that always sends lastSync=0. A client that sends no
     //     known ids but a real lastSync gets the tombstones recorded since
     //     then. New response keys; older builds ignore them.
+    //
+    //     Since-mode compares the server clock (deleted_at) with the client's
+    //     lastSync, so it looks back TOMBSTONE_SINCE_OVERLAP_MS further (the
+    //     same 2-minute overlap R-14 / PR 26 applies to the stale arm). A
+    //     delete may be reported twice; deleting locally is idempotent.
+    //     Residual risk: a device whose clock runs more than the overlap
+    //     ahead of the server (or that stores a local time instead of the
+    //     server syncTime) can miss a delete in since-mode. Known-ids mode,
+    //     which the shipping client uses, has no clock dependency.
+    //     Reported ids may include ones the device never held (e.g. a portal
+    //     create-rollback delete); clients treat them as "delete if present".
     // =========================================================================
     let deletedRoutineIds: string[] = [];
     let deletedCycleIds: string[] = [];
     if (cursor === null) {
       const lastSyncMs = body.lastSync ?? 0;
+      const tombstonesSinceISO = lastSyncMs > 0
+        ? new Date(Math.max(0, lastSyncMs - TOMBSTONE_SINCE_OVERLAP_MS)).toISOString()
+        : null;
       const fetchTombstonedIds = async (
         entity: 'routine' | 'cycle',
         knownIds: string[],
       ): Promise<{ ids: string[] } | { error: { code?: string; message?: string } }> => {
         let args: { p_ids: string[] | null; p_since: string | null };
         if (knownIds.length > 0) args = { p_ids: knownIds, p_since: null };
-        else if (lastSyncMs > 0) args = { p_ids: null, p_since: lastSyncISO };
+        else if (tombstonesSinceISO !== null) args = { p_ids: null, p_since: tombstonesSinceISO };
         else return { ids: [] };
         const { data, error } = await supabase.rpc('get_sync_tombstones', {
           p_user_id: userId,

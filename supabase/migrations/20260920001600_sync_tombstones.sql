@@ -12,9 +12,19 @@
 --
 -- No FK to auth.users: the trigger can fire while an account deletion cascades.
 -- The trigger skips users whose auth.users row is already gone, so the cascade
--- leaves no tombstones behind. Retention/purge is handled by later work.
+-- adds no tombstones. Tombstones recorded while the account was live are
+-- purged by the account purge (PR 34) and by 180-day retention (PR 31).
+-- A portal create-rollback delete also records a tombstone for an id no
+-- device ever held; clients must treat reported ids as "delete if present".
 --
 -- Idempotent: safe to re-run.
+
+-- upsert_routine_lww (20260420190710) writes routines.created_at, but no
+-- migration creates that column (prod has it through drift; PR 2 captures
+-- it). Without it every SYNC_LWW_ENABLED=true routine push fails on a DB
+-- built from migrations. Duplicate of PR 2's statement; a no-op in prod.
+ALTER TABLE public.routines
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS public.sync_tombstones (
   user_id UUID NOT NULL,
@@ -85,9 +95,12 @@ CREATE TRIGGER training_cycles_sync_tombstone
 --   p_entity NULL -> both entities.
 --   p_ids non-NULL -> tombstones for those ids (the device's known ids).
 --   p_since non-NULL -> tombstones recorded after p_since.
--- Both filters apply when both are given. An id that is live again in its
--- table (which the push path refuses, but another path could do) is not
--- reported, so a device is never told to delete a row that exists.
+-- Both filters apply when both are given. An id that is live again for the
+-- SAME user (which the push path refuses, but another path could do) is not
+-- reported, so a device is never told to delete a row it still owns. A row
+-- with that id owned by another user does not hide the owner's tombstone.
+-- mobile-sync-push re-deletes a row that a concurrent delete tombstoned
+-- while the push was re-writing it, so that race cannot mask a tombstone.
 CREATE OR REPLACE FUNCTION public.get_sync_tombstones(
   p_user_id UUID,
   p_entity TEXT DEFAULT NULL,
@@ -108,11 +121,17 @@ AS $$
     AND (p_since IS NULL OR t.deleted_at > p_since)
     AND NOT (
       t.entity = 'routine'
-      AND EXISTS (SELECT 1 FROM public.routines r WHERE r.id = t.entity_id)
+      AND EXISTS (
+        SELECT 1 FROM public.routines r
+        WHERE r.id = t.entity_id AND r.user_id = t.user_id
+      )
     )
     AND NOT (
       t.entity = 'cycle'
-      AND EXISTS (SELECT 1 FROM public.training_cycles c WHERE c.id = t.entity_id)
+      AND EXISTS (
+        SELECT 1 FROM public.training_cycles c
+        WHERE c.id = t.entity_id AND c.user_id = t.user_id
+      )
     )
   ORDER BY t.deleted_at ASC, t.entity ASC, t.entity_id ASC;
 $$;
