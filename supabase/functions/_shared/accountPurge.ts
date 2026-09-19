@@ -1,7 +1,6 @@
 /**
  * Account purge core (FP-6, PR 34). Shared by the user-initiated "Delete now"
- * path in `delete-account` and, later, the scheduled `process_due` executor
- * (PR 35).
+ * path in `delete-account` and the scheduled `process_due` executor (PR 35).
  *
  * Every step is idempotent, so a failed or interrupted purge can simply be run
  * again, and every irreversible step comes after the checks that can abort:
@@ -28,7 +27,9 @@
  *      trigger would record the cascaded routine/cycle deletes if its guard
  *      ever failed (R-6, R-30). The user is already deleted, so a failure
  *      here is logged as `[DELETION_ALERT]` and returned in `residualTables`,
- *      not as a failed purge. (No durable retry exists yet: PR 35 hand-off.)
+ *      not as a failed purge. The durable retry is the residue sweep that
+ *      `delete-account` `process_due` runs every hour
+ *      (public.sweep_deleted_account_residue, PR 35).
  *   4. Avatars, best effort, after the user is deleted.
  *
  * "Table/column does not exist" is tolerated only for targets marked
@@ -433,7 +434,12 @@ function isUserNotFound(error: unknown): boolean {
     /user not found/i.test(e?.message ?? '');
 }
 
-async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boolean> {
+/**
+ * Removes every object under `avatars/<userId>/`. Best effort: a failure is
+ * logged as `[DELETION_ALERT] avatar_cleanup_failed` and returns false. Also
+ * used by the `process_due` residue sweep for folders of deleted users.
+ */
+export async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boolean> {
   try {
     const bucket = admin.storage.from('avatars');
     const { data: files, error } = await bucket.list(userId, { limit: 1000 });

@@ -101,10 +101,11 @@ jobs:
       # is executable by anon/authenticated outside the browser allow-list,
       # or lacks a pinned search_path. The full pgTAP suite is enabled
       # separately; this runs the guard file plus the PR 2 dashboard-capture
-      # file (acceptance for 20260920000200) and the PR 31 scheduler file
-      # (acceptance for 20260920003100).
-      - name: pgTAP definer function grant guard, dashboard capture and scheduler
-        run: supabase test db supabase/tests/database/definer_function_grants.test.sql supabase/tests/database/dashboard_capture.test.sql supabase/tests/database/scheduler.test.sql
+      # file (acceptance for 20260920000200), the PR 31 scheduler file
+      # (acceptance for 20260920003100) and the PR 35 due-deletion file
+      # (acceptance for 20260920003500).
+      - name: pgTAP definer function grant guard, dashboard capture, scheduler and due deletion
+        run: supabase test db supabase/tests/database/definer_function_grants.test.sql supabase/tests/database/dashboard_capture.test.sql supabase/tests/database/scheduler.test.sql supabase/tests/database/due_deletion.test.sql
 
       - name: Stop stack
         if: always()

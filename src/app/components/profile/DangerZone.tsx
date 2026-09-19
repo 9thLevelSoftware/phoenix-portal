@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -38,7 +39,21 @@ import {
  * NOTE: Community content display components (comments, shared routines/cycles) should
  * handle user_id = null by displaying "[Deleted User]" as the author. This is handled
  * by the ON DELETE SET NULL FK migration, not by this component.
+ *
+ * Once the grace period ends, the hourly `process_due` job deletes the
+ * account and cancels any subscription (KD-11); "Delete Now" only runs it
+ * sooner.
  */
+const GRACE_PERIOD_DAYS = 30;
+
+function formatDeletionDate(date: Date): string {
+	return date.toLocaleDateString(undefined, {
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
+}
+
 export function DangerZone() {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
@@ -82,14 +97,13 @@ export function DangerZone() {
 			)
 		: 0;
 
-	// Format the scheduled date
-	const scheduledDateStr = scheduledFor
-		? scheduledFor.toLocaleDateString("en-US", {
-				year: "numeric",
-				month: "long",
-				day: "numeric",
-			})
-		: "";
+	// Format the scheduled date (user's locale)
+	const scheduledDateStr = scheduledFor ? formatDeletionDate(scheduledFor) : "";
+	// Before a request exists, the date it will get: the database default and
+	// grace floor are 30 days from the request (scheduled_for).
+	const requestDateStr = formatDeletionDate(
+		new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000),
+	);
 
 	// =========================================================================
 	// State C: Grace period expired — user can execute deletion or cancel
@@ -261,10 +275,16 @@ export function DangerZone() {
 							Are you sure?
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will schedule your account for permanent deletion in 30 days.
-							During this period you can still cancel. After 30 days, all your
-							data will be permanently deleted, your subscription will be
-							cancelled, and your community posts will be anonymized.
+							Your account and data will be permanently deleted on{" "}
+							{requestDateStr} (30 days from now). Your subscription is
+							cancelled on that date, so no payment is taken after it. A renewal
+							that falls due before {requestDateStr} is still charged unless you
+							cancel your plan first in{" "}
+							<Link to="/pricing" className="underline text-foreground">
+								Billing
+							</Link>
+							. You can cancel the deletion until then. Your community posts
+							will be anonymized.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
