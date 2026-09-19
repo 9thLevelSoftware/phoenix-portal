@@ -266,8 +266,8 @@ Deno.test("process-sync-queue: a pending row is not claimed while the pair has a
     sync_queue: [
       pendingRow(LIVE_ID, "initial", "2026-09-14T00:00:00.000Z", {
         status: "processing",
-        // Well inside the 30-minute lease.
-        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+        // Heartbeat well inside Strava's 5-minute lease.
+        started_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
       }),
       pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"),
     ],
@@ -300,4 +300,46 @@ Deno.test("process-sync-queue: a near-miss service-role bearer gives 401", async
     assertEquals(res.status, 401, authorization);
     assertEquals(h.clientsCreated.value, 0);
   }
+});
+
+Deno.test("process-sync-queue: a heartbeating provider's row with a heartbeat older than 5 minutes is reclaimed", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      pendingRow(TASK_ID, "initial", "2026-09-14T00:00:00.000Z", {
+        status: "processing",
+        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+      }),
+    ],
+    subscriptions: [FLAME_SUBSCRIPTION],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 1, failed: 0, skipped: 0 });
+  // Reclaimed (one retry charged) and re-dispatched in the same pass.
+  assertEquals(h.fetchCalls.length, 1);
+  const [task] = h.db.tables.sync_queue;
+  assertEquals(task.retry_count, 1);
+  assertEquals(task.status, "completed");
+});
+
+Deno.test("process-sync-queue: a provider without heartbeats keeps the 30-minute lease", async () => {
+  const LIVE_FITBIT_ID = "00000000-0000-4000-8000-0000000000dd";
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      pendingRow(LIVE_FITBIT_ID, "incremental", "2026-09-14T00:00:00.000Z", {
+        provider: "fitbit",
+        status: "processing",
+        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+      }),
+    ],
+    subscriptions: [FLAME_SUBSCRIPTION],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 0 });
+  assertEquals(h.fetchCalls.length, 0);
+  assertEquals(h.db.tables.sync_queue[0].status, "processing");
+  assertEquals(h.db.tables.sync_queue[0].retry_count, 0);
 });

@@ -13,6 +13,11 @@ import {
 } from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  completeSyncQueueEntry,
+  type DbClient,
+  heartbeatSyncQueueEntry,
+} from '../_shared/syncQueue.ts';
 
 /**
  * Hevy Sync Edge Function
@@ -30,10 +35,43 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  *   both updates and deletions so removed Hevy workouts stop lingering here.
  *
  * The CSV import path in the portal UI remains available for non-PRO users.
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
  */
 
+/** Renew the queue lease after this many fetched Hevy pages. */
+const HEARTBEAT_EVERY_PAGES = 10;
 
-Deno.serve(async (req) => {
+export interface HevySyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Hevy API calls. */
+  fetch: typeof fetch;
+  now: () => Date;
+}
+
+function defaultHevySyncDependencies(): HevySyncDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createClient: (url, key, options) => createClient(url, key, options),
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
+  };
+}
+
+export function createHevySyncHandler(
+  dependencies: HevySyncDependencies = defaultHevySyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => hevySync(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createHevySyncHandler());
+}
+
+async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -58,9 +96,9 @@ Deno.serve(async (req) => {
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
@@ -71,7 +109,7 @@ Deno.serve(async (req) => {
     } else {
       // Not a valid user JWT -- must be service-role call from process-sync-queue
       // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
       const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
       if (!isServiceRole || !body.user_id) {
@@ -84,10 +122,14 @@ Deno.serve(async (req) => {
     }
 
     const { api_key, sync_type } = body;
+    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
+    const calledByQueueProcessor = !jwtUser;
+    // Only the queue path holds a lease on a sync_queue row.
+    const leaseQueueId = calledByQueueProcessor ? queueId : null;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     // Subscription gate — FLAME or higher required for integrations
@@ -170,14 +212,25 @@ Deno.serve(async (req) => {
     // Capture the watermark *before* fetching. Anything Hevy records while this
     // run is in flight then falls inside the next run's `since` window instead
     // of being skipped. Upserts are idempotent, so the small overlap is free.
-    const syncStartedAt = new Date().toISOString();
+    const syncStartedAt = deps.now().toISOString();
 
     let workouts: HevyWorkout[] = [];
     let deletedIds: string[] = [];
     let truncated = false;
     let latestEventAt: string | null = null;
     try {
-      const fetchPage = createHevyPageFetcher(storedApiKey);
+      // Renew the queue lease every few pages: a 100-page backfill can
+      // outlast process-sync-queue's heartbeat lease before any upsert runs.
+      let pagesFetched = 0;
+      const fetchWithHeartbeat: typeof fetch = async (input, init) => {
+        const response = await deps.fetch(input, init);
+        pagesFetched++;
+        if (pagesFetched % HEARTBEAT_EVERY_PAGES === 0) {
+          await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+        }
+        return response;
+      };
+      const fetchPage = createHevyPageFetcher(storedApiKey, fetchWithHeartbeat);
       const result = useEvents
         ? await fetchHevyEvents(fetchPage, lastSyncAt!)
         : await fetchHevyBackfill(fetchPage);
@@ -285,6 +338,7 @@ Deno.serve(async (req) => {
       } else {
         importedCount += chunk.length;
       }
+      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
     }
 
     // If any activity failed to persist, do NOT advance last_sync_at: the next
@@ -376,17 +430,17 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'hevy');
 
-    // Mark sync queue entry as completed
-    if (sync_type) {
-      await supabase
-        .from('sync_queue')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-        .eq('provider', 'hevy')
-        .eq('status', 'pending');
+    // Complete only the queue row this run was dispatched for (or, for a
+    // browser run, at most the newest pending row of the same sync_type).
+    // Never sweep every pending row: a second queued task must still run.
+    if (queueId || sync_type) {
+      await completeSyncQueueEntry(supabase, {
+        userId,
+        provider: 'hevy',
+        syncType: sync_type ?? 'incremental',
+        queueId,
+        calledByQueueProcessor,
+      });
     }
 
     return new Response(
@@ -411,4 +465,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-});
+}

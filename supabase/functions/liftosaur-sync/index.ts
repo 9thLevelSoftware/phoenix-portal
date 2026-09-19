@@ -3,6 +3,10 @@ import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
+import {
+	completeSyncQueueEntry,
+	heartbeatSyncQueueEntry,
+} from "../_shared/syncQueue.ts";
 
 /**
  * Liftosaur Sync Edge Function
@@ -18,6 +22,13 @@ import { requireSubscription } from "../_shared/requireSubscription.ts";
  */
 
 const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
+
+/**
+ * Renew the sync_queue lease after this many upserted records. Records are
+ * upserted one by one, so a 2,000-record history can outlast
+ * process-sync-queue's heartbeat lease without it.
+ */
+const HEARTBEAT_EVERY_RECORDS = 100;
 
 interface LiftosaurRecord {
 	id: number;
@@ -124,6 +135,10 @@ Deno.serve(async (req) => {
 		}
 
 		const { api_key, sync_type } = body;
+		const queueId = typeof body.queue_id === "string" ? body.queue_id : null;
+		const calledByQueueProcessor = !jwtUser;
+		// Only the queue path holds a lease on a sync_queue row.
+		const leaseQueueId = calledByQueueProcessor ? queueId : null;
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
@@ -279,6 +294,7 @@ Deno.serve(async (req) => {
 				hasMore = result.data.hasMore;
 				cursor = result.data.nextCursor;
 				page++;
+				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId);
 			}
 		} catch (fetchError) {
 			console.error("Liftosaur API fetch error:", fetchError);
@@ -315,7 +331,12 @@ Deno.serve(async (req) => {
 
 		let importedCount = 0;
 		let failedCount = 0;
+		let processedRecords = 0;
 		for (const record of allRecords) {
+			processedRecords++;
+			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
+				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId);
+			}
 			const meta = parseLiftoscriptMetadata(record.text);
 
 			// Build a readable workout name
@@ -387,17 +408,17 @@ Deno.serve(async (req) => {
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Mark sync queue entry as completed
-		if (sync_type) {
-			await supabase
-				.from("sync_queue")
-				.update({
-					status: "completed",
-					completed_at: new Date().toISOString(),
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.eq("status", "pending");
+		// Complete only the queue row this run was dispatched for (or, for a
+		// browser run, at most the newest pending row of the same sync_type).
+		// Never sweep every pending row: a second queued task must still run.
+		if (queueId || sync_type) {
+			await completeSyncQueueEntry(supabase, {
+				userId,
+				provider: "liftosaur",
+				syncType: sync_type ?? "incremental",
+				queueId,
+				calledByQueueProcessor,
+			});
 		}
 
 		return new Response(
