@@ -120,7 +120,9 @@ VALUES (
 
 -- 1,100 PRs for A. Rows 2k-1 and 2k share achieved_at (tie-break needed).
 -- Every 22nd row is tombstoned: 50 tombstones, 1,050 live. Row 1100 is a
--- tombstone, so the newest live achieved_at belongs to rows 1098/1099.
+-- tombstone, so row 1099 is alone at the newest live achieved_at (minute
+-- 550). The tie-break is exercised by the page walk (a page boundary splits
+-- a tied pair), not by the first-row check.
 INSERT INTO public.personal_records
     (id, user_id, exercise_name, value, achieved_at, deleted_at, local_profile_id)
 SELECT
@@ -291,7 +293,7 @@ SELECT is(
 SELECT is(
     (SELECT id FROM public.personal_record_history(NULL, 1)),
     'a4040404-0003-4000-8000-000000001099'::uuid,
-    'personal_record_history first row is the newest live PR (id tie-break DESC)'
+    'personal_record_history first row is the newest live PR (tombstoned row 1100 skipped)'
 );
 
 SELECT is(pg_temp.walk_pr_history(100), 11, 'walking pages of 100 takes 11 pages');
