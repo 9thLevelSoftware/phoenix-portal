@@ -21,12 +21,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createCycleFixture,
-	createNestedSessionFixture,
-	createPersonalRecordFixture,
-	createRoutineFixture,
-} from "./fixtures";
-import {
 	type CycleDto,
 	callPullEndpoint,
 	callPushEndpoint,
@@ -35,7 +29,6 @@ import {
 	type ExerciseDto,
 	generateTestId,
 	type LocalProfileDto,
-	type PushPayload,
 	type RepSummaryDto,
 	type RoutineDto,
 	type SessionDto,
@@ -69,7 +62,6 @@ function createFullHierarchySession(
 		setsPerExercise = 4,
 		repsPerSet = 10,
 		sessionId = generateTestId(),
-		profileId = null,
 	} = options;
 
 	const exercises: ExerciseDto[] = [];
@@ -1060,8 +1052,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			);
 
 			// Initial pull
-			const initialPull = await callPullEndpoint(0, testUser.accessToken);
-			const syncTime = initialPull.data!.syncTime;
+			await callPullEndpoint(0, testUser.accessToken);
 
 			// Wait and pull again with a future timestamp (no new data)
 			await new Promise((resolve) => setTimeout(resolve, 10));

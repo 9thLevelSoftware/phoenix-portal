@@ -14,7 +14,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	BADGE_DEFINITIONS,
 	BADGE_TIERS,
 	type BadgeTier,
 	CHARACTER_CLASSES,
@@ -28,7 +27,6 @@ import {
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
-	createTestRoutine,
 	createTestUser,
 	type ExternalActivityDto,
 	type GamificationStatsDto,
