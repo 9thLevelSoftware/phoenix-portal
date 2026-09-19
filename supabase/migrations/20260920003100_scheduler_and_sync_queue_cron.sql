@@ -20,9 +20,13 @@
 --           `connected` -> `failed`, error_message 'integration_not_connected'.
 --           A missing user_integrations row counts as not connected.
 --        b. per (user_id, provider), keep only the newest pending row
---           (created_at DESC, id DESC); the others -> `superseded`.
---           Plain reading of the spec: an old pending `initial` with a newer
---           pending `incremental` for the same pair is superseded here.
+--           (created_at DESC, id DESC) AND the newest pending `initial` of
+--           a connected integration; the others -> `superseded`. So a
+--           connected user with a pending `initial` and a newer pending
+--           `incremental`/`manual` keeps both (orchestrator decision: the
+--           history import must run). process-sync-queue then dispatches
+--           them oldest-first (created_at ASC), sequentially in one pass:
+--           the `initial` completes before the newer row is claimed.
 --        c. pending rows older than 14 days -> `superseded`, except the
 --           newest pending `initial` row of a still-connected integration,
 --           so its history import still runs.
@@ -55,8 +59,9 @@
 --   -- c. pending rows older than 14 days
 --   SELECT count(*) FROM public.sync_queue
 --   WHERE status = 'pending' AND created_at < now() - interval '14 days';
---   -- d. connected users' pending `initial` rows that step b supersedes
---   --    because a newer pending row (e.g. a manual sync) exists
+--   -- d. connected users' pending `initial` rows that step b KEEPS next
+--   --    to a newer pending row (e.g. a manual sync); includes older
+--   --    duplicate initials, of which only the newest is kept
 --   SELECT count(*) FROM public.sync_queue q
 --   WHERE q.status = 'pending' AND q.sync_type = 'initial'
 --     AND EXISTS (SELECT 1 FROM public.user_integrations i
@@ -194,7 +199,9 @@ BEGIN
     );
   GET DIAGNOSTICS v_not_connected = ROW_COUNT;
 
-  -- b. Keep only the newest pending row per (user_id, provider).
+  -- b. Keep only the newest pending row per (user_id, provider), plus the
+  --    newest pending `initial` of a connected integration (so its history
+  --    import still runs even when a newer manual/incremental row exists).
   UPDATE public.sync_queue q
   SET status = 'superseded',
       completed_at = now()
@@ -203,13 +210,27 @@ BEGIN
            row_number() OVER (
              PARTITION BY user_id, provider
              ORDER BY created_at DESC NULLS LAST, id DESC
-           ) AS rn
+           ) AS rn,
+           row_number() OVER (
+             PARTITION BY user_id, provider, (sync_type IS NOT DISTINCT FROM 'initial')
+             ORDER BY created_at DESC NULLS LAST, id DESC
+           ) AS rn_same_kind
     FROM public.sync_queue
     WHERE status = 'pending'
   ) ranked
   WHERE q.id = ranked.id
     AND ranked.rn > 1
-    AND q.status = 'pending';
+    AND q.status = 'pending'
+    AND NOT (
+      q.sync_type IS NOT DISTINCT FROM 'initial'
+      AND ranked.rn_same_kind = 1
+      AND EXISTS (
+        SELECT 1 FROM public.user_integrations i
+        WHERE i.user_id = q.user_id
+          AND i.provider = q.provider
+          AND i.status = 'connected'
+      )
+    );
   GET DIAGNOSTICS v_duplicates = ROW_COUNT;
 
   -- c. Older than 14 days, except the newest pending `initial` of a

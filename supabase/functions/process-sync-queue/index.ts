@@ -3,6 +3,11 @@ import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { dailyRateLimitKey } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  type EnvReader,
+  hasValidCronSecret,
+  timingSafeEqualString,
+} from '../_shared/cronSecret.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -83,16 +88,9 @@ const DAILY_RATE_LIMITS: Record<string, { requests: number; windowMs: number }> 
   strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 }, // reserve 20% of 1,000
 };
 
-function timingSafeEqualString(a: string, b: string): boolean {
-  const ea = new TextEncoder().encode(a);
-  const eb = new TextEncoder().encode(b);
-  if (ea.length !== eb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
-  return diff === 0;
-}
-
-type EnvReader = (key: string) => string | undefined;
+// CRON_SECRET (Operator Action 7) is read first by the shared helper; these
+// older per-function names stay accepted as fallbacks.
+const LEGACY_CRON_SECRET_NAMES = ['PROCESS_SYNC_QUEUE_SECRET', 'CRON_SYNC_QUEUE_SECRET'];
 
 export interface ProcessSyncQueueDependencies {
   /** Environment lookup (Deno.env.get in production). */
@@ -118,23 +116,6 @@ function isServiceRoleRequest(req: Request, env: EnvReader): boolean {
   return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
 }
 
-function hasValidCronSecret(req: Request, env: EnvReader): boolean {
-  const readSecret = (key: string): string | undefined => {
-    const value = env(key)?.trim();
-    return value ? value : undefined;
-  };
-  // CRON_SECRET is the name Operator Action 7 sets from the Vault secret
-  // `edge_cron_secret` that private.invoke_edge_function sends (KD-10). The
-  // older per-function names stay accepted as fallbacks.
-  const expectedSecret =
-    readSecret('CRON_SECRET') ??
-    readSecret('PROCESS_SYNC_QUEUE_SECRET') ??
-    readSecret('CRON_SYNC_QUEUE_SECRET');
-  if (!expectedSecret) return false;
-  const provided = req.headers.get('x-cron-secret') ?? '';
-  return timingSafeEqualString(expectedSecret, provided);
-}
-
 export function createProcessSyncQueueHandler(
   dependencies: ProcessSyncQueueDependencies = defaultProcessSyncQueueDependencies(),
 ): (req: Request) => Promise<Response> {
@@ -156,7 +137,7 @@ async function processSyncQueue(
     return new Response('ok', { headers: cors });
   }
 
-  if (!isServiceRoleRequest(req, env) && !hasValidCronSecret(req, env)) {
+  if (!isServiceRoleRequest(req, env) && !hasValidCronSecret(req, env, LEGACY_CRON_SECRET_NAMES)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },

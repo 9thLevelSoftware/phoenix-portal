@@ -205,6 +205,8 @@ SELECT diag('database:scheduler-backlog-triage');
 --   C connected hevy, 1 pending incremental 30d old         -> superseded
 --   D connected strava, 1 pending initial 30d old           -> stays pending
 --   E no integration row at all, liftosaur pending           -> failed
+--   F connected strava: initial 5d + newer incremental 1d   -> both stay pending;
+--     an older duplicate initial 6d                          -> superseded
 --   A completed row                                          -> untouched
 INSERT INTO auth.users (id, email)
 VALUES
@@ -212,7 +214,8 @@ VALUES
     ('31313131-0000-4000-8000-00000000000b'::uuid, 'scheduler-b@example.test'),
     ('31313131-0000-4000-8000-00000000000c'::uuid, 'scheduler-c@example.test'),
     ('31313131-0000-4000-8000-00000000000d'::uuid, 'scheduler-d@example.test'),
-    ('31313131-0000-4000-8000-00000000000e'::uuid, 'scheduler-e@example.test')
+    ('31313131-0000-4000-8000-00000000000e'::uuid, 'scheduler-e@example.test'),
+    ('31313131-0000-4000-8000-00000000000f'::uuid, 'scheduler-f@example.test')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.user_integrations (user_id, provider, status)
@@ -220,7 +223,8 @@ VALUES
     ('31313131-0000-4000-8000-00000000000a', 'strava', 'connected'),
     ('31313131-0000-4000-8000-00000000000b', 'fitbit', 'disconnected'),
     ('31313131-0000-4000-8000-00000000000c', 'hevy', 'connected'),
-    ('31313131-0000-4000-8000-00000000000d', 'strava', 'connected');
+    ('31313131-0000-4000-8000-00000000000d', 'strava', 'connected'),
+    ('31313131-0000-4000-8000-00000000000f', 'strava', 'connected');
 
 INSERT INTO public.sync_queue (id, user_id, provider, sync_type, status, created_at)
 VALUES
@@ -231,19 +235,27 @@ VALUES
     ('31310000-0000-4000-8000-0000000000b1', '31313131-0000-4000-8000-00000000000b', 'fitbit', 'incremental', 'pending', now() - interval '1 day'),
     ('31310000-0000-4000-8000-0000000000c1', '31313131-0000-4000-8000-00000000000c', 'hevy', 'incremental', 'pending', now() - interval '30 days'),
     ('31310000-0000-4000-8000-0000000000d1', '31313131-0000-4000-8000-00000000000d', 'strava', 'initial', 'pending', now() - interval '30 days'),
-    ('31310000-0000-4000-8000-0000000000e1', '31313131-0000-4000-8000-00000000000e', 'liftosaur', 'incremental', 'pending', now() - interval '1 day');
+    ('31310000-0000-4000-8000-0000000000e1', '31313131-0000-4000-8000-00000000000e', 'liftosaur', 'incremental', 'pending', now() - interval '1 day'),
+    ('31310000-0000-4000-8000-0000000000f1', '31313131-0000-4000-8000-00000000000f', 'strava', 'initial', 'pending', now() - interval '5 days'),
+    ('31310000-0000-4000-8000-0000000000f2', '31313131-0000-4000-8000-00000000000f', 'strava', 'incremental', 'pending', now() - interval '1 day'),
+    ('31310000-0000-4000-8000-0000000000f3', '31313131-0000-4000-8000-00000000000f', 'strava', 'initial', 'pending', now() - interval '6 days');
 
 SELECT is(
     private.triage_sync_queue_backlog(),
-    '{"not_connected": 2, "duplicates": 2, "stale": 1}'::jsonb,
-    'triage reports 2 not connected, 2 duplicates, 1 stale'
+    '{"not_connected": 2, "duplicates": 3, "stale": 1}'::jsonb,
+    'triage reports 2 not connected, 3 duplicates, 1 stale'
 );
 
 SELECT set_eq(
     $$ SELECT id::text FROM public.sync_queue
        WHERE user_id::text LIKE '31313131-%' AND status = 'pending' $$,
-    ARRAY['31310000-0000-4000-8000-0000000000a1', '31310000-0000-4000-8000-0000000000d1'],
-    'exactly the newest connected row and the connected user''s old initial stay pending'
+    ARRAY[
+        '31310000-0000-4000-8000-0000000000a1',
+        '31310000-0000-4000-8000-0000000000d1',
+        '31310000-0000-4000-8000-0000000000f1',
+        '31310000-0000-4000-8000-0000000000f2'
+    ],
+    'pending: newest row per pair, a connected user''s old initial, and an initial kept next to a newer incremental'
 );
 SELECT set_eq(
     $$ SELECT id::text FROM public.sync_queue
@@ -258,9 +270,10 @@ SELECT set_eq(
     ARRAY[
         '31310000-0000-4000-8000-0000000000a2',
         '31310000-0000-4000-8000-0000000000a3',
-        '31310000-0000-4000-8000-0000000000c1'
+        '31310000-0000-4000-8000-0000000000c1',
+        '31310000-0000-4000-8000-0000000000f3'
     ],
-    'older duplicates and the 30-day-old incremental are superseded'
+    'older duplicates (incl. an older duplicate initial) and the 30-day-old incremental are superseded'
 );
 SELECT is(
     (SELECT status FROM public.sync_queue WHERE id = '31310000-0000-4000-8000-0000000000a4'),
