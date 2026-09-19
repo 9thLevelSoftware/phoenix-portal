@@ -13,6 +13,7 @@ import {
 	initSentry,
 	scrubBreadcrumb,
 	scrubEvent,
+	scrubText,
 	scrubUrl,
 } from "@/lib/sentry";
 
@@ -43,6 +44,18 @@ describe("scrubUrl", () => {
 		).toBe("/integrations/callback?provider=strava&tab=1");
 		expect(scrubUrl("/cb?access_token=a&refresh_token=b")).toBe("/cb");
 		expect(scrubUrl("/cb?code%5F=1&%63ode=2")).toBe("/cb?code%5F=1");
+	});
+
+	it("keeps a malformed percent-escaped name and still drops tokens", () => {
+		expect(scrubUrl("/cb?%E0%A4%A=1&access_token=x")).toBe("/cb?%E0%A4%A=1");
+	});
+
+	it("removes PKCE token_hash and provider tokens", () => {
+		expect(
+			scrubUrl(
+				"/auth/confirm?token_hash=h&type=recovery&provider_token=p&provider_refresh_token=r&id_token=i",
+			),
+		).toBe("/auth/confirm?type=recovery");
 	});
 
 	it("leaves clean URLs untouched", () => {
@@ -119,6 +132,105 @@ describe("initSentry scrubbing hooks", () => {
 		expect(sent.request?.url).toBe("https://portal.example/");
 	});
 
+	it("scrubs http.client span URL attributes and trace context data", () => {
+		const { beforeSendTransaction } = initOptions();
+		const signed = `https://storage.example/object/sign/a.png?token=${ACCESS}&download=1#access_token=${ACCESS}`;
+		const sent = beforeSendTransaction?.(
+			{
+				type: "transaction",
+				transaction: "/profile",
+				contexts: {
+					trace: {
+						trace_id: "t",
+						span_id: "s",
+						data: { url: signed, "http.fragment": `#refresh_token=${REFRESH}` },
+					},
+				},
+				spans: [
+					{
+						span_id: "1",
+						trace_id: "t",
+						start_timestamp: 0,
+						description: `GET ${signed}`,
+						data: {
+							url: signed,
+							"http.url": signed,
+							"http.query": `?token=${ACCESS}&download=1`,
+							"http.fragment": `#access_token=${ACCESS}`,
+							"http.method": "GET",
+						},
+					},
+					{
+						span_id: "2",
+						trace_id: "t",
+						start_timestamp: 0,
+						description: "GET /rest/v1/x",
+						data: { url: "/rest/v1/x", "http.query": "?code=abc" },
+					},
+				],
+			},
+			{},
+		);
+
+		expect(JSON.stringify(sent)).not.toContain(ACCESS);
+		expect(JSON.stringify(sent)).not.toContain(REFRESH);
+		const [span, codeOnly] = sent?.spans ?? [];
+		const clean = "https://storage.example/object/sign/a.png?download=1";
+		expect(span.data).toEqual({
+			url: clean,
+			"http.url": clean,
+			"http.query": "?download=1",
+			"http.method": "GET",
+		});
+		expect(span.description).toContain("token=[Filtered]");
+		expect(codeOnly.data).toEqual({ url: "/rest/v1/x" });
+		expect(sent?.contexts?.trace?.data).toEqual({ url: clean });
+	});
+
+	it("scrubs messages, exception values and stack-frame paths", () => {
+		const { beforeSend } = initOptions();
+		const href = `https://portal.example/reset#access_token=${ACCESS}&refresh_token=${REFRESH}&type=recovery`;
+		const sent = beforeSend?.(
+			{
+				type: undefined,
+				message: `failed at ${href}`,
+				exception: {
+					values: [
+						{
+							type: "Error",
+							value: `Script error at ${href} (code%3Dabc)`,
+							stacktrace: {
+								frames: [
+									{ filename: href, abs_path: href, lineno: 1 },
+									{ filename: "app:///assets/index.js" },
+								],
+							},
+						},
+					],
+				},
+				breadcrumbs: [{ category: "console", message: `location ${href}` }],
+			},
+			{},
+		) as ErrorEvent;
+
+		const serialized = JSON.stringify(sent);
+		expect(serialized).not.toContain(ACCESS);
+		expect(serialized).not.toContain(REFRESH);
+		expect(serialized).not.toContain("abc");
+		const [value] = sent.exception?.values ?? [];
+		expect(value.stacktrace?.frames?.[0]).toEqual({
+			filename: "https://portal.example/reset",
+			abs_path: "https://portal.example/reset",
+			lineno: 1,
+		});
+		expect(value.stacktrace?.frames?.[1].filename).toBe(
+			"app:///assets/index.js",
+		);
+		expect(sent.message).toBe(
+			"failed at https://portal.example/reset#access_token=[Filtered]&refresh_token=[Filtered]&type=recovery",
+		);
+	});
+
 	it("scrubs breadcrumb url/from/to via beforeBreadcrumb", () => {
 		const { beforeBreadcrumb } = initOptions();
 		const crumb: Breadcrumb = {
@@ -135,6 +247,21 @@ describe("initSentry scrubbing hooks", () => {
 			"https://api.example/auth/v1/token?grant_type=refresh",
 		);
 		expect(sent.data?.method).toBe("POST");
+
+		const nav = beforeBreadcrumb?.(
+			{
+				category: "navigation",
+				data: {
+					from: `/login#access_token=${ACCESS}`,
+					to: `/integrations/callback?code=abc&state=xyz&provider=strava`,
+				},
+			},
+			undefined,
+		) as Breadcrumb;
+		expect(nav.data).toEqual({
+			from: "/login",
+			to: "/integrations/callback?provider=strava",
+		});
 		expect(scrubBreadcrumb({ message: "no data" })).toEqual({
 			message: "no data",
 			data: undefined,
@@ -153,6 +280,21 @@ describe("initSentry scrubbing hooks", () => {
 describe("scrubEvent", () => {
 	it("tolerates events without request or breadcrumbs", () => {
 		expect(scrubEvent({ message: "x" })).toEqual({ message: "x" });
+	});
+
+	it("scrubText only redacts delimited sensitive names", () => {
+		expect(scrubText("barcode=123 unicode=x")).toBe("barcode=123 unicode=x");
+		expect(scrubText("see ?token_hash=abc&type=signup")).toBe(
+			"see ?token_hash=[Filtered]&type=signup",
+		);
+	});
+
+	it("matches the Referer header case-insensitively", () => {
+		expect(
+			scrubEvent({
+				request: { headers: { referer: "https://portal.example/cb?code=abc" } },
+			}).request?.headers,
+		).toEqual({ referer: "https://portal.example/cb" });
 	});
 
 	it("scrubs object and array query_string forms", () => {
