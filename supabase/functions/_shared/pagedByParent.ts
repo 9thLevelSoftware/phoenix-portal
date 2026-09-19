@@ -2,17 +2,27 @@
  * KD-28 child paging: PostgREST can silently truncate unpaged `.in()` reads.
  *
  * Pattern (only this one):
- *   1. Chunk parent IDs so one request is unlikely to hit hosted max_rows.
+ *   1. Chunk parent IDs (PARENT_ID_CHUNK_SIZE) to bound the request URL.
+ *      Row count never depends on chunk size: each chunk is paged below, and
+ *      a page is PAGE+1 = 501 rows, under the hosted max_rows of 1000.
  *   2. `.range(offset, offset + PAGE)` is inclusive → PAGE+1 rows.
  *   3. Consume PAGE rows. Continue iff `length === PAGE + 1`.
  *   4. Chunk complete iff `length <= PAGE` (exact last page of PAGE included).
  *   5. HTTP 200 when every chunk completes.
  *   6. Overflow only when a *single* parent still returns PAGE+1 and further
  *      Range/offset for that parent is refused.
+ *   7. Up to CHUNK_CONCURRENCY chunks are in flight at once. Rows come back
+ *      in chunk order; any chunk failure fails the whole fetch (fail-closed),
+ *      reporting the first failing chunk in chunk order.
  */
 
 export const CHILD_PAGE_SIZE = 500;
-export const PARENT_ID_CHUNK_SIZE = 20;
+/**
+ * 100 UUIDs as `col=in.(...)` is about 3.7 KB of query string, well under the
+ * ~8 KB PostgREST/gateway URL budget.
+ */
+export const PARENT_ID_CHUNK_SIZE = 100;
+export const CHUNK_CONCURRENCY = 4;
 
 export type PostgrestErrorLike = {
   code?: string;
@@ -159,9 +169,30 @@ export async function fetchAllByParentIds(
     return { ok: true, rows: [] };
   }
 
+  const chunks = chunkIds(parentIds, PARENT_ID_CHUNK_SIZE);
+  const results: (PagedFetchResult | undefined)[] = new Array(chunks.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < chunks.length) {
+      const index = next++;
+      const result = await fetchOneChunk(supabase, options, chunks[index]);
+      results[index] = result;
+      if (!result.ok) failed = true;
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(CHUNK_CONCURRENCY, chunks.length) },
+      () => worker(),
+    ),
+  );
+
   const collected: Record<string, unknown>[] = [];
-  for (const chunk of chunkIds(parentIds, PARENT_ID_CHUNK_SIZE)) {
-    const result = await fetchOneChunk(supabase, options, chunk);
+  for (const result of results) {
+    // Chunks not started because another chunk failed stay undefined; that
+    // failed chunk is still in `results`, so the loop returns it.
+    if (result === undefined) continue;
     if (!result.ok) return result;
     collected.push(...result.rows);
   }
