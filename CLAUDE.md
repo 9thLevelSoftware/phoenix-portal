@@ -128,7 +128,7 @@ src/
 - Broadcasts `sync_complete` event for realtime portal updates
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
-- Returns data modified since `lastSync` timestamp (delta sync)
+- Parity sync: sessions, routines, cycles, badges and PRs always go through the `*_excluding_ids` RPCs (rows not in `knownEntityIds`; sessions/routines/cycles also re-send known rows changed since `lastSync - 2 min`; empty known ids = whole profile; `lastSync: 0` = everything). Other `lastSync` filters also use `lastSync - 2 min`
 - Cursor-based pagination with 75 entities per page (max 300)
 - Entity order: sessions -> routines -> cycles -> badges -> stats
 - Uses composite cursor (updated_at, id) for stable ordering across pages

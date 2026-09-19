@@ -3,7 +3,6 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
-  buildLocalProfileOrNullPostgrestFilter,
   isValidLocalProfileId,
 } from '../_shared/localProfileId.ts';
 import {
@@ -28,7 +27,8 @@ import {
 // mobile builds may still send local integer IDs, which are ignored for parity.
 // For profile ids use isValidLocalProfileId — the "default" sentinel is legal there.
 /**
- * Commit-time overlap for the parity stale arm and the tombstones-since query.
+ * Commit-time overlap for every lastSync-based filter (parity stale arm,
+ * tombstones-since, stats, external activities, custom exercises).
  * A write whose transaction started before the previous pull's syncTime but
  * committed after it carries an updated_at earlier than that syncTime; comparing
  * against lastSync - 2 minutes re-delivers it. Mobile merges duplicates idempotently.
@@ -57,12 +57,16 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *   }
  * }
  *
- * Sync Modes (sessions, routines, cycles always use the parity RPCs):
- *   - Parity mode: client sends knownEntityIds → server returns entities NOT in those lists,
- *     plus known entities changed since lastSync (the "stale" arm)
- *   - Empty knownEntityIds → server returns all entities for the profile
+ * Sync Modes (sessions, routines, cycles, badges and personal records always use the
+ * *_excluding_ids RPCs; there is no timestamp-only mode any more):
+ *   - Server returns entities NOT in knownEntityIds; for sessions, routines and cycles also
+ *     known entities changed since lastSync (the "stale" arm)
+ *   - Empty (or absent) knownEntityIds → server returns all entities for the profile. A
+ *     pre-parity client that sends lastSync > 0 without known ids therefore now gets its
+ *     whole profile on every pull instead of a timestamp delta.
  *   - lastSync: 0 (shipping mobile builds) → every row counts as stale, so all rows are returned
- *   - lastSync > 0 → the stale arm compares against lastSync - 2 minutes (commit-time overlap,
+ *   - lastSync > 0 → every lastSync-based filter (stale arm, PR tombstones, stats, external
+ *     activities, custom exercises) compares against lastSync - 2 minutes (commit-time overlap,
  *     see STALE_OVERLAP_MS) so a write that committed after the previous syncTime is re-sent
  *
  * Pagination:
@@ -284,8 +288,7 @@ class PullRequestParseFailure extends Error {
 interface ParsedPullRequest {
   body: PullRequest;
   profileId: string | null;
-  lastSyncISO: string;
-  /** p_last_sync_at for the parity RPCs: lastSyncISO, minus STALE_OVERLAP_MS when lastSync > 0. */
+  /** Lower bound for every lastSync-based filter: the lastSync instant, minus STALE_OVERLAP_MS when lastSync > 0. */
   staleSinceISO: string;
   pageSize: number;
   cursor: DecodedCursor | null;
@@ -413,7 +416,6 @@ function parseMobileSyncPullRequest(value: unknown): ParsedPullRequest {
       ...(knownEntityIds === undefined ? {} : { knownEntityIds }),
     },
     profileId,
-    lastSyncISO,
     staleSinceISO,
     pageSize,
     cursor,
@@ -567,7 +569,7 @@ async function mobileSyncPullHandler(
       }
       throw error;
     }
-    const { body, profileId, lastSyncISO, staleSinceISO, pageSize, cursor } = parsedRequest;
+    const { body, profileId, staleSinceISO, pageSize, cursor } = parsedRequest;
 
     // =========================================================================
     // 3. Service-role client for DB queries (bypasses RLS)
@@ -1092,41 +1094,18 @@ async function mobileSyncPullHandler(
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'badges');
       const knownBadgeIds = uuidParityIds(body.knownEntityIds?.badgeIds);
 
-      const useRpc = knownBadgeIds.length > 0 || !body.lastSync || body.lastSync === 0;
-
-      let badgesData: Record<string, unknown>[] = [];
-
-      if (useRpc) {
-        const { data, error } = await supabase.rpc('get_badges_excluding_ids', {
-          p_user_id: userId,
-          p_known_ids: knownBadgeIds,
-          p_cursor_earned_at: cursorUpdatedAt,
-          p_cursor_id: cursorId,
-          p_limit: remainingPageSize + 1,
-        });
-        if (error) return readFailure('badges', error, cors);
-        badgesData = (data as Record<string, unknown>[]) ?? [];
-      } else {
-        // Legacy timestamp-based mode
-        let badgesQuery = supabase
-          .from('earned_badges')
-          .select('*')
-          .eq('user_id', userId)
-          .gt('earned_at', lastSyncISO)
-          .order('earned_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(remainingPageSize + 1);
-
-        if (cursorUpdatedAt && cursorId) {
-          badgesQuery = badgesQuery.or(
-            `earned_at.gt.${cursorUpdatedAt},and(earned_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-          );
-        }
-
-        const { data, error } = await badgesQuery;
-        if (error) return readFailure('badges', error, cors);
-        badgesData = (data as Record<string, unknown>[]) ?? [];
-      }
+      // Always the RPC. Badges are immutable once earned and not profile-scoped,
+      // so "not in known ids" is the whole contract; with empty known ids the
+      // device gets every badge (never only those earned since lastSync).
+      const { data: badgeRows, error: badgesError } = await supabase.rpc('get_badges_excluding_ids', {
+        p_user_id: userId,
+        p_known_ids: knownBadgeIds,
+        p_cursor_earned_at: cursorUpdatedAt,
+        p_cursor_id: cursorId,
+        p_limit: remainingPageSize + 1,
+      });
+      if (badgesError) return readFailure('badges', badgesError, cors);
+      const badgesData = (badgeRows as Record<string, unknown>[]) ?? [];
 
       if (badgesData.length > remainingPageSize) {
         hasMore = true;
@@ -1156,7 +1135,7 @@ async function mobileSyncPullHandler(
         .from('rpg_attributes')
         .select('*')
         .eq('user_id', userId)
-        .gt('updated_at', lastSyncISO)
+        .gt('updated_at', staleSinceISO)
         .maybeSingle();
       if (rpgError) return readFailure('rpg attributes', rpgError, cors);
 
@@ -1184,7 +1163,7 @@ async function mobileSyncPullHandler(
         .from('gamification_stats')
         .select('*')
         .eq('user_id', userId)
-        .gt('updated_at', lastSyncISO)
+        .gt('updated_at', staleSinceISO)
         .maybeSingle();
       if (gamificationError) return readFailure('gamification stats', gamificationError, cors);
 
@@ -1223,7 +1202,7 @@ async function mobileSyncPullHandler(
         .from('external_activities')
         .select('*')
         .eq('user_id', userId)
-        .gt('synced_at', lastSyncISO)
+        .gt('synced_at', staleSinceISO)
         .order('synced_at', { ascending: true })
         .limit(500);
       if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
@@ -1258,79 +1237,49 @@ async function mobileSyncPullHandler(
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'personalRecords');
       const knownPRIds = uuidParityIds(body.knownEntityIds?.personalRecordIds);
 
-      const useRpcPR = knownPRIds.length > 0 || !body.lastSync || body.lastSync === 0;
+      // Always the RPC (strict default-profile rule, excludes deleted rows).
+      // With empty known ids the device gets the whole profile, never only
+      // rows since lastSync. It holds no ids, so it needs no tombstones.
+      // Cursor/limit params are now server-side (fix #97).
+      const { data, error } = await supabase.rpc('get_personal_records_excluding_ids', {
+        p_user_id: userId,
+        p_known_ids: knownPRIds,
+        p_profile_id: profileId,
+        p_cursor_updated_at: cursorUpdatedAt,
+        p_cursor_id: cursorId,
+        p_limit: remainingPageSize + 1,
+      });
+      if (error) return readFailure('personal records', error, cors);
+      const unseenRows = (data as Record<string, unknown>[]) ?? [];
 
-      let personalRecordsData: Record<string, unknown>[] = [];
-
-      if (useRpcPR) {
-        // RPC path: excludes IDs the client already has.
-        // Cursor/limit params are now server-side (fix #97).
-        const { data, error } = await supabase.rpc('get_personal_records_excluding_ids', {
-          p_user_id: userId,
-          p_known_ids: knownPRIds,
-          p_profile_id: profileId,
-          p_cursor_updated_at: cursorUpdatedAt,
-          p_cursor_id: cursorId,
-          p_limit: remainingPageSize + 1,
-        });
-        if (error) return readFailure('personal records', error, cors);
-        const unseenRows = (data as Record<string, unknown>[]) ?? [];
-
-        // The parity RPC intentionally excludes IDs the device already has.
-        // That is correct for active rows, but a later tombstone must be sent
-        // back to that same known ID or the client would retain it forever.
-        let knownTombstones: Record<string, unknown>[] = [];
-        if (knownPRIds.length > 0) {
-          const { data: tombstoneData, error: tombstoneError } = await supabase
-            .rpc('get_personal_record_tombstones', {
-              p_user_id: userId,
-              p_known_ids: knownPRIds,
-              p_last_sync_at: staleSinceISO,
-              p_profile_id: profileId,
-              p_cursor_updated_at: cursorUpdatedAt,
-              p_cursor_id: cursorId,
-              p_limit: remainingPageSize + 1,
-            });
-          if (tombstoneError) return readFailure('personal-record tombstones', tombstoneError, cors);
-          knownTombstones = (tombstoneData as Record<string, unknown>[]) ?? [];
-        }
-        const rowsById = new Map<string, Record<string, unknown>>();
-        for (const row of [...unseenRows, ...knownTombstones]) {
-          const id = typeof row.id === 'string' ? row.id : null;
-          if (id) rowsById.set(id, row);
-        }
-        personalRecordsData = [...rowsById.values()].sort((left, right) => {
-          const leftTime = String(left.updated_at ?? '');
-          const rightTime = String(right.updated_at ?? '');
-          return leftTime.localeCompare(rightTime) || String(left.id).localeCompare(String(right.id));
-        });
-      } else {
-        // Legacy timestamp-based mode
-        let personalRecordsQuery = supabase
-          .from('personal_records')
-          .select('*')
-          .eq('user_id', userId)
-          .gt('updated_at', lastSyncISO)
-          .order('updated_at', { ascending: true })
-          .order('id', { ascending: true })
-          .limit(remainingPageSize + 1);
-
-        if (profileId) {
-          personalRecordsQuery = personalRecordsQuery.or(
-            buildLocalProfileOrNullPostgrestFilter(profileId),
-          );
-        }
-
-        if (cursorUpdatedAt && cursorId) {
-          personalRecordsQuery = personalRecordsQuery.or(
-            `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
-          );
-        }
-
-        const { data, error } = await personalRecordsQuery;
-        if (error) return readFailure('personal records', error, cors);
-        personalRecordsData = (data as Record<string, unknown>[]) ?? [];
+      // The parity RPC intentionally excludes IDs the device already has.
+      // That is correct for active rows, but a later tombstone must be sent
+      // back to that same known ID or the client would retain it forever.
+      let knownTombstones: Record<string, unknown>[] = [];
+      if (knownPRIds.length > 0) {
+        const { data: tombstoneData, error: tombstoneError } = await supabase
+          .rpc('get_personal_record_tombstones', {
+            p_user_id: userId,
+            p_known_ids: knownPRIds,
+            p_last_sync_at: staleSinceISO,
+            p_profile_id: profileId,
+            p_cursor_updated_at: cursorUpdatedAt,
+            p_cursor_id: cursorId,
+            p_limit: remainingPageSize + 1,
+          });
+        if (tombstoneError) return readFailure('personal-record tombstones', tombstoneError, cors);
+        knownTombstones = (tombstoneData as Record<string, unknown>[]) ?? [];
       }
+      const rowsById = new Map<string, Record<string, unknown>>();
+      for (const row of [...unseenRows, ...knownTombstones]) {
+        const id = typeof row.id === 'string' ? row.id : null;
+        if (id) rowsById.set(id, row);
+      }
+      const personalRecordsData = [...rowsById.values()].sort((left, right) => {
+        const leftTime = String(left.updated_at ?? '');
+        const rightTime = String(right.updated_at ?? '');
+        return leftTime.localeCompare(rightTime) || String(left.id).localeCompare(String(right.id));
+      });
 
       if (personalRecordsData.length > remainingPageSize) {
         hasMore = true;
@@ -1374,7 +1323,7 @@ async function mobileSyncPullHandler(
         .select("*")
         .eq("is_custom", true)
         .eq("user_id", userId)
-        .gt("updated_at", lastSyncISO)
+        .gt("updated_at", staleSinceISO)
         .order("updated_at", { ascending: true })
         .order("id", { ascending: true })
         .limit(remainingPageSize + 1);

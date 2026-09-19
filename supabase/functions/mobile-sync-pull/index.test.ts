@@ -750,26 +750,70 @@ Deno.test("lastSync 0 keeps the epoch stale bound (no negative overlap)", async 
   }
 });
 
-Deno.test("real lastSync with empty known ids still uses the parity RPCs", async () => {
+const ALL_ID_RPCS = [
+  ...PARITY_RPCS,
+  "get_badges_excluding_ids",
+  "get_personal_records_excluding_ids",
+] as const;
+const RPC_BACKED_TABLES = [
+  "workout_sessions",
+  "routines",
+  "training_cycles",
+  "earned_badges",
+  "personal_records",
+];
+
+Deno.test("real lastSync with empty known ids uses every id RPC and no timestamp-only table read", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
     ...validPullBody(),
     lastSync: Date.parse("2026-07-01T00:00:00.000Z"),
   }));
   assertEquals(response.status, 200);
-  for (const name of PARITY_RPCS) {
+  for (const name of ALL_ID_RPCS) {
     const call = harness.adminCalls.find((c) =>
       c.kind === "rpc" && c.name === name
     );
     assert(call, name);
     assertEquals(call.args?.p_known_ids, [], name);
   }
-  for (const table of ["workout_sessions", "routines", "training_cycles"]) {
+  // PR profile rule is the RPC's strict one (no NULL-profile bleed).
+  const prCall = harness.adminCalls.find((c) =>
+    c.kind === "rpc" && c.name === "get_personal_records_excluding_ids"
+  );
+  assertEquals(prCall?.args?.p_profile_id, VALID_PROFILE_ID);
+  for (const table of RPC_BACKED_TABLES) {
     assertEquals(
       harness.adminCalls.some((c) => c.kind === "from" && c.name === table),
       false,
       table,
     );
+  }
+});
+
+Deno.test("every lastSync-based table filter uses lastSync minus the overlap", async () => {
+  const lastSync = Date.parse("2026-07-01T00:00:00.000Z");
+  const staleSince = "2026-06-30T23:58:00.000Z";
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync,
+  }));
+  assertEquals(response.status, 200);
+  const gtFilters = harness.adminCalls.flatMap((call) =>
+    (call.operations ?? [])
+      .filter((operation) => operation.name === "gt")
+      .map((operation) => ({ table: call.name, args: operation.args }))
+  );
+  const filteredTables = gtFilters.map((filter) => filter.table).sort();
+  assertEquals(filteredTables, [
+    "exercise_catalog", // custom exercises
+    "external_activities",
+    "gamification_stats",
+    "rpg_attributes",
+  ]);
+  for (const filter of gtFilters) {
+    assertEquals(filter.args[1], staleSince, filter.table);
   }
 });
 
@@ -779,22 +823,75 @@ const DB_ERROR = {
   hint: "internal schema hint",
 };
 
-for (const name of PARITY_RPCS) {
-  Deno.test(`${name} failure returns only the error code, never DB text`, async () => {
+async function assertNoDbText(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  const body = JSON.parse(text) as Record<string, unknown>;
+  assertEquals(body.code, "42P01");
+  assert(!Object.hasOwn(body, "details"), text);
+  assert(!text.includes("secret_internal_table"), text);
+  assert(!text.includes("internal schema hint"), text);
+  return body;
+}
+
+Deno.test("sessions RPC failure is a 500 with code and parityIdCount only", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (rpcName) =>
+      rpcName === "get_sessions_excluding_ids"
+        ? { data: null, error: DB_ERROR }
+        : undefined,
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    knownEntityIds: {
+      ...validPullBody().knownEntityIds as Record<string, unknown>,
+      sessionIds: ["00000000-0000-4000-8000-0000000000aa"],
+    },
+  }));
+  assertEquals(response.status, 500);
+  assertEquals(response.headers.get("Retry-After"), null);
+  const body = await assertNoDbText(response);
+  assertEquals(body, {
+    error: "Failed to fetch workout sessions",
+    code: "42P01",
+    parityIdCount: 1,
+  });
+});
+
+for (
+  const [name, entity] of [
+    ["get_routines_excluding_ids", "routines"],
+    ["get_cycles_excluding_ids", "cycles"],
+    ["get_badges_excluding_ids", "badges"],
+    ["get_personal_records_excluding_ids", "personal records"],
+  ] as const
+) {
+  Deno.test(`${name} failure is a retryable 503 with the error code only`, async () => {
     const harness = makeHarness(async () => VALID_AUTH_RESULT, {
       rpcImpl: (rpcName) =>
         rpcName === name ? { data: null, error: DB_ERROR } : undefined,
     });
     const response = await harness.handler(requestFromBody(validPullBody()));
-    assert(response.status === 500 || response.status === 503);
-    const text = await response.text();
-    const body = JSON.parse(text) as Record<string, unknown>;
-    assertEquals(body.code, "42P01");
-    assert(!Object.hasOwn(body, "details"), text);
-    assert(!text.includes("secret_internal_table"), text);
-    assert(!text.includes("internal schema hint"), text);
+    assertEquals(response.status, 503);
+    assertEquals(response.headers.get("Retry-After"), "5");
+    const body = await assertNoDbText(response);
+    assertEquals(body, { error: `Failed to fetch ${entity}`, code: "42P01" });
   });
 }
+
+Deno.test("custom exercises failure is a 500 with the error code only", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      exercise_catalog: [{ data: null, error: DB_ERROR }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 500);
+  const body = await assertNoDbText(response);
+  assertEquals(body, {
+    error: "Failed to fetch custom exercises",
+    code: "42P01",
+  });
+});
 
 // Issue #97 follow-up: 200 PRs sharing one microsecond timestamp must still
 // produce distinct page cursors. JS Date truncates µs → ms, which makes
@@ -1168,6 +1265,7 @@ async function deleteLocalPullFixtureRows(
       "workout_sessions",
       "routines",
       "training_cycles",
+      "personal_records",
       "local_profile_preferences",
       "local_profiles",
       "subscriptions",
@@ -1311,6 +1409,7 @@ async function assertLocalPullFixtureClean(
       "workout_sessions",
       "routines",
       "training_cycles",
+      "personal_records",
       "local_profile_preferences",
       "local_profiles",
       "subscriptions",
@@ -1451,6 +1550,7 @@ function mobilePullBody(
   lastSync: number,
   profileId: string,
   known: Record<ParityTable, string[]>,
+  personalRecordIds: string[] = [],
 ): Record<string, unknown> {
   return {
     deviceId: "pr26-contract-device",
@@ -1462,9 +1562,46 @@ function mobilePullBody(
       routineIds: known.routines,
       cycleIds: known.training_cycles,
       badgeIds: [],
-      personalRecordIds: [],
+      personalRecordIds,
     },
   };
+}
+
+async function insertPersonalRecord(
+  fixture: LocalPullFixture,
+  options: {
+    localProfileId: string | null;
+    updatedAtMs: number;
+    deleted?: boolean;
+  },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const updatedAt = new Date(options.updatedAtMs).toISOString();
+  const inserted = await fixture.admin.from("personal_records").insert({
+    id,
+    user_id: fixture.ownerId,
+    exercise_name: `pr26 lift ${id}`,
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    local_profile_id: options.localProfileId,
+    updated_at: updatedAt,
+    deleted_at: options.deleted ? updatedAt : null,
+  });
+  if (inserted.error) {
+    throw new Error(`personal_records fixture insert failed: ${inserted.error.message}`);
+  }
+  return id;
+}
+
+function returnedPersonalRecords(
+  body: Record<string, unknown>,
+): Array<{ id: string; deletedAt: string | null }> {
+  const rows = body.personalRecords as Array<
+    { id: string; deletedAt: string | null }
+  >;
+  assert(Array.isArray(rows), "personalRecords");
+  return rows.map((row) => ({ id: row.id, deletedAt: row.deletedAt ?? null }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 async function insertParityRow(
@@ -1628,14 +1765,45 @@ Deno.test({
         ];
         expected[table] = [insideOverlap, portalEdited, unknown].sort();
       }
+      // Tombstones-since query: a known PR deleted 1 minute before lastSync
+      // is re-delivered as a tombstone; one deleted 3 minutes before is not,
+      // and a known active PR is not re-sent.
+      const knownActivePr = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - DAY_MS,
+      });
+      const tombstoneOutsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - 3 * MINUTE_MS,
+        deleted: true,
+      });
+      const tombstoneInsideOverlapAt = lastSync - MINUTE_MS;
+      const tombstoneInsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: tombstoneInsideOverlapAt,
+        deleted: true,
+      });
 
       const body = await pullOnce(
         fixture,
-        mobilePullBody(lastSync, profile, known),
+        mobilePullBody(lastSync, profile, known, [
+          knownActivePr,
+          tombstoneOutsideOverlap,
+          tombstoneInsideOverlap,
+        ]),
       );
       for (const table of PARITY_TABLES) {
         assertEquals(returnedIds(body, table), expected[table], table);
       }
+      const personalRecords = returnedPersonalRecords(body);
+      assertEquals(personalRecords.map((row) => row.id), [
+        tombstoneInsideOverlap,
+      ]);
+      assert(personalRecords[0].deletedAt !== null);
+      assertEquals(
+        Date.parse(personalRecords[0].deletedAt as string),
+        tombstoneInsideOverlapAt,
+      );
     } finally {
       await deleteLocalPullFixtureRows(
         fixture.admin,
@@ -1648,7 +1816,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "integration: real lastSync + empty known ids returns the whole default profile and nothing else",
+    "integration: real lastSync + empty known ids returns the whole default profile (sessions, routines, cycles, PRs) and nothing else",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalPullFixture();
@@ -1685,6 +1853,27 @@ Deno.test({
         expected[table] = [nullSinceLastSync, defaultSinceLastSync, defaultOld]
           .sort();
       }
+      // Personal records follow the same rules through their RPC: the whole
+      // default profile (old rows too), no other profile, no tombstones.
+      const expectedPrs = [
+        await insertPersonalRecord(fixture, {
+          localProfileId: "default",
+          updatedAtMs: lastSync - DAY_MS,
+        }),
+        await insertPersonalRecord(fixture, {
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        }),
+      ].sort();
+      await insertPersonalRecord(fixture, {
+        localProfileId: fixture.ownerProfileId,
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+      });
+      await insertPersonalRecord(fixture, {
+        localProfileId: "default",
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+        deleted: true,
+      });
 
       const body = await pullOnce(
         fixture,
@@ -1693,6 +1882,77 @@ Deno.test({
       for (const table of PARITY_TABLES) {
         assertEquals(returnedIds(body, table), expected[table], table);
       }
+      assertEquals(
+        returnedPersonalRecords(body).map((row) => row.id),
+        expectedPrs,
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: parity pull RPCs take p_last_sync_at and are executable by service_role only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    assert(localIntegrationEnvironment);
+    const fixture = await createLocalPullFixture();
+    try {
+      const password = `pr26-${crypto.randomUUID()}`;
+      const updated = await fixture.admin.auth.admin.updateUserById(
+        fixture.ownerId,
+        { password },
+      );
+      if (updated.error) throw new Error("password fixture failed");
+      const clientOptions = {
+        auth: { persistSession: false, autoRefreshToken: false },
+      };
+      const anon = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const authenticated = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const email = (await fixture.admin.auth.admin.getUserById(fixture.ownerId))
+        .data.user?.email;
+      assert(email);
+      const signedIn = await authenticated.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signedIn.error) throw new Error("sign-in fixture failed");
+
+      for (const name of PARITY_RPCS) {
+        const args = {
+          p_user_id: fixture.ownerId,
+          p_known_ids: [],
+          p_profile_id: fixture.ownerProfileId,
+          p_last_sync_at: new Date().toISOString(),
+        };
+        const asService = await fixture.admin.rpc(name, args);
+        assertEquals(asService.error, null, `${name} as service_role`);
+        for (
+          const [role, client] of [
+            ["anon", anon],
+            ["authenticated", authenticated],
+          ] as const
+        ) {
+          const denied = await client.rpc(name, args);
+          assert(denied.error, `${name} must not be executable by ${role}`);
+          assertEquals(denied.error.code, "42501", `${name} as ${role}`);
+        }
+      }
+      await authenticated.auth.signOut();
     } finally {
       await deleteLocalPullFixtureRows(
         fixture.admin,
