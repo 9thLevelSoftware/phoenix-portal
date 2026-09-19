@@ -24,7 +24,7 @@ const subscriptionStatusSchema = z.enum([
 export type { SubscriptionStatus, SubscriptionTier };
 
 interface SubscriptionData {
-	/** Access-control tier: falls back to FREE unless active/trialing and period end is future. */
+	/** Access-control tier from the shared entitlement predicate (src/lib/subscription-entitlement.ts). */
 	tier: SubscriptionTier;
 	/** Raw tier stored in the database (useful for display, e.g. "Your FLAME plan cancels on…"). */
 	rawTier: SubscriptionTier;
@@ -48,7 +48,9 @@ interface SubscriptionData {
 async function fetchSubscription(userId: string) {
 	const { data, error } = await supabase
 		.from("subscriptions")
-		.select("tier, status, price_id, current_period_end, cancel_at_period_end")
+		.select(
+			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at",
+		)
 		.eq("user_id", userId)
 		.maybeSingle();
 
@@ -63,6 +65,7 @@ async function fetchSubscription(userId: string) {
 			priceId: null,
 			currentPeriodEnd: null,
 			cancelAtPeriodEnd: false,
+			updatedAt: null,
 		};
 	}
 
@@ -84,6 +87,7 @@ async function fetchSubscription(userId: string) {
 		priceId: typeof data.price_id === "string" ? data.price_id : null,
 		currentPeriodEnd: data.current_period_end ?? null,
 		cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
+		updatedAt: typeof data.updated_at === "string" ? data.updated_at : null,
 	};
 }
 
@@ -151,10 +155,13 @@ export function useSubscription(): SubscriptionData {
 	const status: SubscriptionStatus = data?.status ?? "none";
 	const currentPeriodEnd = data?.currentPeriodEnd ?? null;
 
+	const cancelAtPeriodEnd = data?.cancelAtPeriodEnd ?? false;
+
 	const tier: SubscriptionTier = getEffectiveSubscriptionTier(
 		rawTier,
 		status,
 		currentPeriodEnd,
+		{ cancelAtPeriodEnd },
 	);
 	const isEntitled = !billingUnavailable && tier !== "FREE";
 
@@ -164,9 +171,11 @@ export function useSubscription(): SubscriptionData {
 		status,
 		priceId: data?.priceId ?? null,
 		currentPeriodEnd,
-		cancelAtPeriodEnd: data?.cancelAtPeriodEnd ?? false,
+		cancelAtPeriodEnd,
 		isEntitled,
-		isStale: isStaleActiveSubscription(status, currentPeriodEnd),
+		isStale: isStaleActiveSubscription(status, currentPeriodEnd, {
+			updatedAt: data && "updatedAt" in data ? data.updatedAt : null,
+		}),
 		isLoading,
 		// Only report an error when the query failed AND we have no cached data to
 		// fall back on; otherwise consumers keep using the last-known entitlement.

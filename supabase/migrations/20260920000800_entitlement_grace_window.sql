@@ -6,7 +6,8 @@
 --                  retry/dunning window; access ends when Paddle cancels or
 --                  pauses, both stored locally as 'canceled').
 --   * active    -> entitled while now() < current_period_end + 48 hours
---                  (ENTITLEMENT_GRACE_HOURS).
+--                  (ENTITLEMENT_GRACE_HOURS); no grace when
+--                  cancel_at_period_end is set (the row will not renew).
 --   * trialing  -> entitled while now() < current_period_end (no grace).
 --   * anything else, a NULL period end (except past_due), or a tier outside
 --     EMBER/FLAME/INFERNO -> 'FREE'.
@@ -45,7 +46,10 @@ AS $$
           OR (
             s.status = 'active'
             AND s.current_period_end IS NOT NULL
-            AND now() < s.current_period_end + interval '48 hours'
+            AND now() < s.current_period_end + CASE
+              WHEN COALESCE(s.cancel_at_period_end, false) THEN interval '0'
+              ELSE interval '48 hours'
+            END
           )
           OR (
             s.status = 'trialing'
@@ -64,7 +68,7 @@ REVOKE ALL ON FUNCTION public.subscription_tier_for(uuid) FROM anon, authenticat
 GRANT EXECUTE ON FUNCTION public.subscription_tier_for(uuid) TO service_role;
 
 COMMENT ON FUNCTION public.subscription_tier_for(uuid) IS
-  'Effective subscription tier for a user (past_due keeps access; active has a 48h renewal grace). service_role only. Parity fixture: tests/fixtures/entitlement-cases.json.';
+  'Effective subscription tier for a user (past_due keeps access; active has a 48h renewal grace unless cancel_at_period_end). service_role only. Parity fixture: tests/fixtures/entitlement-cases.json.';
 
 -- Same signature as before; SECURITY DEFINER and search_path are restated
 -- because CREATE OR REPLACE resets omitted attributes to their defaults.
