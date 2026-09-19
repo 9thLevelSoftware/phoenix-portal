@@ -405,6 +405,15 @@ function streamingRawRequest(
   });
 }
 
+const DEFAULT_SUBSCRIPTION_RESULT = {
+  data: {
+    tier: "EMBER",
+    status: "active",
+    current_period_end: "2099-01-01T00:00:00.000Z",
+  },
+  error: null,
+};
+
 function permissiveQuery(
   table: string,
   onWrite: (method: string) => void,
@@ -413,6 +422,8 @@ function permissiveQuery(
     error: null,
     count: 0,
   },
+  subscriptionResult: { data: unknown; error: unknown } =
+    DEFAULT_SUBSCRIPTION_RESULT,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
@@ -445,14 +456,7 @@ function permissiveQuery(
   query.maybeSingle = () =>
     Promise.resolve(
       table === "subscriptions"
-        ? {
-          data: {
-            tier: "EMBER",
-            status: "active",
-            current_period_end: "2099-01-01T00:00:00.000Z",
-          },
-          error: null,
-        }
+        ? subscriptionResult
         : { data: null, error: null },
     );
   query.single = () => Promise.resolve({ data: null, error: null });
@@ -486,6 +490,7 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    subscriptionResult?: { data: unknown; error: unknown };
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -507,7 +512,8 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      }, table === "personal_records" ? options.personalRecordsResult : undefined,
+        options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -835,6 +841,81 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
+
+// Subscription gate (F-047): a denied or failed lookup must stop the push
+// after the rate limiter and the subscriptions read, before any write, RPC
+// or broadcast.
+function assertStoppedAtSubscriptionGate(harness: PushHarness): void {
+  assertEquals(harness.adminConstructionCount.value, 1);
+  assertEquals(harness.adminFromCalls, ["subscriptions"]);
+  assertEquals(harness.adminRpcCalls.map((call) => call.name), [
+    "check_rate_limit",
+  ]);
+  assertEquals(harness.adminWriteCalls, []);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+}
+
+for (
+  const [label, subscriptionResult] of [
+    ["no subscriptions row", { data: null, error: null }],
+    ["an active FREE row", {
+      data: {
+        tier: "FREE",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+      error: null,
+    }],
+  ] as const
+) {
+  Deno.test(`subscription gate: ${label} is denied with 402 before any write`, async () => {
+    const harness = makeHarness(undefined, { subscriptionResult });
+    const response = await harness.handler(
+      requestFromBody(validNestedRelationshipBody()),
+    );
+    const body = await json(response);
+    assertEquals(response.status, 402, JSON.stringify(body));
+    assertEquals(body.error, "subscription_required");
+    assertEquals(body.requiredTier, "EMBER");
+    assertEquals(body.currentTier, "FREE");
+    assertStoppedAtSubscriptionGate(harness);
+  });
+}
+
+Deno.test("subscription gate: a lookup error fails closed with 503 before any write", async () => {
+  const harness = makeHarness(undefined, {
+    subscriptionResult: {
+      data: null,
+      error: { message: "connection refused", code: "08006" },
+    },
+  });
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  let response: Response;
+  try {
+    response = await harness.handler(
+      requestFromBody(validNestedRelationshipBody()),
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
+  const body = await json(response);
+  assertEquals(response.status, 503, JSON.stringify(body));
+  assertEquals(body.error, "subscription_unavailable");
+  assertEquals(response.headers.get("Retry-After"), "30");
+  assertStoppedAtSubscriptionGate(harness);
+});
+
+Deno.test("subscription gate: the same body from an EMBER user reaches the writes", async () => {
+  // Positive control: the deny tests above use a body that would write. (This
+  // double does not model every downstream read, so only reaching the writes
+  // is asserted here, not the final status.)
+  const harness = makeHarness();
+  await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  assert(harness.adminWriteCalls.length > 0);
+  assert(harness.adminFromCalls.some((table) => table !== "subscriptions"));
+});
 
 Deno.test("malformed final ordinary item is rejected before admin construction", async () => {
   const harness = makeHarness();
