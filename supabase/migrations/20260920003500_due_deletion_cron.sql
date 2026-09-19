@@ -21,8 +21,13 @@
 --          clears the column to let the next run retry.
 --        - legacy 'executed' rows are put back to 'pending'. PR 34's claim
 --          wrote 'executed' and a crash mid-purge left it there; the row
---          cascades away with the user, so any surviving 'executed' row
---          belongs to a live account that can then neither retry nor cancel.
+--          normally cascades away with the user, so a surviving 'executed'
+--          row is almost always a live account that could neither retry nor
+--          cancel. (From now on the handler writes 'executed' only when a
+--          purge succeeded but the row survived, alerting
+--          request_survived_purge; if a re-apply flips such a row back, the
+--          next run purges an already-gone user, which is a no-op, and
+--          closes it again.)
 --   2. adds public.sweep_deleted_account_residue() (definer, service_role
 --      only; `process_due` calls it every run): deletes rows of the FK-less
 --      tables subscription_events, sync_tombstones, rate_limit_tracking and

@@ -154,6 +154,31 @@ async function releaseClaim(
   }
 }
 
+/**
+ * After a successful purge the request normally cascaded away with the user.
+ * If it did not (the auth user was already gone, or the FK does not cascade),
+ * close it so it is not reclaimed every 15 minutes, and alert.
+ */
+async function finishClaim(admin: SupabaseClient, request: ClaimedRequest): Promise<void> {
+  const { data, error } = await admin
+    .from('deletion_requests')
+    .update({ status: 'executed', executed_at: new Date().toISOString() })
+    .eq('id', request.id)
+    .eq('status', 'executing')
+    .select('id');
+  if (error) {
+    console.error('[DELETION_ALERT] claim_finish_failed', {
+      user_id: request.user_id,
+      request_id: request.id,
+      error,
+    });
+  } else if (((data ?? []) as unknown[]).length > 0) {
+    console.error(`[DELETION_ALERT] request_survived_purge user=${request.user_id}`, {
+      request_id: request.id,
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // process_due: the hourly executor (KD-11), called by pg_cron through
 // private.invoke_edge_function with x-cron-secret.
@@ -186,6 +211,7 @@ async function purgeClaimed(
     result = { ok: false, stage: 'delete_user', billingCancelled: false, detail: String(err) };
   }
   if (result.ok) {
+    await finishClaim(admin, request);
     report.purged.push(request.user_id);
     if (result.residualTables.length > 0) {
       console.error('[DELETION_ALERT] account deleted with residual rows', {
@@ -479,6 +505,7 @@ async function deleteAccountHandler(
       return json({ error: `Failed to delete account. ${retryText}` }, 500, retry);
     }
 
+    await finishClaim(supabaseAdmin, claim.request);
     if (result.residualTables.length > 0) {
       console.error('[DELETION_ALERT] account deleted with residual rows', {
         user_id: userId,

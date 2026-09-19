@@ -1212,6 +1212,24 @@ Deno.test("process_due: a reclaimed request whose purge fails again is released 
   assertEquals(state.deletedUsers, []);
 });
 
+Deno.test("process_due: a request that survives a successful purge is closed and alerted, not reclaimed forever", async () => {
+  // The auth user is already gone (deleteUser 404 counts as done), so nothing
+  // cascades the request away.
+  const state = processDueState({ deleteUserError: { status: 404, message: "User not found" } });
+  state.deletionRequest = requestFor(USER_ID, { status: "executing", claimed_at: minutesAgo(20) });
+
+  const { result: res, lines } = await captured(() =>
+    handlerFor(state, fakePaddle({}).deps)(cronPost())
+  );
+
+  assertEquals((await res.json()).purged, [USER_ID]);
+  assertEquals(state.deletionRequest?.status, "executed");
+  assert(lines.includes(`[DELETION_ALERT] request_survived_purge user=${USER_ID}`), lines.join("\n"));
+
+  const again = await silenced(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
+  assertEquals((await again.json()).reclaimed, [], "a closed request is not reclaimed");
+});
+
 Deno.test("process_due: at most 10 requests are executed per run, oldest first", async () => {
   const state = processDueState();
   const ids = Array.from({ length: 12 }, (_, i) =>
