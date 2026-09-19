@@ -1,6 +1,7 @@
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
+import { computeIncrementalWindow } from "../_shared/incrementalWindow.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 
@@ -65,7 +66,42 @@ function parseLiftoscriptMetadata(text: string): {
 	return { timestamp, program, dayName, durationSeconds };
 }
 
-Deno.serve(async (req) => {
+// deno-lint-ignore no-explicit-any
+type DbClient = SupabaseClient<any, any, any>;
+
+export interface LiftosaurSyncAuthClient {
+	auth: {
+		getUser(): Promise<{ data: { user: { id: string } | null } }>;
+	};
+}
+
+export interface LiftosaurSyncHandlerDependencies {
+	createAuthClient(authorization: string): LiftosaurSyncAuthClient;
+	createAdminClient(): DbClient;
+}
+
+function defaultLiftosaurSyncDependencies(): LiftosaurSyncHandlerDependencies {
+	return {
+		createAuthClient(authorization: string) {
+			return createClient(
+				Deno.env.get("SUPABASE_URL")!,
+				Deno.env.get("SUPABASE_ANON_KEY")!,
+				{ global: { headers: { Authorization: authorization } } }
+			) as unknown as LiftosaurSyncAuthClient;
+		},
+		createAdminClient() {
+			return createClient(
+				Deno.env.get("SUPABASE_URL")!,
+				Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+			);
+		},
+	};
+}
+
+async function liftosaurSyncHandler(
+	req: Request,
+	deps: LiftosaurSyncHandlerDependencies
+): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
 	// CORS preflight
@@ -93,11 +129,7 @@ Deno.serve(async (req) => {
 		let userId: string;
 
 		// Try JWT auth first (browser-initiated calls)
-		const supabaseAuth = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_ANON_KEY")!,
-			{ global: { headers: { Authorization: authHeader } } }
-		);
+		const supabaseAuth = deps.createAuthClient(authHeader);
 		const {
 			data: { user: jwtUser },
 		} = await supabaseAuth.auth.getUser();
@@ -125,10 +157,7 @@ Deno.serve(async (req) => {
 
 		const { api_key, sync_type } = body;
 
-		const supabase = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-		);
+		const supabase = deps.createAdminClient();
 
 		// Subscription gate — FLAME or higher required for integrations
 		const gate = await requireSubscription(supabase, userId, "FLAME", cors);
@@ -207,8 +236,17 @@ Deno.serve(async (req) => {
 			.maybeSingle();
 
 		const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
-		const incrementalSince =
-			sync_type !== "initial" && lastSyncAt ? lastSyncAt : null;
+		// `startDate` filters on workout date, but the watermark is wall-clock
+		// sync time. Reach back a lookback (shared with Strava) so a workout that
+		// was in progress during the last sync, or logged retroactively, is still
+		// requested. Upserts are idempotent, so the overlap is free.
+		const incrementalWindow =
+			sync_type !== "initial"
+				? computeIncrementalWindow({ lastWatermark: lastSyncAt })
+				: null;
+		const incrementalSince = incrementalWindow
+			? incrementalWindow.after.toISOString()
+			: null;
 
 		// Capture the watermark before fetching so records Liftosaur writes while
 		// this run is in flight fall inside the next window rather than being
@@ -417,4 +455,14 @@ Deno.serve(async (req) => {
 			headers: { ...cors, "Content-Type": "application/json" },
 		});
 	}
-});
+}
+
+export function createLiftosaurSyncHandler(
+	deps: LiftosaurSyncHandlerDependencies = defaultLiftosaurSyncDependencies()
+): (req: Request) => Promise<Response> {
+	return (req) => liftosaurSyncHandler(req, deps);
+}
+
+if (import.meta.main) {
+	Deno.serve(createLiftosaurSyncHandler());
+}
