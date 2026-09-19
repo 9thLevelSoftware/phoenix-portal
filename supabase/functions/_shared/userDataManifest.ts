@@ -20,8 +20,9 @@
  * Export contract for the client (PR 37):
  *   - POST {table, cursor?} -> {table, rows, nextCursor | null}. Keep
  *     requesting with `cursor = nextCursor` until it is null. The endpoint
- *     computes the end of paging from an exact row count, so a PostgREST
- *     `max_rows` below `USER_DATA_PAGE_SIZE` cannot end paging early.
+ *     ends paging only when a one-row probe after the page's last key finds
+ *     nothing, so a PostgREST `max_rows` below `USER_DATA_PAGE_SIZE` cannot
+ *     end paging early (and no per-page count rescans large tables).
  *   - `tableMissing: true` (HTTP 200, no rows) is returned only for
  *     `mayBeAbsent` entries whose relation does not exist in that database.
  *     The client MUST record every such table in the export (e.g. "N tables
@@ -157,7 +158,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		],
 		optionalColumns: ["digest_frequency", "digest_last_sent_at", "feature_flags"],
 		purge: "cascade",
-		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy.",
+		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy. stripe_customer_id is exported deliberately (PR 37 R-13): it is the user's own billing identifier, not a credential.",
 	},
 	owned("subscriptions", "cascade", [
 		"id",
@@ -175,7 +176,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"paddle_subscription_id",
 		"price_id",
 		"last_event_occurred_at",
-	]),
+	],
+	{ note: "Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key." },
+	),
 	owned(
 		"subscription_events",
 		"explicit",
@@ -202,7 +205,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		],
 		{
 			mayBeAbsent: true,
-			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2.",
+			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2. Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key.",
 		},
 	),
 	owned("deletion_requests", "cascade", [

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { getUserDataTable } from "../../../supabase/functions/_shared/userDataManifest.ts";
 
 const MIGRATION = "20260716211500_personal_record_tombstones.sql";
 
@@ -89,4 +90,16 @@ describe("server-side active personal record reads", () => {
 			expect(query).toMatch(/\.is\(["']deleted_at["'],\s*null\)/);
 		});
 	}
+});
+
+describe("GDPR export of personal records", () => {
+	it("exports tombstoned rows with their deleted_at marker", () => {
+		// The export is a copy of all data held, so tombstones are included;
+		// deleted_at is what tells the user those records were deleted.
+		const entry = getUserDataTable("personal_records");
+		expect(entry?.columns).toContain("deleted_at");
+		expect(readWorkspaceFile("src", "lib", "export", "data-export.ts")).toMatch(
+			/non-null deleted_at are records you deleted/,
+		);
+	});
 });
