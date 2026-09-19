@@ -77,12 +77,16 @@ export type ExportPageRequester = (
 	signal?: AbortSignal,
 ) => Promise<ExportPage>;
 
-/** `null` when the object does not exist; throws on any other failure. */
+/**
+ * Downloads an object the endpoint just listed. Any failure, including
+ * "not found", throws: a listed object that cannot be read is an export
+ * failure, never a silently missing file.
+ */
 export type ExportFileDownloader = (
 	bucket: string,
 	path: string,
 	signal?: AbortSignal,
-) => Promise<Blob | null>;
+) => Promise<Blob>;
 
 export interface BuildUserDataExportOptions {
 	requestPage: ExportPageRequester;
@@ -105,7 +109,7 @@ export interface ExportTableSummary {
 export interface ExportedFile {
 	bucket: string;
 	path: string;
-	file: string | null;
+	file: string;
 }
 
 export interface UserDataExportResult {
@@ -113,7 +117,6 @@ export interface UserDataExportResult {
 	tables: ExportTableSummary[];
 	unavailableTables: string[];
 	files: ExportedFile[];
-	missingFiles: ExportedFile[];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -237,31 +240,20 @@ export const requestExportPage: ExportPageRequester = async (
 	return parseExportPage(table, data);
 };
 
-function isMissingObjectError(error: unknown): boolean {
-	if (!isPlainObject(error) && !(error instanceof Error)) return false;
-	const e = error as {
-		status?: unknown;
-		statusCode?: unknown;
-		message?: unknown;
-	};
-	return (
-		e.status === 404 ||
-		e.statusCode === "404" ||
-		e.statusCode === 404 ||
-		(typeof e.message === "string" && /not[\s_-]?found/i.test(e.message))
-	);
-}
-
-/** Downloads the user's own Storage object (RLS scopes it to their folder). */
+/**
+ * Downloads the user's own Storage object through the authenticated object
+ * route. Needs the avatars owner SELECT policy (migration
+ * 20260920007300_avatars_owner_select_policy.sql); without it storage
+ * answers "not found", which fails the export rather than dropping the file.
+ */
 export const downloadStorageObject: ExportFileDownloader = async (
 	bucket,
 	path,
 ) => {
 	const { data, error } = await supabase.storage.from(bucket).download(path);
 	if (error) {
-		if (isMissingObjectError(error)) return null;
 		throw new Error(
-			`Export failed for ${bucket}/${path}: ${error instanceof Error ? error.message : String(error)}`,
+			`Export failed for ${bucket}/${path}: the listed file could not be downloaded (${error instanceof Error ? error.message : String(error)})`,
 		);
 	}
 	return data;
@@ -374,14 +366,15 @@ function readmeText(
 	result: Omit<UserDataExportResult, "zip">,
 	exportedAt: string,
 ): string {
-	const { tables, unavailableTables, files, missingFiles } = result;
+	const { tables, unavailableTables, files } = result;
 	const lines = [
 		"Phoenix Portal data export",
 		`Exported at: ${exportedAt}`,
 		"",
 		"Each table is in data/<table>.json (a JSON array of rows).",
 		"Rep telemetry is in data/rep_telemetry/part-NNNNN.ndjson (one JSON row per line, one part per 1,000-row page).",
-		"Uploaded files (your avatar) are in files/<bucket>/.",
+		"Uploaded files (your avatar) are in files/<bucket>/. Every file listed in",
+		"data/storage_avatars.json is included; the export fails rather than omit one.",
 		"export-manifest.json lists every table, its row count and its files.",
 		"",
 		"personal_records: rows with a non-null deleted_at are records you deleted in the app.",
@@ -405,11 +398,6 @@ function readmeText(
 		lines.push("0 tables unavailable.");
 	}
 	lines.push(`Files exported: ${files.length}`);
-	if (missingFiles.length > 0) {
-		lines.push(
-			`${missingFiles.length} referenced files no longer exist in storage: ${missingFiles.map((f) => `${f.bucket}/${f.path}`).join(", ")}`,
-		);
-	}
 	lines.push("", "Rows per table:");
 	for (const summary of tables) {
 		lines.push(`  ${summary.table}: ${summary.rows}`);
@@ -460,7 +448,6 @@ export async function buildUserDataExport(
 	const summaries: ExportTableSummary[] = [];
 	const unavailableTables: string[] = [];
 	const files: ExportedFile[] = [];
-	const missingFiles: ExportedFile[] = [];
 	const totalSteps = tables.length + 2;
 
 	for (const [index, table] of tables.entries()) {
@@ -543,10 +530,6 @@ export async function buildUserDataExport(
 			const { bucket, path } = avatarRef(row);
 			onProgress?.(`Downloading ${bucket}/${path}...`, step, totalSteps);
 			const blob = await downloadFile(bucket, path, signal);
-			if (blob === null) {
-				missingFiles.push({ bucket, path, file: null });
-				continue;
-			}
 			// Paths are `{uid}/{name}`; keep the name under the bucket.
 			const file = `files/${bucket}/${path.split("/").slice(1).join("/") || path}`;
 			zip.file(file, blob);
@@ -555,7 +538,7 @@ export async function buildUserDataExport(
 	}
 
 	const exportedAt = now().toISOString();
-	const result = { tables: summaries, unavailableTables, files, missingFiles };
+	const result = { tables: summaries, unavailableTables, files };
 	zip.file(
 		"export-manifest.json",
 		JSON.stringify({ exportedAt, ...result }, null, 2),
