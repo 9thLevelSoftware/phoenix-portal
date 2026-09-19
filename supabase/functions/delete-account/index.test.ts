@@ -62,6 +62,10 @@ interface FakeState {
   deleteUserError: { status?: number; message: string } | null;
   /** The request stops being pending between the read and the claim. */
   claimRace: boolean;
+  /** Other users' subscriptions rows referencing a Paddle subscription id. */
+  otherSubscriptionRefs: Record<string, number>;
+  /** Error returned by the shared-subscription check. */
+  sharedCheckError: FakeError | null;
 }
 
 function fakeState(overrides: Partial<FakeState> = {}): FakeState {
@@ -77,6 +81,8 @@ function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     updateErrors: {},
     deleteUserError: null,
     claimRace: false,
+    otherSubscriptionRefs: {},
+    sharedCheckError: null,
     ...overrides,
   };
 }
@@ -100,6 +106,11 @@ class FakeQuery {
 
   eq(column: string, value: unknown) {
     this.filters.push([column, value]);
+    return this;
+  }
+
+  neq(column: string, value: unknown) {
+    this.filters.push([`${column}!=`, value]);
     return this;
   }
 
@@ -163,6 +174,17 @@ class FakeQuery {
     return { data: this.returnRows ? (matches ? [{ id: request!.id }] : []) : null, error: null };
   }
 
+  /** Head/count selects: only the shared-subscription check uses them. */
+  private resolveCount(): { data: null; error: unknown; count?: number } {
+    const subscriptionId = this.filters.find(([c]) => c === "paddle_subscription_id")?.[1];
+    const excludesSelf = this.filters.some(([c, v]) => c === "user_id!=" && v === USER_ID);
+    if (this.table !== "subscriptions" || typeof subscriptionId !== "string" || !excludesSelf) {
+      return { data: null, error: null, count: 0 };
+    }
+    if (this.state.sharedCheckError) return { data: null, error: this.state.sharedCheckError };
+    return { data: null, error: null, count: this.state.otherSubscriptionRefs[subscriptionId] ?? 0 };
+  }
+
   private resolveDelete(): { data: null; error: unknown } {
     const column = this.filters[0]?.[0];
     const error = this.state.deleteErrors[`${this.table}:${column}`] ??
@@ -177,7 +199,7 @@ class FakeQuery {
       ? this.resolveUpdate()
       : this.op === "delete"
       ? this.resolveDelete()
-      : { data: null, error: null };
+      : this.resolveCount();
     return Promise.resolve(result).then(resolve);
   }
 }
@@ -605,21 +627,56 @@ Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-del
   assertEquals(state.avatars, []);
 });
 
-Deno.test("purgeUser: paddle_webhook_events is matched by user id, payload, subscription and customer id (R-7, R-13)", async () => {
+function webhookDeleteFilters(state: FakeState): [string, unknown][][] {
+  return state.calls
+    .filter(deletesTable("paddle_webhook_events"))
+    .map((c) => c.kind === "delete" ? c.filters : []);
+}
+
+Deno.test("purgeUser: paddle_webhook_events is matched by user id, payload and an unshared subscription id, never by customer id (R-7, R-13, R-21)", async () => {
   const state = withSubscription();
   const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, fakePaddle({ status: "canceled" }).deps));
   assertEquals(result.ok, true);
-  const webhookFilters = state.calls
-    .filter(deletesTable("paddle_webhook_events"))
-    .map((c) => c.kind === "delete" ? c.filters : []);
   const expected: [string, unknown][][] = [
     [["user_id", USER_ID]],
     [["payload->data->custom_data->>user_id", USER_ID]],
     [["paddle_subscription_id", SUBSCRIPTION_ID]],
-    [["paddle_customer_id", CUSTOMER_ID]],
   ];
   // Once in the pre-pass and once in the post-pass.
-  assertEquals(webhookFilters, [...expected, ...expected]);
+  assertEquals(webhookDeleteFilters(state), [...expected, ...expected]);
+  // The sharing check ran before each pass, scoped away from this user.
+  const checks = state.calls.filter((c) =>
+    c.kind === "select" && c.table === "subscriptions" &&
+    c.filters.some(([column]) => column === "user_id!=")
+  );
+  assertEquals(checks.length, 2);
+  assertEquals(checks[0].kind === "select" && checks[0].filters, [
+    ["paddle_subscription_id", SUBSCRIPTION_ID],
+    ["user_id!=", USER_ID],
+  ]);
+  // No delete anywhere is ever filtered by a customer id.
+  assert(
+    state.calls.every((c) =>
+      c.kind !== "delete" || c.filters.every(([column, value]) => column !== "paddle_customer_id" && value !== CUSTOMER_ID)
+    ),
+  );
+});
+
+Deno.test("purgeUser: a subscription id another user's row references is never used as a match (R-21)", async () => {
+  const shared = withSubscription({ otherSubscriptionRefs: { [SUBSCRIPTION_ID]: 1 } });
+  const result = await silenced(() => purgeUser(fakeAdmin(shared), USER_ID, fakePaddle({ status: "canceled" }).deps));
+  assertEquals(result, { ok: true, billingCancelled: false, residualTables: [] });
+  const onlyUserScoped: [string, unknown][][] = [
+    [["user_id", USER_ID]],
+    [["payload->data->custom_data->>user_id", USER_ID]],
+  ];
+  assertEquals(webhookDeleteFilters(shared), [...onlyUserScoped, ...onlyUserScoped]);
+
+  // A failed sharing check is treated as shared (skip), not as a purge failure.
+  const unknown = withSubscription({ sharedCheckError: { message: "timeout" } });
+  const result2 = await silenced(() => purgeUser(fakeAdmin(unknown), USER_ID, fakePaddle({ status: "canceled" }).deps));
+  assertEquals(result2.ok, true);
+  assertEquals(webhookDeleteFilters(unknown), [...onlyUserScoped, ...onlyUserScoped]);
 });
 
 Deno.test("purgeUser: a missing paddle_webhook_events.user_id column falls back to the payload match (R-13)", async () => {
@@ -867,7 +924,6 @@ async function seedPurgeFixture(
     ...(paddleSubscriptionId
       ? [
         { event_type: "subscription.paused", paddle_subscription_id: paddleSubscriptionId, payload: { data: {} } },
-        { event_type: "customer.updated", paddle_customer_id: CUSTOMER_ID, payload: { data: {} } },
       ]
       : []),
   ]);
@@ -904,7 +960,7 @@ async function seedPurgeFixture(
 async function rowsReferencing(
   admin: SupabaseClient,
   userId: string,
-  paddleIds?: { subscriptionId: string; customerId: string },
+  paddleIds?: { subscriptionId: string },
 ): Promise<string[]> {
   const found: string[] = [];
   for (const [table, column] of MANIFEST_USER_COLUMNS) {
@@ -919,12 +975,9 @@ async function rowsReferencing(
     if ((count ?? 0) > 0) found.push(`${table}.${column}=${count}`);
   }
   // paddle_webhook_events rows naming the user only in the payload, or keyed
-  // by the user's Paddle ids.
+  // by the user's own (unshared) Paddle subscription id.
   const extra: [string, string][] = [["payload->data->custom_data->>user_id", userId]];
-  if (paddleIds) {
-    extra.push(["paddle_subscription_id", paddleIds.subscriptionId]);
-    extra.push(["paddle_customer_id", paddleIds.customerId]);
-  }
+  if (paddleIds) extra.push(["paddle_subscription_id", paddleIds.subscriptionId]);
   for (const [column, value] of extra) {
     const { count, error } = await admin
       .from("paddle_webhook_events")
@@ -976,7 +1029,7 @@ Deno.test({
     try {
       await seedPurgeFixture(admin, user, SUBSCRIPTION_ID);
       await seedPurgeFixture(admin, bystander, null);
-      const paddleIds = { subscriptionId: SUBSCRIPTION_ID, customerId: CUSTOMER_ID };
+      const paddleIds = { subscriptionId: SUBSCRIPTION_ID };
       const before = await rowsReferencing(admin, user.id, paddleIds);
       assert(before.length >= 6, `fixture seeded rows: ${before.join(", ")}`);
       assertEquals(await avatarNames(admin, user.id), ["avatar.png"]);
@@ -1108,6 +1161,98 @@ Deno.test({
       assertEquals(reverted.data, { status: "pending", executed_at: null });
     } finally {
       await cleanupUsers(admin, [user.id]);
+    }
+  },
+});
+
+Deno.test({
+  name: "integration: purging one account never deletes another account's webhook rows via a shared customer or subscription id (R-21)",
+  ignore: localIntegrationEnvironment === null,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const admin = integrationAdmin();
+    const a = await createAuthUser(admin, "shared-a");
+    const b = await createAuthUser(admin, "shared-b");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const sharedCustomer = `ctm_shared_${tag}`;
+    const subA = `sub_a_${tag}`;
+    const subB = `sub_b_${tag}`;
+    const subShared = `sub_shared_${tag}`;
+    const webhookIds: string[] = [];
+    const subscriptionRow = (userId: string, subscriptionId: string) => ({
+      user_id: userId,
+      tier: "EMBER",
+      status: "canceled",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+      paddle_customer_id: sharedCustomer,
+      paddle_subscription_id: subscriptionId,
+    });
+    try {
+      await must("subscriptions", admin.from("subscriptions").insert([
+        subscriptionRow(a.id, subA),
+        subscriptionRow(b.id, subB),
+      ]));
+
+      const rows = [
+        // A's own rows: must go.
+        { event_type: "a-user", user_id: a.id, payload: { data: {} } },
+        { event_type: "a-sub", paddle_subscription_id: subA, payload: { data: {} } },
+        // B's rows, incl. ones keyed only by the shared customer id: must stay.
+        { event_type: "b-user", user_id: b.id, paddle_customer_id: sharedCustomer, payload: { data: {} } },
+        { event_type: "b-customer", paddle_customer_id: sharedCustomer, payload: { data: {} } },
+        { event_type: "b-sub", paddle_subscription_id: subB, paddle_customer_id: sharedCustomer, payload: { data: {} } },
+      ];
+      const seeded = await admin.from("paddle_webhook_events").insert(rows).select("id");
+      if (seeded.error) {
+        if (isMissingRelation(seeded.error)) {
+          // Prod-only table (a migration arrives with PR 2): nothing to exercise here.
+          console.warn("paddle_webhook_events absent: R-21 real-SQL check skipped on this stack");
+          return;
+        }
+        throw new Error(`seed failed: ${JSON.stringify(seeded.error)}`);
+      }
+      webhookIds.push(...(seeded.data ?? []).map((r) => (r as { id: string }).id));
+
+      const eventTypes = async () => {
+        const { data, error } = await admin.from("paddle_webhook_events")
+          .select("event_type").in("id", webhookIds);
+        if (error) throw new Error(JSON.stringify(error));
+        return (data ?? []).map((r) => (r as { event_type: string }).event_type).sort();
+      };
+
+      // Case 1: shared customer id, distinct subscription ids.
+      const first = await silenced(() => purgeUser(admin, a.id, fakePaddle({ status: "canceled" }).deps));
+      assertEquals(first.ok, true);
+      assertEquals(await eventTypes(), ["b-customer", "b-sub", "b-user"]);
+
+      // Case 2: a subscription id referenced by two users' rows is skipped.
+      const c = await createAuthUser(admin, "shared-c");
+      try {
+        await must(
+          "b shares subscription",
+          admin.from("subscriptions").update({ paddle_subscription_id: subShared }).eq("user_id", b.id),
+        );
+        await must("c shares subscription", admin.from("subscriptions").insert(subscriptionRow(c.id, subShared)));
+        const sharedRow = await must(
+          "shared webhook",
+          admin.from("paddle_webhook_events")
+            .insert({ event_type: "shared-sub", paddle_subscription_id: subShared, payload: { data: {} } })
+            .select("id").single(),
+        );
+        webhookIds.push((sharedRow.data as { id: string }).id);
+
+        const second = await silenced(() => purgeUser(admin, c.id, fakePaddle({ status: "canceled" }).deps));
+        assertEquals(second.ok, true);
+        assertEquals(await eventTypes(), ["b-customer", "b-sub", "b-user", "shared-sub"]);
+      } finally {
+        await cleanupUsers(admin, [c.id]);
+      }
+    } finally {
+      if (webhookIds.length > 0) {
+        await admin.from("paddle_webhook_events").delete().in("id", webhookIds);
+      }
+      await cleanupUsers(admin, [a.id, b.id]);
     }
   },
 });

@@ -97,7 +97,8 @@ export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
 /**
  * Additional `paddle_webhook_events` matches, beyond `user_id`: rows whose
  * `user_id` was never filled in but whose payload names the user, and rows
- * keyed by the user's Paddle subscription or customer id (R-7).
+ * keyed by the user's Paddle subscription id when no other user references it
+ * (R-7, R-21). Never by customer id.
  */
 const PADDLE_WEBHOOK_PAYLOAD_USER = 'payload->data->custom_data->>user_id';
 
@@ -196,23 +197,67 @@ async function deleteWhere(
 /** Paddle ids known locally for the user (for the webhook-row match). */
 interface BillingIds {
   subscriptionId: string | null;
-  customerId: string | null;
+}
+
+/**
+ * Whether `subscriptionId` belongs to this user alone: no OTHER user's
+ * `subscriptions` row references it (R-21). Anything but a clean "no other
+ * row" answer (including a lookup error) means "not safe", so the match is
+ * skipped rather than risking another account's rows.
+ */
+async function subscriptionIdIsOwnedSolelyBy(
+  admin: SupabaseClient,
+  subscriptionId: string,
+  userId: string,
+): Promise<boolean> {
+  const { count, error } = await admin
+    .from('subscriptions')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('paddle_subscription_id', subscriptionId)
+    .neq('user_id', userId);
+  if (error) {
+    console.error('[PURGE] shared-subscription check failed; subscription-id match skipped', {
+      user_id: userId,
+      paddle_subscription_id: subscriptionId,
+      error: describe(error),
+    });
+    return false;
+  }
+  if ((count ?? 0) > 0) {
+    console.warn('[PURGE] paddle_subscription_id is referenced by another user; subscription-id match skipped', {
+      user_id: userId,
+      paddle_subscription_id: subscriptionId,
+    });
+    return false;
+  }
+  return true;
 }
 
 /**
  * Every (column, value) filter that selects the user's rows of `target`, in
  * order. The first is the primary owner column.
+ *
+ * Never matched by `paddle_customer_id`: Paddle customers are keyed by email
+ * and can be shared between accounts, so a customer-id match could delete
+ * another account's rows (R-21). The subscription-id match is used only when
+ * no other user's `subscriptions` row references that id (re-checked in each
+ * pass).
  */
-function matchesFor(
+async function matchesFor(
+  admin: SupabaseClient,
   target: ExplicitPurgeTarget,
   userId: string,
   ids: BillingIds,
-): [string, string][] {
+): Promise<[string, string][]> {
   const matches: [string, string][] = [[target.column, userId]];
   if (target.table === 'paddle_webhook_events') {
     matches.push([PADDLE_WEBHOOK_PAYLOAD_USER, userId]);
-    if (ids.subscriptionId) matches.push(['paddle_subscription_id', ids.subscriptionId]);
-    if (ids.customerId) matches.push(['paddle_customer_id', ids.customerId]);
+    if (
+      ids.subscriptionId &&
+      await subscriptionIdIsOwnedSolelyBy(admin, ids.subscriptionId, userId)
+    ) {
+      matches.push(['paddle_subscription_id', ids.subscriptionId]);
+    }
   }
   return matches;
 }
@@ -230,7 +275,8 @@ async function purgeExplicitRows(
   const failures: { table: string; detail: string }[] = [];
   targets: for (const target of EXPLICIT_PURGE_TARGETS) {
     if (phase === 'pre' && target.postOnly) continue;
-    for (const [index, [column, value]] of matchesFor(target, userId, ids).entries()) {
+    const matches = await matchesFor(admin, target, userId, ids);
+    for (const [index, [column, value]] of matches.entries()) {
       let outcome = await deleteWhere(admin, target.table, column, value);
       if (outcome === 'missing_column' && index === 0 && target.fallbackColumn) {
         outcome = await deleteWhere(admin, target.table, target.fallbackColumn, userId);
@@ -307,20 +353,16 @@ async function cancelBilling(
 ): Promise<BillingOutcome> {
   const { data: subscription, error } = await admin
     .from('subscriptions')
-    .select('paddle_subscription_id, paddle_customer_id, status')
+    .select('paddle_subscription_id, status')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) return { ok: false, stage: 'billing_lookup', detail: describe(error) };
 
   const row = subscription as {
     paddle_subscription_id?: string | null;
-    paddle_customer_id?: string | null;
     status?: string | null;
   } | null;
-  const ids: BillingIds = {
-    subscriptionId: row?.paddle_subscription_id ?? null,
-    customerId: row?.paddle_customer_id ?? null,
-  };
+  const ids: BillingIds = { subscriptionId: row?.paddle_subscription_id ?? null };
   const subscriptionId = ids.subscriptionId;
   if (!subscriptionId) return { ok: true, cancelled: false, ids };
 
