@@ -6,8 +6,8 @@
  *
  * 1. `--local` (the source of truth CI enforces): the local Supabase stack
  *    after `supabase db reset --no-seed`, i.e. the schema the migrations in
- *    supabase/migrations/ produce. Usage:
- *      npx supabase@2.76.9 start && npx supabase@2.76.9 db reset --no-seed
+ *    supabase/migrations/ produce. Usage (see REGENERATE_HINT below):
+ *      npm run supabase -- start && npm run supabase -- db reset --no-seed
  *      npm run gen:types:local      # rewrite database.types.ts
  *      npm run gen:types:check      # exit 1 if database.types.ts is stale
  *    The migrations workflow (.github/workflows/migrations.yml) runs the
@@ -25,13 +25,19 @@
  * `biome format --stdin-file-path=src/lib/database.types.ts` so it matches
  * the repo's Biome style (and `npm run lint`), and line endings are LF.
  *
+ * The generated file is kept byte-identical to the normalized CLI output.
+ * Hand-written refinements the generator cannot express (nullable RPC args,
+ * the PostgREST version) live in src/lib/database.ts, not here.
+ *
+ * CLI version: `.supabase-cli-version` (single source, also read by
+ * scripts/supabase-cli.mjs and the setup-cli step in migrations.yml).
+ * Different CLI versions emit different type shapes, so before generating,
+ * this script runs `<cli> --version` and fails if it differs from the pin.
+ *
  * Environment for `--local`:
  *   SUPABASE_BIN      CLI command to run instead of `npx --yes supabase@<pin>`
  *                     (CI sets `supabase`, installed by supabase/setup-cli).
  *   SUPABASE_WORKDIR  optional `--workdir` passed to the CLI.
- * The pin below MUST equal `version:` of supabase/setup-cli in
- * .github/workflows/migrations.yml: different CLI versions emit different
- * type shapes, which would make the check fail spuriously.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -40,10 +46,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadDotenv } from "dotenv";
+import { readSupabaseCliPin } from "./supabase-cli.mjs";
 
-const SUPABASE_CLI_PIN = "2.76.9";
-const REGENERATE_HINT =
-	"Regenerate with: npx supabase@2.76.9 start && npx supabase@2.76.9 db reset --no-seed && npm run gen:types:local, then commit src/lib/database.types.ts.";
+const SUPABASE_CLI_PIN = readSupabaseCliPin();
+// `db reset --no-seed` rebuilds the schema from the migrations alone, as CI
+// does, so seed data can never leak into the generated types.
+const REGENERATE_HINT = [
+	`Regenerate with the pinned Supabase CLI (${SUPABASE_CLI_PIN}, from .supabase-cli-version):`,
+	"  npm run supabase -- start",
+	"  npm run supabase -- db reset --no-seed",
+	"  npm run gen:types:local",
+	"then commit src/lib/database.types.ts.",
+].join("\n");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -106,10 +120,11 @@ function cliInvocation() {
 		if (workdir) genArgs.push("--workdir", workdir);
 		genArgs.push("--schema", "public");
 		return bin
-			? { command: bin, args: genArgs }
+			? { command: bin, args: genArgs, pinnedNpx: false }
 			: {
 					command: "npx",
 					args: ["--yes", `supabase@${SUPABASE_CLI_PIN}`, ...genArgs],
+					pinnedNpx: true,
 				};
 	}
 
@@ -143,7 +158,8 @@ function cliInvocation() {
 	return {
 		command: "npx",
 		args: [
-			"supabase",
+			"--yes",
+			`supabase@${SUPABASE_CLI_PIN}`,
 			"gen",
 			"types",
 			"typescript",
@@ -152,16 +168,41 @@ function cliInvocation() {
 			"--schema",
 			"public",
 		],
+		pinnedNpx: true,
 	};
 }
 
 const toLf = (text) => text.replace(/\r\n/g, "\n");
 
+const { command, args, pinnedNpx } = cliInvocation();
 
-const { command, args } = cliInvocation();
+// Refuse to generate with a CLI other than the pin: a different version
+// produces a differently shaped file, which would read as schema drift.
+{
+	const versionArgs = pinnedNpx
+		? [...args.slice(0, 2), "--version"]
+		: ["--version"];
+	let reported = "";
+	try {
+		reported = (await run(command, versionArgs)).trim();
+	} catch (error) {
+		fail(
+			`gen:types: could not read the Supabase CLI version: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	const version = reported.match(/\d+\.\d+\.\d+/)?.[0];
+	if (version !== SUPABASE_CLI_PIN) {
+		const message = `gen:types: Supabase CLI version mismatch: \`${command}\` reports "${reported}" but .supabase-cli-version pins ${SUPABASE_CLI_PIN}. Use the pinned CLI (npm run supabase -- ...), or bump .supabase-cli-version and regenerate.`;
+		if (process.env.GITHUB_ACTIONS === "true") {
+			console.error(`::error::${message}`);
+		}
+		fail(message);
+	}
+}
+
 console.log(`gen:types: invoking \`${command} ${args.join(" ")}\``);
 
-let generated;
+let generated = "";
 try {
 	generated = await run(command, args);
 } catch (error) {
@@ -173,7 +214,7 @@ if (!generated.trim()) {
 	);
 }
 
-let formatted;
+let formatted = "";
 try {
 	formatted = toLf(
 		await run(
@@ -220,7 +261,7 @@ if (checkMode) {
 	console.error(`\n${REGENERATE_HINT}`);
 	if (process.env.GITHUB_ACTIONS === "true") {
 		console.error(
-			`::error file=${outputRelative}::database.types.ts is stale vs the migrations. ${REGENERATE_HINT}`,
+			`::error file=${outputRelative}::database.types.ts is stale vs the migrations. ${REGENERATE_HINT.replace(/\n\s*/g, " ")}`,
 		);
 	}
 	process.exit(1);

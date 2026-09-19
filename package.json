@@ -33,7 +33,8 @@
     "gen:types": "node scripts/gen-types.mjs",
     "gen:types:local": "node scripts/gen-types.mjs --local",
     "gen:types:check": "node scripts/gen-types.mjs --local --check",
-    "test:db": "npx --yes supabase@2.76.9 test db",
+    "supabase": "node scripts/supabase-cli.mjs",
+    "test:db": "node scripts/supabase-cli.mjs test db",
     "catalog:build": "node scripts/build-open-exercise-catalog.mjs --write-migration",
     "catalog:check": "node scripts/build-open-exercise-catalog.mjs --check",
     "catalog:mirror": "node scripts/mirror-exercise-images.mjs"
