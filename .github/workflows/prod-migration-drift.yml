@@ -260,10 +260,11 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq postgresql-client
           fi
-          # `supabase link` records the IPv4 pooler URL (no password) under
-          # supabase/.temp; fall back to the direct host. Never echo the URL.
+          # `supabase link` records the IPv4 pooler URL under supabase/.temp;
+          # fall back to the direct host. Strip any embedded password (or
+          # placeholder) so PGPASSWORD always authenticates. Never echo the URL.
           if [ -s supabase/.temp/pooler-url ]; then
-            db_url=$(tr -d '\r\n' < supabase/.temp/pooler-url)
+            db_url=$(tr -d '\r\n' < supabase/.temp/pooler-url | sed -E 's#(://[^:/@]+):[^@]*@#\1@#')
           else
             db_url="postgresql://postgres@db.${PROJECT_REF}.supabase.co:5432/postgres"
           fi
