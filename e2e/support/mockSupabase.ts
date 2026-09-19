@@ -366,6 +366,35 @@ export async function installMockSupabase(
 					return;
 				}
 
+				// Emulate PostgREST resource embedding for the session detail /
+				// comparison select: `*, exercises(*, sets(*[, rep_summaries(...)]))`.
+				const select = url.searchParams.get("select") ?? "";
+				if (select.includes("exercises(")) {
+					const embedSets = select.includes("sets(");
+					const embedReps = select.includes("rep_summaries(");
+					const embedded = sessions.map((session) => ({
+						...session,
+						exercises: state.exercises
+							.filter((exercise) => exercise.session_id === session.id)
+							.sort((a, b) => a.order_index - b.order_index)
+							.map((exercise) =>
+								embedSets
+									? {
+											...exercise,
+											sets: state.sets
+												.filter((set) => set.exercise_id === exercise.id)
+												.sort((a, b) => a.set_number - b.set_number)
+												.map((set) =>
+													embedReps ? { ...set, rep_summaries: [] } : set,
+												),
+										}
+									: exercise,
+							),
+					}));
+					await respondRows(route, embedded, request.headers().accept);
+					return;
+				}
+
 				await respondRows(route, sessions, request.headers().accept);
 				return;
 			}
