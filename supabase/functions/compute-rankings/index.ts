@@ -172,6 +172,12 @@ const GLOBAL_METRICS = [
 // current_streak is not a per-week value; it reads the all-time snapshot.
 const WEEK_PERIOD_METRICS = new Set(['total_volume_kg', 'total_workouts', 'pr_count']);
 
+function utcIsoWeekMonday(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 interface SnapshotRow {
   user_id: string;
   metric?: string;
@@ -473,7 +479,9 @@ async function computeWeeklyRankings(
 
   // Weekly snapshots are keyed by the UTC ISO-week Monday. A week the refresh
   // has not computed (future, or older than the 12 weeks kept) has no rows.
-  const period = WEEK_PERIOD_METRICS.has(metricConfig.metric) ? start : ALL_TIME;
+  // The SPA derives weekStart in the browser's local time, so near a day
+  // boundary it may not be a UTC Monday; snap it to its UTC ISO-week Monday.
+  const period = WEEK_PERIOD_METRICS.has(metricConfig.metric) ? utcIsoWeekMonday(start) : ALL_TIME;
   const totalUsers = await countSnapshotUsers(supabase, metricConfig.metric, period);
   const entries = totalUsers === 0
     ? []

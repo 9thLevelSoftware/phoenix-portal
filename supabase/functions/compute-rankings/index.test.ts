@@ -32,11 +32,11 @@ interface RecordedRequest {
   body: string;
 }
 
+// The UTC ISO-week Monday, as refresh_leaderboard_snapshots() keys weeks.
 function currentWeekStart(): string {
   const date = new Date();
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(date.setDate(diff)).toISOString().split("T")[0];
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
 }
 
 function buildSnapshot(participants: number): SnapshotFixtureRow[] {
@@ -275,6 +275,32 @@ Deno.test("weekly rankings for 300 participants read the week's snapshot without
   }
   assertNoIdLists(requests);
   assertSnapshotReadsBounded(requests);
+});
+
+Deno.test("a weekStart that is not a UTC Monday reads that week's Monday snapshot", async () => {
+  const monday = currentWeekStart();
+  const wednesday = new Date(`${monday}T00:00:00Z`);
+  wednesday.setUTCDate(wednesday.getUTCDate() + 2);
+  const weekStart = wednesday.toISOString().slice(0, 10);
+  const { handler, requests } = createHarness({
+    event: {
+      id: "evt-3",
+      name: "Volume Week",
+      metric: "total_volume_kg",
+      metric_label: "Total Volume",
+      start_date: monday,
+      end_date: weekStart,
+    },
+  });
+  const response = await handler(rankingRequest({ type: "weekly", weekStart }));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.entries.length, 100);
+  const snapshotReads = requests.filter((r) => r.path === "leaderboard_snapshots");
+  assert(snapshotReads.length > 0);
+  for (const read of snapshotReads) {
+    assertEquals(new URL(read.url).searchParams.get("period"), `eq.${monday}`);
+  }
 });
 
 Deno.test("weekly current_streak reads the all-time snapshot", async () => {
