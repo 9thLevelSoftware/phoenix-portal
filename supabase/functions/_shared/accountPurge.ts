@@ -21,6 +21,12 @@
  *      the grant at the provider (best effort) and call
  *      `disconnect_integration` (`providerRevoke.ts#revokeAndDisconnect`).
  *      A database error aborts with `provider_disconnect`, user intact.
+ *      Unlike step 2, this step has side effects that are NOT harmless to
+ *      lose: provider grants revoked (irreversible at the provider),
+ *      integrations reset to `disconnected` and queued syncs cancelled. That
+ *      is intended (review R-12): if provider N fails, providers 1..N-1 stay
+ *      disconnected, the user can reconnect, and a retry is idempotent (no
+ *      stored token means no revoke, and the RPC is a no-op).
  *   2. Pre-pass: explicit rows that are harmless to lose if the purge then
  *      aborts (`oauth_tokens`, `paddle_webhook_events`). Any failure aborts
  *      with the user still intact.

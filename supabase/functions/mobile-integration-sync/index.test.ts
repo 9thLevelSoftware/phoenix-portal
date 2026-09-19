@@ -64,6 +64,10 @@ function handlerFor(state: State) {
       }) as typeof fetch,
       fitbitClientId: undefined,
       fitbitClientSecret: undefined,
+      stravaClientId: undefined,
+      stravaClientSecret: undefined,
+      garminConsumerKey: undefined,
+      garminConsumerSecret: undefined,
     },
   });
 }
