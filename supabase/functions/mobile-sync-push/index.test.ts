@@ -2122,7 +2122,7 @@ const CATALOG_RESULT = {
   error: null,
 };
 
-Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
+Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
   const harness = makeHarness(undefined, {
     tableResults: { exercise_catalog: CATALOG_RESULT },
     writeErrors: { "vbt_assessments:upsert": INJECTED_DB_ERROR },
