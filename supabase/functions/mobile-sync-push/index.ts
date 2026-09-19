@@ -2746,20 +2746,22 @@ async function mobileSyncPushHandler(
       // id, which DO UPDATE would reject. Assessments are immutable on
       // mobile, so there is nothing to update. Needs the
       // vbt_assessments_identity unique index (migration 20260920002300).
-      // assessmentsInserted counts rows accepted (new or already stored);
-      // mobile does not read it. clientId is stripped before the write and
-      // kept for `failed` reporting (PR 22).
+      // `.select('id')` returns only the rows actually inserted (PostgREST
+      // omits rows skipped by DO NOTHING), so assessmentsInserted stays a
+      // true new-row count. clientId is stripped before the write and kept
+      // for `failed` reporting (PR 22).
       if (assessRows.length > 0) {
-        const { error: aErr } = await supabase
+        const { data: insertedAssess, error: aErr } = await supabase
           .from('vbt_assessments')
           .upsert(
             assessRows.map(({ clientId: _clientId, ...row }) => row),
             { onConflict: 'user_id,exercise_id,created_at', ignoreDuplicates: true },
-          );
+          )
+          .select('id');
         if (aErr) {
           console.warn('vbt_assessments upsert warning:', aErr.message);
           failed.assessments.push(...assessRows.map((r) => r.clientId));
-        } else assessmentsInserted = assessRows.length;
+        } else assessmentsInserted = insertedAssess?.length ?? 0;
       }
     }
 
