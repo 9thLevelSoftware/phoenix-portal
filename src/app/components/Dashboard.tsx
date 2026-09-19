@@ -111,7 +111,7 @@ function getDaysRemaining(endDate: string): number {
 	return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 }
 
-function formatPersonalRecordValue(
+export function formatPersonalRecordValue(
 	record: PersonalRecord,
 	unit: WeightUnit,
 ): string {

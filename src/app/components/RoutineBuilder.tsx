@@ -123,7 +123,7 @@ function getDisplayWeight(weightKg: number, unit: WeightUnit) {
 	return unit === "lbs" ? converted.toFixed(1) : `${Math.round(converted)}`;
 }
 
-function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
+export function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
 	const loadLabel = exercise.isBodyweight
 		? "Bodyweight"
 		: formatLoad(exercise.weight, null, unit);

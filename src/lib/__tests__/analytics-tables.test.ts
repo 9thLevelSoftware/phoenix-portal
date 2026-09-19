@@ -114,6 +114,19 @@ describe("analytics table CSV generators", () => {
 					session_id: "session-1",
 					cable_count: 1,
 				},
+				{
+					id: "exercise-legacy",
+					name: "Squat",
+					muscle_group: "Legs",
+					session_id: "session-1",
+					cable_count: null,
+				},
+				{
+					id: "exercise-absent",
+					name: "Row",
+					muscle_group: "Back",
+					session_id: "session-1",
+				},
 			],
 			[
 				{
@@ -122,6 +135,20 @@ describe("analytics table CSV generators", () => {
 					set_number: 1,
 					actual_reps: 5,
 					weight_kg: 50,
+				},
+				{
+					id: "set-2",
+					exercise_id: "exercise-legacy",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 40,
+				},
+				{
+					id: "set-3",
+					exercise_id: "exercise-absent",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 30,
 				},
 			],
 		);
@@ -133,6 +160,17 @@ describe("analytics table CSV generators", () => {
 			maxWeightKg: 50,
 			cableCount: 1,
 		});
+		// Legacy NULL / absent cable_count stays unknown: never assumed to be 2.
+		expect(rows[1]).toMatchObject({
+			volumeKg: 200,
+			maxWeightKg: 40,
+			cableCount: null,
+		});
+		expect(rows[2]).toMatchObject({ maxWeightKg: 30, cableCount: null });
+		const csvRows = parse(generateWorkoutExerciseSummaryCsv(rows, "kg"));
+		expect(csvRows[1]["Max Weight Total (kg)"]).toBe("");
+		expect(csvRows[2]["Max Weight Total (kg)"]).toBe("");
+		expect(csvRows[0]["Max Weight Total (kg)"]).toBe("50");
 	});
 
 	it("generates muscle contribution summaries without sensitive fields", () => {

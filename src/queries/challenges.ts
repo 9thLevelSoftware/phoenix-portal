@@ -1,5 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import {
+	totalLoadVolumeKg,
+	type VolumeExerciseRow,
+	type VolumeSetRow,
+} from "@/lib/units/loadDisplay";
 import { queryKeys } from "./keys";
 
 /** Fetch all active challenges */
@@ -60,18 +65,33 @@ export function challengeProgressOptions(
 
 			switch (challengeType) {
 				case "volume": {
+					// Volume challenges count TOTAL load (KD-8): each session's
+					// per-cable total_volume x the cables actually used, per cable
+					// only where the cable count is unknown (never assume 2).
 					const { data, error } = await supabase
 						.from("workout_sessions")
-						.select("total_volume")
+						.select("id, total_volume")
 						.eq("user_id", userId)
 						.gte("started_at", startDate)
 						.lte("started_at", endDate);
 					if (error) throw error;
-					current = (data ?? []).reduce(
-						// Per cable, as stored (KD-8).
-						(sum, w) => sum + (w.total_volume ?? 0),
-						0,
+					const sessions = (data ?? []) as {
+						id: string;
+						total_volume: number | null;
+					}[];
+					const exercises = await fetchInChunks<VolumeExerciseRow>(
+						"exercises",
+						"id, session_id, cable_count",
+						"session_id",
+						sessions.map((s) => s.id),
 					);
+					const sets = await fetchInChunks<VolumeSetRow>(
+						"sets",
+						"exercise_id, weight_kg, actual_reps",
+						"exercise_id",
+						exercises.map((e) => e.id),
+					);
+					current = Math.round(totalLoadVolumeKg(sessions, exercises, sets));
 					break;
 				}
 				case "frequency": {
@@ -123,6 +143,26 @@ export function challengeProgressOptions(
 		},
 		enabled: !!userId && !!challengeId,
 	});
+}
+
+const IN_FILTER_CHUNK = 200;
+
+async function fetchInChunks<T>(
+	table: "exercises" | "sets",
+	columns: string,
+	column: string,
+	ids: string[],
+): Promise<T[]> {
+	const rows: T[] = [];
+	for (let i = 0; i < ids.length; i += IN_FILTER_CHUNK) {
+		const { data, error } = await supabase
+			.from(table)
+			.select(columns)
+			.in(column, ids.slice(i, i + IN_FILTER_CHUNK));
+		if (error) throw error;
+		rows.push(...((data ?? []) as T[]));
+	}
+	return rows;
 }
 
 function computeStreak(sessions: Array<{ started_at: string }>): number {

@@ -45,7 +45,9 @@ async function seed(page: Parameters<typeof mockAuthenticatedApp>[0]) {
 				routine_name: null,
 				workout_mode: "OLD_SCHOOL",
 				notes: null,
-				heaviest_lift_kg: 20,
+				// Distinct from the set weights so the "per cable only" text
+				// below can only come from the unknown-count Squat row.
+				heaviest_lift_kg: 30,
 			},
 		],
 		exercises: [
@@ -145,9 +147,14 @@ test.describe("Per-cable load display", () => {
 		await expect(page.getByText("20 kg per cable · 20 kg total")).toBeVisible();
 
 		await page.getByRole("button", { name: /Squat/i }).click();
+		// Only the Squat row (cable_count NULL) renders the bare per-cable text;
+		// the 2- and 1-cable rows always append a total.
 		await expect(
-			page.getByText("20 kg per cable", { exact: true }).first(),
-		).toBeVisible();
+			page.getByText("20 kg per cable", { exact: true }),
+		).toHaveCount(1);
+		await expect(page.getByText("30 kg per cable", { exact: true })).toHaveCount(
+			1,
+		);
 	});
 
 	test("records show per-cable values without doubling", async ({ page }) => {

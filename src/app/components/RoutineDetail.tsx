@@ -18,7 +18,7 @@ import { formatLoad } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 
-function formatExercisePrescription(
+export function formatExercisePrescription(
 	exercise: {
 		sets: number;
 		reps: number;

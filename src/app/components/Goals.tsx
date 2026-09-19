@@ -51,11 +51,11 @@ import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
 	formatVolume,
-	formatWeight,
 	type WeightUnit,
 	weightInputToKg,
 	weightInputValue,
 } from "@/lib/units";
+import { formatLoad, perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
 	useArchiveGoal,
 	useCreateGoal,
@@ -174,14 +174,22 @@ const goalTypeIcons = {
 	pr: Award,
 };
 
-function getGoalDescription(goal: Goal, unit: WeightUnit): string {
+/**
+ * Goal text. PR targets and session volume are per cable (KD-8): PR records
+ * and workout_sessions.total_volume are stored per cable, and pre-PR-30 PR
+ * targets were halved once by migration 20260920003000.
+ */
+export function getGoalDescription(
+	goal: Pick<Goal, "goal_type" | "target_value" | "period" | "exercise_name">,
+	unit: WeightUnit,
+): string {
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${goal.target_value} workouts per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${formatVolume(goal.target_value, unit)} per ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(goal.target_value, unit)} per cable per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
-			return `${goal.exercise_name}: ${formatWeight(goal.target_value, unit)}`;
+			return `${goal.exercise_name}: ${formatLoad(goal.target_value, null, unit)}`;
 		default:
 			return "Goal";
 	}
@@ -197,7 +205,7 @@ function getProgressText(
 		case "frequency":
 			return `${achieved}/${goal.target_value} workouts this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} this ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} per cable this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
 			return progress >= 100
 				? "Target reached!"
@@ -997,7 +1005,7 @@ function GoalFormDialog({
 						<TabsContent value="volume" className="space-y-4 mt-4">
 							<div>
 								<Label htmlFor="vol-target">
-									Target volume ({unit}) per{" "}
+									Target volume ({perCableUnitLabel(unit)}) per{" "}
 									{period === "monthly" ? "month" : "week"}
 								</Label>
 								<Input
@@ -1054,7 +1062,9 @@ function GoalFormDialog({
 								/>
 							</div>
 							<div>
-								<Label htmlFor="pr-target">Target Weight ({unit})</Label>
+								<Label htmlFor="pr-target">
+									Target weight (per cable, {unit})
+								</Label>
 								<Input
 									id="pr-target"
 									type="number"

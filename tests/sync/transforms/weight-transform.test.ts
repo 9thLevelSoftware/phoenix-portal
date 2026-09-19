@@ -137,6 +137,8 @@ describe("Weight Transform Tests", () => {
 		});
 	});
 
+	// The three KD-8 acceptance cases, kept here next to the sync round trips
+	// (edge cases live in src/lib/units/loadDisplay.test.ts).
 	describe("Load display adapter", () => {
 		it("20 kg per cable with 2 cables shows 20 and 40", () => {
 			expect(toLoadDisplay(20, 2)).toEqual({ perCableKg: 20, totalKg: 40 });
@@ -154,18 +156,6 @@ describe("Weight Transform Tests", () => {
 				totalKg: null,
 			});
 			expect(formatLoad(20, null, "kg")).toBe("20 kg per cable");
-		});
-
-		it("keeps the per-cable figure unchanged for every cable count", () => {
-			const perCableValues = [0, 1, 2.5, 7.5, 25, 50, 75, 100, 110];
-			for (const perCable of perCableValues) {
-				for (const count of [1, 2, null]) {
-					expect(toLoadDisplay(perCable, count).perCableKg).toBe(perCable);
-				}
-				expect(toLoadDisplay(perCable, 2).totalKg).toBe(perCable * 2);
-				expect(toLoadDisplay(perCable, 1).totalKg).toBe(perCable);
-				expect(toLoadDisplay(perCable, null).totalKg).toBeNull();
-			}
 		});
 	});
 
@@ -288,17 +278,6 @@ describe("Weight Transform Tests", () => {
 				totalKg: MAX_PER_CABLE_KG * 2,
 			});
 			expect(toLoadDisplay(pulledWeight, 1).totalKg).toBe(MAX_PER_CABLE_KG);
-		});
-
-		it("should validate machine physical limits", () => {
-			// The Phoenix fitness machine has physical limits
-			expect(MAX_PER_CABLE_KG).toBe(110);
-
-			// Values above this shouldn't be possible with the hardware
-			const invalidPerCable = 120;
-
-			// This test documents the expected bounds
-			expect(invalidPerCable).toBeGreaterThan(MAX_PER_CABLE_KG);
 		});
 	});
 
@@ -474,14 +453,6 @@ describe("Weight Transform Tests", () => {
 	});
 
 	describe("Weight Transform Consistency", () => {
-		it("never derives a total without a known cable count", () => {
-			// Legacy rows have cable_count NULL: showing x2 would double
-			// single-cable sessions, so no total is produced.
-			for (const unknown of [null, undefined, 0, 3]) {
-				expect(toLoadDisplay(50, unknown).totalKg).toBeNull();
-			}
-		});
-
 		it("should correctly round-trip volume calculations", async () => {
 			// Volume = weight * reps
 			// If weight is per-cable, volume should also be per-cable
@@ -492,10 +463,6 @@ describe("Weight Transform Tests", () => {
 			const exercises = 2;
 
 			const expectedPerCableVolume = perCableWeight * reps * sets * exercises;
-
-			expect(expectedPerCableVolume).toBe(3000); // 50 * 10 * 3 * 2 exercises
-			// Displayed per cable as stored (KD-8)
-			expect(toLoadDisplay(expectedPerCableVolume, null).perCableKg).toBe(3000);
 
 			// Verify the session stores per-cable volume
 			const session: SessionDto = createTestSession(testUser.id, {
