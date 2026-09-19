@@ -81,7 +81,10 @@ export function ExportSection() {
 			});
 			toast.success("Data export complete — check your downloads folder");
 		} catch (error) {
-			toast.error("Failed to export data");
+			// Name the failure: no partial file was downloaded.
+			toast.error("Failed to export data — nothing was downloaded", {
+				description: error instanceof Error ? error.message : undefined,
+			});
 			console.error("Full export error:", error);
 		} finally {
 			setFullExporting(false);
