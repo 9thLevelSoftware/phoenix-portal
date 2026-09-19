@@ -108,36 +108,51 @@ export function createLiftosaurPageFetcher(
     if (!response.ok) {
       throw new Error(`Liftosaur API returned ${response.status}`);
     }
-    return await response.json();
+    try {
+      return await response.json();
+    } catch {
+      // Never let provider body text (e.g. an HTML error page) reach the caller.
+      throw new Error('Liftosaur API returned an unreadable response');
+    }
   };
 }
 
+/**
+ * Why a fetch stopped with history still unread:
+ * - `page_budget`: `maxPages` pages were read and Liftosaur still had more.
+ * - `missing_cursor`: Liftosaur reported `hasMore` without a `nextCursor`, so
+ *   the stream cannot be continued (an API contract problem).
+ */
+export type LiftosaurTruncationReason = 'page_budget' | 'missing_cursor';
+
 export interface LiftosaurFetchResult {
   records: LiftosaurRecord[];
-  /** True when the page ceiling was hit while Liftosaur still had more pages. */
+  /** True when Liftosaur still had records this fetch did not read. */
   truncated: boolean;
-  /**
-   * Resume point for a truncated fetch: the newest parsed workout date among
-   * the records read, set ONLY when every dated record arrived in
-   * non-decreasing date order. Everything up to it has then been read, so a
-   * `startDate` window anchored here continues after what was stored instead
-   * of re-reading the same first pages. Null when not truncated, when nothing
-   * read had a date, or when the order could not be verified (the API does
-   * not document its sort order, so a newest-first stream must not be treated
-   * as resumable).
-   */
-  resumeAt: string | null;
+  reason: LiftosaurTruncationReason | null;
+  /** Liftosaur's cursor for the next unread page, when it gave one. */
+  nextCursor: number | null;
+  /** Oldest / newest parsed workout date among the records read. */
+  oldestDatedAt: string | null;
+  newestDatedAt: string | null;
+  /** Order of the dated records read — see `liftosaurDateOrder`. */
+  order: LiftosaurDateOrder;
 }
 
 export interface FetchLiftosaurHistoryOptions {
-  /** ISO 8601 lower bound on workout date (`startDate`), or null for all. */
+  /** ISO 8601 lower bound on workout date (`startDate`), or null for none. */
   startDate?: string | null;
+  /** ISO 8601 upper bound on workout date (`endDate`), or null for none. */
+  endDate?: string | null;
+  /** Liftosaur cursor to resume from (a previous `nextCursor`). */
+  cursor?: number | null;
   maxPages?: number;
 }
 
 /**
  * Paginated GET /v1/history, following `nextCursor` while `hasMore`.
- * Never silently stops: if pages remain after `maxPages`, `truncated` is set.
+ * Never silently stops: if records remain unread, `truncated` is set and
+ * `reason` says why.
  */
 export async function fetchLiftosaurHistory(
   fetchPage: LiftosaurPageFetcher,
@@ -145,48 +160,70 @@ export async function fetchLiftosaurHistory(
 ): Promise<LiftosaurFetchResult> {
   const maxPages = options.maxPages ?? LIFTOSAUR_MAX_PAGES;
   const records: LiftosaurRecord[] = [];
-  let cursor: number | null = null;
+  let cursor: number | null = options.cursor ?? null;
   let hasMore = true;
+  let reason: LiftosaurTruncationReason | null = null;
   let page = 0;
 
   while (hasMore && page < maxPages) {
     const params = new URLSearchParams({ limit: String(LIFTOSAUR_PAGE_LIMIT) });
     // GET /history supports startDate/endDate (ISO 8601) alongside the cursor.
     if (options.startDate) params.set('startDate', options.startDate);
+    if (options.endDate) params.set('endDate', options.endDate);
     if (cursor !== null) params.set('cursor', cursor.toString());
 
     const data = (await fetchPage(params)) as LiftosaurHistoryPage;
     records.push(...(data?.data?.records ?? []));
-    cursor = data?.data?.nextCursor ?? null;
-    // A page that claims more but gives no cursor cannot be continued; treat
-    // it as truncated rather than as the end of the history.
+    const next = data?.data?.nextCursor;
+    cursor = typeof next === 'number' && Number.isFinite(next) ? next : null;
     hasMore = data?.data?.hasMore === true;
     page++;
-    if (hasMore && cursor === null) break;
+    // A page that claims more but gives no cursor cannot be continued; treat
+    // it as truncated rather than as the end of the history, and do not
+    // re-request page 1.
+    if (hasMore && cursor === null) {
+      reason = 'missing_cursor';
+      break;
+    }
   }
+  if (hasMore && reason === null) reason = 'page_budget';
 
-  const truncated = hasMore;
+  const dated = records
+    .map((record) => parseLiftoscriptMetadata(record.text).timestamp)
+    .filter((timestamp): timestamp is string => timestamp !== null)
+    .map((timestamp) => Date.parse(timestamp));
+
   return {
     records,
-    truncated,
-    resumeAt: truncated ? ascendingMaxDate(records) : null,
+    truncated: hasMore,
+    reason,
+    nextCursor: hasMore ? cursor : null,
+    oldestDatedAt: dated.length > 0 ? new Date(Math.min(...dated)).toISOString() : null,
+    newestDatedAt: dated.length > 0 ? new Date(Math.max(...dated)).toISOString() : null,
+    order: liftosaurDateOrder(dated),
   };
 }
 
 /**
- * Newest parsed date if the dated records are in non-decreasing order, else
- * null. Undated records are skipped (they carry no ordering information).
+ * - `descending`: newest first — the documented `/history` order.
+ * - `ascending`: oldest first.
+ * - `unknown`: mixed order, or fewer than two distinct dates (a single date,
+ *   or all-equal dates, says nothing about the order and must never be used
+ *   to derive a resume point).
  */
-function ascendingMaxDate(records: readonly LiftosaurRecord[]): string | null {
-  let maxMs: number | null = null;
-  for (const record of records) {
-    const timestamp = parseLiftoscriptMetadata(record.text).timestamp;
-    if (!timestamp) continue;
-    const ms = Date.parse(timestamp);
-    if (maxMs !== null && ms < maxMs) return null;
-    maxMs = ms;
+export type LiftosaurDateOrder = 'ascending' | 'descending' | 'unknown';
+
+/** Order of a sequence of epoch-ms dates, as defined by `LiftosaurDateOrder`. */
+export function liftosaurDateOrder(dates: readonly number[]): LiftosaurDateOrder {
+  let increases = 0;
+  let decreases = 0;
+  for (let i = 1; i < dates.length; i++) {
+    if (dates[i] > dates[i - 1]) increases++;
+    else if (dates[i] < dates[i - 1]) decreases++;
   }
-  return maxMs === null ? null : new Date(maxMs).toISOString();
+  if (increases > 0 && decreases === 0) return 'ascending';
+  if (decreases > 0 && increases === 0) return 'descending';
+  return 'unknown';
 }
 
 /** external_activities.external_id for a Liftosaur history record. */
@@ -208,6 +245,18 @@ export interface LiftosaurActivityRow {
   /** True when the Liftoscript text had no parseable date. */
   undated: boolean;
   row: Record<string, unknown>;
+}
+
+/**
+ * An undated row without `started_at`. After the insert-only write, upserting
+ * this (every row now exists, so ON CONFLICT DO UPDATE of the columns sent)
+ * applies edits to name/duration/raw_data while the stored date stays put.
+ */
+export function withoutStartedAt(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const { started_at: _startedAt, ...rest } = row;
+  return rest;
 }
 
 /**

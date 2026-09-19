@@ -141,6 +141,8 @@ describe("fetchHevyBackfill", () => {
 			deletedIds: [],
 			truncated: false,
 			latestEventAt: null,
+			nextPage: 2,
+			rateLimited: false,
 		});
 	});
 

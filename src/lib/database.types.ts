@@ -1895,6 +1895,8 @@ export type Database = {
 			};
 			user_integrations: {
 				Row: {
+					backfill_before: string | null;
+					backfill_started_at: string | null;
 					connected_at: string | null;
 					error_message: string | null;
 					id: string;
@@ -1905,6 +1907,8 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					backfill_before?: string | null;
+					backfill_started_at?: string | null;
 					connected_at?: string | null;
 					error_message?: string | null;
 					id?: string;
@@ -1915,6 +1919,8 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					backfill_before?: string | null;
+					backfill_started_at?: string | null;
 					connected_at?: string | null;
 					error_message?: string | null;
 					id?: string;

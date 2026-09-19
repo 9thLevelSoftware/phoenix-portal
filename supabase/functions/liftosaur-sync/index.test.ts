@@ -2,21 +2,35 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createLiftosaurSyncHandler } from "./index.ts";
 
 // Handler tests with in-process doubles: an in-memory Supabase client and a
-// fake Liftosaur API whose `startDate` filters on workout date. No real
-// provider calls.
+// fake Liftosaur API that, like the real one, returns /history newest-first,
+// filters `startDate`/`endDate` on workout date, and pages with an opaque
+// cursor. No real provider calls.
 
 const USER_ID = "00000000-0000-4000-8000-0000000000b1";
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+interface QueueRow {
+  user_id: string;
+  provider: string;
+  sync_type: string;
+  status: string;
+}
 
 interface DbState {
   lastSyncAt: string | null;
+  backfillBefore?: string | null;
+  backfillStartedAt?: string | null;
   activities: Array<Record<string, unknown>>;
   status?: string;
   errorMessage?: string | null;
+  queue?: QueueRow[];
+  failQueueInsert?: boolean;
 }
 
 function createDbDouble(state: DbState) {
+  state.queue ??= [];
   const from = (table: string) => {
     let pendingUpdate: Record<string, unknown> | null = null;
 
@@ -36,18 +50,37 @@ function createDbDouble(state: DbState) {
       }
       if (table === "user_integrations") {
         if (pendingUpdate) {
-          if ("last_sync_at" in pendingUpdate) {
-            state.lastSyncAt = pendingUpdate.last_sync_at as string;
+          const u = pendingUpdate;
+          if ("last_sync_at" in u) state.lastSyncAt = u.last_sync_at as string;
+          if ("backfill_before" in u) state.backfillBefore = u.backfill_before as string | null;
+          if ("backfill_started_at" in u) {
+            state.backfillStartedAt = u.backfill_started_at as string | null;
           }
-          if ("status" in pendingUpdate) {
-            state.status = pendingUpdate.status as string;
-          }
-          if ("error_message" in pendingUpdate) {
-            state.errorMessage = pendingUpdate.error_message as string | null;
+          if ("status" in u) state.status = u.status as string;
+          if ("error_message" in u) state.errorMessage = u.error_message as string | null;
+          return { data: null, error: null };
+        }
+        return {
+          data: {
+            last_sync_at: state.lastSyncAt,
+            backfill_before: state.backfillBefore ?? null,
+            backfill_started_at: state.backfillStartedAt ?? null,
+          },
+          error: null,
+        };
+      }
+      if (table === "sync_queue") {
+        if (pendingUpdate) {
+          // The handler's blanket completion of pending tasks.
+          for (const row of state.queue!) {
+            if (row.status === "pending") row.status = pendingUpdate.status as string;
           }
           return { data: null, error: null };
         }
-        return { data: { last_sync_at: state.lastSyncAt }, error: null };
+        return {
+          data: state.queue!.filter((row) => row.status === "pending").map(() => ({ id: "q" })),
+          error: null,
+        };
       }
       return { data: null, error: null };
     };
@@ -59,6 +92,15 @@ function createDbDouble(state: DbState) {
     builder.update = (values: Record<string, unknown>) => {
       pendingUpdate = values;
       return builder;
+    };
+    builder.insert = (row: QueueRow) => {
+      if (table === "sync_queue") {
+        if (state.failQueueInsert) {
+          return Promise.resolve({ data: null, error: { message: "insert failed" } });
+        }
+        state.queue!.push(row);
+      }
+      return Promise.resolve({ data: null, error: null });
     };
     builder.upsert = (
       row: Record<string, unknown>,
@@ -102,11 +144,20 @@ interface UpstreamRecord {
   id: number;
   /** Omitted for a record whose Liftoscript text has no timestamp. */
   date?: string;
+  /** Overrides the default Liftoscript tail. */
+  body?: string;
 }
 
 const FAKE_RESPONSE_DELAY_MS = 5;
 
-function installFakeLiftosaur(upstream: UpstreamRecord[]) {
+interface FakeOptions {
+  /** Default "desc": newest first, as the real API returns /history. */
+  order?: "desc" | "asc";
+  /** Make every call return this HTTP status / raw body instead. */
+  failWith?: { status: number; body: string };
+}
+
+function installFakeLiftosaur(upstream: UpstreamRecord[], options: FakeOptions = {}) {
   const originalFetch = globalThis.fetch;
   const fake = {
     requests: [] as URL[],
@@ -124,17 +175,31 @@ function installFakeLiftosaur(upstream: UpstreamRecord[]) {
     }
     fake.requests.push(url);
     fake.firstRequestAt ??= Date.now();
+    if (options.failWith) {
+      return Promise.resolve(
+        new Response(options.failWith.body, { status: options.failWith.status }),
+      );
+    }
     const startDate = url.searchParams.get("startDate");
-    const matching = upstream
-      .filter((record) =>
-        startDate === null || record.date === undefined ||
-        Date.parse(record.date) >= Date.parse(startDate)
-      )
-      .map((record) => ({
-        id: record.id,
-        text: `${record.date ? `${record.date} / ` : ""}program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`,
-      }));
-    // Pages of `limit`, served in upstream order; the cursor is an offset.
+    const endDate = url.searchParams.get("endDate");
+    const dated = upstream.filter((record) => record.date !== undefined);
+    const undated = upstream.filter((record) => record.date === undefined);
+    const direction = options.order === "asc" ? 1 : -1;
+    const matching = [
+      ...dated
+        .filter((record) =>
+          (startDate === null || Date.parse(record.date!) >= Date.parse(startDate)) &&
+          (endDate === null || Date.parse(record.date!) <= Date.parse(endDate))
+        )
+        .sort((a, b) => direction * (Date.parse(a.date!) - Date.parse(b.date!))),
+      ...undated,
+    ].map((record) => ({
+      id: record.id,
+      text: `${record.date ? `${record.date} / ` : ""}${
+        record.body ?? `program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`
+      }`,
+    }));
+    // Pages of `limit`; the cursor is an offset.
     const limit = Number(url.searchParams.get("limit") ?? "200");
     const offset = Number(url.searchParams.get("cursor") ?? "0");
     const records = matching.slice(offset, offset + limit);
@@ -182,15 +247,27 @@ async function runSync(state: DbState, syncType: string): Promise<Response> {
   }
 }
 
+function isoSeconds(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/** `count` records dated `stepMs` apart starting at `firstMs`. */
+function datedRecords(count: number, firstMs: number, stepMs: number): UpstreamRecord[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: 1000 + i,
+    date: isoSeconds(firstMs + i * stepMs),
+  }));
+}
+
+const pendingFollowUps = (state: DbState) =>
+  (state.queue ?? []).filter((row) => row.status === "pending").length;
+
 Deno.test("liftosaur-sync imports a workout logged late with a date before the last sync", async () => {
   const now = Date.now();
   const lastSync = new Date(now - 6 * HOUR).toISOString();
   const state: DbState = { lastSyncAt: lastSync, activities: [] };
   // Performed three hours before the last sync, but logged only after it.
-  const lateWorkout = {
-    id: 7,
-    date: new Date(now - 9 * HOUR).toISOString().replace(/\.\d{3}Z$/, "Z"),
-  };
+  const lateWorkout = { id: 7, date: isoSeconds(now - 9 * HOUR) };
   const liftosaur = installFakeLiftosaur([lateWorkout]);
   try {
     const response = await runSync(state, "incremental");
@@ -237,6 +314,7 @@ Deno.test("liftosaur-sync initial sync requests full history", async () => {
     const response = await runSync(state, "initial");
     assertEquals(response.status, 200, await response.clone().text());
     assertEquals(liftosaur.requests[0].searchParams.has("startDate"), false);
+    assertEquals(liftosaur.requests[0].searchParams.has("endDate"), false);
   } finally {
     liftosaur.restore();
   }
@@ -265,88 +343,204 @@ Deno.test("liftosaur-sync keeps the stored date of an undated record re-fetched 
   }
 });
 
-const DAY = 24 * HOUR;
-
-/** `count` records dated `stepMs` apart from `firstMs`, oldest first. */
-function datedRecords(count: number, firstMs: number, stepMs: number): UpstreamRecord[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: 1000 + i,
-    date: new Date(firstMs + i * stepMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
-  }));
-}
-
-Deno.test("liftosaur-sync: 11 pages -> retryable 502, watermark moves only to the last record read", async () => {
+Deno.test("liftosaur-sync: 11 newest-first pages -> backfill continues downward; watermark not advanced until the end", async () => {
   const now = Date.now();
   const lastSync = new Date(now - 200 * DAY).toISOString();
   const state: DbState = { lastSyncAt: lastSync, activities: [] };
-  // 2,200 records = 11 pages of 200; the run may read 10.
+  // 2,200 records = 11 pages of 200; one run reads 10.
   const upstream = datedRecords(2200, now - 199 * DAY, HOUR);
   const liftosaur = installFakeLiftosaur(upstream);
   try {
-    const response = await runSync(state, "incremental");
-    const body = await response.json();
-    assertEquals(response.status, 502, JSON.stringify(body));
+    const first = await runSync(state, "incremental");
+    const body = await first.json();
+    assertEquals(first.status, 200, JSON.stringify(body));
     assertEquals(body.truncated, true);
+    assertEquals(body.continuing, true);
+    assertEquals(body.reason, "page_budget");
     assertEquals(liftosaur.requests.length, 10);
     assertEquals(state.activities.length, 2000);
 
-    // Not advanced to syncStartedAt (captured before the first request) ...
-    assert(
-      Date.parse(state.lastSyncAt!) < liftosaur.firstRequestAt!,
-      `last_sync_at ${state.lastSyncAt} must not reach the sync start time`,
-    );
-    // ... but to the newest record actually read (the 2,000th).
-    assertEquals(state.lastSyncAt, new Date(Date.parse(upstream[1999].date!)).toISOString());
+    // The watermark is NOT advanced (neither to syncStartedAt nor anywhere).
+    assertEquals(state.lastSyncAt, lastSync);
+    // The 2,000 newest were read; the next run asks for records up to the
+    // oldest of them (+1s).
+    const oldestRead = Date.parse(upstream[200].date!);
+    assertEquals(state.backfillBefore, new Date(oldestRead + 1000).toISOString());
+    assert(Date.parse(state.backfillStartedAt!) <= liftosaur.firstRequestAt!);
+    const chainStartedAt = state.backfillStartedAt;
     assertEquals(state.status, "connected");
-    assert(String(state.errorMessage).includes("10-page budget"));
+    assert(String(state.errorMessage).includes("Importing Liftosaur history"));
+    // A follow-up run is queued so the import finishes without user action.
+    assertEquals(pendingFollowUps(state), 1);
 
-    // The retry continues from there and completes the import.
-    const retry = await runSync(state, "incremental");
-    assertEquals(retry.status, 200, await retry.clone().text());
+    const backfillBefore = state.backfillBefore;
+    const second = await runSync(state, "incremental");
+    assertEquals(second.status, 200, await second.clone().text());
+    const secondRequest = liftosaur.requests[10];
+    assertEquals(secondRequest.searchParams.get("endDate"), backfillBefore);
+    assertEquals(
+      secondRequest.searchParams.get("startDate"),
+      new Date(Date.parse(lastSync) - 72 * HOUR).toISOString(),
+    );
     assertEquals(state.activities.length, 2200);
+    assertEquals(state.lastSyncAt, chainStartedAt);
+    assertEquals(state.backfillBefore, null);
+    assertEquals(state.backfillStartedAt, null);
     assertEquals(state.errorMessage, null);
   } finally {
     liftosaur.restore();
   }
 });
 
-Deno.test("liftosaur-sync: 11 newest-first pages -> 500, watermark unchanged", async () => {
+Deno.test("liftosaur-sync: a 4,500-record initial import finishes over successive runs", async () => {
+  const now = Date.now();
+  const state: DbState = { lastSyncAt: null, activities: [] };
+  const upstream = datedRecords(4500, now - 400 * DAY, 2 * HOUR);
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    let runs = 0;
+    for (; runs < 10; runs++) {
+      const response = await runSync(state, "initial");
+      const body = await response.json();
+      assertEquals(response.status, 200, JSON.stringify(body));
+      if (!body.continuing) break;
+      // Every run of the chain, even an `initial` one, continues it.
+      assert(state.backfillBefore !== null);
+    }
+    assertEquals(runs, 2); // runs 0,1 continue; run 2 completes
+    assertEquals(state.activities.length, 4500);
+    assertEquals(state.backfillBefore, null);
+    assert(state.lastSyncAt !== null);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: continuing backfill falls back to a retryable 502 when no follow-up can be queued", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [], failQueueInsert: true };
+  const liftosaur = installFakeLiftosaur(datedRecords(2200, now - 199 * DAY, HOUR));
+  try {
+    const response = await runSync(state, "incremental");
+    assertEquals(response.status, 502, await response.clone().text());
+    assertEquals(state.lastSyncAt, lastSync);
+    assert(state.backfillBefore !== null);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: 11 pages sharing one date -> 500, watermark unchanged (no safe resume point)", async () => {
   const now = Date.now();
   const lastSync = new Date(now - 200 * DAY).toISOString();
   const state: DbState = { lastSyncAt: lastSync, activities: [] };
-  const upstream = datedRecords(2200, now - 199 * DAY, HOUR).reverse();
+  const sameDate = isoSeconds(now - 100 * DAY);
+  const upstream = Array.from({ length: 2200 }, (_, i) => ({ id: 1000 + i, date: sameDate }));
   const liftosaur = installFakeLiftosaur(upstream);
   try {
     const response = await runSync(state, "incremental");
     const body = await response.json();
-    // A retry would re-read the same pages, so it must not be requested.
     assertEquals(response.status, 500, JSON.stringify(body));
     assertEquals(body.truncated, true);
+    assertEquals(body.resume_at, null);
     assertEquals(state.lastSyncAt, lastSync);
+    assertEquals(state.backfillBefore ?? null, null);
     assertEquals(state.status, "error");
-    assert(String(state.errorMessage).includes("cannot resume"));
+    assert(String(state.errorMessage).includes("fewer than two distinct dates"));
   } finally {
     liftosaur.restore();
   }
 });
 
-Deno.test("liftosaur-sync: a truncated initial sync fails without a retry but records its progress", async () => {
+Deno.test("liftosaur-sync: one dated record among undated ones is not a resume point", async () => {
   const now = Date.now();
-  const state: DbState = { lastSyncAt: null, activities: [] };
-  const upstream = datedRecords(2200, now - 199 * DAY, HOUR);
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  const upstream: UpstreamRecord[] = [
+    { id: 1, date: isoSeconds(now - 10 * DAY) },
+    ...Array.from({ length: 2199 }, (_, i) => ({ id: 2 + i })),
+  ];
   const liftosaur = installFakeLiftosaur(upstream);
   try {
-    const response = await runSync(state, "initial");
-    // `initial` ignores the watermark, so a queue retry would repeat the
-    // same request; the next incremental sync resumes from the watermark.
+    const response = await runSync(state, "incremental");
     assertEquals(response.status, 500, await response.clone().text());
-    assertEquals(state.lastSyncAt, new Date(Date.parse(upstream[1999].date!)).toISOString());
+    assertEquals(state.lastSyncAt, lastSync);
+    assertEquals(state.backfillBefore ?? null, null);
   } finally {
     liftosaur.restore();
   }
 });
 
-Deno.test("liftosaur-sync: re-sync of an undated record leaves its stored date unchanged", async () => {
+Deno.test("liftosaur-sync: a backfill that cannot move below its endDate fails terminally", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const floor = Math.floor((now - 100 * DAY) / 1000) * 1000;
+  const previousBefore = new Date(floor + 1000).toISOString();
+  const state: DbState = {
+    lastSyncAt: lastSync,
+    backfillBefore: previousBefore,
+    backfillStartedAt: new Date(now - HOUR).toISOString(),
+    activities: [],
+  };
+  // 2,200 records inside one second: newest-first, but the oldest read + 1s
+  // is not below the current endDate, so another run cannot get further.
+  const upstream: UpstreamRecord[] = Array.from({ length: 2200 }, (_, i) => ({
+    id: 1000 + i,
+    date: new Date(floor + (i < 1100 ? 500 : 0)).toISOString(),
+  }));
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    const response = await runSync(state, "incremental");
+    const body = await response.json();
+    assertEquals(response.status, 500, JSON.stringify(body));
+    assert(String(state.errorMessage).includes("more records share one date"));
+    assertEquals(state.backfillBefore, previousBefore);
+    assertEquals(state.lastSyncAt, lastSync);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: oldest-first fallback resumes from the newest record read (502)", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  const upstream = datedRecords(2200, now - 199 * DAY, HOUR);
+  const liftosaur = installFakeLiftosaur(upstream, { order: "asc" });
+  try {
+    const response = await runSync(state, "incremental");
+    assertEquals(response.status, 502, await response.clone().text());
+    assertEquals(state.lastSyncAt, new Date(Date.parse(upstream[1999].date!)).toISOString());
+    assert(Date.parse(state.lastSyncAt!) < liftosaur.firstRequestAt!);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: oldest-first records denser than the window -> 500, watermark unchanged", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 6 * HOUR).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  // 2,200 records a minute apart, all after lastSync - 72h: resuming from the
+  // newest one read would give a window that starts no later than this one.
+  const upstream = datedRecords(2200, now - 70 * HOUR, 60 * 1000);
+  const liftosaur = installFakeLiftosaur(upstream, { order: "asc" });
+  try {
+    const response = await runSync(state, "incremental");
+    const body = await response.json();
+    assertEquals(response.status, 500, JSON.stringify(body));
+    assertEquals(body.truncated, true);
+    assertEquals(body.resume_at, null);
+    assertEquals(state.status, "error");
+    assert(String(state.errorMessage).includes("more records share this window"));
+    assertEquals(state.lastSyncAt, lastSync);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: re-sync of an undated record keeps its stored date but applies edits", async () => {
   const storedAt = "2020-01-01T00:00:00.000Z";
   const state: DbState = {
     lastSyncAt: new Date(Date.now() - 6 * HOUR).toISOString(),
@@ -355,15 +549,41 @@ Deno.test("liftosaur-sync: re-sync of an undated record leaves its stored date u
       provider: "liftosaur",
       external_id: "liftosaur-9",
       name: "old",
+      duration_seconds: 60,
       started_at: storedAt,
     }],
   };
-  const liftosaur = installFakeLiftosaur([{ id: 9 }]);
+  const liftosaur = installFakeLiftosaur([
+    { id: 9, body: 'program: "Edited" / dayName: "Renamed" / duration: 1800s' },
+  ]);
   try {
     const response = await runSync(state, "incremental");
     assertEquals(response.status, 200, await response.clone().text());
     assertEquals(state.activities.length, 1);
     assertEquals(state.activities[0].started_at, storedAt);
+    assertEquals(state.activities[0].name, "Edited — Renamed");
+    assertEquals(state.activities[0].duration_seconds, 1800);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: provider error text never reaches the card or the caller", async () => {
+  const state: DbState = {
+    lastSyncAt: new Date(Date.now() - 6 * HOUR).toISOString(),
+    activities: [],
+  };
+  const liftosaur = installFakeLiftosaur([], {
+    failWith: { status: 200, body: "<html>internal proxy page SECRET-ish</html>" },
+  });
+  try {
+    const response = await runSync(state, "incremental");
+    const text = await response.text();
+    assertEquals(response.status, 502, text);
+    assert(!text.includes("html"), text);
+    assert(text.includes("LIFTOSAUR_FETCH"));
+    assert(!String(state.errorMessage).includes("html"));
+    assert(String(state.errorMessage).includes("LIFTOSAUR_FETCH"));
   } finally {
     liftosaur.restore();
   }
