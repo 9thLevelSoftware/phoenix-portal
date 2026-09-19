@@ -7,6 +7,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { stripBodyMusclesSourcemapsPlugin } from "./src/lib/build/body-muscles-sourcemaps";
+import { pwaWorkboxOptions } from "./src/lib/build/pwa";
 import {
 	productionSourcemapSetting,
 	shouldUploadSourcemaps,
@@ -55,14 +56,7 @@ export default defineConfig({
 					},
 				],
 			},
-			workbox: {
-				cleanupOutdatedCaches: true,
-				skipWaiting: true,
-				clientsClaim: true,
-				globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
-				navigateFallback: "/index.html",
-				navigateFallbackDenylist: [/^\/api\//],
-			},
+			workbox: pwaWorkboxOptions,
 			devOptions: {
 				enabled: false,
 			},

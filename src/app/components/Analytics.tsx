@@ -44,7 +44,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
+import { useBodyMuscleAnalytics } from "@/hooks/useBodyMuscleAnalytics";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
@@ -132,6 +132,15 @@ function AnalyticsTabSkeleton() {
 				<ChartSkeleton />
 			</div>
 		</div>
+	);
+}
+
+function BodyMuscleMapPending({ failed }: { failed: boolean }) {
+	if (!failed) return <AnalyticsTabSkeleton />;
+	return (
+		<p role="alert" className="text-sm text-muted-foreground">
+			Couldn't load the body map. Check your connection, then reopen this tab.
+		</p>
 	);
 }
 
@@ -641,9 +650,16 @@ export function Analytics() {
 		() => computeWeeklyVolume(exerciseSessionData),
 		[exerciseSessionData],
 	);
+	// The body-muscle map is ~1.7 MB, so it is fetched only once the Body tab
+	// (the only consumer of the heatmap model) is opened.
+	const { analytics: bodyMuscleAnalytics, failed: bodyMuscleMapFailed } =
+		useBodyMuscleAnalytics(activeTab === "body");
 	const bodyMuscleModel = useMemo(
-		() => buildBodyMuscleFocusModel(bodyIntelData ?? []),
-		[bodyIntelData],
+		() =>
+			bodyMuscleAnalytics
+				? bodyMuscleAnalytics.buildBodyMuscleFocusModel(bodyIntelData ?? [])
+				: null,
+		[bodyMuscleAnalytics, bodyIntelData],
 	);
 
 	// Group exercises by primary muscle group for ExerciseDeepDive
@@ -1467,20 +1483,24 @@ export function Analytics() {
 
 							{activeTab === "body" && (
 								<Suspense fallback={<AnalyticsTabSkeleton />}>
-									<MobileBodyTab
-										muscleGroupData={muscleGroupData}
-										muscleRadarData={muscleRadarData}
-										mobileMusclData={mobileMusclData}
-										weeklyVolume={weeklyVolume}
-										bodyMuscleModel={bodyMuscleModel}
-										totalSessions={totalSessions}
-										muscleRecoveries={muscleRecoveries}
-										recommendations={recommendations}
-										exercisesByMuscle={exercisesByMuscle}
-										userId={userId}
-										unit={unit}
-										profileId={activeProfileId}
-									/>
+									{bodyMuscleModel ? (
+										<MobileBodyTab
+											muscleGroupData={muscleGroupData}
+											muscleRadarData={muscleRadarData}
+											mobileMusclData={mobileMusclData}
+											weeklyVolume={weeklyVolume}
+											bodyMuscleModel={bodyMuscleModel}
+											totalSessions={totalSessions}
+											muscleRecoveries={muscleRecoveries}
+											recommendations={recommendations}
+											exercisesByMuscle={exercisesByMuscle}
+											userId={userId}
+											unit={unit}
+											profileId={activeProfileId}
+										/>
+									) : (
+										<BodyMuscleMapPending failed={bodyMuscleMapFailed} />
+									)}
 								</Suspense>
 							)}
 
@@ -1703,20 +1723,24 @@ export function Analytics() {
 								{/* ====== TAB 3: BODY ====== */}
 								<TabsContent value="body" className="space-y-6">
 									<Suspense fallback={<AnalyticsTabSkeleton />}>
-										<BodyTab
-											muscleGroupData={muscleGroupData}
-											muscleDonutOption={muscleDonutOption}
-											muscleRadarData={muscleRadarData}
-											bodyMuscleModel={bodyMuscleModel}
-											weeklyVolume={weeklyVolume}
-											totalSessions={totalSessions}
-											muscleRecoveries={muscleRecoveries}
-											recommendations={recommendations}
-											exercisesByMuscle={exercisesByMuscle}
-											userId={userId}
-											unit={unit}
-											profileId={activeProfileId}
-										/>
+										{bodyMuscleModel ? (
+											<BodyTab
+												muscleGroupData={muscleGroupData}
+												muscleDonutOption={muscleDonutOption}
+												muscleRadarData={muscleRadarData}
+												bodyMuscleModel={bodyMuscleModel}
+												weeklyVolume={weeklyVolume}
+												totalSessions={totalSessions}
+												muscleRecoveries={muscleRecoveries}
+												recommendations={recommendations}
+												exercisesByMuscle={exercisesByMuscle}
+												userId={userId}
+												unit={unit}
+												profileId={activeProfileId}
+											/>
+										) : (
+											<BodyMuscleMapPending failed={bodyMuscleMapFailed} />
+										)}
 									</Suspense>
 								</TabsContent>
 
