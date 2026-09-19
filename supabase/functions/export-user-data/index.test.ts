@@ -10,7 +10,9 @@ import {
   buildKeysetOrFilter,
   createExportUserDataHandler,
   EXPORT_RATE_LIMIT,
+  type ExportCursor,
   parseExportRequest,
+  readExportPage,
 } from "./index.ts";
 
 const USER_ID = "00000000-0000-4000-8000-00000000aaaa";
@@ -466,6 +468,67 @@ Deno.test({
 
       const unknown = await owner(request({ table: "oauth_tokens" }));
       assertEquals(unknown.status, 400);
+    } finally {
+      await destroyExportFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: composite keyset (provider, id) pages 2,500 rows through the real or() filter",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createExportFixture();
+    try {
+      // Two providers with quote/comma/paren/backslash characters so the
+      // quoted row-value filter is parsed by real PostgREST.
+      const providers = ['a"b,c', "z(x)\\y"];
+      const ownerRows = Array.from({ length: 2500 }, (_, i) => ({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        provider: providers[i % 2],
+      }));
+      await insertOrThrow(fixture.admin, "sync_queue", [
+        ...ownerRows,
+        ...Array.from({ length: 20 }, () => ({
+          id: crypto.randomUUID(),
+          user_id: fixture.otherId,
+          provider: providers[0],
+        })),
+      ]);
+      // Synthetic composite-keyed entry: no composite-keyed manifest table
+      // (sync_tombstones, PR 16) has DDL on this branch.
+      const entry = {
+        table: "sync_queue",
+        ownership: { kind: "column", column: "user_id" },
+        keyColumns: ["provider", "id"],
+        purge: "cascade",
+      } as const;
+      const pages: Array<Record<string, unknown>[]> = [];
+      let cursor: ExportCursor | null = null;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await readExportPage(fixture.admin, entry, fixture.ownerId, cursor);
+        if (!page.ok) throw new Error(`page failed: ${JSON.stringify(page.error)}`);
+        pages.push(page.rows);
+        cursor = page.nextCursor;
+        if (cursor === null) break;
+      }
+      assertEquals(pages.map((page) => page.length), [1000, 1000, 500]);
+      const rows = pages.flat();
+      assertEquals(
+        new Set(rows.map((row) => row.id)),
+        new Set(ownerRows.map((row) => row.id)),
+      );
+      assert(rows.every((row) => row.user_id === fixture.ownerId));
+      for (let i = 1; i < rows.length; i++) {
+        const prev = [rows[i - 1].provider as string, rows[i - 1].id as string];
+        const cur = [rows[i].provider as string, rows[i].id as string];
+        assert(
+          prev[0] < cur[0] || (prev[0] === cur[0] && prev[1] < cur[1]),
+          `row ${i} out of (provider, id) order`,
+        );
+      }
     } finally {
       await destroyExportFixture(fixture);
     }
