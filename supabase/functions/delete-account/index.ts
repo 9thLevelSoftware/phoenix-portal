@@ -1,50 +1,60 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import {
+  defaultPurgeUserDependencies,
+  purgeUser,
+  type PurgeResult,
+} from '../_shared/accountPurge.ts';
 
-// Service-role client for admin operations (bypasses RLS)
-const supabaseAdmin = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
-
-function isCancellablePaddleStatus(status: string | null | undefined) {
-  return ['active', 'trialing', 'past_due'].includes(status ?? '');
-}
-
-function getPaddleBaseUrl() {
-  const paddleEnv = Deno.env.get('PADDLE_ENVIRONMENT') ?? 'production';
-  return paddleEnv === 'sandbox'
-    ? 'https://sandbox-api.paddle.com'
-    : 'https://api.paddle.com';
-}
-
-async function cancelPaddleSubscription(subscriptionId: string, apiKey: string) {
-  const paddleRes = await fetch(
-    `${getPaddleBaseUrl()}/subscriptions/${subscriptionId}/cancel`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ effective_from: 'immediately' }),
-    },
-  );
-
-  if (paddleRes.ok) {
-    return { ok: true as const };
-  }
-
-  return {
-    ok: false as const,
-    status: paddleRes.status,
-    detail: await paddleRes.text(),
+interface DeleteAccountAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
   };
 }
 
-Deno.serve(async (req) => {
+export interface DeleteAccountHandlerDependencies {
+  /** Client acting as the caller (their JWT), used only to identify them. */
+  createAuthClient(authorization: string): DeleteAccountAuthClient;
+  /** Service-role client for admin operations (bypasses RLS). */
+  createAdminClient(): SupabaseClient;
+  /** The purge core; injected so tests can stub Paddle. */
+  purge(admin: SupabaseClient, userId: string): Promise<PurgeResult>;
+}
+
+function defaultDeleteAccountDependencies(): DeleteAccountHandlerDependencies {
+  let admin: SupabaseClient | null = null;
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authorization } } },
+      );
+    },
+    createAdminClient() {
+      admin ??= createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      return admin;
+    },
+    purge(adminClient, userId) {
+      return purgeUser(adminClient, userId, defaultPurgeUserDependencies());
+    },
+  };
+}
+
+async function deleteAccountHandler(
+  req: Request,
+  deps: DeleteAccountHandlerDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
+  const json = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -55,46 +65,25 @@ Deno.serve(async (req) => {
   // other method before authentication so an accidental GET/HEAD or proxy
   // retry cannot trigger the deletion flow. (F317)
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
+    return json({ error: 'Method not allowed' }, 405);
   }
 
   try {
-    // Authenticate the user via their JWT
+    // Authenticate the user via their JWT. The account deleted is always the
+    // JWT user; nothing in the request body can name another user.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing Authorization header' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return json({ error: 'Missing Authorization header' }, 401);
     }
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await deps.createAuthClient(authHeader).auth.getUser();
     if (!user) {
-      return new Response(
-        JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return json({ error: 'Not authenticated' }, 401);
     }
 
     const userId = user.id;
-
-    // Rate limit: 1 request per hour per user
-    const rateCheck = await checkRateLimit(supabaseAdmin, {
-      key: 'delete-account',
-      userId,
-      maxRequests: 1,
-      windowSeconds: 3600,
-    }, cors);
-    if (!rateCheck.allowed) return rateCheck.response!;
+    const supabaseAdmin = deps.createAdminClient();
 
     // Verify the user has a pending deletion request with expired grace period
     const { data: request, error: requestError } = await supabaseAdmin
@@ -105,187 +94,69 @@ Deno.serve(async (req) => {
       .single();
 
     if (requestError || !request) {
-      return new Response(
-        JSON.stringify({ error: 'No pending deletion request found' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return json({ error: 'No pending deletion request found' }, 400);
     }
 
-    const scheduledFor = new Date(request.scheduled_for);
-    if (scheduledFor > new Date()) {
-      return new Response(
-        JSON.stringify({
-          error: 'Grace period has not expired yet',
-          scheduled_for: request.scheduled_for,
-        }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+    if (new Date(request.scheduled_for) > new Date()) {
+      return json({
+        error: 'Grace period has not expired yet',
+        scheduled_for: request.scheduled_for,
+      }, 400);
     }
 
-    // =========================================================================
-    // Step 1: Delete storage objects (avatars)
-    // =========================================================================
-    try {
-      const { data: avatarFiles } = await supabaseAdmin.storage
-        .from('avatars')
-        .list(userId);
+    // Rate limit: 1 request per hour per user. Charged only once the request
+    // is valid, so a premature click does not lock the user out for an hour.
+    const rateCheck = await checkRateLimit(supabaseAdmin, {
+      key: 'delete-account',
+      userId,
+      maxRequests: 1,
+      windowSeconds: 3600,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
 
-      if (avatarFiles && avatarFiles.length > 0) {
-        const filePaths = avatarFiles.map((f) => `${userId}/${f.name}`);
-        await supabaseAdmin.storage.from('avatars').remove(filePaths);
-        console.log(`Removed ${filePaths.length} avatar file(s) for user ${userId}`);
+    // The deletion request stays `pending` until the purge deletes the user;
+    // it then cascades away with the rest of the account. Every purge step is
+    // idempotent, so a failed run is retried by simply calling again.
+    const result = await deps.purge(supabaseAdmin, userId);
+    if (!result.ok) {
+      console.error('[DELETE_ACCOUNT] purge failed:', {
+        user_id: userId,
+        stage: result.stage,
+        billing_cancelled: result.billingCancelled,
+        detail: result.detail,
+      });
+      if (result.billingCancelled) {
+        console.error('[DELETE_ACCOUNT_PARTIAL_FAILURE] Paddle subscription was canceled but the account was not deleted', {
+          user_id: userId,
+          stage: result.stage,
+        });
+        return json({
+          error: 'Billing subscription was canceled, but account deletion could not be completed. Please try again or contact support.',
+          code: 'billing_canceled_account_delete_failed',
+        }, 500);
       }
-    } catch (storageErr) {
-      // Log but continue — avatar cleanup is not critical
-      console.error('Storage cleanup error (continuing with deletion):', storageErr);
-    }
-
-    // =========================================================================
-    // Step 1b: Capture subscription state before auth user delete
-    // =========================================================================
-    const { data: subscriptionRow } = await supabaseAdmin
-      .from('subscriptions')
-      .select('paddle_subscription_id, status')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    const shouldCancelPaddle =
-      !!subscriptionRow?.paddle_subscription_id &&
-      isCancellablePaddleStatus(subscriptionRow.status);
-    const paddleApiKey = Deno.env.get('PADDLE_API_KEY');
-
-    if (shouldCancelPaddle && !paddleApiKey) {
-      console.error('[DELETE_ACCOUNT] PADDLE_API_KEY is not set');
-      return new Response(
-        JSON.stringify({ error: 'Billing service not configured. Account deletion aborted.' }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // =========================================================================
-    // Step 2: Mark deletion request as executed
-    // =========================================================================
-    const { error: updateError } = await supabaseAdmin
-      .from('deletion_requests')
-      .update({ status: 'executed', executed_at: new Date().toISOString() })
-      .eq('id', request.id);
-
-    if (updateError) {
-      console.error('[DELETE_ACCOUNT] Failed to mark deletion request as executed:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to process deletion. Please try again.' }),
-        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // =========================================================================
-    // Step 3: Cancel Paddle subscription BEFORE deleting the auth user.
-    // Cancelling first guarantees the user is never billed after deletion.
-    // If cancellation fails, abort and roll back — the user remains intact
-    // and can retry. This is the same guard pattern as the missing-key check
-    // above (lines 157-163).
-    // =========================================================================
-    let paddleCancellationCompleted = false;
-    let canceledPaddleSubscriptionId: string | null = null;
-
-    if (shouldCancelPaddle && subscriptionRow?.paddle_subscription_id && paddleApiKey) {
-      const paddleResult = await cancelPaddleSubscription(
-        subscriptionRow.paddle_subscription_id,
-        paddleApiKey,
-      );
-
-      if (!paddleResult.ok) {
-        // Roll back deletion request so the user can safely retry later.
-        await supabaseAdmin
-          .from('deletion_requests')
-          .update({ status: 'pending', executed_at: null })
-          .eq('id', request.id);
-
-        console.error(
-          '[DELETE_ACCOUNT] Paddle cancel failed. Aborting deletion — user intact:',
-          subscriptionRow.paddle_subscription_id,
-          paddleResult.status,
-          paddleResult.detail,
-        );
-        return new Response(
-          JSON.stringify({ error: 'Failed to cancel billing subscription. Account deletion aborted. Please try again or contact support.' }),
-          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
+      if (result.stage.startsWith('billing_')) {
+        return json({
+          error: 'Failed to cancel billing subscription. Account deletion aborted. Please try again or contact support.',
+        }, 502);
       }
-
-      paddleCancellationCompleted = true;
-      canceledPaddleSubscriptionId = subscriptionRow.paddle_subscription_id;
-    }
-
-    // =========================================================================
-    // Step 4: Delete auth user (cascades to all private data)
-    // CASCADE-deletes: profiles, workout_sessions (and children), personal_records,
-    //   exercise_progress, routines, training_cycles, user_goals, external_activities,
-    //   user_integrations, subscriptions, community_votes, saved_community_items,
-    //   challenge_participants, user_onboarding, oauth_tokens, oauth_states
-    // SET NULL: community_comments.user_id, shared_routines.user_id, shared_cycles.user_id
-    // =========================================================================
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (deleteError) {
-      // Keep the deletion request retryable, but do not hide the irreversible
-      // billing side effect if Paddle already accepted an immediate cancellation.
-      await supabaseAdmin
-        .from('deletion_requests')
-        .update({ status: 'pending', executed_at: null })
-        .eq('id', request.id);
-
-      if (paddleCancellationCompleted) {
-        const { error: subscriptionUpdateError } = await supabaseAdmin
-          .from('subscriptions')
-          .update({
-            status: 'canceled',
-            cancel_at_period_end: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', userId);
-
-        if (subscriptionUpdateError) {
-          console.error(
-            '[DELETE_ACCOUNT] Failed to persist local subscription cancellation after auth delete failure:',
-            subscriptionUpdateError,
-          );
-        }
-
-        console.error(
-          '[DELETE_ACCOUNT_PARTIAL_FAILURE] Paddle subscription was canceled but auth user deletion failed:',
-          {
-            user_id: userId,
-            paddle_subscription_id: canceledPaddleSubscriptionId,
-            delete_error: deleteError,
-          },
-        );
-
-        return new Response(
-          JSON.stringify({
-            error: 'Billing subscription was canceled, but account deletion could not be completed. Please contact support.',
-            code: 'billing_canceled_account_delete_failed',
-          }),
-          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.error('[DELETE_ACCOUNT] Failed to delete auth user, rolled back request status:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete account. Please try again.' }),
-        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return json({ error: 'Failed to delete account. Please try again.' }, 500);
     }
 
     console.log(`Account deleted successfully for user ${userId}`);
-    return new Response(
-      JSON.stringify({ success: true }),
-      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
+    return json({ success: true }, 200);
   } catch (err) {
     console.error('Unexpected error in delete-account:', err);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
+    return json({ error: 'Internal server error' }, 500);
   }
-});
+}
+
+export function createDeleteAccountHandler(
+  deps: DeleteAccountHandlerDependencies = defaultDeleteAccountDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => deleteAccountHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createDeleteAccountHandler());
+}
