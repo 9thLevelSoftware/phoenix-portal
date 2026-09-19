@@ -32,12 +32,23 @@ export interface LiftosaurRecord {
   text: string;
 }
 
+/**
+ * Liftosaur's paging cursor. Treated as opaque: the docs show a number, but a
+ * non-empty string is accepted too rather than mistaken for "no cursor".
+ */
+export type LiftosaurCursor = number | string;
+
+export function isLiftosaurCursor(value: unknown): value is LiftosaurCursor {
+  return (typeof value === 'number' && Number.isFinite(value)) ||
+    (typeof value === 'string' && value.length > 0 && value.length <= 256);
+}
+
 /** GET /v1/history -> { data: { records[], hasMore, nextCursor } } */
 export interface LiftosaurHistoryPage {
   data: {
     records: LiftosaurRecord[];
     hasMore: boolean;
-    nextCursor: number | null;
+    nextCursor: LiftosaurCursor | null;
   };
 }
 
@@ -131,7 +142,7 @@ export interface LiftosaurFetchResult {
   truncated: boolean;
   reason: LiftosaurTruncationReason | null;
   /** Liftosaur's cursor for the next unread page, when it gave one. */
-  nextCursor: number | null;
+  nextCursor: LiftosaurCursor | null;
   /** Oldest / newest parsed workout date among the records read. */
   oldestDatedAt: string | null;
   newestDatedAt: string | null;
@@ -145,7 +156,7 @@ export interface FetchLiftosaurHistoryOptions {
   /** ISO 8601 upper bound on workout date (`endDate`), or null for none. */
   endDate?: string | null;
   /** Liftosaur cursor to resume from (a previous `nextCursor`). */
-  cursor?: number | null;
+  cursor?: LiftosaurCursor | null;
   maxPages?: number;
 }
 
@@ -160,7 +171,7 @@ export async function fetchLiftosaurHistory(
 ): Promise<LiftosaurFetchResult> {
   const maxPages = options.maxPages ?? LIFTOSAUR_MAX_PAGES;
   const records: LiftosaurRecord[] = [];
-  let cursor: number | null = options.cursor ?? null;
+  let cursor: LiftosaurCursor | null = options.cursor ?? null;
   let hasMore = true;
   let reason: LiftosaurTruncationReason | null = null;
   let page = 0;
@@ -170,12 +181,12 @@ export async function fetchLiftosaurHistory(
     // GET /history supports startDate/endDate (ISO 8601) alongside the cursor.
     if (options.startDate) params.set('startDate', options.startDate);
     if (options.endDate) params.set('endDate', options.endDate);
-    if (cursor !== null) params.set('cursor', cursor.toString());
+    if (cursor !== null) params.set('cursor', String(cursor));
 
     const data = (await fetchPage(params)) as LiftosaurHistoryPage;
     records.push(...(data?.data?.records ?? []));
     const next = data?.data?.nextCursor;
-    cursor = typeof next === 'number' && Number.isFinite(next) ? next : null;
+    cursor = isLiftosaurCursor(next) ? next : null;
     hasMore = data?.data?.hasMore === true;
     page++;
     // A page that claims more but gives no cursor cannot be continued; treat

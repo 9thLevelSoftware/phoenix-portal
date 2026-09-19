@@ -10,7 +10,9 @@ import {
 import {
   createLiftosaurPageFetcher,
   fetchLiftosaurHistory,
+  isLiftosaurCursor,
   LiftosaurAuthError,
+  type LiftosaurCursor,
   toLiftosaurActivityRow,
 } from '../_shared/liftosaurSync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -138,8 +140,8 @@ interface PagingCursor {
   provider: 'hevy' | 'liftosaur';
   /** Hevy: next /v1/workouts page to read (>= 1). */
   hevyPage?: number;
-  /** Liftosaur: /history `nextCursor` to resume from. */
-  liftosaurCursor?: number;
+  /** Liftosaur: /history `nextCursor` to resume from (opaque). */
+  liftosaurCursor?: LiftosaurCursor;
   /** ISO time the chain's first call started; becomes last_sync_at. */
   chainStartedAt: string;
 }
@@ -169,7 +171,7 @@ function decodeCursor(raw: unknown, provider: string): PagingCursor | null {
     return { v: 1, provider, hevyPage: page, chainStartedAt };
   }
   const liftosaurCursor = parsed.liftosaurCursor;
-  if (typeof liftosaurCursor !== 'number' || !Number.isFinite(liftosaurCursor)) return null;
+  if (!isLiftosaurCursor(liftosaurCursor)) return null;
   return { v: 1, provider: 'liftosaur', liftosaurCursor, chainStartedAt };
 }
 
@@ -446,6 +448,10 @@ async function mobileIntegrationSyncHandler(
             status: 'disconnected',
             connected_at: null,
             error_message: null,
+            // Drop any in-progress liftosaur-sync backfill so a reconnect
+            // starts fresh instead of resuming a stale chain.
+            backfill_before: null,
+            backfill_started_at: null,
           })
           .eq('user_id', userId)
           .eq('provider', provider),

@@ -226,9 +226,13 @@ async function liftosaurSyncHandler(
 		// (the `endDate` for the next run) and the chain's start time. The
 		// watermark (`last_sync_at`, hence `startDate`) is left alone until the
 		// chain reaches the end — moving it earlier would make the next window
-		// start after its own `endDate`. Every run of a chain, whatever its
-		// sync_type, continues the chain.
-		const inBackfill = backfillBefore !== null && backfillStartedAt !== null;
+		// start after its own `endDate`. Queued follow-ups (`incremental`) and
+		// manual syncs continue the chain; an `initial` sync (a (re)connect)
+		// starts a fresh one, so a chain that cannot progress is never stuck.
+		const inBackfill =
+			sync_type !== "initial" &&
+			backfillBefore !== null &&
+			backfillStartedAt !== null;
 		const chainStartedAt = inBackfill ? backfillStartedAt! : syncStartedAt;
 
 		// Fetch workout history from Liftosaur API with pagination (shared with

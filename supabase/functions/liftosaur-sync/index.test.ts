@@ -400,12 +400,14 @@ Deno.test("liftosaur-sync: a 4,500-record initial import finishes over successiv
   try {
     let runs = 0;
     for (; runs < 10; runs++) {
-      const response = await runSync(state, "initial");
+      // The first run is the connect's `initial`; the queued follow-ups
+      // that continue the chain are `incremental`.
+      const response = await runSync(state, runs === 0 ? "initial" : "incremental");
       const body = await response.json();
       assertEquals(response.status, 200, JSON.stringify(body));
       if (!body.continuing) break;
-      // Every run of the chain, even an `initial` one, continues it.
       assert(state.backfillBefore !== null);
+      assertEquals(state.lastSyncAt, null);
     }
     assertEquals(runs, 2); // runs 0,1 continue; run 2 completes
     assertEquals(state.activities.length, 4500);
@@ -584,6 +586,27 @@ Deno.test("liftosaur-sync: provider error text never reaches the card or the cal
     assert(text.includes("LIFTOSAUR_FETCH"));
     assert(!String(state.errorMessage).includes("html"));
     assert(String(state.errorMessage).includes("LIFTOSAUR_FETCH"));
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: an initial sync (reconnect) starts a fresh import instead of resuming a stuck backfill", async () => {
+  const now = Date.now();
+  const state: DbState = {
+    lastSyncAt: null,
+    backfillBefore: new Date(now - 300 * DAY).toISOString(),
+    backfillStartedAt: new Date(now - 30 * DAY).toISOString(),
+    activities: [],
+  };
+  const liftosaur = installFakeLiftosaur(datedRecords(3, now - 10 * DAY, HOUR));
+  try {
+    const response = await runSync(state, "initial");
+    assertEquals(response.status, 200, await response.clone().text());
+    assertEquals(liftosaur.requests[0].searchParams.has("endDate"), false);
+    assertEquals(state.activities.length, 3);
+    assertEquals(state.backfillBefore, null);
+    assert(Date.parse(state.lastSyncAt!) > now - 60_000);
   } finally {
     liftosaur.restore();
   }

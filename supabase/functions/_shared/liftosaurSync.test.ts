@@ -56,3 +56,17 @@ Deno.test('liftosaurDateOrder: needs two distinct dates in one direction', () =>
   assertEquals(liftosaurDateOrder([3, 2, 2, 1]), 'descending');
   assertEquals(liftosaurDateOrder([1, 3, 2]), 'unknown');
 });
+
+Deno.test('fetchLiftosaurHistory: an opaque string cursor is followed, not treated as missing', async () => {
+  const seen: Array<string | null> = [];
+  const result = await fetchLiftosaurHistory((params) => {
+    seen.push(params.get('cursor'));
+    const more = seen.length < 2;
+    return Promise.resolve({
+      data: { records: [{ id: seen.length, text: 'x' }], hasMore: more, nextCursor: more ? 'abc123' : null },
+    });
+  });
+  assertEquals(seen, [null, 'abc123']);
+  assertEquals(result.truncated, false);
+  assertEquals(result.records.length, 2);
+});
