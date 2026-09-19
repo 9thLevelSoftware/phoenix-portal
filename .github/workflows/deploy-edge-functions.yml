@@ -166,6 +166,9 @@ jobs:
               print(version)
           PY
           ) | tr -d '\r' | sort -u > remote_migrations.txt
+          if [ ! -s remote_migrations.txt ]; then
+            echo "::warning::Parsed zero applied versions from the Supabase CLI output; the table format may have changed. Check 'supabase migration list --linked' locally before running db push."
+          fi
 
           echo "Local migrations: $(wc -l < local_migrations.txt | tr -d ' ')"
           echo "Applied in prod:  $(wc -l < remote_migrations.txt | tr -d ' ')"
