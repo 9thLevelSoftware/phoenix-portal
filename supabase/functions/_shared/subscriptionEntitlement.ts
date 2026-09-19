@@ -63,7 +63,8 @@ export function isSubscriptionEntitled(
 /**
  * Effective tier for a raw `subscriptions` row: the stored paid tier when
  * entitled, otherwise FREE. Takes raw DB strings; an unknown tier or status
- * resolves to FREE (fail closed). Used by requireSubscription.
+ * resolves to FREE (fail closed). requireSubscription rejects unknown values
+ * with 503 before calling this.
  */
 export function effectiveSubscriptionTier(
   tier: string | null | undefined,

@@ -183,7 +183,9 @@ describe("Paddle webhook security helpers", () => {
 
 	// Runs the fixture through the production Edge gate (requireSubscription
 	// with a fake subscriptions row), so a change to either half of its tier
-	// computation fails here.
+	// computation fails here. Deliberate difference: rows with an unknown tier
+	// or status are corrupt data, which Edge refuses with 503 (design.md),
+	// while SQL and the client map them to FREE. Both deny access.
 	it.each(
 		entitlementFixture.cases,
 	)("Edge requireSubscription fixture: $id -> $expectedTier", async (c) => {
@@ -206,14 +208,24 @@ describe("Paddle webhook security helpers", () => {
 			{},
 			now,
 		);
+		const unknownValue =
+			!["FREE", "EMBER", "FLAME", "INFERNO"].includes(c.tier) ||
+			![
+				"active",
+				"past_due",
+				"canceled",
+				"trialing",
+				"incomplete",
+				"none",
+			].includes(c.status);
 		expect(gate.tier).toBe(c.expectedTier);
 		expect(gate.allowed).toBe(c.expectedTier !== "FREE");
 		if (!gate.allowed) {
-			expect(gate.response.status).toBe(402);
+			expect(gate.response.status).toBe(unknownValue ? 503 : 402);
 		}
 	});
 
-	it("refuses unknown tiers and statuses with 402, not 503", async () => {
+	it("refuses unknown tiers and statuses with 503 (corrupt data), not 402", async () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		for (const row of [
 			{
@@ -239,7 +251,10 @@ describe("Paddle webhook security helpers", () => {
 			expect(gate.allowed).toBe(false);
 			expect(gate.tier).toBe("FREE");
 			if (!gate.allowed) {
-				expect(gate.response.status).toBe(402);
+				expect(gate.response.status).toBe(503);
+				expect(await gate.response.json()).toMatchObject({
+					error: "subscription_unavailable",
+				});
 			}
 		}
 	});

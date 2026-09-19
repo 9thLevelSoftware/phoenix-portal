@@ -47,7 +47,8 @@ function configurationError(corsHeaders: Record<string, string>): Response {
  * Returns `{ allowed: true, tier }` if the user's effective tier (shared
  * entitlement predicate, see subscriptionEntitlement.ts)
  * is at or above `minimumTier`, or `{ allowed: false, tier, response }` with a
- * ready-made 402 Response if not.
+ * ready-made 402 Response if not. A failed lookup or a row with an unknown
+ * tier/status gets a retryable 503 instead.
  *
  * Usage:
  * ```ts
@@ -83,10 +84,13 @@ export async function requireSubscription(
 
   // The effective tier comes from the shared entitlement predicate (parity
   // with SQL subscription_tier_for and the SPA; fixture:
-  // tests/fixtures/entitlement-cases.json). An unknown tier or status (schema
-  // drift, legacy PHOENIX/ELITE, a new Paddle status) resolves to FREE, so
-  // the request is refused with the normal 402 (fail closed). It is logged so
-  // operators can see the drift.
+  // tests/fixtures/entitlement-cases.json).
+  //
+  // fix(F329) / design: an unknown tier or status (schema drift, legacy
+  // PHOENIX/ELITE, a new Paddle status) is corrupt data, not a billing state:
+  // fail closed with a retryable 503 and log it, rather than showing an
+  // upgrade prompt. (SQL subscription_tier_for and the SPA map unknown values
+  // to FREE instead; both deny access.)
   const rawTierValue = subscription?.tier ?? 'FREE';
   const rawStatusValue = subscription?.status ?? 'none';
   if (!KNOWN_TIERS.has(rawTierValue) || !KNOWN_STATUSES.has(rawStatusValue)) {
@@ -94,6 +98,7 @@ export async function requireSubscription(
       '[requireSubscription] unknown tier/status in subscriptions row:',
       { tier: rawTierValue, status: rawStatusValue },
     );
+    return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
   }
 
   const tier = effectiveSubscriptionTier(
