@@ -55,15 +55,26 @@ import { routineDetailOptions } from "@/queries/routines";
 import { formatEquipment } from "@/schemas/transforms";
 import {
 	DEFAULT_WIRE_MODE,
+	ECCENTRIC_LOAD_LABELS,
+	ECCENTRIC_LOADS,
+	ECHO_LEVEL_LABELS,
+	ECHO_LEVELS,
 	isWireMode,
+	REP_COUNT_TIMING_LABELS,
+	REP_COUNT_TIMINGS,
+	SUPERSET_COLOR_NAMES,
+	supersetColorHex,
+	toEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
 	toWireMode,
 	WIRE_MODE_LABELS,
 	WIRE_MODES,
 	type WireMode,
 	workoutModeLabel,
 } from "../../../supabase/functions/_shared/workoutModes.ts";
-
-const SUPERSET_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B"] as const;
 
 const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
 	OLD_SCHOOL: "Traditional resistance training",
@@ -174,8 +185,8 @@ function getNextSupersetColor(exercises: Exercise[]) {
 	);
 
 	return (
-		SUPERSET_COLORS.find((color) => !usedColors.has(color)) ??
-		SUPERSET_COLORS[0]
+		SUPERSET_COLOR_NAMES.find((color) => !usedColors.has(color)) ??
+		SUPERSET_COLOR_NAMES[0]
 	);
 }
 
@@ -262,7 +273,10 @@ export function RoutineBuilder() {
 					// an extra "unsupported" option with a warning.
 					mode: toWireMode(ex.mode) ?? ex.mode,
 					supersetId: ex.superset_id ?? null,
-					supersetColor: ex.superset_color ?? null,
+					// Settings load in mobile's vocabulary. Legacy portal values
+					// (hex colours, light/low, free text) become what the machine
+					// actually used: the colour name, or null = mobile's default.
+					supersetColor: toSupersetColorName(ex.superset_color),
 					supersetOrder: ex.superset_order ?? null,
 					perSetWeights: ex.per_set_weights ?? null,
 					perSetRest: ex.per_set_rest ?? null,
@@ -270,11 +284,11 @@ export function RoutineBuilder() {
 					isAmrap: ex.is_amrap ?? false,
 					isBodyweight: ex.is_bodyweight ?? false,
 					prPercentage: ex.pr_percentage ?? null,
-					repCountTiming: ex.rep_count_timing ?? null,
-					stopAtPosition: ex.stop_at_position ?? null,
+					repCountTiming: toRepCountTiming(ex.rep_count_timing),
+					stopAtPosition: toStopAtPosition(ex.stop_at_position),
 					stallDetection: ex.stall_detection ?? true,
-					eccentricLoad: ex.eccentric_load ?? null,
-					echoLevel: ex.echo_level ?? null,
+					eccentricLoad: toEccentricLoad(ex.eccentric_load),
+					echoLevel: toEchoLevel(ex.echo_level),
 					dropSetEnabled: ex.drop_set_enabled ?? false,
 					dropSetMinWeightKg: ex.drop_set_min_weight_kg ?? null,
 				})),
@@ -653,7 +667,7 @@ export function RoutineBuilder() {
 											key={item.id}
 											className="rounded-xl border border-secondary/70 bg-surface-2/40 p-4"
 											style={{
-												borderLeftColor: item.color ?? undefined,
+												borderLeftColor: supersetColorHex(item.color),
 												borderLeftWidth: 4,
 											}}
 										>
@@ -1374,19 +1388,24 @@ function ExerciseDetailPanel({
 									<Label className="text-xs text-muted-foreground">
 										Eccentric Load
 									</Label>
+									{/* Options are mobile's enum names; "" stores null, which
+									    the phone reads as its default (shown in the label). */}
 									<select
+										aria-label="Eccentric Load"
 										value={exercise.eccentricLoad ?? ""}
 										onChange={(e) =>
 											onUpdate({
-												eccentricLoad: e.target.value || null,
+												eccentricLoad: toEccentricLoad(e.target.value),
 											})
 										}
 										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 									>
-										<option value="">Standard</option>
-										<option value="light">Light</option>
-										<option value="moderate">Moderate</option>
-										<option value="heavy">Heavy</option>
+										<option value="">Default (100%)</option>
+										{ECCENTRIC_LOADS.map((load) => (
+											<option key={load} value={load}>
+												{ECCENTRIC_LOAD_LABELS[load]}
+											</option>
+										))}
 									</select>
 								</div>
 								<div className="space-y-1">
@@ -1394,47 +1413,60 @@ function ExerciseDetailPanel({
 										Echo Level
 									</Label>
 									<select
+										aria-label="Echo Level"
 										value={exercise.echoLevel ?? ""}
 										onChange={(e) =>
-											onUpdate({ echoLevel: e.target.value || null })
+											onUpdate({ echoLevel: toEchoLevel(e.target.value) })
 										}
 										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 									>
-										<option value="">Off</option>
-										<option value="low">Low</option>
-										<option value="medium">Medium</option>
-										<option value="high">High</option>
+										<option value="">Default (Harder)</option>
+										{ECHO_LEVELS.map((level) => (
+											<option key={level} value={level}>
+												{ECHO_LEVEL_LABELS[level]}
+											</option>
+										))}
 									</select>
 								</div>
 								<div className="space-y-1">
 									<Label className="text-xs text-muted-foreground">
 										Rep Count Timing
 									</Label>
-									<Input
+									<select
+										aria-label="Rep Count Timing"
 										value={exercise.repCountTiming ?? ""}
 										onChange={(e) =>
 											onUpdate({
-												repCountTiming: e.target.value || null,
+												repCountTiming: toRepCountTiming(e.target.value),
 											})
 										}
-										className="bg-background border-secondary text-white"
-										placeholder="2-0-2"
-									/>
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Default (Top)</option>
+										{REP_COUNT_TIMINGS.map((timing) => (
+											<option key={timing} value={timing}>
+												{REP_COUNT_TIMING_LABELS[timing]}
+											</option>
+										))}
+									</select>
 								</div>
 								<div className="space-y-1">
 									<Label className="text-xs text-muted-foreground">
 										Stop at Position
 									</Label>
-									<Input
+									<select
+										aria-label="Stop at Position"
 										value={exercise.stopAtPosition ?? ""}
 										onChange={(e) =>
 											onUpdate({
-												stopAtPosition: e.target.value || null,
+												stopAtPosition: toStopAtPosition(e.target.value),
 											})
 										}
-										className="bg-background border-secondary text-white"
-										placeholder="Lockout"
-									/>
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Don't stop</option>
+										<option value="TOP">Stop at top</option>
+									</select>
 								</div>
 							</div>
 

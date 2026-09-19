@@ -1472,3 +1472,87 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   assertEquals((body.externalActivities as unknown[]).length, 500);
 });
 
+const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
+
+function routineExerciseRow(
+  id: string,
+  durationSeconds: number | null,
+): Record<string, unknown> {
+  return {
+    id,
+    routine_id: PULL_ROUTINE_ID,
+    exercise_id: null,
+    catalog: null,
+    name: "Plank",
+    muscle_group: "Core",
+    sets: 3,
+    reps: 10,
+    weight: 0,
+    rest_seconds: 60,
+    duration_seconds: durationSeconds,
+    mode: "OLD_SCHOOL",
+    order_index: 0,
+    superset_id: null,
+    superset_color: null,
+    superset_order: null,
+    per_set_weights: null,
+    per_set_rest: null,
+    per_set_reps: null,
+    is_amrap: false,
+    is_bodyweight: true,
+    pr_percentage: null,
+    rep_count_timing: null,
+    stop_at_position: null,
+    stall_detection: true,
+    eccentric_load: null,
+    echo_level: null,
+    per_set_echo_levels: null,
+    warmup_sets: null,
+    drop_set_enabled: false,
+    drop_set_min_weight_kg: null,
+  };
+}
+
+Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Timed routine",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", 45),
+          routineExerciseRow("00000000-0000-4000-8000-000000000042", null),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines.length, 1);
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+  assertEquals(routines[0].exercises[1].durationSeconds, null);
+});
+

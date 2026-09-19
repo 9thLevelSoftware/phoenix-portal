@@ -6,7 +6,14 @@ import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
-import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
+import {
+	toEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -102,7 +109,9 @@ export function toRoutineExerciseRows(
 		mode: requireWireMode(ex.mode, preservedModes),
 		order_index: i,
 		superset_id: ex.superset_id ?? null,
-		superset_color: ex.superset_color ?? null,
+		// Settings are stored in mobile's vocabulary. Anything outside it is
+		// stored as null, which is the default mobile would parse it to.
+		superset_color: toSupersetColorName(ex.superset_color),
 		superset_order: ex.superset_order ?? null,
 		per_set_weights: normalizePerSetWeights(ex.per_set_weights),
 		per_set_rest: (ex.per_set_rest ?? null) as Json,
@@ -110,11 +119,11 @@ export function toRoutineExerciseRows(
 		is_amrap: ex.is_amrap ?? false,
 		is_bodyweight: ex.is_bodyweight ?? false,
 		pr_percentage: ex.pr_percentage ?? null,
-		rep_count_timing: ex.rep_count_timing ?? null,
-		stop_at_position: ex.stop_at_position ?? null,
+		rep_count_timing: toRepCountTiming(ex.rep_count_timing),
+		stop_at_position: toStopAtPosition(ex.stop_at_position),
 		stall_detection: ex.stall_detection ?? true,
-		eccentric_load: ex.eccentric_load ?? null,
-		echo_level: ex.echo_level ?? null,
+		eccentric_load: toEccentricLoad(ex.eccentric_load),
+		echo_level: toEchoLevel(ex.echo_level),
 		drop_set_enabled: ex.drop_set_enabled ?? false,
 		drop_set_min_weight_kg:
 			ex.drop_set_min_weight_kg == null

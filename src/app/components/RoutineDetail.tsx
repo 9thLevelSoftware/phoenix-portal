@@ -16,7 +16,10 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { formatWeight, type WeightUnit } from "@/lib/units";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
-import { workoutModeLabel } from "../../../supabase/functions/_shared/workoutModes.ts";
+import {
+	supersetColorHex,
+	workoutModeLabel,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
 
 function formatExercisePrescription(
 	exercise: {
@@ -263,7 +266,7 @@ export function RoutineDetail() {
 							key={item.id}
 							className="rounded-xl border border-secondary bg-surface-2/50 p-4"
 							style={{
-								borderLeftColor: item.color ?? undefined,
+								borderLeftColor: supersetColorHex(item.color),
 								borderLeftWidth: 4,
 							}}
 						>

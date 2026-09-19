@@ -1,5 +1,21 @@
 import { z } from "zod";
-import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
+import {
+	toEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
+
+// Routine-exercise settings read in mobile's vocabulary. A value outside it
+// (legacy portal "light"/"low"/free text) is what the phone parsed to its
+// default, so it reads as null; legacy hex colours read as their name.
+const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
+	z
+		.string()
+		.nullish()
+		.transform((value) => normalize(value));
 
 // Per-cable to total weight conversion
 // The trainer has dual cables; DB stores per-cable, portal shows total
@@ -261,7 +277,10 @@ export const routineExerciseSchema = z.object({
 	mode: z.string().transform((mode) => toWireMode(mode) ?? mode),
 	order_index: z.number(),
 	superset_id: z.string().nullable().optional(),
-	superset_color: z.string().nullable().optional(),
+	superset_color: z
+		.string()
+		.nullish()
+		.transform((value) => toSupersetColorName(value) ?? value ?? null),
 	superset_order: z.number().nullable().optional(),
 	// Stored per-cable to match the single `weight` column; multiply back to
 	// display totals so the UI keeps round-trip symmetry with `weight`.
@@ -287,14 +306,14 @@ export const routineExerciseSchema = z.object({
 		.nullish()
 		.transform((v) => v ?? false),
 	pr_percentage: z.number().nullable().optional(),
-	rep_count_timing: z.string().nullable().optional(),
-	stop_at_position: z.string().nullable().optional(),
+	rep_count_timing: nullableSetting(toRepCountTiming),
+	stop_at_position: nullableSetting(toStopAtPosition),
 	stall_detection: z
 		.boolean()
 		.nullish()
 		.transform((v) => v ?? true),
-	eccentric_load: z.string().nullable().optional(),
-	echo_level: z.string().nullable().optional(),
+	eccentric_load: nullableSetting(toEccentricLoad),
+	echo_level: nullableSetting(toEchoLevel),
 	drop_set_enabled: z
 		.boolean()
 		.nullish()
