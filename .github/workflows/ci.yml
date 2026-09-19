@@ -10,9 +10,10 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
   # Supersede stale PR runs, but never cancel post-merge CI on main: every main
-  # commit needs its own complete result.
+  # commit gets its own group (keyed by SHA), so neither an in-progress nor a
+  # pending main run can be replaced by a newer one.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:

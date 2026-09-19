@@ -7,11 +7,13 @@ name: Deploy Edge Functions
 # "Supabase Preview" check) to provide a deterministic merge-to-main deploy
 # path for Edge Functions independent of Branching's preview-branch lifecycle.
 #
-# Migration owner: production migrations are applied by the human operator with
-# `supabase db push` (see AGENTS.md -> "Release order" and CLAUDE.md ->
-# "Migration Workflow Discipline"). They are NOT applied by the Supabase GitHub
-# App: its `main` branch record has reported MIGRATIONS_FAILED since
-# 2026-03-16, so nothing in the repo may rely on it to migrate prod.
+# Migration owner (release-plan decision, Operator Action 3): the human
+# operator applies production migrations with `supabase db push` (see
+# AGENTS.md -> "Release order" and CLAUDE.md -> "Migration Workflow
+# Discipline"). The Supabase GitHub App's migration step is not relied on: its
+# `main` branch record has reported MIGRATIONS_FAILED since 2026-03-16 and
+# prod migrations have been applied out-of-band. If that decision changes,
+# update this header, AGENTS.md and CLAUDE.md together.
 #
 # Two gates run before any upload:
 #   1. `verify`: the Edge type-check and handler tests (`check:edge-functions`,
@@ -31,7 +33,9 @@ name: Deploy Edge Functions
 #   - SUPABASE_PROD_DB_PASSWORD     Database password for the prod project, used
 #                                   only by `supabase link` /
 #                                   `supabase migration list --linked` (read-only;
-#                                   same secret prod-migration-drift.yml uses)
+#                                   same secret prod-migration-drift.yml uses).
+#                                   Passed as SUPABASE_DB_PASSWORD in the step
+#                                   env, never on the command line.
 
 on:
   push:
@@ -57,11 +61,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: ".nvmrc"
           cache: npm
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: 2.2.15
       - run: npm ci
@@ -73,6 +77,9 @@ jobs:
   deploy:
     name: Deploy Edge Functions
     needs: verify
+    # Never enter the `production` environment from a non-main ref (the step
+    # guard below stays as defense-in-depth).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Protected environment: configure required reviewers / branch restrictions
@@ -113,20 +120,22 @@ jobs:
       # Refuse to deploy Edge code while any local migration is missing from
       # prod. Read-only: `link` + `migration list` never write to the database.
       # Parsing mirrors prod-migration-drift.yml (CLI 2.76.9 has no
-      # machine-readable output flag). Fails closed: a CLI error, or a parse
-      # that yields no remote versions, reports every local version as missing.
+      # machine-readable output flag). Fails closed: a CLI error, no local
+      # migrations found, or a parse that yields no remote versions all block
+      # the deploy.
       - name: Gate on prod migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
-          SUPABASE_PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+          # The CLI reads the DB password from this variable, keeping it out of argv.
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
         run: |
           set -euo pipefail
           redact() {
             sed -E 's#(postgres(ql)?://[^:[:space:]]+:)[^@[:space:]]+@#\1***@#g; s#(password=)[^[:space:]]+#\1***#g' "$1"
           }
 
-          if ! supabase link --project-ref "$SUPABASE_PROD_PROJECT_REF" -p "$SUPABASE_PROD_DB_PASSWORD" > link.out 2> link.err; then
+          if ! supabase link --project-ref "$SUPABASE_PROD_PROJECT_REF" > link.out 2> link.err; then
             echo "::error::supabase link failed; refusing to deploy without verifying prod migrations."
             redact link.err
             exit 1
@@ -138,10 +147,25 @@ jobs:
             exit 1
           fi
 
+          # Local versions: the numeric prefix of <version>_<name>.sql. Names
+          # that do not match are reported and skipped, never echoed raw into
+          # a workflow command.
+          : > local_migrations.txt
           for f in supabase/migrations/*.sql; do
             [ -f "$f" ] || continue
-            basename "$f" | sed -E 's/^([0-9]+)_.*/\1/'
-          done | sort -u > local_migrations.txt
+            base=$(basename "$f")
+            if [[ "$base" =~ ^([0-9]+)_[A-Za-z0-9_]+\.sql$ ]]; then
+              echo "${BASH_REMATCH[1]}" >> local_migrations.txt
+            else
+              echo "::warning::Skipping migration file with a non-standard name (expected <digits>_<name>.sql)."
+              printf '  skipped: %q\n' "$base"
+            fi
+          done
+          sort -u -o local_migrations.txt local_migrations.txt
+          if [ ! -s local_migrations.txt ]; then
+            echo "::error::No local migrations found under supabase/migrations/; refusing to deploy without a migration baseline."
+            exit 1
+          fi
 
           (
           python3 <<'PY'
@@ -167,7 +191,9 @@ jobs:
           PY
           ) | tr -d '\r' | sort -u > remote_migrations.txt
           if [ ! -s remote_migrations.txt ]; then
-            echo "::warning::Parsed zero applied versions from the Supabase CLI output; the table format may have changed. Check 'supabase migration list --linked' locally before running db push."
+            # A parser failure, not a drift result: do not tell anyone to db push.
+            echo "::error::Could not parse any applied migration versions from 'supabase migration list --linked' (the CLI table format may have changed). This is not a drift result: do NOT run db push; fix the parser, then re-run."
+            exit 1
           fi
 
           echo "Local migrations: $(wc -l < local_migrations.txt | tr -d ' ')"
@@ -182,6 +208,9 @@ jobs:
             echo "  supabase db push"
             echo "verify the migration's artifact in prod, then re-run this workflow from main"
             echo "via workflow_dispatch (Actions -> Deploy Edge Functions -> Run workflow)."
+            echo "If the DDL already ran in prod under a different version, fix only the tracking"
+            echo "with 'supabase migration repair' as described in CLAUDE.md; never repair a"
+            echo "version whose DDL has not executed."
             exit 1
           fi
           echo "All local migrations are applied to prod; proceeding with deploy."

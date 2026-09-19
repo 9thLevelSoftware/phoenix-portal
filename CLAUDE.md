@@ -199,7 +199,7 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 
 Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 migrations were recorded in `schema_migrations` but their DDL was absent from prod):
 
-**Single migration owner:** the human operator applies production migrations with `supabase db push`. The Supabase GitHub App does not apply them (its `main` record has shown `MIGRATIONS_FAILED` since 2026-03-16). For the order of migrations, Edge Functions, SPA, and mobile releases, follow `AGENTS.md` -> "Release order"; the Edge deploy workflow refuses to deploy while any local migration is unapplied in prod.
+**Single migration owner** (release-plan decision, Operator Action 3): the human operator applies production migrations with `supabase db push`. The Supabase GitHub App's migration step is not relied on (its `main` record has shown `MIGRATIONS_FAILED` since 2026-03-16, and prod migrations have been applied out-of-band). If this decision changes, update this line, `AGENTS.md`, and the `deploy-edge-functions.yml` header together. For the order of migrations, Edge Functions, SPA, and mobile releases, follow `AGENTS.md` -> "Release order"; the Edge deploy workflow refuses to deploy while any local migration is unapplied in prod.
 
 ### DO
 - Write every schema change as a migration file in `supabase/migrations/`.

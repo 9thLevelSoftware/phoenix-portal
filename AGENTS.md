@@ -42,8 +42,9 @@ changes.
 ## Release order
 
 Three pipelines ship independently: prod migrations (applied by the human
-operator with `supabase db push`, the single migration owner; the Supabase
-GitHub App is not relied on), Edge Functions (`deploy-edge-functions.yml` on
+operator with `supabase db push`, the single migration owner per the release
+plan's Operator Action 3 decision; the Supabase GitHub App's migration step is
+not relied on), Edge Functions (`deploy-edge-functions.yml` on
 merge to `main`), and the SPA (Cloudflare, on merge). Changes that span them
 follow expand/contract order:
 
