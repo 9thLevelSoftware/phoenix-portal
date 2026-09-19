@@ -80,7 +80,9 @@ describe("server-side active personal record reads", () => {
 	for (const path of [
 		["supabase", "functions", "compute-rankings", "index.ts"],
 		["supabase", "functions", "generate-insights", "index.ts"],
-		["src", "lib", "export", "data-export.ts"],
+		// The GDPR export (src/lib/export/data-export.ts) reads through the
+		// export-user-data endpoint and deliberately includes tombstoned rows
+		// with their deleted_at: it is a copy of all data held, not a PR view.
 	]) {
 		it(`${path.join("/")} excludes tombstones`, () => {
 			const query = personalRecordQuery(readWorkspaceFile(...path));

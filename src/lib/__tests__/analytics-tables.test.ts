@@ -7,6 +7,7 @@ import {
 	buildWorkoutExerciseSummaryRows,
 	fetchAllSupabasePages,
 	fetchAllSupabasePagesForChunks,
+	fetchUserAnalyticsRows,
 	generateDailyExerciseSummaryCsv,
 	generateMuscleContributionCsv,
 	generateRepSummaryCsv,
@@ -225,5 +226,62 @@ describe("analytics table CSV generators", () => {
 			{ ids: ["session-3"], range: [2, 3] },
 		]);
 		expect(rows).toHaveLength(4);
+	});
+
+	it("orders every paged analytics read by id so ranges are deterministic", async () => {
+		const rowCounts: Record<string, number> = {
+			workout_sessions: 1001,
+			exercises: 3,
+			sets: 1001,
+			rep_summaries: 1001,
+		};
+		const calls: Array<{ table: string; chain: string[] }> = [];
+		const client = {
+			from(table: string) {
+				const chain: string[] = [];
+				calls.push({ table, chain });
+				const builder = {
+					select: () => builder,
+					eq: () => builder,
+					in: () => builder,
+					order: (column: string, options?: { ascending?: boolean }) => {
+						chain.push(
+							`order:${column}${options?.ascending === false ? ":desc" : ""}`,
+						);
+						return builder;
+					},
+					range: async (from: number, to: number) => {
+						chain.push(`range:${from}-${to}`);
+						const end = Math.min(to + 1, rowCounts[table]);
+						return {
+							data: Array.from({ length: Math.max(end - from, 0) }, (_, i) => ({
+								id: `${table}-${from + i}`,
+							})),
+							error: null,
+						};
+					},
+				};
+				return builder;
+			},
+		};
+
+		const rows = await fetchUserAnalyticsRows(
+			"user-1",
+			client as unknown as Parameters<typeof fetchUserAnalyticsRows>[1],
+		);
+
+		expect(rows.workouts).toHaveLength(1001);
+		expect(rows.sets).toHaveLength(1001);
+		expect(rows.repSummaries).toHaveLength(1001);
+		for (const { table, chain } of calls) {
+			const orders = chain.filter((entry) => entry.startsWith("order:"));
+			expect(orders[orders.length - 1], table).toBe("order:id");
+			expect(chain[chain.length - 1], table).toMatch(/^range:/);
+		}
+		expect(calls.find((c) => c.table === "workout_sessions")?.chain).toEqual([
+			"order:started_at:desc",
+			"order:id",
+			"range:0-999",
+		]);
 	});
 });
