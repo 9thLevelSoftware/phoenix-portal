@@ -1,8 +1,8 @@
 # Phase 2 Security Findings -- Tasks 2.10-2.14
 
-> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of `beta-readiness-review`. Do not read its findings
-> or their fix status
-> as describing this tree. Re-derive current behaviour from the code,
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of
+> `beta-readiness-review`. Do not read its findings or their fix status as
+> describing this tree. Re-derive current behaviour from the code,
 > `supabase/config.toml`, `supabase/migrations/`, and CI.
 
 **Auditor:** Security Engineer (automated)

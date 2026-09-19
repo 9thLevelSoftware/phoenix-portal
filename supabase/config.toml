@@ -36,9 +36,9 @@ verify_jwt = true
 
 [functions.fitbit-oauth]
 # Auth: none of handler JWT, HMAC, or cron secret. This is the browser
-# redirect from Fitbit, which carries no JWT. The handler accepts only a
-# single-use, unexpired oauth_states token issued to the user by
-# initiate-oauth for provider 'fitbit'.
+# redirect from Fitbit, which carries no JWT. The handler accepts only an
+# unexpired oauth_states token issued to the user by initiate-oauth for
+# provider 'fitbit'; the token is deleted after a successful exchange.
 verify_jwt = false
 
 [functions.fitbit-sync]
@@ -46,10 +46,10 @@ verify_jwt = true
 
 [functions.garmin-oauth]
 # Auth: none of handler JWT, HMAC, or cron secret. These are browser
-# redirects that carry no JWT. Step 1 accepts only a single-use, unexpired
-# oauth_states token from initiate-oauth; step 2 (Garmin's callback)
-# accepts only an oauth_token matching an unexpired pending request token
-# stored server-side in step 1. (OAuth 1.0a HMAC-SHA1 signs our outbound
+# redirects that carry no JWT. Step 1 accepts only an unexpired
+# oauth_states token from initiate-oauth, deleted once the request token is
+# stored; step 2 (Garmin's callback) accepts only an oauth_token matching an
+# unexpired pending request token stored server-side in step 1. (OAuth 1.0a HMAC-SHA1 signs our outbound
 # calls to Garmin; it does not authenticate inbound requests.)
 verify_jwt = false
 
@@ -112,9 +112,9 @@ verify_jwt = false
 
 [functions.strava-oauth]
 # Auth: none of handler JWT, HMAC, or cron secret. This is the browser
-# redirect from Strava, which carries no JWT. The handler accepts only a
-# single-use, unexpired oauth_states token issued to the user by
-# initiate-oauth for provider 'strava'.
+# redirect from Strava, which carries no JWT. The handler accepts only an
+# unexpired oauth_states token issued to the user by initiate-oauth for
+# provider 'strava'; the token is deleted after a successful exchange.
 verify_jwt = false
 
 [functions.generate-insights]

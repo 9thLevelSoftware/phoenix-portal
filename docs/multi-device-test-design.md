@@ -13,16 +13,18 @@ This document specifies the test scenarios for validating sync behavior across m
 | Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | CRITICAL |
 | Personal Records | LOCAL WINS (INSERT OR IGNORE)  | `insert()` after dedup check - LOCAL WINS                     | OK       |
 | Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | Minor    |
-| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | OK       |
+| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | Minor (OK only when flag on) |
 | Badges           | Union merge (INSERT OR IGNORE) | `upsert({ onConflict: 'user_id,badge_id' })` - Last push wins | Minor    |
 
-"Flag" is `SYNC_LWW_ENABLED` (`supabase/functions/_shared/flags.ts`, default off). With it off, the incoming push overwrites the server row on `id`. With it on, sessions, routines, and cycles go through the `upsert_<entity>_lww` RPCs, which reject stale pushes by timestamp.
+"Flag" is `SYNC_LWW_ENABLED` (`supabase/functions/_shared/flags.ts`, default off). With it off, the incoming push overwrites the server row on `id`. With it on, six entities go through `upsert_<entity>_lww` RPCs, which reject stale pushes by `updated_at`: sessions, routines, cycles, rpg_attributes, gamification_stats, and external_activities.
 
 The tests in this suite will verify the ACTUAL behavior, not the claimed behavior.
 
 ## Actual Conflict Resolution Strategy (from code analysis)
 
 Based on analysis of `supabase/functions/mobile-sync-push/index.ts`:
+
+> These sections describe the default flag-off path. With `SYNC_LWW_ENABLED=true`, the LWW RPCs listed above replace the plain upserts.
 
 ### Sessions (`workout_sessions`)
 - **Strategy**: UPSERT (Last Push Wins)

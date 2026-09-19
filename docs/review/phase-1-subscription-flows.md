@@ -1,8 +1,8 @@
 # Phase 1: Subscription Flows Review
 
-> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of `beta-readiness-review`. Do not read its upgrade,
-> downgrade, or cancellation findings
-> as describing this tree. Re-derive current behaviour from the code,
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of
+> `beta-readiness-review`. Do not read its upgrade, downgrade, or cancellation
+> findings as describing this tree. Re-derive current behaviour from the code,
 > `supabase/config.toml`, `supabase/migrations/`, and CI.
 
 **Tasks:** 1.7 (Upgrade/Downgrade) and 1.8 (Cancellation)
