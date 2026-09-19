@@ -25,9 +25,9 @@
 --   4. The caller-rights LWW upsert RPCs (public.upsert_*_lww) are only
 --      called by mobile-sync-push as service_role; the SPA has no caller.
 --      Revoke EXECUTE from PUBLIC/anon/authenticated on every overload.
---      Not included (no leaderboard input, the portal writes them):
---      exercises/sets/rep_summaries/exercise_progress INSERT policies — see
---      the PR 10 summary follow-ups.
+--   3b. Session child tables (exercises, sets, rep_summaries, rep_telemetry,
+--      exercise_progress): drop the client INSERT policies and revoke
+--      INSERT/UPDATE/DELETE from anon/authenticated.
 --   5. check_goal_limit: the trigger was BEFORE INSERT only, so a user could
 --      archive a goal and flip it back to 'active' to exceed the tier cap.
 --      INSERT is still always checked (FREE may insert no goal of any
@@ -69,6 +69,28 @@ GRANT UPDATE (notes) ON public.workout_sessions TO authenticated;
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Users can insert own records" ON public.personal_records;
 REVOKE INSERT, UPDATE ON public.personal_records FROM anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3b. Session child tables: no client writes. exercises feeds
+--     get_exercise_mastery_rankings; sets / rep_summaries / rep_telemetry /
+--     exercise_progress carry per-session volume, reps and 1RM estimates.
+--     The SPA never writes them (the routine builder writes
+--     routine_exercises); mobile-sync-push writes them as service_role,
+--     directly and through replace_session_children. They never had client
+--     UPDATE/DELETE policies; the grants go too so a drifted policy cannot
+--     reopen them.
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can insert own exercises" ON public.exercises;
+DROP POLICY IF EXISTS "Users can insert own sets" ON public.sets;
+DROP POLICY IF EXISTS "Users can insert own rep summaries" ON public.rep_summaries;
+DROP POLICY IF EXISTS "Users can insert own telemetry" ON public.rep_telemetry;
+DROP POLICY IF EXISTS "Users can insert own exercise progress" ON public.exercise_progress;
+
+REVOKE INSERT, UPDATE, DELETE ON public.exercises FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.sets FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.rep_summaries FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.rep_telemetry FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.exercise_progress FROM anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4. LWW upsert RPCs: service_role only (every overload, by name).
