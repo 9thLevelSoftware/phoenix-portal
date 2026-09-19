@@ -1485,18 +1485,46 @@ const MOBILE_EXTERNAL_ACTIVITY_REQUIRED_STRINGS = [
   "startedAt",
   "syncedAt",
 ] as const;
-const MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED = {
+// "int" mirrors a Kotlin `Int`: kotlinx rejects fractional JSON numbers there.
+type MobileWireType = "string" | "number" | "int" | "boolean";
+const MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
   activityType: "string",
-  durationSeconds: "number",
-} as const;
-const MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS = {
+  durationSeconds: "int",
+};
+const MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS: Record<
+  string,
+  MobileWireType
+> = {
   distanceMeters: "number",
-  calories: "number",
-  avgHeartRate: "number",
-  maxHeartRate: "number",
+  calories: "int",
+  avgHeartRate: "int",
+  maxHeartRate: "int",
   elevationGainMeters: "number",
   rawData: "string",
-} as const;
+};
+
+function matchesMobileWireType(value: unknown, type: MobileWireType): boolean {
+  if (type === "int") return Number.isInteger(value);
+  return typeof value === type;
+}
+
+// Asserts that non-nullable-with-default Kotlin fields are absent or of the
+// right type, never JSON null (PortalWireJson has no coerceInputValues).
+function assertNonNullableDefaulted(
+  dto: Record<string, unknown>,
+  fields: Record<string, MobileWireType>,
+): void {
+  for (const [field, type] of Object.entries(fields)) {
+    const value = dto[field];
+    assert(
+      value === undefined || matchesMobileWireType(value, type),
+      `${field} must be absent or a ${type}, never null`,
+    );
+  }
+}
 
 function assertDecodesAsMobileExternalActivity(
   dto: Record<string, unknown>,
@@ -1508,17 +1536,10 @@ function assertDecodesAsMobileExternalActivity(
       `required ${field} must be a non-empty string`,
     );
   }
-  for (
-    const [field, type] of Object.entries(
-      MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED,
-    )
-  ) {
-    const value = dto[field];
-    assert(
-      value === undefined || typeof value === type,
-      `${field} must be absent or a ${type}, never null`,
-    );
-  }
+  assertNonNullableDefaulted(
+    dto,
+    MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED,
+  );
   for (
     const [field, type] of Object.entries(
       MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS,
@@ -1526,7 +1547,8 @@ function assertDecodesAsMobileExternalActivity(
   ) {
     const value = dto[field];
     assert(
-      value === undefined || value === null || typeof value === type,
+      value === undefined || value === null ||
+        matchesMobileWireType(value, type),
       `${field} must be null or a ${type}`,
     );
   }
@@ -1602,6 +1624,141 @@ Deno.test("external activity DTOs always carry a non-empty ISO syncedAt and deco
   assertEquals(startedOnly.syncedAt, "2026-08-01T00:00:00+00:00");
 });
 
+Deno.test("mobile wire int mirror rejects fractional numbers for Kotlin Int fields", () => {
+  assert(matchesMobileWireType(60, "int"));
+  assert(!matchesMobileWireType(60.5, "int"));
+  assert(!matchesMobileWireType(null, "int"));
+  assert(matchesMobileWireType(60.5, "number"));
+});
+
+// Kotlin PullRoutineExerciseDto.isAmrap: Boolean = false,
+// PullRoutineExerciseDto.stallDetection: Boolean = true and
+// PullBadgeDto.badgeTier: String = "bronze" are non-nullable with defaults,
+// while routine_exercises.is_amrap / stall_detection and
+// earned_badges.badge_tier are nullable columns.
+const MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
+  isAmrap: "boolean",
+  stallDetection: "boolean",
+};
+const MOBILE_BADGE_NON_NULLABLE_DEFAULTED: Record<string, MobileWireType> = {
+  badgeTier: "string",
+};
+
+Deno.test("null routine exercise flags and badge tier are pulled as the mobile defaults, never null", async () => {
+  const routineId = "00000000-0000-4000-8000-0000000000a1";
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: routineId,
+            user_id: VALID_USER_ID,
+            name: "Null flags",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 0,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-08-01T00:00:00+00:00",
+          }],
+          error: null,
+        };
+      }
+      if (name === "get_badges_excluding_ids") {
+        return {
+          data: [
+            {
+              id: "00000000-0000-4000-8000-0000000000b1",
+              user_id: VALID_USER_ID,
+              badge_id: "first_workout",
+              badge_name: "First",
+              badge_description: null,
+              badge_tier: null,
+              earned_at: "2026-08-01T00:00:00+00:00",
+            },
+            {
+              id: "00000000-0000-4000-8000-0000000000b2",
+              user_id: VALID_USER_ID,
+              badge_id: "tenth_workout",
+              badge_name: "Tenth",
+              badge_description: null,
+              badge_tier: "gold",
+              earned_at: "2026-08-02T00:00:00+00:00",
+            },
+          ],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          {
+            id: "00000000-0000-4000-8000-0000000000c1",
+            routine_id: routineId,
+            name: "Row",
+            muscle_group: "Back",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 0,
+            is_amrap: null,
+            stall_detection: null,
+            catalog: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-0000000000c2",
+            routine_id: routineId,
+            name: "Press",
+            muscle_group: "Chest",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 1,
+            is_amrap: true,
+            stall_detection: false,
+            catalog: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+
+  const routines = body.routines as Array<Record<string, unknown>>;
+  assertEquals(routines.length, 1);
+  const exercises = routines[0].exercises as Array<Record<string, unknown>>;
+  assertEquals(exercises.length, 2);
+  for (const exercise of exercises) {
+    assertNonNullableDefaulted(
+      exercise,
+      MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED,
+    );
+  }
+  assertEquals(exercises[0].isAmrap, false);
+  assertEquals(exercises[0].stallDetection, true);
+  assertEquals(exercises[1].isAmrap, true);
+  assertEquals(exercises[1].stallDetection, false);
+
+  const badges = body.badges as Array<Record<string, unknown>>;
+  assertEquals(badges.length, 2);
+  for (const badge of badges) {
+    assertNonNullableDefaulted(badge, MOBILE_BADGE_NON_NULLABLE_DEFAULTED);
+  }
+  assertEquals(badges.map((badge) => badge.badgeTier), ["bronze", "gold"]);
+});
+
 Deno.test({
   name:
     "integration: pulled external activity from real SQL carries syncedAt and decodes as the mobile DTO",
@@ -1620,7 +1777,11 @@ Deno.test({
         // activity_type / duration_seconds left NULL on purpose; synced_at
         // takes its column DEFAULT NOW().
       });
-      if (inserted.error) throw new Error("external activity fixture failed");
+      if (inserted.error) {
+        throw new Error(
+          `external activity fixture failed: ${inserted.error.code} ${inserted.error.message}`,
+        );
+      }
 
       const logs: unknown[][] = [];
       const handler = realPullHandler(fixture, fixture.ownerId, logs);
@@ -1644,7 +1805,11 @@ Deno.test({
         fixture.ownerId,
         fixture.otherId,
       ]);
-      if (deleted.error) throw new Error("external activity cleanup failed");
+      if (deleted.error) {
+        throw new Error(
+          `external activity cleanup failed: ${deleted.error.code} ${deleted.error.message}`,
+        );
+      }
     }
     await assertLocalPullFixtureClean(fixture);
   },

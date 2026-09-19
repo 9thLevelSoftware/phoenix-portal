@@ -406,7 +406,7 @@ function streamingRawRequest(
 
 function permissiveQuery(
   table: string,
-  onWrite: (method: string) => void,
+  onWrite: (method: string, args: unknown[]) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
@@ -433,10 +433,10 @@ function permissiveQuery(
     "returns",
   ];
   for (const method of chainMethods) {
-    query[method] = (..._args: unknown[]) => {
+    query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method);
+        onWrite(method, args);
       }
       return query;
     };
@@ -473,6 +473,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWritePayloads: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -494,6 +495,9 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWritePayloads: Array<
+    { table: string; method: string; args: unknown[] }
+  > = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -503,8 +507,9 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method) => {
+      return permissiveQuery(table, (method, args) => {
         adminWriteCalls.push({ table, method });
+        adminWritePayloads.push({ table, method, args });
         operationEvents.push(`write:${table}:${method}`);
       }, table === "personal_records" ? options.personalRecordsResult : undefined);
     },
@@ -586,6 +591,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWritePayloads,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -1964,6 +1970,35 @@ Deno.test("legacy push response keeps ordinary fields and adds empty preference 
   );
 });
 
+Deno.test("external activity synced_at is server time, never the client's syncedAt", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    externalActivities: [{
+      id: "00000000-0000-4000-8000-0000000000e1",
+      externalId: "hevy-1",
+      provider: "hevy",
+      name: "Imported workout",
+      activityType: "strength",
+      startedAt: "2020-01-01T00:00:00.000Z",
+      durationSeconds: 600,
+      syncedAt: "2020-01-01T00:05:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
+  const upserts = harness.adminWritePayloads.filter((call) =>
+    call.table === "external_activities" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  const rows = upserts[0].args[0] as Array<Record<string, unknown>>;
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
+  assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
+});
+
 Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
   const personalRecordId = "00000000-0000-4000-8000-000000000040";
   const harness = makeHarness(undefined, {
@@ -2805,6 +2840,142 @@ Deno.test({
       assertEquals(stored.data.equipment_rack, rackMutation.payload);
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: pushed external activity stores server synced_at so a later pull cursor still sees it",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    const activityId = crypto.randomUUID();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "EMBER",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      });
+      if (subscription.error) {
+        throw new Error(
+          `subscription fixture failed: ${subscription.error.code} ${subscription.error.message}`,
+        );
+      }
+      // A device's last pull cursor, taken from the server clock just
+      // before another device pushes an activity with an older client
+      // syncedAt. The pull filters `synced_at > lastSync`.
+      const otherDeviceLastSync = Date.now() - 1_000;
+      const handler = createMobileSyncPushHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          // Real SQL for every read/write; only the Realtime broadcast is
+          // stubbed so the test leaks no websocket or timer.
+          const broadcastStub = {
+            channel() {
+              return {
+                subscribe(callback: (status: string) => void) {
+                  callback("SUBSCRIBED");
+                  return {};
+                },
+                async send() {
+                  return "ok";
+                },
+              };
+            },
+            async removeChannel() {
+              return "ok";
+            },
+          };
+          return new Proxy(fixture.admin, {
+            get(target, property, receiver) {
+              if (property === "channel" || property === "removeChannel") {
+                return broadcastStub[property];
+              }
+              const value = Reflect.get(target, property, receiver);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+        },
+        logOperationalFailure() {},
+        now: () => Date.now(),
+      } as never);
+      const response = await handler(requestFromBody({
+        ...validPushBody(),
+        externalActivities: [{
+          id: activityId,
+          externalId: `pr72-${activityId}`,
+          provider: "hevy",
+          name: "Imported workout",
+          activityType: "strength",
+          startedAt: "2020-01-01T00:00:00.000Z",
+          durationSeconds: 600,
+          syncedAt: "2020-01-01T00:05:00.000Z",
+        }],
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+
+      const stored = await fixture.admin.from("external_activities")
+        .select("synced_at")
+        .eq("user_id", fixture.ownerId)
+        .eq("external_id", `pr72-${activityId}`)
+        .single();
+      if (stored.error) {
+        throw new Error(
+          `external activity read failed: ${stored.error.code} ${stored.error.message}`,
+        );
+      }
+      const storedSyncedAt = Date.parse(stored.data.synced_at as string);
+      assert(
+        storedSyncedAt > otherDeviceLastSync,
+        `synced_at ${stored.data.synced_at} must be server time, not the client value`,
+      );
+      assert(storedSyncedAt <= Date.parse(body.syncTime as string));
+
+      const visible = await fixture.admin.from("external_activities")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", fixture.ownerId)
+        .gt("synced_at", new Date(otherDeviceLastSync).toISOString());
+      if (visible.error) {
+        throw new Error(
+          `pull-cursor query failed: ${visible.error.code} ${visible.error.message}`,
+        );
+      }
+      assertEquals(visible.count, 1);
+    } finally {
+      const activities = await fixture.admin.from("external_activities")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      const subscriptions = await fixture.admin.from("subscriptions")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      const rateLimits = await fixture.admin.from("rate_limit_tracking")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      await cleanupLocalIntegrationFixture(fixture);
+      for (
+        const [label, result] of [
+          ["external_activities", activities],
+          ["subscriptions", subscriptions],
+          ["rate_limit_tracking", rateLimits],
+        ] as const
+      ) {
+        if (result.error) {
+          throw new Error(
+            `${label} cleanup failed: ${result.error.code} ${result.error.message}`,
+          );
+        }
+      }
     }
   },
 });

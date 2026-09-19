@@ -1034,12 +1034,12 @@ async function mobileSyncPullHandler(
             perSetWeights: re.per_set_weights != null ? JSON.stringify(re.per_set_weights) : null,
             perSetRest: re.per_set_rest != null ? JSON.stringify(re.per_set_rest) : null,
             perSetReps: re.per_set_reps != null ? JSON.stringify(re.per_set_reps) : null,
-            isAmrap: re.is_amrap,
+            isAmrap: re.is_amrap ?? false,
             isBodyweight: re.is_bodyweight ?? false,
             prPercentage: re.pr_percentage,
             repCountTiming: re.rep_count_timing,
             stopAtPosition: re.stop_at_position,
-            stallDetection: re.stall_detection,
+            stallDetection: re.stall_detection ?? true,
             eccentricLoad: re.eccentric_load,
             echoLevel: re.echo_level,
             perSetEchoLevels: re.per_set_echo_levels ?? null,
@@ -1228,7 +1228,7 @@ async function mobileSyncPullHandler(
         badgeId: b.badge_id,
         badgeName: b.badge_name,
         badgeDescription: b.badge_description,
-        badgeTier: b.badge_tier,
+        badgeTier: b.badge_tier ?? 'bronze',
         earnedAt: b.earned_at,
       }));
 
