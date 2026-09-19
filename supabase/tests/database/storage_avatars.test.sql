@@ -172,17 +172,41 @@ SELECT pg_temp.assert_sqlstate(
     'other user cannot upsert-overwrite another user''s avatar'
 );
 
-UPDATE storage.objects
-SET metadata = '{"v":"hijack"}'::jsonb
-WHERE bucket_id = 'avatars'
-  AND name = 'a1a1a1a1-0000-4000-8000-000000000073/avatar.png';
+WITH hijack AS (
+    UPDATE storage.objects
+    SET metadata = '{"v":"hijack"}'::jsonb
+    WHERE bucket_id = 'avatars'
+      AND name = 'a1a1a1a1-0000-4000-8000-000000000073/avatar.png'
+    RETURNING 1
+)
+SELECT is(
+    count(*)::int,
+    0,
+    'other user''s UPDATE of another user''s avatar affects 0 rows'
+)
+FROM hijack;
+
+-- Check the row as superuser right away, before any later owner write could
+-- hide a successful hijack.
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SELECT results_eq(
+    $sql$
+        SELECT count(*)::int, max(metadata ->> 'v')
+        FROM storage.objects
+        WHERE bucket_id = 'avatars'
+          AND name = 'a1a1a1a1-0000-4000-8000-000000000073/avatar.png'
+    $sql$,
+    $sql$ VALUES (1, '2') $sql$,
+    'other user''s UPDATE left the owner''s avatar untouched'
+);
 
 -- Direct DELETE is blocked for every role by storage.protect_delete()
 -- (statement trigger), so the DELETE policy is exercised via the Storage API,
 -- not here.
 
 -- Anon
-RESET ROLE;
 SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
 
@@ -199,8 +223,22 @@ SELECT is(
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
--- Idempotency: re-run the migration body; the policy must still exist once
+-- Idempotency: re-run the migration body. The policy must still exist once
 -- and still let the owner upsert.
+-- `\i`/`\ir` of the migration file is not possible here: `supabase test db`
+-- runs pg_prove in a container that mounts only supabase/tests, so
+-- ../../migrations does not exist there (tried; psql reported "No such file or
+-- directory"). Instead this block copies
+-- 20260920007300_avatars_owner_select_policy.sql (KEEP IN SYNC). The drift
+-- guard below compares the policy the real migration created (captured before
+-- this block) with the one this copy creates, so an out-of-sync copy fails.
+CREATE TEMP TABLE avatars_policy_from_migration ON COMMIT DROP AS
+SELECT cmd, roles, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'storage'
+  AND tablename = 'objects'
+  AND policyname = 'Users can read own avatars';
+
 DROP POLICY IF EXISTS "Users can read own avatars" ON storage.objects;
 CREATE POLICY "Users can read own avatars"
   ON storage.objects
@@ -210,6 +248,18 @@ CREATE POLICY "Users can read own avatars"
     bucket_id = 'avatars'
     AND name LIKE (select auth.uid())::text || '/%'
   );
+
+SELECT results_eq(
+    $sql$
+        SELECT cmd, roles, qual, with_check
+        FROM pg_policies
+        WHERE schemaname = 'storage'
+          AND tablename = 'objects'
+          AND policyname = 'Users can read own avatars'
+    $sql$,
+    $sql$ SELECT cmd, roles, qual, with_check FROM avatars_policy_from_migration $sql$,
+    'test copy of the migration body matches the policy the migration created'
+);
 
 SELECT is(
     (
@@ -237,7 +287,7 @@ SELECT lives_ok(
             'avatars',
             'a1a1a1a1-0000-4000-8000-000000000073/avatar.png',
             'a1a1a1a1-0000-4000-8000-000000000073',
-            '{"v":2}'::jsonb
+            '{"v":3}'::jsonb
         )
         ON CONFLICT (bucket_id, name) DO UPDATE
         SET metadata = EXCLUDED.metadata,
@@ -256,8 +306,8 @@ SELECT results_eq(
         WHERE bucket_id = 'avatars'
           AND name = 'a1a1a1a1-0000-4000-8000-000000000073/avatar.png'
     $sql$,
-    $sql$ VALUES (1, '2') $sql$,
-    'other user''s UPDATE left the owner''s avatar untouched'
+    $sql$ VALUES (1, '3') $sql$,
+    'owner re-upload after re-apply replaced the avatar in place'
 );
 
 SELECT * FROM finish();
