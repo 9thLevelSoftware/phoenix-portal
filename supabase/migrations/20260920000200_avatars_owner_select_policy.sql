@@ -4,7 +4,9 @@
 -- turns that into INSERT ... ON CONFLICT DO UPDATE, and Postgres needs a
 -- SELECT policy that lets the caller see the conflicting row. The avatars
 -- bucket had INSERT/UPDATE/DELETE policies but no SELECT policy, so every
--- re-upload failed RLS (42501).
+-- upsert upload (first upload and re-upload) failed RLS (42501). Postgres
+-- applies the SELECT policy to the new row too. Owner list() and remove()
+-- also returned nothing, because Storage reads the row first.
 --
 -- This replaces the "Do NOT add a SELECT policy" note in
 -- 20260823120000_trust_rls_broadcast_self_leak.sql section 8. That note was
