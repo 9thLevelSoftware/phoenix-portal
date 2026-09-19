@@ -12,6 +12,7 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 interface ByteGoldens {
@@ -3873,4 +3874,222 @@ Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids no
     [acceptedId],
   );
   assertEquals(responseBody.exerciseProgressInserted, 1);
+});
+
+// ---------------------------------------------------------------------------
+// PR 28 (FP-4): per-exercise cable count rides in p_exercises as cable_count.
+// Optional and nested (KD-2): today's mobile shape sends nothing -> NULL.
+// ---------------------------------------------------------------------------
+
+function cableCountSession(
+  sessionId: string,
+  exercises: Array<{ suffix: string; extra?: Record<string, unknown> }>,
+) {
+  return {
+    id: sessionId,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: exercises.map(({ suffix, extra }, index) => ({
+      id: `00000000-0000-4000-8000-0000000029${suffix}`,
+      sessionId,
+      name: `PR28 Custom ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      orderIndex: index,
+      ...(extra ?? {}),
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000030${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000029${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    })),
+  };
+}
+
+for (const syncLwwEnabled of [false, true]) {
+  Deno.test(`PR 28: cableCount is sent to replace_session_children as cable_count; absent or null is NULL (LWW ${syncLwwEnabled ? "on" : "off"})`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled,
+      rpcBehavior: async (name) => {
+        if (name === "upsert_workout_session_lww") {
+          return {
+            data: [{ id: SESSION_ID, accepted: true, server_updated_at: null }],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    });
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "01", extra: { cableCount: 1 } },
+      { suffix: "02", extra: { cableCount: 2 } },
+      // Today's mobile shape: no cableCount key at all.
+      { suffix: "03" },
+      { suffix: "04", extra: { cableCount: null } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 200, await response.text());
+    const replaceCalls = harness.adminRpcCalls.filter((call) =>
+      call.name === "replace_session_children"
+    );
+    assertEquals(replaceCalls.length, 1);
+    assertEquals(
+      (replaceCalls[0].args.p_exercises as Array<Record<string, unknown>>).map(
+        (row) => [row.name, row.cable_count],
+      ),
+      [
+        ["PR28 Custom 01", 1],
+        ["PR28 Custom 02", 2],
+        ["PR28 Custom 03", null],
+        ["PR28 Custom 04", null],
+      ],
+    );
+  });
+}
+
+for (const bad of [0, 3, 1.5, "2", true]) {
+  Deno.test(`PR 28: cableCount ${JSON.stringify(bad)} is a 400 before any privileged write`, async () => {
+    const harness = makeHarness();
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "11", extra: { cableCount: bad } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 400);
+    assertEquals(harness.adminConstructionCount.value, 0);
+    assertEquals(harness.adminRpcCalls, []);
+  });
+}
+
+Deno.test({
+  name:
+    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      const sessionId = crypto.randomUUID();
+      const singleCable = crypto.randomUUID();
+      const unknownCable = crypto.randomUUID();
+      const exercise = (
+        id: string,
+        name: string,
+        orderIndex: number,
+        extra: Record<string, unknown>,
+      ) => ({
+        id,
+        sessionId,
+        exerciseId: null,
+        name,
+        orderIndex,
+        ...extra,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: id,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 20,
+          workoutMode: "OLD_SCHOOL",
+          repSummaries: [],
+        }],
+      });
+      const body = {
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR28 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: [
+            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
+            // Today's mobile shape: no cableCount key.
+            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
+          ],
+        }],
+      };
+
+      const pushed = await makeRealSqlPushHandler(fixture)(
+        requestFromBody(body),
+      );
+      assertEquals(pushed.status, 200, await pushed.text());
+
+      const stored = await fixture.admin.from("exercises")
+        .select("id,cable_count")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedById = new Map(
+        (stored.data as Array<{ id: string; cable_count: number | null }>)
+          .map((row) => [row.id, row.cable_count]),
+      );
+      assertEquals(storedById.get(singleCable), 1);
+      assertEquals(storedById.get(unknownCable), null);
+
+      const pull = createMobileSyncPullHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          return fixture.admin;
+        },
+        logOperationalFailure: () => {},
+        now: () => Date.now(),
+      } as never);
+      const pulled = await pull(requestFromBody({
+        deviceId: "pr28-device",
+        lastSync: 0,
+        profileId: fixture.profileId,
+        pageSize: 75,
+        knownEntityIds: {
+          sessionIds: [],
+          routineIds: [],
+          cycleIds: [],
+          badgeIds: [],
+          personalRecordIds: [],
+        },
+      }));
+      const pulledBody = await json(pulled);
+      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
+      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
+        .find((row) => row.id === sessionId);
+      assert(session, "pushed session is pulled back");
+      assertEquals(
+        (session.exercises as Array<Record<string, unknown>>).map((row) => [
+          row.id,
+          row.cableCount,
+        ]),
+        [[singleCable, 1], [unknownCable, null]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
 });

@@ -453,6 +453,8 @@ interface ExerciseDto {
   name: string;
   muscleGroup: string;
   orderIndex: number;
+  /** 1 or 2; absent/null = unknown (pre-PR 29 mobile builds). Never assume 2. */
+  cableCount?: number | null;
   sets: SetDto[];
 }
 
@@ -1683,6 +1685,8 @@ async function mobileSyncPushHandler(
             exercise_id: catalogId(e.exerciseId, e.name),
             muscle_group: e.muscleGroup ?? 'General',
             order_index: e.orderIndex ?? 0,
+            // PR 28: NULL = unknown (older builds send nothing).
+            cable_count: e.cableCount ?? null,
           }))
         );
 

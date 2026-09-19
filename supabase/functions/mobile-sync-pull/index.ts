@@ -876,6 +876,8 @@ async function mobileSyncPullHandler(
             name: ex.name,
             muscleGroup: ex.muscle_group,
             orderIndex: ex.order_index,
+            // PR 28: 1, 2 or null (unknown). Old mobile ignores unknown keys.
+            cableCount: ex.cable_count ?? null,
             sets: ((ex._sets as Record<string, unknown>[]) ?? []).map((st) => ({
               id: st.id,
               exerciseId: st.exercise_id,
