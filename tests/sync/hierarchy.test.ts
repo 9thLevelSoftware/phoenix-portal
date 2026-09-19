@@ -54,7 +54,6 @@ function createFullHierarchySession(
 		setsPerExercise?: number;
 		repsPerSet?: number;
 		sessionId?: string;
-		profileId?: string | null;
 	} = {},
 ): SessionDto {
 	const {
@@ -686,7 +685,6 @@ describe("Task 2: Profile Scoping Isolation", () => {
 				exerciseCount: 1,
 				setsPerExercise: 1,
 				repsPerSet: 5,
-				profileId: profileA,
 			});
 
 			const payload = createMinimalPushPayload(testUser.id, {
@@ -893,7 +891,6 @@ describe("Task 2: Profile Scoping Isolation", () => {
 				exerciseCount: 1,
 				setsPerExercise: 1,
 				repsPerSet: 5,
-				profileId: null, // No profile specified
 			});
 
 			const payload = createMinimalPushPayload(testUser.id, {
@@ -1052,7 +1049,9 @@ describe("Task 3: Delta Sync Behavior", () => {
 			);
 
 			// Initial pull
-			await callPullEndpoint(0, testUser.accessToken);
+			const initialPull = await callPullEndpoint(0, testUser.accessToken);
+			expect(initialPull.success).toBe(true);
+			expect(initialPull.data?.syncTime).toBeGreaterThan(0);
 
 			// Wait and pull again with a future timestamp (no new data)
 			await new Promise((resolve) => setTimeout(resolve, 10));
