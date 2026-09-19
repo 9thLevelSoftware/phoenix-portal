@@ -488,10 +488,14 @@ BEGIN
 END;
 $$;
 
--- Realistic shape for the refresh delete: one user with a long history
--- (300 sessions x 10 progress rows), statistics gathered, default planner
--- settings. The delete for two sessions must pick the session_id index over
--- the per-user indexes and a seq scan.
+-- Plan checks are index-name independent: each query must be served by an
+-- index whose condition is on session_id (any such index, including a
+-- future composite), never by a seq scan. The refresh delete runs on a
+-- realistic, ANALYZEd shape (one user, 300 sessions x 10 progress rows), so a
+-- per-user index is a real alternative the planner must reject. Seq scans
+-- are disabled so tiny fixture tables cannot flip the plan on cost alone; with
+-- no usable session_id index the plan stays a (disabled) Seq Scan or filters
+-- session_id after a user_id index scan, and the assertions fail.
 INSERT INTO public.workout_sessions (id, user_id, started_at)
 SELECT pg_temp.u(30000 + n), pg_temp.uid(), now() - (n || ' days')::interval
   FROM generate_series(1, 300) AS n;
@@ -499,33 +503,42 @@ INSERT INTO public.exercise_progress (user_id, exercise_name, session_id, max_we
 SELECT pg_temp.uid(), 'History Lift ' || (g % 10), pg_temp.u(30000 + 1 + (g / 10)), 50
   FROM generate_series(0, 2999) AS g;
 ANALYZE public.exercise_progress;
-SELECT matches(
-    pg_temp.plan_of(format(
-        'DELETE FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[]) AND user_id = %L',
-        pg_temp.u(30001), pg_temp.u(30002), pg_temp.uid())),
-    'Index.*idx_exercise_progress_session_id',
-    'the progress refresh delete uses idx_exercise_progress_session_id'
-);
-
--- The former push probe (session_id only). Fixture tables are tiny, so
--- disable seq scans to show the index serves it (with no usable index the
--- plan would stay a disabled Seq Scan).
+ANALYZE public.personal_records;
 SET LOCAL enable_seqscan = off;
-SELECT matches(
-    pg_temp.plan_of(format(
-        'SELECT session_id, exercise_id, exercise_name FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[])',
-        pg_temp.u(117), pg_temp.u(118))),
-    'Index.*idx_exercise_progress_session_id',
-    'a session_id probe on exercise_progress uses idx_exercise_progress_session_id'
-);
-SELECT matches(
-    pg_temp.plan_of(format(
-        'SELECT id FROM public.personal_records WHERE session_id = %L',
-        pg_temp.u(117))),
-    'Index.*idx_personal_records_session_id',
-    'a personal_records session lookup uses idx_personal_records_session_id'
-);
+
+CREATE TEMP TABLE pr24_plans ON COMMIT DROP AS
+SELECT 'refresh delete' AS probe, pg_temp.plan_of(format(
+           'DELETE FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[]) AND user_id = %L',
+           pg_temp.u(30001), pg_temp.u(30002), pg_temp.uid())) AS plan
+UNION ALL
+SELECT 'progress probe', pg_temp.plan_of(format(
+           'SELECT session_id, exercise_id, exercise_name FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[])',
+           pg_temp.u(117), pg_temp.u(118)))
+UNION ALL
+SELECT 'personal_records lookup', pg_temp.plan_of(format(
+           'SELECT id FROM public.personal_records WHERE session_id = %L',
+           pg_temp.u(117)));
 RESET enable_seqscan;
+
+SELECT matches((SELECT plan FROM pr24_plans WHERE probe = 'refresh delete'),
+    'Index Cond: [^\n]*session_id',
+    'the progress refresh delete is served by an index on session_id');
+SELECT doesnt_match((SELECT plan FROM pr24_plans WHERE probe = 'refresh delete'),
+    'Seq Scan',
+    'the progress refresh delete does not seq-scan exercise_progress');
+SELECT matches((SELECT plan FROM pr24_plans WHERE probe = 'progress probe'),
+    'Index Cond: [^\n]*session_id',
+    'a session_id probe on exercise_progress is served by an index on session_id');
+SELECT doesnt_match((SELECT plan FROM pr24_plans WHERE probe = 'progress probe'),
+    'Seq Scan',
+    'a session_id probe does not seq-scan exercise_progress');
+SELECT matches((SELECT plan FROM pr24_plans WHERE probe = 'personal_records lookup'),
+    'Index Cond: [^\n]*session_id',
+    'a personal_records session lookup is served by an index on session_id');
+SELECT doesnt_match((SELECT plan FROM pr24_plans WHERE probe = 'personal_records lookup'),
+    'Seq Scan',
+    'a personal_records session lookup does not seq-scan');
+
 
 SELECT diag('database:p-progress-refreshes-exercise-progress');
 

@@ -639,6 +639,11 @@ export interface MobileSyncPushHandlerDependencies {
   createAdminClient(): SupabaseClient;
   logOperationalFailure(value: { name: string }): void;
   now(): number;
+  /**
+   * Test seam for the LWW gate. Omitted in production, where the
+   * SYNC_LWW_ENABLED cold-start flag applies.
+   */
+  syncLwwEnabled?: boolean;
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -746,6 +751,7 @@ async function mobileSyncPushHandler(
   dependencies: MobileSyncPushHandlerDependencies,
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
+  const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -1607,7 +1613,7 @@ async function mobileSyncPushHandler(
       );
       if (sessionOwnershipResp) return sessionOwnershipResp;
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         // Phase 3.2: route through the LWW RPC so the server rejects stale
         // rows instead of overwriting with older data. Accepted ids are used
         // to filter the exercises/sets/rep_summaries child upserts below.
@@ -1861,7 +1867,7 @@ async function mobileSyncPushHandler(
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
-        const { error: replaceErr } = await supabase.rpc('replace_session_children', {
+        const { data: replaceData, error: replaceErr } = await supabase.rpc('replace_session_children', {
           p_user_id: userId,
           p_session_ids: affectedSessionIds,
           p_exercises: dedupedExerciseRows,
@@ -1877,7 +1883,11 @@ async function mobileSyncPushHandler(
         setsInserted = dedupedSetRows.length;
         repSummariesInserted = dedupedRepRows.length;
         telemetryInserted = dedupedTelemetryRows.length;
-        exerciseProgressInserted = progressRows.length;
+        // Rows the RPC actually wrote (step 7 ignores rows outside
+        // p_session_ids / p_user_id), not rows sent.
+        const writtenProgress = (replaceData as { exercise_progress?: unknown } | null)
+          ?.exercise_progress;
+        exerciseProgressInserted = typeof writtenProgress === 'number' ? writtenProgress : 0;
       }
 
     }
@@ -2174,7 +2184,7 @@ async function mobileSyncPushHandler(
       );
       if (routineOwnershipResp) return routineOwnershipResp;
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const rows = routineRows.map((r) => ({
           ...r,
           updated_at: r.updated_at ?? new Date().toISOString(),
@@ -2403,7 +2413,7 @@ async function mobileSyncPushHandler(
       );
       if (cycleOwnershipResp) return cycleOwnershipResp;
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const rows = cycleRows.map((r) => ({
           ...r,
           updated_at: r.updated_at ?? new Date().toISOString(),
@@ -2525,7 +2535,7 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       };
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_rpg_attributes_lww',
           { p_rows: [rpgRow] },
@@ -2578,7 +2588,7 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       };
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_gamification_stats_lww',
           { p_rows: [gsRow] },
@@ -2729,7 +2739,7 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       }));
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         // Phase 3.2: route through LWW RPC so a stale webhook push does not
         // overwrite a newer mobile-captured row (or vice versa). The RPC
         // returns the canonical server id which we surface in the ack list.

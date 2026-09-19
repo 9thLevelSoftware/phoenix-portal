@@ -486,6 +486,8 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    syncLwwEnabled?: boolean;
+    catalogRows?: unknown[];
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -507,7 +509,11 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : table === "exercise_catalog" && options.catalogRows
+        ? { data: options.catalogRows, error: null }
+        : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -577,6 +583,7 @@ function makeHarness(
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     now: () => 1_784_167_200_000,
+    syncLwwEnabled: options.syncLwwEnabled,
   } as never);
 
   return {
@@ -3631,7 +3638,21 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
 });
 
 Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
-  const harness = makeHarness();
+  const harness = makeHarness(undefined, {
+    catalogRows: [{
+      id: "pr24-lat-pulldown",
+      name: "Lat Pulldown",
+      display_name: "Lat Pulldown",
+      aliases: [],
+      user_id: null,
+      is_custom: false,
+      archived: false,
+    }],
+    rpcBehavior: async (name) =>
+      name === "replace_session_children"
+        ? { data: { exercise_progress: 2 }, error: null }
+        : { data: [], error: null },
+  });
   const exercise = (
     id: string,
     setId: string,
@@ -3682,6 +3703,22 @@ Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_p
         "PR24 Custom A",
         90,
       ),
+      // Catalog branch: same catalog id under two different names is one
+      // identity (id:<catalog id>); the first row wins.
+      exercise(
+        "00000000-0000-4000-8000-000000002404",
+        "00000000-0000-4000-8000-000000002504",
+        "Lat Pulldown (wide)",
+        50,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002405",
+        "00000000-0000-4000-8000-000000002505",
+        "Lat Pulldown (close)",
+        70,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
     ],
   }];
 
@@ -3702,6 +3739,7 @@ Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_p
       session_id: row.session_id,
       user_id: row.user_id,
       exercise_name: row.exercise_name,
+      exercise_id: row.exercise_id,
       max_weight_kg: row.max_weight_kg,
       estimated_1rm_kg: row.estimated_1rm_kg,
     })),
@@ -3710,6 +3748,7 @@ Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_p
         session_id: SESSION_ID,
         user_id: VALID_USER_ID,
         exercise_name: "PR24 Custom A",
+        exercise_id: null,
         max_weight_kg: 30,
         // Hybrid fallback (Brzycki at 10 reps), rounded to 2dp.
         estimated_1rm_kg: 40,
@@ -3718,12 +3757,23 @@ Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_p
         session_id: SESSION_ID,
         user_id: VALID_USER_ID,
         exercise_name: "PR24 Custom B",
+        exercise_id: null,
         max_weight_kg: 40,
         // Mobile estimate stored verbatim, never rounded.
         estimated_1rm_kg: 55.555,
       },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "Lat Pulldown (wide)",
+        exercise_id: "pr24-lat-pulldown",
+        max_weight_kg: 50,
+        estimated_1rm_kg: 66.67,
+      },
     ],
   );
+  // The response reports the count the RPC returns, not the rows sent (3):
+  // the stub returns 2 to prove the value comes from the RPC result.
   assertEquals(responseBody.exerciseProgressInserted, 2);
   assertEquals(
     harness.adminFromCalls.filter((table) => table === "exercise_progress"),
@@ -3751,4 +3801,76 @@ Deno.test("PR 24: an accepted session with no progress rows still sends p_progre
   );
   assertEquals(replaceCalls.length, 1);
   assertEquals(replaceCalls[0].args.p_progress, []);
+});
+
+Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept", async () => {
+  const acceptedId = "00000000-0000-4000-8000-000000002610";
+  const rejectedId = "00000000-0000-4000-8000-000000002620";
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) => {
+      if (name === "upsert_workout_session_lww") {
+        return {
+          data: [
+            { id: acceptedId, accepted: true, server_updated_at: null },
+            {
+              id: rejectedId,
+              accepted: false,
+              server_updated_at: "2026-01-21T00:00:00.000Z",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (name === "replace_session_children") {
+        return { data: { exercise_progress: 1 }, error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const session = (id: string, suffix: string) => ({
+    id,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [{
+      id: `00000000-0000-4000-8000-0000000027${suffix}`,
+      sessionId: id,
+      name: `PR24 LWW ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000028${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000027${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [session(acceptedId, "10"), session(rejectedId, "20")];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(
+    (responseBody.rejections as Record<string, unknown>).sessions,
+    [{ id: rejectedId, serverUpdatedAt: "2026-01-21T00:00:00.000Z" }],
+  );
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [acceptedId]);
+  assertEquals(
+    (replaceCalls[0].args.p_progress as Array<Record<string, unknown>>).map(
+      (row) => row.session_id,
+    ),
+    [acceptedId],
+  );
+  assertEquals(responseBody.exerciseProgressInserted, 1);
 });
