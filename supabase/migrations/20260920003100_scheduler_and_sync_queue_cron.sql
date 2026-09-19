@@ -55,6 +55,17 @@
 --   -- c. pending rows older than 14 days
 --   SELECT count(*) FROM public.sync_queue
 --   WHERE status = 'pending' AND created_at < now() - interval '14 days';
+--   -- d. connected users' pending `initial` rows that step b supersedes
+--   --    because a newer pending row (e.g. a manual sync) exists
+--   SELECT count(*) FROM public.sync_queue q
+--   WHERE q.status = 'pending' AND q.sync_type = 'initial'
+--     AND EXISTS (SELECT 1 FROM public.user_integrations i
+--                 WHERE i.user_id = q.user_id AND i.provider = q.provider
+--                   AND i.status = 'connected')
+--     AND EXISTS (SELECT 1 FROM public.sync_queue n
+--                 WHERE n.user_id = q.user_id AND n.provider = q.provider
+--                   AND n.status = 'pending'
+--                   AND (n.created_at, n.id) > (q.created_at, q.id));
 --   -- total pending
 --   SELECT count(*) FROM public.sync_queue WHERE status = 'pending';
 --
