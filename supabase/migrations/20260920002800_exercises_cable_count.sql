@@ -6,6 +6,8 @@
 -- 1. exercises.cable_count: nullable SMALLINT, 1 or 2. NULL = unknown (every
 --    row written before this migration, and every push from a mobile build
 --    that does not send cableCount). Readers must never assume 2 for NULL.
+--    Last push wins: a re-push that omits cableCount resets a stored value
+--    to NULL. That is safe - NULL means "show per-cable load only".
 --
 -- 2. replace_session_children stores cable_count from each exercise object in
 --    p_exercises (key "cable_count"; absent or JSON null -> NULL). The
