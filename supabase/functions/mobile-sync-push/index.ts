@@ -108,7 +108,7 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
 
 /**
  * A required push sub-step (profile upsert, routine/cycle delete, routine
- * exercise orphan cleanup) failed after earlier steps may already have
+ * exercise upsert or orphan cleanup) failed after earlier steps may already have
  * written. The whole push is idempotent (upserts by id, deletes of absent
  * rows are no-ops), so the handler answers a retryable 503 instead of a 200:
  * mobile then keeps its dirty rows and does not advance lastSync, and the
@@ -119,6 +119,33 @@ class PartialWriteRetryError extends Error {
     // The DB message goes to the function log only, never to the response.
     super(`${step} failed: ${cause?.message ?? 'unknown error'}`);
     this.name = 'PartialWriteRetry';
+  }
+}
+
+/**
+ * Hard-delete the caller's rows by id in chunks of 100, like the ownership
+ * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
+ * exceed the PostgREST URL limit, which would fail identically on every
+ * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
+ * failure after some chunks committed is still safe to retry.
+ */
+async function deleteOwnedRowsInChunks(
+  supabase: SupabaseClient,
+  table: string,
+  ids: string[],
+  userId: string,
+  step: string,
+): Promise<void> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .in('id', chunk)
+      .eq('user_id', userId);
+    if (error) throw new PartialWriteRetryError(step, error);
   }
 }
 
@@ -2319,7 +2346,8 @@ async function mobileSyncPushHandler(
         const { error: reErr } = await supabase
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
-        if (reErr) throw new Error(`routine_exercises upsert failed: ${reErr.message}`);
+        // Same retryable contract as the orphan cleanup that follows (R-5).
+        if (reErr) throw new PartialWriteRetryError('routine_exercises upsert', reErr);
       }
 
       // Remove orphan exercises: rows belonging to synced routines whose IDs
@@ -2367,16 +2395,14 @@ async function mobileSyncPushHandler(
       );
       if (ownershipResp) return ownershipResp;
 
-      const { error: delErr } = await supabase
-        .from('routines')
-        .delete()
-        .in('id', payload.deletedRoutineIds)
-        .eq('user_id', userId);
-      if (delErr) {
-        throw new PartialWriteRetryError('routine delete', delErr);
-      } else {
-        console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'routines',
+        payload.deletedRoutineIds,
+        userId,
+        'routine delete',
+      );
+      console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
     }
 
     // =========================================================================
@@ -2394,16 +2420,14 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      const { error: cycleDelErr } = await supabase
-        .from('training_cycles')
-        .delete()
-        .in('id', payload.deletedCycleIds)
-        .eq('user_id', userId);
-      if (cycleDelErr) {
-        throw new PartialWriteRetryError('cycle delete', cycleDelErr);
-      } else {
-        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        'cycle delete',
+      );
+      console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
     }
 
     // =========================================================================
