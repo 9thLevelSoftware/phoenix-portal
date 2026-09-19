@@ -13,6 +13,7 @@ import {
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 
 interface ByteGoldens {
   version: number;
@@ -407,7 +408,7 @@ function streamingRawRequest(
 
 function permissiveQuery(
   table: string,
-  onWrite: (method: string) => void,
+  onWrite: (method: string, args: unknown[]) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
@@ -420,6 +421,7 @@ function permissiveQuery(
     "select",
     "eq",
     "neq",
+    "gt",
     "in",
     "is",
     "or",
@@ -434,10 +436,10 @@ function permissiveQuery(
     "returns",
   ];
   for (const method of chainMethods) {
-    query[method] = (..._args: unknown[]) => {
+    query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method);
+        onWrite(method, args);
       }
       return query;
     };
@@ -474,6 +476,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -486,6 +489,7 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    tableResults?: Record<string, { data: unknown; error: unknown }>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -495,6 +499,9 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWriteArgs: Array<
+    { table: string; method: string; args: unknown[] }
+  > = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -504,10 +511,17 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      return permissiveQuery(
+        table,
+        (method, args) => {
+          adminWriteCalls.push({ table, method });
+          adminWriteArgs.push({ table, method, args });
+          operationEvents.push(`write:${table}:${method}`);
+        },
+        table === "personal_records"
+          ? options.personalRecordsResult
+          : options.tableResults?.[table],
+      );
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -587,6 +601,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWriteArgs,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -2049,6 +2064,315 @@ Deno.test("deletedAt is the LWW timestamp when a tombstone omits updatedAt", asy
   );
 });
 
+// ---------------------------------------------------------------------------
+// KD-4: routine/cycle tombstones on push (both SYNC_LWW_ENABLED values).
+// ---------------------------------------------------------------------------
+
+const TOMB_ROUTINE_ID = "00000000-0000-4000-8000-000000000160";
+const TOMB_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000161";
+const TOMB_CYCLE_ID = "00000000-0000-4000-8000-000000000162";
+const TOMB_CYCLE_DAY_ID = "00000000-0000-4000-8000-000000000163";
+const TOMB_CYCLE_DAY_2_ID = "00000000-0000-4000-8000-000000000164";
+const EXISTING_ROUTINE_ID = "00000000-0000-4000-8000-000000000165";
+
+/**
+ * Shape the shipping mobile build sends for a routine it still holds and a
+ * cycle whose day references that routine (lastSync 0, routine with a nested
+ * exercise, cycle with a nested day).
+ */
+function oldBuildRoutineAndCycleBody(
+  extraDays: Record<string, unknown>[] = [],
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    routines: [{
+      id: TOMB_ROUTINE_ID,
+      userId: VALID_USER_ID,
+      name: "Deleted on portal",
+      description: "",
+      exerciseCount: 1,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises: [{
+        id: TOMB_ROUTINE_EXERCISE_ID,
+        routineId: TOMB_ROUTINE_ID,
+        name: "Bench Press",
+        muscleGroup: "Chest",
+        sets: 3,
+        reps: 10,
+        weight: 20,
+        restSeconds: 90,
+        mode: "OLD_SCHOOL",
+        orderIndex: 0,
+      }],
+    }],
+    cycles: [{
+      id: TOMB_CYCLE_ID,
+      userId: VALID_USER_ID,
+      name: "Cycle using the routine",
+      durationWeeks: 1,
+      workoutDays: 1,
+      restDays: 0,
+      currentWeek: 1,
+      status: "active",
+      days: [{
+        id: TOMB_CYCLE_DAY_ID,
+        cycleId: TOMB_CYCLE_ID,
+        dayNumber: 1,
+        dayType: "workout",
+        routineId: TOMB_ROUTINE_ID,
+      }, ...extraDays],
+    }],
+  };
+}
+
+function tombstoneRpcBehavior(
+  tombstones: Array<{ entity: string; entity_id: string }>,
+  tombstoneError: unknown = null,
+): RpcBehavior {
+  return async (name, args) => {
+    if (name === "get_sync_tombstones") {
+      if (tombstoneError) return { data: null, error: tombstoneError };
+      const ids = new Set(args.p_ids as string[]);
+      return {
+        data: tombstones
+          .filter((row) => ids.has(row.entity_id))
+          .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
+        error: null,
+      };
+    }
+    if (
+      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
+    ) {
+      // LWW on: accept every row so children are written.
+      return {
+        data: (args.p_rows as Array<{ id: string }>).map((row) => ({
+          id: row.id,
+          accepted: true,
+          server_updated_at: null,
+        })),
+        error: null,
+      };
+    }
+    return { data: [], error: null };
+  };
+}
+
+/** Ids written to a parent table through either flag path. */
+function parentWriteIds(
+  harness: PushHarness,
+  table: "routines" | "training_cycles",
+): string[] {
+  const rpcName = table === "routines"
+    ? "upsert_routine_lww"
+    : "upsert_training_cycle_lww";
+  const viaUpsert = harness.adminWriteArgs
+    .filter((call) => call.table === table && call.method === "upsert")
+    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
+  const viaRpc = harness.adminRpcCalls
+    .filter((call) => call.name === rpcName)
+    .flatMap((call) =>
+      (call.args.p_rows as Array<{ id: string }>).map((r) => r.id)
+    );
+  return [...viaUpsert, ...viaRpc];
+}
+
+function upsertedRows(
+  harness: PushHarness,
+  table: string,
+): Array<Record<string, unknown>> {
+  return harness.adminWriteArgs
+    .filter((call) => call.table === table && call.method === "upsert")
+    .flatMap((call) => call.args[0] as Array<Record<string, unknown>>);
+}
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): old-build push of a deleted routine is 200, skipped, and the day reference is NULL`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [],
+  });
+  assertEquals(body.routinesUpserted, 0);
+  // The routine and its exercises are not re-created.
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+  // The cycle is still stored, with the day's routine reference cleared.
+  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
+  const days = upsertedRows(harness, "cycle_days");
+  assertEquals(days.length, 1);
+  assertEquals(days[0].cycle_id, TOMB_CYCLE_ID);
+  assertEquals(days[0].routine_id, null);
+  // One lookup covers both entities.
+  const lookups = harness.adminRpcCalls.filter((call) =>
+    call.name === "get_sync_tombstones"
+  );
+  assertEquals(lookups.length, 1);
+  assertEquals(lookups[0].args.p_user_id, VALID_USER_ID);
+  assertEquals(lookups[0].args.p_entity, null);
+  assertEquals(
+    [...(lookups[0].args.p_ids as string[])].sort(),
+    [TOMB_ROUTINE_ID, TOMB_CYCLE_ID].sort(),
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine created in the same push keeps the cycle day reference`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(parentWriteIds(harness, "routines"), [TOMB_ROUTINE_ID]);
+  assertEquals(
+    upsertedRows(harness, "routine_exercises").map((row) => row.id),
+    [TOMB_ROUTINE_EXERCISE_ID],
+  );
+  const days = upsertedRows(harness, "cycle_days");
+  assertEquals(days.length, 1);
+  assertEquals(days[0].routine_id, TOMB_ROUTINE_ID);
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle is skipped with its days`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(body.cyclesUpserted, 0);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
+  );
+  // The live routine is still written.
+  assertEquals(parentWriteIds(harness, "routines"), [TOMB_ROUTINE_ID]);
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a day pointing at a routine missing on the server is NULL, an existing one is kept`, async () => {
+  const MISSING_ROUTINE_ID = "00000000-0000-4000-8000-000000000166";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    // Parent probe for day routine references outside the payload: only the
+    // existing routine is found, owned by the caller.
+    tableResults: {
+      routines: {
+        data: [{ id: EXISTING_ROUTINE_ID, user_id: VALID_USER_ID }],
+        error: null,
+      },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody([{
+    id: TOMB_CYCLE_DAY_2_ID,
+    cycleId: TOMB_CYCLE_ID,
+    dayNumber: 2,
+    dayType: "workout",
+    routineId: EXISTING_ROUTINE_ID,
+  }, {
+    id: "00000000-0000-4000-8000-000000000167",
+    cycleId: TOMB_CYCLE_ID,
+    dayNumber: 3,
+    dayType: "workout",
+    routineId: MISSING_ROUTINE_ID,
+  }]);
+  // Real-timestamp client: routines ship only as a delta, cycles every time,
+  // so day 1 now points at a routine that is in neither the payload nor the
+  // server.
+  requestBody.lastSync = 1_784_000_000_000;
+  requestBody.routines = [];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  const byDay = new Map(
+    upsertedRows(harness, "cycle_days").map((row) => [row.day_number, row]),
+  );
+  assertEquals(byDay.get(1)?.routine_id, null);
+  assertEquals(byDay.get(2)?.routine_id, EXISTING_ROUTINE_ID);
+  assertEquals(byDay.get(3)?.routine_id, null);
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted in the same push clears the day reference`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      routines: {
+        data: [{ id: EXISTING_ROUTINE_ID, user_id: VALID_USER_ID }],
+        error: null,
+      },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody([{
+    id: TOMB_CYCLE_DAY_2_ID,
+    cycleId: TOMB_CYCLE_ID,
+    dayNumber: 2,
+    dayType: "workout",
+    routineId: EXISTING_ROUTINE_ID,
+  }]);
+  requestBody.deletedRoutineIds = [EXISTING_ROUTINE_ID];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const byDay = new Map(
+    upsertedRows(harness, "cycle_days").map((row) => [row.day_number, row]),
+  );
+  assertEquals(byDay.get(1)?.routine_id, TOMB_ROUTINE_ID);
+  assertEquals(byDay.get(2)?.routine_id, null);
+});
+
+Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "get_sync_tombstones"),
+    [],
+  );
+});
+
+Deno.test("tombstones: a failed lookup fails the push before any routine or cycle write", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([], {
+      name: "PostgrestError",
+      message: "lookup failed",
+    }),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
+  assertEquals(upsertedRows(harness, "cycle_days"), []);
+});
+
 Deno.test("present empty preference field is evaluated without an RPC", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -2083,6 +2407,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
       rpgAttributes: [],
       gamificationStats: [],
     },
+    skippedDeleted: { routines: [], cycles: [] },
     profilePreferencesAccepted: true,
     canonicalProfilePreferenceSections: [],
     profilePreferenceRejections: [],
@@ -2948,4 +3273,414 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+// ---------------------------------------------------------------------------
+// KD-4 real-SQL: routine/cycle tombstones through the real push handler.
+// Every table write goes to the local stack (no query doubles); only the
+// realtime broadcast is stubbed so the test leaves no socket open.
+// ---------------------------------------------------------------------------
+
+interface TombstonePushFixture {
+  admin: SupabaseClient;
+  ownerId: string;
+  email: string;
+  password: string;
+}
+
+const TOMBSTONE_FIXTURE_TABLES = [
+  "local_profiles",
+  "subscriptions",
+  "rate_limit_tracking",
+  "sync_tombstones",
+];
+
+async function deleteTombstonePushFixture(
+  admin: SupabaseClient,
+  userIds: string[],
+): Promise<void> {
+  if (userIds.length === 0) return;
+  for (const userId of userIds) {
+    // Cascades routines, cycles and their children. The tombstone trigger
+    // records nothing for a user whose auth row is gone.
+    const deleted = await admin.auth.admin.deleteUser(userId);
+    if (deleted.error) throw new Error("auth fixture cleanup failed");
+  }
+  for (const table of TOMBSTONE_FIXTURE_TABLES) {
+    const deleted = await admin.from(table).delete().in("user_id", userIds);
+    if (deleted.error) throw new Error(`${table} fixture cleanup failed`);
+  }
+  for (const table of [...TOMBSTONE_FIXTURE_TABLES, "routines", "training_cycles"]) {
+    const audit = await admin.from(table)
+      .select("user_id", { count: "exact", head: true })
+      .in("user_id", userIds);
+    if (audit.error) throw new Error(`${table} cleanup audit failed`);
+    assertEquals(audit.count, 0, table);
+  }
+}
+
+async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const email = `pr16-owner-${suffix}@example.invalid`;
+  const password = `pw-${suffix}`;
+  const owner = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (owner.error || !owner.data.user) {
+    throw new Error("owner fixture creation failed");
+  }
+  const ownerId = owner.data.user.id;
+  try {
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: ownerId,
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) throw new Error("subscription fixture failed");
+    return { admin, ownerId, email, password };
+  } catch (error) {
+    await deleteTombstonePushFixture(admin, [ownerId]);
+    throw error;
+  }
+}
+
+/** Real admin client for every query; only the broadcast is stubbed. */
+function realTombstonePushHandler(
+  fixture: TombstonePushFixture,
+): (request: Request) => Promise<Response> {
+  const admin = fixture.admin;
+  const client = {
+    from: (table: string) => admin.from(table),
+    rpc: (name: string, args?: Record<string, unknown>) => admin.rpc(name, args),
+    channel() {
+      return {
+        subscribe(callback: (status: string) => void) {
+          callback("SUBSCRIBED");
+          return {};
+        },
+        async send() {
+          return "ok";
+        },
+      };
+    },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return client;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+/** Delete a routine the way the portal does: PostgREST as the signed-in user. */
+async function portalDeleteRoutine(
+  fixture: TombstonePushFixture,
+  routineId: string,
+): Promise<void> {
+  assert(localIntegrationEnvironment);
+  const browser = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.anonKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const signIn = await browser.auth.signInWithPassword({
+    email: fixture.email,
+    password: fixture.password,
+  });
+  if (signIn.error) throw new Error("portal sign-in failed");
+  try {
+    const deleted = await browser.from("routines")
+      .delete({ count: "exact" })
+      .eq("id", routineId);
+    if (deleted.error) throw new Error("portal routine delete failed");
+    assertEquals(deleted.count, 1, "portal delete removed the routine");
+  } finally {
+    await browser.auth.signOut();
+  }
+}
+
+/** The shape the shipping mobile build pushes (profile, lastSync, nesting). */
+function tombstoneMobilePushBody(
+  ids: { routineId: string; exerciseId: string; cycleId: string; dayId: string },
+  options: { includeRoutine: boolean; lastSync?: number },
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: options.lastSync ?? 0,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: options.includeRoutine
+      ? [{
+        id: ids.routineId,
+        userId: "mobile-local-user",
+        name: "Push day",
+        description: "",
+        exerciseCount: 1,
+        estimatedDuration: 1800,
+        timesCompleted: 2,
+        isFavorite: false,
+        exercises: [{
+          id: ids.exerciseId,
+          routineId: ids.routineId,
+          name: "PR16 integration press",
+          muscleGroup: "Chest",
+          sets: 3,
+          reps: 10,
+          weight: 20,
+          restSeconds: 90,
+          mode: "OLD_SCHOOL",
+          orderIndex: 0,
+        }],
+      }]
+      : [],
+    cycles: [{
+      id: ids.cycleId,
+      userId: "mobile-local-user",
+      name: "PR16 cycle",
+      durationWeeks: 1,
+      workoutDays: 1,
+      restDays: 0,
+      currentWeek: 1,
+      status: "active",
+      days: [{
+        id: ids.dayId,
+        cycleId: ids.cycleId,
+        dayNumber: 1,
+        dayType: "workout",
+        routineId: ids.routineId,
+      }],
+    }],
+  };
+}
+
+/** Rows the account already holds on the server before the scenario. */
+async function seedRoutineAndCycle(
+  fixture: TombstonePushFixture,
+  ids: { routineId: string; cycleId: string },
+): Promise<void> {
+  const routine = await fixture.admin.from("routines").insert({
+    id: ids.routineId,
+    user_id: fixture.ownerId,
+    name: "Push day",
+  });
+  if (routine.error) throw new Error("routine seed failed");
+  const cycle = await fixture.admin.from("training_cycles").insert({
+    id: ids.cycleId,
+    user_id: fixture.ownerId,
+    name: "PR16 cycle",
+  });
+  if (cycle.error) throw new Error("cycle seed failed");
+  const day = await fixture.admin.from("cycle_days").insert({
+    cycle_id: ids.cycleId,
+    day_number: 1,
+    routine_id: ids.routineId,
+  });
+  if (day.error) throw new Error("cycle day seed failed");
+}
+
+function freshTombstoneIds() {
+  return {
+    routineId: crypto.randomUUID(),
+    exerciseId: crypto.randomUUID(),
+    cycleId: crypto.randomUUID(),
+    dayId: crypto.randomUUID(),
+  };
+}
+
+async function storedCycleDayRoutineId(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+): Promise<string | null> {
+  const day = await fixture.admin.from("cycle_days")
+    .select("routine_id")
+    .eq("cycle_id", cycleId)
+    .eq("day_number", 1)
+    .single();
+  if (day.error) throw new Error("cycle day lookup failed");
+  return day.data.routine_id as string | null;
+}
+
+async function routineCount(
+  fixture: TombstonePushFixture,
+  routineId: string,
+): Promise<number> {
+  const audit = await fixture.admin.from("routines")
+    .select("id", { count: "exact", head: true })
+    .eq("id", routineId);
+  if (audit.error) throw new Error("routine audit failed");
+  return audit.count ?? -1;
+}
+
+Deno.test({
+  name:
+    `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) old-build push of a portal-deleted routine is 200, skipped, not re-created, day NULL`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+
+      // The account holds a routine and a cycle whose day uses it.
+      await seedRoutineAndCycle(fixture, ids);
+      assertEquals(await routineCount(fixture, ids.routineId), 1);
+      assertEquals(
+        await storedCycleDayRoutineId(fixture, ids.cycleId),
+        ids.routineId,
+      );
+
+      // The user deletes the routine on the portal; the trigger records it.
+      await portalDeleteRoutine(fixture, ids.routineId);
+      const tombstone = await fixture.admin.from("sync_tombstones")
+        .select("entity, entity_id")
+        .eq("user_id", fixture.ownerId);
+      if (tombstone.error) throw new Error("tombstone lookup failed");
+      assertEquals(tombstone.data, [{
+        entity: "routine",
+        entity_id: ids.routineId,
+      }]);
+
+      // An older build that never learned of the delete re-pushes the
+      // routine, its exercise and the cycle day that references it.
+      const repushed = await handler(requestFromBody(
+        tombstoneMobilePushBody(ids, { includeRoutine: true }),
+      ));
+      const repushedBody = await json(repushed);
+      assertEquals(repushed.status, 200, JSON.stringify(repushedBody));
+      assertEquals(repushedBody.skippedDeleted, {
+        routines: [ids.routineId],
+        cycles: [],
+      });
+      assertEquals(await routineCount(fixture, ids.routineId), 0);
+      const exercises = await fixture.admin.from("routine_exercises")
+        .select("id", { count: "exact", head: true })
+        .eq("id", ids.exerciseId);
+      if (exercises.error) throw new Error("exercise audit failed");
+      assertEquals(exercises.count, 0);
+      assertEquals(await storedCycleDayRoutineId(fixture, ids.cycleId), null);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) one push creating routine R and a cycle day on R keeps the reference`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      const response = await handler(requestFromBody(
+        tombstoneMobilePushBody(ids, { includeRoutine: true }),
+      ));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+      assertEquals(await routineCount(fixture, ids.routineId), 1);
+      assertEquals(
+        await storedCycleDayRoutineId(fixture, ids.cycleId),
+        ids.routineId,
+      );
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) real-lastSync push of a cycle whose routine was portal-deleted is 200 with day NULL`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      await seedRoutineAndCycle(fixture, ids);
+      await portalDeleteRoutine(fixture, ids.routineId);
+
+      // Routines ship only as a delta; cycles ship every sync.
+      const response = await handler(requestFromBody(
+        tombstoneMobilePushBody(ids, {
+          includeRoutine: false,
+          lastSync: Date.now() - 60_000,
+        }),
+      ));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+      assertEquals(await routineCount(fixture, ids.routineId), 0);
+      assertEquals(await storedCycleDayRoutineId(fixture, ids.cycleId), null);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) a mobile-pushed delete is recorded and a later re-push of that cycle is skipped`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      await seedRoutineAndCycle(fixture, ids);
+
+      const deleteBody = { ...validPushBody(), deletedCycleIds: [ids.cycleId] };
+      const deleted = await handler(requestFromBody(deleteBody));
+      assertEquals(deleted.status, 200, JSON.stringify(await json(deleted)));
+      const tombstone = await fixture.admin.from("sync_tombstones")
+        .select("entity, entity_id")
+        .eq("user_id", fixture.ownerId);
+      if (tombstone.error) throw new Error("tombstone lookup failed");
+      assertEquals(tombstone.data, [{ entity: "cycle", entity_id: ids.cycleId }]);
+
+      // Another device still holds the cycle and pushes it again (its
+      // routine is unchanged, so only the cycle ships).
+      const repushed = await handler(requestFromBody(
+        tombstoneMobilePushBody(ids, { includeRoutine: false }),
+      ));
+      const repushedBody = await json(repushed);
+      assertEquals(repushed.status, 200, JSON.stringify(repushedBody));
+      assertEquals(repushedBody.skippedDeleted, {
+        routines: [],
+        cycles: [ids.cycleId],
+      });
+      const cycles = await fixture.admin.from("training_cycles")
+        .select("id", { count: "exact", head: true })
+        .eq("id", ids.cycleId);
+      if (cycles.error) throw new Error("cycle audit failed");
+      assertEquals(cycles.count, 0);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
 });

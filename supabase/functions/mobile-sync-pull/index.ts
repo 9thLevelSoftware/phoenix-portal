@@ -1506,6 +1506,57 @@ async function mobileSyncPullHandler(
     }
 
     // =========================================================================
+    // 6b. Routine/cycle deletes (KD-4), first page only.
+    //     Routines and cycles are hard-deleted; a trigger records each delete
+    //     in sync_tombstones. The device learns of a delete through the ids it
+    //     says it holds (tombstoned ∩ knownEntityIds), which works for the
+    //     shipping client that always sends lastSync=0. A client that sends no
+    //     known ids but a real lastSync gets the tombstones recorded since
+    //     then. New response keys; older builds ignore them.
+    // =========================================================================
+    let deletedRoutineIds: string[] = [];
+    let deletedCycleIds: string[] = [];
+    if (cursor === null) {
+      const lastSyncMs = body.lastSync ?? 0;
+      const fetchTombstonedIds = async (
+        entity: 'routine' | 'cycle',
+        knownIds: string[],
+      ): Promise<{ ids: string[] } | { error: { code?: string; message?: string } }> => {
+        let args: { p_ids: string[] | null; p_since: string | null };
+        if (knownIds.length > 0) args = { p_ids: knownIds, p_since: null };
+        else if (lastSyncMs > 0) args = { p_ids: null, p_since: lastSyncISO };
+        else return { ids: [] };
+        const { data, error } = await supabase.rpc('get_sync_tombstones', {
+          p_user_id: userId,
+          p_entity: entity,
+          ...args,
+        });
+        if (error) return { error };
+        const ids = new Set<string>();
+        for (const row of (Array.isArray(data) ? data : []) as Array<{ entity_id?: unknown }>) {
+          if (typeof row.entity_id === 'string') ids.add(row.entity_id);
+        }
+        return { ids: [...ids] };
+      };
+      const routineTombstones = await fetchTombstonedIds(
+        'routine',
+        uuidParityIds(body.knownEntityIds?.routineIds),
+      );
+      if ('error' in routineTombstones) {
+        return readFailure('routine tombstones', routineTombstones.error, cors);
+      }
+      const cycleTombstones = await fetchTombstonedIds(
+        'cycle',
+        uuidParityIds(body.knownEntityIds?.cycleIds),
+      );
+      if ('error' in cycleTombstones) {
+        return readFailure('cycle tombstones', cycleTombstones.error, cors);
+      }
+      deletedRoutineIds = routineTombstones.ids;
+      deletedCycleIds = cycleTombstones.ids;
+    }
+
+    // =========================================================================
     // 7. Return paginated response with cursor metadata
     // =========================================================================
     const response = {
@@ -1525,6 +1576,8 @@ async function mobileSyncPullHandler(
       externalActivities: externalActivityDtos,
       externalActivitiesHasMore,
       customExercises: customExerciseDtos,
+      deletedRoutineIds,
+      deletedCycleIds,
       ...(profilePreferenceSections === undefined
         ? {}
         : { profilePreferenceSections }),
