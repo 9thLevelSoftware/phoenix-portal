@@ -31,6 +31,7 @@ const workoutRows: AnalyticsWorkoutExerciseSummaryRow[] = [
 		reps: 10,
 		volumeKg: 1000,
 		maxWeightKg: 100,
+		cableCount: 2,
 	},
 	{
 		date: "2026-06-01T12:00:00Z",
@@ -42,6 +43,7 @@ const workoutRows: AnalyticsWorkoutExerciseSummaryRow[] = [
 		reps: 5,
 		volumeKg: 500,
 		maxWeightKg: 100,
+		cableCount: null,
 	},
 ];
 
@@ -69,10 +71,14 @@ describe("analytics table CSV generators", () => {
 		const csv = generateWorkoutExerciseSummaryCsv(workoutRows, "lbs");
 		const rows = parse(csv);
 
-		expect(csv.split("\n")[0]).toContain("Volume (lbs)");
+		expect(csv.split("\n")[0]).toContain("Volume per Cable (lbs)");
 		expect(rows[0].Workout).toBe("'=Import");
-		expect(Number(rows[0]["Volume (lbs)"])).toBeCloseTo(2204.6, 1);
-		expect(Number(rows[0]["Max Weight (lbs)"])).toBeCloseTo(220.5, 1);
+		expect(Number(rows[0]["Volume per Cable (lbs)"])).toBeCloseTo(2204.6, 1);
+		expect(Number(rows[0]["Max Weight per Cable (lbs)"])).toBeCloseTo(220.5, 1);
+		// Two cables known: total = per cable x 2.
+		expect(Number(rows[0]["Max Weight Total (lbs)"])).toBeCloseTo(440.9, 1);
+		// Unknown cable count: no total, never assume 2 (KD-8).
+		expect(rows[1]["Max Weight Total (lbs)"]).toBe("");
 	});
 
 	it("generates daily exercise summaries by date and exercise", () => {
@@ -84,7 +90,10 @@ describe("analytics table CSV generators", () => {
 			Exercise: "Bench Press",
 			Sets: "3",
 			Reps: "15",
-			"Volume (kg)": "1500",
+			"Volume per Cable (kg)": "1500",
+			"Max Weight per Cable (kg)": "100",
+			// Mixed known/unknown cable counts in one day: no single total.
+			"Max Weight Total (kg)": "",
 		});
 	});
 
@@ -103,6 +112,7 @@ describe("analytics table CSV generators", () => {
 					name: "Bench Press",
 					muscle_group: "Chest",
 					session_id: "session-1",
+					cable_count: 1,
 				},
 			],
 			[
@@ -116,10 +126,12 @@ describe("analytics table CSV generators", () => {
 			],
 		);
 
+		// Per cable as stored; a single-cable exercise is never doubled.
 		expect(rows[0]).toMatchObject({
 			reps: 5,
-			volumeKg: 500,
-			maxWeightKg: 100,
+			volumeKg: 250,
+			maxWeightKg: 50,
+			cableCount: 1,
 		});
 	});
 

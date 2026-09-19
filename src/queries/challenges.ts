@@ -1,6 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 /** Fetch all active challenges */
@@ -69,7 +68,8 @@ export function challengeProgressOptions(
 						.lte("started_at", endDate);
 					if (error) throw error;
 					current = (data ?? []).reduce(
-						(sum, w) => sum + (w.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+						// Per cable, as stored (KD-8).
+						(sum, w) => sum + (w.total_volume ?? 0),
 						0,
 					);
 					break;

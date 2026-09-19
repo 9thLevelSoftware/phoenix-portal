@@ -212,10 +212,12 @@ console.log('Stored session:', stored);
 ### 4. Check for transform issues
 
 ```typescript
-// Compare raw DB value to transformed display
+// Loads are per cable end to end; the portal never doubles them.
+// A total is derived only by src/lib/units/loadDisplay.ts when the
+// exercise's cable count is known.
 const rawWeight = 50; // Per-cable
-const displayWeight = rawWeight * 2; // WEIGHT_MULTIPLIER
 expect(pulledSet.weightKg).toBe(rawWeight); // DB stores per-cable
+expect(toLoadDisplay(rawWeight, null)).toEqual({ perCableKg: 50, totalKg: null });
 ```
 
 ### 5. Validate DTO structure
@@ -237,7 +239,7 @@ These values MUST match between mobile and portal:
 
 | Transform           | Mobile                | Portal              | Notes                              |
 | ------------------- | --------------------- | ------------------- | ---------------------------------- |
-| Weight multiplier   | x1 (stores per-cable) | x2 (displays total) | `WEIGHT_MULTIPLIER = 2`            |
+| Weight display      | per cable             | per cable first; total = per cable x cable_count only when known | `src/lib/units/loadDisplay.ts` |
 | Velocity: EXPLOSIVE | >= 1.0 m/s            | >= 1.0 m/s          |                                    |
 | Velocity: FAST      | >= 0.75 m/s           | >= 0.75 m/s         |                                    |
 | Velocity: MODERATE  | >= 0.5 m/s            | >= 0.5 m/s          |                                    |

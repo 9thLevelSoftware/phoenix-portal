@@ -42,12 +42,12 @@ import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import {
 	convertWeight,
-	formatWeight,
 	getUnitLabel,
 	toKg,
 	type WeightUnit,
 	weightInputValue,
 } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
@@ -126,7 +126,7 @@ function getDisplayWeight(weightKg: number, unit: WeightUnit) {
 function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
 	const loadLabel = exercise.isBodyweight
 		? "Bodyweight"
-		: formatWeight(exercise.weight, unit);
+		: formatLoad(exercise.weight, null, unit);
 
 	if (exercise.durationSeconds) {
 		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${exercise.mode}`;
@@ -1158,6 +1158,15 @@ function ExerciseDetailPanel({
 						<Label className="text-sm font-medium text-secondary-foreground mb-3 block">
 							Sets
 						</Label>
+						{!exercise.isBodyweight && (
+							<p
+								className="text-xs text-muted-foreground mb-2"
+								data-testid="per-cable-weight-hint"
+							>
+								Weights are per cable, as on the phone. Total load = per-cable
+								weight × cables in use.
+							</p>
+						)}
 						<div className="space-y-2">
 							{Array.from({ length: exercise.sets }).map((_, i) => (
 								<div
@@ -1203,7 +1212,7 @@ function ExerciseDetailPanel({
 									{!exercise.isBodyweight && (
 										<div className="space-y-1">
 											<Label className="text-xs text-muted-foreground">
-												Weight ({getUnitLabel(unit)})
+												Weight per cable ({getUnitLabel(unit)})
 											</Label>
 											<Input
 												type="number"
@@ -1307,7 +1316,7 @@ function ExerciseDetailPanel({
 							{exercise.dropSetEnabled && (
 								<div className="space-y-1">
 									<Label className="text-xs text-muted-foreground">
-										Minimum weight ({getUnitLabel(unit)})
+										Minimum weight per cable ({getUnitLabel(unit)})
 									</Label>
 									<Input
 										type="number"
