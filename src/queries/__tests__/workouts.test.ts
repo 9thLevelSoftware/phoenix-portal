@@ -356,6 +356,18 @@ describe("comparisonDetailOptions", () => {
 		});
 	});
 
+	it("throws the PostgREST error from the embedded select", async () => {
+		const error = { message: "boom", code: "PGRST116" };
+		chain = buildChain({ data: null, error });
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		await expect(
+			comparisonDetailOptions(SESSION_ROW.id).queryFn?.({} as never),
+		).rejects.toBe(error);
+		expect(fromFn).toHaveBeenCalledTimes(1);
+	});
+
 	it("handles a session with no exercises", async () => {
 		chain = buildChain({
 			data: { ...SESSION_ROW, exercises: [] },
