@@ -15,10 +15,12 @@ import {
   type PaddleSubscriptionState,
   resolveBasePlanPriceId,
 } from "../_shared/paddleSubscriptionState.ts";
-import { isSubscriptionEntitled, type SubscriptionStatus } from "../_shared/subscriptionEntitlement.ts";
 import {
   buildPaddleSubscriptionPatch,
   checkoutRequiredResponseBody,
+  decidePlanChangeGate,
+  PAYMENT_PAST_DUE_HTTP_STATUS,
+  paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 
 // Service-role client for DB queries (bypasses RLS)
@@ -162,24 +164,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate subscription state
-    if (!sub || !sub.paddle_subscription_id) {
+    // Validate subscription state. past_due keeps access but cannot change
+    // plan until the payment method is updated (see decidePlanChangeGate).
+    const gate = decidePlanChangeGate(sub);
+    if (gate.action === "checkout_required") {
       return new Response(
-        JSON.stringify(checkoutRequiredResponseBody("missing_subscription")),
+        JSON.stringify(checkoutRequiredResponseBody(gate.reason)),
         { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
-
-    if (
-      !isSubscriptionEntitled(
-        (sub.status as SubscriptionStatus | undefined) ?? "none",
-        sub.current_period_end ?? null,
-      )
-    ) {
+    if (gate.action === "payment_past_due") {
       return new Response(
-        JSON.stringify(checkoutRequiredResponseBody("inactive_or_expired_subscription")),
-        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+        JSON.stringify(paymentPastDueResponseBody()),
+        {
+          status: PAYMENT_PAST_DUE_HTTP_STATUS,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
       );
+    }
+    if (!sub) {
+      // Unreachable: the gate only proceeds for an existing row.
+      throw new Error("plan change gate proceeded without a subscription row");
     }
 
     // Call Paddle API to update the subscription
@@ -197,7 +202,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const currentPaddleSubscriptionId = sub.paddle_subscription_id;
+    const currentPaddleSubscriptionId = gate.paddleSubscriptionId;
 
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
@@ -258,7 +263,7 @@ Deno.serve(async (req) => {
     }
 
     const paddleResponse = await fetch(
-      `${baseUrl}/subscriptions/${sub.paddle_subscription_id}`,
+      `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
       {
         method: "PATCH",
         headers: {

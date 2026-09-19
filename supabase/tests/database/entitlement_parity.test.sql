@@ -13,7 +13,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT no_plan();
+SELECT plan(72);
 
 SELECT diag('database:entitlement-parity-catalog');
 
@@ -81,52 +81,65 @@ VALUES
     ('e8000000-0000-4000-8000-000000000008'::uuid, 'entitlement-active-period-ended-30-days@example.test'),
     ('e8000000-0000-4000-8000-000000000009'::uuid, 'entitlement-active-no-period-end@example.test'),
     ('e8000000-0000-4000-8000-000000000010'::uuid, 'entitlement-active-free-tier@example.test'),
-    ('e8000000-0000-4000-8000-000000000011'::uuid, 'entitlement-trialing-period-end-plus-1s@example.test'),
-    ('e8000000-0000-4000-8000-000000000012'::uuid, 'entitlement-trialing-period-end-equals-now@example.test'),
-    ('e8000000-0000-4000-8000-000000000013'::uuid, 'entitlement-trialing-period-end-minus-1s-no-grace@example.test'),
-    ('e8000000-0000-4000-8000-000000000014'::uuid, 'entitlement-trialing-no-period-end@example.test'),
-    ('e8000000-0000-4000-8000-000000000015'::uuid, 'entitlement-past-due-period-open@example.test'),
-    ('e8000000-0000-4000-8000-000000000016'::uuid, 'entitlement-past-due-period-ended-10-days@example.test'),
-    ('e8000000-0000-4000-8000-000000000017'::uuid, 'entitlement-past-due-no-period-end@example.test'),
-    ('e8000000-0000-4000-8000-000000000018'::uuid, 'entitlement-canceled-period-open@example.test'),
-    ('e8000000-0000-4000-8000-000000000019'::uuid, 'entitlement-paused-stored-as-canceled@example.test'),
-    ('e8000000-0000-4000-8000-000000000020'::uuid, 'entitlement-canceled-period-end-minus-1s@example.test'),
-    ('e8000000-0000-4000-8000-000000000021'::uuid, 'entitlement-incomplete-period-open@example.test'),
-    ('e8000000-0000-4000-8000-000000000022'::uuid, 'entitlement-none-period-open@example.test'),
-    ('e8000000-0000-4000-8000-000000000023'::uuid, 'entitlement-unknown-tier-active@example.test'),
-    ('e8000000-0000-4000-8000-000000000024'::uuid, 'entitlement-unknown-tier-past-due@example.test')
+    ('e8000000-0000-4000-8000-000000000011'::uuid, 'entitlement-active-cancel-scheduled-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000012'::uuid, 'entitlement-active-cancel-scheduled-period-end-plus-1s@example.test'),
+    ('e8000000-0000-4000-8000-000000000013'::uuid, 'entitlement-active-cancel-scheduled-period-end-equals-now@example.test'),
+    ('e8000000-0000-4000-8000-000000000014'::uuid, 'entitlement-active-cancel-scheduled-period-end-minus-1s-no-grace@example.test'),
+    ('e8000000-0000-4000-8000-000000000015'::uuid, 'entitlement-trialing-period-end-plus-1s@example.test'),
+    ('e8000000-0000-4000-8000-000000000016'::uuid, 'entitlement-trialing-period-end-equals-now@example.test'),
+    ('e8000000-0000-4000-8000-000000000017'::uuid, 'entitlement-trialing-period-end-minus-1s-no-grace@example.test'),
+    ('e8000000-0000-4000-8000-000000000018'::uuid, 'entitlement-trialing-no-period-end@example.test'),
+    ('e8000000-0000-4000-8000-000000000019'::uuid, 'entitlement-trialing-cancel-scheduled-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000020'::uuid, 'entitlement-past-due-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000021'::uuid, 'entitlement-past-due-period-ended-10-days@example.test'),
+    ('e8000000-0000-4000-8000-000000000022'::uuid, 'entitlement-past-due-no-period-end@example.test'),
+    ('e8000000-0000-4000-8000-000000000023'::uuid, 'entitlement-past-due-cancel-scheduled-period-ended-10-days@example.test'),
+    ('e8000000-0000-4000-8000-000000000024'::uuid, 'entitlement-canceled-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000025'::uuid, 'entitlement-paused-stored-as-canceled@example.test'),
+    ('e8000000-0000-4000-8000-000000000026'::uuid, 'entitlement-canceled-period-end-minus-1s@example.test'),
+    ('e8000000-0000-4000-8000-000000000027'::uuid, 'entitlement-incomplete-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000028'::uuid, 'entitlement-none-period-open@example.test'),
+    ('e8000000-0000-4000-8000-000000000029'::uuid, 'entitlement-unknown-tier-active@example.test'),
+    ('e8000000-0000-4000-8000-000000000030'::uuid, 'entitlement-unknown-tier-past-due@example.test')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end, cancel_at_period_end)
 VALUES
-    ('e8000000-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000002'::uuid, 'EMBER', 'active', now() + make_interval(secs => 1)),
-    ('e8000000-0000-4000-8000-000000000003'::uuid, 'EMBER', 'active', now() + make_interval(secs => 0)),
-    ('e8000000-0000-4000-8000-000000000004'::uuid, 'EMBER', 'active', now() + make_interval(secs => -1)),
-    ('e8000000-0000-4000-8000-000000000005'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172799)),
-    ('e8000000-0000-4000-8000-000000000006'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172800)),
-    ('e8000000-0000-4000-8000-000000000007'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172801)),
-    ('e8000000-0000-4000-8000-000000000008'::uuid, 'FLAME', 'active', now() + make_interval(secs => -2592000)),
-    ('e8000000-0000-4000-8000-000000000009'::uuid, 'FLAME', 'active', NULL),
-    ('e8000000-0000-4000-8000-000000000010'::uuid, 'FREE', 'active', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000011'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => 1)),
-    ('e8000000-0000-4000-8000-000000000012'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => 0)),
-    ('e8000000-0000-4000-8000-000000000013'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => -1)),
-    ('e8000000-0000-4000-8000-000000000014'::uuid, 'EMBER', 'trialing', NULL),
-    ('e8000000-0000-4000-8000-000000000015'::uuid, 'FLAME', 'past_due', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000016'::uuid, 'FLAME', 'past_due', now() + make_interval(secs => -864000)),
-    ('e8000000-0000-4000-8000-000000000017'::uuid, 'EMBER', 'past_due', NULL),
-    ('e8000000-0000-4000-8000-000000000018'::uuid, 'INFERNO', 'canceled', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000019'::uuid, 'FLAME', 'canceled', now() + make_interval(secs => 2592000)),
-    ('e8000000-0000-4000-8000-000000000020'::uuid, 'FLAME', 'canceled', now() + make_interval(secs => -1)),
-    ('e8000000-0000-4000-8000-000000000021'::uuid, 'EMBER', 'incomplete', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000022'::uuid, 'EMBER', 'none', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000023'::uuid, 'PHOENIX', 'active', now() + make_interval(secs => 86400)),
-    ('e8000000-0000-4000-8000-000000000024'::uuid, 'ELITE', 'past_due', now() + make_interval(secs => 86400))
+    ('e8000000-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000002'::uuid, 'EMBER', 'active', now() + make_interval(secs => 1), false),
+    ('e8000000-0000-4000-8000-000000000003'::uuid, 'EMBER', 'active', now() + make_interval(secs => 0), false),
+    ('e8000000-0000-4000-8000-000000000004'::uuid, 'EMBER', 'active', now() + make_interval(secs => -1), false),
+    ('e8000000-0000-4000-8000-000000000005'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172799), false),
+    ('e8000000-0000-4000-8000-000000000006'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172800), false),
+    ('e8000000-0000-4000-8000-000000000007'::uuid, 'INFERNO', 'active', now() + make_interval(secs => -172801), false),
+    ('e8000000-0000-4000-8000-000000000008'::uuid, 'FLAME', 'active', now() + make_interval(secs => -2592000), false),
+    ('e8000000-0000-4000-8000-000000000009'::uuid, 'FLAME', 'active', NULL, false),
+    ('e8000000-0000-4000-8000-000000000010'::uuid, 'FREE', 'active', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000011'::uuid, 'FLAME', 'active', now() + make_interval(secs => 86400), true),
+    ('e8000000-0000-4000-8000-000000000012'::uuid, 'FLAME', 'active', now() + make_interval(secs => 1), true),
+    ('e8000000-0000-4000-8000-000000000013'::uuid, 'FLAME', 'active', now() + make_interval(secs => 0), true),
+    ('e8000000-0000-4000-8000-000000000014'::uuid, 'FLAME', 'active', now() + make_interval(secs => -1), true),
+    ('e8000000-0000-4000-8000-000000000015'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => 1), false),
+    ('e8000000-0000-4000-8000-000000000016'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => 0), false),
+    ('e8000000-0000-4000-8000-000000000017'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => -1), false),
+    ('e8000000-0000-4000-8000-000000000018'::uuid, 'EMBER', 'trialing', NULL, false),
+    ('e8000000-0000-4000-8000-000000000019'::uuid, 'EMBER', 'trialing', now() + make_interval(secs => 86400), true),
+    ('e8000000-0000-4000-8000-000000000020'::uuid, 'FLAME', 'past_due', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000021'::uuid, 'FLAME', 'past_due', now() + make_interval(secs => -864000), false),
+    ('e8000000-0000-4000-8000-000000000022'::uuid, 'EMBER', 'past_due', NULL, false),
+    ('e8000000-0000-4000-8000-000000000023'::uuid, 'FLAME', 'past_due', now() + make_interval(secs => -864000), true),
+    ('e8000000-0000-4000-8000-000000000024'::uuid, 'INFERNO', 'canceled', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000025'::uuid, 'FLAME', 'canceled', now() + make_interval(secs => 2592000), false),
+    ('e8000000-0000-4000-8000-000000000026'::uuid, 'FLAME', 'canceled', now() + make_interval(secs => -1), false),
+    ('e8000000-0000-4000-8000-000000000027'::uuid, 'EMBER', 'incomplete', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000028'::uuid, 'EMBER', 'none', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000029'::uuid, 'PHOENIX', 'active', now() + make_interval(secs => 86400), false),
+    ('e8000000-0000-4000-8000-000000000030'::uuid, 'ELITE', 'past_due', now() + make_interval(secs => 86400), false)
 ON CONFLICT (user_id) DO UPDATE
 SET tier = EXCLUDED.tier,
     status = EXCLUDED.status,
-    current_period_end = EXCLUDED.current_period_end;
+    current_period_end = EXCLUDED.current_period_end,
+    cancel_at_period_end = EXCLUDED.cancel_at_period_end;
 
 SELECT diag('database:entitlement-parity-service-role');
 
@@ -142,20 +155,26 @@ SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000007'::u
 SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000008'::uuid), 'FREE', 'subscription_tier_for: active-period-ended-30-days');
 SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000009'::uuid), 'FREE', 'subscription_tier_for: active-no-period-end');
 SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000010'::uuid), 'FREE', 'subscription_tier_for: active-free-tier');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000011'::uuid), 'EMBER', 'subscription_tier_for: trialing-period-end-plus-1s');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000012'::uuid), 'FREE', 'subscription_tier_for: trialing-period-end-equals-now');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000013'::uuid), 'FREE', 'subscription_tier_for: trialing-period-end-minus-1s-no-grace');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000014'::uuid), 'FREE', 'subscription_tier_for: trialing-no-period-end');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000015'::uuid), 'FLAME', 'subscription_tier_for: past-due-period-open');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000016'::uuid), 'FLAME', 'subscription_tier_for: past-due-period-ended-10-days');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000017'::uuid), 'EMBER', 'subscription_tier_for: past-due-no-period-end');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000018'::uuid), 'FREE', 'subscription_tier_for: canceled-period-open');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000019'::uuid), 'FREE', 'subscription_tier_for: paused-stored-as-canceled');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000020'::uuid), 'FREE', 'subscription_tier_for: canceled-period-end-minus-1s');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000021'::uuid), 'FREE', 'subscription_tier_for: incomplete-period-open');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000022'::uuid), 'FREE', 'subscription_tier_for: none-period-open');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000023'::uuid), 'FREE', 'subscription_tier_for: unknown-tier-active');
-SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000024'::uuid), 'FREE', 'subscription_tier_for: unknown-tier-past-due');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000011'::uuid), 'FLAME', 'subscription_tier_for: active-cancel-scheduled-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000012'::uuid), 'FLAME', 'subscription_tier_for: active-cancel-scheduled-period-end-plus-1s');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000013'::uuid), 'FREE', 'subscription_tier_for: active-cancel-scheduled-period-end-equals-now');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000014'::uuid), 'FREE', 'subscription_tier_for: active-cancel-scheduled-period-end-minus-1s-no-grace');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000015'::uuid), 'EMBER', 'subscription_tier_for: trialing-period-end-plus-1s');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000016'::uuid), 'FREE', 'subscription_tier_for: trialing-period-end-equals-now');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000017'::uuid), 'FREE', 'subscription_tier_for: trialing-period-end-minus-1s-no-grace');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000018'::uuid), 'FREE', 'subscription_tier_for: trialing-no-period-end');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000019'::uuid), 'EMBER', 'subscription_tier_for: trialing-cancel-scheduled-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000020'::uuid), 'FLAME', 'subscription_tier_for: past-due-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000021'::uuid), 'FLAME', 'subscription_tier_for: past-due-period-ended-10-days');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000022'::uuid), 'EMBER', 'subscription_tier_for: past-due-no-period-end');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000023'::uuid), 'FLAME', 'subscription_tier_for: past-due-cancel-scheduled-period-ended-10-days');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000024'::uuid), 'FREE', 'subscription_tier_for: canceled-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000025'::uuid), 'FREE', 'subscription_tier_for: paused-stored-as-canceled');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000026'::uuid), 'FREE', 'subscription_tier_for: canceled-period-end-minus-1s');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000027'::uuid), 'FREE', 'subscription_tier_for: incomplete-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000028'::uuid), 'FREE', 'subscription_tier_for: none-period-open');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000029'::uuid), 'FREE', 'subscription_tier_for: unknown-tier-active');
+SELECT is(public.subscription_tier_for('e8000000-0000-4000-8000-000000000030'::uuid), 'FREE', 'subscription_tier_for: unknown-tier-past-due');
 SELECT is(public.subscription_tier_for(NULL), 'FREE', 'subscription_tier_for: NULL user is FREE');
 
 RESET ROLE;
@@ -192,32 +211,44 @@ SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: acti
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000010","role":"authenticated"}', true);
 SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: active-free-tier');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000011","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'EMBER', 'user_subscription_tier: trialing-period-end-plus-1s');
+SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: active-cancel-scheduled-period-open');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000012","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-period-end-equals-now');
+SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: active-cancel-scheduled-period-end-plus-1s');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000013","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-period-end-minus-1s-no-grace');
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: active-cancel-scheduled-period-end-equals-now');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000014","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-no-period-end');
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: active-cancel-scheduled-period-end-minus-1s-no-grace');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000015","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: past-due-period-open');
+SELECT is(public.user_subscription_tier(), 'EMBER', 'user_subscription_tier: trialing-period-end-plus-1s');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000016","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: past-due-period-ended-10-days');
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-period-end-equals-now');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000017","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'EMBER', 'user_subscription_tier: past-due-no-period-end');
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-period-end-minus-1s-no-grace');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000018","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: canceled-period-open');
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: trialing-no-period-end');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000019","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: paused-stored-as-canceled');
+SELECT is(public.user_subscription_tier(), 'EMBER', 'user_subscription_tier: trialing-cancel-scheduled-period-open');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000020","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: canceled-period-end-minus-1s');
+SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: past-due-period-open');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000021","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: incomplete-period-open');
+SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: past-due-period-ended-10-days');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000022","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: none-period-open');
+SELECT is(public.user_subscription_tier(), 'EMBER', 'user_subscription_tier: past-due-no-period-end');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000023","role":"authenticated"}', true);
-SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: unknown-tier-active');
+SELECT is(public.user_subscription_tier(), 'FLAME', 'user_subscription_tier: past-due-cancel-scheduled-period-ended-10-days');
 SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000024","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: canceled-period-open');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000025","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: paused-stored-as-canceled');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000026","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: canceled-period-end-minus-1s');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000027","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: incomplete-period-open');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000028","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: none-period-open');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000029","role":"authenticated"}', true);
+SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: unknown-tier-active');
+SELECT set_config('request.jwt.claims', '{"sub":"e8000000-0000-4000-8000-000000000030","role":"authenticated"}', true);
 SELECT is(public.user_subscription_tier(), 'FREE', 'user_subscription_tier: unknown-tier-past-due');
 
 SELECT set_config('request.jwt.claims', '', true);

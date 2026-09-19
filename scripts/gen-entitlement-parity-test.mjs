@@ -8,8 +8,10 @@
  *   node scripts/gen-entitlement-parity-test.mjs          # rewrite the test
  *   node scripts/gen-entitlement-parity-test.mjs --check  # exit 1 if stale
  *
- * src/lib/subscription-entitlement.test.ts runs --check, so editing the
- * fixture without regenerating fails `npm test`.
+ * src/lib/subscription-entitlement.test.ts compares the committed file with
+ * renderEntitlementParityTest(fixture), so editing the fixture without
+ * regenerating fails `npm test`. The test declares plan(n) from the case
+ * count, so a generator that drops a case fails pgTAP.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -47,8 +49,26 @@ function periodEndSql(offsetSeconds) {
 	return `now() + make_interval(secs => ${offsetSeconds})`;
 }
 
+const CATALOG_SIGNATURES = [
+	"subscription_tier_for(uuid)",
+	"user_subscription_tier()",
+];
+
+const GRANTS = [
+	["authenticated", "user_subscription_tier()", true],
+	["service_role", "user_subscription_tier()", true],
+	["anon", "user_subscription_tier()", false],
+	["service_role", "subscription_tier_for(uuid)", true],
+	["authenticated", "subscription_tier_for(uuid)", false],
+	["anon", "subscription_tier_for(uuid)", false],
+];
+
 export function renderEntitlementParityTest(fixture) {
 	const cases = fixture.cases;
+	// 2 per catalog signature, 1 per grant, 2 per case (service_role +
+	// authenticated), NULL user, authenticated direct-call denial.
+	const planCount =
+		CATALOG_SIGNATURES.length * 2 + GRANTS.length + cases.length * 2 + 2;
 	const lines = [];
 	const push = (...xs) => lines.push(...xs);
 
@@ -68,13 +88,13 @@ export function renderEntitlementParityTest(fixture) {
 		"CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;",
 		"SET LOCAL search_path = public, extensions;",
 		"",
-		"SELECT no_plan();",
+		`SELECT plan(${planCount});`,
 		"",
 		"SELECT diag('database:entitlement-parity-catalog');",
 		"",
 	);
 
-	for (const sig of ["subscription_tier_for(uuid)", "user_subscription_tier()"]) {
+	for (const sig of CATALOG_SIGNATURES) {
 		push(
 			"SELECT ok(",
 			`    (SELECT p.prosecdef FROM pg_proc p WHERE p.oid = 'public.${sig}'::regprocedure),`,
@@ -87,15 +107,7 @@ export function renderEntitlementParityTest(fixture) {
 		);
 	}
 
-	const grants = [
-		["authenticated", "user_subscription_tier()", true],
-		["service_role", "user_subscription_tier()", true],
-		["anon", "user_subscription_tier()", false],
-		["service_role", "subscription_tier_for(uuid)", true],
-		["authenticated", "subscription_tier_for(uuid)", false],
-		["anon", "subscription_tier_for(uuid)", false],
-	];
-	for (const [role, sig, allowed] of grants) {
+	for (const [role, sig, allowed] of GRANTS) {
 		push(
 			"SELECT is(",
 			`    has_function_privilege('${role}', 'public.${sig}', 'EXECUTE'),`,
@@ -122,18 +134,19 @@ export function renderEntitlementParityTest(fixture) {
 			.join(",\n"),
 		"ON CONFLICT (id) DO NOTHING;",
 		"",
-		"INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)",
+		"INSERT INTO public.subscriptions (user_id, tier, status, current_period_end, cancel_at_period_end)",
 		"VALUES",
 		cases
 			.map(
 				(c, i) =>
-					`    ('${userIdFor(i)}'::uuid, ${sqlText(c.tier)}, ${sqlText(c.status)}, ${periodEndSql(c.periodEndOffsetSeconds)})`,
+					`    ('${userIdFor(i)}'::uuid, ${sqlText(c.tier)}, ${sqlText(c.status)}, ${periodEndSql(c.periodEndOffsetSeconds)}, ${c.cancelAtPeriodEnd === true})`,
 			)
 			.join(",\n"),
 		"ON CONFLICT (user_id) DO UPDATE",
 		"SET tier = EXCLUDED.tier,",
 		"    status = EXCLUDED.status,",
-		"    current_period_end = EXCLUDED.current_period_end;",
+		"    current_period_end = EXCLUDED.current_period_end,",
+		"    cancel_at_period_end = EXCLUDED.cancel_at_period_end;",
 		"",
 		"SELECT diag('database:entitlement-parity-service-role');",
 		"",

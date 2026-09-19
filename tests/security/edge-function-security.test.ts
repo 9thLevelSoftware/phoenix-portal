@@ -16,15 +16,21 @@ import {
 	parsePaddlePaidTier,
 } from "../../supabase/functions/_shared/paddlePriceIds.ts";
 import { buildSubscriptionUpsertFromPaddleState } from "../../supabase/functions/_shared/paddleSubscriptionState.ts";
-import { buildPaddleSubscriptionPatch } from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
+import {
+	buildPaddleSubscriptionPatch,
+	decidePlanChangeGate,
+	PAYMENT_PAST_DUE_HTTP_STATUS,
+	paymentPastDueResponseBody,
+	resolvePaddleCancelRequest,
+} from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
 import {
 	classifyPaddleEventOrder,
 	evaluatePaddleCustomDataTrust,
 	verifyPaddleCustomDataSignature,
 } from "../../supabase/functions/_shared/paddleWebhookSecurity.ts";
+import { requireSubscription } from "../../supabase/functions/_shared/requireSubscription.ts";
 import {
 	ENTITLEMENT_GRACE_HOURS,
-	effectiveSubscriptionTier,
 	isSubscriptionEntitled,
 } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
 
@@ -33,8 +39,28 @@ type EntitlementCase = {
 	status: string;
 	tier: string;
 	periodEndOffsetSeconds: number | null;
+	cancelAtPeriodEnd: boolean;
 	expectedTier: string;
 };
+
+type FakeSubscriptionRow = {
+	tier: string;
+	status: string;
+	current_period_end: string | null;
+	cancel_at_period_end: boolean;
+} | null;
+
+/** Minimal stand-in for the service-role client requireSubscription queries. */
+function fakeSubscriptionClient(row: FakeSubscriptionRow) {
+	const query = {
+		select: () => query,
+		eq: () => query,
+		maybeSingle: async () => ({ data: row, error: null }),
+	};
+	return { from: () => query } as unknown as Parameters<
+		typeof requireSubscription
+	>[0];
+}
 
 const entitlementFixture = JSON.parse(
 	readFileSync(
@@ -129,25 +155,25 @@ describe("Paddle webhook security helpers", () => {
 	it("denies Edge entitlements when the billing period is expired or missing", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 
-		expect(isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", now)).toBe(
-			true,
-		);
 		expect(
-			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", now),
+			isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", { now }),
 		).toBe(true);
-		expect(isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", now)).toBe(
-			false,
-		);
 		expect(
-			isSubscriptionEntitled("trialing", "2026-05-17T12:00:00Z", now),
+			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", { now }),
+		).toBe(true);
+		expect(
+			isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", { now }),
 		).toBe(false);
-		expect(isSubscriptionEntitled("active", null, now)).toBe(false);
 		expect(
-			isSubscriptionEntitled("canceled", "2026-06-17T00:00:00Z", now),
+			isSubscriptionEntitled("trialing", "2026-05-17T12:00:00Z", { now }),
+		).toBe(false);
+		expect(isSubscriptionEntitled("active", null, { now })).toBe(false);
+		expect(
+			isSubscriptionEntitled("canceled", "2026-06-17T00:00:00Z", { now }),
 		).toBe(false);
 		// Paddle retry window: past_due keeps access even 10 days past period end.
 		expect(
-			isSubscriptionEntitled("past_due", "2026-05-07T12:00:00Z", now),
+			isSubscriptionEntitled("past_due", "2026-05-07T12:00:00Z", { now }),
 		).toBe(true);
 	});
 
@@ -155,9 +181,12 @@ describe("Paddle webhook security helpers", () => {
 		expect(ENTITLEMENT_GRACE_HOURS).toBe(entitlementFixture.graceHours);
 	});
 
+	// Runs the fixture through the production Edge gate (requireSubscription
+	// with a fake subscriptions row), so a change to either half of its tier
+	// computation fails here.
 	it.each(
 		entitlementFixture.cases,
-	)("Edge entitlement fixture: $id -> $expectedTier", (c) => {
+	)("Edge requireSubscription fixture: $id -> $expectedTier", async (c) => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		const periodEnd =
 			c.periodEndOffsetSeconds === null
@@ -165,9 +194,162 @@ describe("Paddle webhook security helpers", () => {
 				: new Date(
 						now.getTime() + c.periodEndOffsetSeconds * 1000,
 					).toISOString();
-		expect(effectiveSubscriptionTier(c.tier, c.status, periodEnd, now)).toBe(
-			c.expectedTier,
+		const gate = await requireSubscription(
+			fakeSubscriptionClient({
+				tier: c.tier,
+				status: c.status,
+				current_period_end: periodEnd,
+				cancel_at_period_end: c.cancelAtPeriodEnd,
+			}),
+			"user-1",
+			"EMBER",
+			{},
+			now,
 		);
+		expect(gate.tier).toBe(c.expectedTier);
+		expect(gate.allowed).toBe(c.expectedTier !== "FREE");
+		if (!gate.allowed) {
+			expect(gate.response.status).toBe(402);
+		}
+	});
+
+	it("refuses unknown tiers and statuses with 402, not 503", async () => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		for (const row of [
+			{
+				tier: "PHOENIX",
+				status: "active",
+				current_period_end: "2026-06-17T00:00:00Z",
+				cancel_at_period_end: false,
+			},
+			{
+				tier: "FLAME",
+				status: "paused",
+				current_period_end: "2026-06-17T00:00:00Z",
+				cancel_at_period_end: false,
+			},
+		]) {
+			const gate = await requireSubscription(
+				fakeSubscriptionClient(row),
+				"user-1",
+				"EMBER",
+				{},
+				now,
+			);
+			expect(gate.allowed).toBe(false);
+			expect(gate.tier).toBe("FREE");
+			if (!gate.allowed) {
+				expect(gate.response.status).toBe(402);
+			}
+		}
+	});
+
+	it("treats a missing subscription row as FREE with 402", async () => {
+		const gate = await requireSubscription(
+			fakeSubscriptionClient(null),
+			"user-1",
+			"EMBER",
+			{},
+		);
+		expect(gate.allowed).toBe(false);
+		if (!gate.allowed) {
+			expect(gate.response.status).toBe(402);
+		}
+	});
+
+	it("refuses plan changes for past_due with 409 payment_past_due, not checkout", () => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		const pastDue = {
+			paddle_subscription_id: "sub_1",
+			status: "past_due",
+			current_period_end: "2026-05-07T12:00:00Z",
+			cancel_at_period_end: false,
+		};
+		expect(decidePlanChangeGate(pastDue, now)).toEqual({
+			action: "payment_past_due",
+		});
+		expect(PAYMENT_PAST_DUE_HTTP_STATUS).toBe(409);
+		const body = paymentPastDueResponseBody();
+		expect(body.code).toBe("payment_past_due");
+		expect(body.message).toMatch(/payment method/i);
+
+		expect(
+			decidePlanChangeGate(
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			),
+		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
+		expect(
+			decidePlanChangeGate(
+				{
+					...pastDue,
+					status: "canceled",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			),
+		).toEqual({
+			action: "checkout_required",
+			reason: "inactive_or_expired_subscription",
+		});
+		expect(decidePlanChangeGate(null, now)).toEqual({
+			action: "checkout_required",
+			reason: "missing_subscription",
+		});
+		expect(
+			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
+		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
+	});
+
+	it("paddle-update-subscription applies the plan-change gate before calling Paddle", () => {
+		const source = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/paddle-update-subscription/index.ts",
+			),
+			"utf8",
+		);
+		const gateAt = source.indexOf("decidePlanChangeGate(sub)");
+		const pastDueAt = source.indexOf("paymentPastDueResponseBody()");
+		const firstPaddleFetchAt = source.indexOf("await fetch(");
+		expect(gateAt).toBeGreaterThan(-1);
+		expect(pastDueAt).toBeGreaterThan(gateAt);
+		expect(firstPaddleFetchAt).toBeGreaterThan(pastDueAt);
+		expect(source).toContain("status: PAYMENT_PAST_DUE_HTTP_STATUS");
+		expect(source).not.toContain("isSubscriptionEntitled(");
+	});
+
+	it("lets past_due users cancel immediately and others at period end", () => {
+		expect(resolvePaddleCancelRequest("past_due")).toEqual({
+			allowed: true,
+			effectiveFrom: "immediately",
+			localPatch: { status: "canceled", cancel_at_period_end: false },
+		});
+		for (const status of ["active", "trialing"]) {
+			expect(resolvePaddleCancelRequest(status)).toEqual({
+				allowed: true,
+				effectiveFrom: "next_billing_period",
+				localPatch: { cancel_at_period_end: true },
+			});
+		}
+		for (const status of ["canceled", "incomplete", "none", null]) {
+			expect(resolvePaddleCancelRequest(status)).toEqual({ allowed: false });
+		}
+
+		const source = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/paddle-cancel-subscription/index.ts",
+			),
+			"utf8",
+		);
+		expect(source).toContain("resolvePaddleCancelRequest(sub.status)");
+		expect(source).toContain("effective_from: cancelRequest.effectiveFrom");
+		expect(source).not.toContain('["active", "trialing"].includes');
 	});
 
 	it("builds Paddle update bodies for switches, downgrades, and uncancel actions", () => {
@@ -182,6 +364,7 @@ describe("Paddle webhook security helpers", () => {
 			body: {
 				items: [{ price_id: "pri_ember_monthly", quantity: 1 }],
 				proration_billing_mode: "prorated_immediately",
+				on_payment_failure: "prevent_change",
 			},
 		});
 
@@ -196,6 +379,7 @@ describe("Paddle webhook security helpers", () => {
 			body: {
 				items: [{ price_id: "pri_flame_annual", quantity: 1 }],
 				proration_billing_mode: "prorated_immediately",
+				on_payment_failure: "prevent_change",
 				scheduled_change: null,
 			},
 		});
@@ -206,7 +390,10 @@ describe("Paddle webhook security helpers", () => {
 				"pri_flame_monthly",
 				true,
 			),
-		).toEqual({ action: "uncancel", body: { scheduled_change: null } });
+		).toEqual({
+			action: "uncancel",
+			body: { scheduled_change: null, on_payment_failure: "prevent_change" },
+		});
 	});
 
 	it("resolves server-side Paddle plan selections for subscription updates", () => {
