@@ -22,7 +22,26 @@ import {
 	evaluatePaddleCustomDataTrust,
 	verifyPaddleCustomDataSignature,
 } from "../../supabase/functions/_shared/paddleWebhookSecurity.ts";
-import { isSubscriptionEntitled } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
+import {
+	ENTITLEMENT_GRACE_HOURS,
+	effectiveSubscriptionTier,
+	isSubscriptionEntitled,
+} from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
+
+type EntitlementCase = {
+	id: string;
+	status: string;
+	tier: string;
+	periodEndOffsetSeconds: number | null;
+	expectedTier: string;
+};
+
+const entitlementFixture = JSON.parse(
+	readFileSync(
+		join(process.cwd(), "tests/fixtures/entitlement-cases.json"),
+		"utf8",
+	),
+) as { graceHours: number; cases: EntitlementCase[] };
 
 describe("Paddle webhook security helpers", () => {
 	it("requires valid signed custom_data for the Paddle user id", async () => {
@@ -119,13 +138,36 @@ describe("Paddle webhook security helpers", () => {
 		expect(isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", now)).toBe(
 			false,
 		);
-		expect(isSubscriptionEntitled("active", "2026-05-17T12:00:00Z", now)).toBe(
-			false,
-		);
+		expect(
+			isSubscriptionEntitled("trialing", "2026-05-17T12:00:00Z", now),
+		).toBe(false);
 		expect(isSubscriptionEntitled("active", null, now)).toBe(false);
 		expect(
 			isSubscriptionEntitled("canceled", "2026-06-17T00:00:00Z", now),
 		).toBe(false);
+		// Paddle retry window: past_due keeps access even 10 days past period end.
+		expect(
+			isSubscriptionEntitled("past_due", "2026-05-07T12:00:00Z", now),
+		).toBe(true);
+	});
+
+	it("uses the shared entitlement fixture's grace window", () => {
+		expect(ENTITLEMENT_GRACE_HOURS).toBe(entitlementFixture.graceHours);
+	});
+
+	it.each(
+		entitlementFixture.cases,
+	)("Edge entitlement fixture: $id -> $expectedTier", (c) => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		const periodEnd =
+			c.periodEndOffsetSeconds === null
+				? null
+				: new Date(
+						now.getTime() + c.periodEndOffsetSeconds * 1000,
+					).toISOString();
+		expect(effectiveSubscriptionTier(c.tier, c.status, periodEnd, now)).toBe(
+			c.expectedTier,
+		);
 	});
 
 	it("builds Paddle update bodies for switches, downgrades, and uncancel actions", () => {

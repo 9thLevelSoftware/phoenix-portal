@@ -3026,6 +3026,7 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
+			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;
