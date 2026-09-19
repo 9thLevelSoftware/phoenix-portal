@@ -14,13 +14,11 @@ interface DbState {
   activities: Array<Record<string, unknown>>;
   status?: string;
   errorMessage?: string | null;
-  upsertCalls?: number;
 }
 
 function createDbDouble(state: DbState) {
   const from = (table: string) => {
     let pendingUpdate: Record<string, unknown> | null = null;
-    let inFilter: unknown[] | null = null;
 
     const resolve = () => {
       if (table === "subscriptions") {
@@ -51,15 +49,6 @@ function createDbDouble(state: DbState) {
         }
         return { data: { last_sync_at: state.lastSyncAt }, error: null };
       }
-      if (table === "external_activities" && inFilter) {
-        const ids = inFilter;
-        return {
-          data: state.activities
-            .filter((row) => ids.includes(row.external_id))
-            .map((row) => ({ external_id: row.external_id })),
-          error: null,
-        };
-      }
       return { data: null, error: null };
     };
 
@@ -67,10 +56,6 @@ function createDbDouble(state: DbState) {
     for (const method of ["select", "eq", "order", "limit"]) {
       builder[method] = () => builder;
     }
-    builder.in = (_column: string, values: unknown[]) => {
-      inFilter = values;
-      return builder;
-    };
     builder.update = (values: Record<string, unknown>) => {
       pendingUpdate = values;
       return builder;
@@ -80,7 +65,6 @@ function createDbDouble(state: DbState) {
       options?: { ignoreDuplicates?: boolean },
     ) => {
       if (table === "external_activities") {
-        state.upsertCalls = (state.upsertCalls ?? 0) + 1;
         const index = state.activities.findIndex((existing) =>
           existing.external_id === row.external_id
         );

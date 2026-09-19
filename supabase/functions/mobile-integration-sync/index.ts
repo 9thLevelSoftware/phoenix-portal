@@ -169,6 +169,8 @@ async function fetchLiftosaurActivities(apiKey: string): Promise<ProviderFetchRe
   const importedAt = new Date().toISOString();
   const undatedIds = new Set<string>();
   const activities = result.records.map((record) => {
+    // Only the provider-derived fields are read here; persistActivities sets
+    // user_id itself, so no user id is needed for the mapping.
     const { undated, row } = toLiftosaurActivityRow('', record, importedAt);
     const externalId = row.external_id as string;
     if (undated) undatedIds.add(externalId);
