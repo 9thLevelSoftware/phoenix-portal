@@ -415,6 +415,8 @@ function permissiveQuery(
   },
   onProbe: () => void = () => {},
   probeResult: unknown[] = [],
+  onChain: (method: string, args: unknown[]) => void = () => {},
+  resolveTerminal?: () => { data: unknown; error: unknown; count?: number },
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
@@ -437,7 +439,8 @@ function permissiveQuery(
     "returns",
   ];
   for (const method of chainMethods) {
-    query[method] = (..._args: unknown[]) => {
+    query[method] = (...args: unknown[]) => {
+      onChain(method, args);
       if (method === "neq") {
         ownershipProbe = true;
         onProbe();
@@ -469,9 +472,38 @@ function permissiveQuery(
     Promise.resolve(
       ownershipProbe
         ? { data: probeResult, error: null, count: probeResult.length }
+        : resolveTerminal
+        ? resolveTerminal()
         : terminalResult,
     ).then(resolve, reject);
   return query;
+}
+
+/** Every chained call made on one `from("exercise_catalog")` query. */
+interface CatalogQuery {
+  calls: Array<{ method: string; args: unknown[] }>;
+}
+
+function catalogEqFilters(query: CatalogQuery): Array<[unknown, unknown]> {
+  return query.calls.filter((call) => call.method === "eq").map((call) =>
+    [call.args[0], call.args[1]] as [unknown, unknown]
+  );
+}
+
+function catalogRangeStart(query: CatalogQuery): unknown {
+  return query.calls.find((call) => call.method === "range")?.args[0];
+}
+
+function isPublicCatalogLookup(query: CatalogQuery): boolean {
+  return catalogEqFilters(query).some(([column, value]) =>
+    column === "is_custom" && value === false
+  );
+}
+
+function isCustomCatalogLookup(query: CatalogQuery): boolean {
+  return catalogEqFilters(query).some(([column, value]) =>
+    column === "is_custom" && value === true
+  );
 }
 
 interface PushHarness {
@@ -483,6 +515,7 @@ interface PushHarness {
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
   ownershipProbeTables: string[];
+  catalogQueries: CatalogQuery[];
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -497,6 +530,9 @@ function makeHarness(
     personalRecordsResult?: { data: unknown; error: unknown };
     foreignOwnedTables?: string[];
     now?: () => number;
+    catalogBehavior?: (
+      query: CatalogQuery,
+    ) => { data: unknown; error: unknown } | undefined;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -507,6 +543,7 @@ function makeHarness(
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
   const ownershipProbeTables: string[] = [];
+  const catalogQueries: CatalogQuery[] = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -516,6 +553,10 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
+      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
+        ? { calls: [] }
+        : null;
+      if (catalogQuery) catalogQueries.push(catalogQuery);
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
@@ -524,7 +565,13 @@ function makeHarness(
         () => ownershipProbeTables.push(table),
         (options.foreignOwnedTables ?? []).includes(table)
           ? [{ id: "foreign-row" }]
-          : []);
+          : [],
+        (method, args) => catalogQuery?.calls.push({ method, args }),
+        catalogQuery && options.catalogBehavior
+          ? () =>
+            options.catalogBehavior!(catalogQuery) ??
+              { data: [], error: null, count: 0 }
+          : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -605,6 +652,7 @@ function makeHarness(
     adminFromCalls,
     adminWriteCalls,
     ownershipProbeTables,
+    catalogQueries,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -3033,9 +3081,6 @@ Deno.test("public exercise catalog is fetched once per isolate within the TTL", 
   const harness = makeHarness(async () => VALID_AUTH_RESULT, {
     now: () => nowMs,
   });
-  const catalogReads = () =>
-    harness.adminFromCalls.filter((table) => table === "exercise_catalog")
-      .length;
   const push = async () => {
     const body = validPushBody();
     body.profileId = "default";
@@ -3043,18 +3088,510 @@ Deno.test("public exercise catalog is fetched once per isolate within the TTL", 
     const response = await harness.handler(requestFromBody(body));
     assertEquals(response.status, 200);
   };
+  const lookups = () =>
+    harness.catalogQueries.map((query) =>
+      isPublicCatalogLookup(query)
+        ? "public"
+        : isCustomCatalogLookup(query)
+        ? "custom"
+        : "other"
+    );
 
   await push();
-  // First push: one public-catalog page plus the caller's custom rows.
-  assertEquals(catalogReads(), 2);
+  // First push: one public-catalog fetch plus the caller's custom rows.
+  assertEquals(lookups(), ["public", "custom"]);
 
   nowMs += 9 * 60 * 1000;
   await push();
   // Second push in the same isolate: only the caller's custom rows.
-  assertEquals(catalogReads(), 3);
+  assertEquals(lookups(), ["public", "custom", "custom"]);
 
   nowMs += 2 * 60 * 1000;
   await push();
   // After the 10-minute TTL the public catalog is fetched again.
-  assertEquals(catalogReads(), 5);
+  assertEquals(lookups(), ["public", "custom", "custom", "public", "custom"]);
+});
+
+Deno.test("catalog lookups filter public rows and the caller's own custom rows", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.sessions = [makePrSession()];
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const [publicLookup, customLookup] = harness.catalogQueries;
+  assertEquals(catalogEqFilters(publicLookup), [["is_custom", false]]);
+  assertEquals(catalogEqFilters(customLookup), [
+    ["is_custom", true],
+    ["user_id", VALID_USER_ID],
+  ]);
+  for (const lookup of [publicLookup, customLookup]) {
+    assert(!lookup.calls.some((call) => call.method === "or"));
+    assertEquals(catalogRangeStart(lookup), 0);
+  }
+});
+
+Deno.test("a library row wins a name tie with the caller's custom row", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) => {
+      if (isPublicCatalogLookup(query)) {
+        return {
+          data: [{ id: "zz-library-bench", name: "Bench Press", is_custom: false }],
+          error: null,
+        };
+      }
+      if (isCustomCatalogLookup(query)) {
+        // Sorts before the library id, so id order alone would pick it.
+        return {
+          data: [{
+            id: "aa-custom-bench",
+            name: "Bench Press",
+            is_custom: true,
+            user_id: VALID_USER_ID,
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+  });
+  const body = validPushBody();
+  body.profileId = "default";
+  const session = makePrSession();
+  session.exercises[0].exerciseId = "unknown-stale-id";
+  body.sessions = [session];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replace = harness.adminRpcCalls.find((call) =>
+    call.name === "replace_session_children"
+  );
+  assert(replace);
+  assertEquals(
+    (replace.args.p_exercises as Array<Record<string, unknown>>)[0].exercise_id,
+    "zz-library-bench",
+  );
+});
+
+Deno.test("a failed public catalog fetch is not cached", async () => {
+  let failPublic = true;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) =>
+      isPublicCatalogLookup(query) && failPublic
+        ? { data: null, error: { message: "injected catalog failure" } }
+        : undefined,
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    return await harness.handler(requestFromBody(body));
+  };
+
+  assertEquals((await push()).status, 500);
+  failPublic = false;
+  assertEquals((await push()).status, 200);
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).length,
+    2,
+  );
+});
+
+Deno.test("a page-2 public catalog failure does not cache page 1", async () => {
+  let failPageTwo = true;
+  const pageOne = Array.from({ length: 1000 }, (_, index) => ({
+    id: `library-${index.toString().padStart(4, "0")}`,
+    name: `Library exercise ${index}`,
+    is_custom: false,
+  }));
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) => {
+      if (!isPublicCatalogLookup(query)) return undefined;
+      if (catalogRangeStart(query) === 0) return { data: pageOne, error: null };
+      return failPageTwo
+        ? { data: null, error: { message: "injected page-2 failure" } }
+        : { data: [], error: null };
+    },
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    return await harness.handler(requestFromBody(body));
+  };
+
+  assertEquals((await push()).status, 500);
+  failPageTwo = false;
+  assertEquals((await push()).status, 200);
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).map(catalogRangeStart),
+    [0, 1000, 0, 1000],
+  );
+});
+
+Deno.test("a clock that moves backwards treats the public catalog as stale", async () => {
+  let nowMs = 1_784_167_200_000;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    now: () => nowMs,
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    assertEquals((await harness.handler(requestFromBody(body))).status, 200);
+  };
+
+  await push();
+  nowMs -= 1;
+  await push();
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).length,
+    2,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// PR 58 real-SQL coverage: split catalog filters, isolate cache, and the
+// removed cycle_days id probe, against a real PostgREST and Postgres.
+// ---------------------------------------------------------------------------
+
+interface CatalogIntegrationFixture {
+  admin: SupabaseClient;
+  ownerId: string;
+  otherUserId: string;
+  suffix: string;
+}
+
+async function createCatalogIntegrationFixture(): Promise<
+  CatalogIntegrationFixture
+> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const createdUserIds: string[] = [];
+  try {
+    for (const role of ["owner", "other"]) {
+      const created = await admin.auth.admin.createUser({
+        email: `pr58-${role}-${suffix}@example.invalid`,
+        email_confirm: true,
+      });
+      if (created.error || !created.data.user) {
+        throw new Error(`${role} fixture creation failed`);
+      }
+      createdUserIds.push(created.data.user.id);
+    }
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: createdUserIds[0],
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) {
+      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
+    }
+    return {
+      admin,
+      ownerId: createdUserIds[0],
+      otherUserId: createdUserIds[1],
+      suffix,
+    };
+  } catch (error) {
+    for (const userId of createdUserIds) {
+      await admin.auth.admin.deleteUser(userId);
+    }
+    throw error;
+  }
+}
+
+async function cleanupCatalogIntegrationFixture(
+  fixture: CatalogIntegrationFixture,
+): Promise<void> {
+  // Every pushed row and custom catalog row cascades from auth.users.
+  for (const userId of [fixture.ownerId, fixture.otherUserId]) {
+    const deleted = await fixture.admin.auth.admin.deleteUser(userId);
+    if (deleted.error) throw new Error("auth fixture cleanup failed");
+  }
+}
+
+function realPushHandler(
+  fixture: CatalogIntegrationFixture,
+  now: () => number = () => Date.now(),
+): (request: Request) => Promise<Response> {
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      // Real PostgREST and RPCs; the realtime broadcast is stubbed so the
+      // test leaves no open WebSocket behind.
+      const admin = Object.create(fixture.admin) as SupabaseClient;
+      Object.assign(admin, {
+        channel() {
+          return {
+            subscribe(callback: (status: string) => void) {
+              callback("SUBSCRIBED");
+              return {};
+            },
+            async send() {
+              return "ok";
+            },
+          };
+        },
+        async removeChannel() {
+          return "ok";
+        },
+      });
+      return admin;
+    },
+    logOperationalFailure() {},
+    now,
+  });
+}
+
+function catalogProbeSession(
+  sessionId: string,
+  userId: string,
+  refs: Array<{ exerciseId: string; name: string }>,
+): Record<string, unknown> {
+  return {
+    id: sessionId,
+    userId,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: refs.map((ref, index) => {
+      const exerciseRowId = crypto.randomUUID();
+      return {
+        id: exerciseRowId,
+        sessionId,
+        name: ref.name,
+        exerciseId: ref.exerciseId,
+        muscleGroup: "Chest",
+        orderIndex: index,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: exerciseRowId,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 20,
+          isPr: false,
+        }],
+      };
+    }),
+  };
+}
+
+async function pushSession(
+  handler: (request: Request) => Promise<Response>,
+  fixture: CatalogIntegrationFixture,
+  refs: Array<{ exerciseId: string; name: string }>,
+  extra: Record<string, unknown> = {},
+): Promise<Array<string | null>> {
+  const sessionId = crypto.randomUUID();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.sessions = [catalogProbeSession(sessionId, fixture.ownerId, refs)];
+  Object.assign(body, extra);
+  const response = await handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const stored = await fixture.admin.from("exercises")
+    .select("order_index, exercise_id")
+    .eq("session_id", sessionId)
+    .order("order_index", { ascending: true });
+  if (stored.error) throw new Error("exercise verification query failed");
+  assertEquals(stored.data.length, refs.length);
+  return stored.data.map((row) => row.exercise_id as string | null);
+}
+
+async function insertCustomCatalogRow(
+  fixture: CatalogIntegrationFixture,
+  id: string,
+  name: string,
+  userId: string,
+): Promise<void> {
+  const inserted = await fixture.admin.from("exercise_catalog").insert({
+    id,
+    name,
+    display_name: name,
+    muscle_group: "Chest",
+    is_custom: true,
+    user_id: userId,
+  });
+  if (inserted.error) {
+    throw new Error(`custom catalog fixture failed: ${inserted.error.message}`);
+  }
+}
+
+Deno.test({
+  name:
+    "integration: push resolves paged public rows and the caller's own custom rows, never another user's",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    try {
+      const publicIds = await fixture.admin.from("exercise_catalog")
+        .select("id")
+        .eq("is_custom", false)
+        .order("id", { ascending: true })
+        .range(1000, 1999);
+      if (publicIds.error) throw new Error("public catalog query failed");
+      // The seeded library spans more than one 1000-row page.
+      assert(publicIds.data.length > 0, "public catalog must exceed one page");
+      const pageTwoId = publicIds.data[publicIds.data.length - 1].id as string;
+
+      const ownId = `pr58-own-${fixture.suffix}`;
+      const ownName = `Pr58 Own Press ${fixture.suffix}`;
+      const otherId = `pr58-other-${fixture.suffix}`;
+      const otherName = `Pr58 Other Press ${fixture.suffix}`;
+      const pushedId = `pr58-pushed-${fixture.suffix}`;
+      const pushedName = `Pr58 Pushed Press ${fixture.suffix}`;
+      await insertCustomCatalogRow(fixture, ownId, ownName, fixture.ownerId);
+      await insertCustomCatalogRow(
+        fixture,
+        otherId,
+        otherName,
+        fixture.otherUserId,
+      );
+
+      const resolved = await pushSession(realPushHandler(fixture), fixture, [
+        { exerciseId: pageTwoId, name: "Page two library row" },
+        { exerciseId: ownId, name: "Renamed on device" },
+        { exerciseId: "pr58-stale-own", name: ownName },
+        { exerciseId: otherId, name: "Other user id" },
+        { exerciseId: "pr58-stale-other", name: otherName },
+        { exerciseId: pushedId, name: pushedName },
+        { exerciseId: "pr58-stale-pushed", name: pushedName },
+      ], {
+        customExercises: [{
+          clientId: pushedId,
+          name: pushedName,
+          muscleGroup: "Chest",
+          defaultCableConfig: "DOUBLE",
+        }],
+      });
+
+      assertEquals(resolved, [
+        pageTwoId,
+        ownId,
+        ownId,
+        null,
+        null,
+        pushedId,
+        pushedId,
+      ]);
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: public catalog rows are cached for 10 minutes per handler",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    const lateId = `pr58-late-public-${fixture.suffix}`;
+    try {
+      let nowMs = Date.now();
+      const handler = realPushHandler(fixture, () => nowMs);
+      const ref = { exerciseId: lateId, name: `Pr58 Late ${fixture.suffix}` };
+
+      assertEquals(await pushSession(handler, fixture, [ref]), [null]);
+      const inserted = await fixture.admin.from("exercise_catalog").insert({
+        id: lateId,
+        name: ref.name,
+        display_name: ref.name,
+        muscle_group: "Chest",
+        is_custom: false,
+      });
+      if (inserted.error) throw new Error("late public row insert failed");
+
+      nowMs += 9 * 60 * 1000;
+      assertEquals(await pushSession(handler, fixture, [ref]), [null]);
+
+      nowMs += 2 * 60 * 1000;
+      assertEquals(await pushSession(handler, fixture, [ref]), [lateId]);
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
+      await fixture.admin.from("exercise_catalog").delete().eq("id", lateId);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: a foreign cycle_days id in a push leaves the victim row untouched",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    try {
+      const victimCycleId = crypto.randomUUID();
+      const victimDayId = crypto.randomUUID();
+      const victimCycle = await fixture.admin.from("training_cycles").insert({
+        id: victimCycleId,
+        user_id: fixture.otherUserId,
+        name: "Victim cycle",
+      });
+      if (victimCycle.error) throw new Error("victim cycle insert failed");
+      const victimDay = await fixture.admin.from("cycle_days").insert({
+        id: victimDayId,
+        cycle_id: victimCycleId,
+        day_number: 1,
+        notes: "victim",
+      });
+      if (victimDay.error) throw new Error("victim day insert failed");
+
+      const ownCycleId = crypto.randomUUID();
+      const body = validPushBody();
+      body.profileId = "default";
+      body.cycles = [{
+        id: ownCycleId,
+        userId: fixture.ownerId,
+        name: "Owner cycle",
+        days: [{
+          id: victimDayId,
+          cycleId: ownCycleId,
+          dayNumber: 1,
+          notes: "attacker",
+        }],
+      }];
+      const response = await realPushHandler(fixture)(requestFromBody(body));
+      assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+      const victim = await fixture.admin.from("cycle_days")
+        .select("cycle_id, day_number, notes")
+        .eq("id", victimDayId)
+        .single();
+      if (victim.error) throw new Error("victim day verification failed");
+      assertEquals(victim.data, {
+        cycle_id: victimCycleId,
+        day_number: 1,
+        notes: "victim",
+      });
+      const own = await fixture.admin.from("cycle_days")
+        .select("id, notes")
+        .eq("cycle_id", ownCycleId);
+      if (own.error) throw new Error("owner day verification failed");
+      assertEquals(own.data.length, 1);
+      assert(own.data[0].id !== victimDayId);
+      assertEquals(own.data[0].notes, "attacker");
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
+    }
+  },
 });
