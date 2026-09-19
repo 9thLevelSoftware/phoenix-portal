@@ -820,6 +820,298 @@ SELECT results_eq(
     'service_role LWW writes landed'
 );
 
+SELECT diag('database:trust-plane-session-children');
+
+-- Session child tables feed exercise mastery (exercises) and per-session
+-- volume / reps / 1RM (sets, rep_summaries, rep_telemetry,
+-- exercise_progress). Only service_role push writes them.
+CREATE TEMP TABLE child_tables (relname text PRIMARY KEY) ON COMMIT DROP;
+INSERT INTO child_tables VALUES
+    ('exercises'), ('sets'), ('rep_summaries'), ('rep_telemetry'), ('exercise_progress');
+GRANT SELECT ON child_tables TO authenticated, service_role;
+
+SELECT is_empty(
+    $sql$
+        SELECT pol.tablename::text || ' ' || pol.policyname::text
+        FROM pg_policies pol
+        JOIN child_tables ct ON ct.relname = pol.tablename
+        WHERE pol.schemaname = 'public'
+          AND pol.cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+          AND pol.roles <> ARRAY['service_role']::name[]
+    $sql$,
+    'session child tables have no client write policy'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT grantee.role || ' ' || ct.relname || ' ' || priv.name
+        FROM (VALUES ('anon'), ('authenticated')) AS grantee(role)
+        CROSS JOIN child_tables ct
+        CROSS JOIN (VALUES ('INSERT'), ('UPDATE'), ('DELETE')) AS priv(name)
+        WHERE has_table_privilege(
+            grantee.role, format('public.%I', ct.relname), priv.name
+        )
+    $sql$,
+    'anon/authenticated hold no INSERT/UPDATE/DELETE on session child tables'
+);
+
+-- Server-side fixtures under the EMBER user's synced session.
+INSERT INTO public.exercises (id, session_id, name, user_id)
+VALUES (
+    '44444444-a001-4444-8444-444444444444'::uuid,
+    '44444444-5555-4444-8444-444444444444'::uuid,
+    'Row',
+    '44444444-4444-4444-8444-444444444444'::uuid
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.sets (id, exercise_id, set_number, user_id)
+VALUES (
+    '44444444-a002-4444-8444-444444444444'::uuid,
+    '44444444-a001-4444-8444-444444444444'::uuid,
+    1,
+    '44444444-4444-4444-8444-444444444444'::uuid
+)
+ON CONFLICT (id) DO NOTHING;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"44444444-4444-4444-8444-444444444444","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.exercises (session_id, name, user_id)
+        VALUES (
+            '44444444-5555-4444-8444-444444444444'::uuid,
+            'fabricated exercise',
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT exercises'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.sets (exercise_id, set_number, weight_kg, actual_reps, user_id)
+        VALUES (
+            '44444444-a001-4444-8444-444444444444'::uuid,
+            2,
+            1000,
+            100,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT sets'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rep_summaries (set_id, rep_number, user_id)
+        VALUES (
+            '44444444-a002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT rep_summaries'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rep_telemetry (set_id, timestamp_ms, user_id)
+        VALUES (
+            '44444444-a002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT rep_telemetry'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.exercise_progress (user_id, exercise_name, session_id)
+        VALUES (
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'Row',
+            '44444444-5555-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT exercise_progress'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.sets
+           SET weight_kg = 1000
+         WHERE id = '44444444-a002-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE sets'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        DELETE FROM public.exercises
+         WHERE id = '44444444-a001-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot DELETE exercises'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT count(*)::integer
+        FROM public.exercises
+        WHERE session_id = '44444444-5555-4444-8444-444444444444'::uuid
+    $sql$,
+    $values$ VALUES (1) $values$,
+    'owner can still SELECT own exercises'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.exercises (id, session_id, name, user_id)
+        VALUES (
+            '44444444-b001-4444-8444-444444444444'::uuid,
+            '44444444-7777-4444-8444-444444444444'::uuid,
+            'Push row',
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT exercises'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.sets (id, exercise_id, set_number, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            '44444444-b001-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT sets'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.rep_summaries (set_id, rep_number, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT rep_summaries'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.rep_telemetry (set_id, timestamp_ms, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT rep_telemetry'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.exercise_progress (user_id, exercise_name, session_id)
+        VALUES (
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'Push row',
+            '44444444-7777-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT exercise_progress'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.sets
+           SET weight_kg = 50
+         WHERE id = '44444444-b002-4444-8444-444444444444'::uuid
+    $sql$,
+    'service_role can UPDATE sets'
+);
+
+SELECT lives_ok(
+    $sql$
+        SELECT public.replace_session_children(
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            ARRAY['44444444-7777-4444-8444-444444444444'::uuid],
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c001-4444-8444-444444444444',
+                'session_id', '44444444-7777-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'name', 'Replaced row',
+                'muscle_group', 'Back',
+                'order_index', 0
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c002-4444-8444-444444444444',
+                'exercise_id', '44444444-c001-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'set_number', 1,
+                'actual_reps', 5,
+                'weight_kg', 40,
+                'is_pr', false
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c003-4444-8444-444444444444',
+                'set_id', '44444444-c002-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'rep_number', 1
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c004-4444-8444-444444444444',
+                'set_id', '44444444-c002-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'timestamp_ms', 1
+            ))
+        )
+    $sql$,
+    'service_role can call replace_session_children'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            (SELECT count(*) FROM public.exercises
+              WHERE session_id = '44444444-7777-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.sets
+              WHERE id = '44444444-c002-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.rep_summaries
+              WHERE id = '44444444-c003-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.rep_telemetry
+              WHERE id = '44444444-c004-4444-8444-444444444444'::uuid)::integer
+    $sql$,
+    $values$ VALUES (1, 1, 1, 1) $values$,
+    'replace_session_children replaced the session''s children'
+);
+
 SELECT diag('database:trust-plane-goal-cap');
 
 -- EMBER cap is 3 active goals. Every INSERT is checked; an UPDATE is checked
