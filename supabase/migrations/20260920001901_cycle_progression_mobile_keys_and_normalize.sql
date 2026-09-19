@@ -4,9 +4,10 @@
 --    object it rewrites every non-string value as its JSON text and drops
 --    JSON nulls, so mobile's non-lenient Map<String, String> decode
 --    (Project-Phoenix-MP SqlDelightSyncRepository.mergePortalCycles)
---    succeeds. Non-objects and NULL are returned unchanged. It never adds
---    or derives keys: deriving mobile keys here would re-inject values a
---    phone cleared.
+--    succeeds. Any non-object (number, string, array, boolean, JSON null)
+--    becomes SQL NULL, since the phone cannot decode it and drops the
+--    cycle's progression anyway. It never adds or derives keys: deriving
+--    mobile keys here would re-inject values a phone cleared.
 -- 2. BEFORE INSERT OR UPDATE OF progression_settings trigger on
 --    training_cycles applies it to every write: import_shared_cycle (old
 --    community snapshots and creator-controlled snapshot JSON), cached
@@ -43,7 +44,7 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT CASE
-    WHEN p_settings IS NULL OR jsonb_typeof(p_settings) <> 'object' THEN p_settings
+    WHEN p_settings IS NULL OR jsonb_typeof(p_settings) <> 'object' THEN NULL
     ELSE COALESCE(
       (SELECT jsonb_object_agg(
                 e.key,

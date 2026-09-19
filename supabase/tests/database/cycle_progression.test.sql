@@ -62,8 +62,18 @@ SELECT is(
 SELECT is(public.normalize_cycle_progression_settings(NULL), NULL::jsonb, 'NULL stays NULL');
 SELECT is(
     public.normalize_cycle_progression_settings('[1,2]'),
-    '[1,2]'::jsonb,
-    'a non-object is returned unchanged'
+    NULL::jsonb,
+    'a non-object becomes NULL'
+);
+SELECT is(
+    public.normalize_cycle_progression_settings('"x"'),
+    NULL::jsonb,
+    'a JSON string becomes NULL'
+);
+SELECT is(
+    public.normalize_cycle_progression_settings('null'),
+    NULL::jsonb,
+    'a JSON null becomes SQL NULL'
 );
 
 -- ---------------------------------------------------------------------------
@@ -100,6 +110,21 @@ SELECT is(
      WHERE id = '19191919-0000-4000-8000-0000000000c1'),
     '{"type":"percentage","amount":"2.5","frequency":"1"}'::jsonb,
     'a numeric insert is stored as strings with nulls dropped'
+);
+
+-- Non-object progression values are stored as NULL.
+INSERT INTO public.training_cycles (id, user_id, name, progression_settings, updated_at)
+VALUES
+    ('19191919-0000-4000-8000-0000000000c5'::uuid, '19191919-0000-4000-8000-000000000001'::uuid,
+     'Scalar', '5', '2026-01-01+00'),
+    ('19191919-0000-4000-8000-0000000000c6'::uuid, '19191919-0000-4000-8000-000000000001'::uuid,
+     'Array', '[1]', '2026-01-01+00');
+SELECT results_eq(
+    $sql$ SELECT name, progression_settings FROM public.training_cycles
+          WHERE id IN ('19191919-0000-4000-8000-0000000000c5', '19191919-0000-4000-8000-0000000000c6')
+          ORDER BY id $sql$,
+    $values$ VALUES ('Scalar'::text, NULL::jsonb), ('Array', NULL) $values$,
+    'inserting 5 or [1] stores NULL'
 );
 
 -- An authenticated PostgREST-style update with numbers is normalized too.
