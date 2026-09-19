@@ -4722,3 +4722,205 @@ Deno.test({
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// KD-5 (PR 21): real-SQL LWW clock. client_updated_at is the LWW key (the
+// device's updatedAt, or now() for a portal edit); updated_at stays the
+// server-owned pull cursor. Runs under the SYNC_LWW_ENABLED value of the run
+// (CI runs both).
+// ---------------------------------------------------------------------------
+
+/** A mobile push of one session and one routine stamped `updatedAt`. */
+function lwwClockPush(
+  ids: { sessionId: string; routineId: string },
+  version: string,
+  updatedAt: string,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: Date.now() - 60_000,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    sessions: [{
+      id: ids.sessionId,
+      userId: "mobile-local-user",
+      name: `Session ${version}`,
+      startedAt: "2026-07-01T08:00:00.000Z",
+      notes: null,
+      updatedAt,
+      exercises: [],
+    }],
+    routines: [{
+      id: ids.routineId,
+      userId: "mobile-local-user",
+      name: `Routine ${version}`,
+      description: "",
+      exerciseCount: 0,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      updatedAt,
+      exercises: [],
+    }],
+  };
+}
+
+async function storedLwwRow(
+  fixture: TombstonePushFixture,
+  table: "workout_sessions" | "routines",
+  id: string,
+): Promise<Record<string, unknown>> {
+  const columns = table === "workout_sessions"
+    ? "name, notes, updated_at, client_updated_at"
+    : "name, updated_at, client_updated_at";
+  const row = await fixture.admin.from(table).select(columns).eq("id", id).single();
+  if (row.error) throw new Error(`${table} lookup failed: ${row.error.message}`);
+  return row.data as unknown as Record<string, unknown>;
+}
+
+const epochMs = (value: unknown) => Date.parse(String(value));
+
+type RejectionLists = Record<string, Array<Record<string, unknown>>>;
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a device clock 10 minutes behind the server keeps updating; an older write loses only under LWW`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      const deviceClock = (minutesAgo: number) =>
+        new Date(Date.now() - minutesAgo * 60_000).toISOString();
+
+      // v1 creates, v2 updates (the server trigger moves updated_at to its
+      // own clock), v3 is the device's next edit, still behind the server.
+      // Before PR 21 the LWW gate compared v3 with updated_at and rejected it.
+      await pushOk(handler, lwwClockPush(ids, "v1", deviceClock(30)));
+      await pushOk(handler, lwwClockPush(ids, "v2", deviceClock(20)));
+      const v3Stamp = deviceClock(10);
+      const v3 = await pushOk(handler, lwwClockPush(ids, "v3", v3Stamp));
+      const v3Rejections = v3.rejections as RejectionLists;
+      assertEquals(v3Rejections.sessions, []);
+      assertEquals(v3Rejections.routines, []);
+      for (const table of ["workout_sessions", "routines"] as const) {
+        const id = table === "workout_sessions" ? ids.sessionId : ids.routineId;
+        const row = await storedLwwRow(fixture, table, id);
+        assertEquals(row.name, table === "workout_sessions" ? "Session v3" : "Routine v3");
+        assertEquals(epochMs(row.client_updated_at), epochMs(v3Stamp), `${table} stores the device key`);
+        assert(
+          epochMs(row.updated_at) > epochMs(v3Stamp),
+          `${table} updated_at is the server write clock`,
+        );
+      }
+
+      // A concurrent older write (another device, stamped before v3).
+      const olderStamp = deviceClock(15);
+      const older = await pushOk(handler, lwwClockPush(ids, "older", olderStamp));
+      const rejections = older.rejections as RejectionLists;
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      if (SYNC_LWW_ENABLED) {
+        assertEquals(rejections.sessions.map((r) => r.id), [ids.sessionId]);
+        assertEquals(rejections.routines.map((r) => r.id), [ids.routineId]);
+        // server_updated_at is the stored key, not the server write time.
+        assertEquals(
+          epochMs(rejections.sessions[0].serverUpdatedAt),
+          epochMs(session.client_updated_at),
+        );
+        assertEquals(
+          epochMs(rejections.routines[0].serverUpdatedAt),
+          epochMs(routine.client_updated_at),
+        );
+        assertEquals(epochMs(session.client_updated_at), epochMs(v3Stamp));
+        assertEquals(session.name, "Session v3");
+        assertEquals(routine.name, "Routine v3");
+      } else {
+        // Last push wins; the key follows it, so it is right when LWW is on.
+        assertEquals(rejections.sessions, []);
+        assertEquals(rejections.routines, []);
+        assertEquals(session.name, "Session older");
+        assertEquals(routine.name, "Routine older");
+        assertEquals(epochMs(session.client_updated_at), epochMs(olderStamp));
+        assertEquals(epochMs(routine.client_updated_at), epochMs(olderStamp));
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) portal notes and routine edits advance the key, reach pull, and survive an earlier-stamped push under LWW`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // The device's last version, stamped T1 by its clock.
+      const t1 = new Date(Date.now() - 5 * 60_000).toISOString();
+      await pushOk(handler, lwwClockPush(ids, "phone", t1));
+      const beforePortal = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+
+      // Portal edits at T2 > T1, through PostgREST as the signed-in user.
+      await asPortalUser(fixture, async (browser) => {
+        const notes = await browser.from("workout_sessions")
+          .update({ notes: "Portal note" }, { count: "exact" })
+          .eq("id", ids.sessionId);
+        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
+        assertEquals(notes.count, 1);
+        const rename = await browser.from("routines")
+          .update({ name: "Portal routine" }, { count: "exact" })
+          .eq("id", ids.routineId);
+        if (rename.error) throw new Error(`portal routine edit failed: ${rename.error.message}`);
+        assertEquals(rename.count, 1);
+      });
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      assert(epochMs(session.client_updated_at) > epochMs(t1), "portal edit advances the session key");
+      assert(epochMs(routine.client_updated_at) > epochMs(t1), "portal edit advances the routine key");
+      assertEquals(session.client_updated_at, session.updated_at);
+
+      // #116: an incremental pull that already knows the session returns it.
+      const pulled = await fixture.admin.rpc("get_sessions_excluding_ids", {
+        p_user_id: fixture.ownerId,
+        p_known_ids: [ids.sessionId],
+        p_last_sync_at: beforePortal.updated_at,
+      });
+      if (pulled.error) throw new Error(`sessions pull RPC failed: ${pulled.error.message}`);
+      const pulledRows = pulled.data as Array<Record<string, unknown>>;
+      assertEquals(pulledRows.map((r) => [r.id, r.notes]), [[ids.sessionId, "Portal note"]]);
+
+      // The device re-pushes its unchanged T1 version, then an edit stamped
+      // T1 + 1 s (still before the portal edit).
+      const t1b = new Date(Date.parse(t1) + 1_000).toISOString();
+      for (const [version, stamp] of [["phone", t1], ["phone edit", t1b]] as const) {
+        const response = await pushOk(handler, lwwClockPush(ids, version, stamp));
+        const rejections = response.rejections as RejectionLists;
+        const storedSession = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+        const storedRoutine = await storedLwwRow(fixture, "routines", ids.routineId);
+        if (SYNC_LWW_ENABLED) {
+          assertEquals(rejections.sessions.map((r) => r.id), [ids.sessionId], version);
+          assertEquals(rejections.routines.map((r) => r.id), [ids.routineId], version);
+          assertEquals(storedSession.notes, "Portal note", `${version}: portal notes survive`);
+          assertEquals(storedRoutine.name, "Portal routine", `${version}: portal rename survives`);
+          assertEquals(storedSession.client_updated_at, session.client_updated_at);
+        } else {
+          // Documented LWW-off behaviour: the push overwrites (last push
+          // wins) and stores its own key.
+          assertEquals(rejections.sessions, [], version);
+          assertEquals(storedSession.notes, null, version);
+          assertEquals(storedRoutine.name, `Routine ${version}`);
+          assertEquals(epochMs(storedSession.client_updated_at), epochMs(stamp));
+        }
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});

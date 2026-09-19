@@ -1710,6 +1710,10 @@ async function mobileSyncPushHandler(
         warmup_reps: s.warmupReps ?? null,
         working_reps: s.workingReps ?? null,
         updated_at: s.updatedAt ?? null,
+        // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
+        // updated_at above is only the INSERT value; on UPDATE the server
+        // trigger owns it (pull cursor).
+        client_updated_at: s.updatedAt ?? null,
       }));
 
       // Cross-user takeover defense (from main beta audit hardening): always
@@ -2296,6 +2300,8 @@ async function mobileSyncPushHandler(
         times_completed: r.timesCompleted ?? 0,
         is_favorite: r.isFavorite ?? false,
         updated_at: r.updatedAt ?? null,
+        // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
+        client_updated_at: r.updatedAt ?? null,
       }));
 
       const routineOwnershipResp = await assertRowsOwnedByUser(
