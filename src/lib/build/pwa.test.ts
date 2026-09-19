@@ -1,71 +1,151 @@
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+	assetContentTypeGuard,
+	collectShellFiles,
+	createPwaShellPrecache,
+	createPwaWorkboxOptions,
+	filterPrecacheToShell,
 	isRuntimeCachedAsset,
-	PWA_PRECACHE_GLOB_IGNORES,
-	PWA_PRECACHE_GLOB_PATTERNS,
+	PWA_GLOB_PATTERNS,
 	PWA_RUNTIME_ASSET_CACHE,
-	pwaWorkboxOptions,
 } from "./pwa";
 
-// node:path.matchesGlob exists from Node 22; engines still allow Node 20.
-const matchesGlob = (
-	path as typeof path & {
-		matchesGlob?: (file: string, pattern: string) => boolean;
-	}
-).matchesGlob;
-
-function isPrecached(file: string): boolean {
-	if (!matchesGlob) throw new Error("matchesGlob unavailable");
-	return (
-		PWA_PRECACHE_GLOB_PATTERNS.some((pattern) => matchesGlob(file, pattern)) &&
-		!PWA_PRECACHE_GLOB_IGNORES.some((pattern) => matchesGlob(file, pattern))
-	);
+function chunk(
+	fileName: string,
+	options: { isEntry?: boolean; imports?: string[]; css?: string[] } = {},
+) {
+	return {
+		type: "chunk" as const,
+		fileName,
+		isEntry: options.isEntry ?? false,
+		imports: options.imports ?? [],
+		viteMetadata: { importedCss: new Set(options.css ?? []) },
+	};
 }
 
+// Shape of a real build: the entry statically imports the vendor shell; route
+// chunks (and what they import) are only reachable via dynamic import().
+const BUNDLE = {
+	"assets/entry-A.js": chunk("assets/entry-A.js", {
+		isEntry: true,
+		imports: ["assets/vendor-react-B.js", "assets/vendor-supabase-C.js"],
+		css: ["assets/index-D.css"],
+	}),
+	"assets/vendor-react-B.js": chunk("assets/vendor-react-B.js"),
+	"assets/vendor-supabase-C.js": chunk("assets/vendor-supabase-C.js", {
+		imports: ["assets/vendor-react-B.js"],
+	}),
+	"assets/LandingPage-E.js": chunk("assets/LandingPage-E.js", {
+		imports: ["assets/vendor-visx-F.js", "assets/vendor-react-B.js"],
+	}),
+	"assets/vendor-visx-F.js": chunk("assets/vendor-visx-F.js"),
+	"assets/index-G.js": chunk("assets/index-G.js"),
+	"assets/csv-H.js": chunk("assets/csv-H.js"),
+	"assets/index-D.css": { type: "asset" as const },
+};
+
+const ALL_BUILT_FILES = [
+	"index.html",
+	"manifest.webmanifest",
+	"favicon.svg",
+	"pwa-192x192.png",
+	"pwa-512x512.png",
+	"phoenix-hero.png",
+	"sw.js",
+	"registerSW.js",
+	...Object.keys(BUNDLE),
+].map((url) => ({ url, revision: "r", size: 1 }));
+
 describe("PWA precache (app shell only)", () => {
-	it("has no catch-all pattern that would precache every chunk", () => {
-		for (const pattern of PWA_PRECACHE_GLOB_PATTERNS) {
-			expect(pattern.startsWith("**")).toBe(false);
-			expect(pattern).not.toMatch(/^assets\/\*\./);
-		}
-		expect(pwaWorkboxOptions.globPatterns).toBe(PWA_PRECACHE_GLOB_PATTERNS);
-		expect(pwaWorkboxOptions.globIgnores).toBe(PWA_PRECACHE_GLOB_IGNORES);
-		expect(pwaWorkboxOptions.navigateFallback).toBe("/index.html");
+	it("derives the shell from the entry chunk's static import graph", () => {
+		expect([...collectShellFiles(BUNDLE)].sort()).toEqual([
+			"assets/entry-A.js",
+			"assets/index-D.css",
+			"assets/vendor-react-B.js",
+			"assets/vendor-supabase-C.js",
+		]);
 	});
 
-	it.skipIf(!matchesGlob)(
-		"precaches the shell and leaves route/chart/body-map chunks to runtime",
-		() => {
-			for (const shell of [
+	it("keeps only shell files and static PWA files, never route or heavy chunks", () => {
+		const urls = filterPrecacheToShell(
+			ALL_BUILT_FILES,
+			collectShellFiles(BUNDLE),
+		).map((entry) => entry.url);
+
+		expect(urls.sort()).toEqual(
+			[
+				"assets/entry-A.js",
+				"assets/index-D.css",
+				"assets/vendor-react-B.js",
+				"assets/vendor-supabase-C.js",
+				"favicon.svg",
 				"index.html",
 				"manifest.webmanifest",
-				"favicon.svg",
 				"pwa-192x192.png",
 				"pwa-512x512.png",
-				"assets/index-D1ncLgaJ.js",
-				"assets/index-CE3k6ipb.css",
-				"assets/vendor-react-B4lo0q0A.js",
-				"assets/vendor-supabase-D5M3a-uf.js",
-			]) {
-				expect(isPrecached(shell), shell).toBe(true);
-			}
+			].sort(),
+		);
+		// An unrelated chunk that happens to be named index-* is not precached.
+		expect(urls).not.toContain("assets/index-G.js");
+		expect(urls).not.toContain("assets/LandingPage-E.js");
+		expect(urls).not.toContain("assets/vendor-visx-F.js");
+		expect(urls).not.toContain("phoenix-hero.png");
+	});
 
-			for (const lazy of [
-				"assets/vendor-echarts-CuDjhtHz.js",
-				"assets/vendor-recharts-DaZEM_ZX.js",
-				"assets/vendor-visx-7Z-GPWLZ.js",
-				"assets/csv-vSPO_V8J.js",
-				"assets/body-muscle-analytics-DuBZJnX6.js",
-				"assets/Analytics-BYgXtrNC.js",
-				"assets/Profile-T1ftdHQv.js",
-				"assets/phoenix-logo-512-CKGtdVX8.webp",
-				"phoenix-hero.png",
-			]) {
-				expect(isPrecached(lazy), lazy).toBe(false);
-			}
-		},
-	);
+	it("fails the build instead of precaching everything when the graph is missing", () => {
+		expect(() => filterPrecacheToShell(ALL_BUILT_FILES, null)).toThrow(
+			/shell chunk graph unavailable/,
+		);
+		expect(() => filterPrecacheToShell(ALL_BUILT_FILES, new Set())).toThrow(
+			/shell chunk graph unavailable/,
+		);
+	});
+
+	it("fails the build if the entry starts importing a heavy chunk statically", () => {
+		const shell = new Set(["assets/entry-A.js", "assets/vendor-echarts-X.js"]);
+		expect(() =>
+			filterPrecacheToShell(
+				[
+					...ALL_BUILT_FILES,
+					{ url: "assets/vendor-echarts-X.js", revision: "r", size: 1 },
+				],
+				shell,
+			),
+		).toThrow(/heavy chunks/);
+	});
+
+	it("fails the build if a shell file was not globbed", () => {
+		expect(() =>
+			filterPrecacheToShell(
+				ALL_BUILT_FILES.filter(
+					(entry) => entry.url !== "assets/vendor-react-B.js",
+				),
+				collectShellFiles(BUNDLE),
+			),
+		).toThrow(/not found by the precache glob/);
+	});
+
+	it("wires the Vite plugin's chunk graph into the Workbox manifest transform", async () => {
+		const shell = createPwaShellPrecache();
+		const generateBundle = shell.plugin.generateBundle as unknown as (
+			options: unknown,
+			bundle: typeof BUNDLE,
+		) => void;
+		generateBundle.call({}, {}, BUNDLE);
+
+		const result = await shell.manifestTransform(ALL_BUILT_FILES);
+		expect(result.manifest.map((entry) => entry.url)).toContain(
+			"assets/entry-A.js",
+		);
+		expect(result.manifest.map((entry) => entry.url)).not.toContain(
+			"assets/csv-H.js",
+		);
+
+		const options = createPwaWorkboxOptions(shell.manifestTransform);
+		expect(options.globPatterns).toBe(PWA_GLOB_PATTERNS);
+		expect(options.manifestTransforms).toEqual([shell.manifestTransform]);
+		expect(options.navigateFallback).toBe("/index.html");
+	});
 });
 
 describe("PWA runtime cache for non-precached assets", () => {
@@ -82,13 +162,73 @@ describe("PWA runtime cache for non-precached assets", () => {
 		expect(check("https://cdn.example/assets/x.js", false)).toBe(false);
 	});
 
-	it("uses StaleWhileRevalidate with bounded expiration", () => {
-		const [route] = pwaWorkboxOptions.runtimeCaching ?? [];
-		expect(pwaWorkboxOptions.runtimeCaching).toHaveLength(1);
+	it("uses StaleWhileRevalidate with bounded expiration and the content-type guard", () => {
+		const options = createPwaWorkboxOptions(vi.fn());
+		const [route] = options.runtimeCaching ?? [];
+		expect(options.runtimeCaching).toHaveLength(1);
 		expect(route?.handler).toBe("StaleWhileRevalidate");
 		expect(route?.urlPattern).toBe(isRuntimeCachedAsset);
 		expect(route?.options?.cacheName).toBe(PWA_RUNTIME_ASSET_CACHE);
+		expect(route?.options?.plugins).toContain(assetContentTypeGuard);
 		expect(route?.options?.expiration?.maxEntries).toBeGreaterThan(0);
 		expect(route?.options?.expiration?.maxAgeSeconds).toBeGreaterThan(0);
+	});
+
+	describe("assetContentTypeGuard", () => {
+		const guard = (
+			path: string,
+			destination: RequestDestination,
+			response: Response,
+		) =>
+			assetContentTypeGuard.cacheWillUpdate({
+				request: {
+					url: `${origin}${path}`,
+					destination,
+				} as Request,
+				response,
+			});
+		const respond = (type: string, status = 200) =>
+			new Response("x", { status, headers: { "content-type": type } });
+
+		it("rejects the SPA-fallback HTML served for a missing chunk", async () => {
+			expect(
+				await guard("/assets/Old-abc.js", "script", respond("text/html")),
+			).toBeNull();
+			expect(
+				await guard(
+					"/assets/Old-abc.js",
+					"",
+					respond("text/html; charset=utf-8"),
+				),
+			).toBeNull();
+			expect(
+				await guard("/assets/index-abc.css", "style", respond("text/html")),
+			).toBeNull();
+		});
+
+		it("rejects non-200 and mismatched types", async () => {
+			expect(
+				await guard("/assets/x.js", "script", respond("text/javascript", 404)),
+			).toBeNull();
+			expect(
+				await guard("/assets/x.js", "script", respond("text/plain")),
+			).toBeNull();
+			expect(
+				await guard(
+					"/assets/x.css",
+					"style",
+					respond("application/javascript"),
+				),
+			).toBeNull();
+		});
+
+		it("accepts matching script, stylesheet and image responses", async () => {
+			const js = respond("text/javascript; charset=utf-8");
+			expect(await guard("/assets/x.js", "script", js)).toBe(js);
+			const css = respond("text/css");
+			expect(await guard("/assets/x.css", "style", css)).toBe(css);
+			const png = respond("image/webp");
+			expect(await guard("/assets/logo.webp", "image", png)).toBe(png);
+		});
 	});
 });
