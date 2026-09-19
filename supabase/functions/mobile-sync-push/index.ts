@@ -2025,6 +2025,15 @@ async function mobileSyncPushHandler(
 
       const dedicatedPrsPresent = (payload.personalRecords ?? []).length > 0;
       const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
+      // Dedicated ids too, so a stored row whose achieved_at was edited is
+      // still found by id for the LWW / tombstone guard below.
+      const probeIds = [
+        ...new Set(
+          prRows
+            .map((row) => row.id)
+            .filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id)),
+        ),
+      ];
       // Existing-row probe via RPC: the timestamps travel in the POST body
       // (no GET `.in()` URL wall) and results are keyset-paged by id, so
       // PostgREST max_rows can never silently truncate the de-dup lookup.
@@ -2036,6 +2045,7 @@ async function mobileSyncPushHandler(
           {
             p_user_id: userId,
             p_achieved_at: achievedAtValues,
+            p_ids: probeIds,
             p_after_id: existingPrCursor,
             p_limit: PERSONAL_RECORD_PROBE_PAGE_SIZE,
           },
@@ -2128,8 +2138,19 @@ async function mobileSyncPushHandler(
               p_user_id: userId,
               p_rows: rows,
             });
+        // The set-derived RPC returns how many rows it actually inserted or
+        // changed (0 when a concurrent push already wrote the same values).
+        // The dedicated PostgREST upsert reports nothing, so it counts rows
+        // submitted, as before.
+        const countWritten = (data: unknown, submitted: number): number => {
+          if (dedicatedPrsPresent) return submitted;
+          if (typeof data !== 'number' || !Number.isInteger(data) || data < 0) {
+            throw new Error('personal_records set-derived upsert returned an unexpected result');
+          }
+          return data;
+        };
 
-        const { error: prErr } = await writePersonalRecords(prRowsToWrite);
+        const { data: prData, error: prErr } = await writePersonalRecords(prRowsToWrite);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {
           // Issue #99 RCA layer 2: always partition by local_profile_id
           // validity when the valid set is populated, even for derived PR
@@ -2192,15 +2213,18 @@ async function mobileSyncPushHandler(
             );
           }
 
-          const { error: retryErr } = await writePersonalRecords(
+          const { data: retryData, error: retryErr } = await writePersonalRecords(
             sessionPartition.rowsWithInvalidSessionsNulled,
           );
           if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
-          personalRecordsInserted = sessionPartition.rowsWithInvalidSessionsNulled.length;
+          personalRecordsInserted = countWritten(
+            retryData,
+            sessionPartition.rowsWithInvalidSessionsNulled.length,
+          );
         } else if (prErr) {
           throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
         } else {
-          personalRecordsInserted = prRowsToWrite.length;
+          personalRecordsInserted = countWritten(prData, prRowsToWrite.length);
         }
       }
     }

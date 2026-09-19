@@ -819,6 +819,7 @@ export type Database = {
 					record_type: string;
 					reps: number | null;
 					session_id: string | null;
+					source: string | null;
 					unit: string;
 					updated_at: string;
 					user_id: string;
@@ -838,6 +839,7 @@ export type Database = {
 					record_type?: string;
 					reps?: number | null;
 					session_id?: string | null;
+					source?: string | null;
 					unit?: string;
 					updated_at?: string;
 					user_id: string;
@@ -857,6 +859,7 @@ export type Database = {
 					record_type?: string;
 					reps?: number | null;
 					session_id?: string | null;
+					source?: string | null;
 					unit?: string;
 					updated_at?: string;
 					user_id?: string;
@@ -2395,6 +2398,26 @@ export type Database = {
 					user_value: number;
 				}[];
 			};
+			get_personal_record_identity_candidates: {
+				Args: {
+					p_achieved_at: string[];
+					p_after_id?: string;
+					p_ids?: string[];
+					p_limit?: number;
+					p_user_id: string;
+				};
+				Returns: {
+					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					record_type: string;
+					updated_at: string;
+					workout_phase: string | null;
+				}[];
+			};
 			get_personal_record_tombstones: {
 				Args: {
 					p_cursor_id?: string;
@@ -2417,6 +2440,7 @@ export type Database = {
 					record_type: string;
 					reps: number | null;
 					session_id: string | null;
+					source: string | null;
 					unit: string;
 					updated_at: string;
 					user_id: string;
@@ -2446,6 +2470,7 @@ export type Database = {
 					record_type: string;
 					reps: number | null;
 					session_id: string | null;
+					source: string | null;
 					unit: string;
 					updated_at: string;
 					user_id: string;
@@ -2638,6 +2663,10 @@ export type Database = {
 					id: string;
 					server_updated_at: string;
 				}[];
+			};
+			upsert_set_derived_personal_records: {
+				Args: { p_rows: Json; p_user_id: string };
+				Returns: number;
 			};
 			upsert_training_cycle_lww: {
 				Args: { p_rows: Json };

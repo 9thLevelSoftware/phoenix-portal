@@ -15,8 +15,14 @@
 --    The expressions mirror personalRecordDerivedIdentityKey() in
 --    supabase/functions/_shared/personalRecordRow.ts:
 --      profile   COALESCE(local_profile_id, 'default')  (NULL == 'default')
---      exercise  'id:' || exercise_id when present, else 'name:' || exercise_name
---      achieved_at (timestamptz equality == the TS epoch-ms normalization)
+--      exercise  'id:' || exercise_id when exercise_id is non-NULL and non-empty
+--                (NULLIF(exercise_id, '') - TS treats '' as absent too),
+--                else 'name:' || exercise_name
+--      achieved_at  timestamptz equality (microseconds). The TS key normalizes
+--                to epoch milliseconds, so the index is at least as fine as the
+--                TS key: two instants in the same millisecond are one identity
+--                to the TS pre-filter but two to the index. The TS pre-filter
+--                is therefore the stricter of the two; no duplicate can result.
 --      record_type
 --      phase     COALESCE(workout_phase, 'COMBINED')
 --    plus user_id, which the TS key omits because its lookups are user-scoped.
@@ -27,25 +33,58 @@
 --    predicate), so this must be SQL (R-3).
 --
 -- 4. get_personal_record_identity_candidates(...) replaces the push handler's
---    GET `.in('achieved_at', ...)` probe: identities travel in the POST body
---    and results are keyset-paged, so neither the URL length limit nor
---    PostgREST max_rows can silently truncate the de-dup lookup.
+--    GET `.in('achieved_at', ...)` probe: timestamps and dedicated ids travel
+--    in the POST body and results are keyset-paged, so neither the URL length
+--    limit nor PostgREST max_rows can silently truncate the de-dup lookup.
 --
--- Lock/cost notes (prod: ~5.9k live rows, 104 MB heap bloat):
---   * ADD COLUMN (nullable, no default) is catalog-only.
---   * The CHECK is added NOT VALID (brief ACCESS EXCLUSIVE, no scan) and then
---     validated under SHARE UPDATE EXCLUSIVE (writes continue).
---   * No existing row has source = 'set_derived' on first apply, so the dedupe
---     below touches zero rows and the index build is one heap scan under a
---     SHARE lock (sub-second at this size). The dedupe is the re-run guard.
---   * lock_timeout keeps the migration from queueing behind a long query and
---     blocking push traffic; re-run later if it times out (all steps are
---     idempotent).
+-- Lock/cost notes (prod: ~5.9k live rows in a heap bloated to ~104 MB):
+--   * `supabase db push` runs this whole file as ONE transaction. The ACCESS
+--     EXCLUSIVE lock taken by ADD COLUMN / ADD CONSTRAINT is held until COMMIT,
+--     i.e. through the CHECK scan, the dedupe scan and the unique-index build:
+--     about three full scans of the bloated heap during which every read and
+--     write of personal_records (push, pull, the portal Records page) waits.
+--     Expected to take seconds, not minutes.
+--   * Apply off-peak, ideally AFTER the planned `VACUUM FULL
+--     public.personal_records` / pg_repack (Operator Actions), which shrinks
+--     the heap roughly 18x and makes these scans correspondingly cheaper.
+--   * lock_timeout = 10s stops the migration from queueing behind a long query
+--     (and blocking traffic behind itself while waiting); if it times out,
+--     simply re-run - every step is idempotent.
+--   * No existing row has source = 'set_derived' on first apply (the column is
+--     new), so the dedupe touches zero rows; it is the re-run guard.
+--
+-- Operator pre-check (read-only, design Risk 6 "rows that will change"):
+-- expected 0 on first apply (the query errors with "column source does not
+-- exist" before the migration, which also means 0).
+--
+--   WITH ranked AS (
+--     SELECT row_number() OVER (
+--       PARTITION BY user_id, COALESCE(local_profile_id, 'default'),
+--         (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
+--           THEN 'id:' || exercise_id ELSE 'name:' || exercise_name END),
+--         achieved_at, record_type, COALESCE(workout_phase, 'COMBINED')
+--       ORDER BY updated_at DESC NULLS LAST, id ASC) AS rn
+--     FROM public.personal_records
+--     WHERE source = 'set_derived' AND deleted_at IS NULL)
+--   SELECT count(*) AS rows_that_will_be_tombstoned FROM ranked WHERE rn > 1;
+--
+-- Operator post-check (all three must return one row):
+--   SELECT 1 FROM information_schema.columns
+--    WHERE table_schema = 'public' AND table_name = 'personal_records'
+--      AND column_name = 'source';
+--   SELECT 1 FROM pg_indexes
+--    WHERE schemaname = 'public'
+--      AND indexname = 'uq_personal_records_set_derived_identity';
+--   SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public'
+--      AND p.proname = 'upsert_set_derived_personal_records';
 
 SET lock_timeout = '10s';
 
 -- ---------------------------------------------------------------------------
--- 1. source column + CHECK
+-- 1. source column + CHECK. The column is brand new (all NULL), and the whole
+--    file holds ACCESS EXCLUSIVE anyway, so a NOT VALID/VALIDATE split would
+--    buy nothing.
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.personal_records
   ADD COLUMN IF NOT EXISTS source TEXT;
@@ -60,13 +99,9 @@ BEGIN
   ) THEN
     ALTER TABLE public.personal_records
       ADD CONSTRAINT personal_records_source_check
-      CHECK (source IS NULL OR source IN ('set_derived', 'dedicated'))
-      NOT VALID;
+      CHECK (source IS NULL OR source IN ('set_derived', 'dedicated'));
   END IF;
 END $$;
-
-ALTER TABLE public.personal_records
-  VALIDATE CONSTRAINT personal_records_source_check;
 
 COMMENT ON COLUMN public.personal_records.source IS
   'Push path that produced the row: set_derived (sets[].isPr hints, no client id) '
@@ -86,7 +121,7 @@ WITH ranked AS (
       PARTITION BY
         pr.user_id,
         COALESCE(pr.local_profile_id, 'default'),
-        (CASE WHEN pr.exercise_id IS NOT NULL
+        (CASE WHEN NULLIF(pr.exercise_id, '') IS NOT NULL
           THEN 'id:' || pr.exercise_id
           ELSE 'name:' || pr.exercise_name END),
         pr.achieved_at,
@@ -109,7 +144,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_set_derived_identity
   ON public.personal_records (
     user_id,
     (COALESCE(local_profile_id, 'default')),
-    (CASE WHEN exercise_id IS NOT NULL
+    (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
       THEN 'id:' || exercise_id
       ELSE 'name:' || exercise_name END),
     achieved_at,
@@ -120,14 +155,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_set_derived_identity
 
 -- ---------------------------------------------------------------------------
 -- 3. Set-derived write path.
---    user_id, source and deleted_at are forced server-side; any user_id,
---    source or deleted_at in p_rows is ignored. An optional per-row id is
---    honoured for a new insert only; on conflict the stored id is kept.
+--    id, user_id, source and deleted_at are all decided server-side; any of
+--    those keys in p_rows is ignored (a new row always gets gen_random_uuid(),
+--    so a caller can never mint a row under a chosen id). On conflict the
+--    stored row keeps its id.
 --    DISTINCT ON guards against two payload rows with the same identity in
 --    one statement (SQLSTATE 21000); the last one in array order wins.
 --    DO UPDATE only fires when a value actually changed, so an unchanged
 --    re-push does not bump updated_at (and so is not re-pulled by devices).
---    Returns the number of rows inserted or updated.
+--    Returns the number of rows inserted or updated (0 for an unchanged
+--    conflict). FK violations (23503) propagate unchanged so the handler's
+--    profile/session FK retry still works.
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.upsert_set_derived_personal_records(UUID, JSONB);
 CREATE FUNCTION public.upsert_set_derived_personal_records(
@@ -169,14 +207,14 @@ BEGIN
   )
   SELECT DISTINCT ON (
     COALESCE(r.local_profile_id, 'default'),
-    (CASE WHEN r.exercise_id IS NOT NULL
+    (CASE WHEN NULLIF(r.exercise_id, '') IS NOT NULL
       THEN 'id:' || r.exercise_id
       ELSE 'name:' || r.exercise_name END),
     r.achieved_at,
     COALESCE(r.record_type, 'MAX_WEIGHT'),
     COALESCE(r.workout_phase, 'COMBINED')
   )
-    COALESCE(r.id, gen_random_uuid()),
+    gen_random_uuid(),
     p_user_id,
     r.local_profile_id,
     r.exercise_name,
@@ -194,7 +232,6 @@ BEGIN
     NULL
   FROM jsonb_array_elements(p_rows) WITH ORDINALITY AS e(elem, ord)
   CROSS JOIN LATERAL jsonb_to_record(e.elem) AS r(
-    id UUID,
     local_profile_id TEXT,
     exercise_name TEXT,
     exercise_id TEXT,
@@ -210,7 +247,7 @@ BEGIN
   )
   ORDER BY
     COALESCE(r.local_profile_id, 'default'),
-    (CASE WHEN r.exercise_id IS NOT NULL
+    (CASE WHEN NULLIF(r.exercise_id, '') IS NOT NULL
       THEN 'id:' || r.exercise_id
       ELSE 'name:' || r.exercise_name END),
     r.achieved_at,
@@ -220,7 +257,7 @@ BEGIN
   ON CONFLICT (
     user_id,
     (COALESCE(local_profile_id, 'default')),
-    (CASE WHEN exercise_id IS NOT NULL
+    (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
       THEN 'id:' || exercise_id
       ELSE 'name:' || exercise_name END),
     achieved_at,
@@ -249,21 +286,29 @@ $$;
 
 COMMENT ON FUNCTION public.upsert_set_derived_personal_records(UUID, JSONB) IS
   'mobile-sync-push only (service_role). Idempotent write of set-derived PRs '
-  'keyed on uq_personal_records_set_derived_identity. Legacy NULL-source and '
-  'dedicated rows are never matched or modified.';
+  'keyed on uq_personal_records_set_derived_identity; returns rows inserted or '
+  'changed. Ids are always server-generated. Legacy NULL-source and dedicated '
+  'rows are never matched or modified.';
 
 -- ---------------------------------------------------------------------------
 -- 4. Existing-row probe for push de-dup (POST body, keyset paged by id).
---    Returns every row (live or tombstoned, any source) whose achieved_at is
---    in p_achieved_at, a superset the handler filters with its TS identity
---    keys exactly as it did with the old GET probe.
+--    Returns every row (live or TOMBSTONED, any source) whose achieved_at is
+--    in p_achieved_at or whose id is in p_ids: a superset the handler filters
+--    with its TS identity keys. Tombstones must stay in the result - they are
+--    what stops a re-push from resurrecting a deleted PR (the partial index
+--    ignores tombstones). p_ids lets a dedicated row whose achieved_at was
+--    edited still be found by id for the LWW/tombstone guard.
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.get_personal_record_identity_candidates(
   UUID, TIMESTAMPTZ[], UUID, INT
 );
+DROP FUNCTION IF EXISTS public.get_personal_record_identity_candidates(
+  UUID, TIMESTAMPTZ[], UUID[], UUID, INT
+);
 CREATE FUNCTION public.get_personal_record_identity_candidates(
   p_user_id UUID,
   p_achieved_at TIMESTAMPTZ[],
+  p_ids UUID[] DEFAULT '{}',
   p_after_id UUID DEFAULT NULL,
   p_limit INT DEFAULT 500
 )
@@ -295,17 +340,21 @@ AS $$
     pr.deleted_at
   FROM public.personal_records pr
   WHERE pr.user_id = p_user_id
-    AND pr.achieved_at = ANY(COALESCE(p_achieved_at, '{}'))
+    AND (
+      pr.achieved_at = ANY(COALESCE(p_achieved_at, '{}'))
+      OR pr.id = ANY(COALESCE(p_ids, '{}'))
+    )
     AND (p_after_id IS NULL OR pr.id > p_after_id)
   ORDER BY pr.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 1000);
 $$;
 
 COMMENT ON FUNCTION public.get_personal_record_identity_candidates(
-  UUID, TIMESTAMPTZ[], UUID, INT
+  UUID, TIMESTAMPTZ[], UUID[], UUID, INT
 ) IS
-  'mobile-sync-push only (service_role). Keyset-paged (id) existing-PR probe; '
-  'identities travel in the POST body instead of a GET .in() URL.';
+  'mobile-sync-push only (service_role). Keyset-paged (id) existing-PR probe, '
+  'tombstones included; timestamps and ids travel in the POST body instead of '
+  'a GET .in() URL.';
 
 -- ---------------------------------------------------------------------------
 -- 5. Privileges (KD-3 rule 3b): Edge-internal, service_role only.
@@ -316,10 +365,10 @@ GRANT EXECUTE ON FUNCTION public.upsert_set_derived_personal_records(UUID, JSONB
   TO service_role;
 
 REVOKE ALL ON FUNCTION public.get_personal_record_identity_candidates(
-  UUID, TIMESTAMPTZ[], UUID, INT
+  UUID, TIMESTAMPTZ[], UUID[], UUID, INT
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_personal_record_identity_candidates(
-  UUID, TIMESTAMPTZ[], UUID, INT
+  UUID, TIMESTAMPTZ[], UUID[], UUID, INT
 ) TO service_role;
 
 RESET lock_timeout;

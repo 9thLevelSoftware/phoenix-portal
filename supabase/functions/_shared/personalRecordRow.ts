@@ -500,6 +500,8 @@ export function personalRecordDerivedIdentityKey(
 	row: PersonalRecordIdentityInput,
 ): string {
 	const profileKey = row.local_profile_id ?? "default";
+	// "" counts as absent. The SQL index uq_personal_records_set_derived_identity
+	// mirrors this with NULLIF(exercise_id, '') (20260920005700); keep in sync.
 	const exerciseKey = row.exercise_id
 		? `id:${row.exercise_id}`
 		: `name:${row.exercise_name ?? ""}`;

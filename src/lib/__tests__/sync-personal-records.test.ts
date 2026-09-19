@@ -12,6 +12,7 @@ import {
 	partitionPersonalRecordRowsByExerciseCatalogValidity,
 	partitionPersonalRecordRowsByLocalProfileValidity,
 	partitionPersonalRecordRowsBySessionValidity,
+	personalRecordDerivedIdentityKey,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
 	shouldRepairDedicatedRecordLocalProfilesForPush,
@@ -390,6 +391,14 @@ describe("personalRecordIdentityKey", () => {
 				...baseRecord,
 				exercise_id: "curl-dumbbell",
 			}),
+		);
+	});
+
+	it("treats an empty-string exercise ID as absent, like the SQL identity index", () => {
+		expect(
+			personalRecordDerivedIdentityKey({ ...baseRecord, exercise_id: "" }),
+		).toBe(
+			personalRecordDerivedIdentityKey({ ...baseRecord, exercise_id: null }),
 		);
 	});
 
