@@ -95,7 +95,8 @@ export async function verifyPaddleSignature(
   const signatureAge = Math.abs(now() / 1000 - Number(ts));
   if (!(signatureAge <= toleranceSeconds)) {
     console.warn(
-      "[BILLING_ALERT] Webhook signature outside tolerance:",
+      // Runbooks (operations.md, paddle-simulation-testing.md) key on this text.
+      "[BILLING_ALERT] Webhook signature too old:",
       signatureAge,
       "seconds",
     );
