@@ -1,5 +1,7 @@
 // Superset Type Definitions for Routine Builder
 
+import type { WireMode } from "../../../../supabase/functions/_shared/workoutModes.ts";
+
 export type SupersetColor = "indigo" | "pink" | "green" | "amber";
 
 export interface Superset {
@@ -29,7 +31,8 @@ export interface SetConfig {
 	rpe?: number;
 }
 
-export type ProgramMode = "Old School" | "Echo" | "Pump" | "Power";
+// Routine modes are stored and synced as wire names (OLD_SCHOOL, ECHO, ...).
+export type ProgramMode = WireMode;
 
 export const SUPERSET_COLORS: SupersetColor[] = [
 	"indigo",

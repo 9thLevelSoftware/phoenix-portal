@@ -6,6 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -63,9 +64,30 @@ interface RoutineExerciseInput {
 type RoutineExerciseInsert =
 	Database["public"]["Tables"]["routine_exercises"]["Insert"];
 
-function toRoutineExerciseRows(
+/**
+ * Mobile only understands wire mode names (OLD_SCHOOL, ECHO, ...). Normalize
+ * display names / legacy aliases and refuse anything else rather than storing
+ * a value mobile would silently turn into Old School.
+ *
+ * `preservedModes` are unrecognized values that were already stored on the
+ * routine being edited (e.g. a mode from a newer mobile build). They are
+ * written back verbatim so a portal edit never downgrades them; the DB
+ * trigger likewise passes unknown values through.
+ */
+function requireWireMode(
+	mode: string,
+	preservedModes: readonly string[] = [],
+): string {
+	const wire = toWireMode(mode);
+	if (wire) return wire;
+	if (preservedModes.includes(mode)) return mode;
+	throw new Error(`Unknown workout mode: ${mode}`);
+}
+
+export function toRoutineExerciseRows(
 	routineId: string,
 	exercises: RoutineExerciseInput[],
+	preservedModes: readonly string[] = [],
 ): RoutineExerciseInsert[] {
 	return exercises.map((ex, i) => ({
 		routine_id: routineId,
@@ -77,7 +99,7 @@ function toRoutineExerciseRows(
 		weight: ex.weight / WEIGHT_MULTIPLIER,
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
-		mode: ex.mode,
+		mode: requireWireMode(ex.mode, preservedModes),
 		order_index: i,
 		superset_id: ex.superset_id ?? null,
 		superset_color: ex.superset_color ?? null,
@@ -109,6 +131,8 @@ interface SaveRoutineInput {
 
 interface UpdateRoutineInput extends SaveRoutineInput {
 	routineId: string;
+	/** Unrecognized modes already stored on this routine; saved verbatim. */
+	preservedModes?: readonly string[];
 }
 
 export function useSaveRoutine() {
@@ -118,6 +142,9 @@ export function useSaveRoutine() {
 	return useMutation({
 		mutationFn: async (input: SaveRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to save routines");
+			// Validate modes before the parent insert so an unknown mode can't
+			// leave an orphaned routine row behind.
+			for (const ex of input.exercises) requireWireMode(ex.mode);
 
 			// Create the routine row
 			const { data: routine, error: routineError } = await supabase
@@ -226,6 +253,7 @@ export function useUpdateRoutine() {
 					p_exercises: toRoutineExerciseRows(
 						input.routineId,
 						input.exercises,
+						input.preservedModes,
 					) as unknown as Json,
 				},
 			);
