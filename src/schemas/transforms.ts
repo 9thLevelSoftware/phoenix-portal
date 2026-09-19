@@ -388,6 +388,132 @@ export const cycleDetailSchema = trainingCycleSchema.extend({
 
 export type CycleDetail = z.infer<typeof cycleDetailSchema>;
 
+// --- Cycle progression settings (shared with mobile) ---
+//
+// Mobile decodes training_cycles.progression_settings as a Kotlin
+// Map<String, String> with a non-lenient Json (Project-Phoenix-MP
+// SqlDelightSyncRepository.mergePortalCycles). A single non-string value
+// (number, boolean, null) makes the whole decode fail and the phone drops
+// the cycle's progression. So EVERY value must be a JSON string.
+//
+// Mobile-owned keys (read by the phone; the push owns them, PR 18 merge):
+//   frequencyCycles, weightIncreasePercent, echoLevelIncrease,
+//   eccentricLoadIncreasePercent
+// Portal-only keys (ignored by the phone, kept by the push merge):
+//   type, amount, frequency, trigger, upperIncrement, lowerIncrement
+
+export const MOBILE_PROGRESSION_KEYS = [
+	"frequencyCycles",
+	"weightIncreasePercent",
+	"echoLevelIncrease",
+	"eccentricLoadIncreasePercent",
+] as const;
+
+/** What mobile can decode: a flat object of string values. */
+export const mobileProgressionSettingsSchema = z.record(z.string(), z.string());
+
+export type CycleProgressionSettings = z.infer<
+	typeof mobileProgressionSettingsSchema
+>;
+
+export type ProgressionType = "percentage" | "fixed" | "manual";
+export type ProgressionTrigger = "all_sets" | "target_rpe" | "cycle_complete";
+
+export interface CycleProgressionForm {
+	type: ProgressionType;
+	amount: number;
+	frequency: number;
+	trigger: ProgressionTrigger;
+	upperIncrement: number;
+	lowerIncrement: number;
+}
+
+/**
+ * Builds progression_settings for a portal save: portal keys plus the mobile
+ * keys the builder can derive, every value a string. Mobile keys the builder
+ * has no control for (echoLevelIncrease, eccentricLoadIncreasePercent) are
+ * carried over from the stored settings so a portal save doesn't clear them.
+ */
+export function buildCycleProgressionSettings(
+	form: CycleProgressionForm,
+	existing?: unknown,
+): CycleProgressionSettings {
+	const frequencyCycles = Math.max(1, Math.round(form.frequency) || 1);
+	const settings: CycleProgressionSettings = {
+		type: form.type,
+		amount: String(form.amount),
+		frequency: String(frequencyCycles),
+		trigger: form.trigger,
+		upperIncrement: String(form.upperIncrement),
+		lowerIncrement: String(form.lowerIncrement),
+		frequencyCycles: String(frequencyCycles),
+	};
+	if (form.type === "percentage" && Number.isFinite(form.amount)) {
+		settings.weightIncreasePercent = String(form.amount);
+	}
+	if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+		const stored = existing as Record<string, unknown>;
+		for (const key of ["echoLevelIncrease", "eccentricLoadIncreasePercent"]) {
+			const value = stored[key];
+			if (value !== null && value !== undefined) {
+				settings[key] = String(value);
+			}
+		}
+	}
+	return settings;
+}
+
+const finiteNumber = (value: unknown): number | undefined => {
+	if (value === null || value === undefined || value === "") return undefined;
+	const n = Number(value);
+	return Number.isFinite(n) ? n : undefined;
+};
+
+/**
+ * Reads stored progression_settings (string values, legacy numeric values,
+ * or a mobile-only object) back into builder form values. Missing portal
+ * keys fall back to the mobile keys so saving a phone-authored cycle keeps
+ * the phone's values.
+ */
+export function readCycleProgressionSettings(
+	raw: unknown,
+): Partial<CycleProgressionForm> {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+	const ps = raw as Record<string, unknown>;
+	const out: Partial<CycleProgressionForm> = {};
+
+	if (ps.type === "percentage" || ps.type === "fixed" || ps.type === "manual") {
+		out.type = ps.type;
+	}
+	if (
+		ps.trigger === "all_sets" ||
+		ps.trigger === "target_rpe" ||
+		ps.trigger === "cycle_complete"
+	) {
+		out.trigger = ps.trigger;
+	}
+
+	const amount = finiteNumber(ps.amount);
+	const weightIncreasePercent = finiteNumber(ps.weightIncreasePercent);
+	if (amount !== undefined) {
+		out.amount = amount;
+	} else if (weightIncreasePercent !== undefined) {
+		out.amount = weightIncreasePercent;
+		out.type ??= "percentage";
+	}
+
+	const frequency =
+		finiteNumber(ps.frequency) ?? finiteNumber(ps.frequencyCycles);
+	if (frequency !== undefined && frequency >= 1) out.frequency = frequency;
+
+	const upper = finiteNumber(ps.upperIncrement);
+	if (upper !== undefined) out.upperIncrement = upper;
+	const lower = finiteNumber(ps.lowerIncrement);
+	if (lower !== undefined) out.lowerIncrement = lower;
+
+	return out;
+}
+
 // --- Challenge ---
 
 export const challengeSchema = z.object({

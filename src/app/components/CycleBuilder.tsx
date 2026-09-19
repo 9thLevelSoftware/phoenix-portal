@@ -48,6 +48,10 @@ import {
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
+import {
+	buildCycleProgressionSettings,
+	readCycleProgressionSettings,
+} from "@/schemas/transforms";
 
 interface DayConfig {
 	dayNumber: number;
@@ -108,7 +112,9 @@ export function CycleBuilder() {
 	>("target_rpe");
 	const [upperBodyIncrement, setUpperBodyIncrement] = useState(2.5);
 	const [lowerBodyIncrement, setLowerBodyIncrement] = useState(5.0);
-	const [includeDeload, setIncludeDeload] = useState(true);
+	// Deload is a portal-only planning aid (mobile has no deload yet), so it
+	// is off unless the user opts in or the stored cycle already has one.
+	const [includeDeload, setIncludeDeload] = useState(false);
 	const [deloadFrequency, setDeloadFrequency] = useState(4);
 	const [deloadIntensity, setDeloadIntensity] = useState(60);
 	const [deloadVolume, setDeloadVolume] = useState(50);
@@ -159,16 +165,19 @@ export function CycleBuilder() {
 				);
 			}
 			if (existingCycle.progression_settings) {
-				const ps = existingCycle.progression_settings as Record<
-					string,
-					Json | undefined
-				>;
+				// Values are strings (mobile's Map<String, String> schema), numbers
+				// on legacy rows, or mobile keys only on phone-authored cycles.
+				const ps = readCycleProgressionSettings(
+					existingCycle.progression_settings,
+				);
 				if (ps.type) setProgressionType(ps.type);
-				if (ps.amount) setProgressionAmount(ps.amount);
-				if (ps.frequency) setProgressionFrequency(ps.frequency);
+				if (ps.amount !== undefined) setProgressionAmount(ps.amount);
+				if (ps.frequency !== undefined) setProgressionFrequency(ps.frequency);
 				if (ps.trigger) setProgressionTrigger(ps.trigger);
-				if (ps.upperIncrement) setUpperBodyIncrement(ps.upperIncrement);
-				if (ps.lowerIncrement) setLowerBodyIncrement(ps.lowerIncrement);
+				if (ps.upperIncrement !== undefined)
+					setUpperBodyIncrement(ps.upperIncrement);
+				if (ps.lowerIncrement !== undefined)
+					setLowerBodyIncrement(ps.lowerIncrement);
 			}
 			if (existingCycle.deload_settings) {
 				const ds = existingCycle.deload_settings as Record<
@@ -216,14 +225,19 @@ export function CycleBuilder() {
 	};
 
 	const handleSave = () => {
-		const progressionSettings = {
-			type: progressionType,
-			amount: progressionAmount,
-			frequency: progressionFrequency,
-			trigger: progressionTrigger,
-			upperIncrement: upperBodyIncrement,
-			lowerIncrement: lowerBodyIncrement,
-		};
+		// Every value is a string so mobile's Map<String, String> decode
+		// succeeds; mobile reads frequencyCycles / weightIncreasePercent.
+		const progressionSettings = buildCycleProgressionSettings(
+			{
+				type: progressionType,
+				amount: progressionAmount,
+				frequency: progressionFrequency,
+				trigger: progressionTrigger,
+				upperIncrement: upperBodyIncrement,
+				lowerIncrement: lowerBodyIncrement,
+			},
+			existingCycle?.progression_settings,
+		);
 
 		const deloadSettings = includeDeload
 			? {
@@ -1289,6 +1303,9 @@ function ProgressionRules({
 							<Label className="text-white text-base">Deload Week</Label>
 							<p className="text-xs text-muted-foreground">
 								Periodically reduce intensity for recovery
+							</p>
+							<p className="text-xs text-warning mt-1">
+								Planning aid — not applied on the machine yet
 							</p>
 						</div>
 						<Switch

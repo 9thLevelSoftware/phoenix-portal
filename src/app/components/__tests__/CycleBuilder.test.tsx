@@ -1,6 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	buildCycleProgressionSettings,
+	MOBILE_PROGRESSION_KEYS,
+	mobileProgressionSettingsSchema,
+	readCycleProgressionSettings,
+} from "@/schemas/transforms";
 import { renderWithProviders } from "@/test/test-utils";
 import { CycleBuilder } from "../CycleBuilder";
 
@@ -214,6 +220,51 @@ describe("CycleBuilder", () => {
 	});
 
 	// ---------------------------------------------------------------
+	// Progression settings use mobile's Map<String, String> schema
+	// ---------------------------------------------------------------
+	it("saves progression settings with string-valued mobile keys", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<CycleBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /save cycle/i }));
+
+		const payload = mockSaveMutate.mock.calls[0][0];
+		const ps = payload.progression_settings as Record<string, unknown>;
+		expect(ps).toMatchObject({
+			frequencyCycles: "1",
+			weightIncreasePercent: "2.5",
+			type: "percentage",
+			amount: "2.5",
+			frequency: "1",
+			trigger: "target_rpe",
+		});
+		for (const value of Object.values(ps)) {
+			expect(typeof value).toBe("string");
+		}
+		// Decoder check: mobile receives the jsonb JSON.stringify'd by pull and
+		// decodes it as Map<String, String>.
+		const wire = JSON.stringify(ps);
+		expect(
+			mobileProgressionSettingsSchema.safeParse(JSON.parse(wire)).success,
+		).toBe(true);
+	});
+
+	// ---------------------------------------------------------------
+	// Deload is a portal-only planning aid
+	// ---------------------------------------------------------------
+	it("leaves deload off by default and labels it portal-only", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<CycleBuilder />);
+
+		expect(
+			screen.getByText(/planning aid — not applied on the machine yet/i),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save cycle/i }));
+		expect(mockSaveMutate.mock.calls[0][0].deload_settings).toBeNull();
+	});
+
+	// ---------------------------------------------------------------
 	// Add Day button
 	// ---------------------------------------------------------------
 	it("adds a new day when Add Day is clicked", async () => {
@@ -296,5 +347,98 @@ describe("CycleBuilder", () => {
 		expect(
 			screen.getByText(/leave blank to start anytime/i),
 		).toBeInTheDocument();
+	});
+});
+
+// -------------------------------------------------------------------
+// Decoder contract with mobile (Project-Phoenix-MP
+// SqlDelightSyncRepository.mergePortalCycles decodes progressionSettings as
+// Map<String, String> with a non-lenient Json; PortalSyncAdapter encodes it
+// sparsely with string values).
+// -------------------------------------------------------------------
+describe("cycle progression settings wire contract", () => {
+	// What PortalSyncAdapter.toPortalTrainingCycle emits.
+	const KOTLIN_FIXTURE =
+		'{"frequencyCycles":"3","weightIncreasePercent":"2.5","echoLevelIncrease":"true","eccentricLoadIncreasePercent":"10"}';
+
+	it("parses the Kotlin-encoded fixture as Record<string, string>", () => {
+		const parsed = mobileProgressionSettingsSchema.parse(
+			JSON.parse(KOTLIN_FIXTURE),
+		);
+		expect(Object.keys(parsed).sort()).toEqual(
+			[...MOBILE_PROGRESSION_KEYS].sort(),
+		);
+	});
+
+	it("rejects non-string values, which mobile's decoder also rejects", () => {
+		expect(
+			mobileProgressionSettingsSchema.safeParse({ amount: 2.5 }).success,
+		).toBe(false);
+		expect(
+			mobileProgressionSettingsSchema.safeParse({ echoLevelIncrease: true })
+				.success,
+		).toBe(false);
+		expect(
+			mobileProgressionSettingsSchema.safeParse({ frequency: null }).success,
+		).toBe(false);
+	});
+
+	it("builder output decodes and keeps mobile's echo/eccentric keys", () => {
+		const built = buildCycleProgressionSettings(
+			{
+				type: "fixed",
+				amount: 2.5,
+				frequency: 2,
+				trigger: "all_sets",
+				upperIncrement: 2.5,
+				lowerIncrement: 5,
+			},
+			JSON.parse(KOTLIN_FIXTURE),
+		);
+		expect(
+			mobileProgressionSettingsSchema.parse(JSON.parse(JSON.stringify(built))),
+		).toEqual({
+			type: "fixed",
+			amount: "2.5",
+			frequency: "2",
+			trigger: "all_sets",
+			upperIncrement: "2.5",
+			lowerIncrement: "5",
+			frequencyCycles: "2",
+			echoLevelIncrease: "true",
+			eccentricLoadIncreasePercent: "10",
+		});
+	});
+
+	it("reads mobile-only, string, and legacy numeric settings", () => {
+		expect(readCycleProgressionSettings(JSON.parse(KOTLIN_FIXTURE))).toEqual({
+			type: "percentage",
+			amount: 2.5,
+			frequency: 3,
+		});
+		expect(
+			readCycleProgressionSettings({
+				type: "fixed",
+				amount: "5",
+				frequency: "2",
+				trigger: "all_sets",
+				upperIncrement: "2.5",
+				lowerIncrement: "5",
+			}),
+		).toEqual({
+			type: "fixed",
+			amount: 5,
+			frequency: 2,
+			trigger: "all_sets",
+			upperIncrement: 2.5,
+			lowerIncrement: 5,
+		});
+		expect(
+			readCycleProgressionSettings({
+				type: "percentage",
+				amount: 3,
+				frequency: 1,
+			}),
+		).toEqual({ type: "percentage", amount: 3, frequency: 1 });
 	});
 });
