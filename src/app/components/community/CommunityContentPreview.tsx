@@ -8,7 +8,11 @@ import type {
 } from "@/schemas/community";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import {
+	eccentricLoadLabel,
+	echoLevelLabel,
+	repCountTimingLabel,
 	supersetColorHex,
+	toWireMode,
 	workoutModeLabel,
 } from "../../../../supabase/functions/_shared/workoutModes.ts";
 
@@ -49,14 +53,22 @@ function formatPrescription(
 }
 
 function exerciseBadges(exercise: RoutineExerciseSnapshot) {
+	const isEcho = toWireMode(exercise.mode) === "ECHO";
 	return [
 		workoutModeLabel(exercise.mode),
 		exercise.is_amrap ? "AMRAP" : null,
 		exercise.is_bodyweight ? "Bodyweight" : null,
-		exercise.eccentric_load ? `Eccentric ${exercise.eccentric_load}` : null,
-		exercise.echo_level ? `Echo ${exercise.echo_level}` : null,
-		exercise.rep_count_timing ? `Timing ${exercise.rep_count_timing}` : null,
-		exercise.stop_at_position ? `Stop ${exercise.stop_at_position}` : null,
+		// Eccentric load and echo level only apply in Echo mode on the phone.
+		isEcho && exercise.eccentric_load
+			? `Eccentric ${eccentricLoadLabel(exercise.eccentric_load)}`
+			: null,
+		isEcho && exercise.echo_level
+			? `Echo ${echoLevelLabel(exercise.echo_level)}`
+			: null,
+		exercise.rep_count_timing
+			? `Timing ${repCountTimingLabel(exercise.rep_count_timing)}`
+			: null,
+		exercise.stop_at_position === "TOP" ? "Stop at top" : null,
 		exercise.stall_detection === false ? "Stall off" : null,
 		exercise.drop_set_enabled ? "Drop set" : null,
 	].filter(Boolean) as string[];

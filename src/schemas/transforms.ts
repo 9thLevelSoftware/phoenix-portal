@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-	toEccentricLoad,
+	normalizeEccentricLoad,
 	toEchoLevel,
 	toRepCountTiming,
 	toStopAtPosition,
@@ -277,10 +277,7 @@ export const routineExerciseSchema = z.object({
 	mode: z.string().transform((mode) => toWireMode(mode) ?? mode),
 	order_index: z.number(),
 	superset_id: z.string().nullable().optional(),
-	superset_color: z
-		.string()
-		.nullish()
-		.transform((value) => toSupersetColorName(value) ?? value ?? null),
+	superset_color: nullableSetting(toSupersetColorName),
 	superset_order: z.number().nullable().optional(),
 	// Stored per-cable to match the single `weight` column; multiply back to
 	// display totals so the UI keeps round-trip symmetry with `weight`.
@@ -312,7 +309,7 @@ export const routineExerciseSchema = z.object({
 		.boolean()
 		.nullish()
 		.transform((v) => v ?? true),
-	eccentric_load: nullableSetting(toEccentricLoad),
+	eccentric_load: nullableSetting(normalizeEccentricLoad),
 	echo_level: nullableSetting(toEchoLevel),
 	drop_set_enabled: z
 		.boolean()

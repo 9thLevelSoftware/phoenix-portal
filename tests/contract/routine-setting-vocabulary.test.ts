@@ -1,37 +1,59 @@
 /**
  * Contract: routine-exercise advanced settings saved by the portal reach
- * mobile as values its pull parsers understand, and legacy portal values are
- * read as the default the phone actually used.
+ * mobile as values its parsers understand, and every stored value normalizes
+ * to what the phone actually does with it.
  *
  * Chain: builder option -> toRoutineExerciseRows -> routine_exercises
- *   -> mobile-sync-pull DTO (raw passthrough, guarded below) -> mobile parsers.
- * The mobile parsers are ported verbatim from Project-Phoenix-MP.
+ *   -> mobile-sync-pull DTO (raw passthrough; asserted behaviourally in
+ *   supabase/functions/mobile-sync-pull/index.test.ts) -> mobile parsers,
+ * which are ported below from Project-Phoenix-MP.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 
 import { toRoutineExerciseRows } from "@/mutations/routines";
+import { routineExerciseSnapshotSchema } from "@/schemas/community";
 import { routineExerciseSchema } from "@/schemas/transforms";
 import {
 	ECCENTRIC_LOADS,
 	ECHO_LEVELS,
+	normalizeEccentricLoad,
 	REP_COUNT_TIMINGS,
 	SUPERSET_COLOR_HEX,
 	SUPERSET_COLOR_NAMES,
 	supersetColorHex,
+	toEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
 } from "../../supabase/functions/_shared/workoutModes.ts";
 
-// PortalPullAdapter.kt:396-403
-function mobileParseEccentricLoad(value: string | null): number {
-	if (value == null) return 100;
-	const numeric = Number.parseInt(value.replace(/^LOAD_/, ""), 10);
-	return Number.isNaN(numeric) ? 100 : numeric;
+// ─── Mobile ports ───────────────────────────────────────────────────────────
+
+// Kotlin String.toLongOrNull (ASCII digits).
+function kotlinToLongOrNull(value: string): bigint | null {
+	if (!/^[+-]?[0-9]+$/.test(value)) return null;
+	const parsed = BigInt(value);
+	return parsed < -(2n ** 63n) || parsed > 2n ** 63n - 1n ? null : parsed;
 }
-// PortalPullAdapter.kt:409-415 (returns the EchoLevel ordinal)
-function mobileParseEchoLevel(value: string | null): number {
+// PortalPullAdapter.kt:396-403 then SqlDelightWorkoutRepository.kt:449-482
+// (toInt, coerceIn(0,150), exact or nearest enum, first on a tie).
+function mobileEccentricPercent(value: string | null): number {
+	if (value == null) return 100;
+	const parsed =
+		kotlinToLongOrNull(value.startsWith("LOAD_") ? value.slice(5) : value) ??
+		kotlinToLongOrNull(value);
+	if (parsed === null) return 100;
+	const clamped = Math.min(150, Math.max(0, Number(BigInt.asIntN(32, parsed))));
+	const percents = [0, 50, 75, 100, 110, 120, 130, 140, 150];
+	return percents.reduce((best, p) =>
+		Math.abs(p - clamped) < Math.abs(best - clamped) ? p : best,
+	);
+}
+// PortalPullAdapter.kt:409-415 (EchoLevel ordinal)
+function mobileEchoLevel(value: string | null): number {
 	const index = ["HARD", "HARDER", "HARDEST", "EPIC"].indexOf(
 		value?.toUpperCase() ?? "",
 	);
@@ -45,18 +67,92 @@ function mobileRepCountTiming(value: string | null): string {
 function mobileStopAtTop(value: string | null): boolean {
 	return value === "TOP";
 }
-// SqlDelightSyncRepository.kt:2236-2248 (null = falls back to order index)
-function mobileSupersetColorIndex(value: string | null): number | null {
-	const index = ["indigo", "pink", "green", "amber"].indexOf(
-		value?.toLowerCase() ?? "",
-	);
-	return index === -1 ? null : index;
+// SqlDelightSyncRepository.kt:2245-2248 (-1 = order-index fallback)
+function mobileSupersetColorIndex(value: string | null): bigint {
+	const lower = value?.toLowerCase() ?? null;
+	const byName = ["indigo", "pink", "green", "amber"].indexOf(lower ?? "");
+	if (byName !== -1) return BigInt(byName);
+	return (lower === null ? null : kotlinToLongOrNull(lower)) ?? -1n;
 }
 
-const PULL_SOURCE = readFileSync(
-	join(process.cwd(), "supabase/functions/mobile-sync-pull/index.ts"),
-	"utf8",
-);
+// ─── Shared case table (mirrored in
+// supabase/tests/database/routine_setting_vocabulary.test.sql) ─────────────
+
+type Fn = "eccentric" | "echo" | "timing" | "stop" | "colour";
+const SETTING_CASES: Array<[Fn, string | null, string | null]> = [
+	["eccentric", null, null],
+	["eccentric", "light", null],
+	["eccentric", "moderate", null],
+	["eccentric", "heavy", null],
+	["eccentric", "", null],
+	["eccentric", "LOAD_120", "LOAD_120"],
+	["eccentric", "LOAD_0", "LOAD_0"],
+	["eccentric", "120", "LOAD_120"],
+	["eccentric", "LOAD_+120", "LOAD_120"],
+	["eccentric", "LOAD_0120", "LOAD_120"],
+	["eccentric", "4294967416", "LOAD_120"],
+	["eccentric", "load_120", null],
+	["eccentric", " LOAD_120", null],
+	["eccentric", "LOAD_120 ", null],
+	["eccentric", "LOAD_", null],
+	["eccentric", "1.5", null],
+	["eccentric", "120abc", null],
+	["eccentric", "99999999999999999999", null],
+	["eccentric", "LOAD_25", "LOAD_25"],
+	["eccentric", "999", "999"],
+	["eccentric", "-5", "-5"],
+	["echo", null, null],
+	["echo", "hard", "HARD"],
+	["echo", "Epic", "EPIC"],
+	["echo", "HARDER", "HARDER"],
+	["echo", " hard", null],
+	["echo", "low", null],
+	["echo", "medium", null],
+	["echo", "high", null],
+	["echo", "", null],
+	["echo", "MYTHIC", null],
+	["timing", "TOP", "TOP"],
+	["timing", "BOTTOM", "BOTTOM"],
+	["timing", "top", null],
+	["timing", " TOP", null],
+	["timing", "2-0-2", null],
+	["stop", "TOP", "TOP"],
+	["stop", "BOTTOM", null],
+	["stop", "top", null],
+	["stop", "Lockout", null],
+	["colour", null, null],
+	["colour", "indigo", "indigo"],
+	["colour", "Indigo", "indigo"],
+	["colour", "AMBER", "amber"],
+	["colour", " indigo", null],
+	["colour", "#6366F1", "indigo"],
+	["colour", "#EC4899", "pink"],
+	["colour", "#10B981", "green"],
+	["colour", "#f59e0b", "amber"],
+	["colour", "#123456", null],
+	["colour", "purple", null],
+	["colour", "2", "green"],
+	["colour", "+0", "indigo"],
+	["colour", "7", "7"],
+	["colour", "-1", "-1"],
+];
+
+const NORMALIZERS: Record<Fn, (value: unknown) => string | null> = {
+	eccentric: normalizeEccentricLoad,
+	echo: toEchoLevel,
+	timing: toRepCountTiming,
+	stop: toStopAtPosition,
+	colour: toSupersetColorName,
+};
+
+// What the phone does with a stored value, per setting.
+const MOBILE_BEHAVIOUR: Record<Fn, (value: string | null) => unknown> = {
+	eccentric: mobileEccentricPercent,
+	echo: mobileEchoLevel,
+	timing: mobileRepCountTiming,
+	stop: mobileStopAtTop,
+	colour: mobileSupersetColorIndex,
+};
 
 function builderExercise(settings: Record<string, string | null>) {
 	return {
@@ -87,41 +183,69 @@ const storedRow = {
 };
 
 describe("routine setting vocabulary contract", () => {
-	it("pull still passes the settings through verbatim", () => {
-		for (const line of [
-			"supersetColor: re.superset_color,",
-			"repCountTiming: re.rep_count_timing,",
-			"stopAtPosition: re.stop_at_position,",
-			"eccentricLoad: re.eccentric_load,",
-			"echoLevel: re.echo_level,",
-			"durationSeconds: re.duration_seconds ?? null,",
-		]) {
-			expect(PULL_SOURCE).toContain(line);
+	it.each(SETTING_CASES)("%s(%j) normalizes to %j", (fn, input, expected) => {
+		expect(NORMALIZERS[fn](input)).toBe(expected);
+	});
+
+	it.each(
+		SETTING_CASES.filter(([fn]) => fn !== "colour"),
+	)("%s(%j): the phone does the same with the stored and normalized value", (fn, input, expected) => {
+		expect(MOBILE_BEHAVIOUR[fn](expected)).toEqual(MOBILE_BEHAVIOUR[fn](input));
+	});
+
+	it("colour normalization keeps the phone's colour except the deliberate legacy-hex remap", () => {
+		for (const [fn, input, expected] of SETTING_CASES) {
+			if (fn !== "colour" || input === null || input.startsWith("#")) continue;
+			expect(mobileSupersetColorIndex(expected)).toBe(
+				mobileSupersetColorIndex(input),
+			);
 		}
+		expect(toSupersetColorName("#F59E0B")).toBe("amber");
+	});
+
+	it("non-strings normalize to null", () => {
+		for (const normalize of Object.values(NORMALIZERS)) {
+			expect(normalize(42)).toBeNull();
+			expect(normalize(undefined)).toBeNull();
+		}
+	});
+
+	it.each([
+		["LOAD_25", "LOAD_0"],
+		["105", "LOAD_100"],
+		["999", "LOAD_150"],
+		["-5", "LOAD_0"],
+		["LOAD_130", "LOAD_130"],
+		["load_130", null],
+	])("eccentric %s trains as %s (display)", (input, trains) => {
+		expect(toEccentricLoad(input)).toBe(trains);
+		expect(mobileEccentricPercent(input)).toBe(
+			trains === null ? 100 : Number(trains.slice(5)),
+		);
 	});
 
 	it.each(
 		ECCENTRIC_LOADS,
-	)("eccentric %s reaches mobile as its percentage", (load) => {
+	)("eccentric option %s reaches mobile as its percentage", (load) => {
 		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ eccentric_load: load }),
 		]);
 		expect(row.eccentric_load).toBe(load);
-		expect(mobileParseEccentricLoad(row.eccentric_load ?? null)).toBe(
-			Number(load.replace("LOAD_", "")),
+		expect(mobileEccentricPercent(row.eccentric_load ?? null)).toBe(
+			Number(load.slice(5)),
 		);
 	});
 
-	it.each(ECHO_LEVELS)("echo level %s reaches mobile as itself", (level) => {
+	it.each(ECHO_LEVELS)("echo option %s reaches mobile as itself", (level) => {
 		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ echo_level: level }),
 		]);
-		expect(mobileParseEchoLevel(row.echo_level ?? null)).toBe(
+		expect(mobileEchoLevel(row.echo_level ?? null)).toBe(
 			ECHO_LEVELS.indexOf(level),
 		);
 	});
 
-	it.each(REP_COUNT_TIMINGS)("rep count timing %s reaches mobile", (timing) => {
+	it.each(REP_COUNT_TIMINGS)("timing option %s reaches mobile", (timing) => {
 		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ rep_count_timing: timing }),
 		]);
@@ -139,15 +263,18 @@ describe("routine setting vocabulary contract", () => {
 
 	it.each(
 		SUPERSET_COLOR_NAMES.map((name, index) => [name, index] as const),
-	)("superset colour %s reaches mobile as index %i", (name, index) => {
+	)("superset colour %s reaches mobile as index %i and renders its hex", (name, index) => {
 		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ superset_color: name }),
 		]);
-		expect(mobileSupersetColorIndex(row.superset_color ?? null)).toBe(index);
+		expect(mobileSupersetColorIndex(row.superset_color ?? null)).toBe(
+			BigInt(index),
+		);
 		expect(supersetColorHex(name)).toBe(SUPERSET_COLOR_HEX[name]);
+		expect(supersetColorHex(String(index))).toBe(SUPERSET_COLOR_HEX[name]);
 	});
 
-	it("writer turns legacy portal values into what mobile already used", () => {
+	it("writer stores legacy values as the phone's defaults and keeps off-list numbers", () => {
 		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({
 				eccentric_load: "heavy",
@@ -156,6 +283,7 @@ describe("routine setting vocabulary contract", () => {
 				stop_at_position: "Lockout",
 				superset_color: "#EC4899",
 			}),
+			builderExercise({ eccentric_load: "LOAD_25" }),
 		]);
 		expect(row).toMatchObject({
 			eccentric_load: null,
@@ -164,46 +292,44 @@ describe("routine setting vocabulary contract", () => {
 			stop_at_position: null,
 			superset_color: "pink",
 		});
-		// Same machine behaviour before and after.
-		expect(mobileParseEccentricLoad("heavy")).toBe(
-			mobileParseEccentricLoad(null),
-		);
-		expect(mobileParseEchoLevel("low")).toBe(mobileParseEchoLevel(null));
-		expect(mobileRepCountTiming("2-0-2")).toBe(mobileRepCountTiming(null));
-		expect(mobileStopAtTop("Lockout")).toBe(mobileStopAtTop(null));
+		const [, offList] = toRoutineExerciseRows("r", [
+			builderExercise({}),
+			builderExercise({ eccentric_load: "LOAD_25" }),
+		]);
+		expect(offList.eccentric_load).toBe("LOAD_25");
 	});
 
-	it("read schema normalizes legacy values and keeps mobile values", () => {
-		const legacy = routineExerciseSchema.parse({
-			...storedRow,
+	it("read schemas (routine and community snapshot) normalize the same way", () => {
+		const legacy = {
 			eccentric_load: "moderate",
 			echo_level: "medium",
 			rep_count_timing: "slow",
-			stop_at_position: "Lockout",
+			stop_at_position: "BOTTOM",
 			superset_color: "#6366F1",
-		});
-		expect(legacy).toMatchObject({
+		};
+		const expected = {
 			eccentric_load: null,
 			echo_level: null,
 			rep_count_timing: null,
 			stop_at_position: null,
 			superset_color: "indigo",
-		});
+		};
+		expect(
+			routineExerciseSchema.parse({ ...storedRow, ...legacy }),
+		).toMatchObject(expected);
+		expect(
+			routineExerciseSnapshotSchema.parse({ name: "X", ...legacy }),
+		).toMatchObject(expected);
 
-		const mobile = routineExerciseSchema.parse({
-			...storedRow,
+		const mobile = {
 			eccentric_load: "LOAD_110",
 			echo_level: "EPIC",
 			rep_count_timing: "BOTTOM",
 			stop_at_position: "TOP",
 			superset_color: "green",
-		});
-		expect(mobile).toMatchObject({
-			eccentric_load: "LOAD_110",
-			echo_level: "EPIC",
-			rep_count_timing: "BOTTOM",
-			stop_at_position: "TOP",
-			superset_color: "green",
-		});
+		};
+		expect(
+			routineExerciseSchema.parse({ ...storedRow, ...mobile }),
+		).toMatchObject(mobile);
 	});
 });

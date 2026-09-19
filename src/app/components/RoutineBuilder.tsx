@@ -59,12 +59,13 @@ import {
 	ECCENTRIC_LOADS,
 	ECHO_LEVEL_LABELS,
 	ECHO_LEVELS,
+	eccentricLoadLabel,
 	isWireMode,
+	normalizeEccentricLoad,
 	REP_COUNT_TIMING_LABELS,
 	REP_COUNT_TIMINGS,
 	SUPERSET_COLOR_NAMES,
 	supersetColorHex,
-	toEccentricLoad,
 	toEchoLevel,
 	toRepCountTiming,
 	toStopAtPosition,
@@ -122,6 +123,10 @@ type GroupedExerciseItem =
 			color: string | null;
 			exercises: Exercise[];
 	  };
+
+function isInList(list: readonly string[], value: string) {
+	return list.includes(value);
+}
 
 function isOldSchoolMode(mode: string) {
 	return toWireMode(mode) === "OLD_SCHOOL";
@@ -287,7 +292,7 @@ export function RoutineBuilder() {
 					repCountTiming: toRepCountTiming(ex.rep_count_timing),
 					stopAtPosition: toStopAtPosition(ex.stop_at_position),
 					stallDetection: ex.stall_detection ?? true,
-					eccentricLoad: toEccentricLoad(ex.eccentric_load),
+					eccentricLoad: normalizeEccentricLoad(ex.eccentric_load),
 					echoLevel: toEchoLevel(ex.echo_level),
 					dropSetEnabled: ex.drop_set_enabled ?? false,
 					dropSetMinWeightKg: ex.drop_set_min_weight_kg ?? null,
@@ -1030,6 +1035,7 @@ function ExerciseDetailPanel({
 	unit: WeightUnit;
 }) {
 	const isDurationBased = exercise.durationSeconds != null;
+	const isEchoMode = toWireMode(exercise.mode) === "ECHO";
 	const weightValues = getPerSetValues(
 		exercise.perSetWeights,
 		exercise.sets,
@@ -1384,50 +1390,70 @@ function ExerciseDetailPanel({
 						</CollapsibleTrigger>
 						<CollapsibleContent className="space-y-4 pt-4">
 							<div className="grid gap-4 sm:grid-cols-2">
-								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
-										Eccentric Load
-									</Label>
-									{/* Options are mobile's enum names; "" stores null, which
-									    the phone reads as its default (shown in the label). */}
-									<select
-										aria-label="Eccentric Load"
-										value={exercise.eccentricLoad ?? ""}
-										onChange={(e) =>
-											onUpdate({
-												eccentricLoad: toEccentricLoad(e.target.value),
-											})
-										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
-									>
-										<option value="">Default (100%)</option>
-										{ECCENTRIC_LOADS.map((load) => (
-											<option key={load} value={load}>
-												{ECCENTRIC_LOAD_LABELS[load]}
-											</option>
-										))}
-									</select>
-								</div>
-								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
-										Echo Level
-									</Label>
-									<select
-										aria-label="Echo Level"
-										value={exercise.echoLevel ?? ""}
-										onChange={(e) =>
-											onUpdate({ echoLevel: toEchoLevel(e.target.value) })
-										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
-									>
-										<option value="">Default (Harder)</option>
-										{ECHO_LEVELS.map((level) => (
-											<option key={level} value={level}>
-												{ECHO_LEVEL_LABELS[level]}
-											</option>
-										))}
-									</select>
-								</div>
+								{/* Options are mobile's enum names; "" stores null, which the
+								    phone reads as its default (shown in the label). Eccentric
+								    load and echo level only apply in Echo mode on the phone, so
+								    they are hidden otherwise; stored values are kept so they
+								    come back when the exercise is switched to Echo again. */}
+								{isEchoMode && (
+									<>
+										<div className="space-y-1">
+											<Label className="text-xs text-muted-foreground">
+												Eccentric Load
+											</Label>
+											<select
+												aria-label="Eccentric Load"
+												value={exercise.eccentricLoad ?? ""}
+												onChange={(e) =>
+													onUpdate({
+														eccentricLoad: normalizeEccentricLoad(
+															e.target.value,
+														),
+													})
+												}
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+											>
+												<option value="">Default (100%)</option>
+												{ECCENTRIC_LOADS.map((load) => (
+													<option key={load} value={load}>
+														{ECCENTRIC_LOAD_LABELS[load]}
+													</option>
+												))}
+												{/* An off-list value from the phone is kept verbatim;
+												    the phone rounds it to the nearest load itself. */}
+												{exercise.eccentricLoad != null &&
+													!isInList(
+														ECCENTRIC_LOADS,
+														exercise.eccentricLoad,
+													) && (
+														<option value={exercise.eccentricLoad}>
+															{`${exercise.eccentricLoad} (trains as ${eccentricLoadLabel(exercise.eccentricLoad)})`}
+														</option>
+													)}
+											</select>
+										</div>
+										<div className="space-y-1">
+											<Label className="text-xs text-muted-foreground">
+												Echo Level
+											</Label>
+											<select
+												aria-label="Echo Level"
+												value={exercise.echoLevel ?? ""}
+												onChange={(e) =>
+													onUpdate({ echoLevel: toEchoLevel(e.target.value) })
+												}
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+											>
+												<option value="">Default (Harder)</option>
+												{ECHO_LEVELS.map((level) => (
+													<option key={level} value={level}>
+														{ECHO_LEVEL_LABELS[level]}
+													</option>
+												))}
+											</select>
+										</div>
+									</>
+								)}
 								<div className="space-y-1">
 									<Label className="text-xs text-muted-foreground">
 										Rep Count Timing

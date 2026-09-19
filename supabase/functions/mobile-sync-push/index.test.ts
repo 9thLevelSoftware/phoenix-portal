@@ -407,7 +407,7 @@ function streamingRawRequest(
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
-  terminalResult: { data: unknown; error: unknown; count?: number } = {
+  terminalResult: TerminalResult = {
     data: [],
     error: null,
     count: 0,
@@ -432,8 +432,10 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
+  const operations: QueryOperation[] = [];
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
+      operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
@@ -460,10 +462,23 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(operations)
+        : terminalResult,
     ).then(resolve, reject);
   return query;
 }
+
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type TerminalResult =
+  | { data: unknown; error: unknown; count?: number }
+  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -486,8 +501,11 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
-    /** Terminal result for reads/writes on these tables (e.g. probes). */
-    tableResults?: Record<string, { data: unknown; error: unknown }>;
+    /**
+     * Terminal result for reads/writes on these tables (e.g. probes); a
+     * function receives the chained operations (select/in/... with args).
+     */
+    tableResults?: Record<string, TerminalResult>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -3061,40 +3079,81 @@ Deno.test("current mobile routine exercise shape (no durationSeconds) is 200 and
   assertEquals("duration_seconds" in row, false);
 });
 
-Deno.test("routine exercise without durationSeconds keeps its stored duration in a mixed batch", async () => {
-  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
-    tableResults: {
-      routine_exercises: {
-        data: [{
+/**
+ * A routine_exercises stand-in that honours the probe's `.select(columns)`
+ * and `.in("id", ids)`: it returns only the requested rows, projected to the
+ * requested columns. Writes resolve empty.
+ */
+function storedRoutineExercises(
+  stored: Array<Record<string, unknown>>,
+): TerminalResult {
+  return (operations) => {
+    const select = operations.find((op) => op.name === "select");
+    const inIds = operations.find((op) => op.name === "in");
+    if (!select || !inIds) return { data: [], error: null };
+    const columns = String(select.args[0]).split(",").map((c) => c.trim());
+    const ids = inIds.args[1] as string[];
+    return {
+      data: stored
+        .filter((row) => ids.includes(row.id as string))
+        .map((row) =>
+          Object.fromEntries(
+            columns.filter((c) => c in row).map((c) => [c, row[c]]),
+          )
+        ),
+      error: null,
+    };
+  };
+}
+
+for (
+  const omitter of [
+    {
+      label: "current mobile shape (drop-set fields omitted)",
+      fields: {},
+    },
+    {
+      // needsDropSetExistingRow(e) is false here, so only the duration
+      // predicate decides whether this row is probed.
+      label: "explicit drop-set fields",
+      fields: { dropSetEnabled: false, dropSetMinWeightKg: null },
+    },
+  ]
+) {
+  Deno.test(`routine exercise without durationSeconds keeps its stored duration in a mixed batch: ${omitter.label}`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      tableResults: {
+        routine_exercises: storedRoutineExercises([{
           id: ROUTINE_EXERCISE_ID,
           drop_set_enabled: false,
           drop_set_min_weight_kg: null,
           duration_seconds: 45,
-        }],
-        error: null,
+        }]),
       },
-    },
-  });
-  const timed = {
-    ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
-    orderIndex: 1,
-    durationSeconds: 30,
-  };
-  const response = await harness.handler(
-    requestFromBody(routinePushBody([
-      currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
-      timed,
-    ])),
-  );
+    });
+    const timed = {
+      ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+      orderIndex: 1,
+      durationSeconds: 30,
+      dropSetEnabled: false,
+      dropSetMinWeightKg: null,
+    };
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([
+        { ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID), ...omitter.fields },
+        timed,
+      ])),
+    );
 
-  assertEquals(response.status, 200);
-  const rows = routineExerciseUpsertRows(harness);
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  // Omitted: filled from the stored row, never NULLed by the batch key union.
-  assertEquals(byId.get(ROUTINE_EXERCISE_ID)?.duration_seconds, 45);
-  // Sent: stored as given.
-  assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
-});
+    assertEquals(response.status, 200);
+    const rows = routineExerciseUpsertRows(harness);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    // Omitted: filled from the stored row, never NULLed by the batch key union.
+    assertEquals(byId.get(ROUTINE_EXERCISE_ID)?.duration_seconds, 45);
+    // Sent: stored as given.
+    assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+  });
+}
 
 Deno.test("routine exercise durationSeconds null clears the duration", async () => {
   const harness = makeHarness();

@@ -7,7 +7,7 @@ import { queryKeys } from "@/queries/keys";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
-	toEccentricLoad,
+	normalizeEccentricLoad,
 	toEchoLevel,
 	toRepCountTiming,
 	toStopAtPosition,
@@ -122,7 +122,7 @@ export function toRoutineExerciseRows(
 		rep_count_timing: toRepCountTiming(ex.rep_count_timing),
 		stop_at_position: toStopAtPosition(ex.stop_at_position),
 		stall_detection: ex.stall_detection ?? true,
-		eccentric_load: toEccentricLoad(ex.eccentric_load),
+		eccentric_load: normalizeEccentricLoad(ex.eccentric_load),
 		echo_level: toEchoLevel(ex.echo_level),
 		drop_set_enabled: ex.drop_set_enabled ?? false,
 		drop_set_min_weight_kg:

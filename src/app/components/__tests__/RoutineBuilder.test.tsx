@@ -651,6 +651,15 @@ describe("RoutineBuilder", () => {
 		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
 		await user.click(screen.getByText("Advanced Settings"));
 
+		// Eccentric load / echo level only apply in Echo mode on the phone.
+		expect(
+			screen.queryByRole("combobox", { name: "Eccentric Load" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("combobox", { name: "Echo Level" }),
+		).not.toBeInTheDocument();
+		await user.selectOptions(screen.getByDisplayValue("Old School"), "Echo");
+
 		// "" = unset, which mobile reads as its default.
 		expect(optionValues("Eccentric Load")).toEqual(["", ...ECCENTRIC_LOADS]);
 		expect(optionValues("Echo Level")).toEqual(["", ...ECHO_LEVELS]);
@@ -770,6 +779,96 @@ describe("RoutineBuilder", () => {
 		expect(
 			screen.getByRole("combobox", { name: "Stop at Position" }),
 		).toHaveValue("TOP");
+	});
+
+	it("keeps an off-list eccentric load from the phone and shows what it trains as", async () => {
+		mockStoredRoutine("ECHO", { eccentric_load: "LOAD_25" });
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(
+			await screen.findByRole("button", { name: /edit exercise/i }),
+		);
+		await user.click(screen.getByText("Advanced Settings"));
+
+		const select = screen.getByRole("combobox", { name: "Eccentric Load" });
+		expect(select).toHaveValue("LOAD_25");
+		expect(
+			screen.getByRole("option", { name: "LOAD_25 (trains as 0%)" }),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+		expect(mockUpdateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [expect.objectContaining({ eccentric_load: "LOAD_25" })],
+			}),
+			expect.any(Object),
+		);
+	});
+
+	it("keeps hidden eccentric/echo values when the exercise is not Echo", async () => {
+		mockStoredRoutine("OLD_SCHOOL", {
+			eccentric_load: "LOAD_120",
+			echo_level: "EPIC",
+		});
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(
+			await screen.findByRole("button", { name: /edit exercise/i }),
+		);
+		await user.click(screen.getByText("Advanced Settings"));
+		expect(
+			screen.queryByRole("combobox", { name: "Eccentric Load" }),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+		expect(mockUpdateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						eccentric_load: "LOAD_120",
+						echo_level: "EPIC",
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
+	it("gives a new superset mobile's first colour name and renders its hex", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		for (let i = 0; i < 2; i++) {
+			await user.click(screen.getByRole("button", { name: /add exercise/i }));
+			await user.click(
+				await screen.findByRole("button", { name: /triceps pushdown/i }),
+			);
+		}
+		await user.click(screen.getByRole("button", { name: "Create Superset" }));
+		for (const name of screen.getAllByText("Triceps Pushdown")) {
+			await user.click(name);
+		}
+		const createButtons = screen.getAllByRole("button", {
+			name: "Create Superset",
+		});
+		await user.click(createButtons[createButtons.length - 1]);
+
+		const group = document.querySelector<HTMLElement>(
+			"[style*='border-left-width']",
+		);
+		expect(group?.style.borderLeftColor).toBe("rgb(99, 102, 241)"); // #6366F1
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+		const payload = mockSaveMutate.mock.calls[0][0] as {
+			exercises: Array<{ superset_color: string | null }>;
+		};
+		expect(payload.exercises.map((ex) => ex.superset_color)).toEqual([
+			"indigo",
+			"indigo",
+		]);
 	});
 
 	it("shows loading spinner in edit mode while routine loads", () => {

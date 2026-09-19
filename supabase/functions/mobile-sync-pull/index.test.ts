@@ -1477,6 +1477,17 @@ const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
 function routineExerciseRow(
   id: string,
   durationSeconds: number | null,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...routineExerciseBase(id, durationSeconds),
+    ...overrides,
+  };
+}
+
+function routineExerciseBase(
+  id: string,
+  durationSeconds: number | null,
 ): Record<string, unknown> {
   return {
     id,
@@ -1554,6 +1565,74 @@ Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", 
   assertEquals(routines.length, 1);
   assertEquals(routines[0].exercises[0].durationSeconds, 45);
   assertEquals(routines[0].exercises[1].durationSeconds, null);
+});
+
+Deno.test("routine exercise DTO passes the stored settings through in mobile's keys", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) =>
+      name === "get_routines_excluding_ids"
+        ? {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Echo routine",
+            description: "",
+            exercise_count: 1,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : undefined,
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", null, {
+            mode: "ECHO",
+            eccentric_load: "LOAD_120",
+            echo_level: "EPIC",
+            rep_count_timing: "BOTTOM",
+            stop_at_position: "TOP",
+            superset_id: "00000000-0000-4000-8000-000000000049",
+            superset_color: "amber",
+            superset_order: 0,
+          }),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const [exercise] = (body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>)[0].exercises;
+  assertEquals(
+    {
+      mode: exercise.mode,
+      eccentricLoad: exercise.eccentricLoad,
+      echoLevel: exercise.echoLevel,
+      repCountTiming: exercise.repCountTiming,
+      stopAtPosition: exercise.stopAtPosition,
+      supersetColor: exercise.supersetColor,
+      supersetOrder: exercise.supersetOrder,
+      durationSeconds: exercise.durationSeconds,
+    },
+    {
+      mode: "ECHO",
+      eccentricLoad: "LOAD_120",
+      echoLevel: "EPIC",
+      repCountTiming: "BOTTOM",
+      stopAtPosition: "TOP",
+      supersetColor: "amber",
+      supersetOrder: 0,
+      durationSeconds: null,
+    },
+  );
 });
 
 Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
