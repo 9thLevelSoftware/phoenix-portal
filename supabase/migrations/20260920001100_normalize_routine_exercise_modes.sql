@@ -20,6 +20,35 @@
 -- Idempotent: CREATE OR REPLACE, DROP TRIGGER IF EXISTS, and the backfill
 -- only touches rows that still change.
 --
+-- Why the backfill deliberately does NOT bump routines.updated_at:
+--   * Delivery. Shipping mobile pulls with lastSync=0 plus knownEntityIds
+--     (Project-Phoenix-MP PortalApiClient.kt: `lastSync = 0`). mobile-sync-pull
+--     passes the epoch as p_last_sync_at, and get_routines_excluding_ids'
+--     stale arm (`r.updated_at > p_last_sync_at`, 20260706120000) is then true
+--     for every routine, so every pull re-delivers every routine with its
+--     corrected exercise modes. mergePortalRoutines applies them unless the
+--     device edited that routine locally since its last sync. No bump is
+--     needed for these clients to receive the fix.
+--   * Push. Mobile pushes only routines modified locally since its last
+--     sync (getFullRoutinesModifiedSince), so idle routines never push the
+--     device's mis-parsed OldSchool copy back. The only revert path is a
+--     device that edits the routine on the phone before its first pull after
+--     this migration. A bump does not close it: with SYNC_LWW_ENABLED=false,
+--     the push overwrites regardless. With SYNC_LWW_ENABLED=true, the push
+--     carries the device's own edit time (PortalSyncAdapter: updatedAt =
+--     routine.updatedAt), and upsert_routine_lww accepts only when the stored
+--     updated_at <= incoming. A migration-time bump would therefore REJECT
+--     offline phone edits made before the migration. That discards user edits,
+--     which is worse than the mode the device already had wrong.
+--   * Residual. A future client that pulls with a real lastSync (PR 27) and
+--     did not sync between this migration and its upgrade would never see
+--     these unchanged parents again. PR 27's release checklist must force
+--     one full (lastSync=0) pull on the first sync after upgrade.
+--   * Unrecoverable. If a device already pushed an edited routine back (the
+--     server row now says OLD_SCHOOL), the original portal mode is gone and
+--     no server-side backfill can restore it. The user must re-save that
+--     routine in the portal.
+--
 -- Operator pre-check (read-only, rows that will change):
 --   SELECT mode, count(*) FROM public.routine_exercises
 --   WHERE mode IS NOT NULL

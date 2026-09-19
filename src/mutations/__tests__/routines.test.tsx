@@ -326,6 +326,53 @@ describe("useUpdateRoutine", () => {
 		expect(exerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
 	});
 
+	it("sends wire-name modes through the update RPC and keeps preserved unknown modes", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [
+				{ ...baseExercise, mode: "Echo" },
+				{ ...baseExercise, mode: "FUTURE_MODE", order_index: 1 },
+			],
+			preservedModes: ["FUTURE_MODE"],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(exerciseRows.map((row) => row.mode)).toEqual([
+			"ECHO",
+			"FUTURE_MODE",
+		]);
+	});
+
+	it("rejects an unknown, non-preserved mode before calling the update RPC", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [{ ...baseExercise, mode: "eccentric" }],
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(rpc).not.toHaveBeenCalled();
+	});
+
 	it("shows user-friendly error on update failure", async () => {
 		const { useUpdateRoutine } = await import("../routines");
 

@@ -129,6 +129,38 @@ vi.mock("sonner", () => ({
 	toast: mockToast,
 }));
 
+function mockStoredRoutine(mode: string) {
+	mockParams.current = { routineId: "11111111-1111-4111-8111-111111111111" };
+	mockRoutineDetail.current = {
+		id: "11111111-1111-4111-8111-111111111111",
+		user_id: "22222222-2222-4222-8222-222222222222",
+		name: "Stored Routine",
+		description: "",
+		exercise_count: 1,
+		estimated_duration: 600,
+		times_completed: 0,
+		last_used_at: null,
+		tags: null,
+		is_favorite: false,
+		routine_exercises: [
+			{
+				id: "33333333-3333-4333-8333-333333333333",
+				routine_id: "11111111-1111-4111-8111-111111111111",
+				name: "Triceps Pushdown",
+				muscle_group: "ARMS",
+				exercise_id: null,
+				sets: 3,
+				reps: 10,
+				weight: 10,
+				rest_seconds: 90,
+				mode,
+				order_index: 0,
+				created_at: "2026-09-01T00:00:00.000Z",
+			},
+		],
+	};
+}
+
 function tricepPushdownCatalogRow() {
 	return {
 		id: "Triceps_Pushdown",
@@ -528,46 +560,26 @@ describe("RoutineBuilder", () => {
 		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
 
 		const select = screen.getByDisplayValue("Old School") as HTMLSelectElement;
-		// New exercises default to the wire name, not the display label.
-		expect(select.value).toBe("OLD_SCHOOL");
 		expect(
 			Array.from(select.options).map((option) => [
 				option.value,
 				option.textContent,
 			]),
 		).toEqual(WIRE_MODES.map((wire) => [wire, WIRE_MODE_LABELS[wire]]));
+
+		// New exercises default to the wire name. (select.value alone can't
+		// prove this: an unmatched controlled value reports the first option.)
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+		expect(mockSaveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [expect.objectContaining({ mode: "OLD_SCHOOL" })],
+			}),
+			expect.any(Object),
+		);
 	});
 
 	it("renders a stored wire mode as its display option", async () => {
-		mockParams.current = { routineId: "11111111-1111-4111-8111-111111111111" };
-		mockRoutineDetail.current = {
-			id: "11111111-1111-4111-8111-111111111111",
-			user_id: "22222222-2222-4222-8222-222222222222",
-			name: "Echo Day",
-			description: "",
-			exercise_count: 1,
-			estimated_duration: 600,
-			times_completed: 0,
-			last_used_at: null,
-			tags: null,
-			is_favorite: false,
-			routine_exercises: [
-				{
-					id: "33333333-3333-4333-8333-333333333333",
-					routine_id: "11111111-1111-4111-8111-111111111111",
-					name: "Triceps Pushdown",
-					muscle_group: "ARMS",
-					exercise_id: null,
-					sets: 3,
-					reps: 10,
-					weight: 10,
-					rest_seconds: 90,
-					mode: "ECHO",
-					order_index: 0,
-					created_at: "2026-09-01T00:00:00.000Z",
-				},
-			],
-		};
+		mockStoredRoutine("ECHO");
 		const user = userEvent.setup();
 		renderWithProviders(<RoutineBuilder />);
 
@@ -580,6 +592,35 @@ describe("RoutineBuilder", () => {
 		expect(
 			screen.getByText("Alternating intensity echo sets"),
 		).toBeInTheDocument();
+	});
+
+	it("keeps an unknown stored mode verbatim and warns instead of converting it", async () => {
+		mockStoredRoutine("FUTURE_MODE");
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(
+			await screen.findByRole("button", { name: /edit exercise/i }),
+		);
+
+		const select = screen.getByDisplayValue(
+			"FUTURE_MODE (unsupported)",
+		) as HTMLSelectElement;
+		expect(select.value).toBe("FUTURE_MODE");
+		expect(
+			screen.getByText(/isn't supported by the portal/i),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /save routine/i }));
+
+		expect(mockToast.error).not.toHaveBeenCalled();
+		expect(mockUpdateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [expect.objectContaining({ mode: "FUTURE_MODE" })],
+				preservedModes: ["FUTURE_MODE"],
+			}),
+			expect.any(Object),
+		);
 	});
 
 	it("shows loading spinner in edit mode while routine loads", () => {

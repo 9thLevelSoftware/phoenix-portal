@@ -35,6 +35,9 @@ describe("CommunityContentPreview", () => {
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
 		expect(screen.getByText("Drop set")).toBeInTheDocument();
+		// Stored wire mode renders as its display label, not "OLD_SCHOOL".
+		expect(screen.getByText("Old School")).toBeInTheDocument();
+		expect(screen.queryByText("OLD_SCHOOL")).not.toBeInTheDocument();
 		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
 		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();

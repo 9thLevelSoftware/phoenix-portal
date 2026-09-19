@@ -55,6 +55,7 @@ import { routineDetailOptions } from "@/queries/routines";
 import { formatEquipment } from "@/schemas/transforms";
 import {
 	DEFAULT_WIRE_MODE,
+	isWireMode,
 	toWireMode,
 	WIRE_MODE_LABELS,
 	WIRE_MODES,
@@ -112,11 +113,7 @@ type GroupedExerciseItem =
 	  };
 
 function isOldSchoolMode(mode: string) {
-	const key = mode
-		.trim()
-		.toUpperCase()
-		.replace(/[\s-]+/g, "_");
-	return key === "OLD_SCHOOL" || key === "CLASSIC";
+	return toWireMode(mode) === "OLD_SCHOOL";
 }
 
 function isDropSetEligible(exercise: Pick<Exercise, "mode" | "isBodyweight">) {
@@ -260,9 +257,10 @@ export function RoutineBuilder() {
 					weight: ex.weight,
 					rest: ex.rest_seconds,
 					durationSeconds: ex.duration_seconds ?? null,
-					// Unknown stored modes train as Old School on mobile; show and
-					// save them that way instead of a select that matches nothing.
-					mode: toWireMode(ex.mode) ?? DEFAULT_WIRE_MODE,
+					// Unknown stored modes (e.g. from a newer mobile build) are kept
+					// verbatim and saved back unchanged; the select shows them as
+					// an extra "unsupported" option with a warning.
+					mode: toWireMode(ex.mode) ?? ex.mode,
 					supersetId: ex.superset_id ?? null,
 					supersetColor: ex.superset_color ?? null,
 					supersetOrder: ex.superset_order ?? null,
@@ -463,6 +461,15 @@ export function RoutineBuilder() {
 		? exercises.find((ex) => ex.id === selectedExercise)
 		: undefined;
 
+	// Unrecognized modes already stored on this routine may be saved back as-is.
+	const preservedModes = useMemo(
+		() =>
+			(existingRoutine?.routine_exercises ?? [])
+				.map((ex) => ex.mode)
+				.filter((mode) => toWireMode(mode) === null),
+		[existingRoutine],
+	);
+
 	const handleSave = () => {
 		if (exercises.some((exercise) => !isDropSetConfigValid(exercise))) {
 			toast.error(
@@ -479,7 +486,7 @@ export function RoutineBuilder() {
 
 		if (isEditing && routineId) {
 			updateMutation.mutate(
-				{ ...payload, routineId },
+				{ ...payload, routineId, preservedModes },
 				{
 					onSuccess: () => {
 						setHasUnsavedChanges(false);
@@ -1286,10 +1293,16 @@ function ExerciseDetailPanel({
 									{WIRE_MODE_LABELS[wire]}
 								</option>
 							))}
+							{!isWireMode(exercise.mode) && (
+								<option value={exercise.mode}>
+									{exercise.mode} (unsupported)
+								</option>
+							)}
 						</select>
 						<p className="text-xs text-muted-foreground mt-1">
-							{WIRE_MODE_DESCRIPTIONS[exercise.mode as WireMode] ??
-								WIRE_MODE_DESCRIPTIONS.OLD_SCHOOL}
+							{isWireMode(exercise.mode)
+								? WIRE_MODE_DESCRIPTIONS[exercise.mode]
+								: "This mode isn't supported by the portal. It is kept as-is when you save; the current app trains it as Old School."}
 						</p>
 					</div>
 
