@@ -3,44 +3,67 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import {
   EXCLUDED,
+  getUserDataTable,
+  NON_TABLE_SOURCES,
   USER_DATA_MANIFEST,
   USER_DATA_PAGE_SIZE,
+  type UserDataTable,
 } from "../_shared/userDataManifest.ts";
 import {
   buildKeysetOrFilter,
   createExportUserDataHandler,
-  EXPORT_RATE_LIMIT,
   type ExportCursor,
+  EXPORT_RATE_LIMIT,
   parseExportRequest,
   readExportPage,
 } from "./index.ts";
 
 const USER_ID = "00000000-0000-4000-8000-00000000aaaa";
+const ROUTINE_COLUMNS = getUserDataTable("routines")!.columns;
+const ROUTINE_OPTIONAL = getUserDataTable("routines")!.optionalColumns ?? [];
 
 function request(
   body: unknown,
-  { method = "POST", authorization = "Bearer test-jwt" as string | null } = {},
+  {
+    method = "POST",
+    authorization = "Bearer test-jwt" as string | null,
+    rawBody = undefined as string | undefined,
+  } = {},
 ): Request {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (authorization !== null) headers.set("Authorization", authorization);
   return new Request("http://localhost/functions/v1/export-user-data", {
     method,
     headers,
-    body: method === "GET" ? undefined : JSON.stringify(body),
+    body: method === "GET" ? undefined : rawBody ?? JSON.stringify(body),
   });
 }
+
+type QueryResult = { data: unknown; error: unknown; count?: number | null };
 
 interface Recorded {
   from: string[];
   ops: Array<[string, unknown[]]>;
   rpc: Array<[string, Record<string, unknown>]>;
+  storage: Array<[string, unknown[]]>;
+}
+
+interface DoubleOptions {
+  userId?: string | null;
+  user?: Record<string, unknown>;
+  authResult?: unknown;
+  authThrows?: boolean;
+  rateAllowed?: boolean;
+  rateError?: boolean;
+  storageResult?: { data: unknown; error: unknown };
 }
 
 function adminDouble(
   recorded: Recorded,
-  result: { data: unknown; error: unknown },
-  rateAllowed = true,
+  results: QueryResult[],
+  options: DoubleOptions,
 ): SupabaseClient {
+  let queryIndex = 0;
   const builder: Record<string, unknown> = {};
   for (const name of ["select", "eq", "gt", "or", "order", "limit"]) {
     builder[name] = (...args: unknown[]) => {
@@ -51,7 +74,10 @@ function adminDouble(
   builder.then = (
     onFulfilled?: (value: unknown) => unknown,
     onRejected?: (reason: unknown) => unknown,
-  ) => Promise.resolve(result).then(onFulfilled, onRejected);
+  ) => {
+    const result = results[Math.min(queryIndex++, results.length - 1)];
+    return Promise.resolve(result).then(onFulfilled, onRejected);
+  };
   return {
     from(table: string) {
       recorded.from.push(table);
@@ -59,32 +85,48 @@ function adminDouble(
     },
     rpc(name: string, args: Record<string, unknown>) {
       recorded.rpc.push([name, args]);
+      if (options.rateError) {
+        return Promise.resolve({ data: null, error: { code: "XX000", message: "down" } });
+      }
+      const allowed = options.rateAllowed ?? true;
       return Promise.resolve({
         data: {
-          allowed: rateAllowed,
-          remaining: rateAllowed ? 599 : 0,
-          retry_after_seconds: rateAllowed ? null : 60,
+          allowed,
+          remaining: allowed ? 599 : 0,
+          retry_after_seconds: allowed ? null : 60,
         },
         error: null,
       });
+    },
+    storage: {
+      from(bucket: string) {
+        return {
+          list(...args: unknown[]) {
+            recorded.storage.push([bucket, args]);
+            return Promise.resolve(options.storageResult ?? { data: [], error: null });
+          },
+        };
+      },
     },
   } as unknown as SupabaseClient;
 }
 
 function doubleHandler(
-  result: { data: unknown; error: unknown } = { data: [], error: null },
-  options: { userId?: string | null; rateAllowed?: boolean } = {},
+  results: QueryResult | QueryResult[] = { data: [], error: null, count: 0 },
+  options: DoubleOptions = {},
 ) {
-  const recorded: Recorded = { from: [], ops: [], rpc: [] };
+  const recorded: Recorded = { from: [], ops: [], rpc: [], storage: [] };
   const userId = options.userId === undefined ? USER_ID : options.userId;
   const handler = createExportUserDataHandler({
     createAuthClient() {
       return {
         auth: {
           getUser() {
+            if (options.authThrows) return Promise.reject(new Error("network"));
+            if (options.authResult !== undefined) return Promise.resolve(options.authResult);
             return Promise.resolve(
               userId
-                ? { data: { user: { id: userId } }, error: null }
+                ? { data: { user: { id: userId, ...options.user } }, error: null }
                 : { data: { user: null }, error: { status: 401 } },
             );
           },
@@ -92,7 +134,11 @@ function doubleHandler(
       };
     },
     createAdminClient() {
-      return adminDouble(recorded, result, options.rateAllowed ?? true);
+      return adminDouble(
+        recorded,
+        Array.isArray(results) ? results : [results],
+        options,
+      );
     },
   });
   return { handler, recorded };
@@ -105,16 +151,45 @@ Deno.test("rejects non-POST methods with 405", async () => {
   assertEquals(recorded.from, []);
 });
 
-Deno.test("requires a bearer token and a verified user", async () => {
+Deno.test("requires a Bearer token and a verified user", async () => {
   const missing = doubleHandler();
   assertEquals(
     (await missing.handler(request({ table: "routines" }, { authorization: null })))
       .status,
     401,
   );
+  const basic = doubleHandler();
+  assertEquals(
+    (await basic.handler(request({ table: "routines" }, { authorization: "Basic abc" })))
+      .status,
+    401,
+  );
   const invalid = doubleHandler(undefined, { userId: null });
   assertEquals((await invalid.handler(request({ table: "routines" }))).status, 401);
   assertEquals(invalid.recorded.from, []);
+  assertEquals(invalid.recorded.rpc, []);
+});
+
+Deno.test("auth service failures give 503, not 401", async () => {
+  for (
+    const options of [
+      { authThrows: true },
+      { authResult: { data: { user: null }, error: { status: 500 } } },
+      { authResult: { data: { user: null }, error: { message: "fetch failed" } } },
+    ] as DoubleOptions[]
+  ) {
+    const { handler, recorded } = doubleHandler(undefined, options);
+    const response = await handler(request({ table: "routines" }));
+    assertEquals(response.status, 503, JSON.stringify(options));
+    assertEquals(recorded.from, []);
+  }
+});
+
+Deno.test("an unparseable JSON body gives 400 without charging the rate limit", async () => {
+  const { handler, recorded } = doubleHandler();
+  const response = await handler(request(null, { rawBody: "{not json" }));
+  assertEquals(response.status, 400);
+  assertEquals(recorded.rpc, []);
 });
 
 Deno.test("unknown and excluded tables give 400 without querying or charging the rate limit", async () => {
@@ -134,6 +209,7 @@ Deno.test("malformed cursors give 400", () => {
     {},
     { id: "" },
     { id: null },
+    { id: true },
     { id: "a", extra: "b" },
     { id: "x".repeat(513) },
   ];
@@ -144,10 +220,24 @@ Deno.test("malformed cursors give 400", () => {
     parseExportRequest({ table: "sync_tombstones", cursor: { entity: "routine" } }).ok,
     false,
   );
+  assertEquals(
+    parseExportRequest({ table: "auth_account", cursor: { id: "x" } }).ok,
+    false,
+  );
   assert(parseExportRequest({ table: "routines", cursor: { id: "abc" } }).ok);
 });
 
-Deno.test("scopes by the JWT user id, never a body-supplied user id, and charges 600/hour", async () => {
+Deno.test("a cursor value of the wrong type for the column gives 400, not 500", async () => {
+  const { handler } = doubleHandler({
+    data: null,
+    error: { code: "22P02", message: 'invalid input syntax for type uuid: "abc"' },
+  });
+  const response = await handler(request({ table: "routines", cursor: { id: "abc" } }));
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "cursor is invalid");
+});
+
+Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/hour", async () => {
   const { handler, recorded } = doubleHandler();
   const response = await handler(request({
     table: "routines",
@@ -157,7 +247,7 @@ Deno.test("scopes by the JWT user id, never a body-supplied user id, and charges
   assertEquals(response.status, 200);
   assertEquals(recorded.from, ["routines"]);
   assertEquals(recorded.ops, [
-    ["select", ["*"]],
+    ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","), { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["gt", ["id", "00000000-0000-4000-8000-000000000001"]],
     ["order", ["id", { ascending: true }]],
@@ -175,6 +265,20 @@ Deno.test("scopes by the JWT user id, never a body-supplied user id, and charges
   assertEquals(EXPORT_RATE_LIMIT, { maxRequests: 600, windowSeconds: 3600 });
 });
 
+Deno.test("prod-only optional columns are dropped when the database lacks them", async () => {
+  const { handler, recorded } = doubleHandler([
+    { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
+    { data: [{ id: "r1" }], error: null, count: 1 },
+  ]);
+  const response = await handler(request({ table: "routines" }));
+  assertEquals(response.status, 200);
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects, [
+    [...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","),
+    ROUTINE_COLUMNS.join(","),
+  ]);
+});
+
 Deno.test("rate-limited requests get 429 and no query", async () => {
   const { handler, recorded } = doubleHandler(undefined, { rateAllowed: false });
   const response = await handler(request({ table: "routines" }));
@@ -182,15 +286,24 @@ Deno.test("rate-limited requests get 429 and no query", async () => {
   assertEquals(recorded.from, []);
 });
 
+Deno.test("a rate-limit RPC failure fails closed with 503", async () => {
+  const { handler, recorded } = doubleHandler(undefined, { rateError: true });
+  const response = await handler(request({ table: "routines" }));
+  assertEquals(response.status, 503);
+  assertEquals(recorded.from, []);
+});
+
 Deno.test("parent-owned tables scope through an inner join on the parent owner", async () => {
   const { handler, recorded } = doubleHandler({
     data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }],
     error: null,
+    count: 1,
   });
   const response = await handler(request({ table: "routine_exercises" }));
   assertEquals(response.status, 200);
+  const columns = getUserDataTable("routine_exercises")!.columns.join(",");
   assertEquals(recorded.ops.slice(0, 2), [
-    ["select", ["*, routines!routine_id!inner(user_id)"]],
+    ["select", [`${columns},routines!routine_id!inner(user_id)`, { count: "exact" }]],
     ["eq", ["routines.user_id", USER_ID]],
   ]);
   const body = await response.json();
@@ -212,7 +325,7 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
     cursor: { entity: "cycle", entity_id: "e1" },
   }));
   assertEquals(recorded.ops, [
-    ["select", ["*"]],
+    ["select", ["user_id,entity,entity_id,deleted_at", { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["or", ['entity.gt."cycle",and(entity.eq."cycle",entity_id.gt."e1")']],
     ["order", ["entity", { ascending: true }]],
@@ -221,23 +334,36 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
   ]);
 });
 
-Deno.test("full pages return the last row's key as nextCursor; short pages end paging", async () => {
-  const rows = Array.from({ length: USER_DATA_PAGE_SIZE }, (_, i) => ({
+function idRows(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
     id: `id-${String(i).padStart(4, "0")}`,
     user_id: USER_ID,
   }));
-  const full = doubleHandler({ data: rows, error: null });
-  const fullBody = await (await full.handler(request({ table: "routines" }))).json();
-  assertEquals(fullBody.rows.length, USER_DATA_PAGE_SIZE);
-  assertEquals(fullBody.nextCursor, { id: "id-0999" });
+}
 
-  const short = doubleHandler({ data: rows.slice(0, 999), error: null });
-  const shortBody = await (await short.handler(request({ table: "routines" }))).json();
-  assertEquals(shortBody.rows.length, 999);
-  assertEquals(shortBody.nextCursor, null);
+Deno.test("nextCursor comes from the remaining-row count, not the page length", async () => {
+  // More rows remain: cursor is the last key.
+  const more = doubleHandler({ data: idRows(1000), error: null, count: 2500 });
+  const moreBody = await (await more.handler(request({ table: "routines" }))).json();
+  assertEquals(moreBody.nextCursor, { id: "id-0999" });
+
+  // Exactly 1000 rows: no trailing empty page.
+  const exact = doubleHandler({ data: idRows(1000), error: null, count: 1000 });
+  const exactBody = await (await exact.handler(request({ table: "routines" }))).json();
+  assertEquals(exactBody.rows.length, 1000);
+  assertEquals(exactBody.nextCursor, null);
+
+  // max_rows below the requested limit (e.g. 500): still pages on.
+  const capped = doubleHandler({ data: idRows(500), error: null, count: 2500 });
+  const cappedBody = await (await capped.handler(request({ table: "routines" }))).json();
+  assertEquals(cappedBody.nextCursor, { id: "id-0499" });
+
+  // Empty table.
+  const empty = doubleHandler({ data: [], error: null, count: 0 });
+  assertEquals((await (await empty.handler(request({ table: "routines" }))).json()).nextCursor, null);
 });
 
-Deno.test("a table absent from this database is reported, not a 500", async () => {
+Deno.test("a mayBeAbsent table missing from the database is reported with tableMissing", async () => {
   const { handler } = doubleHandler({
     data: null,
     error: { code: "PGRST205", message: "Could not find the table" },
@@ -252,16 +378,86 @@ Deno.test("a table absent from this database is reported, not a 500", async () =
   });
 });
 
+Deno.test("any other missing table is a 500, never a silent empty table", async () => {
+  const { handler } = doubleHandler({
+    data: null,
+    error: { code: "PGRST205", message: "Could not find the table" },
+  });
+  assertEquals((await handler(request({ table: "routines" }))).status, 500);
+});
+
 Deno.test("other query errors give 500", async () => {
   const { handler } = doubleHandler({ data: null, error: { code: "XX000", message: "boom" } });
   assertEquals((await handler(request({ table: "routines" }))).status, 500);
 });
 
+Deno.test("auth_account returns the verified user's account fields only", async () => {
+  const { handler, recorded } = doubleHandler(undefined, {
+    user: {
+      email: "a@example.invalid",
+      phone: "",
+      created_at: "2026-01-01T00:00:00Z",
+      last_sign_in_at: "2026-09-01T00:00:00Z",
+      email_confirmed_at: "2026-01-01T00:00:01Z",
+      identities: [{ provider: "google", identity_data: { secret: "x" } }, { provider: "email" }],
+      app_metadata: { providers: ["email", "google"] },
+      user_metadata: { anything: true },
+    },
+  });
+  const response = await handler(request({ table: "auth_account" }));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    table: "auth_account",
+    rows: [{
+      id: USER_ID,
+      email: "a@example.invalid",
+      phone: null,
+      created_at: "2026-01-01T00:00:00Z",
+      last_sign_in_at: "2026-09-01T00:00:00Z",
+      email_confirmed_at: "2026-01-01T00:00:01Z",
+      identity_providers: ["email", "google"],
+    }],
+    nextCursor: null,
+  });
+  assertEquals(recorded.from, []);
+  assertEquals(recorded.rpc.length, 1);
+});
+
+Deno.test("storage_avatars lists only the user's avatars folder", async () => {
+  const { handler, recorded } = doubleHandler(undefined, {
+    storageResult: {
+      data: [
+        {
+          id: "o1",
+          name: "a.png",
+          updated_at: "2026-09-01T00:00:00Z",
+          metadata: { size: 12, mimetype: "image/png" },
+        },
+        { id: null, name: "nested", metadata: null },
+      ],
+      error: null,
+    },
+  });
+  const body = await (await handler(request({ table: "storage_avatars" }))).json();
+  assertEquals(recorded.storage[0][0], "avatars");
+  assertEquals(recorded.storage[0][1][0], USER_ID);
+  assertEquals(body.rows, [{
+    bucket: "avatars",
+    path: `${USER_ID}/a.png`,
+    size: 12,
+    mimetype: "image/png",
+    updated_at: "2026-09-01T00:00:00Z",
+  }]);
+});
+
 Deno.test("every manifest entry has key columns and no table is both exported and excluded", () => {
   const excluded = new Set(EXCLUDED.map((e) => e.table));
+  const sources = new Set(NON_TABLE_SOURCES.map((s) => s.source));
   for (const entry of USER_DATA_MANIFEST) {
     assert(entry.keyColumns.length > 0, entry.table);
+    assert(entry.keyColumns.every((c) => entry.columns.includes(c)), entry.table);
     assert(!excluded.has(entry.table), entry.table);
+    assert(!sources.has(entry.table), entry.table);
   }
 });
 
@@ -313,13 +509,20 @@ async function destroyExportFixture(fixture: ExportFixture): Promise<void> {
   }
 }
 
-function realHandler(fixture: ExportFixture, verifiedUserId: string) {
+function realHandler(
+  fixture: ExportFixture,
+  verifiedUserId: string,
+  user: Record<string, unknown> = {},
+) {
   return createExportUserDataHandler({
     createAuthClient() {
       return {
         auth: {
           getUser() {
-            return Promise.resolve({ data: { user: { id: verifiedUserId } }, error: null });
+            return Promise.resolve({
+              data: { user: { ...user, id: verifiedUserId } },
+              error: null,
+            });
           },
         },
       };
@@ -386,10 +589,22 @@ Deno.test({
       assertEquals(new Set(ids), new Set(ownerRows.map((row) => row.id)));
       assert(exported.every((row) => row.user_id === fixture.ownerId));
       assertEquals([...ids].sort(), ids, "pages are ordered by id");
+      assertEquals(
+        Object.keys(exported[0]).sort(),
+        [...getUserDataTable("sync_queue")!.columns].sort(),
+      );
 
       const otherPages = await exportAll(realHandler(fixture, fixture.otherId), "sync_queue");
       assertEquals(otherPages.map((page) => page.length), [30]);
       assert(otherPages.flat().every((row) => row.user_id === fixture.otherId));
+
+      // Exactly one full page: no trailing empty page.
+      const trimmed = await fixture.admin.from("sync_queue").delete()
+        .eq("user_id", fixture.ownerId)
+        .gt("id", ids[999]);
+      if (trimmed.error) throw new Error(`trim failed: ${trimmed.error.message}`);
+      const exactPages = await exportAll(realHandler(fixture, fixture.ownerId), "sync_queue");
+      assertEquals(exactPages.map((page) => page.length), [1000]);
     } finally {
       await destroyExportFixture(fixture);
     }
@@ -398,10 +613,11 @@ Deno.test({
 
 Deno.test({
   name:
-    "integration: parent-owned and non-id-keyed tables export only the caller's rows",
+    "integration: parent-owned, non-id-keyed, drift-column and non-table sources export only the caller's data",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createExportFixture();
+    const avatarPaths: string[] = [];
     try {
       const ownerRoutine = crypto.randomUUID();
       const otherRoutine = crypto.randomUUID();
@@ -447,6 +663,12 @@ Deno.test({
       ]);
 
       const owner = realHandler(fixture, fixture.ownerId);
+
+      // routines has a prod-only optional column (created_at) that the
+      // local schema lacks: the export falls back to the migrated columns.
+      const routines = (await exportAll(owner, "routines")).flat();
+      assertEquals(routines.map((row) => row.id), [ownerRoutine]);
+
       const exercises = (await exportAll(owner, "routine_exercises")).flat();
       assertEquals(new Set(exercises.map((row) => row.id)), new Set(ownerExerciseIds));
       assert(exercises.every((row) => row.routine_id === ownerRoutine && !("routines" in row)));
@@ -464,11 +686,57 @@ Deno.test({
         cursor: { local_profile_id: "p-a" },
       }));
       const cursorBody = await cursorResponse.json();
-      assertEquals(cursorBody.rows.map((row: Record<string, unknown>) => row.local_profile_id), ["p-b"]);
+      assertEquals(
+        cursorBody.rows.map((row: Record<string, unknown>) => row.local_profile_id),
+        ["p-b"],
+      );
 
-      const unknown = await owner(request({ table: "oauth_tokens" }));
-      assertEquals(unknown.status, 400);
+      // A uuid key with a non-uuid cursor is a client error.
+      const badCursor = await owner(request({ table: "routines", cursor: { id: "abc" } }));
+      assertEquals(badCursor.status, 400);
+
+      // Every manifest table with DDL is selectable with its explicit columns.
+      for (const entry of USER_DATA_MANIFEST) {
+        const response = await owner(request({ table: entry.table }));
+        assertEquals(response.status, 200, entry.table);
+        const body = await response.json();
+        if (!entry.mayBeAbsent) assertEquals(body.tableMissing, undefined, entry.table);
+      }
+
+      assertEquals((await owner(request({ table: "oauth_tokens" }))).status, 400);
+
+      // Non-table sources: the real auth user and a real avatar upload.
+      const realUser = await fixture.admin.auth.admin.getUserById(fixture.ownerId);
+      assert(realUser.data.user);
+      const account = await (await realHandler(
+        fixture,
+        fixture.ownerId,
+        realUser.data.user as unknown as Record<string, unknown>,
+      )(request({ table: "auth_account" }))).json();
+      assertEquals(account.rows.length, 1);
+      assertEquals(account.rows[0].id, fixture.ownerId);
+      assertEquals(account.rows[0].email, realUser.data.user.email);
+      assertEquals(account.rows[0].identity_providers, ["email"]);
+
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      for (const userId of [fixture.ownerId, fixture.otherId]) {
+        const path = `${userId}/avatar.png`;
+        const upload = await fixture.admin.storage.from("avatars").upload(path, png, {
+          contentType: "image/png",
+          upsert: true,
+        });
+        if (upload.error) throw new Error(`avatar upload failed: ${upload.error.message}`);
+        avatarPaths.push(path);
+      }
+      const avatars = await (await owner(request({ table: "storage_avatars" }))).json();
+      assertEquals(
+        avatars.rows.map((row: Record<string, unknown>) => row.path),
+        [`${fixture.ownerId}/avatar.png`],
+      );
     } finally {
+      if (avatarPaths.length > 0) {
+        await fixture.admin.storage.from("avatars").remove(avatarPaths);
+      }
       await destroyExportFixture(fixture);
     }
   },
@@ -499,12 +767,13 @@ Deno.test({
       ]);
       // Synthetic composite-keyed entry: no composite-keyed manifest table
       // (sync_tombstones, PR 16) has DDL on this branch.
-      const entry = {
+      const entry: UserDataTable = {
         table: "sync_queue",
         ownership: { kind: "column", column: "user_id" },
         keyColumns: ["provider", "id"],
+        columns: ["id", "user_id", "provider"],
         purge: "cascade",
-      } as const;
+      };
       const pages: Array<Record<string, unknown>[]> = [];
       let cursor: ExportCursor | null = null;
       for (let guard = 0; guard < 10; guard++) {

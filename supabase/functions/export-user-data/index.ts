@@ -3,35 +3,49 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import {
   getUserDataTable,
+  isNonTableSource,
   USER_DATA_PAGE_SIZE,
   type UserDataTable,
 } from '../_shared/userDataManifest.ts';
 
 /**
- * GDPR export, one keyset page at a time (KD-7).
+ * GDPR export, one keyset page at a time (KD-7). Contract: see the header of
+ * `_shared/userDataManifest.ts`.
  *
- * POST { table, cursor? } -> { table, rows, nextCursor | null }
+ * POST { table, cursor? } -> { table, rows, nextCursor | null [, tableMissing] }
  *
- * The user id comes only from the verified JWT. The query runs with the
+ * The user id comes only from the verified JWT. Table queries run with the
  * service role (so tier-gated RLS can never hide a user's own data from
- * their export) and is scoped by the manifest entry's ownership path.
- * Pages are ordered by the entry's key columns; `nextCursor` holds the last
- * row's key values and is null once a page comes back short.
+ * their export), select only the manifest's explicit columns, are scoped by
+ * the entry's ownership path and ordered by its key columns. `nextCursor`
+ * is derived from an exact count of the remaining rows, not from the page
+ * length, so a PostgREST `max_rows` below the requested limit cannot end the
+ * export early.
  */
 
 export const EXPORT_RATE_LIMIT = { maxRequests: 600, windowSeconds: 3600 } as const;
 
 const MAX_CURSOR_VALUE_LENGTH = 512;
+const AVATARS_BUCKET = 'avatars';
 
 type CursorValue = string | number;
 export type ExportCursor = Record<string, CursorValue>;
+type Row = Record<string, unknown>;
+
+export interface ExportUser {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string | null;
+  last_sign_in_at?: string | null;
+  email_confirmed_at?: string | null;
+  identities?: Array<{ provider?: string | null }> | null;
+  app_metadata?: { providers?: unknown } | null;
+}
 
 export interface ExportUserDataAuthClient {
   auth: {
-    getUser(jwt: string): Promise<{
-      data: { user: { id: string } | null };
-      error: unknown;
-    }>;
+    getUser(jwt: string): Promise<unknown>;
   };
 }
 
@@ -50,7 +64,7 @@ function defaultDependencies(): ExportUserDataHandlerDependencies {
           global: { headers: { Authorization: authorization } },
           auth: { persistSession: false, autoRefreshToken: false },
         },
-      ) as unknown as ExportUserDataAuthClient;
+      );
     },
     createAdminClient() {
       return createClient(
@@ -69,21 +83,30 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-type ParsedRequest =
-  | { ok: true; entry: UserDataTable; cursor: ExportCursor | null }
-  | { ok: false; error: string };
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+type ParsedRequest =
+  | { ok: true; kind: 'table'; entry: UserDataTable; cursor: ExportCursor | null }
+  | { ok: true; kind: 'source'; source: string }
+  | { ok: false; error: string };
 
 export function parseExportRequest(body: unknown): ParsedRequest {
   if (!isPlainObject(body)) return { ok: false, error: 'Body must be a JSON object' };
   const { table, cursor } = body;
   if (typeof table !== 'string') return { ok: false, error: 'table is required' };
+  if (isNonTableSource(table)) {
+    if (cursor !== undefined && cursor !== null) {
+      return { ok: false, error: 'cursor is not supported for this source' };
+    }
+    return { ok: true, kind: 'source', source: table };
+  }
   const entry = getUserDataTable(table);
   if (!entry) return { ok: false, error: 'Unknown or non-exportable table' };
-  if (cursor === undefined || cursor === null) return { ok: true, entry, cursor: null };
+  if (cursor === undefined || cursor === null) {
+    return { ok: true, kind: 'table', entry, cursor: null };
+  }
   if (!isPlainObject(cursor)) return { ok: false, error: 'cursor must be an object' };
   const keys = Object.keys(cursor);
   if (
@@ -107,7 +130,7 @@ export function parseExportRequest(body: unknown): ParsedRequest {
       return { ok: false, error: `cursor.${column} is invalid` };
     }
   }
-  return { ok: true, entry, cursor: parsed };
+  return { ok: true, kind: 'table', entry, cursor: parsed };
 }
 
 /** Quotes a value for a PostgREST logic-tree (`or=`) filter. */
@@ -135,7 +158,12 @@ export function buildKeysetOrFilter(
   return branches.join(',');
 }
 
-function isMissingRelation(error: { code?: string; message?: string }): boolean {
+interface PgError {
+  code?: string;
+  message?: string;
+}
+
+export function isMissingRelation(error: PgError): boolean {
   return (
     error.code === '42P01' ||
     error.code === 'PGRST205' ||
@@ -144,20 +172,31 @@ function isMissingRelation(error: { code?: string; message?: string }): boolean 
   );
 }
 
-export async function readExportPage(
+/** Postgres input-syntax errors: a cursor value of the wrong type. */
+function isInvalidInput(error: PgError): boolean {
+  return ['22P02', '22007', '22008', '22003'].includes(error.code ?? '');
+}
+
+function isUndefinedColumn(error: PgError): boolean {
+  return error.code === '42703' || error.code === 'PGRST204';
+}
+
+export type ExportPageResult =
+  | { ok: true; rows: Row[]; nextCursor: ExportCursor | null; tableMissing: boolean }
+  | { ok: false; reason: 'invalid_cursor' | 'query_failed'; error: unknown };
+
+async function queryPage(
   admin: SupabaseClient,
   entry: UserDataTable,
   userId: string,
   cursor: ExportCursor | null,
-): Promise<
-  | { ok: true; rows: Record<string, unknown>[]; nextCursor: ExportCursor | null; tableMissing: boolean }
-  | { ok: false; error: unknown }
-> {
+  columns: readonly string[],
+) {
   const { ownership, keyColumns } = entry;
-  const embed = ownership.kind === 'parent'
-    ? `${ownership.parentTable}!${ownership.fkColumn}!inner(${ownership.parentColumn})`
-    : null;
-  let query = admin.from(entry.table).select(embed ? `*, ${embed}` : '*');
+  const select = ownership.kind === 'parent'
+    ? `${columns.join(',')},${ownership.parentTable}!${ownership.fkColumn}!inner(${ownership.parentColumn})`
+    : columns.join(',');
+  let query = admin.from(entry.table).select(select, { count: 'exact' });
   query = ownership.kind === 'parent'
     ? query.eq(`${ownership.parentTable}.${ownership.parentColumn}`, userId)
     : query.eq(ownership.column, userId);
@@ -167,28 +206,105 @@ export async function readExportPage(
       : query.or(buildKeysetOrFilter(keyColumns, cursor));
   }
   for (const column of keyColumns) query = query.order(column, { ascending: true });
-  const { data, error } = await query.limit(USER_DATA_PAGE_SIZE);
+  return await query.limit(USER_DATA_PAGE_SIZE);
+}
+
+export async function readExportPage(
+  admin: SupabaseClient,
+  entry: UserDataTable,
+  userId: string,
+  cursor: ExportCursor | null,
+): Promise<ExportPageResult> {
+  const optional = entry.optionalColumns ?? [];
+  let result = await queryPage(admin, entry, userId, cursor, [...entry.columns, ...optional]);
+  if (result.error && optional.length > 0 && isUndefinedColumn(result.error)) {
+    // Prod-only drift columns are absent in this database.
+    result = await queryPage(admin, entry, userId, cursor, entry.columns);
+  }
+  const { data, error, count } = result;
 
   if (error) {
-    if (isMissingRelation(error)) {
+    if (isMissingRelation(error) && entry.mayBeAbsent) {
       return { ok: true, rows: [], nextCursor: null, tableMissing: true };
     }
-    return { ok: false, error };
+    if (cursor && isInvalidInput(error)) {
+      return { ok: false, reason: 'invalid_cursor', error };
+    }
+    return { ok: false, reason: 'query_failed', error };
   }
 
-  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => {
+  const raw = (data ?? []) as unknown as Row[];
+  const rows = raw.map((row) => {
+    if (entry.ownership.kind !== 'parent') return row;
     const out = { ...row };
-    if (ownership.kind === 'parent') delete out[ownership.parentTable];
+    delete out[entry.ownership.parentTable];
     return out;
   });
 
+  // `count` is the number of rows after the cursor (the filters ignore the
+  // limit), so more pages remain exactly when it exceeds this page.
+  if (typeof count !== 'number') {
+    return { ok: false, reason: 'query_failed', error: { message: 'count missing' } };
+  }
   let nextCursor: ExportCursor | null = null;
-  if (rows.length === USER_DATA_PAGE_SIZE) {
-    const last = (data as unknown as Record<string, unknown>[])[rows.length - 1];
+  if (rows.length > 0 && count > rows.length) {
+    const last = raw[raw.length - 1];
     nextCursor = {};
-    for (const column of keyColumns) nextCursor[column] = last[column] as CursorValue;
+    for (const column of entry.keyColumns) nextCursor[column] = last[column] as CursorValue;
   }
   return { ok: true, rows, nextCursor, tableMissing: false };
+}
+
+function accountRow(user: ExportUser): Row {
+  const fromIdentities = (user.identities ?? [])
+    .map((identity) => identity?.provider)
+    .filter((provider): provider is string => typeof provider === 'string');
+  const fromMetadata = Array.isArray(user.app_metadata?.providers)
+    ? (user.app_metadata!.providers as unknown[]).filter(
+      (provider): provider is string => typeof provider === 'string',
+    )
+    : [];
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    phone: user.phone || null,
+    created_at: user.created_at ?? null,
+    last_sign_in_at: user.last_sign_in_at ?? null,
+    email_confirmed_at: user.email_confirmed_at ?? null,
+    identity_providers: [...new Set([...fromIdentities, ...fromMetadata])].sort(),
+  };
+}
+
+async function readSource(
+  admin: SupabaseClient,
+  source: string,
+  user: ExportUser,
+): Promise<{ ok: true; rows: Row[] } | { ok: false; error: unknown }> {
+  if (source === 'auth_account') return { ok: true, rows: [accountRow(user)] };
+  // storage_avatars
+  const { data, error } = await admin.storage
+    .from(AVATARS_BUCKET)
+    .list(user.id, { limit: USER_DATA_PAGE_SIZE, sortBy: { column: 'name', order: 'asc' } });
+  if (error) return { ok: false, error };
+  const rows = (data ?? [])
+    .filter((object) => object.id !== null) // folders have no id
+    .map((object) => {
+      const metadata = (object.metadata ?? {}) as Record<string, unknown>;
+      return {
+        bucket: AVATARS_BUCKET,
+        path: `${user.id}/${object.name}`,
+        size: typeof metadata.size === 'number' ? metadata.size : null,
+        mimetype: typeof metadata.mimetype === 'string' ? metadata.mimetype : null,
+        updated_at: object.updated_at ?? null,
+      };
+    });
+  return { ok: true, rows };
+}
+
+function authStatus(error: unknown): number | null {
+  if (!isPlainObject(error)) return null;
+  const status = error.status;
+  return typeof status === 'number' ? status : null;
 }
 
 async function exportUserDataHandler(
@@ -204,13 +320,31 @@ async function exportUserDataHandler(
     const bearer = authorization ? /^Bearer ([^\s]+)$/.exec(authorization) : null;
     if (!authorization || !bearer) return json({ error: 'Missing bearer token' }, 401, cors);
 
-    const { data: authData, error: authError } = await dependencies
-      .createAuthClient(authorization)
-      .auth.getUser(bearer[1]);
-    const userId = authData?.user?.id;
-    if (authError || typeof userId !== 'string' || userId.length === 0) {
-      return json({ error: 'Not authenticated' }, 401, cors);
+    // A rejected JWT is 401; an auth-service failure is 503 so the client
+    // retries instead of treating it as a signed-out session.
+    let authResult: unknown;
+    try {
+      authResult = await dependencies.createAuthClient(authorization).auth.getUser(bearer[1]);
+    } catch (error) {
+      console.error('[EXPORT_USER_DATA] auth service error', error);
+      return json({ error: 'Authentication service unavailable' }, 503, cors);
     }
+    const authError = isPlainObject(authResult) ? authResult.error : null;
+    if (authError) {
+      const status = authStatus(authError);
+      if (status === 400 || status === 401 || status === 403) {
+        return json({ error: 'Invalid bearer token' }, 401, cors);
+      }
+      console.error('[EXPORT_USER_DATA] auth service error', { status });
+      return json({ error: 'Authentication service unavailable' }, 503, cors);
+    }
+    const authData = isPlainObject(authResult) ? authResult.data : null;
+    const user = isPlainObject(authData) ? authData.user : null;
+    if (!isPlainObject(user) || typeof user.id !== 'string' || user.id.length === 0) {
+      return json({ error: 'Invalid bearer token' }, 401, cors);
+    }
+    const verifiedUser = user as unknown as ExportUser;
+    const userId = verifiedUser.id;
 
     let body: unknown;
     try {
@@ -229,8 +363,23 @@ async function exportUserDataHandler(
     }, cors);
     if (!rate.allowed) return rate.response!;
 
+    if (parsed.kind === 'source') {
+      const result = await readSource(admin, parsed.source, verifiedUser);
+      if (!result.ok) {
+        console.error('[EXPORT_USER_DATA] source read failed', {
+          source: parsed.source,
+          error: result.error,
+        });
+        return json({ error: 'Export query failed' }, 500, cors);
+      }
+      return json({ table: parsed.source, rows: result.rows, nextCursor: null }, 200, cors);
+    }
+
     const page = await readExportPage(admin, parsed.entry, userId, parsed.cursor);
     if (!page.ok) {
+      if (page.reason === 'invalid_cursor') {
+        return json({ error: 'cursor is invalid' }, 400, cors);
+      }
       console.error('[EXPORT_USER_DATA] page query failed', {
         table: parsed.entry.table,
         error: page.error,

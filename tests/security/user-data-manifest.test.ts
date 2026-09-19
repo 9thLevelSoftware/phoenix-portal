@@ -3,258 +3,33 @@
  * USER_DATA_MANIFEST (exported) or EXCLUDED (with a reason).
  *
  * Discovery sources:
- *   1. supabase/migrations/*.sql: tables with a `user_id` column, a
- *      `REFERENCES auth.users` FK, or (transitively) an FK to such a table.
+ *   1. supabase/migrations/*.sql, including DDL inside DO blocks: tables with
+ *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
+ *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
+ *      strings or inside function bodies is not parsed.
  *   2. src/lib/database.types.ts (generated from prod): tables whose Row has
  *      `user_id`. This catches prod tables whose migration is only a stub
  *      (e.g. 20260420210411_comprehensive_dashboard_drift_reconciliation.sql).
+ *
+ * Merge-order note: TABLES_WITHOUT_MIGRATION_DDL lists subscription_events
+ * (DDL from PR 2) and sync_tombstones (DDL from PR 16). When their DDL lands,
+ * this test only warns; remove the entry then so the column checks apply.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	EXCLUDED,
+	NON_TABLE_SOURCES,
 	USER_DATA_MANIFEST,
 	type UserDataPurge,
 	type UserDataTable,
 } from "../../supabase/functions/_shared/userDataManifest.ts";
-
-interface ForeignKey {
-	name: string;
-	columns: string[];
-	/** schema-qualified, e.g. `auth.users` or `public.routines` */
-	ref: string;
-	onDelete: string;
-}
-
-interface ParsedTable {
-	columns: Set<string>;
-	fks: ForeignKey[];
-}
-
-type Schema = Map<string, ParsedTable>;
-
-const IDENT = String.raw`"?(\w+)"?`;
-const QUALIFIED = String.raw`(?:"?(\w+)"?\.)?"?(\w+)"?`;
-
-function stripSql(sql: string): string {
-	return sql
-		.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, "''")
-		.replace(/--[^\n]*/g, "")
-		.replace(/\/\*[\s\S]*?\*\//g, "")
-		.replace(/'(?:[^']|'')*'/g, "''");
-}
-
-function norm(name: string): string {
-	return name.toLowerCase();
-}
-
-function splitTopLevel(body: string): string[] {
-	const parts: string[] = [];
-	let depth = 0;
-	let current = "";
-	for (const ch of body) {
-		if (ch === "(") depth++;
-		if (ch === ")") depth--;
-		if (ch === "," && depth === 0) {
-			parts.push(current);
-			current = "";
-		} else {
-			current += ch;
-		}
-	}
-	if (current.trim()) parts.push(current);
-	return parts.map((part) => part.trim());
-}
-
-function parseReference(
-	clause: string,
-): { ref: string; onDelete: string } | null {
-	const match = new RegExp(String.raw`\breferences\s+${QUALIFIED}`, "i").exec(
-		clause,
-	);
-	if (!match) return null;
-	const onDelete =
-		/\bon\s+delete\s+(cascade|set\s+null|set\s+default|restrict|no\s+action)/i
-			.exec(clause)?.[1]
-			.toLowerCase()
-			.replace(/\s+/, " ") ?? "no action";
-	return {
-		ref: `${norm(match[1] ?? "public")}.${norm(match[2])}`,
-		onDelete,
-	};
-}
-
-function parseListColumns(list: string): string[] {
-	return list.split(",").map((c) => norm(c.trim().replace(/"/g, "")));
-}
-
-/** Handles one column definition or table constraint (CREATE or ALTER ADD). */
-function applyElement(
-	tableName: string,
-	table: ParsedTable,
-	element: string,
-): void {
-	const fkConstraint = new RegExp(
-		String.raw`^(?:constraint\s+${IDENT}\s+)?foreign\s+key\s*\(([^)]*)\)`,
-		"i",
-	).exec(element);
-	if (fkConstraint) {
-		const reference = parseReference(element);
-		if (reference) {
-			const columns = parseListColumns(fkConstraint[2]);
-			table.fks.push({
-				name: norm(fkConstraint[1] ?? `${tableName}_${columns[0]}_fkey`),
-				columns,
-				...reference,
-			});
-		}
-		return;
-	}
-	if (/^(constraint|primary|unique|check|exclude|like)\b/i.test(element)) {
-		return;
-	}
-	const column = new RegExp(`^${IDENT}`).exec(element);
-	if (!column) return;
-	const name = norm(column[1]);
-	table.columns.add(name);
-	const reference = parseReference(element);
-	if (reference) {
-		table.fks.push({
-			name: `${tableName}_${name}_fkey`,
-			columns: [name],
-			...reference,
-		});
-	}
-}
-
-function parseMigrations(sqlTexts: string[]): Schema {
-	const schema: Schema = new Map();
-	const createTable = new RegExp(
-		String.raw`^create\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?${QUALIFIED}\s*\(([\s\S]*)\)`,
-		"i",
-	);
-	const alterTable = new RegExp(
-		String.raw`^alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${QUALIFIED}\s+([\s\S]*)$`,
-		"i",
-	);
-	const dropTable = new RegExp(
-		String.raw`^drop\s+table\s+(?:if\s+exists\s+)?${QUALIFIED}`,
-		"i",
-	);
-	for (const text of sqlTexts) {
-		for (const raw of stripSql(text).split(";")) {
-			const statement = raw.trim();
-			let match = createTable.exec(statement);
-			if (match) {
-				if (match[1] && norm(match[1]) !== "public") continue;
-				const name = norm(match[2]);
-				const table = schema.get(name) ?? { columns: new Set(), fks: [] };
-				schema.set(name, table);
-				for (const element of splitTopLevel(match[3])) {
-					applyElement(name, table, element);
-				}
-				continue;
-			}
-			match = alterTable.exec(statement);
-			if (match) {
-				if (match[1] && norm(match[1]) !== "public") continue;
-				const tableName = norm(match[2]);
-				const table = schema.get(tableName);
-				if (!table) continue;
-				for (const action of splitTopLevel(match[3])) {
-					const add = /^add\s+(?:column\s+)?(?:if\s+not\s+exists\s+)?/i.exec(
-						action,
-					);
-					if (add) {
-						applyElement(tableName, table, action.slice(add[0].length).trim());
-						continue;
-					}
-					const dropConstraint = new RegExp(
-						String.raw`^drop\s+constraint\s+(?:if\s+exists\s+)?${IDENT}`,
-						"i",
-					).exec(action);
-					if (dropConstraint) {
-						const constraint = norm(dropConstraint[1]);
-						table.fks = table.fks.filter((fk) => fk.name !== constraint);
-						continue;
-					}
-					const drop = new RegExp(
-						String.raw`^drop\s+column\s+(?:if\s+exists\s+)?${IDENT}`,
-						"i",
-					).exec(action);
-					if (drop) {
-						const column = norm(drop[1]);
-						table.columns.delete(column);
-						table.fks = table.fks.filter((fk) => !fk.columns.includes(column));
-					}
-				}
-				continue;
-			}
-			match = dropTable.exec(statement);
-			if (match && (!match[1] || norm(match[1]) === "public")) {
-				schema.delete(norm(match[2]));
-			}
-		}
-	}
-	return schema;
-}
-
-/** Tables whose generated Row type has a `user_id` field. */
-function userIdTablesFromTypes(source: string): Set<string> {
-	const start = source.indexOf("Tables: {");
-	const end = source.indexOf("Views: {", start);
-	const lines = source.slice(start, end).split("\n");
-	const tables = new Set<string>();
-	let current: string | null = null;
-	let inRow = false;
-	for (const line of lines) {
-		const table = /^\t\t\t(\w+): \{$/.exec(line);
-		if (table) {
-			current = table[1];
-			inRow = false;
-			continue;
-		}
-		if (/^\t\t\t\tRow: \{$/.test(line)) inRow = true;
-		else if (/^\t\t\t\t\}/.test(line)) inRow = false;
-		else if (inRow && current && /^\t\t\t\t\tuser_id\??:/.test(line)) {
-			tables.add(current);
-		}
-	}
-	return tables;
-}
-
-/** table -> why it counts as user-owned */
-function discoverUserOwnedTables(
-	schema: Schema,
-	typeUserIdTables: Iterable<string> = [],
-): Map<string, string> {
-	const owned = new Map<string, string>();
-	for (const [name, table] of schema) {
-		if (table.columns.has("user_id")) owned.set(name, "user_id column");
-		else if (table.fks.some((fk) => fk.ref === "auth.users")) {
-			owned.set(name, "FK to auth.users");
-		}
-	}
-	for (const name of typeUserIdTables) {
-		if (!owned.has(name)) owned.set(name, "user_id in database.types.ts");
-	}
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const [name, table] of schema) {
-			if (owned.has(name)) continue;
-			const parent = table.fks.find(
-				(fk) => fk.ref.startsWith("public.") && owned.has(fk.ref.slice(7)),
-			);
-			if (parent) {
-				owned.set(name, `FK to ${parent.ref.slice(7)}`);
-				changed = true;
-			}
-		}
-	}
-	return owned;
-}
+import {
+	discoverUserOwnedTables,
+	parseMigrations,
+	tableRowColumnsFromTypes,
+} from "./helpers/migrationSchema.ts";
 
 function missingFromManifest(owned: Map<string, string>): string[] {
 	const covered = new Set([
@@ -270,13 +45,17 @@ const migrationTexts = readdirSync(migrationsDir)
 	.sort()
 	.map((file) => readFileSync(join(migrationsDir, file), "utf8"));
 const schema = parseMigrations(migrationTexts);
-const typeTables = userIdTablesFromTypes(
+const typeColumns = tableRowColumnsFromTypes(
 	readFileSync(join(process.cwd(), "src/lib/database.types.ts"), "utf8"),
 );
+const typeUserIdTables = [...typeColumns]
+	.filter(([, columns]) => columns.has("user_id"))
+	.map(([table]) => table);
 
 /**
  * Manifest/EXCLUDED tables with no DDL on this branch. Each must be named
- * here so a typo in the manifest cannot hide behind "not in migrations".
+ * here (and be `mayBeAbsent`) so a typo cannot hide behind "not in
+ * migrations".
  */
 const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
 	subscription_events: "prod table; captured into migrations by PR 2",
@@ -287,6 +66,8 @@ const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
 	telemetry_analysis: "prod table; stub migration 20260420210411",
 	wearable_daily_summaries: "prod table; stub migration 20260420210411",
 };
+
+const CREDENTIAL_COLUMN = /token|api_key|secret|password/;
 
 function ownershipColumn(entry: UserDataTable): string {
 	return entry.ownership.kind === "column"
@@ -328,7 +109,7 @@ function derivedPurge(
 }
 
 describe("user data manifest (R-31)", () => {
-	const owned = discoverUserOwnedTables(schema, typeTables);
+	const owned = discoverUserOwnedTables(schema, typeUserIdTables);
 
 	it("parses the migrations it depends on", () => {
 		// Sanity: if the parser regresses, discovery would silently shrink.
@@ -349,6 +130,14 @@ describe("user data manifest (R-31)", () => {
 		expect(owned.has("challenges")).toBe(false);
 		expect(owned.has("community_benchmarks")).toBe(false);
 		expect(owned.size).toBeGreaterThanOrEqual(45);
+		expect(schema.get("routines")?.uniques.get("routines_pkey")).toEqual([
+			"id",
+		]);
+		expect(
+			schema
+				.get("local_profile_preferences")
+				?.uniques.get("local_profile_preferences_pkey"),
+		).toEqual(["user_id", "local_profile_id"]);
 	});
 
 	it("covers every user-owned table in the manifest or EXCLUDED", () => {
@@ -373,79 +162,199 @@ describe("user data manifest (R-31)", () => {
 			CREATE TABLE zz_dummy_global (id uuid PRIMARY KEY, label text);`,
 		]);
 		expect(
-			missingFromManifest(discoverUserOwnedTables(withDummy, typeTables)),
+			missingFromManifest(discoverUserOwnedTables(withDummy, typeUserIdTables)),
 		).toEqual(["zz_dummy_child", "zz_dummy_fk", "zz_dummy_owned"]);
+	});
+
+	it("finds user-owned DDL inside DO blocks but not inside function bodies", () => {
+		const withDoBlocks = parseMigrations([
+			...migrationTexts,
+			`CREATE TABLE zz_do_later (id uuid PRIMARY KEY, label text);
+			DO $$
+			BEGIN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+					WHERE table_name = 'zz_do_later' AND column_name = 'user_id') THEN
+					ALTER TABLE zz_do_later ADD COLUMN user_id uuid;
+				END IF;
+			END $$;
+			DO $body$ BEGIN
+				CREATE TABLE IF NOT EXISTS zz_do_created (
+					id uuid PRIMARY KEY,
+					owner uuid REFERENCES auth.users(id)
+				);
+			END $body$;
+			CREATE OR REPLACE FUNCTION zz_fn() RETURNS void LANGUAGE plpgsql AS $$
+			BEGIN
+				CREATE TABLE zz_fn_table (id uuid PRIMARY KEY, user_id uuid);
+			END $$;`,
+		]);
+		const found = missingFromManifest(
+			discoverUserOwnedTables(withDoBlocks, typeUserIdTables),
+		);
+		expect(found).toEqual(["zz_do_created", "zz_do_later"]);
 	});
 
 	it("fails when a user-owned table only appears in the generated types", () => {
 		expect(
 			missingFromManifest(
-				discoverUserOwnedTables(schema, [...typeTables, "zz_prod_only"]),
+				discoverUserOwnedTables(schema, [...typeUserIdTables, "zz_prod_only"]),
 			),
 		).toEqual(["zz_prod_only"]);
 	});
 
-	it("has unique tables, key columns and reasons", () => {
+	it("has unique tables, key columns, reasons and structured purge rules", () => {
 		const names = [
 			...USER_DATA_MANIFEST.map((e) => e.table),
 			...EXCLUDED.map((e) => e.table),
+			...NON_TABLE_SOURCES.map((s) => s.source),
 		];
 		expect(new Set(names).size).toBe(names.length);
 		for (const entry of USER_DATA_MANIFEST) {
 			expect(entry.keyColumns.length, entry.table).toBeGreaterThan(0);
+			for (const column of entry.keyColumns) {
+				expect(entry.columns, `${entry.table}.${column}`).toContain(column);
+			}
 		}
 		for (const entry of EXCLUDED) {
 			expect(entry.reason.length, entry.table).toBeGreaterThan(20);
-			if (entry.purge === "explicit") {
-				expect(entry.purgeMatch, entry.table).toBeTruthy();
-			}
+			expect(entry.purgeMatch.column, entry.table).toBeTruthy();
 		}
 	});
 
-	it("names every listed table that has no migration DDL", () => {
-		const undeclared = [
-			...USER_DATA_MANIFEST.map((e) => e.table),
-			...EXCLUDED.map((e) => e.table),
-		].filter(
-			(table) => !schema.has(table) && !(table in TABLES_WITHOUT_MIGRATION_DDL),
-		);
-		expect(undeclared).toEqual([]);
-		for (const table of Object.keys(TABLES_WITHOUT_MIGRATION_DDL)) {
-			expect(schema.has(table), `${table} now has DDL; drop it here`).toBe(
-				false,
+	it("names every listed table that has no migration DDL and marks it mayBeAbsent", () => {
+		const entries = [...USER_DATA_MANIFEST, ...EXCLUDED];
+		const undeclared = entries
+			.map((e) => e.table)
+			.filter(
+				(table) =>
+					!schema.has(table) && !(table in TABLES_WITHOUT_MIGRATION_DDL),
 			);
-		}
-	});
-
-	it("uses ownership and key columns that exist in the migrations", () => {
-		for (const entry of USER_DATA_MANIFEST) {
-			const parsed = schema.get(entry.table);
-			if (!parsed) continue;
-			for (const column of [ownershipColumn(entry), ...entry.keyColumns]) {
-				expect(parsed.columns.has(column), `${entry.table}.${column}`).toBe(
+		expect(undeclared).toEqual([]);
+		for (const entry of entries) {
+			if (!schema.has(entry.table)) {
+				expect(entry.mayBeAbsent, `${entry.table} needs mayBeAbsent`).toBe(
 					true,
 				);
 			}
+		}
+		for (const table of Object.keys(TABLES_WITHOUT_MIGRATION_DDL)) {
+			if (schema.has(table)) {
+				// Merge-order tolerant (PR 2 / PR 16): warn, don't fail.
+				console.warn(
+					`[user-data-manifest] ${table} now has migration DDL; remove it from TABLES_WITHOUT_MIGRATION_DDL (and mayBeAbsent once it is in prod).`,
+				);
+			}
+		}
+	});
+
+	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
+		const problems: string[] = [];
+		for (const entry of USER_DATA_MANIFEST) {
+			const parsed = schema.get(entry.table);
+			const types = typeColumns.get(entry.table);
+			const optional = entry.optionalColumns ?? [];
+			if (parsed) {
+				const listed = new Set(entry.columns);
+				for (const column of parsed.columns) {
+					if (!listed.has(column))
+						problems.push(`${entry.table}.${column} not exported`);
+				}
+				for (const column of entry.columns) {
+					if (!parsed.columns.has(column))
+						problems.push(`${entry.table}.${column} not in migrations`);
+				}
+				for (const column of optional) {
+					if (parsed.columns.has(column))
+						problems.push(
+							`${entry.table}.${column} is migrated; move to columns`,
+						);
+					if (!types?.has(column))
+						problems.push(
+							`${entry.table}.${column} optional but not in prod types`,
+						);
+				}
+				for (const column of types ?? []) {
+					if (!parsed.columns.has(column) && !optional.includes(column)) {
+						problems.push(
+							`${entry.table}.${column} exists in prod types only; add to optionalColumns`,
+						);
+					}
+				}
+			} else if (types) {
+				for (const column of types) {
+					if (!entry.columns.includes(column))
+						problems.push(`${entry.table}.${column} (prod) not exported`);
+				}
+			}
+		}
+		expect(problems).toEqual([]);
+	});
+
+	it("never exports credential-like columns (explicit column lists)", () => {
+		for (const entry of USER_DATA_MANIFEST) {
+			const exported = [...entry.columns, ...(entry.optionalColumns ?? [])];
+			expect(
+				exported.filter((column) => CREDENTIAL_COLUMN.test(column)),
+				entry.table,
+			).toEqual([]);
+		}
+		for (const source of NON_TABLE_SOURCES) {
+			expect(
+				source.fields.filter((field) => CREDENTIAL_COLUMN.test(field)),
+				source.source,
+			).toEqual([]);
+		}
+	});
+
+	it("keys every table by NOT NULL columns covering a primary key or unique constraint", () => {
+		const problems: string[] = [];
+		for (const entry of USER_DATA_MANIFEST) {
+			const parsed = schema.get(entry.table);
+			if (!parsed) continue;
+			const scope = new Set([ownershipColumn(entry), ...entry.keyColumns]);
+			const covered = [...parsed.uniques.values()].some(
+				(unique) =>
+					unique.every((column) => scope.has(column)) &&
+					entry.keyColumns.every((column) => unique.includes(column)),
+			);
+			if (!covered) problems.push(`${entry.table}: key not unique`);
+			for (const column of entry.keyColumns) {
+				if (!parsed.notNull.has(column))
+					problems.push(`${entry.table}.${column} nullable`);
+			}
 			if (entry.ownership.kind === "parent") {
 				const { fkColumn, parentTable, parentColumn } = entry.ownership;
-				expect(
-					parsed.fks.some(
+				if (
+					!parsed.fks.some(
 						(fk) =>
 							fk.columns.includes(fkColumn) &&
 							fk.ref === `public.${parentTable}`,
-					),
-					`${entry.table}.${fkColumn} -> ${parentTable}`,
-				).toBe(true);
-				expect(
-					schema.get(parentTable)?.columns.has(parentColumn),
-					`${parentTable}.${parentColumn}`,
-				).toBe(true);
+					)
+				) {
+					problems.push(`${entry.table}.${fkColumn} -> ${parentTable} missing`);
+				}
+				if (!schema.get(parentTable)?.columns.has(parentColumn)) {
+					problems.push(`${parentTable}.${parentColumn} missing`);
+				}
+			} else if (!parsed.columns.has(entry.ownership.column)) {
+				problems.push(`${entry.table}.${entry.ownership.column} missing`);
 			}
-			const credentials = [...parsed.columns].filter((column) =>
-				/token|api_key|secret|password/.test(column),
-			);
-			expect(credentials, `${entry.table} exports credentials`).toEqual([]);
 		}
+		expect(problems).toEqual([]);
+	});
+
+	it("rejects a non-unique or nullable key", () => {
+		const parsed = parseMigrations([
+			"CREATE TABLE zz_k (id uuid PRIMARY KEY, user_id uuid, created_at timestamptz);",
+		]).get("zz_k");
+		expect(parsed?.uniques.get("zz_k_pkey")).toEqual(["id"]);
+		expect(parsed?.notNull.has("id")).toBe(true);
+		expect(parsed?.notNull.has("created_at")).toBe(false);
+		expect(
+			[...(parsed?.uniques.values() ?? [])].some((u) =>
+				u.includes("created_at"),
+			),
+		).toBe(false);
 	});
 
 	it("declares purge behaviour the schema actually provides", () => {
@@ -457,7 +366,7 @@ describe("user data manifest (R-31)", () => {
 			})),
 			...EXCLUDED.map((e) => ({
 				table: e.table,
-				column: "user_id",
+				column: e.purgeMatch.column,
 				purge: e.purge,
 			})),
 		];
@@ -482,7 +391,14 @@ describe("user data manifest (R-31)", () => {
 		]);
 		expect(exported.get("sync_tombstones")?.purge).toBe("explicit");
 		expect(excluded.get("paddle_webhook_events")?.purge).toBe("explicit");
+		expect(excluded.get("paddle_webhook_events")?.purgeMatch).toEqual({
+			column: "user_id",
+			json: { column: "payload", path: ["data", "custom_data", "user_id"] },
+		});
 		expect(excluded.get("rate_limit_tracking")?.purge).toBe("explicit");
+		expect(excluded.get("rate_limit_tracking")?.purgeMatch).toEqual({
+			column: "user_id",
+		});
 		for (const table of [
 			"local_profiles",
 			"local_profile_preferences",
@@ -497,5 +413,9 @@ describe("user data manifest (R-31)", () => {
 			expect(exported.has(table), table).toBe(true);
 		}
 		expect(exported.has("oauth_tokens")).toBe(false);
+		expect(NON_TABLE_SOURCES.map((s) => s.source)).toEqual([
+			"auth_account",
+			"storage_avatars",
+		]);
 	});
 });
