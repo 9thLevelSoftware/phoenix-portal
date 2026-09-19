@@ -17,6 +17,10 @@
  *      Assumption: one Paddle subscription per user. `subscriptions` is
  *      UNIQUE(user_id) and is the only local record of Paddle ids, so the
  *      one locally known subscription is the one cancelled (review R-9).
+ *   1b. Providers (PR 54): for every provider with a stored token, revoke
+ *      the grant at the provider (best effort) and call
+ *      `disconnect_integration` (`providerRevoke.ts#revokeAndDisconnect`).
+ *      A database error aborts with `provider_disconnect`, user intact.
  *   2. Pre-pass: explicit rows that are harmless to lose if the purge then
  *      aborts (`oauth_tokens`, `paddle_webhook_events`). Any failure aborts
  *      with the user still intact.
@@ -36,6 +40,11 @@
  * target it is a failure (a stale schema cache must not look like success).
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import {
+  defaultProviderRevokeDependencies,
+  type ProviderRevokeDependencies,
+  revokeAndDisconnect,
+} from './providerRevoke.ts';
 
 /** How `purgeUser` finds one explicit table's rows for the user. */
 export interface ExplicitPurgeTarget {
@@ -67,8 +76,8 @@ export interface ExplicitPurgeTarget {
  *
  * INTEGRATION POINT (PR 36): this list mirrors the `purge: "explicit"` entries
  * of `USER_DATA_MANIFEST` / `EXCLUDED` in `_shared/userDataManifest.ts`, plus
- * `oauth_tokens` (cascades, but deleted first on purpose; PR 54 adds provider
- * revocation there). When PR 36 lands, derive this list from the manifest and
+ * `oauth_tokens` (cascades, but deleted first on purpose; step 1b has already
+ * revoked and disconnected each provider, so this is the safety net). When PR 36 lands, derive this list from the manifest and
  * carry over `postOnly` and `mayBeAbsent`.
  */
 export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
@@ -107,6 +116,7 @@ export type PurgeFailureStage =
   | 'billing_lookup'
   | 'billing_not_found'
   | 'billing_cancel'
+  | 'provider_disconnect'
   | 'explicit_rows'
   | 'delete_user';
 
@@ -132,6 +142,8 @@ export interface PurgeUserDependencies {
   paddleApiKey: string | undefined;
   /** `sandbox` or `production` (default). */
   paddleEnvironment: string | undefined;
+  /** Provider grant revocation (PR 54); defaults to the real providers. */
+  providerRevoke?: ProviderRevokeDependencies;
 }
 
 export function defaultPurgeUserDependencies(): PurgeUserDependencies {
@@ -139,6 +151,7 @@ export function defaultPurgeUserDependencies(): PurgeUserDependencies {
     fetch: (input, init) => fetch(input, init),
     paddleApiKey: Deno.env.get('PADDLE_API_KEY'),
     paddleEnvironment: Deno.env.get('PADDLE_ENVIRONMENT'),
+    providerRevoke: defaultProviderRevokeDependencies(),
   };
 }
 
@@ -453,6 +466,32 @@ async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boo
 }
 
 /**
+ * Revokes and disconnects every provider the user has a stored token for.
+ * Returns a failure description, or null when every provider disconnected.
+ * A failed provider revoke is logged inside `revokeAndDisconnect` and does not
+ * fail the purge; only a database error does.
+ */
+async function disconnectProviders(
+  admin: SupabaseClient,
+  userId: string,
+  revokeDeps: ProviderRevokeDependencies,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('oauth_tokens')
+    .select('provider')
+    .eq('user_id', userId);
+  if (error) return `oauth_tokens: ${describe(error)}`;
+  const providers = [
+    ...new Set(((data ?? []) as { provider?: string | null }[]).map((row) => row.provider)),
+  ].filter((provider): provider is string => typeof provider === 'string' && provider !== '');
+  for (const provider of providers) {
+    const result = await revokeAndDisconnect(admin, userId, provider, revokeDeps);
+    if (!result.ok) return `${provider}: ${result.stage}: ${result.detail}`;
+  }
+  return null;
+}
+
+/**
  * Permanently deletes `userId` (service-role `admin` client). The caller must
  * already have authorised the deletion; this function trusts `userId`.
  */
@@ -472,6 +511,23 @@ export async function purgeUser(
     return { ok: false, stage: billing.stage, billingCancelled: false, detail: billing.detail };
   }
   const billingCancelled = billing.cancelled;
+
+  // 1b. Connected providers (abort point: the user still exists). Revoke
+  // each grant at the provider, then disconnect_integration, through the same
+  // path as the disconnect endpoints, so deleting the account never leaves a
+  // live third-party grant behind a deleted token.
+  const disconnectFailure = await disconnectProviders(
+    admin,
+    userId,
+    deps.providerRevoke ?? defaultProviderRevokeDependencies(),
+  );
+  if (disconnectFailure) {
+    console.error('[PURGE] provider disconnect failed; user left intact', {
+      user_id: userId,
+      detail: disconnectFailure,
+    });
+    return { ok: false, stage: 'provider_disconnect', billingCancelled, detail: disconnectFailure };
+  }
 
   // 2. Explicit rows (abort point: the user still exists).
   const preFailures = await purgeExplicitRows(admin, userId, 'pre', billing.ids);
