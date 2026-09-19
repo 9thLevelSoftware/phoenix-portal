@@ -414,14 +414,22 @@ SELECT pg_temp.assert_exception(
 );
 
 -- The nested definer path (import -> insert_routine_exercises_from_snapshot)
--- still works for an EMBER caller.
+-- still works for an entitled caller. Importing is FLAME since
+-- 20260920000900 (tier_matrix.test.sql covers the EMBER denial), so A is
+-- FLAME for these two calls and back to EMBER afterwards.
+RESET ROLE;
+UPDATE public.subscriptions
+SET tier = 'FLAME'
+WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
+SET LOCAL ROLE authenticated;
+
 SELECT lives_ok(
     $sql$
         SELECT public.import_shared_routine(
             'b2b2b2b2-2222-4000-8000-000000000002'::uuid
         )
     $sql$,
-    'EMBER user can still import_shared_routine'
+    'FLAME user can still import_shared_routine'
 );
 
 SELECT lives_ok(
@@ -430,8 +438,14 @@ SELECT lives_ok(
             'b2b2b2b2-4444-4000-8000-000000000002'::uuid
         )
     $sql$,
-    'EMBER user can still import_shared_cycle'
+    'FLAME user can still import_shared_cycle'
 );
+
+RESET ROLE;
+UPDATE public.subscriptions
+SET tier = 'EMBER'
+WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
+SET LOCAL ROLE authenticated;
 
 -- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
