@@ -1,5 +1,10 @@
 # RLS Policy Audit Matrix
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of 28 migration files on `beta-readiness-review`. Do
+> not read its table and policy matrix
+> as describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI.
+
 **Phase:** 2.1 -- Database Security (Row Level Security)
 **Date:** 2026-03-18
 **Auditor:** Security Engineer (automated review of 28 migration files)

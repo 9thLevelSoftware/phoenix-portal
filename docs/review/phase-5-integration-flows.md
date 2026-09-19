@@ -1,5 +1,10 @@
 # Phase 5: Integration Flows Review
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of `beta-readiness-review`. Do not read its
+> integration flow findings
+> as describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI.
+
 **Auditor:** Phase 5 Code Reviewer
 **Date:** 2026-03-18
 **Branch:** beta-readiness-review

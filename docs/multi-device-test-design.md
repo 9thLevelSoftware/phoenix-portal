@@ -10,11 +10,13 @@ This document specifies the test scenarios for validating sync behavior across m
 
 | Entity           | Plan Claims                    | Actual Implementation                                         | Gap      |
 | ---------------- | ------------------------------ | ------------------------------------------------------------- | -------- |
-| Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - SERVER WINS                  | CRITICAL |
+| Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | CRITICAL |
 | Personal Records | LOCAL WINS (INSERT OR IGNORE)  | `insert()` after dedup check - LOCAL WINS                     | OK       |
-| Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - SERVER WINS                  | Minor    |
-| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - SERVER WINS                  | OK       |
+| Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | Minor    |
+| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | OK       |
 | Badges           | Union merge (INSERT OR IGNORE) | `upsert({ onConflict: 'user_id,badge_id' })` - Last push wins | Minor    |
+
+"Flag" is `SYNC_LWW_ENABLED` (`supabase/functions/_shared/flags.ts`, default off). With it off, the incoming push overwrites the server row on `id`. With it on, sessions, routines, and cycles go through the `upsert_<entity>_lww` RPCs, which reject stale pushes by timestamp.
 
 The tests in this suite will verify the ACTUAL behavior, not the claimed behavior.
 
@@ -243,7 +245,7 @@ cd phoenix-portal && npm test -- multi-device
 
 ## Open Questions for Clarification
 
-1. **Session conflict behavior**: The plan claims LOCAL WINS, implementation is SERVER WINS. Which is correct?
+1. **Session conflict behavior**: The plan claims LOCAL WINS, implementation is last push wins (LWW when `SYNC_LWW_ENABLED=true`). Which is correct?
 2. **Single active cycle enforcement**: Should the server enforce only one active cycle, or is this client-side?
 3. **Timestamp-based LWW for routines**: Should routines use `updated_at` comparison instead of simple upsert?
 

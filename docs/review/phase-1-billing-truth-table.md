@@ -1,5 +1,10 @@
 # Phase 1: Paddle Billing Webhook Truth Table
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of `beta-readiness-review`. Do not read its webhook
+> event mapping
+> as describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI.
+
 **Date:** 2026-03-18
 **Auditor:** Backend Architect Agent (Task 1.2)
 **Scope:** All Paddle webhook event types handled by `paddle-webhooks/index.ts`, their mapping to DB state and UI behavior.

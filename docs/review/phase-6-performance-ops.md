@@ -1,5 +1,10 @@
 # Phase 6: Performance + Operational Readiness Report
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of `beta-readiness-review`. Do not read its
+> performance or operational findings
+> as describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI.
+
 **Date:** 2026-03-18
 **Branch:** beta-readiness-review
 **Status:** Partially Complete (code-level review done; live testing deferred)
