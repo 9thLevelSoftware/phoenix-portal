@@ -3249,6 +3249,232 @@ Deno.test({
   },
 });
 
+// ---------------------------------------------------------------------------
+// PR 24 (F-069): an edited or re-pushed session refreshes its
+// exercise_progress rows inside replace_session_children (p_progress).
+// ---------------------------------------------------------------------------
+
+interface ProgressRowSnapshot {
+  exercise_name: string;
+  max_weight_kg: number;
+  estimated_1rm_kg: number;
+  total_volume_kg: number;
+  local_profile_id: string | null;
+}
+
+async function progressRowsForSession(
+  fixture: LocalIntegrationFixture,
+  sessionId: string,
+): Promise<ProgressRowSnapshot[]> {
+  const rows = await fixture.admin.from("exercise_progress")
+    .select(
+      "exercise_name,max_weight_kg,estimated_1rm_kg,total_volume_kg,local_profile_id",
+    )
+    .eq("session_id", sessionId)
+    .order("exercise_name");
+  if (rows.error) throw new Error("progress verification query failed");
+  return (rows.data as Array<Record<string, unknown>>).map((row) => ({
+    exercise_name: String(row.exercise_name),
+    max_weight_kg: Number(row.max_weight_kg),
+    estimated_1rm_kg: Number(row.estimated_1rm_kg),
+    total_volume_kg: Number(row.total_volume_kg),
+    local_profile_id: row.local_profile_id as string | null,
+  }));
+}
+
+Deno.test({
+  name:
+    "integration: handler re-push refreshes exercise_progress after a weight edit and drops a removed exercise's row",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      // Custom (name-only) exercises: A has no mobile estimate, so the
+      // hybrid fallback runs; B ships estimatedOneRepMaxKg, stored verbatim.
+      const sessionId = crypto.randomUUID();
+      const exerciseA = crypto.randomUUID();
+      const exerciseB = crypto.randomUUID();
+      const buildBody = (
+        exercises: Array<{
+          id: string;
+          name: string;
+          weightKg: number;
+          estimate?: number;
+        }>,
+      ) => ({
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR24 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: exercises.map((exercise, index) => ({
+            id: exercise.id,
+            sessionId,
+            exerciseId: null,
+            name: exercise.name,
+            orderIndex: index,
+            ...(exercise.estimate === undefined
+              ? {}
+              : { estimatedOneRepMaxKg: exercise.estimate }),
+            sets: [{
+              id: crypto.randomUUID(),
+              exerciseId: exercise.id,
+              setNumber: 1,
+              targetReps: 10,
+              actualReps: 10,
+              weightKg: exercise.weightKg,
+              workoutMode: "OLD_SCHOOL",
+              repSummaries: [],
+            }],
+          })),
+        }],
+      });
+
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 20 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 40, estimate: 50 },
+      ])));
+      assertEquals(first.status, 200, await first.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 20,
+          estimated_1rm_kg: 26.67,
+          total_volume_kg: 200,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 40,
+          estimated_1rm_kg: 50,
+          total_volume_kg: 400,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Edit: A's weight 20 -> 30 (fallback 1RM 40), B's mobile estimate
+      // 50 -> 55. Before PR 24 the stale first-push rows were kept.
+      const edited = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 44, estimate: 55 },
+      ])));
+      const editedBody = await json(edited);
+      assertEquals(edited.status, 200, JSON.stringify(editedBody));
+      assertEquals(editedBody.exerciseProgressInserted, 2);
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 44,
+          estimated_1rm_kg: 55,
+          total_volume_kg: 440,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Remove exercise B: its progress row goes, A's stays.
+      const removed = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+      ])));
+      assertEquals(removed.status, 200, await removed.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: the old 6-named-argument replace_session_children call still resolves and leaves exercise_progress untouched",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      const stored = await fixture.admin.from("exercise_progress").insert({
+        user_id: fixture.ownerId,
+        exercise_name: "PR24 Stored Progress",
+        session_id: sessionId,
+        max_weight_kg: 25,
+        estimated_1rm_kg: 33.33,
+      });
+      if (stored.error) throw new Error("progress fixture creation failed");
+
+      // Exactly today's shipping call shape (six named arguments, no
+      // p_progress): must not be ambiguous (PGRST203) after the migration.
+      const exerciseId = crypto.randomUUID();
+      const oldCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [{
+          id: exerciseId,
+          session_id: sessionId,
+          user_id: fixture.ownerId,
+          name: "PR24 Stored Progress",
+          exercise_id: null,
+          muscle_group: "General",
+          order_index: 0,
+        }],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+      });
+      assertEquals(oldCall.error, null);
+      assertEquals((oldCall.data as Record<string, unknown>).exercises, 1);
+      assertEquals(
+        (await progressRowsForSession(fixture, sessionId)).map((row) =>
+          row.max_weight_kg
+        ),
+        [25],
+      );
+
+      // With p_progress = [] the session's progress is cleared.
+      const newCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+        p_progress: [],
+      });
+      assertEquals(newCall.error, null);
+      assertEquals(await progressRowsForSession(fixture, sessionId), []);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
 // Issue #99 regression: top-level catch surfaces underlying error in
 // known non-production environments and returns opaque message otherwise.
 // Helper: builds the pushed session object shared by every ENVIRONMENT case.
@@ -3402,4 +3628,127 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
+  const harness = makeHarness();
+  const exercise = (
+    id: string,
+    setId: string,
+    name: string,
+    weightKg: number,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id,
+    sessionId: SESSION_ID,
+    name,
+    exerciseId: null,
+    muscleGroup: "Back",
+    ...extra,
+    sets: [{
+      id: setId,
+      exerciseId: id,
+      setNumber: 1,
+      targetReps: 10,
+      actualReps: 10,
+      weightKg,
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [
+      exercise(
+        "00000000-0000-4000-8000-000000002401",
+        "00000000-0000-4000-8000-000000002501",
+        "PR24 Custom A",
+        30,
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002402",
+        "00000000-0000-4000-8000-000000002502",
+        "PR24 Custom B",
+        40,
+        { estimatedOneRepMaxKg: 55.555 },
+      ),
+      // Same identity as A in the same session: the first row wins, as before.
+      exercise(
+        "00000000-0000-4000-8000-000000002403",
+        "00000000-0000-4000-8000-000000002503",
+        "PR24 Custom A",
+        90,
+      ),
+    ],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [SESSION_ID]);
+  const progress = replaceCalls[0].args.p_progress as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(
+    progress.map((row) => ({
+      session_id: row.session_id,
+      user_id: row.user_id,
+      exercise_name: row.exercise_name,
+      max_weight_kg: row.max_weight_kg,
+      estimated_1rm_kg: row.estimated_1rm_kg,
+    })),
+    [
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom A",
+        max_weight_kg: 30,
+        // Hybrid fallback (Brzycki at 10 reps), rounded to 2dp.
+        estimated_1rm_kg: 40,
+      },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom B",
+        max_weight_kg: 40,
+        // Mobile estimate stored verbatim, never rounded.
+        estimated_1rm_kg: 55.555,
+      },
+    ],
+  );
+  assertEquals(responseBody.exerciseProgressInserted, 2);
+  assertEquals(
+    harness.adminFromCalls.filter((table) => table === "exercise_progress"),
+    [],
+  );
+});
+
+Deno.test("PR 24: an accepted session with no progress rows still sends p_progress as an empty array", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_progress, []);
 });

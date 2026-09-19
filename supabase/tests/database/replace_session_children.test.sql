@@ -5,6 +5,8 @@
 --           (identity, order_index, set_number);
 --   both unique on old AND new side, new set without payload telemetry;
 --   per-session bound of 50000 stash + payload rows.
+-- PR 24: optional p_progress (7th argument, DEFAULT NULL) replaces the
+--   sessions' exercise_progress; session_id lookups are indexed.
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
@@ -27,19 +29,19 @@ SELECT is(
 
 SELECT ok(
     NOT has_function_privilege('anon',
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'anon cannot execute replace_session_children'
 );
 
 SELECT ok(
     NOT has_function_privilege('authenticated',
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'authenticated cannot execute replace_session_children'
 );
 
 SELECT ok(
     has_function_privilege('service_role',
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'service_role can execute replace_session_children'
 );
 
@@ -461,6 +463,206 @@ SELECT is(pg_temp.tel_on(7021), ARRAY[pg_temp.u(5121)],
     'a second session in the same call keeps its telemetry');
 SELECT is(pg_temp.tel_on(5171), ARRAY[pg_temp.u(5271)],
     'the first session gets its payload telemetry');
+
+-- ===========================================================================
+-- PR 24 (F-069 / F-036): p_progress refreshes exercise_progress; session_id
+-- lookups are indexed. The 6-argument calls above (pg_temp.push) already
+-- prove today's call shape still resolves to the single 7-argument function.
+-- ===========================================================================
+SELECT diag('database:session-id-indexes-exist-and-are-used');
+
+SELECT has_index('public', 'exercise_progress', 'idx_exercise_progress_session_id',
+    'session_id', 'exercise_progress(session_id) is indexed');
+SELECT has_index('public', 'personal_records', 'idx_personal_records_session_id',
+    'session_id', 'personal_records(session_id) is indexed');
+
+CREATE FUNCTION pg_temp.plan_of(p_query TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+    r RECORD;
+    v_plan TEXT := '';
+BEGIN
+    FOR r IN EXECUTE 'EXPLAIN ' || p_query LOOP
+        v_plan := v_plan || r."QUERY PLAN" || E'\n';
+    END LOOP;
+    RETURN v_plan;
+END;
+$$;
+
+-- Realistic shape for the refresh delete: one user with a long history
+-- (300 sessions x 10 progress rows), statistics gathered, default planner
+-- settings. The delete for two sessions must pick the session_id index over
+-- the per-user indexes and a seq scan.
+INSERT INTO public.workout_sessions (id, user_id, started_at)
+SELECT pg_temp.u(30000 + n), pg_temp.uid(), now() - (n || ' days')::interval
+  FROM generate_series(1, 300) AS n;
+INSERT INTO public.exercise_progress (user_id, exercise_name, session_id, max_weight_kg)
+SELECT pg_temp.uid(), 'History Lift ' || (g % 10), pg_temp.u(30000 + 1 + (g / 10)), 50
+  FROM generate_series(0, 2999) AS g;
+ANALYZE public.exercise_progress;
+SELECT matches(
+    pg_temp.plan_of(format(
+        'DELETE FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[]) AND user_id = %L',
+        pg_temp.u(30001), pg_temp.u(30002), pg_temp.uid())),
+    'Index.*idx_exercise_progress_session_id',
+    'the progress refresh delete uses idx_exercise_progress_session_id'
+);
+
+-- The former push probe (session_id only). Fixture tables are tiny, so
+-- disable seq scans to show the index serves it (with no usable index the
+-- plan would stay a disabled Seq Scan).
+SET LOCAL enable_seqscan = off;
+SELECT matches(
+    pg_temp.plan_of(format(
+        'SELECT session_id, exercise_id, exercise_name FROM public.exercise_progress WHERE session_id = ANY(ARRAY[%L, %L]::uuid[])',
+        pg_temp.u(117), pg_temp.u(118))),
+    'Index.*idx_exercise_progress_session_id',
+    'a session_id probe on exercise_progress uses idx_exercise_progress_session_id'
+);
+SELECT matches(
+    pg_temp.plan_of(format(
+        'SELECT id FROM public.personal_records WHERE session_id = %L',
+        pg_temp.u(117))),
+    'Index.*idx_personal_records_session_id',
+    'a personal_records session lookup uses idx_personal_records_session_id'
+);
+RESET enable_seqscan;
+
+SELECT diag('database:p-progress-refreshes-exercise-progress');
+
+INSERT INTO auth.users (id, email)
+VALUES ('20200000-0000-4000-8000-000000000002'::uuid, 'rsc-progress-other@example.test')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
+INSERT INTO public.workout_sessions (id, user_id, started_at)
+SELECT pg_temp.u(n), pg_temp.uid(), now() - (n || ' hours')::interval
+  FROM generate_series(117, 118) AS n;
+
+CREATE FUNCTION pg_temp.pg(p_session INT, p_name TEXT, p_weight NUMERIC, p_1rm NUMERIC,
+                           p_user UUID DEFAULT NULL)
+RETURNS JSONB LANGUAGE sql AS $$
+    SELECT jsonb_build_object(
+        'user_id', COALESCE(p_user, pg_temp.uid()), 'local_profile_id', NULL,
+        'exercise_name', p_name, 'exercise_id', NULL,
+        'session_id', pg_temp.u(p_session), 'recorded_at', '2026-09-18T10:00:00Z',
+        'max_weight_kg', p_weight, 'total_volume_kg', p_weight * 10,
+        'estimated_1rm_kg', p_1rm, 'velocity_estimated_1rm_kg', NULL,
+        'max_reps', 10, 'set_count', 1)
+$$;
+
+CREATE FUNCTION pg_temp.push_p(p_session INT, p_exercises JSONB, p_sets JSONB,
+                               p_telemetry JSONB, p_prog JSONB)
+RETURNS JSONB LANGUAGE sql AS $$
+    SELECT public.replace_session_children(
+        p_user_id => pg_temp.uid(), p_session_ids => ARRAY[pg_temp.u(p_session)],
+        p_exercises => p_exercises, p_sets => p_sets, p_rep_summaries => '[]'::jsonb,
+        p_rep_telemetry => p_telemetry, p_progress => p_prog)
+$$;
+
+-- Progress of session 117 as sorted "name:max_weight:1rm" strings.
+CREATE FUNCTION pg_temp.prog_of(p_session INT) RETURNS TEXT[] LANGUAGE sql AS $$
+    SELECT COALESCE(array_agg(exercise_name || ':' || max_weight_kg::text || ':'
+                              || estimated_1rm_kg::text ORDER BY exercise_name),
+                    ARRAY[]::text[])
+      FROM public.exercise_progress
+     WHERE session_id = pg_temp.u(p_session) AND user_id = pg_temp.uid()
+$$;
+
+-- Session 118 has progress of its own; another user's row sits on 117.
+INSERT INTO public.exercise_progress (user_id, exercise_name, session_id, max_weight_kg, estimated_1rm_kg)
+VALUES (pg_temp.uid(), 'Other Session Lift', pg_temp.u(118), 70, 80),
+       ('20200000-0000-4000-8000-000000000002'::uuid, 'Foreign Lift', pg_temp.u(117), 90, 99);
+
+-- First push of 117: two exercises, telemetry on the first set.
+SELECT is(
+    pg_temp.push_p(117,
+        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0),
+                          pg_temp.ex(242, 117, NULL, 'Cable Row B', 1)),
+        jsonb_build_array(pg_temp.st(24101, 241, 1), pg_temp.st(24201, 242, 1)),
+        jsonb_build_array(pg_temp.tm(24111, 24101, 1), pg_temp.tm(24112, 24101, 2)),
+        jsonb_build_array(pg_temp.pg(117, 'Cable Row A', 20, 26.67),
+                          pg_temp.pg(117, 'Cable Row B', 40, 50))
+    ) ->> 'exercise_progress',
+    '2',
+    'first push inserts two progress rows and reports them'
+);
+SELECT is(pg_temp.prog_of(117),
+    ARRAY['Cable Row A:20:26.67', 'Cable Row B:40:50'],
+    'first push stores the supplied progress');
+
+-- Edit: new weights and estimates, no telemetry (PR 20 must still keep it).
+SELECT is(
+    pg_temp.push_p(117,
+        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0),
+                          pg_temp.ex(242, 117, NULL, 'Cable Row B', 1)),
+        jsonb_build_array(pg_temp.st(24102, 241, 1), pg_temp.st(24202, 242, 1)),
+        '[]'::jsonb,
+        jsonb_build_array(pg_temp.pg(117, 'Cable Row A', 30, 40),
+                          pg_temp.pg(117, 'Cable Row B', 44, 55))
+    ) ->> 'rep_telemetry_preserved',
+    '2',
+    'the 7-argument call keeps PR 20 telemetry preservation'
+);
+SELECT is(pg_temp.tel_on(24102), ARRAY[pg_temp.u(24111), pg_temp.u(24112)],
+    'stored telemetry follows the re-pushed set');
+SELECT is(pg_temp.prog_of(117),
+    ARRAY['Cable Row A:30:40', 'Cable Row B:44:55'],
+    'an edited session replaces max_weight_kg and estimated_1rm_kg (no stale rows)');
+
+-- Remove exercise B.
+SELECT pg_temp.push_p(117,
+    jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0)),
+    jsonb_build_array(pg_temp.st(24103, 241, 1)),
+    '[]'::jsonb,
+    jsonb_build_array(pg_temp.pg(117, 'Cable Row A', 30, 40)));
+SELECT is(pg_temp.prog_of(117), ARRAY['Cable Row A:30:40'],
+    'a removed exercise loses its progress row');
+
+-- Isolation: other sessions and other users are untouched.
+SELECT is(
+    (SELECT count(*)::int FROM public.exercise_progress
+      WHERE session_id = pg_temp.u(118) AND exercise_name = 'Other Session Lift'),
+    1,
+    'progress of a session outside p_session_ids is untouched');
+SELECT is(
+    (SELECT count(*)::int FROM public.exercise_progress
+      WHERE session_id = pg_temp.u(117) AND exercise_name = 'Foreign Lift'),
+    1,
+    'another user''s progress row is untouched');
+
+-- The old 6-argument call leaves progress alone.
+SELECT pg_temp.push(117,
+    jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0)),
+    jsonb_build_array(pg_temp.st(24104, 241, 1)),
+    '[]'::jsonb);
+SELECT is(pg_temp.prog_of(117), ARRAY['Cable Row A:30:40'],
+    'a call without p_progress does not touch exercise_progress');
+
+-- Supplied rows outside p_session_ids or for another user are ignored.
+SELECT is(
+    pg_temp.push_p(117,
+        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0)),
+        jsonb_build_array(pg_temp.st(24105, 241, 1)),
+        '[]'::jsonb,
+        jsonb_build_array(
+            pg_temp.pg(117, 'Cable Row A', 32, 42),
+            pg_temp.pg(118, 'Smuggled Lift', 1, 1),
+            pg_temp.pg(117, 'Smuggled Foreign', 1, 1,
+                       '20200000-0000-4000-8000-000000000002'::uuid))
+    ) ->> 'exercise_progress',
+    '1',
+    'only rows for p_session_ids and p_user_id are inserted');
+SELECT is(pg_temp.prog_of(118), ARRAY['Other Session Lift:70:80'],
+    'a row for a session outside p_session_ids is not inserted');
+SELECT is(
+    (SELECT count(*)::int FROM public.exercise_progress
+      WHERE exercise_name = 'Smuggled Foreign'),
+    0,
+    'a row for another user is not inserted');
+
+-- An empty array clears the session.
+SELECT pg_temp.push_p(117, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb);
+SELECT is(pg_temp.prog_of(117), ARRAY[]::text[],
+    'p_progress = [] clears the session''s progress');
 
 SELECT * FROM finish();
 ROLLBACK;
