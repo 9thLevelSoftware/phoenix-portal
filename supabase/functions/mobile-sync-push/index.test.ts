@@ -413,6 +413,8 @@ function permissiveQuery(
     error: null,
     count: 0,
   },
+  onProbe: () => void = () => {},
+  probeResult: unknown[] = [],
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
@@ -420,6 +422,7 @@ function permissiveQuery(
     "select",
     "eq",
     "neq",
+    "gt",
     "in",
     "is",
     "or",
@@ -435,7 +438,10 @@ function permissiveQuery(
   ];
   for (const method of chainMethods) {
     query[method] = (..._args: unknown[]) => {
-      if (method === "neq") ownershipProbe = true;
+      if (method === "neq") {
+        ownershipProbe = true;
+        onProbe();
+      }
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method);
       }
@@ -461,7 +467,9 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+      ownershipProbe
+        ? { data: probeResult, error: null, count: probeResult.length }
+        : terminalResult,
     ).then(resolve, reject);
   return query;
 }
@@ -474,6 +482,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  ownershipProbeTables: string[];
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -486,6 +495,8 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    foreignOwnedTables?: string[];
+    now?: () => number;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -495,6 +506,7 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const ownershipProbeTables: string[] = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -507,7 +519,12 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      },
+        table === "personal_records" ? options.personalRecordsResult : undefined,
+        () => ownershipProbeTables.push(table),
+        (options.foreignOwnedTables ?? []).includes(table)
+          ? [{ id: "foreign-row" }]
+          : []);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -576,7 +593,7 @@ function makeHarness(
       return admin;
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
-    now: () => 1_784_167_200_000,
+    now: options.now ?? (() => 1_784_167_200_000),
   } as never);
 
   return {
@@ -587,6 +604,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    ownershipProbeTables,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -2948,4 +2966,95 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+// PR 58 (F-073, F-039): each client-supplied primary key is probed for
+// ownership exactly once, in the up-front directOwnerChecks pass.
+const DIRECT_OWNERSHIP_TABLES = [
+  "workout_sessions",
+  "exercises",
+  "sets",
+  "rep_summaries",
+  "routines",
+  "training_cycles",
+];
+
+Deno.test("push probes each ownership table exactly once for a nested payload", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+
+  assertEquals(response.status, 200);
+  for (const table of DIRECT_OWNERSHIP_TABLES) {
+    assertEquals(
+      harness.ownershipProbeTables.filter((probed) => probed === table).length,
+      1,
+      `${table} ownership probes`,
+    );
+  }
+  assertEquals(
+    harness.adminFromCalls.filter((table) => table === "cycle_days").length,
+    2,
+    "cycle_days is only upserted by (cycle_id, day_number) and orphan-pruned, never id-probed",
+  );
+});
+
+for (const table of DIRECT_OWNERSHIP_TABLES) {
+  Deno.test(`push refuses a ${table} id owned by another user before any write`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      foreignOwnedTables: [table],
+    });
+    const response = await harness.handler(
+      requestFromBody(validNestedRelationshipBody()),
+    );
+
+    assertEquals(response.status, 400);
+    assertEquals(await json(response), {
+      error: `Refused: existing ${table} row belongs to another user`,
+    });
+    assertEquals(
+      harness.adminWriteCalls.filter((call) =>
+        DIRECT_OWNERSHIP_TABLES.includes(call.table)
+      ),
+      [],
+    );
+    assertEquals(
+      harness.adminRpcCalls.filter((call) =>
+        call.name === "replace_session_children"
+      ),
+      [],
+    );
+  });
+}
+
+Deno.test("public exercise catalog is fetched once per isolate within the TTL", async () => {
+  let nowMs = 1_784_167_200_000;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    now: () => nowMs,
+  });
+  const catalogReads = () =>
+    harness.adminFromCalls.filter((table) => table === "exercise_catalog")
+      .length;
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    const response = await harness.handler(requestFromBody(body));
+    assertEquals(response.status, 200);
+  };
+
+  await push();
+  // First push: one public-catalog page plus the caller's custom rows.
+  assertEquals(catalogReads(), 2);
+
+  nowMs += 9 * 60 * 1000;
+  await push();
+  // Second push in the same isolate: only the caller's custom rows.
+  assertEquals(catalogReads(), 3);
+
+  nowMs += 2 * 60 * 1000;
+  await push();
+  // After the 10-minute TTL the public catalog is fetched again.
+  assertEquals(catalogReads(), 5);
 });
