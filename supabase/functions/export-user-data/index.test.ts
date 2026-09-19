@@ -247,7 +247,7 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
   assertEquals(response.status, 200);
   assertEquals(recorded.from, ["routines"]);
   assertEquals(recorded.ops, [
-    ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","), { count: "exact" }]],
+    ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(",")]],
     ["eq", ["user_id", USER_ID]],
     ["gt", ["id", "00000000-0000-4000-8000-000000000001"]],
     ["order", ["id", { ascending: true }]],
@@ -268,7 +268,8 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
 Deno.test("prod-only optional columns are dropped when the database lacks them", async () => {
   const { handler, recorded } = doubleHandler([
     { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
-    { data: [{ id: "r1" }], error: null, count: 1 },
+    { data: [{ id: "r1" }], error: null },
+    { data: [], error: null },
   ]);
   const response = await handler(request({ table: "routines" }));
   assertEquals(response.status, 200);
@@ -276,6 +277,7 @@ Deno.test("prod-only optional columns are dropped when the database lacks them",
   assertEquals(selects, [
     [...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","),
     ROUTINE_COLUMNS.join(","),
+    "id", // next-page probe
   ]);
 });
 
@@ -284,6 +286,10 @@ Deno.test("rate-limited requests get 429 and no query", async () => {
   const response = await handler(request({ table: "routines" }));
   assertEquals(response.status, 429);
   assertEquals(recorded.from, []);
+  // Browsers can read the wait: in the body, and via the exposed header.
+  assertEquals(response.headers.get("Access-Control-Expose-Headers"), "Retry-After");
+  assertEquals(response.headers.get("Retry-After"), "60");
+  assertEquals((await response.json()).retryAfterSeconds, 60);
 });
 
 Deno.test("a rate-limit RPC failure fails closed with 503", async () => {
@@ -294,18 +300,20 @@ Deno.test("a rate-limit RPC failure fails closed with 503", async () => {
 });
 
 Deno.test("parent-owned tables scope through an inner join on the parent owner", async () => {
-  const { handler, recorded } = doubleHandler({
-    data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }],
-    error: null,
-    count: 1,
-  });
+  const { handler, recorded } = doubleHandler([
+    { data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }], error: null },
+    { data: [], error: null },
+  ]);
   const response = await handler(request({ table: "routine_exercises" }));
   assertEquals(response.status, 200);
   const columns = getUserDataTable("routine_exercises")!.columns.join(",");
   assertEquals(recorded.ops.slice(0, 2), [
-    ["select", [`${columns},routines!routine_id!inner(user_id)`, { count: "exact" }]],
+    ["select", [`${columns},routines!routine_id!inner(user_id)`]],
     ["eq", ["routines.user_id", USER_ID]],
   ]);
+  // The probe is scoped through the same inner join.
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects[1], "id,routines!routine_id!inner(user_id)");
   const body = await response.json();
   assertEquals(body.rows, [{ id: "r1", routine_id: "p1" }]);
   assertEquals(body.nextCursor, null);
@@ -325,7 +333,7 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
     cursor: { entity: "cycle", entity_id: "e1" },
   }));
   assertEquals(recorded.ops, [
-    ["select", ["user_id,entity,entity_id,deleted_at", { count: "exact" }]],
+    ["select", ["user_id,entity,entity_id,deleted_at"]],
     ["eq", ["user_id", USER_ID]],
     ["or", ['entity.gt."cycle",and(entity.eq."cycle",entity_id.gt."e1")']],
     ["order", ["entity", { ascending: true }]],
@@ -341,26 +349,44 @@ function idRows(n: number) {
   }));
 }
 
-Deno.test("nextCursor comes from the remaining-row count, not the page length", async () => {
-  // More rows remain: cursor is the last key.
-  const more = doubleHandler({ data: idRows(1000), error: null, count: 2500 });
+Deno.test("nextCursor comes from a one-row probe after the last key, not the page length", async () => {
+  const probe = (rows: number) => ({ data: idRows(rows), error: null });
+
+  // More rows remain: cursor is the last key; the probe starts after it.
+  const more = doubleHandler([{ data: idRows(1000), error: null }, probe(1)]);
   const moreBody = await (await more.handler(request({ table: "routines" }))).json();
   assertEquals(moreBody.nextCursor, { id: "id-0999" });
+  const probeOps = more.recorded.ops.slice(more.recorded.ops.findLastIndex(([n]) => n === "select"));
+  assertEquals(probeOps, [
+    ["select", ["id"]],
+    ["eq", ["user_id", USER_ID]],
+    ["gt", ["id", "id-0999"]],
+    ["order", ["id", { ascending: true }]],
+    ["limit", [1]],
+  ]);
 
   // Exactly 1000 rows: no trailing empty page.
-  const exact = doubleHandler({ data: idRows(1000), error: null, count: 1000 });
+  const exact = doubleHandler([{ data: idRows(1000), error: null }, probe(0)]);
   const exactBody = await (await exact.handler(request({ table: "routines" }))).json();
   assertEquals(exactBody.rows.length, 1000);
   assertEquals(exactBody.nextCursor, null);
 
   // max_rows below the requested limit (e.g. 500): still pages on.
-  const capped = doubleHandler({ data: idRows(500), error: null, count: 2500 });
+  const capped = doubleHandler([{ data: idRows(500), error: null }, probe(1)]);
   const cappedBody = await (await capped.handler(request({ table: "routines" }))).json();
   assertEquals(cappedBody.nextCursor, { id: "id-0499" });
 
-  // Empty table.
-  const empty = doubleHandler({ data: [], error: null, count: 0 });
+  // Empty table: no probe.
+  const empty = doubleHandler({ data: [], error: null });
   assertEquals((await (await empty.handler(request({ table: "routines" }))).json()).nextCursor, null);
+  assertEquals(empty.recorded.ops.filter(([n]) => n === "select").length, 1);
+
+  // A failed probe fails the page.
+  const failed = doubleHandler([
+    { data: idRows(3), error: null },
+    { data: null, error: { code: "57014", message: "timeout" } },
+  ]);
+  assertEquals((await failed.handler(request({ table: "routines" }))).status, 500);
 });
 
 Deno.test("a mayBeAbsent table missing from the database is reported with tableMissing", async () => {

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Archive, Download, FileSpreadsheet, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -17,8 +17,12 @@ import {
 	generateWorkoutCSV,
 } from "@/lib/export/csv";
 import {
+	cancelUserDataExport,
+	ExportAlreadyRunningError,
+	ExportCancelledError,
 	exportAllUserData,
 	exportAnalyticsTablesZip,
+	getRunningUserDataExport,
 } from "@/lib/export/data-export";
 import { profileOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
@@ -68,19 +72,47 @@ export function ExportSection() {
 		}
 	};
 
+	const showFullExportProgress = (
+		step: string,
+		current: number,
+		total: number,
+	) => {
+		setExportProgress({ step, percent: Math.round((current / total) * 100) });
+	};
+
+	// An export started before a remount keeps running: show it instead of
+	// allowing a second one.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: attach once on mount
+	useEffect(() => {
+		const running = getRunningUserDataExport();
+		if (!running) return;
+		setFullExporting(true);
+		const unsubscribe = running.subscribe(showFullExportProgress);
+		running.promise
+			.catch(() => {})
+			.finally(() => {
+				setFullExporting(false);
+				setExportProgress(null);
+			});
+		return unsubscribe;
+	}, []);
+
 	const handleFullExport = async () => {
 		if (!user?.id) return;
 		setFullExporting(true);
 		setExportProgress({ step: "Starting...", percent: 0 });
 		try {
-			await exportAllUserData(user.id, (step, current, total) => {
-				setExportProgress({
-					step,
-					percent: Math.round((current / total) * 100),
-				});
-			});
+			await exportAllUserData(user.id, showFullExportProgress);
 			toast.success("Data export complete — check your downloads folder");
 		} catch (error) {
+			if (error instanceof ExportCancelledError) {
+				toast.info("Data export cancelled — nothing was downloaded");
+				return;
+			}
+			if (error instanceof ExportAlreadyRunningError) {
+				toast.info("A data export is already running");
+				return;
+			}
 			// Name the failure: no partial file was downloaded.
 			toast.error("Failed to export data — nothing was downloaded", {
 				description: error instanceof Error ? error.message : undefined,
@@ -228,7 +260,9 @@ export function ExportSection() {
 					<p className="text-xs text-muted-foreground mb-3">
 						Download all your data as a ZIP file containing JSON files. This
 						includes your complete workout history, telemetry, records,
-						routines, goals, comments, and account information.
+						routines, goals, comments, and account information. Large histories
+						can take a while; the export is built in your browser, so very large
+						exports (several million telemetry rows) may not fit in memory.
 					</p>
 					<Button
 						variant="outline"
@@ -243,6 +277,15 @@ export function ExportSection() {
 						)}
 						{fullExporting ? "Exporting..." : "Download All My Data (ZIP)"}
 					</Button>
+					{fullExporting && (
+						<Button
+							variant="ghost"
+							onClick={() => cancelUserDataExport()}
+							className="w-full mt-2 text-muted-foreground"
+						>
+							Cancel export
+						</Button>
+					)}
 				</div>
 			</CardContent>
 		</Card>
