@@ -450,13 +450,13 @@ SET LOCAL ROLE authenticated;
 -- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
     $sql$
-        INSERT INTO public.workout_sessions (user_id, name)
+        INSERT INTO public.routines (user_id, name)
         VALUES (
             'a1a1a1a1-0000-4000-8000-000000000001'::uuid,
             'ember write through user_has_min_tier policy'
         )
     $sql$,
-    'EMBER JWT can INSERT workout_sessions (policy calls user_has_min_tier)'
+    'EMBER JWT can INSERT routines (policy calls user_has_min_tier)'
 );
 
 RESET ROLE;

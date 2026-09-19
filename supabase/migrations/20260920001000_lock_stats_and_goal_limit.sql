@@ -1,28 +1,41 @@
--- Close self-reported leaderboard inputs and the goal-cap bypass
+-- Make leaderboard inputs server-written only, and close the goal-cap bypass
 -- (FP-2, FP-4, F-094, F-063).
 --
--- 1. gamification_stats / rpg_attributes: drop the client INSERT/UPDATE
---    policies and keep SELECT. These rows feed rankings and are written only
---    by mobile-sync-push through the service_role client (bypasses RLS) and
---    by the SECURITY DEFINER triggers update_profile_stats_on_workout /
---    update_pr_count_on_record (run as owner). The portal only reads them.
---    With RLS enabled and no INSERT/UPDATE policy, an authenticated INSERT
---    fails WITH CHECK (42501) and an UPDATE matches no row. The LWW RPCs
---    upsert_*_lww are SECURITY INVOKER, so they are closed to browser
---    callers too.
+-- Leaderboard inputs are gamification_stats / rpg_attributes and the rows
+-- that feed them and compute-rankings: workout_sessions (total_volume,
+-- duration_seconds, started_at) and personal_records (pr_count). The portal
+-- only reads these, apart from editing workout_sessions.notes
+-- (src/mutations/workouts.ts). The mobile app writes all of them through
+-- mobile-sync-push, which uses the service_role client (bypasses RLS and
+-- table/column grants). The SECURITY DEFINER triggers
+-- update_profile_stats_on_workout / update_pr_count_on_record run as their
+-- owner and keep writing gamification_stats.
 --
--- 2. workout_sessions: authenticated may UPDATE only `notes` (the portal's
---    only session write: src/mutations/workouts.ts). total_volume,
---    duration_seconds, started_at, etc. can no longer be rewritten from the
---    browser. Triggers that set updated_at are unaffected (column privileges
---    are checked on the SET list only). service_role push is unaffected.
---
--- 3. check_goal_limit: the trigger was BEFORE INSERT only, so a user could
---    archive a goal and flip it back to 'active' to exceed the tier cap (a
---    FREE user could re-activate any goal). It now also fires on
---    UPDATE OF status and checks whenever a row becomes active. Body starts
---    from 20260628170000_goal_limit_no_free_tier.sql (KD-3 3a); the error
---    message is unchanged.
+-- This removes every browser write path to those inputs:
+--   1. gamification_stats / rpg_attributes: drop the client INSERT/UPDATE
+--      policies (SELECT kept) AND revoke INSERT/UPDATE/DELETE from anon and
+--      authenticated, so a write policy that survives under a drifted name
+--      cannot reopen them.
+--   2. workout_sessions: drop the client INSERT policy and revoke INSERT
+--      from anon/authenticated; authenticated may UPDATE only `notes`, anon
+--      may not UPDATE at all. Triggers that set updated_at are unaffected
+--      (column privileges apply to the SET list only).
+--   3. personal_records: drop the client INSERT policy and revoke INSERT
+--      and UPDATE from anon/authenticated.
+--   4. The caller-rights LWW upsert RPCs (public.upsert_*_lww) are only
+--      called by mobile-sync-push as service_role; the SPA has no caller.
+--      Revoke EXECUTE from PUBLIC/anon/authenticated on every overload.
+--      Not included (no leaderboard input, the portal writes them):
+--      exercises/sets/rep_summaries/exercise_progress INSERT policies — see
+--      the PR 10 summary follow-ups.
+--   5. check_goal_limit: the trigger was BEFORE INSERT only, so a user could
+--      archive a goal and flip it back to 'active' to exceed the tier cap.
+--      INSERT is still always checked (FREE may insert no goal of any
+--      status); UPDATE is checked when a goal moves into 'active'. A
+--      per-user transaction advisory lock serialises concurrent activations
+--      so two requests cannot both pass the count. Body starts from
+--      20260628170000_goal_limit_no_free_tier.sql (KD-3 3a); the error
+--      message is unchanged.
 --
 -- Idempotent: DROP POLICY IF EXISTS, REVOKE/GRANT, CREATE OR REPLACE,
 -- DROP TRIGGER IF EXISTS + CREATE TRIGGER.
@@ -40,14 +53,44 @@ DROP POLICY IF EXISTS "Users can update rpg attributes" ON public.rpg_attributes
 DROP POLICY IF EXISTS "Users can insert own RPG attributes" ON public.rpg_attributes;
 DROP POLICY IF EXISTS "Users can update own RPG attributes" ON public.rpg_attributes;
 
+REVOKE INSERT, UPDATE, DELETE ON public.gamification_stats FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.rpg_attributes FROM anon, authenticated;
+
 -- ---------------------------------------------------------------------------
--- 2. workout_sessions: authenticated UPDATE limited to notes.
+-- 2. workout_sessions: no client INSERT; authenticated UPDATE only on notes.
 -- ---------------------------------------------------------------------------
-REVOKE UPDATE ON public.workout_sessions FROM authenticated;
+DROP POLICY IF EXISTS "Users can insert own sessions" ON public.workout_sessions;
+REVOKE INSERT, UPDATE ON public.workout_sessions FROM anon, authenticated;
 GRANT UPDATE (notes) ON public.workout_sessions TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3. Goal cap also applies when a goal becomes active via UPDATE.
+-- 3. personal_records: no client INSERT (and no UPDATE: there was never an
+--    UPDATE policy; the grant is revoked so a drifted one cannot reopen it).
+-- ---------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can insert own records" ON public.personal_records;
+REVOKE INSERT, UPDATE ON public.personal_records FROM anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. LWW upsert RPCs: service_role only (every overload, by name).
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  fn regprocedure;
+BEGIN
+  FOR fn IN
+    SELECT p.oid::regprocedure
+    FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname LIKE 'upsert\_%\_lww'
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', fn);
+  END LOOP;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Goal cap: INSERT always checked, UPDATE checked on activation.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.check_goal_limit()
 RETURNS TRIGGER
@@ -60,12 +103,10 @@ DECLARE
   max_goals INT;
   tier TEXT;
 BEGIN
-  -- Only a row that becomes active counts against the cap: an INSERT of an
-  -- active goal, or an UPDATE that moves a goal into 'active'.
-  IF NOT (
-    NEW.status = 'active'
-    AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'active')
-  ) THEN
+  -- UPDATE: only a goal that becomes active counts against the cap. Editing
+  -- an active goal, or archiving/completing one, is not capped.
+  IF TG_OP = 'UPDATE'
+     AND NOT (NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active') THEN
     RETURN NEW;
   END IF;
 
@@ -82,6 +123,12 @@ BEGIN
     -- FREE / unknown: no free tier exists, so no goals are allowed.
     max_goals := 0;
   END IF;
+
+  -- Serialise the count-then-write per user for the rest of the
+  -- transaction, so concurrent activations cannot both pass the check.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('user_goals:' || NEW.user_id::text, 0)
+  );
 
   -- On UPDATE the row being activated is not yet 'active', so it is not
   -- counted here.
