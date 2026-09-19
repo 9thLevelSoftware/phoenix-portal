@@ -188,7 +188,7 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.rawTier).toBe("FLAME");
 	});
 
-	it("downgrades effective tier to FREE when status is 'past_due'", async () => {
+	it("keeps the paid tier while status is 'past_due' (Paddle retry window)", async () => {
 		mockSubscriptionRow = {
 			tier: "EMBER",
 			status: "past_due",
@@ -203,8 +203,8 @@ describe("useSubscription effective tier", () => {
 
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-		expect(result.current.tier).toBe("FREE");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.tier).toBe("EMBER");
+		expect(result.current.isPremium).toBe(true);
 		expect(result.current.rawTier).toBe("EMBER");
 	});
 
