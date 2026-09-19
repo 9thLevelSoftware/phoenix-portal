@@ -1556,3 +1556,43 @@ Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", 
   assertEquals(routines[0].exercises[1].durationSeconds, null);
 });
 
+Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      routines: [{
+        data: [{
+          id: PULL_ROUTINE_ID,
+          user_id: VALID_USER_ID,
+          name: "Timed routine",
+          description: "",
+          exercise_count: 1,
+          estimated_duration: 10,
+          times_completed: 0,
+          is_favorite: false,
+          updated_at: "2026-09-01T00:00:00.000Z",
+        }],
+        error: null,
+      }],
+      routine_exercises: [{
+        data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: 1_700_000_000_000,
+  }));
+  assertEquals(response.status, 200);
+  assert(
+    !harness.adminCalls.some((call) => call.name === "get_routines_excluding_ids"),
+    "expected the timestamp (non-RPC) routines path",
+  );
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+});
+
