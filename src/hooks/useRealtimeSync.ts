@@ -13,6 +13,7 @@ const E2E_SYNC_COMPLETE_EVENT = "phoenix:e2e-sync-complete";
 /** While the channel is down, poll workouts at this interval until SUBSCRIBED. */
 export const DEGRADED_POLL_INTERVAL_MS = 60_000;
 const DEGRADED_STATUSES = new Set(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]);
+const SYNC_UNAVAILABLE_TOAST_ID = "phoenix-realtime-sync-unavailable";
 
 /**
  * Per-user teardown so a StrictMode remount awaits removeChannel instead of
@@ -30,7 +31,11 @@ const channelTeardown = new Map<string, Promise<unknown>>();
  * for a user in this mount does not invalidate (queries just fetched on mount);
  * a later re-subscribe does, to catch up on broadcasts missed while down.
  * CHANNEL_ERROR, TIMED_OUT and CLOSED toast via sonner and poll workouts every
- * 60s until the next SUBSCRIBED. There is no fallback to a public topic.
+ * 60s (skipped while the tab is hidden) until the next SUBSCRIBED, which
+ * dismisses the toast. There is no fallback to a public topic.
+ *
+ * The effect is keyed on the user id, not the user object: token refreshes and
+ * refocus SIGNED_IN events replace the object but must not rebuild the channel.
  *
  * Subscribes for last-known EMBER+ users. A billing fetch error does not
  * skip the channel (error is not treated as FREE). Confirmed FREE users skip
@@ -40,14 +45,19 @@ const channelTeardown = new Map<string, Promise<unknown>>();
  */
 export function useRealtimeSync() {
 	const { user } = useAuth();
+	const userId = user?.id ?? null;
 	const { tier, isLoading, isError } = useSubscription();
 	const queryClient = useQueryClient();
 	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	// userId whose channel has reached SUBSCRIBED at least once in this mount.
+	// userId whose channel has reached SUBSCRIBED (or gone degraded) at least
+	// once in this mount; any later SUBSCRIBED for that user catches up.
 	const subscribedUserRef = useRef<string | null>(null);
+	// True while the channel is down; survives effect re-runs so a rebuilt
+	// channel still dismisses the toast on recovery.
+	const degradedRef = useRef(false);
 
 	useEffect(() => {
-		if (!user) return;
+		if (!userId) return;
 
 		// Wait for subscription data to resolve before deciding
 		if (isLoading) return;
@@ -56,8 +66,6 @@ export function useRealtimeSync() {
 		// (`isError`) must not be treated as FREE — subscribe on last-known
 		// EMBER+ or when entitlement is unknown.
 		if (!isError && tier === "FREE") return;
-
-		const userId = user.id;
 
 		const scheduleInvalidation = () => {
 			if (debounceTimerRef.current) {
@@ -119,8 +127,6 @@ export function useRealtimeSync() {
 		let cancelled = false;
 		let channel: ReturnType<typeof supabase.channel> | null = null;
 		let pollTimer: ReturnType<typeof setInterval> | null = null;
-		// Set once the channel has been down; the next SUBSCRIBED must catch up.
-		let wasDegraded = false;
 
 		const stopPolling = () => {
 			if (pollTimer) {
@@ -132,6 +138,8 @@ export function useRealtimeSync() {
 		const startPolling = () => {
 			if (pollTimer) return;
 			pollTimer = setInterval(() => {
+				// Match refetchInterval semantics: no background-tab polling.
+				if (document.visibilityState === "hidden") return;
 				void queryClient.invalidateQueries({
 					queryKey: queryKeys.workouts.all,
 				});
@@ -154,20 +162,27 @@ export function useRealtimeSync() {
 					if (cancelled) return;
 					if (status === "SUBSCRIBED") {
 						stopPolling();
-						if (subscribedUserRef.current === userId || wasDegraded) {
+						if (subscribedUserRef.current === userId) {
 							// Re-subscribe: catch up on anything missed while down.
 							scheduleInvalidation();
 						}
 						// First clean subscribe: queries just fetched on mount; skip the burst.
 						subscribedUserRef.current = userId;
-						wasDegraded = false;
+						if (degradedRef.current) {
+							degradedRef.current = false;
+							toast.dismiss(SYNC_UNAVAILABLE_TOAST_ID);
+						}
 						return;
 					}
 					if (DEGRADED_STATUSES.has(status)) {
-						toast.error("Live sync unavailable. Refresh to retry.", {
-							id: "phoenix-realtime-sync-unavailable",
-						});
-						wasDegraded = true;
+						toast.error(
+							"Live sync interrupted. Retrying; data refreshes every minute.",
+							{ id: SYNC_UNAVAILABLE_TOAST_ID },
+						);
+						// Mark this user so the recovering SUBSCRIBED catches up, even
+						// if it is the first one or lands in a later effect run.
+						subscribedUserRef.current = userId;
+						degradedRef.current = true;
 						startPolling();
 						// Do NOT fall back to a public unsuffixed sync:{userId} topic.
 					}
@@ -205,5 +220,5 @@ export function useRealtimeSync() {
 				}
 			});
 		};
-	}, [user, tier, isLoading, isError, queryClient]);
+	}, [userId, tier, isLoading, isError, queryClient]);
 }
