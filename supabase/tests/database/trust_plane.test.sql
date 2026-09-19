@@ -415,4 +415,213 @@ SELECT pg_temp.assert_sqlstate(
     'deletion_requests freeze rejects requested_at change'
 );
 
+-- ---------------------------------------------------------------------------
+-- request_account_deletion(): request -> cancel -> request gets a fresh
+-- 30-day floor; a double request raises; another user's row is untouched.
+-- ---------------------------------------------------------------------------
+SELECT diag('database:request-account-deletion');
+
+SELECT ok(
+    has_function_privilege('authenticated', 'public.request_account_deletion()', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.request_account_deletion()', 'EXECUTE'),
+    'request_account_deletion is executable by authenticated only'
+);
+
+INSERT INTO auth.users (id, email)
+VALUES
+    ('c3200000-0000-4000-8000-000000000001'::uuid, 'deletion-requester@example.test'),
+    ('c3200000-0000-4000-8000-000000000002'::uuid, 'deletion-bystander@example.test'),
+    ('c3200000-0000-4000-8000-000000000003'::uuid, 'deletion-executed@example.test')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
+-- Seed rows whose times lie in the past (the INSERT trigger would reject
+-- them), so the tests can tell a fresh floor from the old one. The CHECK
+-- (scheduled_for >= requested_at + 30 days) still applies.
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.deletion_requests (
+    id, user_id, requested_at, scheduled_for, cancelled_at, executed_at, status
+)
+VALUES
+    (
+        'c3200000-0000-4000-8000-0000000000b2'::uuid,
+        'c3200000-0000-4000-8000-000000000002'::uuid,
+        now() - INTERVAL '40 days',
+        now() - INTERVAL '10 days',
+        now() - INTERVAL '35 days',
+        NULL,
+        'cancelled'
+    ),
+    (
+        'c3200000-0000-4000-8000-0000000000c3'::uuid,
+        'c3200000-0000-4000-8000-000000000003'::uuid,
+        now() - INTERVAL '40 days',
+        now() - INTERVAL '10 days',
+        NULL,
+        now() - INTERVAL '1 day',
+        'executed'
+    );
+SET LOCAL session_replication_role = origin;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"c3200000-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT status, requested_at, scheduled_for
+        FROM public.request_account_deletion()
+    $sql$,
+    $values$
+        VALUES ('pending'::text, now(), now() + INTERVAL '30 days')
+    $values$,
+    'first request creates a pending row with a 30-day grace'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$ SELECT public.request_account_deletion() $sql$,
+    'P0001',
+    'already_pending',
+    'a second request while pending raises already_pending'
+);
+
+-- The app's cancel path (RLS: pending -> cancelled on own row).
+WITH cancelled AS (
+    UPDATE public.deletion_requests
+       SET status = 'cancelled', cancelled_at = now()
+     WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid
+    RETURNING 1
+)
+SELECT is(
+    (SELECT count(*)::int FROM cancelled),
+    1,
+    'user can cancel own pending request'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+-- Age the cancelled request so the re-request must produce a new floor
+-- rather than reuse the old one.
+CREATE TEMP TABLE pr32_old_request ON COMMIT DROP AS
+SELECT id FROM public.deletion_requests
+WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid;
+
+SET LOCAL session_replication_role = replica;
+UPDATE public.deletion_requests
+   SET requested_at = now() - INTERVAL '40 days',
+       scheduled_for = now() - INTERVAL '10 days',
+       cancelled_at = now() - INTERVAL '35 days'
+ WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid;
+SET LOCAL session_replication_role = origin;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"c3200000-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT status, requested_at, scheduled_for, cancelled_at, executed_at
+        FROM public.request_account_deletion()
+    $sql$,
+    $values$
+        VALUES (
+            'pending'::text,
+            now(),
+            now() + INTERVAL '30 days',
+            NULL::timestamptz,
+            NULL::timestamptz
+        )
+    $values$,
+    're-request after cancel succeeds with a new 30-day floor'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$ SELECT public.request_account_deletion() $sql$,
+    'P0001',
+    'already_pending',
+    'a request right after the re-request raises already_pending'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SELECT results_eq(
+    $sql$
+        SELECT count(*)::int,
+               bool_and(id <> (SELECT id FROM pr32_old_request)),
+               bool_and(status = 'pending'),
+               bool_and(scheduled_for = now() + INTERVAL '30 days')
+        FROM public.deletion_requests
+        WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid
+    $sql$,
+    $values$ VALUES (1, true, true, true) $values$,
+    're-request replaces the cancelled row with exactly one fresh pending row'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT id, status, requested_at, scheduled_for, cancelled_at
+        FROM public.deletion_requests
+        WHERE user_id = 'c3200000-0000-4000-8000-000000000002'::uuid
+    $sql$,
+    $values$
+        VALUES (
+            'c3200000-0000-4000-8000-0000000000b2'::uuid,
+            'cancelled'::text,
+            now() - INTERVAL '40 days',
+            now() - INTERVAL '10 days',
+            now() - INTERVAL '35 days'
+        )
+    $values$,
+    'another user''s cancelled request is untouched'
+);
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"c3200000-0000-4000-8000-000000000003","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$ SELECT public.request_account_deletion() $sql$,
+    'P0001',
+    'already_executing',
+    'a request over an executed/claimed row raises already_executing'
+);
+
+SELECT set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+
+SELECT pg_temp.assert_exception(
+    $sql$ SELECT public.request_account_deletion() $sql$,
+    '28000',
+    'not_authenticated',
+    'a request without auth.uid() raises not_authenticated'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SELECT results_eq(
+    $sql$
+        SELECT id, status, executed_at
+        FROM public.deletion_requests
+        WHERE user_id = 'c3200000-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$
+        VALUES (
+            'c3200000-0000-4000-8000-0000000000c3'::uuid,
+            'executed'::text,
+            now() - INTERVAL '1 day'
+        )
+    $values$,
+    'an executed/claimed request is never reset by a re-request'
+);
+
 SELECT * FROM finish();

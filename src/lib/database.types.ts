@@ -3018,6 +3018,24 @@ export type Database = {
 				Args: { p_period: string; p_rows: Json; p_user_id: string };
 				Returns: number;
 			};
+			request_account_deletion: {
+				Args: never;
+				Returns: {
+					cancelled_at: string | null;
+					executed_at: string | null;
+					id: string;
+					requested_at: string;
+					scheduled_for: string;
+					status: string;
+					user_id: string;
+				};
+				SetofOptions: {
+					from: "*";
+					to: "deletion_requests";
+					isOneToOne: true;
+					isSetofReturn: false;
+				};
+			};
 			safe_jsonb_int: {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;

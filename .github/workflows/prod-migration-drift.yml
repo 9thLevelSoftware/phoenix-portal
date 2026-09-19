@@ -302,7 +302,8 @@ jobs:
                 'import_shared_cycle(uuid, text)',
                 'workout_current_streak(uuid)',
                 'user_has_min_tier(text)',
-                'user_subscription_tier()'
+                'user_subscription_tier()',
+                'request_account_deletion()'
               )
             )
             AND NOT (
