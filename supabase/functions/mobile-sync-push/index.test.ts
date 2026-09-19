@@ -477,12 +477,17 @@ interface PushHarness {
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
   broadcastPayloads: unknown[];
+  httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }>;
+  subscribeCalls: { value: number };
+  removeChannelCalls: { value: number };
 }
 
 function makeHarness(
   authBehavior: AuthBehavior = async () => VALID_AUTH_RESULT,
   options: {
     channelError?: unknown;
+    fromError?: unknown;
+    httpSendBehavior?: () => Promise<unknown>;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
   } = {},
@@ -499,9 +504,14 @@ function makeHarness(
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
     [];
   const broadcastPayloads: unknown[] = [];
+  const httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }> =
+    [];
+  const subscribeCalls = { value: 0 };
+  const removeChannelCalls = { value: 0 };
 
   const admin = {
     from(table: string) {
+      if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
@@ -544,6 +554,7 @@ function makeHarness(
       channelCalls.push({ topic, config: channelOptions?.config });
       return {
         subscribe(callback: (status: string) => void) {
+          subscribeCalls.value += 1;
           callback("SUBSCRIBED");
           return {};
         },
@@ -551,9 +562,20 @@ function makeHarness(
           broadcastPayloads.push(message.payload);
           return "ok";
         },
+        async httpSend(
+          event: string,
+          payload: unknown,
+          opts?: { timeout?: number },
+        ) {
+          httpSendCalls.push({ event, payload, timeout: opts?.timeout });
+          broadcastPayloads.push(payload);
+          if (options.httpSendBehavior) return await options.httpSendBehavior();
+          return { success: true };
+        },
       };
     },
     async removeChannel() {
+      removeChannelCalls.value += 1;
       return "ok";
     },
   };
@@ -590,6 +612,9 @@ function makeHarness(
     operationEvents,
     channelCalls,
     broadcastPayloads,
+    httpSendCalls,
+    subscribeCalls,
+    removeChannelCalls,
   };
 }
 
@@ -1733,17 +1758,125 @@ Deno.test("syncTime uses the injected current time", async () => {
   assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
 });
 
-Deno.test("broadcasts private sync_complete with { syncTime } only", async () => {
+/** Smallest push with a counted write (one badge upsert). */
+function badgePushBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    badges: [{
+      userId: VALID_USER_ID,
+      badgeId: "first-workout",
+      badgeName: "First Workout",
+      earnedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  };
+}
+
+Deno.test("broadcasts private sync_complete with { syncTime } once over HTTP", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(badgePushBody()),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals(body.badgesUpserted, 1);
+  assertEquals(harness.channelCalls.length, 1);
+  assertEquals(harness.channelCalls[0]?.topic, `sync:${VALID_USER_ID}`);
+  assertEquals(harness.channelCalls[0]?.config?.private, true);
+  assertEquals(harness.httpSendCalls, [{
+    event: "sync_complete",
+    payload: { syncTime: "2026-07-16T02:00:00.000Z" },
+    timeout: 1500,
+  }]);
+  assertEquals(harness.broadcastPayloads, [{ syncTime: body.syncTime }]);
+  assertEquals(harness.subscribeCalls.value, 0);
+  assertEquals(harness.removeChannelCalls.value, 1);
+});
+
+Deno.test("empty push writes nothing and does not broadcast", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(validPushBody()));
 
   assertEquals(response.status, 200);
-  assertEquals(harness.channelCalls.length, 1);
-  assertEquals(harness.channelCalls[0]?.topic, `sync:${VALID_USER_ID}`);
-  assertEquals(harness.channelCalls[0]?.config?.private, true);
-  assertEquals(harness.broadcastPayloads, [{
-    syncTime: "2026-07-16T02:00:00.000Z",
-  }]);
+  assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.httpSendCalls, []);
+  assertEquals(harness.subscribeCalls.value, 0);
+});
+
+for (
+  const [label, body] of [
+    ["routine tombstone", { deletedRoutineIds: [ROUTINE_ID] }],
+    ["cycle tombstone", { deletedCycleIds: [CYCLE_ID] }],
+    ["gamification stats", {
+      gamificationStats: {
+        userId: VALID_USER_ID,
+        totalWorkouts: 1,
+        totalReps: 10,
+        totalVolumeKg: 100,
+        longestStreak: 1,
+        currentStreak: 1,
+        totalTimeSeconds: 60,
+      },
+    }],
+  ] as const
+) {
+  Deno.test(`uncounted ${label} write still broadcasts once`, async () => {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody({ ...validPushBody(), ...body }),
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(harness.httpSendCalls.length, 1);
+    assertEquals(harness.subscribeCalls.value, 0);
+  });
+}
+
+Deno.test("accepted preference-only push broadcasts once", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [validCoreMutation()],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls.length, 1);
+});
+
+for (
+  const [label, behavior] of [
+    ["rejected", async () => ({ success: false, status: 500, error: "down" })],
+    ["thrown", async () => {
+      throw new Error("realtime unavailable");
+    }],
+  ] as const
+) {
+  Deno.test(`${label} HTTP broadcast is logged and the push still succeeds`, async () => {
+    const harness = makeHarness(undefined, { httpSendBehavior: behavior });
+    const response = await harness.handler(
+      requestFromBody(badgePushBody()),
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals((await json(response)).badgesUpserted, 1);
+    assertEquals(harness.httpSendCalls.length, 1);
+    assertEquals(harness.removeChannelCalls.value, 1);
+    assertEquals(harness.loggerCalls, []);
+  });
+}
+
+Deno.test("channel construction failure is logged and the push still succeeds", async () => {
+  const harness = makeHarness(undefined, {
+    channelError: new Error("realtime client unavailable"),
+  });
+  const response = await harness.handler(
+    requestFromBody(badgePushBody()),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls, []);
+  assertEquals(harness.loggerCalls, []);
 });
 
 Deno.test("complete validation precedes every privileged construction and call", async () => {
@@ -1771,7 +1904,7 @@ Deno.test("unexpected privileged failure returns generic 500 and logs only a saf
   const harness = makeHarness(
     undefined,
     {
-      channelError: Object.assign(new Error("database secret"), {
+      fromError: Object.assign(new Error("database secret"), {
         name: "NetworkError",
       }),
     },

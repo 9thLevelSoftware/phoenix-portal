@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+// Exact pin: sync_complete relies on RealtimeChannel.httpSend (realtime-js 2.107).
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2.107.0';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -2860,47 +2861,22 @@ async function mobileSyncPushHandler(
     // 15. Return sync result
     // =========================================================================
     const syncTime = new Date(dependencies.now()).toISOString();
-    // Use HTTP broadcast so the edge function doesn't need an active WebSocket
-    // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
-    const channel = supabase.channel(syncBroadcastTopic(userId), {
-      config: { private: true, broadcast: { self: false } },
-    });
-    try {
-      await new Promise<void>((resolve) => {
-        const subscription = channel.subscribe((status) => {
-          if (
-            status === 'SUBSCRIBED' ||
-            status === 'CHANNEL_ERROR' ||
-            status === 'TIMED_OUT' ||
-            status === 'CLOSED'
-          ) {
-            resolve();
-            // Avoid unused-binding warning on `subscription`.
-            void subscription;
-          }
-        });
-        // Safety timeout — don't block the response waiting for realtime.
-        setTimeout(resolve, 1500);
-      });
-
-      const broadcastStatus = await channel.send({
-        type: 'broadcast',
-        event: 'sync_complete',
-        payload: {
-          syncTime,
-        },
-      });
-      if (broadcastStatus !== 'ok') {
-        console.warn('mobile-sync-push broadcast warning:', broadcastStatus);
-      }
-    } catch (broadcastErr) {
-      console.warn('mobile-sync-push broadcast failed:', broadcastErr);
-    } finally {
-      try {
-        await supabase.removeChannel(channel);
-      } catch (cleanupErr) {
-        console.warn('mobile-sync-push channel cleanup warning:', cleanupErr);
-      }
+    // Tell the portal to refetch, but only when this push changed something it
+    // shows. Idempotent per-push metadata (local_profiles, custom catalog rows)
+    // is excluded so an otherwise empty push stays silent.
+    const pushChangedPortalData =
+      sessionsInserted + exercisesInserted + setsInserted + repSummariesInserted +
+          telemetryInserted + routinesUpserted + cyclesUpserted + badgesUpserted +
+          exerciseProgressInserted + personalRecordsInserted +
+          phaseStatisticsInserted + exerciseSignaturesUpserted +
+          assessmentsInserted + externalActivitiesUpserted > 0 ||
+      (payload.deletedRoutineIds?.length ?? 0) > 0 ||
+      (payload.deletedCycleIds?.length ?? 0) > 0 ||
+      Boolean(payload.rpgAttributes) ||
+      Boolean(payload.gamificationStats) ||
+      canonicalProfilePreferenceSections.length > 0;
+    if (pushChangedPortalData) {
+      await broadcastSyncComplete(supabase, userId, syncTime);
     }
 
     return new Response(
@@ -2951,6 +2927,52 @@ async function mobileSyncPushHandler(
       JSON.stringify(errorBody),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
+  }
+}
+
+/** Upper bound on the broadcast POST so a Realtime outage cannot stall pushes. */
+const SYNC_BROADCAST_TIMEOUT_MS = 1500;
+
+/**
+ * Broadcasts `sync_complete` on the private `sync:{userId}` topic through the
+ * Realtime REST endpoint (`httpSend`): one POST, no WebSocket join. Delivery
+ * is best-effort — a failure is logged and never fails the push, because the
+ * rows are already committed and the portal also refetches on reconnect.
+ */
+async function broadcastSyncComplete(
+  supabase: SupabaseClient,
+  userId: string,
+  syncTime: string,
+): Promise<void> {
+  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    channel = supabase.channel(syncBroadcastTopic(userId), {
+      config: { private: true },
+    });
+    const result = await channel.httpSend(
+      'sync_complete',
+      { syncTime },
+      { timeout: SYNC_BROADCAST_TIMEOUT_MS },
+    );
+    if (!result.success) {
+      console.warn('mobile-sync-push broadcast rejected:', result.status);
+    }
+  } catch (broadcastErr) {
+    console.warn(
+      'mobile-sync-push broadcast failed:',
+      safeErrorName(broadcastErr, 'BroadcastFailure'),
+    );
+  } finally {
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (cleanupErr) {
+        console.warn(
+          'mobile-sync-push channel cleanup warning:',
+          safeErrorName(cleanupErr, 'ChannelCleanupFailure'),
+        );
+      }
+    }
   }
 }
 
