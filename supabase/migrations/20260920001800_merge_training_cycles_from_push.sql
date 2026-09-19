@@ -29,6 +29,12 @@
 ALTER TABLE public.training_cycles
   ADD COLUMN IF NOT EXISTS portal_edited_at TIMESTAMPTZ;
 
+ALTER TABLE public.training_cycles
+  ADD COLUMN IF NOT EXISTS portal_duration_set_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN public.training_cycles.portal_duration_set_at IS
+  'Last time duration_weeks itself was set by a portal (authenticated) write. A mobile push of the derived default keeps a portal-set duration (KD-6).';
+
 COMMENT ON COLUMN public.training_cycles.portal_edited_at IS
   'Last portal (authenticated) edit of the cycle or its days. Mobile push structure is ignored when this is newer than the push''s baseUpdatedAt (KD-6).';
 
@@ -48,6 +54,12 @@ BEGIN
   IF auth.role() = 'authenticated'
      AND current_setting('phoenix.skip_updated_at', true) IS DISTINCT FROM 'on' THEN
     NEW.portal_edited_at := now();
+    -- duration_weeks set on the portal (not just any portal touch).
+    IF TG_OP = 'INSERT' THEN
+      NEW.portal_duration_set_at := now();
+    ELSIF NEW.duration_weeks IS DISTINCT FROM OLD.duration_weeks THEN
+      NEW.portal_duration_set_at := now();
+    END IF;
     -- A pulled cycle's updatedAt is the device's base. Keep
     -- updated_at >= portal_edited_at so a freshly pulled base is never
     -- stale (an INSERT may carry an explicit older updated_at; UPDATEs get
@@ -149,8 +161,10 @@ CREATE TRIGGER cycle_days_portal_edited_at
 --         sparsely: an absent key means off/cleared). Every other key is
 --         portal-only and survives. A NULL incoming clears the mobile keys;
 --         if nothing is left the column is NULL.
---       duration_weeks: keeps the stored value only when the cycle was
---         portal-edited (portal_edited_at IS NOT NULL) and the incoming value
+--       duration_weeks: keeps the stored value only when duration_weeks was
+--         set on the portal (portal_duration_set_at IS NOT NULL; stamped by
+--         the authenticated trigger when the value changes or on INSERT) and
+--         the incoming value
 --         equals mobile's derived default (ceil(days/7), 1 for no days);
 --         otherwise the incoming value wins, so mobile-created cycles follow
 --         the phone.
@@ -316,11 +330,12 @@ BEGIN
                              ELSE COALESCE(rec.workout_days, v_existing.workout_days) END;
       n_rest_days := CASE WHEN v_stale THEN v_existing.rest_days
                           ELSE COALESCE(rec.rest_days, v_existing.rest_days) END;
-      -- Keep a portal-authored duration against mobile's derived default
-      -- only; a never-portal-edited cycle follows the phone (review R-3).
+      -- Keep a duration set on the portal against mobile's derived default
+      -- only; otherwise (incl. cycles merely renamed/activated on the
+      -- portal) the phone's value wins (review R-3, round 2).
       n_duration_weeks := CASE
         WHEN rec.duration_weeks IS NULL THEN v_existing.duration_weeks
-        WHEN v_existing.portal_edited_at IS NOT NULL
+        WHEN v_existing.portal_duration_set_at IS NOT NULL
              AND rec.duration_weeks = v_derived_weeks THEN v_existing.duration_weeks
         ELSE rec.duration_weeks
       END;

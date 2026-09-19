@@ -87,21 +87,23 @@ VALUES
 -- Written as postgres with no request claims (a migration / cron).
 INSERT INTO public.training_cycles (
     id, user_id, name, description, duration_weeks, workout_days, rest_days,
-    status, progression_settings, deload_settings, updated_at, portal_edited_at
+    status, progression_settings, deload_settings, updated_at, portal_edited_at,
+    portal_duration_set_at
 ) VALUES
     -- c1: portal-authored config, portal edit at .1234
     ('18181818-0000-4000-8000-0000000000c1'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
      'Portal name', '', 8, 4, 0, 'draft',
      '{"frequencyCycles":"1","portalOnly":true}', '{"week":4}',
-     '2026-01-10 00:00:00.1234+00', '2026-01-10 00:00:00.1234+00'),
+     '2026-01-10 00:00:00.1234+00', '2026-01-10 00:00:00.1234+00',
+     '2026-01-10 00:00:00.1234+00'),
     -- c2: never portal-edited (no-op / legacy cases)
     ('18181818-0000-4000-8000-0000000000c2'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
      'Phone cycle', '', 1, 2, 0, 'draft', NULL, NULL,
-     '2026-01-01 00:00:00+00', NULL),
+     '2026-01-01 00:00:00+00', NULL, NULL),
     -- c3: legacy day cleanup
     ('18181818-0000-4000-8000-0000000000c3'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
      'Legacy', '', 1, 4, 0, 'draft', NULL, NULL,
-     '2026-01-01 00:00:00+00', NULL);
+     '2026-01-01 00:00:00+00', NULL, NULL);
 
 INSERT INTO public.cycle_days (cycle_id, day_number, routine_id, rest_type)
 SELECT '18181818-0000-4000-8000-0000000000c1'::uuid, n,
@@ -651,6 +653,111 @@ SELECT results_eq(
     ),
     $values$ VALUES (true) $values$,
     'R-7: a ms-truncated base equal to the portal save is current'
+);
+
+-- ---------------------------------------------------------------------------
+-- Review round 2: duration is portal-owned only when set on the portal.
+-- ---------------------------------------------------------------------------
+SELECT diag('database:cycle-merge-review-round-2');
+
+SELECT has_column(
+    'public', 'training_cycles', 'portal_duration_set_at',
+    'training_cycles.portal_duration_set_at exists'
+);
+
+-- Fixtures as postgres with no claims (no stamps): two phone-created cycles
+-- of 7 days / 1 week, and one whose progression holds only mobile keys.
+SELECT set_config('request.jwt.claims', '', true);
+INSERT INTO public.training_cycles (id, user_id, name, description, duration_weeks, workout_days,
+                                    status, progression_settings, updated_at)
+VALUES
+    ('18181818-0000-4000-8000-0000000000e1'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Renamed on portal', '', 1, 7, 'draft', NULL, '2026-01-01+00'),
+    ('18181818-0000-4000-8000-0000000000e2'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Duration set on portal', '', 1, 7, 'draft', NULL, '2026-01-01+00'),
+    ('18181818-0000-4000-8000-0000000000e3'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Mobile keys only', '', 1, 0, 'draft',
+     '{"frequencyCycles":"2","echoLevelIncrease":"true"}', '2026-01-01+00');
+INSERT INTO public.cycle_days (cycle_id, day_number)
+SELECT c, n
+FROM unnest(ARRAY['18181818-0000-4000-8000-0000000000e1'::uuid,
+                  '18181818-0000-4000-8000-0000000000e2'::uuid]) AS c,
+     generate_series(1, 7) AS n;
+
+-- Portal: rename e1 (duration untouched), set e2 to 6 weeks.
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"18181818-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+UPDATE public.training_cycles SET name = 'Renamed on portal!'
+WHERE id = '18181818-0000-4000-8000-0000000000e1';
+UPDATE public.training_cycles SET duration_weeks = 6
+WHERE id = '18181818-0000-4000-8000-0000000000e2';
+RESET ROLE;
+
+SELECT results_eq(
+    $sql$ SELECT id::text, portal_edited_at IS NOT NULL, portal_duration_set_at IS NOT NULL
+          FROM public.training_cycles
+          WHERE id IN ('18181818-0000-4000-8000-0000000000e1', '18181818-0000-4000-8000-0000000000e2')
+          ORDER BY id $sql$,
+    $values$ VALUES ('18181818-0000-4000-8000-0000000000e1', true, false),
+                    ('18181818-0000-4000-8000-0000000000e2', true, true) $values$,
+    'a portal rename stamps portal_edited_at only; a portal duration change also stamps portal_duration_set_at'
+);
+
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+-- Phone grows e1 to 14 days (derived 2 weeks) and pushes e2's derived
+-- default for its 7 days (1 week). No base: legacy structure rules.
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        (SELECT jsonb_build_array(
+           jsonb_build_object(
+             'id', '18181818-0000-4000-8000-0000000000e1', 'name', 'Renamed on portal!',
+             'description', '', 'duration_weeks', 2, 'workout_days', 14, 'rest_days', 0,
+             'current_week', 1, 'status', 'draft',
+             'days', (SELECT jsonb_agg(jsonb_build_object('day_number', n, 'day_type', 'workout'))
+                      FROM generate_series(1, 14) AS n)),
+           jsonb_build_object(
+             'id', '18181818-0000-4000-8000-0000000000e2', 'name', 'Duration set on portal',
+             'description', '', 'duration_weeks', 1, 'workout_days', 7, 'rest_days', 0,
+             'current_week', 1, 'status', 'draft',
+             'days', (SELECT jsonb_agg(jsonb_build_object('day_number', n, 'day_type', 'workout'))
+                      FROM generate_series(1, 7) AS n)))),
+        false)
+    $sql$,
+    'phone pushes after the portal rename / duration edit'
+);
+SELECT results_eq(
+    $sql$ SELECT id::text, duration_weeks FROM public.training_cycles
+          WHERE id IN ('18181818-0000-4000-8000-0000000000e1', '18181818-0000-4000-8000-0000000000e2')
+          ORDER BY id $sql$,
+    $values$ VALUES ('18181818-0000-4000-8000-0000000000e1', 2),
+                    ('18181818-0000-4000-8000-0000000000e2', 6) $values$,
+    'a portal rename does not freeze duration (phone growth applies); a portal-set duration survives the derived default'
+);
+
+-- A null progression where only mobile keys were stored leaves NULL, not '{}'.
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        '[{"id":"18181818-0000-4000-8000-0000000000e3","name":"Mobile keys only","description":"",
+           "duration_weeks":1,"workout_days":0,"rest_days":0,"current_week":1,"status":"draft",
+           "progression_settings":null,"days":[]}]',
+        false)
+    $sql$,
+    'phone removes its progression'
+);
+SELECT is(
+    (SELECT progression_settings FROM public.training_cycles
+     WHERE id = '18181818-0000-4000-8000-0000000000e3'),
+    NULL,
+    'a null progression over mobile-only keys stores NULL, not {}'
 );
 
 SELECT * FROM finish();
