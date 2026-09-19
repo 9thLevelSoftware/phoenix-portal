@@ -15,6 +15,10 @@ SELECT no_plan();
 SELECT diag('database:sync-tombstones-catalog');
 
 SELECT has_table('public', 'sync_tombstones', 'sync_tombstones exists');
+SELECT has_column(
+    'public', 'routines', 'created_at',
+    'routines.created_at exists (written by upsert_routine_lww)'
+);
 SELECT col_is_pk(
     'public', 'sync_tombstones', ARRAY['user_id', 'entity', 'entity_id'],
     'primary key is (user_id, entity, entity_id)'
@@ -243,6 +247,20 @@ SELECT is_empty(
         )
     $sql$,
     'a tombstoned id that exists again is not reported'
+);
+
+-- Another user's row with the same id does not hide the owner's tombstone.
+INSERT INTO public.training_cycles (id, user_id, name)
+VALUES ('16161616-0000-4000-8000-0000000000c1'::uuid, '16161616-0000-4000-8000-000000000002'::uuid, 'Taken by other');
+SELECT results_eq(
+    $sql$
+        SELECT entity_id FROM public.get_sync_tombstones(
+            '16161616-0000-4000-8000-000000000001'::uuid, 'cycle',
+            ARRAY['16161616-0000-4000-8000-0000000000c1'::uuid], NULL
+        )
+    $sql$,
+    $values$ VALUES ('16161616-0000-4000-8000-0000000000c1'::uuid) $values$,
+    'a row with the same id owned by another user does not hide the tombstone'
 );
 
 SELECT diag('database:sync-tombstones-rls');

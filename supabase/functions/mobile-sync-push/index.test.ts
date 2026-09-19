@@ -406,10 +406,16 @@ function streamingRawRequest(
   });
 }
 
+type TableResultValue = { data: unknown; error: unknown; count?: number };
+/** A fixed result, or one chosen from the query's `.eq()` filters. */
+type TableResult =
+  | TableResultValue
+  | ((eqFilters: Record<string, unknown>) => TableResultValue);
+
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
-  terminalResult: { data: unknown; error: unknown; count?: number } = {
+  terminalResult: TableResult = {
     data: [],
     error: null,
     count: 0,
@@ -417,11 +423,13 @@ function permissiveQuery(
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
+  const eqFilters: Record<string, unknown> = {};
   const chainMethods = [
     "select",
     "eq",
     "neq",
     "gt",
+    "gte",
     "in",
     "is",
     "or",
@@ -438,6 +446,7 @@ function permissiveQuery(
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
+      if (method === "eq") eqFilters[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
       }
@@ -463,7 +472,11 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(eqFilters)
+        : terminalResult,
     ).then(resolve, reject);
   return query;
 }
@@ -489,7 +502,7 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
-    tableResults?: Record<string, { data: unknown; error: unknown }>;
+    tableResults?: Record<string, TableResult>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -2343,6 +2356,213 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted in the same p
   assertEquals(byDay.get(2)?.routine_id, null);
 });
 
+const LIVE_ROUTINE_ID = "00000000-0000-4000-8000-000000000168";
+const LIVE_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000169";
+const LIVE_CYCLE_ID = "00000000-0000-4000-8000-00000000016a";
+const LIVE_CYCLE_DAY_ID = "00000000-0000-4000-8000-00000000016b";
+const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
+
+/** Old-build body plus a live routine and a live cycle beside the deleted ones. */
+function mixedLiveAndDeletedBody(): Record<string, unknown> {
+  const body = oldBuildRoutineAndCycleBody();
+  (body.routines as Record<string, unknown>[]).push({
+    id: LIVE_ROUTINE_ID,
+    userId: VALID_USER_ID,
+    name: "Still live",
+    exerciseCount: 1,
+    exercises: [{
+      id: LIVE_ROUTINE_EXERCISE_ID,
+      routineId: LIVE_ROUTINE_ID,
+      name: "Row",
+      muscleGroup: "Back",
+      sets: 3,
+      reps: 10,
+      weight: 20,
+      mode: "OLD_SCHOOL",
+      orderIndex: 0,
+    }],
+  });
+  (body.cycles as Record<string, unknown>[]).push({
+    id: LIVE_CYCLE_ID,
+    userId: VALID_USER_ID,
+    name: "Live cycle",
+    days: [{
+      id: LIVE_CYCLE_DAY_ID,
+      cycleId: LIVE_CYCLE_ID,
+      dayNumber: 1,
+      dayType: "workout",
+      routineId: LIVE_ROUTINE_ID,
+    }],
+  });
+  return body;
+}
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted routine beside a live one writes only the live routine's exercises`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(mixedLiveAndDeletedBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [],
+  });
+  assertEquals(parentWriteIds(harness, "routines"), [LIVE_ROUTINE_ID]);
+  assertEquals(
+    upsertedRows(harness, "routine_exercises").map((row) => row.id),
+    [LIVE_ROUTINE_EXERCISE_ID],
+  );
+  // Orphan-exercise cleanup only touches the live routine.
+  assertEquals(
+    harness.adminWriteArgs.filter((call) =>
+      call.table === "routine_exercises" && call.method === "delete"
+    ).length,
+    1,
+  );
+  const dayRefs = new Map(
+    upsertedRows(harness, "cycle_days").map((row) => [
+      row.cycle_id,
+      row.routine_id,
+    ]),
+  );
+  assertEquals(dayRefs.get(TOMB_CYCLE_ID), null);
+  assertEquals(dayRefs.get(LIVE_CYCLE_ID), LIVE_ROUTINE_ID);
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live one writes only the live cycle and its days`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(mixedLiveAndDeletedBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(parentWriteIds(harness, "training_cycles"), [LIVE_CYCLE_ID]);
+  assertEquals(
+    upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
+    [LIVE_CYCLE_ID],
+  );
+  // Orphan-day cleanup only touches the live cycle.
+  assertEquals(
+    harness.adminWriteArgs.filter((call) =>
+      call.table === "cycle_days" && call.method === "delete"
+    ).length,
+    1,
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle day pointing at another user's routine is still refused`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      routines: {
+        data: [{ id: EXISTING_ROUTINE_ID, user_id: OTHER_USER_ID }],
+        error: null,
+      },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody([{
+    id: TOMB_CYCLE_DAY_2_ID,
+    cycleId: TOMB_CYCLE_ID,
+    dayNumber: 2,
+    dayType: "workout",
+    routineId: EXISTING_ROUTINE_ID,
+  }]);
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 400);
+  assertEquals(
+    body.error,
+    `Refused: routines parent ${EXISTING_ROUTINE_ID} belongs to another user`,
+  );
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently with the push is deleted again and its day reference cleared`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    // The lookup saw no tombstone, but one appears for the routine before the
+    // post-write race check.
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "routine"
+          ? [{ entity_id: TOMB_ROUTINE_ID }]
+          : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [],
+  });
+  assertEquals(body.routinesUpserted, 0);
+  const routineDeletes = harness.adminWriteArgs.filter((call) =>
+    call.table === "routines" && call.method === "delete"
+  );
+  assertEquals(routineDeletes.length, 1);
+  const days = upsertedRows(harness, "cycle_days");
+  assertEquals(days.length, 1);
+  assertEquals(days[0].routine_id, null);
+  // Cycle kept: no cycle tombstone appeared.
+  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently with the push is deleted again`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [{ entity_id: TOMB_CYCLE_ID }] : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(body.cyclesUpserted, 0);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ).length,
+    1,
+  );
+});
+
 Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(validPushBody()));
@@ -3679,6 +3899,63 @@ Deno.test({
         .eq("id", ids.cycleId);
       if (cycles.error) throw new Error("cycle audit failed");
       assertEquals(cycles.count, 0);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) a deleted routine pushed beside a live routine writes only the live one's exercises`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const deleted = freshTombstoneIds();
+      const live = freshTombstoneIds();
+      await seedRoutineAndCycle(fixture, deleted);
+      await portalDeleteRoutine(fixture, deleted.routineId);
+
+      const deletedBody = tombstoneMobilePushBody(deleted, {
+        includeRoutine: true,
+      });
+      const liveBody = tombstoneMobilePushBody(live, { includeRoutine: true });
+      const requestBody = {
+        ...deletedBody,
+        routines: [
+          ...(deletedBody.routines as unknown[]),
+          ...(liveBody.routines as unknown[]),
+        ],
+        cycles: [
+          ...(deletedBody.cycles as unknown[]),
+          // Only one active cycle is allowed per user.
+          ...(liveBody.cycles as Record<string, unknown>[]).map((cycle) => ({
+            ...cycle,
+            status: "draft",
+          })),
+        ],
+      };
+      const response = await handler(requestFromBody(requestBody));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(body.skippedDeleted, {
+        routines: [deleted.routineId],
+        cycles: [],
+      });
+      assertEquals(await routineCount(fixture, deleted.routineId), 0);
+      assertEquals(await routineCount(fixture, live.routineId), 1);
+      const exercises = await fixture.admin.from("routine_exercises")
+        .select("id")
+        .in("id", [deleted.exerciseId, live.exerciseId]);
+      if (exercises.error) throw new Error("exercise audit failed");
+      assertEquals(exercises.data, [{ id: live.exerciseId }]);
+      assertEquals(await storedCycleDayRoutineId(fixture, deleted.cycleId), null);
+      assertEquals(
+        await storedCycleDayRoutineId(fixture, live.cycleId),
+        live.routineId,
+      );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
     }

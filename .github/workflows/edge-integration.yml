@@ -14,6 +14,11 @@ name: Edge Integration (real SQL)
 # job skipped via `if:` reports as skipped, which satisfies a required status
 # check. "Edge integration tests against local Supabase" can therefore be made
 # a required check without blocking unrelated PRs.
+#
+# The tests run twice on the same stack, once per SYNC_LWW_ENABLED value (the
+# flag's prod value is unknown and the push handler has a separate write path
+# for each). Two steps in one job rather than a matrix keep a single check
+# name, which a job skipped via `if:` reports reliably.
 
 on:
   pull_request:
@@ -111,7 +116,15 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=$service_key"
           } >> "$GITHUB_ENV"
 
-      - name: Run real-SQL Edge integration tests
+      - name: Run real-SQL Edge integration tests (SYNC_LWW_ENABLED=false)
+        env:
+          SYNC_LWW_ENABLED: "false"
+        run: npm run test:edge:integration
+
+      - name: Run real-SQL Edge integration tests (SYNC_LWW_ENABLED=true)
+        if: ${{ !cancelled() }}
+        env:
+          SYNC_LWW_ENABLED: "true"
         run: npm run test:edge:integration
 
       - name: Stop stack

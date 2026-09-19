@@ -82,6 +82,9 @@ interface LwwUpsertRow {
   server_updated_at: string | null;
 }
 
+/** Look-back for the post-write tombstone race check (Edge/DB clock skew). */
+const TOMBSTONE_RACE_MARGIN_MS = 5_000;
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -1571,6 +1574,50 @@ async function mobileSyncPushHandler(
     // Runs for both SYNC_LWW_ENABLED values, before any routine/cycle write.
     // =========================================================================
     const skippedDeleted = { routines: [] as string[], cycles: [] as string[] };
+    // Race guard (R-4): a portal delete that lands between this lookup and
+    // the upsert below would be undone by the upsert, and
+    // get_sync_tombstones hides tombstones of rows that are live again, so
+    // the delete would be lost for good. After the writes, any written id
+    // that gained a tombstone since just before the lookup is deleted again
+    // (the trigger refreshes its tombstone). The margin absorbs Edge/DB clock
+    // skew; it could only misfire for a same-user delete + re-create of the
+    // same id inside that margin.
+    const tombstoneRaceSince = new Date(Date.now() - TOMBSTONE_RACE_MARGIN_MS).toISOString();
+    const reDeleteRacedTombstones = async (
+      entity: 'routine' | 'cycle',
+      table: 'routines' | 'training_cycles',
+      ids: string[],
+    ): Promise<string[]> => {
+      const unique = [...new Set(ids)];
+      const raced = new Set<string>();
+      const chunkSize = 100;
+      for (let i = 0; i < unique.length; i += chunkSize) {
+        const chunk = unique.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from('sync_tombstones')
+          .select('entity_id')
+          .eq('user_id', userId)
+          .eq('entity', entity)
+          .gte('deleted_at', tombstoneRaceSince)
+          .in('entity_id', chunk);
+        if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
+        for (const row of (data ?? []) as Array<{ entity_id?: unknown }>) {
+          if (typeof row.entity_id === 'string') raced.add(row.entity_id);
+        }
+      }
+      if (raced.size === 0) return [];
+      const racedIds = [...raced];
+      const { error: delErr } = await supabase
+        .from(table)
+        .delete()
+        .eq('user_id', userId)
+        .in('id', racedIds);
+      if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
+      console.warn(
+        `Re-deleted ${racedIds.length} ${table} row(s) deleted concurrently with this push`,
+      );
+      return racedIds;
+    };
     let liveRoutines = payload.routines ?? [];
     let liveCycles = payload.cycles ?? [];
     if (allRoutineIds.length > 0 || allCycleIds.length > 0) {
@@ -2383,6 +2430,19 @@ async function mobileSyncPushHandler(
           if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
         }
       }
+
+      // R-4 race guard: undo a re-create of a routine deleted meanwhile.
+      const racedRoutineIds = await reDeleteRacedTombstones(
+        'routine',
+        'routines',
+        liveRoutines.map((r) => r.id),
+      );
+      if (racedRoutineIds.length > 0) {
+        const raced = new Set(racedRoutineIds);
+        liveRoutines = liveRoutines.filter((r) => !raced.has(r.id));
+        skippedDeleted.routines.push(...racedRoutineIds);
+        routinesUpserted = Math.max(0, routinesUpserted - racedRoutineIds.length);
+      }
     }
 
     // =========================================================================
@@ -2540,10 +2600,24 @@ async function mobileSyncPushHandler(
         ...liveRoutines.map((r) => r.id),
         ...dayRoutineProbe.validIds,
       ]);
-      const dayRoutineId = (routineId: string | null | undefined): string | null =>
-        routineId && keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)
-          ? routineId
-          : null;
+      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      // Cleared references are logged, never dropped silently (R-3).
+      const clearedDeletedRefs = new Set<string>();
+      const clearedMissingRefs = new Set<string>();
+      const dayRoutineId = (routineId: string | null | undefined): string | null => {
+        if (!routineId) return null;
+        if (keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)) {
+          return routineId;
+        }
+        if (skippedRoutineIds.has(routineId) || deletedInThisPush.has(routineId)) {
+          clearedDeletedRefs.add(routineId);
+        } else {
+          // Not in this push and not on the server for this user (deleted
+          // before tombstones existed, or never pushed from the device).
+          clearedMissingRefs.add(routineId);
+        }
+        return null;
+      };
 
       // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
       // When LWW is enabled, skip days whose parent cycle was rejected.
@@ -2566,6 +2640,15 @@ async function mobileSyncPushHandler(
             notes: d.notes,
           })),
         );
+      if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
+        console.warn(
+          `cycle_days routine references set to NULL: ${clearedDeletedRefs.size} deleted ` +
+            `routine(s), ${clearedMissingRefs.size} missing routine(s)` +
+            (clearedMissingRefs.size > 0
+              ? ` (missing: ${[...clearedMissingRefs].slice(0, 5).join(', ')})`
+              : ''),
+        );
+      }
 
       if (dayRows.length > 0) {
         const { error: dayErr } = await supabase
@@ -2585,6 +2668,17 @@ async function mobileSyncPushHandler(
           .eq('cycle_id', cycle.id)
           .gt('day_number', maxDayNumber);
         if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
+      }
+
+      // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      const racedCycleIds = await reDeleteRacedTombstones(
+        'cycle',
+        'training_cycles',
+        liveCycles.map((c) => c.id),
+      );
+      if (racedCycleIds.length > 0) {
+        skippedDeleted.cycles.push(...racedCycleIds);
+        cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
       }
     }
 
