@@ -441,4 +441,18 @@ describe("cycle progression settings wire contract", () => {
 			}),
 		).toEqual({ type: "percentage", amount: 3, frequency: 1 });
 	});
+
+	it("prefers mobile keys a phone pushed over stale portal keys", () => {
+		// Portal set 3% every cycle; the phone later changed it to 1.5% every
+		// 2 cycles (the push rewrote only the mobile keys).
+		expect(
+			readCycleProgressionSettings({
+				type: "percentage",
+				amount: "3",
+				frequency: "1",
+				frequencyCycles: "2",
+				weightIncreasePercent: "1.5",
+			}),
+		).toEqual({ type: "percentage", amount: 1.5, frequency: 2 });
+	});
 });

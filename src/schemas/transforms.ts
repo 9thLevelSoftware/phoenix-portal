@@ -493,17 +493,20 @@ export function readCycleProgressionSettings(
 		out.trigger = ps.trigger;
 	}
 
-	const amount = finiteNumber(ps.amount);
+	// Mobile keys win over portal keys: a phone push rewrites the mobile keys
+	// and leaves the portal ones alone, so the mobile key is never staler.
+	// Preferring it keeps a later portal save from reverting a phone edit.
 	const weightIncreasePercent = finiteNumber(ps.weightIncreasePercent);
-	if (amount !== undefined) {
-		out.amount = amount;
-	} else if (weightIncreasePercent !== undefined) {
+	const amount = finiteNumber(ps.amount);
+	if (weightIncreasePercent !== undefined) {
 		out.amount = weightIncreasePercent;
-		out.type ??= "percentage";
+		out.type = "percentage";
+	} else if (amount !== undefined) {
+		out.amount = amount;
 	}
 
 	const frequency =
-		finiteNumber(ps.frequency) ?? finiteNumber(ps.frequencyCycles);
+		finiteNumber(ps.frequencyCycles) ?? finiteNumber(ps.frequency);
 	if (frequency !== undefined && frequency >= 1) out.frequency = frequency;
 
 	const upper = finiteNumber(ps.upperIncrement);
