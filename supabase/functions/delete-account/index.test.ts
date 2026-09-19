@@ -414,8 +414,15 @@ Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-del
   for (const target of EXPLICIT_PURGE_TARGETS) {
     const first = indexOfCall(state, deletesTable(target.table));
     const last = lastIndexOfCall(state, deletesTable(target.table));
-    assert(first >= 0 && first < deleteUserAt, `${target.table} purged before deleteUser`);
+    if (target.postOnly) {
+      assert(first > deleteUserAt, `${target.table} untouched until deleteUser succeeded`);
+    } else {
+      assert(first >= 0 && first < deleteUserAt, `${target.table} purged before deleteUser`);
+    }
     assert(last > deleteUserAt, `${target.table} swept again after deleteUser`);
+  }
+  for (const table of ["sync_tombstones", "subscription_events"]) {
+    assert(EXPLICIT_PURGE_TARGETS.some((t) => t.table === table && t.postOnly), table);
   }
   // Tables the cascade writes into are cleaned after the user is gone.
   assert(lastIndexOfCall(state, deletesTable("sync_tombstones")) > deleteUserAt);
@@ -427,7 +434,10 @@ Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-del
 Deno.test("delete-account: a table that does not exist here is skipped, any other delete error aborts", async () => {
   const missing = fakeState({
     deleteErrors: {
-      goal_snapshots: { code: "PGRST205", message: "Could not find the table 'public.goal_snapshots'" },
+      paddle_webhook_events: {
+        code: "PGRST205",
+        message: "Could not find the table 'public.paddle_webhook_events'",
+      },
       telemetry_analysis: { code: "42P01", message: 'relation "telemetry_analysis" does not exist' },
     },
   });
@@ -453,6 +463,10 @@ Deno.test("delete-account: deleteUser failing after a Paddle cancel reports the 
   assertEquals(res.status, 500);
   assertEquals((await res.json()).code, "billing_canceled_account_delete_failed");
   assertEquals(state.deletionRequest?.status, "pending");
+  // The surviving user keeps their tombstones, billing audit and prod data.
+  for (const target of EXPLICIT_PURGE_TARGETS.filter((t) => t.postOnly)) {
+    assertEquals(indexOfCall(state, deletesTable(target.table)), -1, target.table);
+  }
   assertEquals(state.avatars, ["avatar.png"]);
 });
 

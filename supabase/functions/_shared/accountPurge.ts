@@ -11,11 +11,12 @@
  *      `canceled`. This covers `paused` and every other state (F-064). Any
  *      failure, including a missing PADDLE_API_KEY, aborts before anything
  *      is deleted.
- *   2. Explicit rows: `oauth_tokens` and the user rows that nothing removes
- *      when `auth.users` goes away. Any failure other than "table/column does
- *      not exist here" aborts, with the user still intact.
+ *   2. Explicit rows that are harmless to lose if the purge then aborts:
+ *      `oauth_tokens`, `rate_limit_tracking`, `paddle_webhook_events`. Any
+ *      failure other than "table/column does not exist here" aborts, with the
+ *      user still intact. Targets marked `postOnly` are not touched here.
  *   3. `auth.admin.deleteUser`. A user that is already gone counts as done.
- *   3a. Explicit rows again, after the user is gone. The cascade itself writes
+ *   3a. Every explicit table, after the user is gone. The cascade itself writes
  *      rows into FK-less tables: the prod `subscriptions` audit trigger
  *      inserts a DELETE row into `subscription_events`, and the
  *      `sync_tombstones` trigger would record the cascaded routine/cycle
@@ -36,6 +37,13 @@ export interface ExplicitPurgeTarget {
    * database (a PostgREST JSON path filter).
    */
   fallbackColumn?: string;
+  /**
+   * Deleted only after `deleteUser` succeeds, never in the abortable pre-pass,
+   * because losing these rows while the user survives an aborted purge would
+   * hurt them: tombstones (a stale phone would resurrect deleted routines),
+   * the billing audit trail, and user data that already cascades in prod.
+   */
+  postOnly?: true;
 }
 
 /**
@@ -53,17 +61,21 @@ export interface ExplicitPurgeTarget {
 export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
   { table: 'oauth_tokens', column: 'user_id' },
   { table: 'rate_limit_tracking', column: 'user_id' },
-  { table: 'subscription_events', column: 'user_id' },
   {
     table: 'paddle_webhook_events',
     column: 'user_id',
     fallbackColumn: 'payload->data->custom_data->>user_id',
   },
-  { table: 'goal_snapshots', column: 'user_id' },
-  { table: 'overload_suggestions', column: 'user_id' },
-  { table: 'telemetry_analysis', column: 'user_id' },
-  { table: 'wearable_daily_summaries', column: 'user_id' },
-  { table: 'sync_tombstones', column: 'user_id' },
+  // The cascade writes a DELETE row here (prod subscriptions audit trigger).
+  { table: 'subscription_events', column: 'user_id', postOnly: true },
+  // R-6, R-30: after the user is deleted (PR 16's trigger guard is the
+  // primary defence; this is the safety net).
+  { table: 'sync_tombstones', column: 'user_id', postOnly: true },
+  // FK ON DELETE CASCADE in prod (prod-evidence.md); swept for DBs without it.
+  { table: 'goal_snapshots', column: 'user_id', postOnly: true },
+  { table: 'overload_suggestions', column: 'user_id', postOnly: true },
+  { table: 'telemetry_analysis', column: 'user_id', postOnly: true },
+  { table: 'wearable_daily_summaries', column: 'user_id', postOnly: true },
 ];
 
 /**
@@ -162,15 +174,18 @@ async function deleteWhere(
 }
 
 /**
- * Deletes the user's rows from every explicit table. Returns the tables that
- * failed with an error other than "does not exist here".
+ * Deletes the user's rows from the explicit tables of `phase` (`pre`: all but
+ * `postOnly` targets; `post`: all). Returns the tables that failed with an
+ * error other than "does not exist here".
  */
 async function purgeExplicitRows(
   admin: SupabaseClient,
   userId: string,
+  phase: 'pre' | 'post',
 ): Promise<{ table: string; detail: string }[]> {
   const failures: { table: string; detail: string }[] = [];
   for (const target of EXPLICIT_PURGE_TARGETS) {
+    if (phase === 'pre' && target.postOnly) continue;
     let outcome = await deleteWhere(admin, target.table, target.column, userId);
     if (outcome === 'missing_column' && target.fallbackColumn) {
       outcome = await deleteWhere(admin, target.table, target.fallbackColumn, userId);
@@ -332,7 +347,7 @@ export async function purgeUser(
   const billingCancelled = billing.cancelled;
 
   // 2. Explicit rows (abort point: the user still exists).
-  const preFailures = await purgeExplicitRows(admin, userId);
+  const preFailures = await purgeExplicitRows(admin, userId, 'pre');
   if (preFailures.length > 0) {
     const detail = preFailures.map((f) => `${f.table}: ${f.detail}`).join('; ');
     console.error('[PURGE] explicit row purge failed; user left intact', { user_id: userId, detail });
@@ -346,7 +361,7 @@ export async function purgeUser(
   }
 
   // 3a. Rows the cascade itself wrote into FK-less tables.
-  const postFailures = await purgeExplicitRows(admin, userId);
+  const postFailures = await purgeExplicitRows(admin, userId, 'post');
   if (postFailures.length > 0) {
     console.error('[DELETION_ALERT] post_delete_purge_failed', {
       user_id: userId,
