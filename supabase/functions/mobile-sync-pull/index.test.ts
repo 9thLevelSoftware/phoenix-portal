@@ -952,6 +952,8 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
     "badges",
     "customExercises",
     "cycles",
+    "deletedCycleIds",
+    "deletedRoutineIds",
     "externalActivities",
     "externalActivitiesHasMore",
     "gamificationStats",
@@ -982,6 +984,8 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
   assertEquals(body.localProfiles, []);
   assertEquals(body.externalActivities, []);
   assertEquals(body.customExercises, []);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
 });
 
 for (
@@ -1067,6 +1071,165 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
+
+// ---------------------------------------------------------------------------
+// KD-4: routine/cycle tombstones on pull.
+// ---------------------------------------------------------------------------
+
+const TOMB_ROUTINE_A = "00000000-0000-4000-8000-000000000160";
+const TOMB_ROUTINE_B = "00000000-0000-4000-8000-000000000161";
+const TOMB_CYCLE_A = "00000000-0000-4000-8000-000000000162";
+
+function tombstoneRpcImpl(
+  rows: Array<{ entity: string; entity_id: string }>,
+  error: unknown = null,
+): AdminOptions["rpcImpl"] {
+  return (name, args) => {
+    if (name !== "get_sync_tombstones") return undefined;
+    if (error) return { data: null, error };
+    const ids = args.p_ids as string[] | null;
+    return {
+      data: rows
+        .filter((row) => row.entity === args.p_entity)
+        .filter((row) => ids === null || ids.includes(row.entity_id))
+        .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
+      error: null,
+    };
+  };
+}
+
+function tombstoneCalls(harness: PullHarness): Array<Record<string, unknown>> {
+  return harness.adminCalls
+    .filter((call) => call.kind === "rpc" && call.name === "get_sync_tombstones")
+    .map((call) => call.args ?? {});
+}
+
+Deno.test("tombstones: shipping client (lastSync 0 + known ids) gets tombstoned ∩ known on the first page", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+      { entity: "cycle", entity_id: TOMB_CYCLE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A, TOMB_ROUTINE_B],
+      cycleIds: [TOMB_CYCLE_A],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_A]);
+  assertEquals(body.deletedCycleIds, [TOMB_CYCLE_A]);
+  assertEquals(tombstoneCalls(harness), [{
+    p_user_id: VALID_USER_ID,
+    p_entity: "routine",
+    p_ids: [TOMB_ROUTINE_A, TOMB_ROUTINE_B],
+    p_since: null,
+  }, {
+    p_user_id: VALID_USER_ID,
+    p_entity: "cycle",
+    p_ids: [TOMB_CYCLE_A],
+    p_since: null,
+  }]);
+});
+
+Deno.test("tombstones: real lastSync without known ids gets tombstones since lastSync minus the 2-minute overlap", async () => {
+  const lastSync = 1_784_000_000_000;
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_B },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    deviceId: "test-device",
+    lastSync,
+    profileId: VALID_PROFILE_ID,
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_B]);
+  assertEquals(body.deletedCycleIds, []);
+  // Looks back 2 minutes past lastSync to absorb device/server clock skew.
+  const since = new Date(lastSync - 2 * 60 * 1000).toISOString();
+  assertEquals(tombstoneCalls(harness), [{
+    p_user_id: VALID_USER_ID,
+    p_entity: "routine",
+    p_ids: null,
+    p_since: since,
+  }, {
+    p_user_id: VALID_USER_ID,
+    p_entity: "cycle",
+    p_ids: null,
+    p_since: since,
+  }]);
+});
+
+Deno.test("tombstones: lastSync 0 without known ids asks for nothing", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
+  assertEquals(tombstoneCalls(harness), []);
+});
+
+Deno.test("tombstones: later pages carry empty delete lists and make no lookup", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    cursor: validLaterCursor(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A],
+      cycleIds: [],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
+  assertEquals(tombstoneCalls(harness), []);
+});
+
+Deno.test("tombstones: a failed lookup fails the whole pull with a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([], { code: "57014", message: "timeout" }),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A],
+      cycleIds: [],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 503);
+  assertEquals(body.error, "Failed to fetch routine tombstones");
+});
 
 interface LocalPullFixture {
   admin: SupabaseClient;
@@ -1329,6 +1492,110 @@ Deno.test({
         [fixture.ownerId, fixture.otherId],
       );
       await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const routineId = crypto.randomUUID();
+      const liveRoutineId = crypto.randomUUID();
+      const cycleId = crypto.randomUUID();
+      const routines = await fixture.admin.from("routines").insert([
+        { id: routineId, user_id: fixture.ownerId, name: "Deleted routine" },
+        { id: liveRoutineId, user_id: fixture.ownerId, name: "Live routine" },
+      ]);
+      if (routines.error) throw new Error("routine fixture failed");
+      const cycles = await fixture.admin.from("training_cycles").insert({
+        id: cycleId,
+        user_id: fixture.ownerId,
+        name: "Deleted cycle",
+      });
+      if (cycles.error) throw new Error("cycle fixture failed");
+      const pullStartedAt = Date.now() - 60_000;
+      const routineDelete = await fixture.admin.from("routines").delete().eq(
+        "id",
+        routineId,
+      );
+      if (routineDelete.error) throw new Error("routine delete failed");
+      const cycleDelete = await fixture.admin.from("training_cycles").delete()
+        .eq("id", cycleId);
+      if (cycleDelete.error) throw new Error("cycle delete failed");
+
+      const knownIds = {
+        sessionIds: [],
+        routineIds: [routineId, liveRoutineId],
+        cycleIds: [cycleId],
+        badgeIds: [],
+        personalRecordIds: [],
+      };
+      const ownerLogs: unknown[][] = [];
+      const ownerHandler = realPullHandler(fixture, fixture.ownerId, ownerLogs);
+
+      // Shipping client: lastSync 0 plus the ids it holds.
+      const first = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const firstBody = await json(first);
+      assertEquals(first.status, 200, JSON.stringify(firstBody));
+      assertEquals(firstBody.deletedRoutineIds, [routineId]);
+      assertEquals(firstBody.deletedCycleIds, [cycleId]);
+
+      // Later pages never repeat the lists.
+      const later = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+        cursor: validLaterCursor(),
+      }));
+      const laterBody = await json(later);
+      assertEquals(later.status, 200);
+      assertEquals(laterBody.deletedRoutineIds, []);
+      assertEquals(laterBody.deletedCycleIds, []);
+
+      // Real-lastSync client without known ids: tombstones since lastSync.
+      const since = await ownerHandler(requestFromBody({
+        deviceId: "test-device",
+        lastSync: pullStartedAt,
+        profileId: fixture.ownerProfileId,
+      }));
+      const sinceBody = await json(since);
+      assertEquals(since.status, 200, JSON.stringify(sinceBody));
+      assertEquals(sinceBody.deletedRoutineIds, [routineId]);
+      assertEquals(sinceBody.deletedCycleIds, [cycleId]);
+      assertEquals(ownerLogs, []);
+
+      // Another user naming the same ids learns nothing.
+      const otherHandler = realPullHandler(fixture, fixture.otherId, []);
+      const cross = await otherHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.otherProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const crossBody = await json(cross);
+      assertEquals(cross.status, 200);
+      assertEquals(crossBody.deletedRoutineIds, []);
+      assertEquals(crossBody.deletedCycleIds, []);
+    } finally {
+      const userIds = [fixture.ownerId, fixture.otherId];
+      await fixture.admin.from("routines").delete().in("user_id", userIds);
+      await deleteLocalPullFixtureRows(fixture.admin, userIds);
+      const tombstones = await fixture.admin.from("sync_tombstones").delete()
+        .in("user_id", userIds);
+      if (tombstones.error) throw new Error("tombstone cleanup failed");
+      await assertLocalPullFixtureClean(fixture);
+      const audit = await fixture.admin.from("sync_tombstones")
+        .select("user_id", { count: "exact", head: true })
+        .in("user_id", userIds);
+      if (audit.error) throw new Error("tombstone cleanup audit failed");
+      assertEquals(audit.count, 0);
     }
   },
 });
