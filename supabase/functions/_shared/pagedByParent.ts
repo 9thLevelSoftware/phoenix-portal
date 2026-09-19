@@ -10,16 +10,21 @@
  *   4. Chunk complete iff `length <= PAGE` (exact last page of PAGE included).
  *   5. HTTP 200 when every chunk completes.
  *   6. Overflow only when a *single* parent still returns PAGE+1 and further
- *      Range/offset for that parent is refused.
+ *      Range/offset for that parent is refused. A failed multi-parent request
+ *      is retried by halving the parent list (about 2·log2(n) requests to
+ *      isolate one bad parent), not one request per parent.
  *   7. Up to CHUNK_CONCURRENCY chunks are in flight at once. Rows come back
- *      in chunk order; any chunk failure fails the whole fetch (fail-closed),
- *      reporting the first failing chunk in chunk order.
+ *      in chunk order; any chunk failure (returned or thrown) fails the whole
+ *      fetch (fail-closed). After a failure no new request is started: not
+ *      new chunks, not further pages or halves of chunks already running.
+ *      The failure reported is the lowest-index chunk that recorded one.
  */
 
 export const CHILD_PAGE_SIZE = 500;
 /**
- * 100 UUIDs as `col=in.(...)` is about 3.7 KB of query string, well under the
- * ~8 KB PostgREST/gateway URL budget.
+ * 100 UUIDs as `col=in.(...)`, percent-encoded the way postgrest-js sends it
+ * (URLSearchParams: `,` `(` `)` become 3 bytes each), is about 3.9 KB of query
+ * string, well under the ~8 KB PostgREST/gateway URL budget.
  */
 export const PARENT_ID_CHUNK_SIZE = 100;
 export const CHUNK_CONCURRENCY = 4;
@@ -102,11 +107,13 @@ async function requestPage(
   return await query;
 }
 
+/** `null` means the fetch was stopped because another chunk already failed. */
 async function fetchOneChunk(
   supabase: PagedFromClient,
   options: FetchByParentIdsOptions,
   parentIds: readonly string[],
-): Promise<PagedFetchResult> {
+  stopped: () => boolean,
+): Promise<PagedFetchResult | null> {
   if (parentIds.length === 0) {
     return { ok: true, rows: [] };
   }
@@ -116,6 +123,7 @@ async function fetchOneChunk(
   const collected: Record<string, unknown>[] = [];
 
   while (true) {
+    if (stopped()) return null;
     const { data, error } = await requestPage(
       supabase,
       options,
@@ -125,11 +133,14 @@ async function fetchOneChunk(
 
     if (error) {
       if (parentIds.length > 1) {
+        // Halve and retry each half from the start, so one bad parent in a
+        // 100-id chunk costs about 2·log2(100) ≈ 14 requests, not 100.
+        const middle = Math.ceil(parentIds.length / 2);
         const merged: Record<string, unknown>[] = [];
-        for (const parentId of parentIds) {
-          const single = await fetchOneChunk(supabase, options, [parentId]);
-          if (!single.ok) return single;
-          merged.push(...single.rows);
+        for (const half of [parentIds.slice(0, middle), parentIds.slice(middle)]) {
+          const result = await fetchOneChunk(supabase, options, half, stopped);
+          if (result === null || !result.ok) return result;
+          merged.push(...result.rows);
         }
         return { ok: true, rows: merged };
       }
@@ -173,10 +184,18 @@ export async function fetchAllByParentIds(
   const results: (PagedFetchResult | undefined)[] = new Array(chunks.length);
   let next = 0;
   let failed = false;
+  const stopped = () => failed;
   const worker = async () => {
     while (!failed && next < chunks.length) {
       const index = next++;
-      const result = await fetchOneChunk(supabase, options, chunks[index]);
+      let result: PagedFetchResult | null;
+      try {
+        result = await fetchOneChunk(supabase, options, chunks[index], stopped);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+      if (result === null) return;
       results[index] = result;
       if (!result.ok) failed = true;
     }
@@ -190,8 +209,9 @@ export async function fetchAllByParentIds(
 
   const collected: Record<string, unknown>[] = [];
   for (const result of results) {
-    // Chunks not started because another chunk failed stay undefined; that
-    // failed chunk is still in `results`, so the loop returns it.
+    // Chunks not started or stopped because another chunk failed stay
+    // undefined; that failed chunk is still in `results`, so the loop
+    // returns it.
     if (result === undefined) continue;
     if (!result.ok) return result;
     collected.push(...result.rows);

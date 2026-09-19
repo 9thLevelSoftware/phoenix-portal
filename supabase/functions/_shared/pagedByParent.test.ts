@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   CHILD_PAGE_SIZE,
   CHUNK_CONCURRENCY,
@@ -12,6 +12,8 @@ import {
 const MAX_ROWS = 1000;
 /** Conservative PostgREST/gateway URL budget for one GET. */
 const URL_BUDGET_BYTES = 8000;
+/** Room left for the host, path and select/order/offset/limit params. */
+const URL_OVERHEAD_BYTES = 1500;
 
 type Row = Record<string, unknown>;
 
@@ -27,10 +29,20 @@ type Request = {
  * PostgREST. Each request resolves on a later macrotask so concurrent chunks
  * genuinely overlap.
  */
+type TableOptions = {
+  failFor?: (parentIds: string[]) => PostgrestErrorLike | null;
+  throwFor?: (parentIds: string[]) => boolean;
+  delayFor?: (parentIds: string[]) => number;
+};
+
 function tableClient(
   rows: Row[],
   parentColumn: string,
-  failFor: (parentIds: string[]) => PostgrestErrorLike | null = () => null,
+  {
+    failFor = () => null,
+    throwFor = () => false,
+    delayFor = () => 1,
+  }: TableOptions = {},
 ) {
   const requests: Request[] = [];
   let inFlight = 0;
@@ -59,9 +71,10 @@ function tableClient(
           maxInFlight = Math.max(maxInFlight, inFlight);
           const request: Request = { parentIds, range, returned: 0 };
           requests.push(request);
-          return new Promise((done) => setTimeout(done, 1))
+          return new Promise((done) => setTimeout(done, delayFor(parentIds)))
             .then(() => {
               inFlight -= 1;
+              if (throwFor(parentIds)) throw new Error("network down");
               const error = failFor(parentIds);
               if (error) return { data: null, error };
               const wanted = new Set(parentIds);
@@ -105,10 +118,13 @@ function childRows(parentCount: number, perParent: number): Row[] {
 
 Deno.test("250 parents → 3 chunks, every child returned, no truncation", async () => {
   assertEquals(PARENT_ID_CHUNK_SIZE, 100);
+  // Every page must stay under hosted max_rows, or the mock (like PostgREST)
+  // silently truncates it.
+  assert(CHILD_PAGE_SIZE + 1 < MAX_ROWS);
   const parents = Array.from({ length: 250 }, (_, i) => parentId(i));
-  // 250 × 9 = 2,250 children: an unpaged `.in()` would be truncated to 1,000,
-  // and each 100-parent chunk (900 rows) needs a second PAGE+1 page.
-  const rows = childRows(250, 9);
+  // 250 × 12 = 3,000 children. A full 100-parent chunk holds 1,200 rows, more
+  // than max_rows, so an unpaged or oversized page would lose rows.
+  const rows = childRows(250, 12);
   const table = tableClient(rows, "session_id");
 
   const result = await fetchAllByParentIds(table.client, {
@@ -135,10 +151,14 @@ Deno.test("250 parents → 3 chunks, every child returned, no truncation", async
   for (const request of table.requests) {
     assert(request.returned <= CHILD_PAGE_SIZE + 1);
     assert(request.returned < MAX_ROWS, "a page must never reach max_rows");
-    const query = `session_id=in.(${request.parentIds.join(",")})`;
+    // postgrest-js appends filters via URL.searchParams, which percent-encodes
+    // `,` `(` `)`; measure the bytes actually sent.
+    const query = new URLSearchParams({
+      session_id: `in.(${request.parentIds.join(",")})`,
+    }).toString();
     assert(
-      encodeURI(query).length < URL_BUDGET_BYTES / 2,
-      `chunk URL ${encodeURI(query).length} bytes`,
+      query.length < URL_BUDGET_BYTES - URL_OVERHEAD_BYTES,
+      `chunk filter ${query.length} bytes`,
     );
   }
 });
@@ -164,11 +184,9 @@ Deno.test("chunks run with bounded concurrency", async () => {
 Deno.test("one failing chunk fails the whole fetch (fail-closed)", async () => {
   const parents = Array.from({ length: 250 }, (_, i) => parentId(i));
   const failing = parentId(150);
-  const table = tableClient(
-    childRows(250, 1),
-    "session_id",
-    (ids) => ids.includes(failing) ? { code: "57014", message: "canceling statement" } : null,
-  );
+  const table = tableClient(childRows(250, 1), "session_id", {
+    failFor: (ids) => ids.includes(failing) ? { code: "57014", message: "canceling statement" } : null,
+  });
 
   const result = await fetchAllByParentIds(table.client, {
     table: "exercises",
@@ -223,4 +241,110 @@ Deno.test("a single overflowing parent in a 100-id chunk still reports overflow"
   assertEquals(result.ok, false);
   assert(!result.ok && result.kind === "overflow");
   assertEquals(result.parentId, heavy);
+});
+
+/** Chunk index of a request, from the numeric suffix of its first parent id. */
+function chunkOf(parentIds: readonly string[]): number {
+  return Math.floor(Number(parentIds[0].slice(-12)) / PARENT_ID_CHUNK_SIZE);
+}
+
+function startedChunks(requests: Request[]): number[] {
+  return [...new Set(requests.map((r) => chunkOf(r.parentIds)))].sort((a, b) => a - b);
+}
+
+Deno.test("a failed chunk is bisected, not retried one parent at a time", async () => {
+  const parents = Array.from({ length: 100 }, (_, i) => parentId(i));
+  const bad = parentId(37);
+  const table = tableClient(childRows(100, 1), "session_id", {
+    failFor: (ids) => ids.includes(bad) ? { code: "57014", message: "timeout" } : null,
+  });
+
+  const result = await fetchAllByParentIds(table.client, {
+    table: "exercises",
+    parentColumn: "session_id",
+    parentIds: parents,
+    entity: "session exercises",
+  });
+
+  assert(!result.ok && result.kind === "error");
+  // 100 → 50 → 25 → 13 → 7 → 4 → 2 → 1: at most 2 requests per level.
+  assert(table.requests.length <= 2 * 8, `${table.requests.length} requests`);
+  assertEquals(table.requests.at(-1)?.parentIds, [bad]);
+});
+
+Deno.test("after a failure no new chunk starts and the failing chunk's error is returned", async () => {
+  const parents = Array.from({ length: 1000 }, (_, i) => parentId(i));
+  // Chunk 1 fails fast (and keeps failing while bisected); chunks 0, 2 and 3
+  // are still in flight when it does.
+  const table = tableClient(childRows(1000, 1), "session_id", {
+    failFor: (ids) => chunkOf(ids) === 1 ? { code: "57014", message: "timeout" } : null,
+    delayFor: (ids) => chunkOf(ids) === 1 ? 0 : 30,
+  });
+
+  const result = await fetchAllByParentIds(table.client, {
+    table: "exercises",
+    parentColumn: "session_id",
+    parentIds: parents,
+    entity: "session exercises",
+  });
+
+  assert(!result.ok && result.kind === "error");
+  assertEquals(result.error.code, "57014");
+  assertEquals(startedChunks(table.requests), [0, 1, 2, 3]);
+});
+
+Deno.test("a failure halts a bisection already running in another chunk", async () => {
+  const parents = Array.from({ length: 300 }, (_, i) => parentId(i));
+  const heavy = parentId(250); // in chunk 2
+  let chunk2Requests = 0;
+  const table = tableClient(childRows(300, 1), "session_id", {
+    failFor: (ids) =>
+      chunkOf(ids) === 1 || ids.includes(heavy)
+        ? { code: "57014", message: "timeout" }
+        : null,
+    delayFor: (ids) => {
+      if (chunkOf(ids) === 1) return 2;
+      if (chunkOf(ids) === 2) {
+        chunk2Requests += 1;
+        // Chunk 2's first request fails fast; its bisection steps are slow.
+        return chunk2Requests === 1 ? 1 : 40;
+      }
+      return 1;
+    },
+  });
+
+  const result = await fetchAllByParentIds(table.client, {
+    table: "exercises",
+    parentColumn: "session_id",
+    parentIds: parents,
+    entity: "session exercises",
+  });
+
+  assert(!result.ok && result.kind === "error");
+  // Chunk 1 decided the result while chunk 2's first half was in flight, so
+  // chunk 2 made no further requests (unstopped it would make ~14).
+  assertEquals(chunk2Requests, 2);
+});
+
+Deno.test("a thrown query stops the other workers from starting chunks", async () => {
+  const parents = Array.from({ length: 1000 }, (_, i) => parentId(i));
+  const table = tableClient(childRows(1000, 1), "session_id", {
+    throwFor: (ids) => chunkOf(ids) === 0,
+    delayFor: (ids) => chunkOf(ids) === 0 ? 0 : 20,
+  });
+
+  await assertRejects(
+    () =>
+      fetchAllByParentIds(table.client, {
+        table: "exercises",
+        parentColumn: "session_id",
+        parentIds: parents,
+        entity: "session exercises",
+      }),
+    Error,
+    "network down",
+  );
+  // Let the chunks still in flight settle, then check nothing new started.
+  await new Promise((done) => setTimeout(done, 100));
+  assertEquals(startedChunks(table.requests), [0, 1, 2, 3]);
 });
