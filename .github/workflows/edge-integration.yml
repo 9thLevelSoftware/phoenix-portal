@@ -3,21 +3,26 @@ name: Edge Integration (real SQL)
 # Runs the Deno Edge tests named "integration: ..." against a fresh local
 # Supabase stack with every migration applied. These tests are `ignore:`d in
 # `npm run test:edge` (no stack there); this job is where they execute.
+# Contract for new real-SQL tests:
+#   supabase/functions/_shared/localIntegrationEnvironment.ts
 #
 # Only the local stack's public demo keys (from `supabase status`) are used.
 # No production secrets are read by this workflow.
+#
+# Required-check safe: pull_request has no `paths:` filter, so the workflow
+# always reports. The `changes` job decides whether the real-SQL job runs; a
+# job skipped via `if:` reports as skipped, which satisfies a required status
+# check. "Edge integration tests against local Supabase" can therefore be made
+# a required check without blocking unrelated PRs.
 
 on:
   pull_request:
-    paths:
-      - "supabase/**"
-      - "scripts/test-edge-functions.mjs"
-      - ".github/workflows/edge-integration.yml"
   push:
     branches: [main]
     paths:
       - "supabase/**"
       - "scripts/test-edge-functions.mjs"
+      - "package.json"
       - ".github/workflows/edge-integration.yml"
 
 permissions:
@@ -28,14 +33,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect Edge integration relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
+          echo "$changed"
+          if grep -Eq '^(supabase/|scripts/test-edge-functions\.mjs$|package\.json$|\.github/workflows/edge-integration\.yml$)' <<<"$changed"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   real-sql:
     name: Edge integration tests against local Supabase
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: 2.2.15
 
