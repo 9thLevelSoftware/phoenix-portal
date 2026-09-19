@@ -829,3 +829,62 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "integration: the owner downloads a listed avatar through the authenticated storage API",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    assert(localIntegrationEnvironment);
+    const env = localIntegrationEnvironment;
+    const admin = createClient(env.url, env.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const suffix = crypto.randomUUID();
+    const password = `pw-${suffix}`;
+    const emails = ["owner", "other"].map((role) => `pr37-${role}-${suffix}@example.invalid`);
+    const userIds: string[] = [];
+    let objectPath: string | null = null;
+    try {
+      for (const email of emails) {
+        const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+        if (created.error || !created.data.user) throw new Error("user creation failed");
+        userIds.push(created.data.user.id);
+      }
+      const [ownerId, otherId] = userIds;
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+      objectPath = `${ownerId}/me.png`;
+      const uploaded = await admin.storage.from("avatars").upload(objectPath, bytes, {
+        contentType: "image/png",
+      });
+      if (uploaded.error) throw new Error(`upload failed: ${uploaded.error.message}`);
+
+      // The export endpoint lists it...
+      const listed = await (await realHandler({ admin, ownerId, otherId }, ownerId)(
+        request({ table: "storage_avatars" }),
+      )).json();
+      assertEquals(listed.rows.map((row: { path: string }) => row.path), [objectPath]);
+
+      // ...and the signed-in owner downloads it through the authenticated
+      // object route, as the SPA export does, under the owner SELECT policy
+      // (20260920007300_avatars_owner_select_policy.sql).
+      const signIn = async (email: string) => {
+        const client = createClient(env.url, env.anonKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw new Error(`sign-in failed: ${error.message}`);
+        return client;
+      };
+      const owner = await signIn(emails[0]);
+      const downloaded = await owner.storage.from("avatars").download(objectPath);
+      if (downloaded.error) throw new Error(`owner download failed: ${downloaded.error.message}`);
+      assertEquals(new Uint8Array(await downloaded.data.arrayBuffer()), bytes);
+      // No cross-user assertion: avatars is a public bucket (anyone can read
+      // an object by its public URL), so it is not a secrecy boundary.
+    } finally {
+      if (objectPath) await admin.storage.from("avatars").remove([objectPath]);
+      for (const id of userIds) await admin.auth.admin.deleteUser(id);
+    }
+  },
+});

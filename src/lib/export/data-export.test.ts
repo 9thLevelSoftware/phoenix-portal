@@ -4,13 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USER_DATA_EXPORT_TABLES } from "../../../supabase/functions/_shared/userDataManifest.ts";
 
 const invoke = vi.fn();
+const storageDownload = vi.fn();
 vi.mock("@/lib/supabase", () => ({
-	supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
+	supabase: {
+		functions: { invoke: (...args: unknown[]) => invoke(...args) },
+		storage: {
+			from: (bucket: string) => ({
+				download: (path: string) => storageDownload(bucket, path),
+			}),
+		},
+	},
 }));
 
 import {
 	buildUserDataExport,
 	cancelUserDataExport,
+	downloadStorageObject,
 	ExportAlreadyRunningError,
 	ExportCancelledError,
 	type ExportCursor,
@@ -320,18 +329,18 @@ describe("buildUserDataExport", () => {
 		).rejects.toThrow("did not advance");
 	});
 
-	it("downloads the avatar objects into files/ and records missing ones", async () => {
-		const downloadFile = vi.fn(async (_bucket: string, path: string) =>
-			path.endsWith("gone.png") ? null : new Blob(["PNGDATA"]),
+	it("downloads every listed avatar object into files/", async () => {
+		const downloadFile = vi.fn(
+			async (_bucket: string, path: string) => new Blob([`PNG:${path}`]),
 		);
-		const { zip, files, missingFiles } = await buildUserDataExport({
+		const { zip, files } = await buildUserDataExport({
 			tables: ["storage_avatars"],
 			downloadFile,
 			requestPage: async (table) => ({
 				table,
 				rows: [
 					{ bucket: "avatars", path: "u1/me.png", size: 7 },
-					{ bucket: "avatars", path: "u1/gone.png", size: 1 },
+					{ bucket: "avatars", path: "u1/old.png", size: 1 },
 				],
 				nextCursor: null,
 			}),
@@ -339,23 +348,55 @@ describe("buildUserDataExport", () => {
 
 		expect(downloadFile.mock.calls.map(([b, p]) => [b, p])).toEqual([
 			["avatars", "u1/me.png"],
-			["avatars", "u1/gone.png"],
+			["avatars", "u1/old.png"],
 		]);
 		expect(await zip.file("files/avatars/me.png")?.async("string")).toBe(
-			"PNGDATA",
+			"PNG:u1/me.png",
+		);
+		expect(await zip.file("files/avatars/old.png")?.async("string")).toBe(
+			"PNG:u1/old.png",
 		);
 		expect(files).toEqual([
 			{ bucket: "avatars", path: "u1/me.png", file: "files/avatars/me.png" },
-		]);
-		expect(missingFiles).toEqual([
-			{ bucket: "avatars", path: "u1/gone.png", file: null },
+			{ bucket: "avatars", path: "u1/old.png", file: "files/avatars/old.png" },
 		]);
 		const manifest = (await readJson(zip, "export-manifest.json")) as {
 			files: unknown[];
-			missingFiles: unknown[];
 		};
-		expect(manifest.files).toHaveLength(1);
-		expect(manifest.missingFiles).toHaveLength(1);
+		expect(manifest.files).toHaveLength(2);
+		expect(manifest).not.toHaveProperty("missingFiles");
+		expect(await zip.file("README.txt")?.async("string")).toContain(
+			"the export fails rather than omit one",
+		);
+	});
+
+	it("fails the export when storage says a listed avatar is not found", async () => {
+		// What storage answers when the owner SELECT policy is missing.
+		storageDownload.mockResolvedValue({
+			data: null,
+			error: Object.assign(new Error("Object not found"), {
+				status: 400,
+				statusCode: "404",
+			}),
+		});
+		await expect(
+			buildUserDataExport({
+				tables: ["storage_avatars"],
+				requestPage: async (table) => ({
+					table,
+					rows: [{ bucket: "avatars", path: "u1/me.png" }],
+					nextCursor: null,
+				}),
+			}),
+		).rejects.toThrow(
+			"Export failed for avatars/u1/me.png: the listed file could not be downloaded (Object not found)",
+		);
+		expect(storageDownload).toHaveBeenCalledWith("avatars", "u1/me.png");
+
+		storageDownload.mockResolvedValue({ data: new Blob(["img"]), error: null });
+		await expect(
+			downloadStorageObject("avatars", "u1/me.png"),
+		).resolves.toBeInstanceOf(Blob);
 	});
 
 	it("aborts when an avatar download fails or the reference is unsafe", async () => {
