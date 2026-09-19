@@ -15,83 +15,72 @@ import {
   classifyPaddleEventOrder,
   evaluatePaddleCustomDataTrust,
   verifyPaddleCustomDataSignature,
+  verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
-
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
 
 const responseHeaders = {
   "Content-Type": "application/json",
 };
 
-// ─── Signature Verification ─────────────────────────────────────────────────
+/** The slice of the service-role client this handler uses. */
+export interface PaddleWebhooksDbClient {
+  from(table: "subscriptions"): {
+    select(columns: string): {
+      eq(column: "user_id", value: string): {
+        maybeSingle(): PromiseLike<{
+          data: {
+            last_event_id?: string | null;
+            last_event_occurred_at?: string | null;
+            tier?: string | null;
+            paddle_subscription_id?: string | null;
+          } | null;
+          error: unknown;
+        }>;
+      };
+    };
+  };
+  rpc(
+    fn: "apply_subscription_event",
+    args: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: unknown }>;
+}
 
-/**
- * Verifies a Paddle webhook signature using HMAC-SHA256.
- *
- * Paddle-Signature header format: ts=<timestamp>;h1=<hmac_hex>
- * HMAC payload: ts + ":" + raw_body
- */
-async function verifyPaddleSignature(
-  rawBody: string,
-  signatureHeader: string,
-  secret: string,
-): Promise<boolean> {
-  const parts = signatureHeader.split(";");
-  const tsEntry = parts.find((p) => p.startsWith("ts="));
-  const h1Entry = parts.find((p) => p.startsWith("h1="));
+export interface PaddleWebhooksDependencies {
+  env: { get(key: string): string | undefined };
+  createAdminClient(): PaddleWebhooksDbClient;
+  /** Clock for the signature replay window (ms since epoch). */
+  now(): number;
+}
 
-  if (!tsEntry || !h1Entry) return false;
-
-  const ts = tsEntry.slice(3);
-  const expectedHex = h1Entry.slice(3);
-
-  if (!ts || !expectedHex) return false;
-
-  // Reject signatures older than 5 minutes to prevent replay attacks
-  const signatureAge = Math.abs(Date.now() / 1000 - parseInt(ts, 10));
-  if (signatureAge > 300) {
-    console.warn("[BILLING_ALERT] Webhook signature too old:", signatureAge, "seconds");
-    return false;
-  }
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const payload = `${ts}:${rawBody}`;
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(payload),
-  );
-
-  const computedHex = Array.from(new Uint8Array(signatureBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  if (computedHex.length !== expectedHex.length) return false;
-
-  const a = encoder.encode(computedHex);
-  const b = encoder.encode(expectedHex);
-
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a[i]! ^ b[i]!;
-  }
-  return mismatch === 0;
+function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
+  let client: PaddleWebhooksDbClient | undefined;
+  return {
+    env: Deno.env,
+    createAdminClient() {
+      client ??= createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      ) as unknown as PaddleWebhooksDbClient;
+      return client;
+    },
+    now() {
+      return Date.now();
+    },
+  };
 }
 
 // ─── Webhook Handler ────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
+export function createPaddleWebhooksHandler(
+  dependencies: PaddleWebhooksDependencies = defaultPaddleWebhooksDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => paddleWebhooksHandler(req, dependencies);
+}
+
+async function paddleWebhooksHandler(
+  req: Request,
+  { env, createAdminClient, now }: PaddleWebhooksDependencies,
+): Promise<Response> {
   // Only accept POST
   if (req.method !== "POST") {
     return new Response(
@@ -101,7 +90,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!paddlePriceIdsConfigured(Deno.env)) {
+    if (!paddlePriceIdsConfigured(env)) {
       console.error(
         "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
       );
@@ -110,7 +99,7 @@ Deno.serve(async (req) => {
         { status: 500, headers: responseHeaders },
       );
     }
-    const duplicatePriceIds = findCrossTierDuplicatePriceIds(Deno.env);
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(env);
     if (duplicatePriceIds.length > 0) {
       console.error(
         "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
@@ -121,7 +110,7 @@ Deno.serve(async (req) => {
         { status: 500, headers: responseHeaders },
       );
     }
-    const customDataSecret = Deno.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
+    const customDataSecret = env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
     if (!customDataSecret) {
       console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");
       return new Response(
@@ -134,7 +123,7 @@ Deno.serve(async (req) => {
     const rawBody = await req.text();
 
     // Verify Paddle-Signature header
-    const webhookSecret = Deno.env.get("PADDLE_WEBHOOK_SECRET");
+    const webhookSecret = env.get("PADDLE_WEBHOOK_SECRET");
     const signatureHeader = req.headers.get("Paddle-Signature");
 
     if (!webhookSecret || !signatureHeader) {
@@ -144,7 +133,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const isValid = await verifyPaddleSignature(rawBody, signatureHeader, webhookSecret);
+    const isValid = await verifyPaddleSignature(rawBody, signatureHeader, webhookSecret, {
+      now,
+    });
     if (!isValid) {
       return new Response(
         JSON.stringify({ error: "Invalid signature" }),
@@ -229,6 +220,7 @@ Deno.serve(async (req) => {
     // Load the existing row before custom_data trust checks. New checkouts must
     // carry cd_sig; legacy subscriptions may omit it only when the Paddle
     // subscription ID already matches the stored row for the same user.
+    const supabase = createAdminClient();
     const { data: existingSubscription, error: existingSubscriptionError } = await supabase
       .from("subscriptions")
       .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
@@ -318,9 +310,9 @@ Deno.serve(async (req) => {
 
     const priceId = resolveBasePlanPriceId(
       event.data as PaddleSubscriptionState,
-      getAllAllowedPriceIds(Deno.env),
+      getAllAllowedPriceIds(env),
     );
-    let tier = mapPriceIdToTier(priceId, Deno.env);
+    let tier = mapPriceIdToTier(priceId, env);
 
     if (priceId && tier === "FREE") {
       const existingTier = existingSubscription?.tier as string | undefined;
@@ -412,4 +404,8 @@ Deno.serve(async (req) => {
       { status: 500, headers: responseHeaders },
     );
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(createPaddleWebhooksHandler());
+}
