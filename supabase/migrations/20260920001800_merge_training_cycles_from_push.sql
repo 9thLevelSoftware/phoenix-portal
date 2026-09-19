@@ -3,14 +3,26 @@
 -- is stale against a clock that only portal edits advance.
 --
 -- 1. training_cycles.portal_edited_at: stamped by triggers only for
---    authenticated (portal) writes to a cycle or its days. Service-role
---    pushes, migrations, cron and backfills (phoenix.skip_updated_at = 'on')
---    never stamp it.
+--    authenticated (portal) writes to a cycle or its days. Non-authenticated
+--    writers (service-role pushes, migrations, cron) never stamp it, so
+--    migrations and backfills need nothing special. An authenticated write
+--    is exempt only while phoenix.skip_updated_at = 'on'.
 -- 2. merge_training_cycles_from_push(p_user_id, p_cycles, p_use_lww):
 --    service-role only. One call replaces the push's cycle upsert, its
 --    cycle_days upsert and the orphan-day cleanup.
 -- 3. upsert_training_cycle_lww(p_rows) delegates to the same merge, so both
---    SYNC_LWW_ENABLED paths store identical rows.
+--    SYNC_LWW_ENABLED paths store identical rows. Kept (service role only)
+--    so an Edge deployment older than this migration keeps working during
+--    rollout and on rollback; the current push calls the merge directly.
+--
+-- Field ownership on push (decision, review R-5):
+--   * structure (name, description, workout_days, rest_days, day list):
+--     portal wins when the push is stale (portal edited after the device's
+--     baseUpdatedAt); otherwise the push wins.
+--   * runtime progress (status, current_week, started_at, last_used_at,
+--     local_profile_id): device-owned; always taken from the push, even when
+--     stale. The phone is where a cycle is run.
+--   * config: merged, see merge_training_cycles_from_push below.
 --
 -- Idempotent: safe to re-run.
 
@@ -24,11 +36,12 @@ COMMENT ON COLUMN public.training_cycles.portal_edited_at IS
 -- Stamp triggers
 -- ---------------------------------------------------------------------------
 
--- BEFORE INSERT OR UPDATE on training_cycles.
+-- BEFORE INSERT OR UPDATE on training_cycles. Only assigns to NEW, so it
+-- runs with the caller's rights (SECURITY INVOKER).
 CREATE OR REPLACE FUNCTION public.stamp_training_cycle_portal_edit()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 BEGIN
@@ -58,7 +71,9 @@ CREATE TRIGGER training_cycles_portal_edited_at
 -- AFTER INSERT OR UPDATE OR DELETE on cycle_days: a portal day edit is an
 -- edit of the parent cycle. The parent UPDATE also fires cycles_updated_at,
 -- so the pull cursor advances. SECURITY DEFINER so the parent UPDATE does
--- not depend on the caller's RLS; auth.role() still reads the request JWT.
+-- not depend on the caller's RLS (e.g. the routine-delete ON DELETE SET NULL
+-- cascade); auth.role()/auth.uid() still read the request JWT, and only the
+-- acting user's own cycles are ever stamped.
 CREATE OR REPLACE FUNCTION public.stamp_training_cycle_portal_edit_from_day()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -87,6 +102,7 @@ BEGIN
   UPDATE public.training_cycles c
      SET portal_edited_at = now()
    WHERE c.id = ANY (v_cycle_ids)
+     AND c.user_id = auth.uid()
      AND c.portal_edited_at IS DISTINCT FROM now();
 
   RETURN NULL;
@@ -119,16 +135,31 @@ CREATE TRIGGER cycle_days_portal_edited_at
 --   * Stale: base present and ms-truncated portal_edited_at > ms-truncated
 --     base. Then structure (name, description, workout_days, rest_days and
 --     the whole day list) is kept; only the config merge applies.
---   * Config merge (always): deload_settings = COALESCE(incoming, existing);
---     progression_settings = existing || incoming (objects); template_id =
---     COALESCE(incoming, existing); duration_weeks keeps the existing value
---     when the incoming one equals mobile's derived default
---     (ceil(days/7), 1 for no days). status, current_week, started_at,
---     last_used_at, local_profile_id are taken from the push as before.
---   * Days (structure applied): upsert on (cycle_id, day_number) with
---     rest_type = COALESCE(incoming, existing); a routine_id not owned by
---     p_user_id is written as NULL. Orphans: with a base, day_number NOT IN
---     payload; without one, day_number > max(payload) (legacy rule).
+--   * A NULL name/description/duration/status/count keeps the stored value;
+--     the INSERT applies the column defaults.
+--   * Config merge (always):
+--       deload_settings = COALESCE(incoming, existing);
+--       template_id = COALESCE(incoming, existing);
+--       progression_settings: per key. The keys the mobile CycleProgression
+--         DTO models (Project-Phoenix-MP PortalSyncAdapter
+--         .toPortalTrainingCycle / SqlDelightSyncRepository.mergePortalCycles):
+--           frequencyCycles, weightIncreasePercent, echoLevelIncrease,
+--           eccentricLoadIncreasePercent
+--         are owned by the push, including removals (mobile encodes them
+--         sparsely: an absent key means off/cleared). Every other key is
+--         portal-only and survives. A NULL incoming clears the mobile keys;
+--         if nothing is left the column is NULL.
+--       duration_weeks: keeps the stored value only when the cycle was
+--         portal-edited (portal_edited_at IS NOT NULL) and the incoming value
+--         equals mobile's derived default (ceil(days/7), 1 for no days);
+--         otherwise the incoming value wins, so mobile-created cycles follow
+--         the phone.
+--   * Days (structure applied): upsert on (cycle_id, day_number). rest_type
+--     keeps the stored value on NULL only while day_type is unchanged (a day
+--     switching rest <-> workout takes the incoming rest_type). A routine_id
+--     not owned by p_user_id is written as NULL. Orphans: with a base,
+--     day_number NOT IN payload; without one, day_number > max(payload)
+--     (legacy rule).
 --   * No-op writes are skipped, so an unchanged push does not move
 --     updated_at. When only days changed, the parent's updated_at is bumped
 --     so delta pulls re-send the cycle.
@@ -174,6 +205,12 @@ DECLARE
   n_progression JSONB;
   n_deload JSONB;
   n_template_id TEXT;
+  -- Keys of the mobile CycleProgression DTO (Project-Phoenix-MP
+  -- PortalSyncAdapter.toPortalTrainingCycle).
+  c_mobile_progression_keys CONSTANT TEXT[] := ARRAY[
+    'frequencyCycles', 'weightIncreasePercent', 'echoLevelIncrease',
+    'eccentricLoadIncreasePercent'
+  ];
 BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'merge_training_cycles_from_push: p_user_id is required'
@@ -223,7 +260,7 @@ BEGIN
         last_used_at, progression_settings, deload_settings, template_id,
         updated_at
       ) VALUES (
-        rec.id, p_user_id, rec.local_profile_id, rec.name, rec.description,
+        rec.id, p_user_id, rec.local_profile_id, rec.name, COALESCE(rec.description, ''),
         COALESCE(rec.duration_weeks, 4),
         COALESCE(rec.workout_days, 0),
         COALESCE(rec.rest_days, 0),
@@ -271,27 +308,39 @@ BEGIN
         AND date_trunc('milliseconds', v_existing.portal_edited_at)
             > date_trunc('milliseconds', v_base);
 
-      n_name := CASE WHEN v_stale THEN v_existing.name ELSE rec.name END;
-      n_description := CASE WHEN v_stale THEN v_existing.description ELSE rec.description END;
+      n_name := CASE WHEN v_stale THEN v_existing.name
+                     ELSE COALESCE(rec.name, v_existing.name) END;
+      n_description := CASE WHEN v_stale THEN v_existing.description
+                            ELSE COALESCE(rec.description, v_existing.description) END;
       n_workout_days := CASE WHEN v_stale THEN v_existing.workout_days
                              ELSE COALESCE(rec.workout_days, v_existing.workout_days) END;
       n_rest_days := CASE WHEN v_stale THEN v_existing.rest_days
                           ELSE COALESCE(rec.rest_days, v_existing.rest_days) END;
+      -- Keep a portal-authored duration against mobile's derived default
+      -- only; a never-portal-edited cycle follows the phone (review R-3).
       n_duration_weeks := CASE
         WHEN rec.duration_weeks IS NULL THEN v_existing.duration_weeks
-        WHEN rec.duration_weeks = v_derived_weeks THEN v_existing.duration_weeks
+        WHEN v_existing.portal_edited_at IS NOT NULL
+             AND rec.duration_weeks = v_derived_weeks THEN v_existing.duration_weeks
         ELSE rec.duration_weeks
       END;
       n_current_week := COALESCE(rec.current_week, v_existing.current_week);
       n_status := COALESCE(rec.status, v_existing.status);
-      n_progression := CASE
-        WHEN rec.progression_settings IS NULL THEN v_existing.progression_settings
-        WHEN v_existing.progression_settings IS NULL THEN rec.progression_settings
-        WHEN jsonb_typeof(rec.progression_settings) = 'object'
-             AND jsonb_typeof(v_existing.progression_settings) = 'object'
-          THEN v_existing.progression_settings || rec.progression_settings
-        ELSE rec.progression_settings
-      END;
+      -- Mobile-modelled keys are push-owned (incl. removals); portal-only
+      -- keys survive (review R-4).
+      IF rec.progression_settings IS NOT NULL
+         AND jsonb_typeof(rec.progression_settings) <> 'object' THEN
+        n_progression := rec.progression_settings;
+      ELSIF v_existing.progression_settings IS NULL
+            OR jsonb_typeof(v_existing.progression_settings) <> 'object' THEN
+        n_progression := rec.progression_settings;
+      ELSE
+        n_progression := (v_existing.progression_settings - c_mobile_progression_keys)
+                         || COALESCE(rec.progression_settings, '{}'::jsonb);
+        IF rec.progression_settings IS NULL AND n_progression = '{}'::jsonb THEN
+          n_progression := NULL;
+        END IF;
+      END IF;
       n_deload := COALESCE(rec.deload_settings, v_existing.deload_settings);
       n_template_id := COALESCE(rec.template_id, v_existing.template_id);
 
@@ -368,7 +417,10 @@ BEGIN
           weight_adjustment = EXCLUDED.weight_adjustment,
           rep_modifier      = EXCLUDED.rep_modifier,
           rest_override     = EXCLUDED.rest_override,
-          rest_type         = COALESCE(EXCLUDED.rest_type, d.rest_type),
+          -- rest_type is kept on NULL only while the day type is unchanged.
+          rest_type         = CASE WHEN EXCLUDED.day_type IS NOT DISTINCT FROM d.day_type
+                                 THEN COALESCE(EXCLUDED.rest_type, d.rest_type)
+                                 ELSE EXCLUDED.rest_type END,
           notes             = EXCLUDED.notes
         WHERE (
           d.day_type, d.routine_id, d.weight_adjustment, d.rep_modifier,
@@ -376,7 +428,10 @@ BEGIN
         ) IS DISTINCT FROM (
           EXCLUDED.day_type, EXCLUDED.routine_id, EXCLUDED.weight_adjustment,
           EXCLUDED.rep_modifier, EXCLUDED.rest_override,
-          COALESCE(EXCLUDED.rest_type, d.rest_type), EXCLUDED.notes
+          CASE WHEN EXCLUDED.day_type IS NOT DISTINCT FROM d.day_type
+            THEN COALESCE(EXCLUDED.rest_type, d.rest_type)
+            ELSE EXCLUDED.rest_type END,
+          EXCLUDED.notes
         );
         GET DIAGNOSTICS v_rows = ROW_COUNT;
         v_days_changed := v_days_changed + v_rows;

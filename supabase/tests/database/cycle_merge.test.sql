@@ -252,8 +252,8 @@ SELECT results_eq(
     $sql$ SELECT name, workout_days, duration_weeks, deload_settings, progression_settings
           FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000c1' $sql$,
     $values$ VALUES ('Phone name'::text, 3, 8, '{"week":4}'::jsonb,
-                     '{"frequencyCycles":"3","portalOnly":true}'::jsonb) $values$,
-    'current: structure applied, null deload/progression keep the stored values'
+                     '{"portalOnly":true}'::jsonb) $values$,
+    'current: structure applied, null deload kept, null progression clears the mobile keys only'
 );
 SELECT results_eq(
     $sql$ SELECT day_number, routine_id, rest_type FROM public.cycle_days
@@ -422,6 +422,235 @@ SELECT results_eq(
           FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000c1' $sql$,
     $values$ VALUES ('Wrapper'::text, '{"week":4}'::jsonb, 3) $values$,
     'the wrapper keeps deload and leaves days to the caller'
+);
+
+-- ---------------------------------------------------------------------------
+-- Review round 1 (R-3, R-4, R-6, R-7, R-9, R-10, R-13, R-14)
+-- ---------------------------------------------------------------------------
+SELECT diag('database:cycle-merge-review-round-1');
+
+SELECT ok(
+    NOT (SELECT prosecdef FROM pg_proc
+         WHERE oid = 'public.stamp_training_cycle_portal_edit()'::regprocedure),
+    'the cycle stamp trigger function is SECURITY INVOKER (R-14)'
+);
+
+-- Fixtures (as postgres, no claims: nothing is stamped).
+SELECT set_config('request.jwt.claims', '', true);
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+VALUES ('18181818-0000-4000-8000-000000000002'::uuid, 'EMBER', 'active', '2099-01-01+00');
+INSERT INTO public.routines (id, user_id, name)
+VALUES ('18181818-0000-4000-8000-0000000000a3'::uuid, '18181818-0000-4000-8000-000000000001'::uuid, 'R3');
+INSERT INTO public.training_cycles (id, user_id, name, description, duration_weeks, workout_days,
+                                    status, progression_settings, template_id, updated_at)
+VALUES
+    -- m1: mobile-created (never portal-edited), 7 days / 1 week
+    ('18181818-0000-4000-8000-0000000000d1'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Mobile grows', '', 1, 7, 'draft', NULL, NULL, '2026-01-01+00'),
+    -- m2: mobile-created, progression with echo on plus a portal-only key,
+    --     a template, and a rest day
+    ('18181818-0000-4000-8000-0000000000d2'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Progression', '', 1, 1, 'draft',
+     '{"frequencyCycles":"2","echoLevelIncrease":"true","weightIncreasePercent":"2.5","portalKey":"keep"}',
+     'tpl', '2026-01-01+00'),
+    -- s1..s3: portal-stamping targets (owner)
+    ('18181818-0000-4000-8000-0000000000d3'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Stamp insert', '', 1, 1, 'draft', NULL, NULL, '2026-01-01+00'),
+    ('18181818-0000-4000-8000-0000000000d4'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Stamp delete', '', 1, 2, 'draft', NULL, NULL, '2026-01-01+00'),
+    ('18181818-0000-4000-8000-0000000000d5'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Portal RPC', '', 1, 1, 'draft', NULL, NULL, '2026-01-01+00'),
+    -- owner cycle and another user's cycle, both with a day on routine a3
+    ('18181818-0000-4000-8000-0000000000d6'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
+     'Owner uses R3', '', 1, 1, 'draft', NULL, NULL, '2026-01-01+00'),
+    ('18181818-0000-4000-8000-0000000000d7'::uuid, '18181818-0000-4000-8000-000000000002'::uuid,
+     'Other user uses R3', '', 1, 1, 'draft', NULL, NULL, '2026-01-01+00');
+INSERT INTO public.cycle_days (cycle_id, day_number, day_type, rest_type)
+SELECT '18181818-0000-4000-8000-0000000000d1'::uuid, n, 'workout', NULL FROM generate_series(1, 7) AS n;
+INSERT INTO public.cycle_days (cycle_id, day_number, day_type, rest_type)
+VALUES ('18181818-0000-4000-8000-0000000000d2'::uuid, 1, 'rest', 'active_recovery'),
+       ('18181818-0000-4000-8000-0000000000d4'::uuid, 1, 'workout', NULL),
+       ('18181818-0000-4000-8000-0000000000d4'::uuid, 2, 'workout', NULL);
+INSERT INTO public.cycle_days (cycle_id, day_number, routine_id)
+VALUES ('18181818-0000-4000-8000-0000000000d6'::uuid, 1, '18181818-0000-4000-8000-0000000000a3'::uuid),
+       ('18181818-0000-4000-8000-0000000000d7'::uuid, 1, '18181818-0000-4000-8000-0000000000a3'::uuid);
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+-- R-3: a mobile-created cycle follows the phone's derived duration.
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        (SELECT jsonb_build_array(jsonb_build_object(
+           'id', '18181818-0000-4000-8000-0000000000d1', 'name', 'Mobile grows',
+           'description', '', 'duration_weeks', 2, 'workout_days', 14, 'rest_days', 0,
+           'current_week', 1, 'status', 'draft', 'updated_at', '2099-01-01T00:00:00Z',
+           'days', (SELECT jsonb_agg(jsonb_build_object('day_number', n, 'day_type', 'workout'))
+                    FROM generate_series(1, 14) AS n)))),
+        false)
+    $sql$,
+    'mobile grows a never-portal-edited cycle to 14 days (LWW off)'
+);
+SELECT is(
+    (SELECT duration_weeks FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d1'),
+    2,
+    'R-3: a mobile-created cycle takes the derived duration (1 -> 2 weeks)'
+);
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        (SELECT jsonb_build_array(jsonb_build_object(
+           'id', '18181818-0000-4000-8000-0000000000d1', 'name', 'Mobile grows',
+           'description', '', 'duration_weeks', 3, 'workout_days', 21, 'rest_days', 0,
+           'current_week', 1, 'status', 'draft', 'updated_at', '2099-01-01T00:00:00Z',
+           'days', (SELECT jsonb_agg(jsonb_build_object('day_number', n, 'day_type', 'workout'))
+                    FROM generate_series(1, 21) AS n)))),
+        true)
+    $sql$,
+    'mobile grows it again to 21 days (LWW on)'
+);
+SELECT is(
+    (SELECT duration_weeks FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d1'),
+    3,
+    'R-3: the derived duration is taken under LWW on as well'
+);
+-- (The portal-edited case, where a derived value keeps the stored 8 weeks,
+-- is covered by the stale/current c1 assertions above.)
+
+-- R-1: NULL duration/status/description keep the stored values.
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        '[{"id":"18181818-0000-4000-8000-0000000000d1","name":"Mobile grows",
+           "description":null,"duration_weeks":null,"status":null,
+           "workout_days":21,"rest_days":0,"current_week":1}]',
+        false)
+    $sql$,
+    'a push with null duration/status/description'
+);
+SELECT results_eq(
+    $sql$ SELECT duration_weeks, status, description FROM public.training_cycles
+          WHERE id = '18181818-0000-4000-8000-0000000000d1' $sql$,
+    $values$ VALUES (3, 'draft'::text, ''::text) $values$,
+    'R-1: null duration, status and description keep the stored values'
+);
+
+-- R-4 / R-9 / R-6 on m2.
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        '[{"id":"18181818-0000-4000-8000-0000000000d2","name":"Progression","description":"",
+           "duration_weeks":1,"workout_days":1,"rest_days":0,"current_week":1,"status":"draft",
+           "progression_settings":{"frequencyCycles":"2"},"template_id":null,
+           "days":[{"day_number":1,"day_type":"workout","rest_type":null}]}]',
+        false)
+    $sql$,
+    'mobile turns echo increase off, clears the weight step, nulls template, flips day 1 to workout'
+);
+SELECT results_eq(
+    $sql$ SELECT progression_settings, template_id FROM public.training_cycles
+          WHERE id = '18181818-0000-4000-8000-0000000000d2' $sql$,
+    $values$ VALUES ('{"frequencyCycles":"2","portalKey":"keep"}'::jsonb, 'tpl'::text) $values$,
+    'R-4: cleared mobile keys stay cleared, the portal-only key survives; R-9: null template_id keeps the stored one'
+);
+SELECT results_eq(
+    $sql$ SELECT day_type, rest_type FROM public.cycle_days
+          WHERE cycle_id = '18181818-0000-4000-8000-0000000000d2' AND day_number = 1 $sql$,
+    $values$ VALUES ('workout'::text, NULL::text) $values$,
+    'R-6: a day switched from rest to workout drops its rest_type'
+);
+SELECT lives_ok(
+    $sql$
+      SELECT * FROM public.merge_training_cycles_from_push(
+        '18181818-0000-4000-8000-000000000001',
+        '[{"id":"18181818-0000-4000-8000-0000000000d2","name":"Progression","description":"",
+           "duration_weeks":1,"workout_days":1,"rest_days":0,"current_week":1,"status":"draft",
+           "progression_settings":null,"template_id":"tpl2",
+           "days":[{"day_number":1,"day_type":"workout"}]}]',
+        false)
+    $sql$,
+    'mobile removes its progression and sets a new template'
+);
+SELECT results_eq(
+    $sql$ SELECT progression_settings, template_id FROM public.training_cycles
+          WHERE id = '18181818-0000-4000-8000-0000000000d2' $sql$,
+    $values$ VALUES ('{"portalKey":"keep"}'::jsonb, 'tpl2'::text) $values$,
+    'R-4: a null progression clears every mobile key; R-9: a non-null template_id replaces'
+);
+
+-- R-7 / R-10: the real portal write paths, as the authenticated role.
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"18181818-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+-- PostgREST-style day INSERT on d3 and DELETE on d4.
+INSERT INTO public.cycle_days (cycle_id, day_number)
+VALUES ('18181818-0000-4000-8000-0000000000d3'::uuid, 2);
+DELETE FROM public.cycle_days
+WHERE cycle_id = '18181818-0000-4000-8000-0000000000d4'::uuid AND day_number = 2;
+-- The portal's cycle save RPC on d5.
+SELECT public.update_cycle_with_days(
+    '18181818-0000-4000-8000-0000000000d5'::uuid, 'Saved on portal', '', 4, 2, 0, NULL,
+    '{"frequencyCycles":"2"}'::jsonb, NULL,
+    '[{"day_number":1,"day_type":"workout","weight_adjustment":0,"rep_modifier":0},
+      {"day_number":2,"day_type":"workout","weight_adjustment":0,"rep_modifier":0}]'::jsonb
+);
+-- Owner deletes routine a3: ON DELETE SET NULL updates d6 (owner) and d7
+-- (another user's cycle pointing at it).
+DELETE FROM public.routines WHERE id = '18181818-0000-4000-8000-0000000000a3'::uuid;
+RESET ROLE;
+
+SELECT is(
+    (SELECT portal_edited_at FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d3'),
+    now(),
+    'R-10: an authenticated day INSERT stamps the parent cycle'
+);
+SELECT is(
+    (SELECT portal_edited_at FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d4'),
+    now(),
+    'R-10: an authenticated day DELETE stamps the parent cycle'
+);
+SELECT results_eq(
+    $sql$ SELECT portal_edited_at, updated_at, portal_edited_at = updated_at
+          FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d5' $sql$,
+    $values$ VALUES (now(), now(), true) $values$,
+    'R-7: update_cycle_with_days as authenticated stamps portal_edited_at = updated_at'
+);
+SELECT is(
+    (SELECT portal_edited_at FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d6'),
+    now(),
+    'R-7: a portal routine delete (ON DELETE SET NULL) stamps the owner''s cycle that used it'
+);
+SELECT is(
+    (SELECT portal_edited_at FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000d7'),
+    NULL,
+    'R-13: the cascade never stamps another user''s cycle'
+);
+
+-- R-7: a base pulled right after the portal save (ms-truncated) is current.
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+SELECT results_eq(
+    format(
+      $sql$
+        SELECT structure_applied FROM public.merge_training_cycles_from_push(
+          '18181818-0000-4000-8000-000000000001',
+          jsonb_build_array(jsonb_build_object(
+            'id', '18181818-0000-4000-8000-0000000000d5', 'name', 'Phone after pull',
+            'description', '', 'duration_weeks', 4, 'workout_days', 2, 'rest_days', 0,
+            'current_week', 1, 'status', 'draft',
+            'base_updated_at', %L,
+            'days', '[{"day_number":1,"day_type":"workout"},{"day_number":2,"day_type":"workout"}]'::jsonb)),
+          false)
+      $sql$,
+      to_char(date_trunc('milliseconds', now()) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    ),
+    $values$ VALUES (true) $values$,
+    'R-7: a ms-truncated base equal to the portal save is current'
 );
 
 SELECT * FROM finish();

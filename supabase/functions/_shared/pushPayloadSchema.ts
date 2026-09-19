@@ -317,11 +317,14 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: nonNegIntDefault(4),
+	// KD-6: no ingress default. An absent/null duration or status keeps the
+	// stored value in merge_training_cycles_from_push; the merge's INSERT
+	// applies the column defaults (4 / 'draft').
+	durationWeeks: nullableField(nonNegInt),
 	workoutDays: nonNegIntDefault(0),
 	restDays: nonNegIntDefault(0),
 	currentWeek: nonNegIntDefault(1),
-	status: z.string().nullish().transform((v) => v ?? "draft"),
+	status: nullableField(z.string()),
 	startedAt: nullableDatetime(),
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),

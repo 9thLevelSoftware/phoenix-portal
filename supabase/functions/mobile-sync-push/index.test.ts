@@ -2592,6 +2592,10 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
     ).length,
     1,
   );
+  // The merge accepted it (structure applied), but the re-deleted cycle must
+  // not hand the device a base for a row that no longer exists (review R-11).
+  assertEquals(mergedCycles(harness).map((c) => c.id), [TOMB_CYCLE_ID]);
+  assertEquals(body.cycleVersions, {});
 });
 
 Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {

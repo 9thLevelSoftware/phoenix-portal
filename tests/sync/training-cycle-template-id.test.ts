@@ -93,8 +93,8 @@ describe("Training cycle template_id push handling", () => {
 		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
 		expect(source).toContain("'merge_training_cycles_from_push'");
 		expect(source).not.toContain("cycleIdsMissingTemplateId");
-		expect(source).not.toContain(
-			".from('training_cycles')\n          .upsert(",
+		expect(source).not.toMatch(
+			/\.from\(\s*['"]training_cycles['"]\s*\)\s*\.upsert\(/,
 		);
 
 		const sql = readMigration(CYCLE_MERGE_MIGRATION);

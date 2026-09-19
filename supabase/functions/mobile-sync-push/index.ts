@@ -575,11 +575,11 @@ interface CycleDto {
   userId: string;
   name: string;
   description: string | null;
-  durationWeeks: number;
+  durationWeeks: number | null;
   workoutDays: number;
   restDays: number;
   currentWeek: number;
-  status: string;
+  status: string | null;
   startedAt: string | null;
   lastUsedAt: string | null;
   /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
@@ -2569,12 +2569,14 @@ async function mobileSyncPushHandler(
         user_id: userId,
         local_profile_id: localProfileId,
         name: c.name,
-        description: c.description ?? '',
-        duration_weeks: c.durationWeeks ?? 4,
+        // Absent/null description, duration and status pass through as NULL:
+        // the merge keeps the stored value, and its INSERT applies defaults.
+        description: c.description ?? null,
+        duration_weeks: c.durationWeeks ?? null,
         workout_days: c.workoutDays ?? 0,
         rest_days: c.restDays ?? 0,
         current_week: c.currentWeek ?? 1,
-        status: c.status ?? 'draft',
+        status: c.status ?? null,
         started_at: c.startedAt,
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
