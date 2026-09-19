@@ -13,7 +13,11 @@
 --                  user_subscription_tier
 --   anon:          none. Every policy that calls a tier helper is
 --                  INSERT/UPDATE/DELETE with an auth.uid() ownership
---                  conjunct; asserted below.
+--                  conjunct; asserted below. (The migration and the prod
+--                  check allow anon on a tier helper only while a
+--                  PUBLIC/anon SELECT/ALL policy calls it; this file
+--                  asserts no such policy exists.)
+-- Entries are exact signatures: proname(oidvectortypes(proargtypes)).
 
 BEGIN;
 
@@ -86,14 +90,29 @@ SELECT is_empty(
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
-          AND p.prosecdef
+          AND (
+              p.prosecdef
+              OR p.proname IN (
+                  'get_acwr',
+                  'get_muscle_distribution',
+                  'get_workout_streak',
+                  'get_volume_rolling_avg',
+                  'detect_plateaus',
+                  'get_exercise_trend',
+                  'get_volume_comparison',
+                  'get_wearable_trends',
+                  'get_goal_progress_cached',
+                  '_external_activities_bump_updated_at',
+                  'update_personal_record_updated_at'
+              )
+          )
           AND NOT EXISTS (
               SELECT 1
               FROM unnest(coalesce(p.proconfig, '{}'::text[])) AS cfg(setting)
               WHERE cfg.setting LIKE 'search_path=%'
           )
     $sql$,
-    'every SECURITY DEFINER function in public pins search_path'
+    'every SECURITY DEFINER and advisor-flagged function in public pins search_path'
 );
 
 SELECT is_empty(
@@ -160,10 +179,11 @@ EXCEPTION WHEN OTHERS THEN
     IF SQLSTATE IS DISTINCT FROM expected_sqlstate THEN
         RETURN extensions.is(SQLSTATE, expected_sqlstate, assertion_description);
     END IF;
-    IF expected_message IS NULL THEN
-        RETURN extensions.pass(assertion_description);
-    END IF;
-    RETURN extensions.is(SQLERRM, expected_message, assertion_description);
+    -- expected_message is a LIKE pattern.
+    RETURN extensions.ok(
+        SQLERRM LIKE expected_message,
+        assertion_description || ' (got: ' || SQLERRM || ')'
+    );
 END
 $assertion$;
 
@@ -207,6 +227,24 @@ VALUES (
     'b2b2b2b2-1111-4000-8000-000000000002'::uuid,
     'B shared routine',
     '[{"name": "Row", "sets": 3, "reps": 8, "order_index": 0}]'::jsonb
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.training_cycles (id, user_id, name)
+VALUES (
+    'b2b2b2b2-3333-4000-8000-000000000002'::uuid,
+    'b2b2b2b2-0000-4000-8000-000000000002'::uuid,
+    'B cycle'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.shared_cycles (id, user_id, cycle_id, name, cycle_snapshot)
+VALUES (
+    'b2b2b2b2-4444-4000-8000-000000000002'::uuid,
+    'b2b2b2b2-0000-4000-8000-000000000002'::uuid,
+    'b2b2b2b2-3333-4000-8000-000000000002'::uuid,
+    'B shared cycle',
+    '{"days": [{"day_number": 1, "day_type": "workout", "routine": {"name": "Cycle day routine", "exercises": [{"name": "Press", "order_index": 0}]}}]}'::jsonb
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -260,6 +298,36 @@ SELECT lives_ok(
     'insert_routine_exercises_from_snapshot allows the caller''s own routine'
 );
 
+SELECT pg_temp.assert_exception(
+    format(
+        'SELECT * FROM public.%I(%L::uuid)',
+        fn,
+        'b2b2b2b2-0000-4000-8000-000000000002'
+    ),
+    '42501',
+    'forbidden',
+    fn || ' rejects another user''s id'
+)
+FROM unnest(ARRAY[
+    'get_sessions_excluding_ids',
+    'get_cycles_excluding_ids',
+    'get_badges_excluding_ids'
+]) AS fn;
+
+SELECT lives_ok(
+    format(
+        'SELECT * FROM public.%I(%L::uuid)',
+        fn,
+        'a1a1a1a1-0000-4000-8000-000000000001'
+    ),
+    fn || ' allows the caller''s own id'
+)
+FROM unnest(ARRAY[
+    'get_sessions_excluding_ids',
+    'get_cycles_excluding_ids',
+    'get_badges_excluding_ids'
+]) AS fn;
+
 SELECT set_config(
     'request.jwt.claims',
     '{"role":"service_role"}',
@@ -276,6 +344,20 @@ SELECT results_eq(
     'service_role may read any user''s routines through get_routines_excluding_ids'
 );
 
+SELECT lives_ok(
+    format(
+        'SELECT * FROM public.%I(%L::uuid)',
+        fn,
+        'b2b2b2b2-0000-4000-8000-000000000002'
+    ),
+    'service_role may call ' || fn || ' for any user'
+)
+FROM unnest(ARRAY[
+    'get_sessions_excluding_ids',
+    'get_cycles_excluding_ids',
+    'get_badges_excluding_ids'
+]) AS fn;
+
 -- Privilege revokes, as the browser roles.
 SET LOCAL ROLE authenticated;
 SELECT set_config(
@@ -291,7 +373,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     '42501',
-    NULL,
+    'permission denied for function%',
     'authenticated cannot execute get_routines_excluding_ids'
 );
 
@@ -303,16 +385,40 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     '42501',
-    NULL,
+    'permission denied for function%',
     'authenticated cannot execute insert_routine_exercises_from_snapshot'
 );
 
 -- The nested definer path (import -> insert_routine_exercises_from_snapshot)
 -- still works for an EMBER caller.
-SELECT isnt(
-    public.import_shared_routine('b2b2b2b2-2222-4000-8000-000000000002'::uuid),
-    NULL,
+SELECT lives_ok(
+    $sql$
+        SELECT public.import_shared_routine(
+            'b2b2b2b2-2222-4000-8000-000000000002'::uuid
+        )
+    $sql$,
     'EMBER user can still import_shared_routine'
+);
+
+SELECT lives_ok(
+    $sql$
+        SELECT public.import_shared_cycle(
+            'b2b2b2b2-4444-4000-8000-000000000002'::uuid
+        )
+    $sql$,
+    'EMBER user can still import_shared_cycle'
+);
+
+-- A tier helper evaluated inside an RLS policy as authenticated.
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.workout_sessions (user_id, name)
+        VALUES (
+            'a1a1a1a1-0000-4000-8000-000000000001'::uuid,
+            'ember write through user_has_min_tier policy'
+        )
+    $sql$,
+    'EMBER JWT can INSERT workout_sessions (policy calls user_has_min_tier)'
 );
 
 RESET ROLE;
@@ -329,10 +435,45 @@ SELECT results_eq(
     'import_shared_routine copied the snapshot exercises into the caller''s routine'
 );
 
--- Trigger functions whose EXECUTE was revoked still fire for the caller.
+SELECT results_eq(
+    $sql$
+        SELECT re.name
+        FROM public.routine_exercises re
+        JOIN public.routines r ON r.id = re.routine_id
+        WHERE r.user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid
+          AND r.name = 'Cycle day routine'
+    $sql$,
+    $values$ VALUES ('Press'::text) $values$,
+    'import_shared_cycle copied the day routine exercises into the caller''s routine'
+);
+
+-- Trigger functions whose EXECUTE was revoked still fire for the caller:
+-- EMBER may hold 3 active goals, and the 4th is rejected by check_goal_limit.
+SELECT has_trigger(
+    'public',
+    'user_goals',
+    'enforce_goal_limit',
+    'user_goals has the enforce_goal_limit trigger'
+);
+
+SELECT is(
+    has_function_privilege('authenticated', 'public.check_goal_limit()', 'EXECUTE'),
+    false,
+    'authenticated has no EXECUTE on check_goal_limit'
+);
+
 SET LOCAL ROLE authenticated;
 
 SELECT lives_ok(
+    $sql$
+        INSERT INTO public.user_goals (user_id, goal_type, target_value, target_unit)
+        SELECT 'a1a1a1a1-0000-4000-8000-000000000001'::uuid, 'frequency', 3, 'workouts'
+        FROM generate_series(1, 3)
+    $sql$,
+    'EMBER JWT can INSERT goals up to the tier limit'
+);
+
+SELECT throws_ok(
     $sql$
         INSERT INTO public.user_goals (user_id, goal_type, target_value, target_unit)
         VALUES (
@@ -342,7 +483,9 @@ SELECT lives_ok(
             'workouts'
         )
     $sql$,
-    'revoked SECURITY DEFINER trigger (check_goal_limit) still fires on INSERT'
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'revoked SECURITY DEFINER trigger (check_goal_limit) still fires and enforces the limit'
 );
 
 RESET ROLE;
@@ -352,7 +495,7 @@ SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
 SELECT pg_temp.assert_exception(
     $sql$ SELECT 1 FROM public.public_profiles LIMIT 1 $sql$,
     '42501',
-    NULL,
+    'permission denied for view public_profiles',
     'anon cannot select public_profiles'
 );
 
@@ -363,7 +506,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     '42501',
-    NULL,
+    'permission denied for function%',
     'anon cannot execute get_routines_excluding_ids'
 );
 

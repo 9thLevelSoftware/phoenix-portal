@@ -246,9 +246,17 @@ jobs:
       # authenticated outside the browser allow-list, which catches definer
       # functions created outside migrations (dashboard) or without
       # `REVOKE ... FROM PUBLIC`. Runs even when the drift report above fails.
-      # Allow-list copies: this step, supabase/migrations/
+      # Allow-list copies (exact signatures): this step, supabase/migrations/
       # 20260920000100_lockdown_definer_function_grants.sql and
-      # supabase/tests/database/definer_function_grants.test.sql.
+      # supabase/tests/database/definer_function_grants.test.sql. anon on a
+      # tier helper is tolerated only while a PUBLIC/anon SELECT/ALL policy
+      # calls it, the same predicate the migration's block 3b uses.
+      #
+      # Connection: the IPv4 pooler URL that `supabase link` writes to
+      # supabase/.temp/pooler-url. The direct-host fallback is usually
+      # IPv6-only, which GitHub runners cannot reach, so it gets its own error.
+      # The operator must trigger one manual `workflow_dispatch` run on main
+      # right after this step merges to confirm the connection path works.
       - name: Check SECURITY DEFINER grants in prod (read-only)
         if: ${{ !cancelled() && steps.link.outcome == 'success' }}
         env:
@@ -263,9 +271,12 @@ jobs:
           # `supabase link` records the IPv4 pooler URL under supabase/.temp;
           # fall back to the direct host. Strip any embedded password (or
           # placeholder) so PGPASSWORD always authenticates. Never echo the URL.
+          conn_source="pooler"
           if [ -s supabase/.temp/pooler-url ]; then
             db_url=$(tr -d '\r\n' < supabase/.temp/pooler-url | sed -E 's#(://[^:/@]+):[^@]*@#\1@#')
           else
+            conn_source="direct"
+            echo "::warning::supabase/.temp/pooler-url not found after link; falling back to the direct database host (often IPv6-only)."
             db_url="postgresql://postgres@db.${PROJECT_REF}.supabase.co:5432/postgres"
           fi
           export PGSSLMODE=require PGCONNECT_TIMEOUT=20
@@ -286,19 +297,40 @@ jobs:
             AND has_function_privilege(r.rolname, p.oid, 'EXECUTE')
             AND NOT (
               r.rolname = 'authenticated'
-              AND p.proname IN (
-                'import_shared_routine',
-                'import_shared_cycle',
-                'workout_current_streak',
-                'user_has_min_tier',
-                'user_subscription_tier'
+              AND format('%s(%s)', p.proname, oidvectortypes(p.proargtypes)) IN (
+                'import_shared_routine(uuid, text)',
+                'import_shared_cycle(uuid, text)',
+                'workout_current_streak(uuid)',
+                'user_has_min_tier(text)',
+                'user_subscription_tier()'
+              )
+            )
+            AND NOT (
+              r.rolname = 'anon'
+              AND format('%s(%s)', p.proname, oidvectortypes(p.proargtypes)) IN (
+                'user_has_min_tier(text)',
+                'user_subscription_tier()'
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM pg_policies pol
+                WHERE pol.roles && ARRAY['public', 'anon']::name[]
+                  AND pol.cmd IN ('SELECT', 'ALL')
+                  AND (
+                    coalesce(pol.qual, '') LIKE '%' || p.proname || '(%'
+                    OR coalesce(pol.with_check, '') LIKE '%' || p.proname || '(%'
+                  )
               )
             )
           ORDER BY 1, 2;
           ROLLBACK;
           SQL
           then
-            echo "::error::Could not run the read-only grant check against prod. Check SUPABASE_PROD_DB_PASSWORD and network reachability of the linked database."
+            if [ "$conn_source" = "direct" ]; then
+              echo "::error::Could not reach prod via the direct database host (no pooler URL from supabase link). GitHub runners have no IPv6; fix the pooler URL source rather than the password."
+            else
+              echo "::error::Could not run the read-only grant check against prod via the pooler. Check SUPABASE_PROD_DB_PASSWORD and pooler reachability."
+            fi
             sed -E 's#(postgres(ql)?://[^:[:space:]]+:)[^@[:space:]]+@#\1***@#g; s#(password=)[^[:space:]]+#\1***#g' grant_check.err || true
             exit 1
           fi
