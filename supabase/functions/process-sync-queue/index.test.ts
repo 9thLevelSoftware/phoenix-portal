@@ -245,3 +245,48 @@ Deno.test("process-sync-queue: a pending initial task is dispatched and complete
   assertEquals(bucket?.user_id, null);
   assertEquals(bucket?.requests_this_window, 1);
 });
+
+Deno.test("process-sync-queue: an initial and a newer incremental for one user are both dispatched, initial first", async () => {
+  const INCREMENTAL_ID = "00000000-0000-4000-8000-0000000000bb";
+  const pending = (id: string, syncType: string, createdAt: string): Row => ({
+    id,
+    user_id: USER_ID,
+    provider: "strava",
+    sync_type: syncType,
+    status: "pending",
+    created_at: createdAt,
+    retry_count: 0,
+    error_message: null,
+    started_at: null,
+    completed_at: null,
+  });
+  const h = harness(BASE_ENV, {
+    // Inserted newest-first to prove the processor orders by created_at.
+    sync_queue: [
+      pending(INCREMENTAL_ID, "incremental", "2026-09-19T00:00:00.000Z"),
+      pending(TASK_ID, "initial", "2026-09-14T00:00:00.000Z"),
+    ],
+    subscriptions: [
+      {
+        user_id: USER_ID,
+        tier: "FLAME",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+    ],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { processed: 2, failed: 0, skipped: 0 });
+
+  assertEquals(
+    h.fetchCalls.map((c) => JSON.parse(String(c.init?.body)).sync_type),
+    ["initial", "incremental"],
+  );
+  assertEquals(
+    h.db.tables.sync_queue.map((r) => r.status),
+    ["completed", "completed"],
+  );
+});
