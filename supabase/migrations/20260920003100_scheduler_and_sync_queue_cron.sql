@@ -9,10 +9,11 @@
 --      revokes EXECUTE on pg_net's SECURITY DEFINER entry points
 --      (net.http_get / net.http_post / ...) from PUBLIC, anon and
 --      authenticated, wherever the migration role holds those grants.
---      LIMITATION: on Supabase the extension is created by supabase_admin,
---      which also issues the anon/authenticated grants; postgres has no
---      grant option on them, so the REVOKE is a no-op there (verified on the
---      local image) and the self-check below NOTICEs. What keeps them
+--      LIMITATION: on the local Supabase image the extension is owned by
+--      supabase_admin, which also issues the anon/authenticated grants;
+--      postgres has no grant option on them, so the REVOKE is a no-op there
+--      and the self-check below NOTICEs. If prod's pg_net is owned by
+--      postgres the REVOKE takes effect (Operator check below). What keeps them
 --      unreachable is that `net` is not an exposed API schema;
 --      scheduler.test.sql asserts that, and that no grant postgres could
 --      revoke is left. Caveat: `ALTER EXTENSION pg_net UPDATE` re-runs
@@ -111,9 +112,19 @@
 --   `succeeded` = Vault secret, project_url or pg_net missing (the NOTICE is
 --   in the Postgres log). Then
 --     SELECT status, count(*) FROM public.sync_queue GROUP BY 1;
+--   And record whether pg_net's definers are still browser-executable
+--   (platform grants the migration role may not be able to revoke):
+--     SELECT p.oid::regprocedure,
+--            has_function_privilege('anon', p.oid, 'EXECUTE'),
+--            has_function_privilege('authenticated', p.oid, 'EXECUTE')
+--     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--     WHERE n.nspname = 'net' AND p.prosecdef;
 --
--- Idempotent: safe to re-run (triage only touches `pending` rows; jobs are
--- looked up by name; the trigger and grants are re-issued).
+-- Idempotent DDL: safe to re-run (jobs are looked up by name; the trigger
+-- and grants are re-issued). Note that a manual re-apply re-runs the triage
+-- over whatever is pending at that moment (`supabase db push` never
+-- re-applies a recorded version); its rules are ones the processor and
+-- provider functions would apply to those rows anyway.
 
 BEGIN;
 
