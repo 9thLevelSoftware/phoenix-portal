@@ -80,17 +80,25 @@ export async function verifyPaddleSignature(
   const toleranceSeconds = options.toleranceSeconds ??
     PADDLE_SIGNATURE_TOLERANCE_SECONDS;
 
+  // Header values are never logged; only which structural check failed.
+  const rejectMalformed = (reason: string): false => {
+    console.warn("[Paddle] Malformed Paddle-Signature header:", reason);
+    return false;
+  };
+
   const parts = signatureHeader.split(";").map((part) => part.trim());
   const tsEntries = parts.filter((part) => part.startsWith("ts="));
-  if (tsEntries.length !== 1) return false;
+  if (tsEntries.length !== 1) {
+    return rejectMalformed(`expected exactly one ts, got ${tsEntries.length}`);
+  }
   const ts = tsEntries[0]!.slice(3);
-  if (!/^\d+$/.test(ts)) return false;
+  if (!/^\d+$/.test(ts)) return rejectMalformed("ts is not all digits");
 
   const candidates = parts
     .filter((part) => part.startsWith("h1="))
     .map((part) => part.slice(3))
     .filter((value) => value.length > 0);
-  if (candidates.length === 0) return false;
+  if (candidates.length === 0) return rejectMalformed("no h1 signature");
 
   const signatureAge = Math.abs(now() / 1000 - Number(ts));
   if (!(signatureAge <= toleranceSeconds)) {

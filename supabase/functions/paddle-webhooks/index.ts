@@ -123,7 +123,7 @@ async function paddleWebhooksHandler(
     const rawBody = await req.text();
 
     // Verify Paddle-Signature header
-    const webhookSecret = env.get("PADDLE_WEBHOOK_SECRET");
+    const webhookSecret = env.get("PADDLE_WEBHOOK_SECRET")?.trim();
     const signatureHeader = req.headers.get("Paddle-Signature");
 
     if (!webhookSecret || !signatureHeader) {

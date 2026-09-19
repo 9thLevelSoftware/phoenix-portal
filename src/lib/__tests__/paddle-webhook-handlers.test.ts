@@ -245,6 +245,10 @@ describe("verifyPaddleSignature", () => {
 		"-1710460800",
 		"1710460800.5",
 		"",
+		// In-window values that Number() accepts: only the digits check rejects them.
+		`${nowSeconds}.0`,
+		`+${nowSeconds}`,
+		`${nowSeconds}e0`,
 	])("rejects a non-numeric ts %j even when correctly signed", async (ts) => {
 		expect(
 			await verifyPaddleSignature(body, await header(ts), secret, { now }),

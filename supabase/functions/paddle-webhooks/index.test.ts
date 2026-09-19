@@ -44,6 +44,12 @@ class FakeDb implements PaddleWebhooksDbClient {
   row: StoredRow | null;
   fromCalls = 0;
   rpcCalls: Array<Record<string, unknown>> = [];
+  /** Error returned by the subscriptions lookup. */
+  selectError: unknown = null;
+  /** Error returned by apply_subscription_event. */
+  rpcError: unknown = null;
+  /** Simulates losing the write-time ordering race to a concurrent delivery. */
+  forceNotApplied = false;
 
   constructor(row: StoredRow | null = null) {
     this.row = row;
@@ -54,7 +60,12 @@ class FakeDb implements PaddleWebhooksDbClient {
     return {
       select: (_columns: string) => ({
         eq: (_column: "user_id", _value: string) => ({
-          maybeSingle: () => Promise.resolve({ data: this.row ? { ...this.row } : null, error: null }),
+          maybeSingle: () =>
+            Promise.resolve(
+              this.selectError
+                ? { data: null, error: this.selectError }
+                : { data: this.row ? { ...this.row } : null, error: null },
+            ),
         }),
       }),
     };
@@ -62,6 +73,8 @@ class FakeDb implements PaddleWebhooksDbClient {
 
   rpc(_fn: "apply_subscription_event", args: Record<string, unknown>) {
     this.rpcCalls.push(args);
+    if (this.rpcError) return Promise.resolve({ data: null, error: this.rpcError });
+    if (this.forceNotApplied) return Promise.resolve({ data: false, error: null });
     const incoming = Date.parse(String(args.p_last_event_occurred_at));
     const stored = this.row?.last_event_occurred_at ? Date.parse(this.row.last_event_occurred_at) : null;
     if (stored !== null && incoming <= stored) {
@@ -90,7 +103,12 @@ async function subscriptionEvent(overrides: {
   eventId?: string;
   occurredAt?: string;
   priceId?: string;
+  /** `null` omits cd_sig; a string replaces the valid signature. */
+  cdSig?: string | null;
 } = {}): Promise<string> {
+  const cdSig = overrides.cdSig === undefined
+    ? await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID)
+    : overrides.cdSig;
   return JSON.stringify({
     event_id: overrides.eventId ?? "evt_01",
     event_type: "subscription.updated",
@@ -102,7 +120,7 @@ async function subscriptionEvent(overrides: {
       items: [{ price: { id: overrides.priceId ?? EMBER_PRICE }, quantity: 1 }],
       custom_data: {
         user_id: USER_ID,
-        cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
+        ...(cdSig === null ? {} : { cd_sig: cdSig }),
       },
       current_billing_period: {
         starts_at: "2026-09-01T00:00:00.000Z",
@@ -115,7 +133,7 @@ async function subscriptionEvent(overrides: {
 
 async function signedRequest(
   body: string,
-  { ts = NOW_SECONDS, secret = WEBHOOK_SECRET }: { ts?: number; secret?: string } = {},
+  { ts = NOW_SECONDS, secret = WEBHOOK_SECRET }: { ts?: number | string; secret?: string } = {},
 ): Promise<Request> {
   const h1 = await hmacSha256Hex(secret, `${ts}:${body}`);
   return new Request("http://localhost/paddle-webhooks", {
@@ -125,17 +143,24 @@ async function signedRequest(
   });
 }
 
-async function captureConsoleError<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
-  const original = console.error;
+async function captureConsole<T>(
+  method: "error" | "warn",
+  fn: () => Promise<T>,
+): Promise<{ result: T; lines: string[] }> {
+  const original = console[method];
   const lines: string[] = [];
-  console.error = (...args: unknown[]) => {
+  console[method] = (...args: unknown[]) => {
     lines.push(args.map(String).join(" "));
   };
   try {
     return { result: await fn(), lines };
   } finally {
-    console.error = original;
+    console[method] = original;
   }
+}
+
+function captureConsoleError<T>(fn: () => Promise<T>) {
+  return captureConsole("error", fn);
 }
 
 Deno.test("paddle-webhooks: a valid signed event is applied through one RPC", async () => {
@@ -315,4 +340,133 @@ Deno.test("paddle-webhooks: a validly signed event with a malformed user_id is 4
   assertEquals(response.status, 400);
   assertEquals(db.fromCalls, 0);
   assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-webhooks: a correctly signed header with a non-digit ts is 401 and logs no header value", async () => {
+  for (const ts of [`${NOW_SECONDS}.0`, `+${NOW_SECONDS}`, `${NOW_SECONDS}e0`]) {
+    const db = new FakeDb();
+    const request = await signedRequest(await subscriptionEvent(), { ts });
+    const h1 = request.headers.get("Paddle-Signature")!.split("h1=")[1]!;
+    const { result: response, lines } = await captureConsole("warn", () => makeHandler(db)(request));
+
+    assertEquals(response.status, 401, `ts=${ts}`);
+    assertEquals(db.fromCalls, 0);
+    assertEquals(db.rpcCalls.length, 0);
+    assert(
+      lines.some((line) => line.includes("Malformed Paddle-Signature header")),
+      `expected a malformed-header log for ts=${ts}, got: ${JSON.stringify(lines)}`,
+    );
+    assert(!lines.some((line) => line.includes(h1) || line.includes(ts)), "header values must not be logged");
+  }
+});
+
+Deno.test("paddle-webhooks: PADDLE_WEBHOOK_SECRET with surrounding whitespace still verifies", async () => {
+  const db = new FakeDb();
+  const response = await makeHandler(db, { PADDLE_WEBHOOK_SECRET: `  ${WEBHOOK_SECRET}\n` })(
+    await signedRequest(await subscriptionEvent()),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+Deno.test("paddle-webhooks: a whitespace-only PADDLE_WEBHOOK_SECRET is 401 with no DB call", async () => {
+  const db = new FakeDb();
+  const response = await makeHandler(db, { PADDLE_WEBHOOK_SECRET: "   " })(
+    await signedRequest(await subscriptionEvent(), { secret: "   " }),
+  );
+
+  assertEquals(response.status, 401);
+  assertEquals(await response.json(), { error: "Unauthorized" });
+  assertEquals(db.fromCalls, 0);
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-webhooks: a missing or forged cd_sig with no stored subscription is 401 with no RPC", async () => {
+  for (const cdSig of [null, await hmacSha256Hex(randomSecret("cdsec_forged"), USER_ID)]) {
+    const db = new FakeDb();
+    const request = await signedRequest(await subscriptionEvent({ cdSig }));
+    const { result: response } = await captureConsoleError(() => makeHandler(db)(request));
+
+    assertEquals(response.status, 401);
+    assertEquals(await response.json(), { error: "Invalid cd_sig" });
+    assertEquals(db.rpcCalls.length, 0);
+  }
+});
+
+Deno.test("paddle-webhooks: an unsigned event for a different stored subscription is 401 with no RPC", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_someone_else",
+  });
+  const request = await signedRequest(await subscriptionEvent({ cdSig: null }));
+  const { result: response } = await captureConsoleError(() => makeHandler(db)(request));
+
+  assertEquals(response.status, 401);
+  assertEquals(await response.json(), { error: "Invalid cd_sig" });
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.row?.last_event_id, "evt_prev");
+});
+
+Deno.test("paddle-webhooks: an unsigned legacy event matching the stored subscription is applied", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_01",
+  });
+  const response = await makeHandler(db)(await signedRequest(await subscriptionEvent({ cdSig: null })));
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+Deno.test("paddle-webhooks: a subscription lookup error is 500 and never treated as no row", async () => {
+  const db = new FakeDb();
+  db.selectError = { message: "connection reset" };
+  const request = await signedRequest(await subscriptionEvent());
+  const { result: response } = await captureConsoleError(() => makeHandler(db)(request));
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "Failed to load subscription state" });
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-webhooks: an apply_subscription_event error is 500 so Paddle retries", async () => {
+  const db = new FakeDb();
+  db.rpcError = { message: "deadlock detected" };
+  const request = await signedRequest(await subscriptionEvent());
+  const { result: response } = await captureConsoleError(() => makeHandler(db)(request));
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "Database upsert failed" });
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+Deno.test("paddle-webhooks: losing the write-time ordering race is acknowledged as stale", async () => {
+  const db = new FakeDb();
+  db.forceNotApplied = true;
+  const response = await makeHandler(db)(await signedRequest(await subscriptionEvent()));
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true, stale: true });
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+Deno.test("paddle-webhooks: an unknown price keeps the stored paid tier", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "FLAME",
+    paddle_subscription_id: "sub_01",
+  });
+  const request = await signedRequest(await subscriptionEvent({ priceId: "pri_unknown" }));
+  const { result: response } = await captureConsole("warn", () => makeHandler(db)(request));
+
+  assertEquals(response.status, 200);
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.rpcCalls[0]!.p_tier, "FLAME");
 });
