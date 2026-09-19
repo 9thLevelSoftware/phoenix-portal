@@ -175,6 +175,8 @@ function tierName(tier: SubscriptionTier): string {
 	return TIER_PRICING.find((t) => t.tier === tier)?.name ?? tier;
 }
 
+const PENDING_ACTIVATION_POLL_MS = 20_000;
+
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -270,23 +272,44 @@ export function PricingPlans() {
 		string | null
 	>(null);
 	// Set when post-checkout reconciliation exhausts its attempts before the
-	// webhook lands. Cleared once the realtime `subscriptions` update (via
-	// useSubscription) shows the purchased plan as entitled.
+	// webhook lands. Hidden (and then reset) once useSubscription — updated by
+	// the realtime `subscriptions` listener or the fallback poll below — shows
+	// the purchased plan as entitled. Scoped to the user who checked out.
 	const [pendingActivation, setPendingActivation] = useState<{
+		userId: string;
 		tier: SubscriptionTier;
 		priceId: string;
 	} | null>(null);
+	const pendingActivationActivated =
+		pendingActivation !== null &&
+		isEntitled &&
+		currentTier === pendingActivation.tier &&
+		currentPriceId === pendingActivation.priceId;
+	const activePendingActivation =
+		pendingActivation &&
+		pendingActivation.userId === user?.id &&
+		!pendingActivationActivated
+			? pendingActivation
+			: null;
 
 	useEffect(() => {
-		if (
-			pendingActivation &&
-			isEntitled &&
-			currentTier === pendingActivation.tier &&
-			currentPriceId === pendingActivation.priceId
-		) {
+		if (pendingActivation && !activePendingActivation) {
 			setPendingActivation(null);
 		}
-	}, [pendingActivation, isEntitled, currentTier, currentPriceId]);
+	}, [pendingActivation, activePendingActivation]);
+
+	// Fallback for a missed realtime event (backgrounded tab, socket
+	// reconnect): re-read the subscription row while activation is pending.
+	const pendingActivationUserId = activePendingActivation?.userId ?? null;
+	useEffect(() => {
+		if (!pendingActivationUserId) return;
+		const interval = setInterval(() => {
+			void queryClient.invalidateQueries({
+				queryKey: queryKeys.subscription.byUser(pendingActivationUserId),
+			});
+		}, PENDING_ACTIVATION_POLL_MS);
+		return () => clearInterval(interval);
+	}, [pendingActivationUserId, queryClient]);
 
 	useEffect(() => {
 		if (
@@ -387,9 +410,11 @@ export function PricingPlans() {
 
 			// Payment went through but the webhook hasn't activated the plan yet.
 			// Say so instead of leaving the user on the upgrade wall in silence.
-			setPendingActivation({ tier, priceId });
+			setPendingActivation({ userId: user.id, tier, priceId });
 		};
 
+		// A new checkout supersedes any earlier pending-activation notice.
+		setPendingActivation(null);
 		// Mark this checkout in-flight so the Subscribe button can disable and
 		// prevent repeated clicks opening multiple checkout attempts.
 		setBillingActionPriceId(priceId);
@@ -635,6 +660,17 @@ export function PricingPlans() {
 			);
 		}
 
+		// Payment for this exact price was received but isn't active yet; a
+		// second checkout here would charge the user twice.
+		if (activePendingActivation?.priceId === priceId) {
+			return (
+				<Button className={`w-full ${tierConfig.buttonClass}`} disabled>
+					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+					Activating...
+				</Button>
+			);
+		}
+
 		return (
 			<Button
 				className={`w-full ${tierConfig.buttonClass}`}
@@ -691,7 +727,7 @@ export function PricingPlans() {
 					)}
 				</div>
 
-				{pendingActivation && (
+				{activePendingActivation && (
 					<div
 						role="status"
 						data-testid="checkout-activation-pending"

@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,10 +32,12 @@ vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => mockSubscription.current,
 }));
 
+const mockAuth = vi.hoisted(() => ({
+	current: { id: "user-1", email: "user@example.com" },
+}));
+
 vi.mock("@/app/hooks/useAuth", () => ({
-	useAuth: () => ({
-		user: { id: "user-1", email: "user@example.com" },
-	}),
+	useAuth: () => ({ user: mockAuth.current }),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -287,68 +290,16 @@ describe("PricingPlans billing actions", () => {
 	});
 
 	describe("when the webhook is slow", () => {
+		const TXN = "txn_01h00000000000000000000000";
+		const BANNER = "checkout-activation-pending";
 		const refreshCalls = () =>
 			mockInvoke.mock.calls.filter(
 				([name]) => name === "paddle-refresh-subscription",
 			).length;
-
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		it("shows a pending-activation banner after the last reconciliation attempt and clears it on the realtime update", async () => {
-			vi.useFakeTimers({ shouldAdvanceTime: true });
-			const user = userEvent.setup({
-				advanceTimers: vi.advanceTimersByTime,
-			});
-			mockOpenCheckout.mockImplementationOnce(async ({ onSuccess }) => {
-				onSuccess?.({
-					name: "checkout.completed",
-					data: { transaction_id: "txn_01h00000000000000000000000" },
-				});
-			});
-			// Webhook hasn't landed: refresh keeps reporting no subscription.
-			mockInvoke.mockImplementation(() =>
-				Promise.resolve({ data: { status: "no_subscription" }, error: null }),
-			);
-
-			const { rerender } = renderWithProviders(<PricingPlans />);
-			await user.click(
-				screen.getAllByRole("button", { name: /subscribe/i })[1],
-			);
-
-			await waitFor(() => expect(refreshCalls()).toBe(1));
-			expect(
-				screen.queryByTestId("checkout-activation-pending"),
-			).not.toBeInTheDocument();
-
-			// Attempts 2-4: no banner while reconciliation is still running.
-			for (let attempt = 2; attempt <= 4; attempt++) {
-				await vi.advanceTimersByTimeAsync(1500);
-				await waitFor(() => expect(refreshCalls()).toBe(attempt));
-				expect(
-					screen.queryByTestId("checkout-activation-pending"),
-				).not.toBeInTheDocument();
-			}
-
-			// The fifth and final attempt also comes back without the plan.
-			await vi.advanceTimersByTimeAsync(1500);
-			const banner = await screen.findByTestId("checkout-activation-pending");
-			expect(refreshCalls()).toBe(5);
-			expect(banner).toHaveAttribute("role", "status");
-			expect(banner).toHaveTextContent(
-				"Payment received — activation can take a minute. This page updates automatically.",
-			);
-
-			// Persistent: time passing alone neither clears it nor retries.
-			await vi.advanceTimersByTimeAsync(60_000);
-			expect(
-				screen.getByTestId("checkout-activation-pending"),
-			).toBeInTheDocument();
-			expect(refreshCalls()).toBe(5);
-
-			// Simulated realtime `subscriptions` update: useSubscription now
-			// reports the purchased plan as entitled.
+		const banner = () => screen.queryByTestId(BANNER);
+		const entitledFlame = (
+			overrides: Partial<typeof mockSubscription.current> = {},
+		) =>
 			setSubscription({
 				tier: "FLAME",
 				rawTier: "FLAME",
@@ -358,24 +309,192 @@ describe("PricingPlans billing actions", () => {
 				isEntitled: true,
 				isPremium: true,
 				isFlame: true,
+				...overrides,
 			});
+
+		function completeCheckoutOnOpen() {
+			mockOpenCheckout.mockImplementation(async ({ onSuccess }) => {
+				onSuccess?.({
+					name: "checkout.completed",
+					data: { transaction_id: TXN },
+				});
+			});
+		}
+
+		function refreshReturnsNothing() {
+			mockInvoke.mockImplementation(() =>
+				Promise.resolve({ data: { status: "no_subscription" }, error: null }),
+			);
+		}
+
+		/** Render, buy Flame monthly, and step through all 5 reconciliation attempts. */
+		async function buyFlameAndExhaustReconciliation() {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const view = renderWithProviders(<PricingPlans />);
+			await user.click(
+				screen.getAllByRole("button", { name: /subscribe/i })[1],
+			);
+			await waitFor(() => expect(refreshCalls()).toBe(1));
+			for (let attempt = 2; attempt <= 5; attempt++) {
+				await vi.advanceTimersByTimeAsync(1500);
+				await waitFor(() => expect(refreshCalls()).toBe(attempt));
+			}
+			return { ...view, user };
+		}
+
+		beforeEach(() => {
+			completeCheckoutOnOpen();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+			mockAuth.current = { id: "user-1", email: "user@example.com" };
+		});
+
+		it("shows a pending-activation banner only after the last attempt and clears it on the matching realtime update", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			refreshReturnsNothing();
+
+			const { rerender } = renderWithProviders(<PricingPlans />);
+			await user.click(
+				screen.getAllByRole("button", { name: /subscribe/i })[1],
+			);
+
+			await waitFor(() => expect(refreshCalls()).toBe(1));
+			expect(banner()).not.toBeInTheDocument();
+
+			// Attempts 2-4: no banner while reconciliation is still running.
+			for (let attempt = 2; attempt <= 4; attempt++) {
+				await vi.advanceTimersByTimeAsync(1500);
+				await waitFor(() => expect(refreshCalls()).toBe(attempt));
+				expect(banner()).not.toBeInTheDocument();
+			}
+
+			// The fifth and final attempt also comes back without the plan.
+			await vi.advanceTimersByTimeAsync(1500);
+			const shown = await screen.findByTestId(BANNER);
+			expect(refreshCalls()).toBe(5);
+			expect(shown).toHaveAttribute("role", "status");
+			expect(shown).toHaveTextContent(
+				"Payment received — activation can take a minute. This page updates automatically.",
+			);
+
+			// Persistent: time passing alone neither clears it nor re-runs checkout
+			// reconciliation.
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(banner()).toBeInTheDocument();
+			expect(refreshCalls()).toBe(5);
+
+			// Same tier but a different price (interval) is not the plan just paid for.
+			entitledFlame({ priceId: "pri_flame_annual" });
+			rerender(<PricingPlans />);
+			expect(banner()).toBeInTheDocument();
+
+			// Matching tier+price that is not entitled (e.g. period ended) doesn't count.
+			entitledFlame({ tier: "FREE", isEntitled: false });
+			rerender(<PricingPlans />);
+			expect(banner()).toBeInTheDocument();
+
+			// Simulated realtime `subscriptions` update: the purchased plan is live.
+			entitledFlame();
+			rerender(<PricingPlans />);
+			expect(banner()).not.toBeInTheDocument();
+		});
+
+		it("still shows the banner when every refresh call errors", async () => {
+			mockInvoke.mockImplementation(() =>
+				Promise.resolve({ data: null, error: new Error("boom") }),
+			);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			await buyFlameAndExhaustReconciliation();
+
+			expect(await screen.findByTestId(BANNER)).toBeInTheDocument();
+			expect(refreshCalls()).toBe(5);
+		});
+
+		it("never shows the banner when the realtime update lands mid-reconciliation", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			refreshReturnsNothing();
+
+			const { rerender } = renderWithProviders(<PricingPlans />);
+			await user.click(
+				screen.getAllByRole("button", { name: /subscribe/i })[1],
+			);
+			await waitFor(() => expect(refreshCalls()).toBe(1));
+
+			// Webhook lands (realtime) before reconciliation gives up.
+			entitledFlame();
 			rerender(<PricingPlans />);
 
-			await waitFor(() => {
-				expect(
-					screen.queryByTestId("checkout-activation-pending"),
-				).not.toBeInTheDocument();
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(refreshCalls()).toBe(5);
+			expect(banner()).not.toBeInTheDocument();
+		});
+
+		it("disables Subscribe for the just-paid price while activation is pending", async () => {
+			refreshReturnsNothing();
+
+			await buyFlameAndExhaustReconciliation();
+			await screen.findByTestId(BANNER);
+
+			expect(
+				screen.getByRole("button", { name: /activating/i }),
+			).toBeDisabled();
+			// Only the other tiers remain purchasable.
+			expect(
+				screen.getAllByRole("button", { name: /^subscribe$/i }),
+			).toHaveLength(2);
+		});
+
+		it("polls the subscription while pending so a missed realtime event still clears the banner", async () => {
+			refreshReturnsNothing();
+			const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+
+			await buyFlameAndExhaustReconciliation();
+			await screen.findByTestId(BANNER);
+			invalidate.mockClear();
+
+			await vi.advanceTimersByTimeAsync(20_000);
+			expect(invalidate).toHaveBeenCalledWith({
+				queryKey: ["subscription", "user-1"],
 			});
 		});
 
+		it("clears the banner when a new checkout starts", async () => {
+			refreshReturnsNothing();
+
+			const { user } = await buyFlameAndExhaustReconciliation();
+			await screen.findByTestId(BANNER);
+
+			// Checkout for a different plan: open it but never complete.
+			mockOpenCheckout.mockImplementation(async () => {});
+			await user.click(
+				screen.getAllByRole("button", { name: /^subscribe$/i })[0],
+			);
+
+			await waitFor(() => expect(banner()).not.toBeInTheDocument());
+		});
+
+		it("does not carry the banner over to a different signed-in user", async () => {
+			refreshReturnsNothing();
+
+			const { rerender } = await buyFlameAndExhaustReconciliation();
+			await screen.findByTestId(BANNER);
+
+			mockAuth.current = { id: "user-2", email: "other@example.com" };
+			rerender(<PricingPlans />);
+
+			expect(banner()).not.toBeInTheDocument();
+		});
+
 		it("does not show the banner when reconciliation confirms the plan", async () => {
-			const user = userEvent.setup();
-			mockOpenCheckout.mockImplementationOnce(async ({ onSuccess }) => {
-				onSuccess?.({
-					name: "checkout.completed",
-					data: { transaction_id: "txn_01h00000000000000000000000" },
-				});
-			});
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockInvoke.mockImplementation(() =>
 				Promise.resolve({
 					data: {
@@ -398,11 +517,10 @@ describe("PricingPlans billing actions", () => {
 			);
 
 			await waitFor(() => expect(refreshCalls()).toBe(1));
-			await new Promise((resolve) => setTimeout(resolve, 0));
+			// Well past the full 5-attempt window.
+			await vi.advanceTimersByTimeAsync(10_000);
 			expect(refreshCalls()).toBe(1);
-			expect(
-				screen.queryByTestId("checkout-activation-pending"),
-			).not.toBeInTheDocument();
+			expect(banner()).not.toBeInTheDocument();
 		});
 	});
 
