@@ -14,12 +14,14 @@ const mockChain = {
 };
 
 const from = vi.fn(() => mockChain);
+const rpc = vi.fn();
 const mockInvoke = vi.fn();
 const mockSignOut = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
 		from,
+		rpc,
 		functions: { invoke: mockInvoke },
 		auth: { signOut: mockSignOut },
 	},
@@ -64,10 +66,18 @@ describe("useRequestDeletion", () => {
 		vi.clearAllMocks();
 	});
 
-	it("inserts a deletion request and invalidates the deletion-request cache", async () => {
+	const pendingRow = {
+		id: "del-2",
+		user_id: TEST_USER_ID,
+		status: "pending",
+		requested_at: "2026-09-19T00:00:00Z",
+		scheduled_for: "2026-10-19T00:00:00Z",
+	};
+
+	it("calls request_account_deletion and invalidates the deletion-request cache", async () => {
 		const { useRequestDeletion } = await import("../account");
 
-		mockChain.insert.mockResolvedValue({ error: null });
+		rpc.mockResolvedValue({ data: pendingRow, error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -80,8 +90,11 @@ describe("useRequestDeletion", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(from).toHaveBeenCalledWith("deletion_requests");
-		expect(mockChain.insert).toHaveBeenCalledWith({ user_id: TEST_USER_ID });
+		expect(rpc).toHaveBeenCalledWith("request_account_deletion");
+		// No direct table write: the RPC is the only request path.
+		expect(from).not.toHaveBeenCalled();
+		expect(mockChain.insert).not.toHaveBeenCalled();
+		expect(result.current.data).toEqual(pendingRow);
 		expect(mockToast.success).toHaveBeenCalledWith(
 			"Account deletion scheduled. You have 30 days to cancel.",
 		);
@@ -90,11 +103,85 @@ describe("useRequestDeletion", () => {
 		});
 	});
 
+	it("re-requests deletion after a cancel", async () => {
+		const { useCancelDeletion, useRequestDeletion } = await import(
+			"../account"
+		);
+
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "del-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqStatus = vi.fn(() => ({ select }));
+		const eqUserId = vi.fn(() => ({ eq: eqStatus }));
+		mockChain.update.mockImplementation(() => ({ eq: eqUserId }));
+		rpc.mockResolvedValue({ data: pendingRow, error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(
+			() => ({
+				cancel: useCancelDeletion(TEST_USER_ID),
+				request: useRequestDeletion(TEST_USER_ID),
+			}),
+			{ wrapper },
+		);
+
+		result.current.cancel.mutate();
+		await waitFor(() => expect(result.current.cancel.isSuccess).toBe(true));
+
+		result.current.request.mutate();
+		await waitFor(() => expect(result.current.request.isSuccess).toBe(true));
+
+		expect(mockChain.update).toHaveBeenCalledWith(
+			expect.objectContaining({ status: "cancelled" }),
+		);
+		expect(rpc).toHaveBeenCalledTimes(1);
+		expect(rpc).toHaveBeenCalledWith("request_account_deletion");
+		expect(mockChain.insert).not.toHaveBeenCalled();
+		expect(result.current.request.data).toEqual(pendingRow);
+		expect(mockToast.success).toHaveBeenCalledWith(
+			"Account deletion cancelled. Your account is safe.",
+		);
+		expect(mockToast.success).toHaveBeenLastCalledWith(
+			"Account deletion scheduled. You have 30 days to cancel.",
+		);
+		expect(mockToast.error).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["already_pending", "Your account is already scheduled for deletion."],
+		["already_executing", "Your account deletion is already in progress."],
+	])("maps %s to a specific message and refreshes the request", async (code, message) => {
+		const { useRequestDeletion } = await import("../account");
+
+		rpc.mockResolvedValue({
+			data: null,
+			error: { code: "P0001", message: code },
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), {
+			wrapper,
+		});
+
+		result.current.mutate();
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(message);
+		expect(mockToast.error).toHaveBeenCalledTimes(1);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: [DELETION_REQUEST_KEY, TEST_USER_ID],
+		});
+	});
+
 	it("shows user-friendly error on request failure", async () => {
 		const { useRequestDeletion } = await import("../account");
 
-		mockChain.insert.mockResolvedValue({
-			error: { message: "duplicate key value violates unique constraint" },
+		rpc.mockResolvedValue({
+			data: null,
+			error: { code: "XX000", message: "internal error: relation locked" },
 		});
 
 		const { wrapper } = createWrapper();
@@ -110,7 +197,7 @@ describe("useRequestDeletion", () => {
 			"Failed to schedule account deletion. Please try again.",
 		);
 		expect(mockToast.error).not.toHaveBeenCalledWith(
-			expect.stringContaining("duplicate key"),
+			expect.stringContaining("internal error"),
 		);
 	});
 });

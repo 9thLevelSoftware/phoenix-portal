@@ -27,6 +27,8 @@ import {
 	useRequestDeletion,
 } from "@/mutations/account";
 
+const DELETION_GRACE_DAYS = 30;
+
 /**
  * DangerZone — Account deletion UI for the Profile settings tab.
  *
@@ -82,14 +84,20 @@ export function DangerZone() {
 			)
 		: 0;
 
+	const formatDate = (date: Date) =>
+		date.toLocaleDateString("en-US", {
+			year: "numeric",
+			month: "long",
+			day: "numeric",
+		});
+
 	// Format the scheduled date
-	const scheduledDateStr = scheduledFor
-		? scheduledFor.toLocaleDateString("en-US", {
-				year: "numeric",
-				month: "long",
-				day: "numeric",
-			})
-		: "";
+	const scheduledDateStr = scheduledFor ? formatDate(scheduledFor) : "";
+
+	// Date a request made now would be carried out (30-day grace period).
+	const proposedDeletionDateStr = formatDate(
+		new Date(now.getTime() + DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000),
+	);
 
 	// =========================================================================
 	// State C: Grace period expired — user can execute deletion or cancel
@@ -260,11 +268,23 @@ export function DangerZone() {
 						<AlertDialogTitle className="text-red-400">
 							Are you sure?
 						</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will schedule your account for permanent deletion in 30 days.
-							During this period you can still cancel. After 30 days, all your
-							data will be permanently deleted, your subscription will be
-							cancelled, and your community posts will be anonymized.
+						<AlertDialogDescription asChild>
+							<div className="space-y-2">
+								<p>
+									Your account will be permanently deleted on{" "}
+									<span className="font-medium text-foreground">
+										{proposedDeletionDateStr}
+									</span>
+									. Until then you can cancel this request. On that date all
+									your data is deleted, your subscription is cancelled, and your
+									community posts are anonymized.
+								</p>
+								<p>
+									Billing stops on {proposedDeletionDateStr}. A subscription
+									renewal that falls before that date is still charged unless
+									you cancel your plan first.
+								</p>
+							</div>
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

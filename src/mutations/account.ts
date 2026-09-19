@@ -25,26 +25,44 @@ export function deletionRequestOptions(userId: string) {
 }
 
 /**
- * Request account deletion — creates a deletion_requests row with a 30-day grace period.
- * The scheduled_for column defaults to now() + 30 days via the database default.
+ * Error codes raised by public.request_account_deletion() (SQLSTATE P0001,
+ * code in `error.message`).
+ */
+const REQUEST_DELETION_ERROR_MESSAGES: Record<string, string> = {
+	already_pending: "Your account is already scheduled for deletion.",
+	already_executing: "Your account deletion is already in progress.",
+};
+
+/**
+ * Request account deletion through the request_account_deletion() RPC.
+ * The server creates a pending row with a 30-day grace period, or replaces
+ * a cancelled request with a fresh one. There is no direct INSERT path.
  */
 export function useRequestDeletion(userId: string) {
 	const queryClient = useQueryClient();
+	const invalidate = () =>
+		queryClient.invalidateQueries({
+			queryKey: [DELETION_REQUEST_KEY, userId],
+		});
 
 	return useMutation({
 		mutationFn: async () => {
-			const { error } = await supabase
-				.from("deletion_requests")
-				.insert({ user_id: userId });
+			const { data, error } = await supabase.rpc("request_account_deletion");
 			if (error) throw error;
+			return data;
 		},
 		onSuccess: () => {
 			toast.success("Account deletion scheduled. You have 30 days to cancel.");
-			queryClient.invalidateQueries({
-				queryKey: [DELETION_REQUEST_KEY, userId],
-			});
+			invalidate();
 		},
 		onError: (error: Error) => {
+			const known = REQUEST_DELETION_ERROR_MESSAGES[error?.message ?? ""];
+			if (known) {
+				// A request already exists that this screen has not loaded yet.
+				toast.error(known);
+				invalidate();
+				return;
+			}
 			console.error("[useRequestDeletion] failed:", error);
 			toast.error("Failed to schedule account deletion. Please try again.");
 		},

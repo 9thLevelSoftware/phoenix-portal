@@ -92,15 +92,31 @@ SELECT ok(
     'cycle_days SELECT has no EMBER predicate'
 );
 
+-- PR 33 (20260920003300): requests go through request_account_deletion()
+-- only; the browser has no INSERT path of its own.
 SELECT ok(
-    (
-        SELECT with_check
+    NOT EXISTS (
+        SELECT 1
         FROM pg_policies
         WHERE schemaname = 'public'
           AND tablename = 'deletion_requests'
-          AND policyname = 'Users can insert own deletion request'
-    ) LIKE '%pending%',
-    'deletion_requests INSERT WITH CHECK requires status pending'
+          AND cmd = 'INSERT'
+    ),
+    'deletion_requests has no INSERT policy'
+);
+
+SELECT ok(
+    NOT has_table_privilege('authenticated', 'public.deletion_requests', 'INSERT')
+    AND NOT has_any_column_privilege('authenticated', 'public.deletion_requests', 'INSERT')
+    AND NOT has_table_privilege('anon', 'public.deletion_requests', 'INSERT')
+    AND NOT has_any_column_privilege('anon', 'public.deletion_requests', 'INSERT'),
+    'authenticated and anon have no INSERT privilege on deletion_requests (table or column)'
+);
+
+SELECT ok(
+    has_column_privilege('authenticated', 'public.deletion_requests', 'status', 'UPDATE')
+    AND has_column_privilege('authenticated', 'public.deletion_requests', 'cancelled_at', 'UPDATE'),
+    'authenticated keeps the UPDATE (status, cancelled_at) grant for cancel'
 );
 
 SELECT ok(
@@ -313,7 +329,16 @@ SELECT pg_temp.assert_sqlstate(
         )
     $sql$,
     '42501',
-    'authenticated cannot set scheduled_for on INSERT (column grant)'
+    'authenticated cannot INSERT deletion_requests with scheduled_for'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.deletion_requests (user_id)
+        VALUES ('33333333-3333-4333-8333-333333333333'::uuid)
+    $sql$,
+    '42501',
+    'authenticated cannot INSERT its own deletion_requests row directly (RPC only)'
 );
 
 RESET ROLE;

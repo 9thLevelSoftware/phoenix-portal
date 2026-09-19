@@ -16,14 +16,16 @@ import {
  *
  * This spec covers (A) request and the (C) confirm-to-delete flow, which
  * is the destructive path the audit calls out as safety-critical. We use
- * Playwright route interception to mock the deletion_requests table and
- * the delete-account Edge Function so we don't actually delete anything.
+ * Playwright route interception to mock the deletion_requests table, the
+ * request_account_deletion RPC and the delete-account Edge Function so we
+ * don't actually delete anything.
  *
  * Protections asserted:
  *   - "Delete My Account" button opens a confirmation dialog (not a
  *     one-click purge).
  *   - Cancelling the dialog leaves state unchanged.
- *   - Confirming triggers the deletion-requests insert.
+ *   - Confirming calls the request_account_deletion RPC (never a direct
+ *     deletion_requests insert) and the dialog names the deletion date.
  *   - Grace-expired path: "Delete Now" requires a SECOND confirmation.
  *   - After successful delete-account, the app signs out and redirects
  *     to "/".
@@ -43,6 +45,9 @@ interface DeletionMockState {
 	deletionRequest: DeletionRow;
 	deleteAccountCalls: number;
 	signOutCalls: number;
+	/** POSTs to /rest/v1/rpc/request_account_deletion. */
+	rpcCalls: number;
+	/** Direct POSTs to /rest/v1/deletion_requests (must stay 0). */
 	insertCalls: number;
 }
 
@@ -62,6 +67,7 @@ async function installDeletionMock(
 		deletionRequest: initial,
 		deleteAccountCalls: 0,
 		signOutCalls: 0,
+		rpcCalls: 0,
 		insertCalls: 0,
 	};
 
@@ -91,6 +97,29 @@ async function installDeletionMock(
 			return;
 		}
 
+		if (
+			pathname === "/rest/v1/rpc/request_account_deletion" &&
+			method === "POST"
+		) {
+			state.rpcCalls++;
+			const now = new Date();
+			const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+			state.deletionRequest = {
+				id: "deletion-1",
+				user_id: USER_ID,
+				requested_at: now.toISOString(),
+				scheduled_for: thirtyDays.toISOString(),
+				status: "pending",
+			};
+			// Non-SETOF composite return: PostgREST sends a single object.
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(state.deletionRequest),
+			});
+			return;
+		}
+
 		if (pathname === "/rest/v1/deletion_requests") {
 			if (method === "GET") {
 				await route.fulfill({
@@ -105,20 +134,15 @@ async function installDeletionMock(
 				return;
 			}
 			if (method === "POST") {
+				// authenticated has no INSERT grant (20260920003300).
 				state.insertCalls++;
-				const now = new Date();
-				const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-				state.deletionRequest = {
-					id: "deletion-1",
-					user_id: USER_ID,
-					requested_at: now.toISOString(),
-					scheduled_for: thirtyDays.toISOString(),
-					status: "pending",
-				};
 				await route.fulfill({
-					status: 201,
+					status: 403,
 					contentType: "application/json",
-					body: JSON.stringify(state.deletionRequest),
+					body: JSON.stringify({
+						code: "42501",
+						message: "permission denied for table deletion_requests",
+					}),
 				});
 				return;
 			}
@@ -177,7 +201,24 @@ test.describe("Account deletion flow", () => {
 		await expect(alert).toBeVisible();
 		await expect(alert.getByText(/Are you sure\?/i)).toBeVisible();
 
-		// No insert yet — just confirmed the dialog exists
+		// The dialog names the exact deletion date and the billing rule.
+		const expectedDate = new Date(
+			Date.now() + 30 * 24 * 60 * 60 * 1000,
+		).toLocaleDateString("en-US", {
+			year: "numeric",
+			month: "long",
+			day: "numeric",
+		});
+		await expect(alert).toContainText(
+			`permanently deleted on ${expectedDate}`,
+		);
+		await expect(alert).toContainText(`Billing stops on ${expectedDate}`);
+		await expect(alert).toContainText(
+			"renewal that falls before that date is still charged unless you cancel your plan first",
+		);
+
+		// No request yet — just confirmed the dialog exists
+		expect(state.rpcCalls).toBe(0);
 		expect(state.insertCalls).toBe(0);
 	});
 
@@ -195,11 +236,12 @@ test.describe("Account deletion flow", () => {
 		await alert.getByRole("button", { name: /^Cancel$/ }).click();
 
 		await expect(alert).toBeHidden();
+		expect(state.rpcCalls).toBe(0);
 		expect(state.insertCalls).toBe(0);
 		expect(state.deleteAccountCalls).toBe(0);
 	});
 
-	test("State A: confirming schedules deletion via deletion_requests insert", async ({
+	test("State A: confirming schedules deletion via request_account_deletion", async ({
 		page,
 	}) => {
 		const state = await installDeletionMock(page, null);
@@ -214,8 +256,10 @@ test.describe("Account deletion flow", () => {
 			.getByRole("button", { name: /Yes, Delete My Account/i })
 			.click();
 
-		// Insert was sent; row is now pending
-		await expect.poll(() => state.insertCalls).toBeGreaterThanOrEqual(1);
+		// The RPC was called; row is now pending and the UI shows State B
+		await expect.poll(() => state.rpcCalls).toBeGreaterThanOrEqual(1);
+		await expect(page.getByText(/Deletion Scheduled/i)).toBeVisible();
+		expect(state.insertCalls).toBe(0); // No direct table insert
 		expect(state.deleteAccountCalls).toBe(0); // No immediate purge
 	});
 
