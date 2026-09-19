@@ -20,7 +20,11 @@
 --    Migrations/operator fixes (postgres, no JWT), cron and service-role
 --    pushes never stamp it, so it cannot overwrite the backfill.
 -- 4. LWW RPCs decide `accepted` from the guarded upsert's row count
---    (RETURNING ... / FOUND) and return the stored LWW key.
+--    (RETURNING ... / FOUND) and return the stored LWW key. They are
+--    service_role only.
+-- 5. NF-12: every accepted push write stores updated_at = now() (server
+--    clock), INSERTs included; the device time lives only in
+--    client_updated_at. The Edge LWW-off upsert no longer sends updated_at.
 --
 -- No wire change. Deploy this migration before the Edge Function: the
 -- LWW-off push upsert sends client_updated_at.
@@ -122,10 +126,11 @@ CREATE TRIGGER training_cycles_client_updated_at
 -- ---------------------------------------------------------------------------
 -- upsert_workout_session_lww (starts from 20260420190710)
 -- ---------------------------------------------------------------------------
--- Incoming key: client_updated_at, else updated_at, else now() (older
--- builds). The upsert's WHERE is the only gate, so a concurrent newer write
--- makes it update nothing and the row is reported rejected. updated_at in
--- the SET list is overwritten by sessions_updated_at (server clock).
+-- Incoming key: client_updated_at, else updated_at (an Edge deployment
+-- older than this migration sends only that), else now() (older builds).
+-- The upsert's WHERE is the only gate, so a concurrent newer write makes it
+-- update nothing and the row is reported rejected. updated_at (pull cursor)
+-- is always the server clock, on INSERT too (NF-12).
 CREATE OR REPLACE FUNCTION public.upsert_workout_session_lww(p_rows jsonb)
 RETURNS TABLE(id text, accepted boolean, server_updated_at timestamptz)
 LANGUAGE plpgsql
@@ -165,7 +170,7 @@ BEGIN
       rec.strength_profile, rec.form_score, rec.deload_warnings,
       rec.rom_violations, rec.spotter_activations, rec.peak_force_n,
       rec.estimated_calories, rec.heaviest_lift_kg, rec.eccentric_load,
-      rec.echo_level, COALESCE(rec.updated_at, NOW()), v_incoming
+      rec.echo_level, NOW(), v_incoming
     )
     ON CONFLICT (id) DO UPDATE SET
       name              = EXCLUDED.name,
@@ -195,7 +200,7 @@ BEGIN
       heaviest_lift_kg  = EXCLUDED.heaviest_lift_kg,
       eccentric_load    = EXCLUDED.eccentric_load,
       echo_level        = EXCLUDED.echo_level,
-      updated_at        = EXCLUDED.updated_at,
+      updated_at        = NOW(),
       client_updated_at = EXCLUDED.client_updated_at
     WHERE COALESCE(ws.client_updated_at, ws.updated_at) IS NULL
        OR COALESCE(ws.client_updated_at, ws.updated_at) <= EXCLUDED.client_updated_at
@@ -212,8 +217,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.upsert_workout_session_lww(jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.upsert_workout_session_lww(jsonb) TO authenticated, service_role;
+-- Caller-rights RPC: service_role only (mobile push). Browser roles could
+-- otherwise forge rows (PR 10 R-1); the SPA never calls it.
+REVOKE ALL ON FUNCTION public.upsert_workout_session_lww(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_workout_session_lww(jsonb) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- upsert_routine_lww (starts from 20260420190710)
@@ -248,7 +255,7 @@ BEGIN
       rec.last_used_at, rec.tags,
       COALESCE(rec.times_completed, 0),
       COALESCE(rec.created_at, NOW()),
-      COALESCE(rec.updated_at, NOW()),
+      NOW(),
       v_incoming
     )
     ON CONFLICT (id) DO UPDATE SET
@@ -260,7 +267,7 @@ BEGIN
       last_used_at       = EXCLUDED.last_used_at,
       tags               = EXCLUDED.tags,
       times_completed    = EXCLUDED.times_completed,
-      updated_at         = EXCLUDED.updated_at,
+      updated_at         = NOW(),
       client_updated_at  = EXCLUDED.client_updated_at
     WHERE COALESCE(r.client_updated_at, r.updated_at) IS NULL
        OR COALESCE(r.client_updated_at, r.updated_at) <= EXCLUDED.client_updated_at
@@ -277,19 +284,25 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.upsert_routine_lww(jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.upsert_routine_lww(jsonb) TO authenticated, service_role;
+-- Caller-rights RPC: service_role only (mobile push). Browser roles could
+-- otherwise forge rows (PR 10 R-1); the SPA never calls it.
+REVOKE ALL ON FUNCTION public.upsert_routine_lww(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_routine_lww(jsonb) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- merge_training_cycles_from_push (starts from 20260920001800, KD-3 3a)
+-- merge_training_cycles_from_push (starts from 20260920001901, PR 19; KD-3 3a)
 -- ---------------------------------------------------------------------------
--- Changes from PR 18:
+-- Changes from the PR 19 body:
 --   * LWW (p_use_lww) compares COALESCE(client_updated_at, updated_at)
 --     against the incoming updated_at instead of the server write clock.
 --   * client_updated_at is written under both flag values: the incoming
---     updated_at on INSERT (now() when absent, like updated_at) and on every
---     applied content change; an unchanged push writes nothing, so neither
---     clock moves (the no-op skip is unchanged).
+--     updated_at on INSERT (now() when absent) and on every applied content
+--     change; an unchanged push writes nothing, so neither clock moves (the
+--     no-op skip is unchanged).
+--   * NF-12: an INSERT stores updated_at = now() (server clock), never the
+--     device's updatedAt, so a slow device clock cannot hide a new cycle
+--     from other devices' delta pulls.
+--   * PR 19's progression rules and normalization are kept unchanged.
 --   * server_updated_at stays the stored updated_at (the pull cursor): the
 --     push response's cycleVersions hands it to the device as its
 --     baseUpdatedAt, which is compared with portal_edited_at (same clock).
@@ -396,7 +409,7 @@ BEGIN
         COALESCE(rec.current_week, 1),
         COALESCE(rec.status, 'draft'),
         rec.started_at, rec.last_used_at, rec.progression_settings,
-        rec.deload_settings, rec.template_id, COALESCE(rec.updated_at, now()),
+        rec.deload_settings, rec.template_id, now(),
         COALESCE(rec.updated_at, now())
       )
       ON CONFLICT (id) DO NOTHING;
@@ -458,21 +471,25 @@ BEGIN
       END;
       n_current_week := COALESCE(rec.current_week, v_existing.current_week);
       n_status := COALESCE(rec.status, v_existing.status);
-      -- Mobile-modelled keys are push-owned (incl. removals); portal-only
-      -- keys survive (review R-4).
-      IF rec.progression_settings IS NOT NULL
-         AND jsonb_typeof(rec.progression_settings) <> 'object' THEN
-        n_progression := rec.progression_settings;
-      ELSIF v_existing.progression_settings IS NULL
+      -- Progression (PR 19 R-10). Only a current (non-stale) push with a
+      -- non-null progression object is authoritative for the mobile keys:
+      -- it replaces them, and a mobile key missing from it is removed
+      -- (mobile encodes sparsely). A NULL incoming (older build, no local
+      -- progression row, or a failed decode) and a stale push keep the
+      -- stored settings unchanged. Portal-only keys always survive.
+      IF v_stale OR rec.progression_settings IS NULL THEN
+        n_progression := v_existing.progression_settings;
+      ELSIF jsonb_typeof(rec.progression_settings) <> 'object'
+            OR v_existing.progression_settings IS NULL
             OR jsonb_typeof(v_existing.progression_settings) <> 'object' THEN
         n_progression := rec.progression_settings;
       ELSE
         n_progression := (v_existing.progression_settings - c_mobile_progression_keys)
-                         || COALESCE(rec.progression_settings, '{}'::jsonb);
-        IF rec.progression_settings IS NULL AND n_progression = '{}'::jsonb THEN
-          n_progression := NULL;
-        END IF;
+                         || rec.progression_settings;
       END IF;
+      -- Same normalization the BEFORE trigger applies, so the no-op check
+      -- below compares like with like.
+      n_progression := public.normalize_cycle_progression_settings(n_progression);
       n_deload := COALESCE(rec.deload_settings, v_existing.deload_settings);
       n_template_id := COALESCE(rec.template_id, v_existing.template_id);
 

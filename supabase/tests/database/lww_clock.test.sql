@@ -42,9 +42,11 @@ SELECT diag('database:lww-clock-privileges');
 SELECT ok(
     NOT has_function_privilege('anon', 'public.upsert_workout_session_lww(jsonb)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.upsert_routine_lww(jsonb)', 'EXECUTE')
+    AND NOT has_function_privilege('authenticated', 'public.upsert_workout_session_lww(jsonb)', 'EXECUTE')
+    AND NOT has_function_privilege('authenticated', 'public.upsert_routine_lww(jsonb)', 'EXECUTE')
     AND has_function_privilege('service_role', 'public.upsert_workout_session_lww(jsonb)', 'EXECUTE')
     AND has_function_privilege('service_role', 'public.upsert_routine_lww(jsonb)', 'EXECUTE'),
-    'session/routine LWW RPCs: no anon, service_role keeps EXECUTE'
+    'session/routine LWW RPCs are service_role only (no anon/authenticated forging, PR 10 R-1)'
 );
 SELECT ok(
     NOT has_function_privilege('anon', 'public.merge_training_cycles_from_push(uuid, jsonb, boolean)', 'EXECUTE')
@@ -316,6 +318,12 @@ SELECT results_eq(
     $v$ VALUES (true, '2026-02-01T00:00:00Z'::timestamptz) $v$,
     'session: a new row is inserted with the device key'
 );
+SELECT results_eq(
+    $sql$ SELECT updated_at, client_updated_at FROM public.workout_sessions
+          WHERE id = '21212121-0000-4000-8000-0000000000a3' $sql$,
+    $values$ VALUES (now(), '2026-02-01T00:00:00Z'::timestamptz) $values$,
+    'session (NF-12): a new row''s pull cursor is the server clock, the device time is only the key'
+);
 
 SELECT diag('database:lww-clock-routine-rpc');
 
@@ -356,6 +364,22 @@ SELECT results_eq(
     ),
     $v$ VALUES (true) $v$,
     'routine: an equal key is accepted (idempotent re-push)'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_routine_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000b2',
+            'user_id', '21212121-0000-4000-8000-000000000001',
+            'name', 'slow-clock new', 'updated_at', now() - interval '10 minutes'))
+    ),
+    format($v$ VALUES (true, %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'routine: a new row from a slow device clock is accepted with the device key'
+);
+SELECT is(
+    (SELECT updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b2'),
+    now(),
+    'routine (NF-12): a new row''s pull cursor is the server clock'
 );
 
 SELECT diag('database:lww-clock-cycle-merge');
@@ -460,6 +484,11 @@ SELECT is(
     (SELECT client_updated_at FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c9'),
     '2026-03-01T00:00:00Z'::timestamptz,
     'cycle (LWW off): a new cycle stores the pushed key'
+);
+SELECT is(
+    (SELECT updated_at FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c9'),
+    now(),
+    'cycle (NF-12): a new cycle''s pull cursor is the server clock'
 );
 
 SELECT * FROM finish();

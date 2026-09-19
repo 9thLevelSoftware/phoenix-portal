@@ -12,6 +12,7 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 
@@ -4690,7 +4691,9 @@ Deno.test({
         progression_settings: stored.progression_settings,
         deload_settings: stored.deload_settings,
         template_id: stored.template_id,
-        updated_at: new Date(String(stored.updated_at)).toISOString(),
+        // PR 21: the pushed updatedAt is the LWW key; updated_at (pull
+        // cursor) is the server clock (NF-12).
+        client_updated_at: new Date(String(stored.client_updated_at)).toISOString(),
         portal_edited_at: stored.portal_edited_at,
       }, {
         user_id: fixture.ownerId,
@@ -4707,9 +4710,13 @@ Deno.test({
         progression_settings: { frequencyCycles: "2" },
         deload_settings: null,
         template_id: "template_18",
-        updated_at: "2026-07-02T09:30:00.000Z",
+        client_updated_at: "2026-07-02T09:30:00.000Z",
         portal_edited_at: null,
       });
+      assert(
+        Date.parse(String(stored.updated_at)) > Date.parse("2026-07-02T09:30:00.000Z"),
+        "updated_at is the server write time, not the pushed updatedAt",
+      );
       assertEquals(await storedDays(fixture, ids.cycleId), [{
         day_number: 1,
         day_type: "workout",
@@ -4922,6 +4929,74 @@ Deno.test({
           assertEquals(epochMs(storedSession.client_updated_at), epochMs(stamp));
         }
       }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+/** Real pull handler for the fixture owner (another device of the account). */
+function realPullHandlerFor(
+  fixture: TombstonePushFixture,
+): (request: Request) => Promise<Response> {
+  return createMobileSyncPullHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return fixture.admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) rows created by a device 10 minutes behind reach another device's delta pull (NF-12)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // Device B last synced just before device A's push.
+      const lastSyncB = Date.now() - 1_000;
+      const slowStamp = new Date(Date.now() - 10 * 60_000).toISOString();
+      await pushOk(push, lwwClockPush(ids, "slow", slowStamp));
+
+      for (const table of ["workout_sessions", "routines"] as const) {
+        const id = table === "workout_sessions" ? ids.sessionId : ids.routineId;
+        const row = await storedLwwRow(fixture, table, id);
+        assertEquals(epochMs(row.client_updated_at), epochMs(slowStamp), `${table} key is the device time`);
+        assert(
+          epochMs(row.updated_at) > lastSyncB,
+          `${table} pull cursor is the server clock, not the slow device clock`,
+        );
+      }
+
+      // Device B: timestamp delta pull (lastSync > 0, no parity lists; no
+      // profile filter, see the PR 21 summary for the legacy 'default'
+      // profile filter gap).
+      const response = await pull(requestFromBody({
+        deviceId: "device-b",
+        lastSync: lastSyncB,
+        pageSize: 75,
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const sessions = body.sessions as Array<Record<string, unknown>>;
+      const routines = body.routines as Array<Record<string, unknown>>;
+      assertEquals(sessions.map((s) => s.id), [ids.sessionId]);
+      assertEquals(routines.map((r) => r.id), [ids.routineId]);
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
     }

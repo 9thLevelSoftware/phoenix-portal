@@ -1709,10 +1709,10 @@ async function mobileSyncPushHandler(
         echo_level: s.echoLevel ?? null,
         warmup_reps: s.warmupReps ?? null,
         working_reps: s.workingReps ?? null,
-        updated_at: s.updatedAt ?? null,
         // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
-        // updated_at above is only the INSERT value; on UPDATE the server
-        // trigger owns it (pull cursor).
+        // updated_at (the pull cursor) is never sent: the server sets it to
+        // now() on INSERT (column default) and UPDATE (trigger), so a slow
+        // device clock cannot hide the row from delta pulls (NF-12).
         client_updated_at: s.updatedAt ?? null,
       }));
 
@@ -1732,11 +1732,11 @@ async function mobileSyncPushHandler(
         // Phase 3.2: route through the LWW RPC so the server rejects stale
         // rows instead of overwriting with older data. Accepted ids are used
         // to filter the exercises/sets/rep_summaries child upserts below.
-        // Fallback to NOW() when the client DTO omits updated_at (older
+        // Fallback to NOW() when the client DTO omits updatedAt (older
         // mobile builds pre-Phase-3.2).
         const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
           ...r,
-          updated_at: r.updated_at ?? new Date().toISOString(),
+          client_updated_at: r.client_updated_at ?? new Date().toISOString(),
         }));
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_workout_session_lww',
@@ -2299,8 +2299,8 @@ async function mobileSyncPushHandler(
         estimated_duration: Math.round(r.estimatedDuration ?? 0),
         times_completed: r.timesCompleted ?? 0,
         is_favorite: r.isFavorite ?? false,
-        updated_at: r.updatedAt ?? null,
         // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
+        // updated_at (pull cursor) is server-owned (NF-12).
         client_updated_at: r.updatedAt ?? null,
       }));
 
@@ -2316,7 +2316,7 @@ async function mobileSyncPushHandler(
       if (SYNC_LWW_ENABLED) {
         const rows = routineRows.map((r) => ({
           ...r,
-          updated_at: r.updated_at ?? new Date().toISOString(),
+          client_updated_at: r.client_updated_at ?? new Date().toISOString(),
         }));
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_routine_lww',
