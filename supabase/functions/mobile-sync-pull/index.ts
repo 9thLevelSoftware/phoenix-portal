@@ -1318,20 +1318,28 @@ async function mobileSyncPullHandler(
       // Our 500-row cap (not silent max_rows). Signal when the page is full.
       externalActivitiesHasMore = (externalActivitiesRaw ?? []).length === 500;
 
+      // Mobile's ExternalActivitySyncDto (PortalSyncDtos.kt) requires a
+      // non-null `syncedAt` and declares `activityType` / `durationSeconds`
+      // as non-nullable with defaults. PortalWireJson does not coerce JSON
+      // null into defaults, so a missing/null value for any of these fails
+      // decoding of the WHOLE pull response. The DB columns are nullable
+      // (synced_at has only DEFAULT NOW(); updated_at and started_at are
+      // NOT NULL), so always emit concrete values here.
       externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
         id: a.id,
         externalId: a.external_id,
         provider: a.provider,
         name: a.name,
-        activityType: a.activity_type,
+        activityType: a.activity_type ?? 'strength',
         startedAt: a.started_at,
-        durationSeconds: a.duration_seconds,
+        durationSeconds: a.duration_seconds ?? 0,
         distanceMeters: a.distance_meters,
         calories: a.calories,
         avgHeartRate: a.avg_heart_rate,
         maxHeartRate: a.max_heart_rate,
         elevationGainMeters: a.elevation_gain_meters,
         rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+        syncedAt: a.synced_at ?? a.updated_at ?? a.started_at,
       }));
     }
 
