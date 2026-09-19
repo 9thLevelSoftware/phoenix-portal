@@ -7,6 +7,9 @@ import {
   type PurgeResult,
 } from '../_shared/accountPurge.ts';
 
+/** One delete-account attempt per user per window (charged after validation). */
+const DELETE_RATE_LIMIT_WINDOW_SECONDS = 3600;
+
 interface DeleteAccountAuthClient {
   auth: {
     getUser(): Promise<{ data: { user: { id: string } | null } }>;
@@ -50,10 +53,10 @@ async function deleteAccountHandler(
   deps: DeleteAccountHandlerDependencies,
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
-  const json = (body: unknown, status: number) =>
+  const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: { ...cors, ...extra, 'Content-Type': 'application/json' },
     });
 
   // CORS preflight
@@ -110,39 +113,86 @@ async function deleteAccountHandler(
       key: 'delete-account',
       userId,
       maxRequests: 1,
-      windowSeconds: 3600,
+      windowSeconds: DELETE_RATE_LIMIT_WINDOW_SECONDS,
     }, cors);
     if (!rateCheck.allowed) return rateCheck.response!;
 
-    // The deletion request stays `pending` until the purge deletes the user;
-    // it then cascades away with the rest of the account. Every purge step is
-    // idempotent, so a failed run is retried by simply calling again.
+    // Claim the request (pending -> executed) before any side effect. The
+    // user's own "cancel deletion" is RLS-gated on status = 'pending', so a
+    // cancel from another tab or device cannot slip in while the purge runs
+    // (review R-6; PR 35 replaces this with its atomic 'executing' claim). On
+    // success the row cascades away with the account; on failure it is put
+    // back to 'pending' so the user can retry or cancel.
+    const { data: claimed, error: claimError } = await supabaseAdmin
+      .from('deletion_requests')
+      .update({ status: 'executed', executed_at: new Date().toISOString() })
+      .eq('id', request.id)
+      .eq('status', 'pending')
+      .select('id');
+    if (claimError) {
+      console.error('[DELETE_ACCOUNT] could not claim deletion request:', claimError);
+      return json({ error: 'Failed to process deletion. Please try again later.' }, 500);
+    }
+    if (!claimed || claimed.length === 0) {
+      return json({ error: 'Deletion request is no longer pending' }, 409);
+    }
+
     const result = await deps.purge(supabaseAdmin, userId);
     if (!result.ok) {
+      // deleteUser did not succeed, so the user and the request still exist.
+      const { error: revertError } = await supabaseAdmin
+        .from('deletion_requests')
+        .update({ status: 'pending', executed_at: null })
+        .eq('id', request.id)
+        .eq('status', 'executed');
+      if (revertError) {
+        console.error('[DELETION_ALERT] claim_revert_failed', {
+          user_id: userId,
+          request_id: request.id,
+          error: revertError,
+        });
+      }
       console.error('[DELETE_ACCOUNT] purge failed:', {
         user_id: userId,
         stage: result.stage,
         billing_cancelled: result.billingCancelled,
         detail: result.detail,
       });
+      // The rate limit charged above stays in force (a failed purge never
+      // deletes it), so tell the user when a retry will actually be accepted.
+      const retry = { 'Retry-After': String(DELETE_RATE_LIMIT_WINDOW_SECONDS) };
+      const retryText = 'You can try again in about an hour.';
       if (result.billingCancelled) {
         console.error('[DELETE_ACCOUNT_PARTIAL_FAILURE] Paddle subscription was canceled but the account was not deleted', {
           user_id: userId,
           stage: result.stage,
         });
         return json({
-          error: 'Billing subscription was canceled, but account deletion could not be completed. Please try again or contact support.',
+          error: `Billing subscription was canceled, but account deletion could not be completed. ${retryText} If it keeps failing, contact support.`,
           code: 'billing_canceled_account_delete_failed',
-        }, 500);
+        }, 500, retry);
+      }
+      if (result.stage === 'billing_not_found') {
+        return json({
+          error: 'Your billing subscription could not be verified with our payment provider, so account deletion was stopped to make sure you are not billed again. Please contact support to complete the deletion.',
+          code: 'billing_subscription_not_found',
+        }, 502);
       }
       if (result.stage.startsWith('billing_')) {
         return json({
-          error: 'Failed to cancel billing subscription. Account deletion aborted. Please try again or contact support.',
-        }, 502);
+          error: `Failed to cancel billing subscription. Account deletion aborted. ${retryText} If it keeps failing, contact support.`,
+          code: 'billing_cancel_failed',
+        }, 502, retry);
       }
-      return json({ error: 'Failed to delete account. Please try again.' }, 500);
+      return json({ error: `Failed to delete account. ${retryText}` }, 500, retry);
     }
 
+    if (result.residualTables.length > 0) {
+      console.error('[DELETION_ALERT] account deleted with residual rows', {
+        user_id: userId,
+        residual_tables: result.residualTables,
+      });
+    }
     console.log(`Account deleted successfully for user ${userId}`);
     return json({ success: true }, 200);
   } catch (err) {

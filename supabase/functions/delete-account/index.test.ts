@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   EXPLICIT_PURGE_TARGETS,
@@ -11,6 +11,7 @@ import { createDeleteAccountHandler } from "./index.ts";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
 const SUBSCRIPTION_ID = "sub_01purgetest";
+const CUSTOMER_ID = "ctm_01purgetest";
 const PAST = "2020-01-01T00:00:00.000Z";
 const FUTURE = "2999-01-01T00:00:00.000Z";
 
@@ -21,47 +22,89 @@ const FUTURE = "2999-01-01T00:00:00.000Z";
 type Call =
   | { kind: "select"; table: string; filters: [string, unknown][] }
   | { kind: "delete"; table: string; filters: [string, unknown][] }
-  | { kind: "update"; table: string; values: unknown; filters: [string, unknown][] }
+  | { kind: "update"; table: string; values: Record<string, unknown>; filters: [string, unknown][] }
   | { kind: "rpc"; name: string; args: unknown }
   | { kind: "deleteUser"; userId: string }
   | { kind: "storage.list"; prefix: string }
   | { kind: "storage.remove"; paths: string[] };
 
+interface FakeError {
+  code?: string;
+  message: string;
+}
+
+interface FakeRequest {
+  id: string;
+  scheduled_for: string;
+  status: string;
+  executed_at?: string | null;
+}
+
 interface FakeState {
   calls: Call[];
-  deletionRequest: { id: string; scheduled_for: string; status: string } | null;
-  subscription: { paddle_subscription_id: string | null } | null;
+  deletionRequest: FakeRequest | null;
+  subscription: {
+    paddle_subscription_id: string | null;
+    paddle_customer_id?: string | null;
+    status?: string;
+  } | null;
+  /** Error returned by the subscriptions lookup. */
+  subscriptionError: FakeError | null;
   avatars: string[];
+  /** false: the limiter always refuses. */
   rateLimitAllowed: boolean;
-  /** Tables whose delete fails with this error. */
-  deleteErrors: Record<string, { code?: string; message: string }>;
+  /** The single delete-account slot is taken (cleared by deleting the row). */
+  rateLimitUsed: boolean;
+  /** Delete errors keyed by `table` or `table:column` (first filter column). */
+  deleteErrors: Record<string, FakeError>;
+  /** Update errors keyed by table. */
+  updateErrors: Record<string, FakeError>;
   deleteUserError: { status?: number; message: string } | null;
+  /** The request stops being pending between the read and the claim. */
+  claimRace: boolean;
 }
 
 function fakeState(overrides: Partial<FakeState> = {}): FakeState {
   return {
     calls: [],
-    deletionRequest: { id: "req-1", scheduled_for: PAST, status: "pending" },
+    deletionRequest: { id: "req-1", scheduled_for: PAST, status: "pending", executed_at: null },
     subscription: null,
+    subscriptionError: null,
     avatars: ["avatar.png"],
     rateLimitAllowed: true,
+    rateLimitUsed: false,
     deleteErrors: {},
+    updateErrors: {},
     deleteUserError: null,
+    claimRace: false,
     ...overrides,
   };
 }
 
+/** A user-side "cancel deletion": RLS only lets it touch a pending row. */
+function userCancelsDeletion(state: FakeState): boolean {
+  if (state.deletionRequest?.status !== "pending") return false;
+  state.deletionRequest.status = "cancelled";
+  return true;
+}
+
 class FakeQuery {
   private filters: [string, unknown][] = [];
+  private returnRows = false;
   constructor(
     private state: FakeState,
     private table: string,
     private op: "select" | "delete" | "update",
-    private values?: unknown,
+    private values: Record<string, unknown> = {},
   ) {}
 
   eq(column: string, value: unknown) {
     this.filters.push([column, value]);
+    return this;
+  }
+
+  select(_columns?: string) {
+    this.returnRows = true;
     return this;
   }
 
@@ -99,13 +142,43 @@ class FakeQuery {
 
   maybeSingle() {
     this.record();
+    if (this.table === "subscriptions" && this.state.subscriptionError) {
+      return Promise.resolve({ data: null, error: this.state.subscriptionError });
+    }
     return Promise.resolve({ data: this.row(), error: null });
   }
 
-  then<T>(resolve: (value: { data: null; error: unknown }) => T) {
+  private resolveUpdate(): { data: unknown; error: unknown } {
+    const error = this.state.updateErrors[this.table] ?? null;
+    if (error) return { data: null, error };
+    if (this.table !== "deletion_requests") return { data: this.returnRows ? [] : null, error: null };
+    const request = this.state.deletionRequest;
+    const isClaim = this.values.status === "executed";
+    const matches = request !== null &&
+      !(isClaim && this.state.claimRace) &&
+      this.filters.every(([column, value]) =>
+        (request as unknown as Record<string, unknown>)[column] === value
+      );
+    if (matches) Object.assign(request, this.values);
+    return { data: this.returnRows ? (matches ? [{ id: request!.id }] : []) : null, error: null };
+  }
+
+  private resolveDelete(): { data: null; error: unknown } {
+    const column = this.filters[0]?.[0];
+    const error = this.state.deleteErrors[`${this.table}:${column}`] ??
+      this.state.deleteErrors[this.table] ?? null;
+    if (!error && this.table === "rate_limit_tracking") this.state.rateLimitUsed = false;
+    return { data: null, error };
+  }
+
+  then<T>(resolve: (value: { data: unknown; error: unknown }) => T) {
     this.record();
-    const error = this.op === "delete" ? this.state.deleteErrors[this.table] ?? null : null;
-    return Promise.resolve({ data: null, error }).then(resolve);
+    const result = this.op === "update"
+      ? this.resolveUpdate()
+      : this.op === "delete"
+      ? this.resolveDelete()
+      : { data: null, error: null };
+    return Promise.resolve(result).then(resolve);
   }
 }
 
@@ -115,17 +188,15 @@ function fakeAdmin(state: FakeState): SupabaseClient {
       return {
         select: () => new FakeQuery(state, table, "select"),
         delete: () => new FakeQuery(state, table, "delete"),
-        update: (values: unknown) => new FakeQuery(state, table, "update", values),
+        update: (values: Record<string, unknown>) => new FakeQuery(state, table, "update", values),
       };
     },
     rpc(name: string, args: unknown) {
       state.calls.push({ kind: "rpc", name, args });
+      const allowed = state.rateLimitAllowed && !state.rateLimitUsed;
+      if (allowed) state.rateLimitUsed = true;
       return Promise.resolve({
-        data: [{
-          allowed: state.rateLimitAllowed,
-          remaining: 0,
-          retry_after_seconds: state.rateLimitAllowed ? null : 3600,
-        }],
+        data: [{ allowed, remaining: 0, retry_after_seconds: allowed ? null : 3600 }],
         error: null,
       });
     },
@@ -169,6 +240,8 @@ function fakePaddle(options: {
   status?: string;
   getStatus?: number;
   cancelStatus?: number;
+  /** Runs when the live status is fetched (mid-purge). */
+  onGet?: () => void;
 }): { deps: PurgeUserDependencies; calls: PaddleCall[] } {
   const calls: PaddleCall[] = [];
   const fetchImpl = (input: string | URL | Request, init?: RequestInit) => {
@@ -180,6 +253,7 @@ function fakePaddle(options: {
       body: init?.body ? JSON.parse(String(init.body)) : null,
     });
     if (method === "GET") {
+      options.onGet?.();
       return Promise.resolve(
         new Response(
           JSON.stringify({ data: { id: SUBSCRIPTION_ID, status: options.status ?? "active" } }),
@@ -243,6 +317,18 @@ const isRateLimit = (call: Call) => call.kind === "rpc" && call.name === "check_
 const isAvatarRemove = (call: Call) => call.kind === "storage.remove";
 const deletesTable = (table: string) => (call: Call) =>
   call.kind === "delete" && call.table === table;
+const isRowDelete = (call: Call) => call.kind === "delete";
+
+function withSubscription(overrides: Partial<FakeState> = {}): FakeState {
+  return fakeState({
+    subscription: {
+      paddle_subscription_id: SUBSCRIPTION_ID,
+      paddle_customer_id: CUSTOMER_ID,
+      status: "active",
+    },
+    ...overrides,
+  });
+}
 
 async function silenced<T>(run: () => Promise<T>): Promise<T> {
   const original = { log: console.log, warn: console.warn, error: console.error };
@@ -256,42 +342,109 @@ async function silenced<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The purge never ran past billing: nothing deleted, user and avatar intact. */
+function assertUntouched(state: FakeState) {
+  assertEquals(state.deletionRequest?.status, "pending");
+  assertEquals(state.deletionRequest?.executed_at ?? null, null);
+  assertEquals(state.avatars, ["avatar.png"]);
+  assertEquals(indexOfCall(state, isAvatarRemove), -1);
+  assertEquals(indexOfCall(state, isDeleteUser), -1);
+  assertEquals(state.calls.filter(isRowDelete).length, 0, "no row deleted");
+}
+
 // ---------------------------------------------------------------------------
 // Handler tests
 // ---------------------------------------------------------------------------
 
-Deno.test("delete-account: a Paddle cancel failure returns 5xx, keeps the request pending and the avatar intact", async () => {
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+Deno.test("delete-account: a Paddle cancel failure returns 5xx with the real retry time, request pending, avatar intact", async () => {
+  const state = withSubscription();
   const paddle = fakePaddle({ status: "active", cancelStatus: 500 });
 
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
 
   assertEquals(res.status, 502);
+  assertEquals(res.headers.get("Retry-After"), "3600");
+  const body = await res.json();
+  assertEquals(body.code, "billing_cancel_failed");
+  assertStringIncludes(body.error, "about an hour");
+  assertUntouched(state);
+  // Claimed, then put back.
+  const requestUpdates = state.calls.filter((c) => c.kind === "update" && c.table === "deletion_requests");
+  assertEquals(requestUpdates.map((c) => c.kind === "update" && c.values.status), ["executed", "pending"]);
+});
+
+Deno.test("delete-account: a billing abort keeps the rate limit, so an immediate retry is refused", async () => {
+  const state = withSubscription();
+  const first = await silenced(() => handlerFor(state, fakePaddle({ cancelStatus: 500 }).deps)(post()));
+  assertEquals(first.status, 502);
+  const second = await silenced(() => handlerFor(state, fakePaddle({}).deps)(post()));
+  assertEquals(second.status, 429);
+  assertEquals(state.calls.filter(isDeleteUser).length, 0);
+});
+
+Deno.test("delete-account: a deleteUser failure keeps the rate limit (R-15), so an immediate retry is refused", async () => {
+  const state = fakeState({ deleteUserError: { status: 500, message: "Database error deleting user" } });
+  const first = await silenced(() => handlerFor(state, fakePaddle({}).deps)(post()));
+  assertEquals(first.status, 500);
+  assertEquals(first.headers.get("Retry-After"), "3600");
   assertEquals(state.deletionRequest?.status, "pending");
-  assertEquals(state.avatars, ["avatar.png"]);
-  assertEquals(indexOfCall(state, isAvatarRemove), -1);
-  assertEquals(indexOfCall(state, isDeleteUser), -1);
-  assertEquals(state.calls.filter((c) => c.kind === "delete").length, 0, "no row deleted");
-  assert(
-    !state.calls.some((c) => c.kind === "update" && c.table === "deletion_requests"),
-    "the request status is never touched",
-  );
+  assertEquals(indexOfCall(state, deletesTable("rate_limit_tracking")), -1);
+  const second = await silenced(() => handlerFor(state, fakePaddle({}).deps)(post()));
+  assertEquals(second.status, 429);
+  assertEquals(state.calls.filter(isDeleteUser).length, 1);
 });
 
 Deno.test("delete-account: a Paddle status lookup failure aborts before anything is deleted", async () => {
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+  const state = withSubscription();
   const paddle = fakePaddle({ getStatus: 503 });
 
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
 
   assertEquals(res.status, 502);
   assertEquals(paddle.calls.filter((c) => c.method === "POST").length, 0);
-  assertEquals(indexOfCall(state, isDeleteUser), -1);
-  assertEquals(state.avatars, ["avatar.png"]);
+  assertUntouched(state);
+});
+
+Deno.test("delete-account: a DB error on the subscription lookup aborts with no Paddle call (R-11)", async () => {
+  const state = withSubscription({
+    subscriptionError: { code: "57014", message: "canceling statement due to statement timeout" },
+  });
+  const paddle = fakePaddle({});
+
+  const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
+
+  assertEquals(res.status, 502);
+  assertEquals(paddle.calls.length, 0);
+  assertUntouched(state);
+});
+
+Deno.test("delete-account: a Paddle 404 continues only when the local subscription is already terminal (R-1, R-10)", async () => {
+  for (const status of ["canceled", "expired"]) {
+    const state = withSubscription();
+    state.subscription!.status = status;
+    const paddle = fakePaddle({ getStatus: 404 });
+    const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
+    assertEquals(res.status, 200, status);
+    assertEquals(paddle.calls.map((c) => c.method), ["GET"], status);
+    assertEquals(state.calls.filter(isDeleteUser).length, 1, status);
+  }
+
+  for (const status of ["active", "past_due", "trialing", "incomplete", "none"]) {
+    const state = withSubscription();
+    state.subscription!.status = status;
+    const paddle = fakePaddle({ getStatus: 404 });
+    const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
+    assertEquals(res.status, 502, status);
+    const body = await res.json();
+    assertEquals(body.code, "billing_subscription_not_found", status);
+    assertStringIncludes(body.error, "contact support");
+    assertEquals(paddle.calls.map((c) => c.method), ["GET"], status);
+    assertUntouched(state);
+  }
 });
 
 Deno.test("delete-account: a missing PADDLE_API_KEY aborts when the user has a subscription id", async () => {
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+  const state = withSubscription();
   const paddle = fakePaddle({});
   paddle.deps.paddleApiKey = undefined;
 
@@ -299,11 +452,11 @@ Deno.test("delete-account: a missing PADDLE_API_KEY aborts when the user has a s
 
   assertEquals(res.status, 502);
   assertEquals(paddle.calls.length, 0);
-  assertEquals(indexOfCall(state, isDeleteUser), -1);
+  assertUntouched(state);
 });
 
-Deno.test("delete-account: a paused subscription is cancelled immediately before the user is deleted", async () => {
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+Deno.test("delete-account: a paused subscription is cancelled immediately and mirrored locally before the user is deleted", async () => {
+  const state = withSubscription();
   const paddle = fakePaddle({ status: "paused" });
 
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
@@ -314,18 +467,30 @@ Deno.test("delete-account: a paused subscription is cancelled immediately before
     `POST /subscriptions/${SUBSCRIPTION_ID}/cancel`,
   ]);
   assertEquals(paddle.calls[1].body, { effective_from: "immediately" });
-  assert(indexOfCall(state, isDeleteUser) >= 0);
+  const mirror = state.calls.find((c) => c.kind === "update" && c.table === "subscriptions");
+  assert(mirror && mirror.kind === "update");
+  assertEquals(mirror.values.status, "canceled");
+  assertEquals(mirror.values.cancel_at_period_end, false);
+  assertEquals(mirror.filters, [["user_id", USER_ID]]);
+  assert(indexOfCall(state, isDeleteUser) > state.calls.indexOf(mirror));
+});
+
+Deno.test("delete-account: a failed local mirror after a Paddle cancel does not stop the purge (R-14)", async () => {
+  const state = withSubscription({ updateErrors: { subscriptions: { message: "mirror failed" } } });
+  const res = await silenced(() => handlerFor(state, fakePaddle({ status: "active" }).deps)(post()));
+  assertEquals(res.status, 200);
+  assertEquals(state.calls.filter(isDeleteUser).length, 1);
 });
 
 Deno.test("delete-account: every non-canceled live status is cancelled; canceled makes no cancel call", async () => {
   for (const status of ["active", "trialing", "past_due", "paused", "some_future_status"]) {
-    const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+    const state = withSubscription();
     const paddle = fakePaddle({ status });
     const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
     assertEquals(res.status, 200, status);
     assertEquals(paddle.calls.filter((c) => c.method === "POST").length, 1, status);
   }
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+  const state = withSubscription();
   const paddle = fakePaddle({ status: "canceled" });
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
   assertEquals(res.status, 200);
@@ -355,16 +520,34 @@ Deno.test("delete-account: validation failures do not consume the rate limit", a
 });
 
 Deno.test("delete-account: a valid request is rate limited before any side effect", async () => {
-  const state = fakeState({
-    subscription: { paddle_subscription_id: SUBSCRIPTION_ID },
-    rateLimitAllowed: false,
-  });
+  const state = withSubscription({ rateLimitAllowed: false });
   const paddle = fakePaddle({});
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
   assertEquals(res.status, 429);
   assertEquals(paddle.calls.length, 0);
+  assertUntouched(state);
+  assertEquals(state.calls.filter((c) => c.kind === "update").length, 0, "not claimed");
+});
+
+Deno.test("delete-account: a user cancel issued mid-purge is refused because the request is claimed (R-6)", async () => {
+  const state = withSubscription();
+  let cancelAccepted: boolean | null = null;
+  const paddle = fakePaddle({ onGet: () => (cancelAccepted = userCancelsDeletion(state)) });
+
+  const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
+
+  assertEquals(res.status, 200);
+  assertEquals(cancelAccepted, false);
+  assertEquals(state.deletionRequest?.status, "executed");
+});
+
+Deno.test("delete-account: a request that stops being pending before the claim is not purged", async () => {
+  const state = withSubscription({ claimRace: true });
+  const paddle = fakePaddle({});
+  const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
+  assertEquals(res.status, 409);
+  assertEquals(paddle.calls.length, 0);
   assertEquals(indexOfCall(state, isDeleteUser), -1);
-  assertEquals(state.avatars, ["avatar.png"]);
 });
 
 Deno.test("delete-account: deleteUser is called with the JWT user only, whatever the body says", async () => {
@@ -399,18 +582,12 @@ Deno.test("delete-account: unauthenticated and non-POST requests do nothing", as
 });
 
 Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-delete sweep, avatars", async () => {
-  const state = fakeState({ subscription: { paddle_subscription_id: SUBSCRIPTION_ID } });
+  const state = withSubscription();
   const res = await silenced(() => handlerFor(state, fakePaddle({ status: "active" }).deps)(post()));
   assertEquals(res.status, 200);
 
   const deleteUserAt = indexOfCall(state, isDeleteUser);
   assert(deleteUserAt > 0);
-  // Local mirror of the cancel happens first.
-  const mirrorAt = indexOfCall(
-    state,
-    (c) => c.kind === "update" && c.table === "subscriptions",
-  );
-  assert(mirrorAt >= 0 && mirrorAt < deleteUserAt);
   for (const target of EXPLICIT_PURGE_TARGETS) {
     const first = indexOfCall(state, deletesTable(target.table));
     const last = lastIndexOfCall(state, deletesTable(target.table));
@@ -421,18 +598,50 @@ Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-del
     }
     assert(last > deleteUserAt, `${target.table} swept again after deleteUser`);
   }
-  for (const table of ["sync_tombstones", "subscription_events"]) {
+  for (const table of ["sync_tombstones", "subscription_events", "rate_limit_tracking"]) {
     assert(EXPLICIT_PURGE_TARGETS.some((t) => t.table === table && t.postOnly), table);
   }
-  // Tables the cascade writes into are cleaned after the user is gone.
-  assert(lastIndexOfCall(state, deletesTable("sync_tombstones")) > deleteUserAt);
-  assert(lastIndexOfCall(state, deletesTable("subscription_events")) > deleteUserAt);
   assert(indexOfCall(state, isAvatarRemove) > deleteUserAt);
   assertEquals(state.avatars, []);
 });
 
-Deno.test("delete-account: a table that does not exist here is skipped, any other delete error aborts", async () => {
-  const missing = fakeState({
+Deno.test("purgeUser: paddle_webhook_events is matched by user id, payload, subscription and customer id (R-7, R-13)", async () => {
+  const state = withSubscription();
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, fakePaddle({ status: "canceled" }).deps));
+  assertEquals(result.ok, true);
+  const webhookFilters = state.calls
+    .filter(deletesTable("paddle_webhook_events"))
+    .map((c) => c.kind === "delete" ? c.filters : []);
+  const expected: [string, unknown][][] = [
+    [["user_id", USER_ID]],
+    [["payload->data->custom_data->>user_id", USER_ID]],
+    [["paddle_subscription_id", SUBSCRIPTION_ID]],
+    [["paddle_customer_id", CUSTOMER_ID]],
+  ];
+  // Once in the pre-pass and once in the post-pass.
+  assertEquals(webhookFilters, [...expected, ...expected]);
+});
+
+Deno.test("purgeUser: a missing paddle_webhook_events.user_id column falls back to the payload match (R-13)", async () => {
+  const state = fakeState({
+    deleteErrors: {
+      "paddle_webhook_events:user_id": { code: "42703", message: 'column "user_id" does not exist' },
+    },
+  });
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, fakePaddle({}).deps));
+  assertEquals(result, { ok: true, billingCancelled: false, residualTables: [] });
+  const columns = state.calls
+    .filter(deletesTable("paddle_webhook_events"))
+    .map((c) => c.kind === "delete" ? c.filters[0][0] : "");
+  assertEquals(columns.slice(0, 3), [
+    "user_id",
+    "payload->data->custom_data->>user_id",
+    "payload->data->custom_data->>user_id",
+  ]);
+});
+
+Deno.test("purgeUser: only mayBeAbsent tables may be missing; a missing required table fails (R-8, R-18)", async () => {
+  const missingOptional = fakeState({
     deleteErrors: {
       paddle_webhook_events: {
         code: "PGRST205",
@@ -441,33 +650,65 @@ Deno.test("delete-account: a table that does not exist here is skipped, any othe
       telemetry_analysis: { code: "42P01", message: 'relation "telemetry_analysis" does not exist' },
     },
   });
-  const res1 = await silenced(() => handlerFor(missing, fakePaddle({}).deps)(post()));
-  assertEquals(res1.status, 200);
-  assert(indexOfCall(missing, isDeleteUser) >= 0);
+  const ok = await silenced(() => purgeUser(fakeAdmin(missingOptional), USER_ID, fakePaddle({}).deps));
+  assertEquals(ok, { ok: true, billingCancelled: false, residualTables: [] });
 
+  const missingRequiredPre = fakeState({
+    deleteErrors: { oauth_tokens: { code: "PGRST205", message: "Could not find the table 'public.oauth_tokens'" } },
+  });
+  const pre = await silenced(() => purgeUser(fakeAdmin(missingRequiredPre), USER_ID, fakePaddle({}).deps));
+  assertEquals(pre.ok, false);
+  assertEquals(!pre.ok && pre.stage, "explicit_rows");
+  assertEquals(indexOfCall(missingRequiredPre, isDeleteUser), -1);
+
+  const missingRequiredPost = fakeState({
+    deleteErrors: { sync_tombstones: { code: "PGRST205", message: "Could not find the table 'public.sync_tombstones'" } },
+  });
+  const post = await silenced(() => purgeUser(fakeAdmin(missingRequiredPost), USER_ID, fakePaddle({}).deps));
+  assertEquals(post, { ok: true, billingCancelled: false, residualTables: ["sync_tombstones"] });
+});
+
+Deno.test("delete-account: any other pre-pass delete error aborts with the user intact", async () => {
   const broken = fakeState({
     deleteErrors: { oauth_tokens: { code: "57014", message: "canceling statement due to statement timeout" } },
   });
-  const res2 = await silenced(() => handlerFor(broken, fakePaddle({}).deps)(post()));
-  assertEquals(res2.status, 500);
+  const res = await silenced(() => handlerFor(broken, fakePaddle({}).deps)(post()));
+  assertEquals(res.status, 500);
+  assertEquals(res.headers.get("Retry-After"), "3600");
   assertEquals(indexOfCall(broken, isDeleteUser), -1);
   assertEquals(broken.avatars, ["avatar.png"]);
+  assertEquals(broken.deletionRequest?.status, "pending");
+});
+
+Deno.test("delete-account: a failed post-delete sweep still reports success and names the residual table (R-12)", async () => {
+  const state = fakeState({
+    deleteErrors: { sync_tombstones: { code: "57014", message: "canceling statement due to statement timeout" } },
+  });
+  const res = await silenced(() => handlerFor(state, fakePaddle({}).deps)(post()));
+  assertEquals(res.status, 200);
+  assertEquals(state.calls.filter(isDeleteUser).length, 1);
+
+  const direct = fakeState({
+    deleteErrors: { sync_tombstones: { code: "57014", message: "canceling statement due to statement timeout" } },
+  });
+  const result = await silenced(() => purgeUser(fakeAdmin(direct), USER_ID, fakePaddle({}).deps));
+  assertEquals(result, { ok: true, billingCancelled: false, residualTables: ["sync_tombstones"] });
 });
 
 Deno.test("delete-account: deleteUser failing after a Paddle cancel reports the partial failure", async () => {
-  const state = fakeState({
-    subscription: { paddle_subscription_id: SUBSCRIPTION_ID },
+  const state = withSubscription({
     deleteUserError: { status: 500, message: "Database error deleting user" },
   });
   const res = await silenced(() => handlerFor(state, fakePaddle({ status: "active" }).deps)(post()));
   assertEquals(res.status, 500);
+  assertEquals(res.headers.get("Retry-After"), "3600");
   assertEquals((await res.json()).code, "billing_canceled_account_delete_failed");
   assertEquals(state.deletionRequest?.status, "pending");
+  assertEquals(state.avatars, ["avatar.png"]);
   // The surviving user keeps their tombstones, billing audit and prod data.
   for (const target of EXPLICIT_PURGE_TARGETS.filter((t) => t.postOnly)) {
     assertEquals(indexOfCall(state, deletesTable(target.table)), -1, target.table);
   }
-  assertEquals(state.avatars, ["avatar.png"]);
 });
 
 Deno.test("purgeUser: a user that is already gone counts as deleted (idempotent re-run)", async () => {
@@ -485,6 +726,10 @@ Deno.test("purgeUser: a user that is already gone counts as deleted (idempotent 
  * EXCLUDED), with the column that holds the user id. Parent-owned tables
  * (routine_exercises, cycle_days) are checked through their parents.
  * Tables that do not exist on the local stack are skipped.
+ *
+ * INTEGRATION POINT (PR 36): this is a hand copy of the manifest. When PR 36
+ * lands, derive it from `USER_DATA_MANIFEST` / `EXCLUDED` so a table added to
+ * the manifest is checked here too.
  */
 const MANIFEST_USER_COLUMNS: readonly [string, string][] = [
   ["profiles", "id"],
@@ -583,7 +828,9 @@ async function seedPurgeFixture(
     tier: "EMBER",
     status: "active",
     current_period_end: "2099-01-01T00:00:00.000Z",
-    ...(paddleSubscriptionId ? { paddle_subscription_id: paddleSubscriptionId } : {}),
+    ...(paddleSubscriptionId
+      ? { paddle_subscription_id: paddleSubscriptionId, paddle_customer_id: CUSTOMER_ID }
+      : {}),
   }));
   // The grace-period trigger refuses a request that is already due, even for
   // service_role, so the fixture's request is a fresh (not yet due) one.
@@ -607,14 +854,22 @@ async function seedPurgeFixture(
     provider: "strava",
     access_token: "fixture-token",
   }));
-  // Prod-only table: seeded (one row by user_id, one naming the user only in
-  // the payload) when the local stack has it.
+  // Prod-only table (no migration until PR 2 captures it; it cannot be
+  // created through PostgREST): seeded when the local stack has it. One row
+  // by user_id, one naming the user only in the payload, and rows keyed only
+  // by the user's Paddle subscription / customer id.
   const webhooks = await admin.from("paddle_webhook_events").insert([
     { user_id: user.id, event_type: "subscription.updated", payload: { data: {} } },
     {
       event_type: "transaction.completed",
       payload: { data: { custom_data: { user_id: user.id } } },
     },
+    ...(paddleSubscriptionId
+      ? [
+        { event_type: "subscription.paused", paddle_subscription_id: paddleSubscriptionId, payload: { data: {} } },
+        { event_type: "customer.updated", paddle_customer_id: CUSTOMER_ID, payload: { data: {} } },
+      ]
+      : []),
   ]);
   if (webhooks.error && !isMissingRelation(webhooks.error)) {
     throw new Error(`paddle_webhook_events seed failed: ${JSON.stringify(webhooks.error)}`);
@@ -646,7 +901,11 @@ async function seedPurgeFixture(
   );
 }
 
-async function rowsReferencing(admin: SupabaseClient, userId: string): Promise<string[]> {
+async function rowsReferencing(
+  admin: SupabaseClient,
+  userId: string,
+  paddleIds?: { subscriptionId: string; customerId: string },
+): Promise<string[]> {
   const found: string[] = [];
   for (const [table, column] of MANIFEST_USER_COLUMNS) {
     const { count, error } = await admin
@@ -659,13 +918,23 @@ async function rowsReferencing(admin: SupabaseClient, userId: string): Promise<s
     }
     if ((count ?? 0) > 0) found.push(`${table}.${column}=${count}`);
   }
-  // paddle_webhook_events rows naming the user only in the payload.
-  const payload = await admin
-    .from("paddle_webhook_events")
-    .select("*", { count: "exact", head: true })
-    .eq("payload->data->custom_data->>user_id", userId);
-  if (!payload.error && (payload.count ?? 0) > 0) {
-    found.push(`paddle_webhook_events.payload=${payload.count}`);
+  // paddle_webhook_events rows naming the user only in the payload, or keyed
+  // by the user's Paddle ids.
+  const extra: [string, string][] = [["payload->data->custom_data->>user_id", userId]];
+  if (paddleIds) {
+    extra.push(["paddle_subscription_id", paddleIds.subscriptionId]);
+    extra.push(["paddle_customer_id", paddleIds.customerId]);
+  }
+  for (const [column, value] of extra) {
+    const { count, error } = await admin
+      .from("paddle_webhook_events")
+      .select("*", { count: "exact", head: true })
+      .eq(column, value);
+    if (error) {
+      if (isMissingRelation(error)) break;
+      throw new Error(`paddle_webhook_events.${column} check failed: ${JSON.stringify(error)}`);
+    }
+    if ((count ?? 0) > 0) found.push(`paddle_webhook_events.${column}=${count}`);
   }
   return found;
 }
@@ -691,6 +960,8 @@ async function cleanupUsers(admin: SupabaseClient, userIds: string[]) {
       userId,
     );
   }
+  await admin.from("paddle_webhook_events").delete().eq("paddle_subscription_id", SUBSCRIPTION_ID);
+  await admin.from("paddle_webhook_events").delete().eq("paddle_customer_id", CUSTOMER_ID);
 }
 
 Deno.test({
@@ -705,7 +976,8 @@ Deno.test({
     try {
       await seedPurgeFixture(admin, user, SUBSCRIPTION_ID);
       await seedPurgeFixture(admin, bystander, null);
-      const before = await rowsReferencing(admin, user.id);
+      const paddleIds = { subscriptionId: SUBSCRIPTION_ID, customerId: CUSTOMER_ID };
+      const before = await rowsReferencing(admin, user.id, paddleIds);
       assert(before.length >= 6, `fixture seeded rows: ${before.join(", ")}`);
       assertEquals(await avatarNames(admin, user.id), ["avatar.png"]);
 
@@ -716,7 +988,7 @@ Deno.test({
       assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
       const gone = await admin.auth.admin.getUserById(user.id);
       assert(gone.error || !gone.data.user, "auth user deleted");
-      assertEquals(await rowsReferencing(admin, user.id), []);
+      assertEquals(await rowsReferencing(admin, user.id, paddleIds), []);
       assertEquals(await avatarNames(admin, user.id), []);
 
       // The bystander is untouched.
@@ -769,6 +1041,71 @@ Deno.test({
         ),
       );
       assertEquals(tokens.count, 1, "no row deleted before the billing step succeeded");
+    } finally {
+      await cleanupUsers(admin, [user.id]);
+    }
+  },
+});
+
+Deno.test({
+  name: "integration: the handler's claim and revert writes are accepted and block the user's own cancel (R-6)",
+  ignore: localIntegrationEnvironment === null,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    assert(localIntegrationEnvironment);
+    const admin = integrationAdmin();
+    const user = await createAuthUser(admin, "claim");
+    try {
+      const inserted = await must(
+        "request",
+        admin.from("deletion_requests").insert({ user_id: user.id }).select("id").single(),
+      );
+      const requestId = (inserted.data as { id: string }).id;
+
+      // The same claim the handler issues (the grace trigger and CHECK allow it).
+      const claim = await must(
+        "claim",
+        admin.from("deletion_requests")
+          .update({ status: "executed", executed_at: new Date().toISOString() })
+          .eq("id", requestId).eq("status", "pending").select("id"),
+      );
+      assertEquals(claim.data?.length, 1);
+      const reclaim = await must(
+        "second claim",
+        admin.from("deletion_requests")
+          .update({ status: "executed", executed_at: new Date().toISOString() })
+          .eq("id", requestId).eq("status", "pending").select("id"),
+      );
+      assertEquals(reclaim.data?.length, 0, "a claimed request cannot be claimed twice");
+
+      // While claimed, the user's own cancel (RLS: status = 'pending') is refused.
+      const userClient = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      await must(
+        "sign in",
+        userClient.auth.signInWithPassword({ email: user.email, password: user.password }),
+      );
+      const cancel = await userClient.from("deletion_requests")
+        .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
+        .eq("id", requestId).select("id");
+      assertEquals(cancel.data?.length ?? 0, 0, "cancel refused while claimed");
+
+      // The revert the handler issues after an aborted purge.
+      await must(
+        "revert",
+        admin.from("deletion_requests")
+          .update({ status: "pending", executed_at: null })
+          .eq("id", requestId).eq("status", "executed"),
+      );
+      const reverted = await must(
+        "read",
+        admin.from("deletion_requests").select("status, executed_at").eq("id", requestId).single(),
+      );
+      assertEquals(reverted.data, { status: "pending", executed_at: null });
     } finally {
       await cleanupUsers(admin, [user.id]);
     }

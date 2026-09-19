@@ -10,20 +10,30 @@
  *      Paddle status and cancel it immediately unless it is already
  *      `canceled`. This covers `paused` and every other state (F-064). Any
  *      failure, including a missing PADDLE_API_KEY, aborts before anything
- *      is deleted.
- *   2. Explicit rows that are harmless to lose if the purge then aborts:
- *      `oauth_tokens`, `rate_limit_tracking`, `paddle_webhook_events`. Any
- *      failure other than "table/column does not exist here" aborts, with the
- *      user still intact. Targets marked `postOnly` are not touched here.
+ *      is deleted. A Paddle 404 continues only when the local row is already
+ *      terminal (`canceled`/`expired`); otherwise it aborts with
+ *      `billing_not_found` for support to resolve, so a wrong key or
+ *      environment can never let billing continue silently.
+ *      Assumption: one Paddle subscription per user. `subscriptions` is
+ *      UNIQUE(user_id) and is the only local record of Paddle ids, so the
+ *      one locally known subscription is the one cancelled (review R-9).
+ *   2. Pre-pass: explicit rows that are harmless to lose if the purge then
+ *      aborts (`oauth_tokens`, `paddle_webhook_events`). Any failure aborts
+ *      with the user still intact.
  *   3. `auth.admin.deleteUser`. A user that is already gone counts as done.
- *   3a. Every explicit table, after the user is gone. The cascade itself writes
- *      rows into FK-less tables: the prod `subscriptions` audit trigger
- *      inserts a DELETE row into `subscription_events`, and the
- *      `sync_tombstones` trigger would record the cascaded routine/cycle
- *      deletes if its guard ever failed (R-6, R-30). The user is already
- *      deleted, so a failure here is logged as `[DELETION_ALERT]`, not
- *      returned as a failed purge.
+ *   3a. Post-pass: every explicit table, after the user is gone. Targets
+ *      marked `postOnly` are deleted only here. The cascade itself writes rows
+ *      into FK-less tables: the prod `subscriptions` audit trigger inserts a
+ *      DELETE row into `subscription_events`, and the `sync_tombstones`
+ *      trigger would record the cascaded routine/cycle deletes if its guard
+ *      ever failed (R-6, R-30). The user is already deleted, so a failure
+ *      here is logged as `[DELETION_ALERT]` and returned in `residualTables`,
+ *      not as a failed purge. (No durable retry exists yet: PR 35 hand-off.)
  *   4. Avatars, best effort, after the user is deleted.
+ *
+ * "Table/column does not exist" is tolerated only for targets marked
+ * `mayBeAbsent` (prod-only tables with no migration yet); for every other
+ * target it is a failure (a stale schema cache must not look like success).
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -34,16 +44,22 @@ export interface ExplicitPurgeTarget {
   column: string;
   /**
    * Used instead of `column` when that column does not exist on this
-   * database (a PostgREST JSON path filter).
+   * database (a PostgREST JSON path filter). Only for `mayBeAbsent` targets.
    */
   fallbackColumn?: string;
   /**
    * Deleted only after `deleteUser` succeeds, never in the abortable pre-pass,
    * because losing these rows while the user survives an aborted purge would
    * hurt them: tombstones (a stale phone would resurrect deleted routines),
-   * the billing audit trail, and user data that already cascades in prod.
+   * the billing audit trail, the rate limiter the handler just charged, and
+   * user data that already cascades in prod.
    */
   postOnly?: true;
+  /**
+   * Prod-only table with no migration yet: skipped (logged) where it or its
+   * filter column does not exist. Every other target must exist.
+   */
+  mayBeAbsent?: true;
 }
 
 /**
@@ -52,41 +68,43 @@ export interface ExplicitPurgeTarget {
  * INTEGRATION POINT (PR 36): this list mirrors the `purge: "explicit"` entries
  * of `USER_DATA_MANIFEST` / `EXCLUDED` in `_shared/userDataManifest.ts`, plus
  * `oauth_tokens` (cascades, but deleted first on purpose; PR 54 adds provider
- * revocation there). When PR 36 lands, derive this list from the manifest.
- *
- * Several of these tables exist only in prod (created from the dashboard, no
- * migration yet): a table or column that does not exist is skipped, not an
- * error.
+ * revocation there). When PR 36 lands, derive this list from the manifest and
+ * carry over `postOnly` and `mayBeAbsent`.
  */
 export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
   { table: 'oauth_tokens', column: 'user_id' },
-  { table: 'rate_limit_tracking', column: 'user_id' },
   {
     table: 'paddle_webhook_events',
     column: 'user_id',
     fallbackColumn: 'payload->data->custom_data->>user_id',
+    mayBeAbsent: true,
   },
+  // The handler charges this just before the purge; keeping it until the
+  // user is gone means a failed purge cannot reset the limiter (R-15).
+  { table: 'rate_limit_tracking', column: 'user_id', postOnly: true },
   // The cascade writes a DELETE row here (prod subscriptions audit trigger).
-  { table: 'subscription_events', column: 'user_id', postOnly: true },
+  { table: 'subscription_events', column: 'user_id', postOnly: true, mayBeAbsent: true },
   // R-6, R-30: after the user is deleted (PR 16's trigger guard is the
   // primary defence; this is the safety net).
   { table: 'sync_tombstones', column: 'user_id', postOnly: true },
   // FK ON DELETE CASCADE in prod (prod-evidence.md); swept for DBs without it.
-  { table: 'goal_snapshots', column: 'user_id', postOnly: true },
-  { table: 'overload_suggestions', column: 'user_id', postOnly: true },
-  { table: 'telemetry_analysis', column: 'user_id', postOnly: true },
-  { table: 'wearable_daily_summaries', column: 'user_id', postOnly: true },
+  { table: 'goal_snapshots', column: 'user_id', postOnly: true, mayBeAbsent: true },
+  { table: 'overload_suggestions', column: 'user_id', postOnly: true, mayBeAbsent: true },
+  { table: 'telemetry_analysis', column: 'user_id', postOnly: true, mayBeAbsent: true },
+  { table: 'wearable_daily_summaries', column: 'user_id', postOnly: true, mayBeAbsent: true },
 ];
 
 /**
- * Rows in `paddle_webhook_events` whose `user_id` column is NULL but whose
- * payload names the user. Deleted in addition to the `user_id` match.
+ * Additional `paddle_webhook_events` matches, beyond `user_id`: rows whose
+ * `user_id` was never filled in but whose payload names the user, and rows
+ * keyed by the user's Paddle subscription or customer id (R-7).
  */
 const PADDLE_WEBHOOK_PAYLOAD_USER = 'payload->data->custom_data->>user_id';
 
 export type PurgeFailureStage =
   | 'billing_config'
   | 'billing_lookup'
+  | 'billing_not_found'
   | 'billing_cancel'
   | 'explicit_rows'
   | 'delete_user';
@@ -160,60 +178,94 @@ function describe(error: unknown): string {
   return String(error);
 }
 
+type DeleteOutcome = 'deleted' | 'missing_table' | 'missing_column' | PostgrestLikeError;
+
 async function deleteWhere(
   admin: SupabaseClient,
   table: string,
   column: string,
-  userId: string,
-): Promise<'deleted' | 'missing_table' | 'missing_column' | PostgrestLikeError> {
-  const { error } = await admin.from(table).delete().eq(column, userId);
+  value: string,
+): Promise<DeleteOutcome> {
+  const { error } = await admin.from(table).delete().eq(column, value);
   if (!error) return 'deleted';
   if (isMissingTable(error)) return 'missing_table';
   if (isMissingColumn(error)) return 'missing_column';
   return error;
 }
 
+/** Paddle ids known locally for the user (for the webhook-row match). */
+interface BillingIds {
+  subscriptionId: string | null;
+  customerId: string | null;
+}
+
+/**
+ * Every (column, value) filter that selects the user's rows of `target`, in
+ * order. The first is the primary owner column.
+ */
+function matchesFor(
+  target: ExplicitPurgeTarget,
+  userId: string,
+  ids: BillingIds,
+): [string, string][] {
+  const matches: [string, string][] = [[target.column, userId]];
+  if (target.table === 'paddle_webhook_events') {
+    matches.push([PADDLE_WEBHOOK_PAYLOAD_USER, userId]);
+    if (ids.subscriptionId) matches.push(['paddle_subscription_id', ids.subscriptionId]);
+    if (ids.customerId) matches.push(['paddle_customer_id', ids.customerId]);
+  }
+  return matches;
+}
+
 /**
  * Deletes the user's rows from the explicit tables of `phase` (`pre`: all but
- * `postOnly` targets; `post`: all). Returns the tables that failed with an
- * error other than "does not exist here".
+ * `postOnly` targets; `post`: all). Returns the tables that failed.
  */
 async function purgeExplicitRows(
   admin: SupabaseClient,
   userId: string,
   phase: 'pre' | 'post',
+  ids: BillingIds,
 ): Promise<{ table: string; detail: string }[]> {
   const failures: { table: string; detail: string }[] = [];
-  for (const target of EXPLICIT_PURGE_TARGETS) {
+  targets: for (const target of EXPLICIT_PURGE_TARGETS) {
     if (phase === 'pre' && target.postOnly) continue;
-    let outcome = await deleteWhere(admin, target.table, target.column, userId);
-    if (outcome === 'missing_column' && target.fallbackColumn) {
-      outcome = await deleteWhere(admin, target.table, target.fallbackColumn, userId);
-    } else if (outcome === 'deleted' && target.table === 'paddle_webhook_events') {
-      // Also rows whose user_id column was never filled in.
-      outcome = await deleteWhere(admin, target.table, PADDLE_WEBHOOK_PAYLOAD_USER, userId);
-    }
-    if (outcome === 'missing_table') {
-      console.warn(`[PURGE] ${target.table} does not exist here; skipped`);
-      continue;
-    }
-    if (outcome === 'missing_column') {
-      console.warn(`[PURGE] ${target.table} has no user column here; skipped`);
-      continue;
-    }
-    if (outcome !== 'deleted') {
-      failures.push({ table: target.table, detail: describe(outcome) });
+    for (const [index, [column, value]] of matchesFor(target, userId, ids).entries()) {
+      let outcome = await deleteWhere(admin, target.table, column, value);
+      if (outcome === 'missing_column' && index === 0 && target.fallbackColumn) {
+        outcome = await deleteWhere(admin, target.table, target.fallbackColumn, userId);
+      }
+      if (outcome === 'deleted') continue;
+      if (outcome === 'missing_table' && target.mayBeAbsent) {
+        console.warn(`[PURGE] ${target.table} does not exist here; skipped`);
+        continue targets;
+      }
+      if (outcome === 'missing_column' && target.mayBeAbsent) {
+        console.warn(`[PURGE] ${target.table}.${column} does not exist here; skipped`);
+        continue;
+      }
+      const detail = outcome === 'missing_table'
+        ? 'table does not exist'
+        : outcome === 'missing_column'
+        ? `column ${column} does not exist`
+        : describe(outcome);
+      failures.push({ table: target.table, detail });
+      continue targets;
     }
   }
   return failures;
 }
+
+type PaddleResponse =
+  | { ok: true; body: unknown }
+  | { ok: false; status: number | null; detail: string };
 
 async function paddleRequest(
   deps: PurgeUserDependencies,
   apiKey: string,
   path: string,
   init: RequestInit = {},
-): Promise<{ ok: true; body: unknown } | { ok: false; detail: string }> {
+): Promise<PaddleResponse> {
   try {
     const res = await deps.fetch(`${paddleBaseUrl(deps.paddleEnvironment)}${path}`, {
       ...init,
@@ -223,14 +275,16 @@ async function paddleRequest(
       },
     });
     const text = await res.text();
-    if (!res.ok) return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 500)}` };
+    if (!res.ok) {
+      return { ok: false, status: res.status, detail: `HTTP ${res.status}: ${text.slice(0, 500)}` };
+    }
     try {
       return { ok: true, body: text ? JSON.parse(text) : null };
     } catch {
-      return { ok: false, detail: 'unparseable Paddle response' };
+      return { ok: false, status: res.status, detail: 'unparseable Paddle response' };
     }
   } catch (err) {
-    return { ok: false, detail: describe(err) };
+    return { ok: false, status: null, detail: describe(err) };
   }
 }
 
@@ -239,8 +293,11 @@ function liveStatus(body: unknown): string | null {
   return typeof status === 'string' ? status : null;
 }
 
+/** Local mirror states in which nothing can bill the user any more. */
+const TERMINAL_LOCAL_STATUSES = new Set(['canceled', 'expired']);
+
 type BillingOutcome =
-  | { ok: true; cancelled: boolean }
+  | { ok: true; cancelled: boolean; ids: BillingIds }
   | { ok: false; stage: PurgeFailureStage; detail: string };
 
 async function cancelBilling(
@@ -250,14 +307,22 @@ async function cancelBilling(
 ): Promise<BillingOutcome> {
   const { data: subscription, error } = await admin
     .from('subscriptions')
-    .select('paddle_subscription_id')
+    .select('paddle_subscription_id, paddle_customer_id, status')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) return { ok: false, stage: 'billing_lookup', detail: describe(error) };
 
-  const subscriptionId = (subscription as { paddle_subscription_id?: string | null } | null)
-    ?.paddle_subscription_id;
-  if (!subscriptionId) return { ok: true, cancelled: false };
+  const row = subscription as {
+    paddle_subscription_id?: string | null;
+    paddle_customer_id?: string | null;
+    status?: string | null;
+  } | null;
+  const ids: BillingIds = {
+    subscriptionId: row?.paddle_subscription_id ?? null,
+    customerId: row?.paddle_customer_id ?? null,
+  };
+  const subscriptionId = ids.subscriptionId;
+  if (!subscriptionId) return { ok: true, cancelled: false, ids };
 
   if (!deps.paddleApiKey) {
     return { ok: false, stage: 'billing_config', detail: 'PADDLE_API_KEY is not set' };
@@ -267,12 +332,30 @@ async function cancelBilling(
   // The local row can be stale (e.g. `paused` was never mirrored), so decide
   // from Paddle's live status, never from `subscriptions.status`.
   const current = await paddleRequest(deps, deps.paddleApiKey, `/subscriptions/${encodedId}`);
-  if (!current.ok) return { ok: false, stage: 'billing_lookup', detail: current.detail };
+  if (!current.ok) {
+    if (current.status === 404) {
+      if (TERMINAL_LOCAL_STATUSES.has(row?.status ?? '')) {
+        console.warn('[BILLING_ALERT] paddle_subscription_not_found; local row terminal, continuing', {
+          user_id: userId,
+          paddle_subscription_id: subscriptionId,
+          local_status: row?.status,
+        });
+        return { ok: true, cancelled: false, ids };
+      }
+      console.error('[BILLING_ALERT] paddle_subscription_not_found; local row not terminal, aborting', {
+        user_id: userId,
+        paddle_subscription_id: subscriptionId,
+        local_status: row?.status ?? null,
+      });
+      return { ok: false, stage: 'billing_not_found', detail: current.detail };
+    }
+    return { ok: false, stage: 'billing_lookup', detail: current.detail };
+  }
   const status = liveStatus(current.body);
   if (status === null) {
     return { ok: false, stage: 'billing_lookup', detail: 'Paddle response has no status' };
   }
-  if (status === 'canceled') return { ok: true, cancelled: false };
+  if (status === 'canceled') return { ok: true, cancelled: false, ids };
 
   const cancel = await paddleRequest(
     deps,
@@ -299,7 +382,7 @@ async function cancelBilling(
     });
   }
   console.log(`[PURGE] Paddle subscription cancelled for user ${userId} (was ${status})`);
-  return { ok: true, cancelled: true };
+  return { ok: true, cancelled: true, ids };
 }
 
 function isUserNotFound(error: unknown): boolean {
@@ -308,7 +391,7 @@ function isUserNotFound(error: unknown): boolean {
     /user not found/i.test(e?.message ?? '');
 }
 
-async function removeAvatars(admin: SupabaseClient, userId: string): Promise<void> {
+async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boolean> {
   try {
     const bucket = admin.storage.from('avatars');
     const { data: files, error } = await bucket.list(userId, { limit: 1000 });
@@ -320,8 +403,10 @@ async function removeAvatars(admin: SupabaseClient, userId: string): Promise<voi
       if (removeError) throw removeError;
       console.log(`[PURGE] Removed ${files.length} avatar file(s) for user ${userId}`);
     }
+    return true;
   } catch (err) {
     console.error('[DELETION_ALERT] avatar_cleanup_failed', { user_id: userId, error: describe(err) });
+    return false;
   }
 }
 
@@ -347,7 +432,7 @@ export async function purgeUser(
   const billingCancelled = billing.cancelled;
 
   // 2. Explicit rows (abort point: the user still exists).
-  const preFailures = await purgeExplicitRows(admin, userId, 'pre');
+  const preFailures = await purgeExplicitRows(admin, userId, 'pre', billing.ids);
   if (preFailures.length > 0) {
     const detail = preFailures.map((f) => `${f.table}: ${f.detail}`).join('; ');
     console.error('[PURGE] explicit row purge failed; user left intact', { user_id: userId, detail });
@@ -360,8 +445,8 @@ export async function purgeUser(
     return { ok: false, stage: 'delete_user', billingCancelled, detail: describe(deleteError) };
   }
 
-  // 3a. Rows the cascade itself wrote into FK-less tables.
-  const postFailures = await purgeExplicitRows(admin, userId, 'post');
+  // 3a. Every explicit table, including rows the cascade itself wrote.
+  const postFailures = await purgeExplicitRows(admin, userId, 'post', billing.ids);
   if (postFailures.length > 0) {
     console.error('[DELETION_ALERT] post_delete_purge_failed', {
       user_id: userId,
@@ -370,11 +455,14 @@ export async function purgeUser(
   }
 
   // 4. Avatars (best effort).
-  await removeAvatars(admin, userId);
+  const avatarsRemoved = await removeAvatars(admin, userId);
 
   return {
     ok: true,
     billingCancelled,
-    residualTables: postFailures.map((f) => f.table),
+    residualTables: [
+      ...postFailures.map((f) => f.table),
+      ...(avatarsRemoved ? [] : ['storage:avatars']),
+    ],
   };
 }
