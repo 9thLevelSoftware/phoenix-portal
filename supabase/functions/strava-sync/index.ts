@@ -215,6 +215,8 @@ export interface StravaSyncAuthClient {
 export interface StravaSyncHandlerDependencies {
   createAuthClient(authorization: string): StravaSyncAuthClient;
   createAdminClient(): DbClient;
+  /** Pause between Strava pages. Injectable so tests need not wait. */
+  sleep?(ms: number): Promise<void>;
 }
 
 function defaultStravaSyncDependencies(): StravaSyncHandlerDependencies {
@@ -240,6 +242,7 @@ async function stravaSyncHandler(
   deps: StravaSyncHandlerDependencies,
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -413,17 +416,37 @@ async function stravaSyncHandler(
     //   last_sync_at and now would never be requested: the backward pass only
     //   fetches activities older than anything stored.
     const isBackfill = sync_type === 'initial' || !integration.last_sync_at;
+    const previousWatermark = (integration.last_sync_at as string | null) ?? null;
     const toEpoch = (iso: string | Date) =>
       String(Math.floor(new Date(iso).getTime() / 1000));
 
-    const passes: URLSearchParams[] = [];
+    // Strava's quotas are application-wide (100 reads / 15 min, 1,000 / day), so
+    // a single user's backfill spends budget every other user shares. Cap the
+    // pages one invocation may take (across all passes), and stop early once
+    // Strava's own reported usage says we are close to the ceiling.
+    const MAX_PAGES_PER_RUN = 10;
+    // Pages the forward pass may not use when a backward pass follows, so a
+    // large reconnect gap cannot starve an incomplete backfill of progress.
+    const BACKWARD_RESERVED_PAGES = 2;
+    // Requests deliberately left unspent so an in-flight backfill cannot starve
+    // other users' syncs (or the webhook path) of quota.
+    const RESERVED_REQUESTS = 20;
+    const delayBetweenPagesMs = 350;
+
+    type PassDirection = 'forward' | 'backward';
+    const passes: Array<{ direction: PassDirection; params: URLSearchParams; maxPages: number }> = [];
 
     if (!isBackfill || newestStored?.started_at) {
       const forward = new URLSearchParams({ per_page: '200' });
       if (incrementalWindow) forward.set('after', toEpoch(incrementalWindow.after));
-      passes.push(forward);
+      passes.push({
+        direction: 'forward',
+        params: forward,
+        maxPages: isBackfill ? MAX_PAGES_PER_RUN - BACKWARD_RESERVED_PAGES : MAX_PAGES_PER_RUN,
+      });
     }
 
+    let oldestStoredMs: number | null = null;
     if (isBackfill) {
       const backward = new URLSearchParams({ per_page: '200' });
       const { data: oldestStored } = await supabase
@@ -438,41 +461,50 @@ async function stravaSyncHandler(
       if (oldestStored?.started_at) {
         // `before` is exclusive; the boundary activity is already stored, and
         // upserts are idempotent even if Strava treats it as inclusive.
+        oldestStoredMs = new Date(oldestStored.started_at as string).getTime();
         backward.set('before', toEpoch(oldestStored.started_at as string));
         console.log(
           `Strava backfill resuming before ${oldestStored.started_at}`,
         );
       }
-      passes.push(backward);
+      passes.push({ direction: 'backward', params: backward, maxPages: MAX_PAGES_PER_RUN });
     }
 
-    const rawActivities: StravaActivityRaw[] = [];
-    const delayBetweenPagesMs = 350;
-
-    // Strava's quotas are application-wide (100 reads / 15 min, 1,000 / day), so
-    // a single user's backfill spends budget every other user shares. Cap the
-    // pages one invocation may take (across all passes), and stop early once
-    // Strava's own reported usage says we are close to the ceiling.
-    const MAX_PAGES_PER_RUN = 10;
-    // Requests deliberately left unspent so an in-flight backfill cannot starve
-    // other users' syncs (or the webhook path) of quota.
-    const RESERVED_REQUESTS = 20;
+    // Per pass: whether it reached a short (final) page, and the start times of
+    // everything it fetched, in response order.
+    const passResults = new Map<PassDirection, { complete: boolean; startsMs: number[] }>();
+    // Keyed by Strava id: the forward and backward windows can overlap, and a
+    // page boundary can repeat an activity; each one is upserted once.
+    const fetchedById = new Map<number, StravaActivityRaw>();
 
     let budgetExhausted = false;
-    let pageCeilingReached = false;
     let pagesUsed = 0;
     let lastSnapshot: StravaRateLimitSnapshot | null = null;
 
-    for (const baseParams of passes) {
+    const reserveReached = (snapshot: StravaRateLimitSnapshot | null) => {
+      if (!snapshot) return false;
+      const budget = checkReadBudget(snapshot, RESERVED_REQUESTS);
+      if (budget.hasHeadroom) return false;
+      console.warn(
+        `Strava read budget reserve reached (remaining=${budget.remaining}); ` +
+          'pausing pagination until the window rolls over',
+      );
+      return true;
+    };
+
+    for (const pass of passes) {
+      // Re-check headroom before opening another pass, not only between pages.
+      if (reserveReached(lastSnapshot)) {
+        budgetExhausted = true;
+        break;
+      }
+
+      const result = { complete: false, startsMs: [] as number[] };
+      passResults.set(pass.direction, result);
       let page = 1;
 
-      while (true) {
-        if (pagesUsed >= MAX_PAGES_PER_RUN) {
-          pageCeilingReached = true;
-          break;
-        }
-
-        const params = new URLSearchParams(baseParams);
+      while (page <= pass.maxPages && pagesUsed < MAX_PAGES_PER_RUN) {
+        const params = new URLSearchParams(pass.params);
         params.set('page', String(page));
 
         const activitiesResponse = await fetch(
@@ -492,11 +524,10 @@ async function stravaSyncHandler(
           const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
           console.warn(
             `Strava rate limited; retry-after=${retryAfter ?? 'unspecified'}s, ` +
-              `${rawActivities.length} activities fetched before the limit`,
+              `${fetchedById.size} activities fetched before the limit`,
           );
           // Stop cleanly rather than erroring: activities already fetched are
-          // persisted below, and last_sync_at is withheld so the queue retry
-          // resumes from the same cutoff.
+          // persisted below and the queue retry resumes once quota frees up.
           budgetExhausted = true;
           break;
         }
@@ -520,39 +551,46 @@ async function stravaSyncHandler(
         }
 
         const pageActivities: StravaActivityRaw[] = await activitiesResponse.json();
-        rawActivities.push(...pageActivities);
+        for (const activity of pageActivities) {
+          fetchedById.set(activity.id, activity);
+          result.startsMs.push(new Date(activity.start_date).getTime());
+        }
 
         if (pageActivities.length < 200) {
+          result.complete = true;
           break;
         }
 
         // Consult Strava's reported headroom before spending another request.
-        const budget = checkReadBudget(lastSnapshot, RESERVED_REQUESTS);
-        if (!budget.hasHeadroom) {
-          console.warn(
-            `Strava read budget reserve reached (remaining=${budget.remaining}); ` +
-              'pausing pagination until the window rolls over',
-          );
+        if (reserveReached(lastSnapshot)) {
           budgetExhausted = true;
           break;
         }
 
         page++;
-        await new Promise((r) => setTimeout(r, delayBetweenPagesMs));
+        await sleep(delayBetweenPagesMs);
       }
 
-      if (budgetExhausted || pageCeilingReached) break;
+      if (budgetExhausted) break;
     }
 
-    // Ran out of pages (or budget) with more to request: activities remain
-    // upstream. Treat exactly like a partial failure below — persist what we
-    // have, withhold the last_sync_at advance, let the queue resume.
-    const moreRemaining = budgetExhausted || pageCeilingReached;
+    // A pass that never started, or stopped on a full page (page ceiling or
+    // budget), leaves activities upstream.
+    const passIncomplete = (direction: PassDirection) =>
+      passes.some((pass) => pass.direction === direction) &&
+      passResults.get(direction)?.complete !== true;
+    const forwardIncomplete = passIncomplete('forward');
+    const backwardIncomplete = passIncomplete('backward');
+    const moreRemaining = forwardIncomplete || backwardIncomplete;
+
+    const rawActivities = [...fetchedById.values()];
 
     // ---------------------------------------------------------------
     // Normalize and upsert activities
     // ---------------------------------------------------------------
     const errors: string[] = [];
+    // Activities written this run. Includes re-saves of rows already stored
+    // (the lookback overlap is intentional), but never counts one twice.
     let syncedCount = 0;
 
     for (const raw of rawActivities) {
@@ -607,30 +645,74 @@ async function stravaSyncHandler(
     // ---------------------------------------------------------------
     // Pagination stopped short of the end (page ceiling or rate-limit reserve).
     // Everything fetched IS persisted, but activities remain upstream, so the
-    // `after` cutoff must not advance past them. Same contract as the partial
-    // failure above: report retryably and let the queue resume.
+    // watermark may only move to what was fully read. Report retryably and
+    // let the queue resume from the moved resume point.
     // ---------------------------------------------------------------
     if (moreRemaining) {
-      // A retry is only worth scheduling if THIS run advanced the resume point.
-      // `madeProgress` is a heuristic: for the backward backfill pass the resume
-      // point is the oldest stored activity, so persisting an older activity
-      // moves the next `before` window strictly earlier. It does NOT hold when
-      // the forward (incremental/gap) pass alone hits the page ceiling: its
-      // `after` is anchored on last_sync_at, which is withheld here, so the
-      // retry re-requests the same window (re-upserts count as progress). A
-      // gap larger than the page ceiling therefore relies on the queue's retry
-      // cap. If nothing was persisted at all, fail terminally rather than spin.
-      const madeProgress = syncedCount > 0;
-      const partialMessage = madeProgress
+      // Forward resume point. The forward window is anchored on
+      // min(last_sync_at, newest stored start). Rows persisted above raise the
+      // newest stored start, but last_sync_at must move too or min() pins the
+      // window in place and every retry re-reads the same pages.
+      //   - Forward pass complete: its whole window is read; the pre-fetch
+      //     watermark is safe.
+      //   - Forward pass truncated: only safe to advance to the newest fetched
+      //     start when the pages came back in ascending start order (then
+      //     everything before it was read). Strava is believed to return
+      //     ascending order when `after` is set (A-008, provisional), but this
+      //     is checked rather than assumed; otherwise nothing is advanced.
+      // last_sync_at is only written when it was already set: while it is null
+      // the anchor is the newest stored start, which advances by itself, and
+      // setting it would end an unfinished backfill for non-initial syncs.
+      let forwardResumeAt: string | null = null;
+      let forwardProgress = false;
+      const forwardResult = passResults.get('forward');
+      const forwardAnchorMs = incrementalWindow?.anchor.getTime() ?? null;
+
+      if (forwardResult?.complete) {
+        if (previousWatermark !== null) forwardResumeAt = syncStartedAt;
+      } else if (forwardResult && forwardResult.startsMs.length > 0) {
+        const starts = forwardResult.startsMs;
+        const ascending = starts.every((ms, i) => i === 0 || ms >= starts[i - 1]);
+        const newestFetchedMs = starts[starts.length - 1];
+        if (!ascending) {
+          console.warn(
+            'Strava forward pass returned activities out of start order; ' +
+              'not advancing the incremental watermark',
+          );
+        } else if (forwardAnchorMs === null || newestFetchedMs > forwardAnchorMs) {
+          forwardProgress = true;
+          if (previousWatermark !== null) {
+            forwardResumeAt = new Date(newestFetchedMs).toISOString();
+          }
+        }
+      }
+
+      // Backward resume point: the oldest stored start. It moved if this run
+      // persisted anything older than it.
+      const backwardStarts = passResults.get('backward')?.startsMs ?? [];
+      const backwardProgress =
+        backwardStarts.length > 0 &&
+        (oldestStoredMs === null ||
+          backwardStarts.reduce((min, ms) => Math.min(min, ms), Infinity) < oldestStoredMs);
+
+      const madeProgress = forwardProgress || backwardProgress;
+      // A rate limit (429 or the reserve) is transient: the retry after the
+      // window rolls over does something different even if nothing moved.
+      const retryable = budgetExhausted || madeProgress;
+      const partialMessage = retryable
         ? `Fetched ${rawActivities.length} activities before reaching the Strava ` +
           'request budget; sync will resume from this point on the next queue pass'
-        : `Reached the Strava request budget without persisting any activities; ` +
+        : 'Reached the Strava page limit without moving the sync resume point; ' +
           'retrying would repeat the same request. Sync stopped.';
 
       console.warn(partialMessage);
       await supabase
         .from('user_integrations')
-        .update({ error_message: partialMessage })
+        .update(
+          forwardResumeAt
+            ? { last_sync_at: forwardResumeAt, error_message: partialMessage }
+            : { error_message: partialMessage },
+        )
         .eq('user_id', userId)
         .eq('provider', 'strava');
 
@@ -644,7 +726,7 @@ async function stravaSyncHandler(
           // 502 is retryable per process-sync-queue's RETRYABLE_STATUSES; 500 is
           // not. Only ask for a retry when the next attempt will do something
           // different from this one.
-          status: madeProgress ? 502 : 500,
+          status: retryable ? 502 : 500,
           headers: { ...cors, 'Content-Type': 'application/json' },
         }
       );

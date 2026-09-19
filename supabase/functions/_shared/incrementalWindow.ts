@@ -31,13 +31,14 @@ function parseTimestamp(value: string | null | undefined): number | null {
 }
 
 /**
- * Returns the lower bound for an incremental fetch, or `null` when there is
- * nothing to anchor it to (no watermark and no stored rows): the caller should
- * then do a full fetch.
+ * Returns the lower bound for an incremental fetch (`after`) and the anchor it
+ * was derived from (`anchor` = the earlier of the two inputs, before the
+ * lookback), or `null` when there is nothing to anchor it to (no watermark and
+ * no stored rows): the caller should then do a full fetch.
  */
 export function computeIncrementalWindow(
   input: IncrementalWindowInput,
-): { after: Date } | null {
+): { after: Date; anchor: Date } | null {
   const anchors = [
     parseTimestamp(input.lastWatermark),
     parseTimestamp(input.maxStoredStartedAt),
@@ -47,5 +48,6 @@ export function computeIncrementalWindow(
 
   const lookbackHours = input.lookbackHours ?? DEFAULT_INCREMENTAL_LOOKBACK_HOURS;
   const lookbackMs = Math.max(0, lookbackHours) * 60 * 60 * 1000;
-  return { after: new Date(Math.min(...anchors) - lookbackMs) };
+  const anchorMs = Math.min(...anchors);
+  return { after: new Date(anchorMs - lookbackMs), anchor: new Date(anchorMs) };
 }

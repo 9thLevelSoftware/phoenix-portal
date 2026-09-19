@@ -30,6 +30,7 @@ Deno.test("computeIncrementalWindow anchors on the earlier of watermark and newe
     lookbackHours: 1,
   });
   assertEquals(olderStored?.after.toISOString(), "2026-09-01T07:00:00.000Z");
+  assertEquals(olderStored?.anchor.toISOString(), "2026-09-01T08:00:00.000Z");
 
   const olderWatermark = computeIncrementalWindow({
     lastWatermark: "2026-08-01T00:00:00.000Z",

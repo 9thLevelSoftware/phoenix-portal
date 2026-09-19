@@ -351,6 +351,37 @@ async function liftosaurSyncHandler(
 		// the wall clock happened to match the workout time.
 		const syncInvokedAt = new Date().toISOString();
 
+		// The incremental lookback re-fetches recent records on every run. For a
+		// record without a parseable date, re-sending the sentinel would move its
+		// stored started_at to "now" each time, so leave started_at out of the
+		// upsert for undated records that are already stored (the upsert only
+		// updates the columns it sends).
+		const undatedExternalIds = allRecords
+			.filter((record) => !parseLiftoscriptMetadata(record.text).timestamp)
+			.map((record) => `liftosaur-${record.id}`);
+		const storedUndatedIds = new Set<string>();
+		const LOOKUP_CHUNK = 100;
+		for (let i = 0; i < undatedExternalIds.length; i += LOOKUP_CHUNK) {
+			const { data: existingRows, error: lookupError } = await supabase
+				.from("external_activities")
+				.select("external_id")
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur")
+				.in("external_id", undatedExternalIds.slice(i, i + LOOKUP_CHUNK));
+
+			if (lookupError) {
+				// Retryable, and the watermark is not advanced.
+				console.error("Failed to look up stored Liftosaur records:", lookupError);
+				return new Response(
+					JSON.stringify({ error: "Failed to look up stored Liftosaur records" }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
+				);
+			}
+			for (const row of (existingRows ?? []) as Array<{ external_id: string }>) {
+				storedUndatedIds.add(row.external_id);
+			}
+		}
+
 		let importedCount = 0;
 		let failedCount = 0;
 		for (const record of allRecords) {
@@ -367,20 +398,23 @@ async function liftosaurSyncHandler(
 			// invocation sentinel when the Liftoscript text has no parseable date.
 			// The sentinel makes clear that started_at reflects import time, not
 			// actual workout time.
+			const externalId = `liftosaur-${record.id}`;
 			const startedAt = meta.timestamp
 				? new Date(meta.timestamp).toISOString()
-				: syncInvokedAt;
+				: storedUndatedIds.has(externalId)
+					? null // keep the stored value (see above)
+					: syncInvokedAt;
 
 			const { error: activityError } = await supabase
 				.from("external_activities")
 				.upsert(
 					{
 						user_id: userId,
-						external_id: `liftosaur-${record.id}`,
+						external_id: externalId,
 						provider: "liftosaur",
 						name,
 						activity_type: "strength",
-						started_at: startedAt,
+						...(startedAt !== null ? { started_at: startedAt } : {}),
 						duration_seconds: meta.durationSeconds ?? null,
 						calories: null,
 						raw_data: { id: record.id, text: record.text },

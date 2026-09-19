@@ -17,6 +17,7 @@ interface DbState {
 function createDbDouble(state: DbState) {
   const from = (table: string) => {
     let pendingUpdate: Record<string, unknown> | null = null;
+    let inFilter: unknown[] | null = null;
 
     const resolve = () => {
       if (table === "subscriptions") {
@@ -41,6 +42,15 @@ function createDbDouble(state: DbState) {
         }
         return { data: { last_sync_at: state.lastSyncAt }, error: null };
       }
+      if (table === "external_activities" && inFilter) {
+        const ids = inFilter;
+        return {
+          data: state.activities
+            .filter((row) => ids.includes(row.external_id))
+            .map((row) => ({ external_id: row.external_id })),
+          error: null,
+        };
+      }
       return { data: null, error: null };
     };
 
@@ -48,6 +58,10 @@ function createDbDouble(state: DbState) {
     for (const method of ["select", "eq", "order", "limit"]) {
       builder[method] = () => builder;
     }
+    builder.in = (_column: string, values: unknown[]) => {
+      inFilter = values;
+      return builder;
+    };
     builder.update = (values: Record<string, unknown>) => {
       pendingUpdate = values;
       return builder;
@@ -57,8 +71,18 @@ function createDbDouble(state: DbState) {
         const index = state.activities.findIndex((existing) =>
           existing.external_id === row.external_id
         );
-        if (index >= 0) state.activities[index] = row;
-        else state.activities.push(row);
+        // ON CONFLICT DO UPDATE only sets the columns that were sent.
+        if (index >= 0) {
+          state.activities[index] = { ...state.activities[index], ...row };
+        } else {
+          if (!("started_at" in row)) {
+            return Promise.resolve({
+              data: null,
+              error: { message: "null value in column started_at" },
+            });
+          }
+          state.activities.push(row);
+        }
       }
       return Promise.resolve({ data: null, error: null });
     };
@@ -75,12 +99,21 @@ function createDbDouble(state: DbState) {
 
 interface UpstreamRecord {
   id: number;
-  date: string;
+  /** Omitted for a record whose Liftoscript text has no timestamp. */
+  date?: string;
 }
+
+const FAKE_RESPONSE_DELAY_MS = 5;
 
 function installFakeLiftosaur(upstream: UpstreamRecord[]) {
   const originalFetch = globalThis.fetch;
-  const requests: URL[] = [];
+  const fake = {
+    requests: [] as URL[],
+    firstRequestAt: null as number | null,
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
+  };
   globalThis.fetch = ((input: string | URL | Request) => {
     const url = new URL(
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
@@ -88,46 +121,57 @@ function installFakeLiftosaur(upstream: UpstreamRecord[]) {
     if (url.hostname !== "www.liftosaur.com" || url.pathname !== "/api/v1/history") {
       throw new Error(`Unexpected fetch in test: ${url.href}`);
     }
-    requests.push(url);
+    fake.requests.push(url);
+    fake.firstRequestAt ??= Date.now();
     const startDate = url.searchParams.get("startDate");
     const records = upstream
       .filter((record) =>
-        startDate === null || Date.parse(record.date) >= Date.parse(startDate)
+        startDate === null || record.date === undefined ||
+        Date.parse(record.date) >= Date.parse(startDate)
       )
       .map((record) => ({
         id: record.id,
-        text: `${record.date} / program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`,
+        text: `${record.date ? `${record.date} / ` : ""}program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`,
       }));
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({ data: { records, hasMore: false, nextCursor: null } }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    const response = new Response(
+      JSON.stringify({ data: { records, hasMore: false, nextCursor: null } }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+    // A small delay so "before the fetch" and "after the fetch" are
+    // distinguishable timestamps.
+    return new Promise<Response>((resolve) =>
+      setTimeout(() => resolve(response), FAKE_RESPONSE_DELAY_MS)
     );
   }) as typeof fetch;
-  return { requests, restore: () => (globalThis.fetch = originalFetch) };
+  return fake;
 }
 
 async function runSync(state: DbState, syncType: string): Promise<Response> {
+  const previousKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_ROLE_KEY);
-  const db = createDbDouble(state);
-  const handler = createLiftosaurSyncHandler({
-    createAuthClient: () => ({
-      auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
-    }),
-    // deno-lint-ignore no-explicit-any
-    createAdminClient: () => db as any,
-  });
-  return await handler(
-    new Request("http://localhost/functions/v1/liftosaur-sync", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
-    }),
-  );
+  try {
+    const db = createDbDouble(state);
+    const handler = createLiftosaurSyncHandler({
+      createAuthClient: () => ({
+        auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
+      }),
+      // deno-lint-ignore no-explicit-any
+      createAdminClient: () => db as any,
+    });
+    return await handler(
+      new Request("http://localhost/functions/v1/liftosaur-sync", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
+      }),
+    );
+  } finally {
+    if (previousKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", previousKey);
+  }
 }
 
 Deno.test("liftosaur-sync imports a workout logged late with a date before the last sync", async () => {
@@ -156,18 +200,20 @@ Deno.test("liftosaur-sync imports a workout logged late with a date before the l
   }
 });
 
-Deno.test("liftosaur-sync advances the watermark to the pre-fetch time", async () => {
-  const before = Date.now();
+Deno.test("liftosaur-sync captures the new watermark before fetching", async () => {
   const state: DbState = {
-    lastSyncAt: new Date(before - 6 * HOUR).toISOString(),
+    lastSyncAt: new Date(Date.now() - 6 * HOUR).toISOString(),
     activities: [],
   };
   const liftosaur = installFakeLiftosaur([]);
   try {
     const response = await runSync(state, "incremental");
     assertEquals(response.status, 200, await response.clone().text());
-    const written = Date.parse(state.lastSyncAt!);
-    assert(written >= before && written <= Date.now());
+    assert(liftosaur.firstRequestAt !== null);
+    assert(
+      Date.parse(state.lastSyncAt!) < liftosaur.firstRequestAt! + FAKE_RESPONSE_DELAY_MS,
+      `last_sync_at ${state.lastSyncAt} must not be later than the first fetch`,
+    );
   } finally {
     liftosaur.restore();
   }
@@ -183,6 +229,29 @@ Deno.test("liftosaur-sync initial sync requests full history", async () => {
     const response = await runSync(state, "initial");
     assertEquals(response.status, 200, await response.clone().text());
     assertEquals(liftosaur.requests[0].searchParams.has("startDate"), false);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync keeps the stored date of an undated record re-fetched in the overlap", async () => {
+  const state: DbState = {
+    lastSyncAt: new Date(Date.now() - 6 * HOUR).toISOString(),
+    activities: [],
+  };
+  const liftosaur = installFakeLiftosaur([{ id: 8 }]);
+  try {
+    const first = await runSync(state, "incremental");
+    assertEquals(first.status, 200, await first.clone().text());
+    const firstStartedAt = state.activities[0].started_at;
+    assert(typeof firstStartedAt === "string");
+
+    // Let the clock move so a re-stamp would be observable.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const second = await runSync(state, "incremental");
+    assertEquals(second.status, 200, await second.clone().text());
+    assertEquals(state.activities.length, 1);
+    assertEquals(state.activities[0].started_at, firstStartedAt);
   } finally {
     liftosaur.restore();
   }
