@@ -1,11 +1,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
+import { FakeDb, type Row } from "../_shared/testing/fakeSupabase.ts";
 import {
   createProcessSyncQueueHandler,
   type ProcessSyncQueueDependencies,
 } from "./index.ts";
-
-type Row = Record<string, unknown>;
-type Filter = (row: Row) => boolean;
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const CRON_SECRET = "test-cron-secret";
@@ -13,95 +11,13 @@ const SUPABASE_URL = "http://edge.test";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const TASK_ID = "00000000-0000-4000-8000-0000000000aa";
 
-/**
- * Minimal in-memory stand-in for the service-role client: enough of the
- * PostgREST builder (select/update/insert, eq/is/lt, order/limit,
- * maybeSingle, await) for process-sync-queue.
- */
-class FakeDb {
-  tables: Record<string, Row[]>;
-  constructor(tables: Record<string, Row[]>) {
-    this.tables = tables;
-  }
-  from(table: string) {
-    this.tables[table] ??= [];
-    return new FakeQuery(this.tables[table]);
-  }
-}
+type ProviderResponder = (body: Record<string, unknown>) => Response;
 
-class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
-  private filters: Filter[] = [];
-  private patch: Row | null = null;
-  private insertRow: Row | null = null;
-  private single = false;
-  private orderBy: { col: string; asc: boolean } | null = null;
-  private max: number | null = null;
-
-  constructor(private rows: Row[]) {}
-
-  select(_cols?: string) {
-    return this;
-  }
-  update(patch: Row) {
-    this.patch = patch;
-    return this;
-  }
-  insert(row: Row) {
-    this.insertRow = row;
-    return this;
-  }
-  eq(col: string, value: unknown) {
-    this.filters.push((r) => r[col] === value);
-    return this;
-  }
-  is(col: string, value: unknown) {
-    this.filters.push((r) => (r[col] ?? null) === value);
-    return this;
-  }
-  lt(col: string, value: string) {
-    this.filters.push((r) => typeof r[col] === "string" && (r[col] as string) < value);
-    return this;
-  }
-  order(col: string, opts: { ascending: boolean }) {
-    this.orderBy = { col, asc: opts.ascending };
-    return this;
-  }
-  limit(n: number) {
-    this.max = n;
-    return this;
-  }
-  maybeSingle() {
-    this.single = true;
-    return this;
-  }
-
-  private run(): { data: unknown; error: null } {
-    if (this.insertRow) {
-      this.rows.push({ ...this.insertRow });
-      return { data: null, error: null };
-    }
-    let matched = this.rows.filter((r) => this.filters.every((f) => f(r)));
-    if (this.patch) {
-      for (const r of matched) Object.assign(r, this.patch);
-    }
-    if (this.orderBy) {
-      const { col, asc } = this.orderBy;
-      matched = [...matched].sort((a, b) =>
-        String(a[col]).localeCompare(String(b[col])) * (asc ? 1 : -1)
-      );
-    }
-    if (this.max !== null) matched = matched.slice(0, this.max);
-    const copies = matched.map((r) => ({ ...r }));
-    return { data: this.single ? copies[0] ?? null : copies, error: null };
-  }
-
-  then<T1 = { data: unknown; error: null }, T2 = never>(
-    onfulfilled?: ((v: { data: unknown; error: null }) => T1 | PromiseLike<T1>) | null,
-    onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,
-  ): PromiseLike<T1 | T2> {
-    return Promise.resolve(this.run()).then(onfulfilled, onrejected);
-  }
-}
+const ok200: ProviderResponder = () =>
+  new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 
 interface Harness {
   handler: (req: Request) => Promise<Response>;
@@ -113,6 +29,7 @@ interface Harness {
 function harness(
   env: Record<string, string>,
   tables: Record<string, Row[]> = {},
+  respond: ProviderResponder = ok200,
 ): Harness {
   const db = new FakeDb(tables);
   const fetchCalls: Harness["fetchCalls"] = [];
@@ -126,12 +43,7 @@ function harness(
     },
     fetch: (input, init) => {
       fetchCalls.push({ url: String(input), init });
-      return Promise.resolve(
-        new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      return Promise.resolve(respond(JSON.parse(String(init?.body ?? "{}"))));
     },
   };
   return {
@@ -289,4 +201,103 @@ Deno.test("process-sync-queue: an initial and a newer incremental for one user a
     h.db.tables.sync_queue.map((r) => r.status),
     ["completed", "completed"],
   );
+});
+
+function pendingRow(id: string, syncType: string, createdAt: string, extra: Row = {}): Row {
+  return {
+    id,
+    user_id: USER_ID,
+    provider: "strava",
+    sync_type: syncType,
+    status: "pending",
+    created_at: createdAt,
+    retry_count: 0,
+    error_message: null,
+    started_at: null,
+    completed_at: null,
+    ...extra,
+  };
+}
+
+const FLAME_SUBSCRIPTION: Row = {
+  user_id: USER_ID,
+  tier: "FLAME",
+  status: "active",
+  current_period_end: "2099-01-01T00:00:00.000Z",
+};
+
+Deno.test("process-sync-queue: a retryable initial failure keeps the same user's newer row pending in that pass", async () => {
+  const INCREMENTAL_ID = "00000000-0000-4000-8000-0000000000bb";
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [
+        pendingRow(TASK_ID, "initial", "2026-09-14T00:00:00.000Z"),
+        pendingRow(INCREMENTAL_ID, "incremental", "2026-09-19T00:00:00.000Z"),
+      ],
+      subscriptions: [FLAME_SUBSCRIPTION],
+      rate_limit_tracking: [],
+    },
+    (body) =>
+      body.sync_type === "initial"
+        ? new Response("partial backfill", { status: 502 })
+        : ok200(body),
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 1 });
+
+  // Only the initial was dispatched (3 backOff attempts), never the incremental.
+  assertEquals(
+    h.fetchCalls.map((c) => JSON.parse(String(c.init?.body)).sync_type),
+    ["initial", "initial", "initial"],
+  );
+  const [initial, incremental] = h.db.tables.sync_queue;
+  assertEquals(initial.status, "pending");
+  assertEquals(initial.retry_count, 1);
+  assertEquals(incremental.status, "pending");
+  assertEquals(incremental.started_at, null);
+});
+
+Deno.test("process-sync-queue: a pending row is not claimed while the pair has a live processing row", async () => {
+  const LIVE_ID = "00000000-0000-4000-8000-0000000000cc";
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      pendingRow(LIVE_ID, "initial", "2026-09-14T00:00:00.000Z", {
+        status: "processing",
+        // Well inside the 30-minute lease.
+        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+      }),
+      pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"),
+    ],
+    subscriptions: [FLAME_SUBSCRIPTION],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 1 });
+  assertEquals(h.fetchCalls.length, 0);
+  assertEquals(h.db.tables.sync_queue.map((r) => r.status), ["processing", "pending"]);
+});
+
+Deno.test("process-sync-queue: the exact service-role bearer (no cron secret) is accepted", async () => {
+  const h = harness(BASE_ENV);
+  const res = await h.handler(cronRequest({ Authorization: `Bearer ${SERVICE_ROLE_KEY}` }));
+  assertEquals(res.status, 200);
+  assertEquals(h.clientsCreated.value, 1);
+});
+
+Deno.test("process-sync-queue: a near-miss service-role bearer gives 401", async () => {
+  for (const authorization of [
+    `Bearer ${SERVICE_ROLE_KEY}x`,
+    `bearer ${SERVICE_ROLE_KEY}`,
+    SERVICE_ROLE_KEY,
+    `Bearer ${SERVICE_ROLE_KEY.slice(0, -1)}`,
+  ]) {
+    const h = harness(BASE_ENV);
+    const res = await h.handler(cronRequest({ Authorization: authorization }));
+    assertEquals(res.status, 401, authorization);
+    assertEquals(h.clientsCreated.value, 0);
+  }
 });

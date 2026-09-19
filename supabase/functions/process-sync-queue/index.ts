@@ -17,8 +17,16 @@ type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Scheduled sync queue processor.
- * Called by Supabase cron or external scheduler every 5 minutes.
+ * Called by pg_cron (job `process-sync-queue`, every 5 minutes, through
+ * private.invoke_edge_function) with the x-cron-secret header.
  * Processes pending sync tasks with rate limit checking and exponential backoff.
+ *
+ * Per (user_id, provider) the processor runs at most one task at a time:
+ * a pending row is not claimed while another row for the same pair is
+ * `processing` (in this or an overlapping pass, within the lease), nor after
+ * an earlier row for the pair failed retryably in this pass. Rows are taken
+ * oldest-first, so a kept `initial` runs before a newer incremental/manual
+ * row, and the newer row only runs in the same pass if the initial completed.
  */
 
 const MAX_RETRIES = 10;
@@ -26,7 +34,14 @@ const MAX_RETRIES = 10;
 // A task that has sat in `processing` longer than this lease is assumed to have
 // crashed mid-run (the worker died before marking it completed/failed) and is
 // reclaimed back to `pending` so it can be retried.
-const PROCESSING_LEASE_MS = 5 * 60 * 1000;
+//
+// It must comfortably exceed the longest a live task can run: a pass runs up
+// to the Edge wall-clock limit (400 s on paid plans) and the cron fires every
+// 5 minutes, so passes can overlap. A lease at or below that would let the
+// next pass reclaim and re-dispatch a row whose sync is still running. The
+// cost of a long lease is that a genuinely crashed row waits this long before
+// it is retried.
+export const PROCESSING_LEASE_MS = 30 * 60 * 1000;
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
@@ -258,6 +273,19 @@ async function processSyncQueue(
 
     let claimedThisProvider = 0;
 
+    // Serialize per (user_id, provider). Users with a row still `processing`
+    // for this provider (a live task from this or an overlapping pass; stale
+    // ones were reclaimed above) are skipped, as are users whose earlier row
+    // failed retryably in this pass.
+    const { data: processingRows } = await supabase
+      .from('sync_queue')
+      .select('user_id')
+      .eq('provider', provider)
+      .eq('status', 'processing');
+    const busyUsers = new Set<string>(
+      (processingRows ?? []).map((r: { user_id: string }) => r.user_id),
+    );
+
     for (const task of tasks ?? []) {
       // Honour the per-provider dispatch budget regardless of how many
       // candidates were read above.
@@ -275,6 +303,11 @@ async function processSyncQueue(
           .eq('id', task.id);
         console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
         results.failed++;
+        continue;
+      }
+
+      if (busyUsers.has(task.user_id)) {
+        results.skipped++;
         continue;
       }
 
@@ -309,6 +342,7 @@ async function processSyncQueue(
         .maybeSingle();
 
       if (!claimed) {
+        busyUsers.add(task.user_id);
         // Another concurrent invocation already claimed this task — skip it.
         continue;
       }
@@ -381,6 +415,8 @@ async function processSyncQueue(
             console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
           } else {
             nextStatus = 'pending';
+            // Keep this user's newer rows for the pair until the retry runs.
+            busyUsers.add(task.user_id);
           }
         } else {
           nextStatus = 'failed';
