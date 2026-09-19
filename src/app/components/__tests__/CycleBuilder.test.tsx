@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -51,13 +51,26 @@ vi.mock("@/mutations/cycles", () => ({
 }));
 
 // --- Supabase mock ---
+// mockCycleRow.current, when set, is what the cycle detail query
+// (training_cycles .eq().order().single()) returns, for edit-mode tests.
+const mockCycleRow = vi.hoisted(() => ({
+	current: null as Record<string, unknown> | null,
+}));
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
-		from: () => ({
+		from: (table: string) => ({
 			select: () => ({
 				eq: () => ({
 					maybeSingle: () => Promise.resolve({ data: null, error: null }),
-					order: () => Promise.resolve({ data: [], error: null }),
+					order: () =>
+						Object.assign(Promise.resolve({ data: [], error: null }), {
+							single: () =>
+								Promise.resolve(
+									table === "training_cycles" && mockCycleRow.current
+										? { data: mockCycleRow.current, error: null }
+										: { data: null, error: { message: "not found" } },
+								),
+						}),
 					single: () =>
 						Promise.resolve({ data: null, error: { message: "not found" } }),
 				}),
@@ -75,10 +88,57 @@ vi.mock("sonner", () => ({
 	toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+const EDIT_CYCLE_ID = "0b000000-0000-4000-8000-000000000001";
+
+function cycleRow(progression: unknown) {
+	return {
+		id: EDIT_CYCLE_ID,
+		user_id: "0a000000-0000-4000-8000-000000000001",
+		name: "Stored cycle",
+		description: "",
+		duration_weeks: 4,
+		current_week: 1,
+		status: "draft",
+		workout_days: 1,
+		rest_days: 0,
+		started_at: null,
+		last_used_at: null,
+		progression_settings: progression,
+		deload_settings: null,
+		cycle_days: [
+			{
+				id: "0c000000-0000-4000-8000-000000000001",
+				cycle_id: EDIT_CYCLE_ID,
+				day_number: 1,
+				day_type: "workout",
+				routine_id: null,
+				weight_adjustment: 0,
+				rep_modifier: 0,
+				rest_override: null,
+				notes: null,
+				rest_type: null,
+			},
+		],
+	};
+}
+
+/** Mirrors mobile: pull JSON.stringify's the jsonb, the phone decodes it as
+ * Map<String, String>. */
+function expectMobileDecodable(ps: unknown) {
+	for (const value of Object.values(ps as Record<string, unknown>)) {
+		expect(typeof value).toBe("string");
+	}
+	expect(
+		mobileProgressionSettingsSchema.safeParse(JSON.parse(JSON.stringify(ps)))
+			.success,
+	).toBe(true);
+}
+
 describe("CycleBuilder", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockParams.current = {};
+		mockCycleRow.current = null;
 	});
 
 	// ---------------------------------------------------------------
@@ -212,7 +272,7 @@ describe("CycleBuilder", () => {
 					expect.objectContaining({ day_number: 1, day_type: "workout" }),
 				]),
 				progression_settings: expect.objectContaining({
-					type: "percentage",
+					type: "manual",
 				}),
 			}),
 			expect.any(Object),
@@ -222,31 +282,135 @@ describe("CycleBuilder", () => {
 	// ---------------------------------------------------------------
 	// Progression settings use mobile's Map<String, String> schema
 	// ---------------------------------------------------------------
-	it("saves progression settings with string-valued mobile keys", async () => {
+	it("untouched defaults save string values and inject no mobile key", async () => {
 		const user = userEvent.setup();
 		renderWithProviders(<CycleBuilder />);
 
 		await user.click(screen.getByRole("button", { name: /save cycle/i }));
 
-		const payload = mockSaveMutate.mock.calls[0][0];
-		const ps = payload.progression_settings as Record<string, unknown>;
-		expect(ps).toMatchObject({
-			frequencyCycles: "1",
-			weightIncreasePercent: "2.5",
-			type: "percentage",
+		const ps = mockSaveMutate.mock.calls[0][0].progression_settings;
+		expect(ps).toEqual({
+			type: "manual",
 			amount: "2.5",
-			frequency: "1",
+			frequency: "2",
 			trigger: "target_rpe",
+			upperIncrement: "2.5",
+			lowerIncrement: "5",
 		});
-		for (const value of Object.values(ps)) {
-			expect(typeof value).toBe("string");
-		}
-		// Decoder check: mobile receives the jsonb JSON.stringify'd by pull and
-		// decodes it as Map<String, String>.
-		const wire = JSON.stringify(ps);
+		expectMobileDecodable(ps);
+	});
+
+	it("labels frequency in cycles, writes it as an integer string, caps at 10", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<CycleBuilder />);
+
+		const input = screen.getByLabelText(/progress every n cycles/i);
 		expect(
-			mobileProgressionSettingsSchema.safeParse(JSON.parse(wire)).success,
-		).toBe(true);
+			screen.getByText(/after every n completed runs through the cycle/i),
+		).toBeInTheDocument();
+		fireEvent.change(input, { target: { value: "3" } });
+		await user.click(screen.getByRole("button", { name: /save cycle/i }));
+		expect(mockSaveMutate.mock.calls[0][0].progression_settings).toMatchObject({
+			frequencyCycles: "3",
+		});
+
+		fireEvent.change(input, { target: { value: "15" } });
+		await user.click(screen.getByRole("button", { name: /save cycle/i }));
+		const ps = mockSaveMutate.mock.calls[1][0].progression_settings;
+		expect(ps.frequencyCycles).toBe("10");
+		expect(ps).not.toHaveProperty("weightIncreasePercent");
+		expectMobileDecodable(ps);
+	});
+
+	// ---------------------------------------------------------------
+	// Edit path: load a stored cycle, save, check the mobile keys
+	// ---------------------------------------------------------------
+	describe("edit path", () => {
+		const renderEditing = async (progression: unknown) => {
+			mockParams.current = { cycleId: EDIT_CYCLE_ID };
+			mockCycleRow.current = cycleRow(progression);
+			const user = userEvent.setup();
+			renderWithProviders(<CycleBuilder />);
+			await screen.findByDisplayValue("Stored cycle");
+			return user;
+		};
+		const saveAndGetProgression = async (
+			user: ReturnType<typeof userEvent.setup>,
+		) => {
+			await user.click(screen.getByRole("button", { name: /save cycle/i }));
+			expect(mockUpdateMutate).toHaveBeenCalledTimes(1);
+			const ps = mockUpdateMutate.mock.calls[0][0].progression_settings;
+			expectMobileDecodable(ps);
+			return ps as Record<string, string>;
+		};
+
+		it("a rename keeps every phone key and injects nothing", async () => {
+			const user = await renderEditing({
+				type: "percentage",
+				amount: "3",
+				frequency: "1",
+				frequencyCycles: "2",
+				weightIncreasePercent: "1.5",
+				echoLevelIncrease: "true",
+				eccentricLoadIncreasePercent: "10",
+			});
+			// Phone values win on screen.
+			expect(screen.getByLabelText(/progress every n cycles/i)).toHaveValue(2);
+			expect(screen.getByLabelText(/increase \(%\)/i)).toHaveValue(1.5);
+
+			await user.type(screen.getByDisplayValue("Stored cycle"), " renamed");
+			const ps = await saveAndGetProgression(user);
+			expect(ps).toMatchObject({
+				frequencyCycles: "2",
+				weightIncreasePercent: "1.5",
+				echoLevelIncrease: "true",
+				eccentricLoadIncreasePercent: "10",
+			});
+		});
+
+		it("does not resurrect a weight increase the phone switched off", async () => {
+			// Portal set 3%; the phone later turned weight off (push removed
+			// weightIncreasePercent, kept the portal keys).
+			const user = await renderEditing({
+				type: "percentage",
+				amount: "3",
+				frequency: "1",
+				frequencyCycles: "2",
+			});
+			expect(screen.queryByLabelText(/increase \(%\)/i)).toBeNull();
+
+			const ps = await saveAndGetProgression(user);
+			expect(ps).not.toHaveProperty("weightIncreasePercent");
+			expect(ps.frequencyCycles).toBe("2");
+		});
+
+		it("injects no mobile key into a cycle with no progression", async () => {
+			const user = await renderEditing(null);
+			const ps = await saveAndGetProgression(user);
+			for (const key of MOBILE_PROGRESSION_KEYS) {
+				expect(ps).not.toHaveProperty(key);
+			}
+		});
+
+		it("writes weightIncreasePercent when the user changes the increase", async () => {
+			const user = await renderEditing({
+				type: "percentage",
+				amount: "2.5",
+				frequency: "1",
+				frequencyCycles: "3",
+				weightIncreasePercent: "2.5",
+			});
+			fireEvent.change(screen.getByLabelText(/increase \(%\)/i), {
+				target: { value: "4" },
+			});
+			const ps = await saveAndGetProgression(user);
+			expect(ps).toMatchObject({
+				type: "percentage",
+				amount: "4",
+				weightIncreasePercent: "4",
+				frequencyCycles: "3",
+			});
+		});
 	});
 
 	// ---------------------------------------------------------------
@@ -383,31 +547,94 @@ describe("cycle progression settings wire contract", () => {
 		).toBe(false);
 	});
 
-	it("builder output decodes and keeps mobile's echo/eccentric keys", () => {
+	const FORM = {
+		type: "percentage" as const,
+		amount: 2.5,
+		frequency: 2,
+		trigger: "all_sets" as const,
+		upperIncrement: 2.5,
+		lowerIncrement: 5,
+	};
+	const UNTOUCHED = { weight: false, frequency: false };
+
+	it("untouched builder output passes every stored mobile key through", () => {
 		const built = buildCycleProgressionSettings(
-			{
-				type: "fixed",
-				amount: 2.5,
-				frequency: 2,
-				trigger: "all_sets",
-				upperIncrement: 2.5,
-				lowerIncrement: 5,
-			},
+			{ ...FORM, type: "fixed", amount: 5, frequency: 7 },
 			JSON.parse(KOTLIN_FIXTURE),
+			UNTOUCHED,
 		);
 		expect(
 			mobileProgressionSettingsSchema.parse(JSON.parse(JSON.stringify(built))),
 		).toEqual({
 			type: "fixed",
-			amount: "2.5",
-			frequency: "2",
+			amount: "5",
+			frequency: "7",
 			trigger: "all_sets",
 			upperIncrement: "2.5",
 			lowerIncrement: "5",
-			frequencyCycles: "2",
+			frequencyCycles: "3",
+			weightIncreasePercent: "2.5",
 			echoLevelIncrease: "true",
 			eccentricLoadIncreasePercent: "10",
 		});
+	});
+
+	it("untouched builder output injects no mobile key", () => {
+		const built = buildCycleProgressionSettings(FORM, null, UNTOUCHED);
+		for (const key of MOBILE_PROGRESSION_KEYS) {
+			expect(built).not.toHaveProperty(key);
+		}
+	});
+
+	it("a touched frequency is an integer string clamped to 1-10", () => {
+		const freq = (frequency: number) =>
+			buildCycleProgressionSettings({ ...FORM, frequency }, null, {
+				weight: false,
+				frequency: true,
+			}).frequencyCycles;
+		expect(freq(2.6)).toBe("3");
+		expect(freq(0)).toBe("1");
+		expect(freq(-4)).toBe("1");
+		expect(freq(12)).toBe("10");
+		expect(freq(Number.NaN)).toBe("1");
+	});
+
+	it("a touched weight control writes or removes weightIncreasePercent", () => {
+		const touched = { weight: true, frequency: false };
+		expect(
+			buildCycleProgressionSettings(
+				{ ...FORM, amount: 4 },
+				{ weightIncreasePercent: "2.5" },
+				touched,
+			).weightIncreasePercent,
+		).toBe("4");
+		for (const type of ["fixed", "manual"] as const) {
+			expect(
+				buildCycleProgressionSettings(
+					{ ...FORM, type },
+					{ weightIncreasePercent: "2.5", frequencyCycles: "2" },
+					touched,
+				),
+			).not.toHaveProperty("weightIncreasePercent");
+		}
+	});
+
+	it("a phone-cleared weight increase rebuilds without weightIncreasePercent", () => {
+		const stored = {
+			type: "percentage",
+			amount: "3",
+			frequency: "1",
+			frequencyCycles: "2",
+		};
+		const read = readCycleProgressionSettings(stored);
+		expect(read).toEqual({ type: "manual", amount: 3, frequency: 2 });
+		const built = buildCycleProgressionSettings(
+			{ ...FORM, ...read },
+			stored,
+			UNTOUCHED,
+		);
+		expect(built).not.toHaveProperty("weightIncreasePercent");
+		expect(built.frequencyCycles).toBe("2");
 	});
 
 	it("reads mobile-only, string, and legacy numeric settings", () => {

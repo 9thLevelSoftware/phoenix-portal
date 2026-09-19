@@ -50,6 +50,10 @@ import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
 import {
 	buildCycleProgressionSettings,
+	clampFrequencyCycles,
+	MAX_FREQUENCY_CYCLES,
+	MIN_FREQUENCY_CYCLES,
+	MOBILE_DEFAULT_FREQUENCY_CYCLES,
 	readCycleProgressionSettings,
 } from "@/schemas/transforms";
 
@@ -101,12 +105,20 @@ export function CycleBuilder() {
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
-	// Progression settings
+	// Progression settings. Defaults mirror what the phone does when a cycle
+	// has no progression keys (no weight increase, every 2 cycles), because
+	// untouched controls never write mobile keys (see
+	// buildCycleProgressionSettings).
 	const [progressionType, setProgressionType] = useState<
 		"percentage" | "fixed" | "manual"
-	>("percentage");
+	>("manual");
 	const [progressionAmount, setProgressionAmount] = useState(2.5);
-	const [progressionFrequency, setProgressionFrequency] = useState(1);
+	const [progressionFrequency, setProgressionFrequency] = useState(
+		MOBILE_DEFAULT_FREQUENCY_CYCLES,
+	);
+	// Mobile-mapped controls the user changed in this session.
+	const [weightTouched, setWeightTouched] = useState(false);
+	const [frequencyTouched, setFrequencyTouched] = useState(false);
 	const [progressionTrigger, setProgressionTrigger] = useState<
 		"all_sets" | "target_rpe" | "cycle_complete"
 	>("target_rpe");
@@ -237,6 +249,7 @@ export function CycleBuilder() {
 				lowerIncrement: lowerBodyIncrement,
 			},
 			existingCycle?.progression_settings,
+			{ weight: weightTouched, frequency: frequencyTouched },
 		);
 
 		const deloadSettings = includeDeload
@@ -613,16 +626,19 @@ export function CycleBuilder() {
 						progressionType={progressionType}
 						onProgressionTypeChange={(v: "percentage" | "fixed" | "manual") => {
 							setProgressionType(v);
+							setWeightTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionAmount={progressionAmount}
 						onProgressionAmountChange={(v: number) => {
 							setProgressionAmount(v);
+							setWeightTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionFrequency={progressionFrequency}
 						onProgressionFrequencyChange={(v: number) => {
 							setProgressionFrequency(v);
+							setFrequencyTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionTrigger={progressionTrigger}
@@ -1188,12 +1204,16 @@ function ProgressionRules({
 
 					{progressionType !== "manual" && (
 						<div>
-							<Label className="text-secondary-foreground mb-2">
+							<Label
+								htmlFor="progression-amount"
+								className="text-secondary-foreground mb-2"
+							>
 								{progressionType === "percentage"
 									? "Increase (%)"
 									: `Increase (${unit})`}
 							</Label>
 							<Input
+								id="progression-amount"
 								type="number"
 								value={progressionAmountDisplay}
 								onChange={(e) =>
@@ -1214,20 +1234,29 @@ function ProgressionRules({
 				{/* Frequency and Trigger */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label className="text-secondary-foreground mb-2">
-							Progression Frequency (weeks)
+						<Label
+							htmlFor="progression-frequency"
+							className="text-secondary-foreground mb-2"
+						>
+							Progress every N cycles
 						</Label>
 						<Input
+							id="progression-frequency"
 							type="number"
 							value={progressionFrequency}
 							onChange={(e) =>
-								onProgressionFrequencyChange(parseInt(e.target.value, 10) || 1)
+								onProgressionFrequencyChange(
+									clampFrequencyCycles(parseInt(e.target.value, 10) || 1),
+								)
 							}
 							className="bg-background border-secondary"
-							min={1}
+							min={MIN_FREQUENCY_CYCLES}
+							max={MAX_FREQUENCY_CYCLES}
+							step={1}
 						/>
 						<p className="text-xs text-muted-foreground mt-1">
-							How often to apply progression
+							The phone applies progression after every N completed runs through
+							the cycle (1-10), not every N weeks.
 						</p>
 					</div>
 

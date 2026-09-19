@@ -428,36 +428,71 @@ export interface CycleProgressionForm {
 	lowerIncrement: number;
 }
 
+/** Mobile's progression-frequency stepper range (ProgressionSettingsSheet). */
+export const MIN_FREQUENCY_CYCLES = 1;
+export const MAX_FREQUENCY_CYCLES = 10;
+/** What the phone uses when frequencyCycles is absent. */
+export const MOBILE_DEFAULT_FREQUENCY_CYCLES = 2;
+
+/** Integer 1-10, as mobile's toLongOrNull() and stepper expect. */
+export function clampFrequencyCycles(value: number): number {
+	const n = Math.round(value);
+	if (!Number.isFinite(n)) return MIN_FREQUENCY_CYCLES;
+	return Math.min(MAX_FREQUENCY_CYCLES, Math.max(MIN_FREQUENCY_CYCLES, n));
+}
+
+/** Which mobile-mapped controls the user changed in this edit session. */
+export interface ProgressionTouched {
+	/** Progression type or increase amount. */
+	weight: boolean;
+	/** Progress-every-N-cycles control. */
+	frequency: boolean;
+}
+
 /**
- * Builds progression_settings for a portal save: portal keys plus the mobile
- * keys the builder can derive, every value a string. Mobile keys the builder
- * has no control for (echoLevelIncrease, eccentricLoadIncreasePercent) are
- * carried over from the stored settings so a portal save doesn't clear them.
+ * Builds progression_settings for a portal save, every value a string.
+ *
+ * Portal-only keys always reflect the form. Mobile keys are passed through
+ * from the stored settings unchanged unless the user changed the matching
+ * control in this session, so a portal save (e.g. a rename) never
+ * resurrects a key the phone cleared or injects a default:
+ *   - frequency touched  -> frequencyCycles = form frequency (integer 1-10)
+ *   - weight touched     -> weightIncreasePercent = amount for a percentage
+ *                           type, removed for fixed/manual (the machine only
+ *                           applies percentage increases)
+ * echoLevelIncrease / eccentricLoadIncreasePercent have no portal control
+ * and are always passed through.
  */
 export function buildCycleProgressionSettings(
 	form: CycleProgressionForm,
-	existing?: unknown,
+	existing: unknown,
+	touched: ProgressionTouched,
 ): CycleProgressionSettings {
-	const frequencyCycles = Math.max(1, Math.round(form.frequency) || 1);
 	const settings: CycleProgressionSettings = {
 		type: form.type,
 		amount: String(form.amount),
-		frequency: String(frequencyCycles),
+		frequency: String(form.frequency),
 		trigger: form.trigger,
 		upperIncrement: String(form.upperIncrement),
 		lowerIncrement: String(form.lowerIncrement),
-		frequencyCycles: String(frequencyCycles),
 	};
-	if (form.type === "percentage" && Number.isFinite(form.amount)) {
-		settings.weightIncreasePercent = String(form.amount);
-	}
 	if (existing && typeof existing === "object" && !Array.isArray(existing)) {
 		const stored = existing as Record<string, unknown>;
-		for (const key of ["echoLevelIncrease", "eccentricLoadIncreasePercent"]) {
+		for (const key of MOBILE_PROGRESSION_KEYS) {
 			const value = stored[key];
 			if (value !== null && value !== undefined) {
 				settings[key] = String(value);
 			}
+		}
+	}
+	if (touched.frequency) {
+		settings.frequencyCycles = String(clampFrequencyCycles(form.frequency));
+	}
+	if (touched.weight) {
+		if (form.type === "percentage" && Number.isFinite(form.amount)) {
+			settings.weightIncreasePercent = String(form.amount);
+		} else {
+			delete settings.weightIncreasePercent;
 		}
 	}
 	return settings;
@@ -471,9 +506,12 @@ const finiteNumber = (value: unknown): number | undefined => {
 
 /**
  * Reads stored progression_settings (string values, legacy numeric values,
- * or a mobile-only object) back into builder form values. Missing portal
- * keys fall back to the mobile keys so saving a phone-authored cycle keeps
- * the phone's values.
+ * or a mobile-only object) back into builder form values, showing what the
+ * machine applies:
+ *   - weightIncreasePercent present -> percentage at that value;
+ *   - mobile keys present but weightIncreasePercent absent -> the phone has
+ *     weight increases off, so a stored "percentage" type reads as "manual";
+ *   - frequencyCycles wins over the legacy portal `frequency` (read as-is).
  */
 export function readCycleProgressionSettings(
 	raw: unknown,
@@ -498,11 +536,15 @@ export function readCycleProgressionSettings(
 	// Preferring it keeps a later portal save from reverting a phone edit.
 	const weightIncreasePercent = finiteNumber(ps.weightIncreasePercent);
 	const amount = finiteNumber(ps.amount);
+	const hasMobileKeys = MOBILE_PROGRESSION_KEYS.some(
+		(key) => ps[key] !== undefined && ps[key] !== null,
+	);
 	if (weightIncreasePercent !== undefined) {
 		out.amount = weightIncreasePercent;
 		out.type = "percentage";
-	} else if (amount !== undefined) {
-		out.amount = amount;
+	} else {
+		if (amount !== undefined) out.amount = amount;
+		if (hasMobileKeys && out.type === "percentage") out.type = "manual";
 	}
 
 	const frequency =
