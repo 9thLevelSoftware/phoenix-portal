@@ -53,8 +53,25 @@ import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 import { formatEquipment } from "@/schemas/transforms";
+import {
+	DEFAULT_WIRE_MODE,
+	toWireMode,
+	WIRE_MODE_LABELS,
+	WIRE_MODES,
+	type WireMode,
+	workoutModeLabel,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
 
 const SUPERSET_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B"] as const;
+
+const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
+	OLD_SCHOOL: "Traditional resistance training",
+	PUMP: "High-rep hypertrophy focused training",
+	TUT: "Time under tension for muscle growth",
+	TUT_BEAST: "Extended time under tension with slow eccentrics",
+	ECCENTRIC_ONLY: "Negative-only reps for maximum muscle damage",
+	ECHO: "Alternating intensity echo sets",
+};
 
 interface Exercise {
 	id: string;
@@ -129,14 +146,14 @@ function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
 		: formatWeight(exercise.weight, unit);
 
 	if (exercise.durationSeconds) {
-		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
 	if (exercise.isAmrap) {
-		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
-	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${exercise.mode}`;
+	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 }
 
 function getPerSetValues(
@@ -243,7 +260,9 @@ export function RoutineBuilder() {
 					weight: ex.weight,
 					rest: ex.rest_seconds,
 					durationSeconds: ex.duration_seconds ?? null,
-					mode: ex.mode,
+					// Unknown stored modes train as Old School on mobile; show and
+					// save them that way instead of a select that matches nothing.
+					mode: toWireMode(ex.mode) ?? DEFAULT_WIRE_MODE,
 					supersetId: ex.superset_id ?? null,
 					supersetColor: ex.superset_color ?? null,
 					supersetOrder: ex.superset_order ?? null,
@@ -737,7 +756,7 @@ export function RoutineBuilder() {
 								weight: 0,
 								rest: 90,
 								durationSeconds: null,
-								mode: "Old School",
+								mode: DEFAULT_WIRE_MODE,
 								supersetId: null,
 								supersetColor: null,
 								supersetOrder: null,
@@ -1262,25 +1281,15 @@ function ExerciseDetailPanel({
 							onChange={(e) => onUpdate({ mode: e.target.value })}
 							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 						>
-							<option>Old School</option>
-							<option>Pump</option>
-							<option>TUT</option>
-							<option>TUT Beast</option>
-							<option>Eccentric Only</option>
-							<option>Echo</option>
+							{WIRE_MODES.map((wire) => (
+								<option key={wire} value={wire}>
+									{WIRE_MODE_LABELS[wire]}
+								</option>
+							))}
 						</select>
 						<p className="text-xs text-muted-foreground mt-1">
-							{exercise.mode === "Pump"
-								? "High-rep hypertrophy focused training"
-								: exercise.mode === "TUT"
-									? "Time under tension for muscle growth"
-									: exercise.mode === "TUT Beast"
-										? "Extended time under tension with slow eccentrics"
-										: exercise.mode === "Eccentric Only"
-											? "Negative-only reps for maximum muscle damage"
-											: exercise.mode === "Echo"
-												? "Alternating intensity echo sets"
-												: "Traditional resistance training"}
+							{WIRE_MODE_DESCRIPTIONS[exercise.mode as WireMode] ??
+								WIRE_MODE_DESCRIPTIONS.OLD_SCHOOL}
 						</p>
 					</div>
 

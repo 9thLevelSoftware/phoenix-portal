@@ -80,7 +80,7 @@ const baseExercise = {
 	reps: 10,
 	weight: 100,
 	rest_seconds: 90,
-	mode: "eccentric",
+	mode: "ECCENTRIC_ONLY",
 	order_index: 0,
 };
 
@@ -163,6 +163,58 @@ describe("useSaveRoutine", () => {
 		);
 		expect(mockToast.error).not.toHaveBeenCalledWith(
 			expect.stringContaining("duplicate key"),
+		);
+	});
+
+	it("stores display-name modes as wire names", async () => {
+		const { useSaveRoutine } = await import("../routines");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		mockSelectSingle.mockResolvedValue({
+			data: { id: "routine-1" },
+			error: null,
+		});
+		mockChain.insert.mockImplementation((rows: unknown) => {
+			if (Array.isArray(rows)) {
+				exerciseRows = rows as Array<Record<string, unknown>>;
+				return Promise.resolve({ error: null });
+			}
+			return { select: vi.fn(() => ({ single: mockSelectSingle })) };
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveRoutine(), { wrapper });
+
+		result.current.mutate({
+			name: "Test Routine",
+			exercises: [
+				{ ...baseExercise, mode: "TUT Beast" },
+				{ ...baseExercise, mode: "CLASSIC", order_index: 1 },
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(exerciseRows.map((row) => row.mode)).toEqual([
+			"TUT_BEAST",
+			"OLD_SCHOOL",
+		]);
+	});
+
+	it("rejects an unknown mode before inserting the routine", async () => {
+		const { useSaveRoutine } = await import("../routines");
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveRoutine(), { wrapper });
+
+		result.current.mutate({
+			name: "Test Routine",
+			exercises: [{ ...baseExercise, mode: "eccentric" }],
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(from).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to save routine. Please try again.",
 		);
 	});
 

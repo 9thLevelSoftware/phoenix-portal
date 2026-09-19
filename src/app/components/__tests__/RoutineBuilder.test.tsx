@@ -2,6 +2,10 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
+import {
+	WIRE_MODE_LABELS,
+	WIRE_MODES,
+} from "../../../../supabase/functions/_shared/workoutModes.ts";
 import { RoutineBuilder } from "../RoutineBuilder";
 
 // --- Auth mock ---
@@ -68,13 +72,25 @@ vi.mock("@/hooks/useExerciseCatalog", () => ({
 }));
 
 // --- Supabase mock ---
+const mockRoutineDetail = vi.hoisted(() => ({
+	current: null as Record<string, unknown> | null,
+}));
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
 		from: () => ({
 			select: () => ({
 				eq: () => ({
 					maybeSingle: () => Promise.resolve({ data: null, error: null }),
-					order: () => Promise.resolve({ data: [], error: null }),
+					// routineDetailOptions chains .order(...).single()
+					order: () =>
+						Object.assign(Promise.resolve({ data: [], error: null }), {
+							single: () =>
+								Promise.resolve(
+									mockRoutineDetail.current
+										? { data: mockRoutineDetail.current, error: null }
+										: { data: null, error: { message: "not found" } },
+								),
+						}),
 					single: () =>
 						Promise.resolve({ data: null, error: { message: "not found" } }),
 				}),
@@ -143,6 +159,7 @@ describe("RoutineBuilder", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockParams.current = {};
+		mockRoutineDetail.current = null;
 		mockCatalog.state.exercises = [];
 		mockCatalog.state.filters = [];
 	});
@@ -408,7 +425,7 @@ describe("RoutineBuilder", () => {
 			expect.objectContaining({
 				exercises: [
 					expect.objectContaining({
-						mode: "Echo",
+						mode: "ECHO",
 						drop_set_enabled: true,
 						drop_set_min_weight_kg: 15,
 					}),
@@ -496,6 +513,75 @@ describe("RoutineBuilder", () => {
 	// ---------------------------------------------------------------
 	// Loading state when editing
 	// ---------------------------------------------------------------
+	// ---------------------------------------------------------------
+	// Training mode wire contract (mobile only accepts wire names)
+	// ---------------------------------------------------------------
+	it("offers every training mode with a wire-name value and display label", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+
+		const select = screen.getByDisplayValue("Old School") as HTMLSelectElement;
+		// New exercises default to the wire name, not the display label.
+		expect(select.value).toBe("OLD_SCHOOL");
+		expect(
+			Array.from(select.options).map((option) => [
+				option.value,
+				option.textContent,
+			]),
+		).toEqual(WIRE_MODES.map((wire) => [wire, WIRE_MODE_LABELS[wire]]));
+	});
+
+	it("renders a stored wire mode as its display option", async () => {
+		mockParams.current = { routineId: "11111111-1111-4111-8111-111111111111" };
+		mockRoutineDetail.current = {
+			id: "11111111-1111-4111-8111-111111111111",
+			user_id: "22222222-2222-4222-8222-222222222222",
+			name: "Echo Day",
+			description: "",
+			exercise_count: 1,
+			estimated_duration: 600,
+			times_completed: 0,
+			last_used_at: null,
+			tags: null,
+			is_favorite: false,
+			routine_exercises: [
+				{
+					id: "33333333-3333-4333-8333-333333333333",
+					routine_id: "11111111-1111-4111-8111-111111111111",
+					name: "Triceps Pushdown",
+					muscle_group: "ARMS",
+					exercise_id: null,
+					sets: 3,
+					reps: 10,
+					weight: 10,
+					rest_seconds: 90,
+					mode: "ECHO",
+					order_index: 0,
+					created_at: "2026-09-01T00:00:00.000Z",
+				},
+			],
+		};
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(
+			await screen.findByRole("button", { name: /edit exercise/i }),
+		);
+
+		const select = screen.getByDisplayValue("Echo") as HTMLSelectElement;
+		expect(select.value).toBe("ECHO");
+		expect(
+			screen.getByText("Alternating intensity echo sets"),
+		).toBeInTheDocument();
+	});
+
 	it("shows loading spinner in edit mode while routine loads", () => {
 		mockParams.current = { routineId: "test-routine-id" };
 		renderWithProviders(<RoutineBuilder />);

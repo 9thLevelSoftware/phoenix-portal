@@ -6,6 +6,10 @@ import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import {
+	toWireMode,
+	type WireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -63,7 +67,18 @@ interface RoutineExerciseInput {
 type RoutineExerciseInsert =
 	Database["public"]["Tables"]["routine_exercises"]["Insert"];
 
-function toRoutineExerciseRows(
+/**
+ * Mobile only understands wire mode names (OLD_SCHOOL, ECHO, ...). Normalize
+ * display names / legacy aliases and refuse anything else rather than storing
+ * a value mobile would silently turn into Old School.
+ */
+function requireWireMode(mode: string): WireMode {
+	const wire = toWireMode(mode);
+	if (!wire) throw new Error(`Unknown workout mode: ${mode}`);
+	return wire;
+}
+
+export function toRoutineExerciseRows(
 	routineId: string,
 	exercises: RoutineExerciseInput[],
 ): RoutineExerciseInsert[] {
@@ -77,7 +92,7 @@ function toRoutineExerciseRows(
 		weight: ex.weight / WEIGHT_MULTIPLIER,
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
-		mode: ex.mode,
+		mode: requireWireMode(ex.mode),
 		order_index: i,
 		superset_id: ex.superset_id ?? null,
 		superset_color: ex.superset_color ?? null,
@@ -118,6 +133,9 @@ export function useSaveRoutine() {
 	return useMutation({
 		mutationFn: async (input: SaveRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to save routines");
+			// Validate modes before the parent insert so an unknown mode can't
+			// leave an orphaned routine row behind.
+			for (const ex of input.exercises) requireWireMode(ex.mode);
 
 			// Create the routine row
 			const { data: routine, error: routineError } = await supabase
