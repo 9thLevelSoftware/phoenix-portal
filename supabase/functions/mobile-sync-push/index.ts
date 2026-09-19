@@ -1551,10 +1551,12 @@ async function mobileSyncPushHandler(
 
     // =========================================================================
     // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
-    // and no filtering is applied. When true, the push handler routes each
-    // shared-edit entity upsert through its `upsert_<entity>_lww` RPC and
-    // uses the accepted-id sets to filter child-table upserts so orphan child
-    // rows are not created under rejected parents.
+    // and no filtering is applied (exception: `cycles` also lists a cycle the
+    // merge RPC refused as another user's or concurrently deleted). When
+    // true, the push handler routes each shared-edit entity upsert through
+    // its `upsert_<entity>_lww` RPC (cycles: merge_training_cycles_from_push)
+    // and uses the accepted-id sets to filter child-table upserts so orphan
+    // child rows are not created under rejected parents.
     // =========================================================================
     const rejections = {
       sessions: [] as EntityRejection[],
