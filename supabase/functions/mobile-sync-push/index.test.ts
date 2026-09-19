@@ -2797,11 +2797,17 @@ Deno.test({
 
 // ---------------------------------------------------------------------------
 // PR 20 (F-009): replace_session_children keeps stored telemetry when a
-// session is re-pushed without it. Real SQL against the local stack; the Edge
-// handler passes these exact row shapes (see 4b-4f in index.ts).
+// session is re-pushed without it. Real SQL against the local stack.
+// Key rule: tier 1 = stable exercise row id + set_number; tier 2 (only for
+// exercise ids absent on the other side) = identity + order_index +
+// set_number; both unique on old and new side.
+// Current mobile wire shape (PortalSyncAdapter.kt): one set per exercise with
+// set_number 1, exercise id = stable mobile session id, fresh set ids per push.
 // ---------------------------------------------------------------------------
 
 interface ChildPushExercise {
+  /** Exercise row id; stable across pushes on current mobile. */
+  id: string;
   catalogId: string | null;
   name: string;
   orderIndex: number;
@@ -2838,9 +2844,8 @@ async function pushSessionChildren(
   const telemetryRows: Record<string, unknown>[] = [];
   const setIds: string[][] = [];
   for (const exercise of exercises) {
-    const exerciseId = crypto.randomUUID();
     exerciseRows.push({
-      id: exerciseId,
+      id: exercise.id,
       session_id: sessionId,
       user_id: fixture.ownerId,
       name: exercise.name,
@@ -2854,7 +2859,7 @@ async function pushSessionChildren(
       ids.push(setId);
       setRows.push({
         id: setId,
-        exercise_id: exerciseId,
+        exercise_id: exercise.id,
         user_id: fixture.ownerId,
         set_number: set.setNumber,
         target_reps: 10,
@@ -2928,74 +2933,96 @@ async function telemetryCount(
 
 Deno.test({
   name:
-    "integration: re-push without telemetry keeps stored telemetry; new telemetry replaces; removed set loses only its own",
+    "integration: mobile-shaped re-push without telemetry keeps each repeated set's telemetry; new telemetry replaces; removed set loses only its own",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
       const sessionId = await createTelemetrySession(fixture);
-      const bench = (telemetry: [number, number]): ChildPushExercise => ({
-        catalogId: null,
-        name: "Bench Press",
-        orderIndex: 0,
-        sets: [
-          { setNumber: 1, telemetry: telemetry[0] },
-          { setNumber: 2, telemetry: telemetry[1] },
-        ],
-      });
+      // Three sets of the same catalog exercise = three portal exercises with
+      // stable ids, one set each numbered 1.
+      const exerciseIds = [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      ];
+      const routine = (
+        telemetry: number[],
+        keep = [0, 1, 2],
+      ): ChildPushExercise[] =>
+        keep.map((index, orderIndex) => ({
+          id: exerciseIds[index],
+          catalogId: null,
+          name: "Bench Press",
+          orderIndex,
+          sets: [{ setNumber: 1, telemetry: telemetry[index] }],
+        }));
 
-      const first = await pushSessionChildren(fixture, sessionId, [
-        bench([2, 1]),
-      ]);
-      const firstBySet = await telemetryIdsBySet(fixture, first.setIds[0]);
-      assertEquals(await telemetryCount(fixture), 3);
+      const first = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([2, 1, 3]),
+      );
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
 
-      // Re-push without telemetry: count unchanged, linked to the new set ids.
-      const second = await pushSessionChildren(fixture, sessionId, [
-        bench([0, 0]),
-      ]);
-      assertEquals(second.preserved, 3);
-      assertEquals(await telemetryCount(fixture), 3);
-      const secondBySet = await telemetryIdsBySet(fixture, second.setIds[0]);
+      // Re-push without telemetry: count unchanged, each set keeps its own.
+      const second = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0]),
+      );
+      assertEquals(second.preserved, 6);
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(
+        fixture,
+        second.setIds.flat(),
+      );
+      for (let i = 0; i < 3; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i][0]],
+          firstBySet[first.setIds[i][0]],
+        );
+      }
+
+      // New telemetry for the middle set replaces only its curve.
+      const third = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 4, 0]),
+      );
+      const thirdBySet = await telemetryIdsBySet(fixture, third.setIds.flat());
+      assertEquals(thirdBySet[third.setIds[1][0]].length, 4);
       assertEquals(
-        secondBySet[second.setIds[0][0]],
+        thirdBySet[third.setIds[0][0]],
         firstBySet[first.setIds[0][0]],
       );
       assertEquals(
-        secondBySet[second.setIds[0][1]],
-        firstBySet[first.setIds[0][1]],
+        thirdBySet[third.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
       );
+      assertEquals(await telemetryCount(fixture), 9);
 
-      // Re-push with new telemetry for set 1: set 1 replaced, set 2 kept.
-      const third = await pushSessionChildren(fixture, sessionId, [
-        bench([1, 0]),
-      ]);
-      const thirdBySet = await telemetryIdsBySet(fixture, third.setIds[0]);
-      assertEquals(thirdBySet[third.setIds[0][0]].length, 1);
-      assert(
-        !firstBySet[first.setIds[0][0]].includes(
-          thirdBySet[third.setIds[0][0]][0],
-        ),
+      // Middle set deleted on mobile: the third exercise moves to
+      // order_index 1 and still keeps its curve by stable id.
+      const fourth = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0], [0, 2]),
       );
-      assertEquals(
-        thirdBySet[third.setIds[0][1]],
-        firstBySet[first.setIds[0][1]],
+      const fourthBySet = await telemetryIdsBySet(
+        fixture,
+        fourth.setIds.flat(),
       );
-      assertEquals(await telemetryCount(fixture), 2);
-
-      // Re-push with set 2 removed: only set 2's telemetry is gone.
-      const fourth = await pushSessionChildren(fixture, sessionId, [{
-        catalogId: null,
-        name: "Bench Press",
-        orderIndex: 0,
-        sets: [{ setNumber: 1, telemetry: 0 }],
-      }]);
-      const fourthBySet = await telemetryIdsBySet(fixture, fourth.setIds[0]);
       assertEquals(
         fourthBySet[fourth.setIds[0][0]],
-        thirdBySet[third.setIds[0][0]],
+        firstBySet[first.setIds[0][0]],
       );
-      assertEquals(await telemetryCount(fixture), 1);
+      assertEquals(
+        fourthBySet[fourth.setIds[1][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+      assertEquals(await telemetryCount(fixture), 5);
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
@@ -3004,82 +3031,218 @@ Deno.test({
 
 Deno.test({
   name:
-    "integration: same exercise twice at order_index 0 is ambiguous and its telemetry is deleted as before",
+    "integration: legacy regenerated exercise ids re-link only on a unique identity and position",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
       const sessionId = await createTelemetrySession(fixture);
-      const twice = (telemetry: number): ChildPushExercise[] => [
+      const legacy = (telemetry: number): ChildPushExercise[] => [
+        // Same exercise twice, both defaulted to order_index 0: ambiguous.
         {
+          id: crypto.randomUUID(),
           catalogId: null,
           name: "Bench Press",
           orderIndex: 0,
           sets: [{ setNumber: 1, telemetry }],
         },
         {
+          id: crypto.randomUUID(),
           catalogId: null,
           name: "bench press ",
           orderIndex: 0,
           sets: [{ setNumber: 1, telemetry }],
         },
+        // Unique identity + position: re-linked.
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "Cable Row",
+          orderIndex: 1,
+          sets: [{ setNumber: 1, telemetry }],
+        },
       ];
-      await pushSessionChildren(fixture, sessionId, twice(2));
-      assertEquals(await telemetryCount(fixture), 4);
+      const first = await pushSessionChildren(fixture, sessionId, legacy(2));
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
 
-      const repush = await pushSessionChildren(fixture, sessionId, twice(0));
-      assertEquals(repush.preserved, 0);
-      assertEquals(await telemetryCount(fixture), 0);
+      const repush = await pushSessionChildren(fixture, sessionId, legacy(0));
+      assertEquals(repush.preserved, 2);
+      assertEquals(await telemetryCount(fixture), 2);
+      const repushBySet = await telemetryIdsBySet(
+        fixture,
+        repush.setIds.flat(),
+      );
+      assertEquals(
+        repushBySet[repush.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
+      );
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
   },
 });
 
+/**
+ * The real push handler wired to the local stack: every table read/write and
+ * RPC goes to real SQL through the service-role client; only auth (fixed to
+ * the fixture owner) and the realtime broadcast are stubbed.
+ */
+function makeRealSqlPushHandler(
+  fixture: LocalIntegrationFixture,
+): (req: Request) => Promise<Response> {
+  const admin = {
+    from: (table: string) => fixture.admin.from(table),
+    rpc: (name: string, args: Record<string, unknown> = {}) =>
+      fixture.admin.rpc(name, args),
+    channel() {
+      return {
+        subscribe(callback: (status: string) => void) {
+          callback("SUBSCRIBED");
+          return {};
+        },
+        async send() {
+          return "ok";
+        },
+      };
+    },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
 Deno.test({
   name:
-    "integration: swapped exercises keep telemetry by exercise identity, not position",
+    "integration: handler re-push with regenerated set ids and no telemetry keeps stored telemetry",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
-      const sessionId = await createTelemetrySession(fixture);
-      const squat = (orderIndex: number, telemetry: number) => ({
-        catalogId: null,
-        name: "Back Squat",
-        orderIndex,
-        sets: [{ setNumber: 1, telemetry }],
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
       });
-      const row = (orderIndex: number, telemetry: number) => ({
-        catalogId: null,
-        name: "Cable Row",
-        orderIndex,
-        sets: [{ setNumber: 1, telemetry }],
-      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+      const catalog = await fixture.admin.from("exercise_catalog")
+        .select("id,name")
+        .eq("is_custom", false)
+        .limit(1)
+        .single();
+      if (catalog.error) throw new Error("catalog lookup failed");
+      const catalogName = (catalog.data as { name: string }).name;
+      const catalogId = (catalog.data as { id: string }).id;
 
-      const first = await pushSessionChildren(fixture, sessionId, [
-        squat(0, 2),
-        row(1, 3),
-      ]);
-      const firstBySet = await telemetryIdsBySet(fixture, [
-        first.setIds[0][0],
-        first.setIds[1][0],
-      ]);
+      // Mobile shape: routine session, one set per exercise numbered 1,
+      // stable exercise ids; the catalog exercise is repeated and resolved by
+      // name on the server, the custom one stays name-only.
+      const sessionId = crypto.randomUUID();
+      const exercises = [
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: "PR20 Custom Pulldown" },
+      ];
+      const buildBody = (withTelemetry: boolean) => {
+        const setIds = exercises.map(() => crypto.randomUUID());
+        const telemetry = withTelemetry
+          ? setIds.flatMap((setId, index) =>
+            Array.from({ length: index + 1 }, (_, sample) => ({
+              id: crypto.randomUUID(),
+              setId,
+              timestampMs: sample * 10,
+              forceN: 100 + sample,
+              velocityMps: 0.5,
+              positionMm: 250,
+              cable: "A",
+            }))
+          )
+          : [];
+        return {
+          setIds,
+          body: {
+            ...validPushBody(),
+            profileId: fixture.profileId,
+            sessions: [{
+              id: sessionId,
+              userId: fixture.ownerId,
+              name: "PR20 routine",
+              startedAt: "2026-09-18T10:00:00.000Z",
+              updatedAt: new Date().toISOString(),
+              exercises: exercises.map((exercise, index) => ({
+                id: exercise.id,
+                sessionId,
+                exerciseId: null,
+                name: exercise.name,
+                orderIndex: index,
+                sets: [{
+                  id: setIds[index],
+                  exerciseId: exercise.id,
+                  setNumber: 1,
+                  targetReps: 10,
+                  actualReps: 10,
+                  weightKg: 20,
+                  workoutMode: "OLD_SCHOOL",
+                  repSummaries: [],
+                }],
+              })),
+            }],
+            telemetry,
+          },
+        };
+      };
 
-      // Swapped: row first, squat second, no telemetry in the payload.
-      const second = await pushSessionChildren(fixture, sessionId, [
-        row(0, 0),
-        squat(1, 0),
-      ]);
-      assertEquals(second.preserved, 5);
-      const newRowSet = second.setIds[0][0];
-      const newSquatSet = second.setIds[1][0];
-      const secondBySet = await telemetryIdsBySet(fixture, [
-        newRowSet,
-        newSquatSet,
-      ]);
-      assertEquals(secondBySet[newSquatSet], firstBySet[first.setIds[0][0]]);
-      assertEquals(secondBySet[newRowSet], firstBySet[first.setIds[1][0]]);
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = buildBody(true);
+      const firstResponse = await handler(requestFromBody(first.body));
+      assertEquals(firstResponse.status, 200, await firstResponse.text());
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds);
+      assertEquals(
+        first.setIds.map((setId) => firstBySet[setId].length),
+        [1, 2, 3],
+      );
+      const stored = await fixture.admin.from("exercises")
+        .select("id,exercise_id")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedCatalogIds = new Map(
+        (stored.data as Array<{ id: string; exercise_id: string | null }>)
+          .map((row) => [row.id, row.exercise_id]),
+      );
+      assertEquals(storedCatalogIds.get(exercises[0].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[1].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[2].id), null);
+
+      const second = buildBody(false);
+      const secondResponse = await handler(requestFromBody(second.body));
+      assertEquals(secondResponse.status, 200, await secondResponse.text());
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(fixture, second.setIds);
+      for (let i = 0; i < exercises.length; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i]],
+          firstBySet[first.setIds[i]],
+        );
+      }
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
