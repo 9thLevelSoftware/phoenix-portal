@@ -471,11 +471,19 @@ SELECT set_config(
 
 SELECT results_eq(
     $sql$
-        SELECT status, requested_at, scheduled_for
+        SELECT status, requested_at, scheduled_for,
+               previous_requested_at, previous_cancelled_at, rerequest_count
         FROM public.request_account_deletion()
     $sql$,
     $values$
-        VALUES ('pending'::text, now(), now() + INTERVAL '30 days')
+        VALUES (
+            'pending'::text,
+            now(),
+            now() + INTERVAL '30 days',
+            NULL::timestamptz,
+            NULL::timestamptz,
+            0
+        )
     $values$,
     'first request creates a pending row with a 30-day grace'
 );
@@ -498,6 +506,18 @@ SELECT is(
     (SELECT count(*)::int FROM cancelled),
     1,
     'user can cancel own pending request'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.deletion_requests
+           SET rerequest_count = 0,
+               previous_requested_at = NULL,
+               previous_cancelled_at = NULL
+         WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid
+    $sql$,
+    '42501',
+    'authenticated cannot write the re-request audit columns'
 );
 
 RESET ROLE;
@@ -526,7 +546,8 @@ SELECT set_config(
 
 SELECT results_eq(
     $sql$
-        SELECT status, requested_at, scheduled_for, cancelled_at, executed_at
+        SELECT status, requested_at, scheduled_for, cancelled_at, executed_at,
+               previous_requested_at, previous_cancelled_at, rerequest_count
         FROM public.request_account_deletion()
     $sql$,
     $values$
@@ -535,10 +556,13 @@ SELECT results_eq(
             now(),
             now() + INTERVAL '30 days',
             NULL::timestamptz,
-            NULL::timestamptz
+            NULL::timestamptz,
+            now() - INTERVAL '40 days',
+            now() - INTERVAL '35 days',
+            1
         )
     $values$,
-    're-request after cancel succeeds with a new 30-day floor'
+    're-request after cancel gets a new 30-day floor and carries the cancelled request forward (audit)'
 );
 
 SELECT pg_temp.assert_exception(
@@ -623,5 +647,212 @@ SELECT results_eq(
     $values$,
     'an executed/claimed request is never reset by a re-request'
 );
+
+-- ---------------------------------------------------------------------------
+-- request_account_deletion() concurrency (review R-2/R-6). Two real sessions
+-- over dblink, outside this test's transaction:
+--   pr32_a  holds a lock in an open transaction;
+--   pr32_b  calls the RPC as the user (async) and must block on that lock.
+-- The test waits until pg_stat_activity shows pr32_b waiting on a Lock, then
+-- commits pr32_a and reads pr32_b's outcome, so the ordering is deterministic.
+-- dblink sessions commit for real, so the two users are created and removed
+-- through pr32_a (cleanup runs first too, in case an earlier run aborted).
+-- dblink needs a password connection (postgres is not superuser here): it
+-- uses the local stack's default postgres password over the server's own
+-- non-loopback address, as `supabase test db` / CI connect over TCP.
+-- ---------------------------------------------------------------------------
+SELECT diag('database:request-account-deletion-concurrency');
+
+CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA extensions;
+
+CREATE OR REPLACE FUNCTION pg_temp.pr32_conninfo() RETURNS text
+LANGUAGE sql
+AS $fn$
+    SELECT format(
+        'host=%s port=%s dbname=%s user=postgres password=postgres',
+        host(inet_server_addr()),
+        inet_server_port(),
+        current_database()
+    )
+$fn$;
+
+-- True once `target_pid` is waiting on a heavyweight lock (max ~10s).
+CREATE OR REPLACE FUNCTION pg_temp.pr32_wait_for_lock(target_pid int)
+RETURNS boolean
+LANGUAGE plpgsql
+AS $fn$
+BEGIN
+    FOR i IN 1..200 LOOP
+        PERFORM pg_stat_clear_snapshot();
+        IF EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE pid = target_pid AND wait_event_type = 'Lock'
+        ) THEN
+            RETURN true;
+        END IF;
+        PERFORM pg_sleep(0.05);
+    END LOOP;
+    RETURN false;
+END
+$fn$;
+
+-- Outcome of pr32_b's pending RPC call: 'status=<status>' on success,
+-- 'error=<message>' on failure. Drains the connection for the next query.
+CREATE OR REPLACE FUNCTION pg_temp.pr32_collect_b() RETURNS text
+LANGUAGE plpgsql
+AS $fn$
+DECLARE
+    v_status text;
+    v_rows int;
+    v_error text;
+BEGIN
+    SELECT t.status INTO v_status
+    FROM extensions.dblink_get_result('pr32_b', false) AS t(status text);
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_error := extensions.dblink_error_message('pr32_b');
+    PERFORM * FROM extensions.dblink_get_result('pr32_b', false) AS t(status text);
+    IF v_rows = 0 OR v_error <> 'OK' THEN
+        -- dblink returns 'ERROR:  <message>' plus CONTEXT lines; keep the message.
+        RETURN 'error=' || coalesce(
+            substring(v_error FROM '^ERROR:\s+([^\n]*)'),
+            v_error,
+            '<none>'
+        );
+    END IF;
+    RETURN 'status=' || coalesce(v_status, '<null>');
+END
+$fn$;
+
+SELECT is(
+    extensions.dblink_connect('pr32_a', pg_temp.pr32_conninfo()),
+    'OK',
+    'dblink session A connects'
+);
+SELECT is(
+    extensions.dblink_connect('pr32_b', pg_temp.pr32_conninfo()),
+    'OK',
+    'dblink session B connects'
+);
+
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    DELETE FROM auth.users
+    WHERE id IN (
+        'c3200000-0000-4000-8000-000000000004'::uuid,
+        'c3200000-0000-4000-8000-000000000005'::uuid
+    )
+$sql$);
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    INSERT INTO auth.users (id, email)
+    VALUES
+        ('c3200000-0000-4000-8000-000000000004'::uuid, 'deletion-race-insert@example.test'),
+        ('c3200000-0000-4000-8000-000000000005'::uuid, 'deletion-race-cancel@example.test')
+$sql$);
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    INSERT INTO public.deletion_requests (user_id)
+    VALUES ('c3200000-0000-4000-8000-000000000005'::uuid)
+$sql$);
+
+SELECT extensions.dblink_exec('pr32_b', $sql$ SET statement_timeout = '20s' $sql$);
+SELECT extensions.dblink_exec('pr32_b', $sql$ SET ROLE authenticated $sql$);
+
+CREATE TEMP TABLE pr32_b_pid ON COMMIT DROP AS
+SELECT pid FROM extensions.dblink('pr32_b', 'SELECT pg_backend_pid()') AS t(pid int);
+
+-- 1. unique_violation branch: A inserts the user's first request but has not
+--    committed. B's FOR UPDATE finds nothing, its INSERT blocks on
+--    UNIQUE (user_id), and after A commits it must get already_pending (not a
+--    raw 23505, and not a silent NULL row).
+SELECT extensions.dblink_exec('pr32_a', 'BEGIN');
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    INSERT INTO public.deletion_requests (user_id)
+    VALUES ('c3200000-0000-4000-8000-000000000004'::uuid)
+$sql$);
+
+SELECT extensions.dblink_exec('pr32_b', $sql$
+    SET request.jwt.claims = '{"sub":"c3200000-0000-4000-8000-000000000004","role":"authenticated"}'
+$sql$);
+SELECT is(
+    extensions.dblink_send_query(
+        'pr32_b',
+        'SELECT status FROM public.request_account_deletion()'
+    ),
+    1,
+    'session B sends the concurrent first request'
+);
+
+SELECT ok(
+    pg_temp.pr32_wait_for_lock((SELECT pid FROM pr32_b_pid)),
+    'concurrent first request blocks on the uncommitted request''s unique key'
+);
+
+SELECT extensions.dblink_exec('pr32_a', 'COMMIT');
+
+SELECT is(
+    pg_temp.pr32_collect_b(),
+    'error=already_pending',
+    'losing concurrent first request raises already_pending (unique_violation branch)'
+);
+
+-- 2. FOR UPDATE ordering: the user has a pending request and A cancels it
+--    without committing. B must wait for A's row lock and then see the
+--    committed 'cancelled' row and replace it. Without FOR UPDATE, B would
+--    read the old 'pending' version without waiting and raise already_pending.
+SELECT extensions.dblink_exec('pr32_a', 'BEGIN');
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    UPDATE public.deletion_requests
+       SET status = 'cancelled', cancelled_at = now()
+     WHERE user_id = 'c3200000-0000-4000-8000-000000000005'::uuid
+$sql$);
+
+SELECT extensions.dblink_exec('pr32_b', $sql$
+    SET request.jwt.claims = '{"sub":"c3200000-0000-4000-8000-000000000005","role":"authenticated"}'
+$sql$);
+SELECT is(
+    extensions.dblink_send_query(
+        'pr32_b',
+        'SELECT status FROM public.request_account_deletion()'
+    ),
+    1,
+    'session B sends the request racing a cancel'
+);
+
+SELECT ok(
+    pg_temp.pr32_wait_for_lock((SELECT pid FROM pr32_b_pid)),
+    'request racing an uncommitted cancel waits on the row lock (FOR UPDATE)'
+);
+
+SELECT extensions.dblink_exec('pr32_a', 'COMMIT');
+
+SELECT is(
+    pg_temp.pr32_collect_b(),
+    'status=pending',
+    'after the cancel commits, the waiting request replaces the cancelled row'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT count, status, rerequest_count, has_previous_cancel
+        FROM extensions.dblink('pr32_a', $q$
+            SELECT count(*)::int,
+                   min(status),
+                   min(rerequest_count),
+                   bool_and(previous_cancelled_at IS NOT NULL)
+            FROM public.deletion_requests
+            WHERE user_id = 'c3200000-0000-4000-8000-000000000005'::uuid
+        $q$) AS t(count int, status text, rerequest_count int, has_previous_cancel boolean)
+    $sql$,
+    $values$ VALUES (1, 'pending'::text, 1, true) $values$,
+    'the raced re-request leaves exactly one pending row carrying the cancel forward'
+);
+
+SELECT extensions.dblink_exec('pr32_a', $sql$
+    DELETE FROM auth.users
+    WHERE id IN (
+        'c3200000-0000-4000-8000-000000000004'::uuid,
+        'c3200000-0000-4000-8000-000000000005'::uuid
+    )
+$sql$);
+SELECT extensions.dblink_disconnect('pr32_b');
+SELECT extensions.dblink_disconnect('pr32_a');
 
 SELECT * FROM finish();

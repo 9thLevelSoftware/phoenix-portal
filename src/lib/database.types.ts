@@ -302,7 +302,10 @@ export type Database = {
 					cancelled_at: string | null;
 					executed_at: string | null;
 					id: string;
+					previous_cancelled_at: string | null;
+					previous_requested_at: string | null;
 					requested_at: string;
+					rerequest_count: number;
 					scheduled_for: string;
 					status: string;
 					user_id: string;
@@ -311,7 +314,10 @@ export type Database = {
 					cancelled_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					previous_cancelled_at?: string | null;
+					previous_requested_at?: string | null;
 					requested_at?: string;
+					rerequest_count?: number;
 					scheduled_for?: string;
 					status?: string;
 					user_id: string;
@@ -320,7 +326,10 @@ export type Database = {
 					cancelled_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					previous_cancelled_at?: string | null;
+					previous_requested_at?: string | null;
 					requested_at?: string;
+					rerequest_count?: number;
 					scheduled_for?: string;
 					status?: string;
 					user_id?: string;
@@ -3024,7 +3033,10 @@ export type Database = {
 					cancelled_at: string | null;
 					executed_at: string | null;
 					id: string;
+					previous_cancelled_at: string | null;
+					previous_requested_at: string | null;
 					requested_at: string;
+					rerequest_count: number;
 					scheduled_for: string;
 					status: string;
 					user_id: string;

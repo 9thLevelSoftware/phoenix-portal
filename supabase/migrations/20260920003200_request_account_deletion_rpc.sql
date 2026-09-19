@@ -9,8 +9,9 @@
 -- This RPC works on auth.uid()'s own row only:
 --   * no row                 -> INSERT a fresh 'pending' row.
 --   * 'cancelled'            -> DELETE it and INSERT a fresh 'pending' row in
---                               the same transaction (new requested_at, new
---                               30-day floor). The UPDATE freeze is never hit.
+--                               the same transaction (new id, new
+--                               requested_at, new 30-day floor). The UPDATE
+--                               freeze is never hit.
 --   * 'pending'              -> RAISE 'already_pending'.
 --   * any other status       -> RAISE 'already_executing'. This covers
 --                               'executed' (a purge that crashed mid-run
@@ -23,10 +24,27 @@
 -- enforce_deletion_request_grace and the deletion_requests_scheduled_for_min_grace
 -- CHECK; the RPC adds no trigger exemption.
 --
+-- Audit trail (review R-3/R-8). Deleting the cancelled row would otherwise
+-- lose the only record of the earlier request/cancel. The new row carries it
+-- forward in three columns added here, instead of a separate history table:
+--   previous_requested_at  requested_at of the request that was replaced
+--   previous_cancelled_at  cancelled_at of the request that was replaced
+--   rerequest_count        how many times this user has re-requested after
+--                          a cancel (previous count + 1)
+-- Only the most recent replaced cycle keeps its timestamps; older cycles
+-- survive only as the count. The columns hold timestamps and a counter about
+-- the user's own request, no new personal data. They live on the user's own
+-- row, so they show in the GDPR export (select *) and cascade away with the
+-- account on purge. authenticated has no INSERT/UPDATE grant on them (the
+-- column grants stay INSERT (user_id) and UPDATE (cancelled_at, status)).
+-- No existing audit table fits: the only audit trigger in the schema is on
+-- subscriptions, and subscription_events is billing-specific.
+--
 -- Concurrency: the existing row is locked FOR UPDATE, so the RPC serialises
 -- with a user cancel and with PR 35's `UPDATE ... WHERE status='pending'`
 -- claim. Two concurrent first requests race on UNIQUE (user_id); the loser
--- gets 'already_pending' instead of a raw unique_violation.
+-- gets 'already_pending' instead of a raw unique_violation. Both paths are
+-- covered by a two-session (dblink) test in trust_plane.test.sql.
 --
 -- Errors use SQLSTATE P0001 with the code as the message, so the client can
 -- match on `error.message` ('already_pending', 'already_executing').
@@ -35,7 +53,48 @@
 -- EXECUTE to authenticated only. It is added to the authenticated allow-list
 -- in supabase/tests/database/definer_function_grants.test.sql and the prod
 -- grant check in .github/workflows/prod-migration-drift.yml.
+--
+-- Allow-list exception (review R-1): the hard-coded v_allow_list in
+-- 20260920000100_lockdown_definer_function_grants.sql does NOT include
+-- request_account_deletion() (that migration is immutable and predates this
+-- one). A clean apply is fine because 000100 runs first, but re-running
+-- 000100's catalog revoke after this file would take EXECUTE away from
+-- authenticated and break re-requests. PR 76 restates the lockdown allow-list
+-- including request_account_deletion(); any other migration that restates
+-- or replays that list must include it too.
 
+-- ---------------------------------------------------------------------------
+-- 1. Audit columns carried forward on re-request
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.deletion_requests
+  ADD COLUMN IF NOT EXISTS previous_requested_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS previous_cancelled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS rerequest_count INTEGER NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'deletion_requests_rerequest_count_nonnegative'
+      AND conrelid = 'public.deletion_requests'::regclass
+  ) THEN
+    ALTER TABLE public.deletion_requests
+      ADD CONSTRAINT deletion_requests_rerequest_count_nonnegative
+      CHECK (rerequest_count >= 0);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.deletion_requests.previous_requested_at IS
+  'requested_at of the cancelled request this row replaced (request_account_deletion).';
+COMMENT ON COLUMN public.deletion_requests.previous_cancelled_at IS
+  'cancelled_at of the cancelled request this row replaced (request_account_deletion).';
+COMMENT ON COLUMN public.deletion_requests.rerequest_count IS
+  'Number of times the user re-requested deletion after a cancel.';
+
+-- ---------------------------------------------------------------------------
+-- 2. request_account_deletion()
+-- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.request_account_deletion();
 
 CREATE FUNCTION public.request_account_deletion()
@@ -75,13 +134,19 @@ BEGIN
       user_id,
       requested_at,
       scheduled_for,
-      status
+      status,
+      previous_requested_at,
+      previous_cancelled_at,
+      rerequest_count
     )
     VALUES (
       v_user_id,
       now(),
       now() + INTERVAL '30 days',
-      'pending'
+      'pending',
+      v_existing.requested_at,
+      v_existing.cancelled_at,
+      COALESCE(v_existing.rerequest_count + 1, 0)
     )
     RETURNING * INTO v_created;
   EXCEPTION WHEN unique_violation THEN
@@ -93,7 +158,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.request_account_deletion() IS
-  'Creates a pending deletion request for auth.uid() with a fresh 30-day grace. Replaces a cancelled request; raises already_pending / already_executing for an active one.';
+  'Creates a pending deletion request for auth.uid() with a fresh 30-day grace. Replaces a cancelled request (carrying its requested_at/cancelled_at forward); raises already_pending / already_executing for an active one.';
 
 REVOKE ALL ON FUNCTION public.request_account_deletion() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.request_account_deletion() FROM anon;
