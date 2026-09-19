@@ -415,7 +415,12 @@ Deno.test({
           name: `Owner ${i}`,
           order_index: i,
         })),
-        { id: crypto.randomUUID(), routine_id: otherRoutine, name: "Other" },
+        {
+          id: crypto.randomUUID(),
+          routine_id: otherRoutine,
+          name: "Other",
+          order_index: 0,
+        },
       ]);
       const ownerCycle = crypto.randomUUID();
       const otherCycle = crypto.randomUUID();
