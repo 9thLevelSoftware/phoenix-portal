@@ -1,10 +1,15 @@
 -- Scheduler pgTAP (KD-10, PR 31):
---   * private.invoke_edge_function: definer, search_path pinned, not
---     executable by anon/authenticated, no-op (no error) without Vault
---     secrets, and a real pg_net request carrying x-cron-secret with them;
---   * the process-sync-queue and sync-tombstones-retention cron jobs (when
---     pg_cron is installed, as in prod);
---   * the R-8 backlog triage over a seeded backlog.
+--   * private.invoke_edge_function: definer, search_path pinned, owner-only,
+--     no-op (no error) without Vault secrets, https-only project_url, and a
+--     real pg_net request carrying x-cron-secret with them;
+--   * pg_net's SECURITY DEFINER entry points closed to anon/authenticated;
+--   * the cron jobs, through private.schedule_sync_queue_jobs() with pg_cron
+--     installed inside this test's transaction (fails loudly if the image
+--     cannot create pg_cron);
+--   * the one-time triage: dropped after use, and run by the migration
+--     before scheduling (the seeded-backlog outcome itself is asserted in CI
+--     by scripts/ci/sync-queue-triage, through the migration's own call);
+--   * the stopgap client-insert guard on sync_queue.
 --
 -- Run locally with `supabase test db`.
 
@@ -30,47 +35,67 @@ SELECT ok(
       @> ARRAY['search_path=""'],
     'invoke_edge_function pins search_path'
 );
+SELECT has_function('private', 'schedule_sync_queue_jobs', ARRAY[]::text[],
+    'private.schedule_sync_queue_jobs() exists');
 SELECT ok(
-    (SELECT prosecdef FROM pg_proc WHERE oid = 'private.triage_sync_queue_backlog()'::regprocedure)
-    AND (SELECT proconfig FROM pg_proc WHERE oid = 'private.triage_sync_queue_backlog()'::regprocedure)
-      @> ARRAY['search_path=""'],
-    'triage_sync_queue_backlog is SECURITY DEFINER with search_path pinned'
+    to_regprocedure('private.triage_sync_queue_backlog()') IS NULL,
+    'the one-time triage function was dropped after the migration ran it'
+);
+SELECT has_trigger('public', 'sync_queue', 'sync_queue_guard_client_insert',
+    'sync_queue has the client-insert guard trigger');
+
+-- R-14: the migration's own statements run the triage, drop it, and only
+-- then schedule the jobs.
+SELECT ok(
+    (
+      WITH s AS (
+        SELECT stmt, ord
+        FROM supabase_migrations.schema_migrations m,
+             unnest(m.statements) WITH ORDINALITY AS u(stmt, ord)
+        WHERE m.version = '20260920003100'
+      )
+      -- Statements may carry leading comment lines; match at a line start.
+      SELECT (SELECT min(ord) FROM s WHERE stmt ~* '(^|\n)\s*SELECT\s+private\.triage_sync_queue_backlog\(\)')
+           < (SELECT min(ord) FROM s WHERE stmt ~* '(^|\n)\s*DROP\s+FUNCTION\s+private\.triage_sync_queue_backlog\(\)')
+         AND (SELECT min(ord) FROM s WHERE stmt ~* '(^|\n)\s*DROP\s+FUNCTION\s+private\.triage_sync_queue_backlog\(\)')
+           < (SELECT min(ord) FROM s WHERE stmt ~* '(^|\n)\s*SELECT\s+private\.schedule_sync_queue_jobs\(\)')
+    ),
+    'migration 20260920003100 runs the triage, drops it, then schedules the jobs'
 );
 
 SELECT diag('database:scheduler-privileges');
 
 SELECT ok(
-    NOT has_function_privilege('anon', 'private.invoke_edge_function(text, jsonb)', 'EXECUTE')
-    AND NOT has_function_privilege('authenticated', 'private.invoke_edge_function(text, jsonb)', 'EXECUTE'),
-    'invoke_edge_function is not executable by anon or authenticated'
+    NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN (VALUES ('anon'), ('authenticated'), ('service_role')) AS r(rolname)
+        WHERE n.nspname = 'private'
+          AND p.proname IN ('invoke_edge_function', 'schedule_sync_queue_jobs',
+                            'sync_queue_guard_client_insert')
+          AND has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+    ),
+    'scheduler functions are owner-only (not anon, authenticated or service_role)'
 );
 SELECT ok(
-    NOT has_function_privilege('anon', 'private.triage_sync_queue_backlog()', 'EXECUTE')
-    AND NOT has_function_privilege('authenticated', 'private.triage_sync_queue_backlog()', 'EXECUTE'),
-    'triage_sync_queue_backlog is not executable by anon or authenticated'
-);
-SELECT ok(
-    has_function_privilege('service_role', 'private.invoke_edge_function(text, jsonb)', 'EXECUTE'),
-    'service_role can execute invoke_edge_function'
-);
-SELECT ok(
-    (SELECT p.proacl IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1 FROM aclexplode(p.proacl) a
-                WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
-            )
-     FROM pg_proc p
-     WHERE p.oid = 'private.invoke_edge_function(text, jsonb)'::regprocedure),
-    'PUBLIC cannot execute invoke_edge_function'
+    NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+        WHERE n.nspname = 'private'
+          AND p.proname IN ('invoke_edge_function', 'schedule_sync_queue_jobs',
+                            'sync_queue_guard_client_insert')
+          AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+    ),
+    'PUBLIC cannot execute the scheduler functions'
 );
 SELECT ok(
     NOT has_schema_privilege('anon', 'private', 'USAGE')
-    AND NOT has_schema_privilege('authenticated', 'private', 'USAGE'),
-    'schema private stays closed to anon and authenticated'
-);
-SELECT ok(
-    NOT has_function_privilege('service_role', 'private.capture_function(text, text, text)', 'EXECUTE'),
-    'PR 2 migration helpers stay non-executable for service_role'
+    AND NOT has_schema_privilege('authenticated', 'private', 'USAGE')
+    AND NOT has_schema_privilege('service_role', 'private', 'USAGE'),
+    'schema private stays closed to anon, authenticated and service_role'
 );
 
 SET LOCAL ROLE authenticated;
@@ -82,14 +107,70 @@ SELECT throws_ok(
 );
 RESET ROLE;
 
-SET LOCAL ROLE anon;
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
-    $$ SELECT private.triage_sync_queue_backlog() $$,
+    $$ SELECT private.invoke_edge_function('process-sync-queue', '{}'::jsonb) $$,
     '42501',
     NULL,
-    'anon cannot call triage_sync_queue_backlog'
+    'service_role cannot call invoke_edge_function (cron runs as postgres)'
 );
 RESET ROLE;
+
+SELECT diag('database:scheduler-pg-net-surface');
+
+SELECT ok(
+    EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net'),
+    'pg_net is installed by the migration'
+);
+-- The migration revokes every anon/authenticated/PUBLIC EXECUTE grant on
+-- pg_net's definers that the migration role can revoke. On Supabase the
+-- extension is created by supabase_admin, whose grants postgres cannot
+-- revoke (no grant option); those remain a platform grant, reachable only if
+-- `net` were exposed through the API (asserted below). This assertion fails
+-- if any grant that postgres COULD revoke is left behind.
+SELECT ok(
+    NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+        WHERE n.nspname = 'net' AND p.prosecdef
+          AND a.privilege_type = 'EXECUTE'
+          AND a.grantee IN (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+          AND (a.grantor = 'postgres'::regrole::oid
+               OR pg_has_role('postgres', a.grantor, 'MEMBER'))
+    ),
+    'no anon/authenticated/PUBLIC EXECUTE on a pg_net definer that postgres could revoke remains'
+);
+SELECT diag(coalesce(
+    'pg_net platform grants postgres cannot revoke: ' || (
+        SELECT string_agg(DISTINCT format('%s -> %s (grantor %s)', p.oid::regprocedure,
+                          CASE a.grantee WHEN 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+                          pg_get_userbyid(a.grantor)), '; ')
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+        WHERE n.nspname = 'net' AND p.prosecdef
+          AND a.privilege_type = 'EXECUTE'
+          AND a.grantee IN (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+    ),
+    'pg_net: no anon/authenticated EXECUTE grants'
+));
+SELECT ok(
+    has_function_privilege('service_role',
+        'net.http_post(text, jsonb, jsonb, jsonb, integer)', 'EXECUTE'),
+    'service_role keeps net.http_post'
+);
+SELECT ok(
+    NOT EXISTS (
+        SELECT 1
+        FROM pg_roles r, unnest(coalesce(r.rolconfig, ARRAY[]::text[])) AS c(setting)
+        WHERE r.rolname = 'authenticator'
+          AND c.setting ~ '^pgrst\.db_schemas='
+          AND c.setting ~ '(=|,)\s*(net|private)\s*(,|$)'
+    ),
+    'the API does not expose schema net or private (authenticator pgrst.db_schemas)'
+);
 
 SELECT diag('database:scheduler-invoke');
 
@@ -115,175 +196,196 @@ SELECT throws_ok(
     'invoke_edge_function rejects a function name that is not a slug'
 );
 
--- With the secrets (rolled back with the test), a pg_net request is queued
--- to <project_url>/functions/v1/<fn> with the x-cron-secret header.
-CREATE OR REPLACE FUNCTION pg_temp.invoke_with_secrets_queues_request()
-RETURNS text
+-- With secrets (rolled back with the test): what gets queued per project_url.
+CREATE OR REPLACE FUNCTION pg_temp.invoke_with(p_url text)
+RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
 DECLARE
   v_id bigint;
-  v_url text;
-  v_headers jsonb;
+  v_row jsonb;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
-    RETURN 'skipped: pg_net not installed';
-  END IF;
+  DELETE FROM vault.secrets WHERE name IN ('edge_cron_secret', 'project_url');
   PERFORM vault.create_secret('pgtap-cron-secret', 'edge_cron_secret');
-  PERFORM vault.create_secret('http://edge.invalid/', 'project_url');
+  PERFORM vault.create_secret(p_url, 'project_url');
   v_id := private.invoke_edge_function('process-sync-queue', '{"probe": true}'::jsonb);
   IF v_id IS NULL THEN
-    RETURN 'no request id';
+    RETURN NULL;
   END IF;
-  EXECUTE 'SELECT url, headers FROM net.http_request_queue WHERE id = $1'
-    INTO v_url, v_headers USING v_id;
-  IF v_url IS DISTINCT FROM 'http://edge.invalid/functions/v1/process-sync-queue' THEN
-    RETURN 'unexpected url ' || coalesce(v_url, '<null>');
-  END IF;
-  IF v_headers ->> 'x-cron-secret' IS DISTINCT FROM 'pgtap-cron-secret' THEN
-    RETURN 'missing x-cron-secret header';
-  END IF;
-  RETURN 'ok';
+  EXECUTE 'SELECT to_jsonb(q) FROM net.http_request_queue q WHERE id = $1'
+    INTO v_row USING v_id;
+  RETURN v_row;
 END
 $$;
 
 SELECT is(
-    pg_temp.invoke_with_secrets_queues_request() IN ('ok', 'skipped: pg_net not installed'),
-    true,
-    'with Vault secrets, invoke_edge_function queues a POST with x-cron-secret (when pg_net is installed)'
+    (SELECT r ->> 'url' FROM pg_temp.invoke_with('https://abcd.supabase.co/') r),
+    'https://abcd.supabase.co/functions/v1/process-sync-queue',
+    'https project_url: POST queued to /functions/v1/<fn>'
 );
+SELECT is(
+    (SELECT r -> 'headers' ->> 'x-cron-secret' FROM pg_temp.invoke_with('https://abcd.supabase.co') r),
+    'pgtap-cron-secret',
+    'the request carries the x-cron-secret header'
+);
+SELECT is(
+    (SELECT (r ->> 'timeout_milliseconds')::int FROM pg_temp.invoke_with('https://abcd.supabase.co') r),
+    400000,
+    'the pg_net timeout is the Edge wall-clock limit (400 s)'
+);
+SELECT is(
+    pg_temp.invoke_with('http://evil.example/'),
+    NULL::jsonb,
+    'a plain-http non-local project_url is refused (secret never sent in clear)'
+);
+SELECT is(
+    pg_temp.invoke_with('https://user@evil.example'),
+    NULL::jsonb,
+    'a project_url with userinfo is refused'
+);
+SELECT is(
+    (SELECT r ->> 'url' FROM pg_temp.invoke_with('http://localhost:54321') r),
+    'http://localhost:54321/functions/v1/process-sync-queue',
+    'http is allowed for a local stack'
+);
+SELECT is(
+    (SELECT r ->> 'url' FROM pg_temp.invoke_with('http://kong:8000') r),
+    'http://kong:8000/functions/v1/process-sync-queue',
+    'http is allowed for the local kong gateway'
+);
+DELETE FROM vault.secrets WHERE name IN ('edge_cron_secret', 'project_url');
 
 SELECT diag('database:scheduler-cron-jobs');
 
--- pg_cron is not installed in the default local/CI stack; prod has it. When
--- it is installed, both jobs exist exactly once with the expected schedule
--- and command.
-CREATE OR REPLACE FUNCTION pg_temp.scheduler_jobs_match() RETURNS boolean
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_count int;
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    RETURN true;
-  END IF;
-  EXECUTE $q$
-    SELECT count(*) FROM cron.job
-    WHERE (jobname = 'process-sync-queue'
-           AND schedule = '*/5 * * * *'
-           AND command = 'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)')
-       OR (jobname = 'sync-tombstones-retention'
-           AND schedule = '23 3 * * *'
-           AND command = 'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days''')
-  $q$ INTO v_count;
-  IF v_count <> 2 THEN
-    RETURN false;
-  END IF;
-  EXECUTE $q$
-    SELECT count(*) FROM cron.job
-    WHERE jobname IN ('process-sync-queue', 'sync-tombstones-retention')
-  $q$ INTO v_count;
-  RETURN v_count = 2;
-END
+-- pg_cron is not installed by the clean apply (prod has it). Install it for
+-- this transaction; this fails loudly if the image cannot, so the job
+-- assertions below always execute.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT lives_ok(
+    $$ SELECT private.schedule_sync_queue_jobs() $$,
+    'schedule_sync_queue_jobs runs with pg_cron installed'
+);
+
+CREATE OR REPLACE FUNCTION pg_temp.scheduler_jobs() RETURNS TABLE(jobname text, schedule text, command text, active boolean, jobid bigint)
+LANGUAGE sql AS $$
+  SELECT jobname, schedule, command, active, jobid FROM cron.job
+  WHERE jobname IN ('process-sync-queue', 'sync-tombstones-retention', 'cron-job-run-details-retention')
 $$;
 
-SELECT ok(
-    pg_temp.scheduler_jobs_match(),
-    'process-sync-queue and sync-tombstones-retention jobs exist once each (when pg_cron is installed)'
+SELECT set_eq(
+    $$ SELECT jobname, schedule, command FROM pg_temp.scheduler_jobs() $$,
+    $$ VALUES
+        ('process-sync-queue', '*/5 * * * *',
+         'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
+        ('sync-tombstones-retention', '23 3 * * *',
+         'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
+        ('cron-job-run-details-retention', '41 3 * * *',
+         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
+    $$,
+    'the three scheduler jobs exist with the expected schedule and command'
 );
-SELECT diag(
-    CASE WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
-         THEN 'pg_cron installed: job assertions executed'
-         ELSE 'pg_cron NOT installed: job assertions skipped' END
+SELECT is(
+    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
+    3,
+    'each scheduler job exists exactly once'
 );
 
-SELECT diag('database:scheduler-backlog-triage');
+CREATE TEMP TABLE scheduler_jobids AS SELECT jobname, jobid FROM pg_temp.scheduler_jobs();
+SELECT cron.alter_job(
+    (SELECT jobid FROM cron.job WHERE jobname = 'process-sync-queue'),
+    schedule := '0 * * * *', active := false
+);
+SELECT private.schedule_sync_queue_jobs();
+SELECT set_eq(
+    $$ SELECT jobname, jobid FROM pg_temp.scheduler_jobs() $$,
+    $$ SELECT jobname, jobid FROM scheduler_jobids $$,
+    're-running the scheduler keeps every jobid (no duplicates)'
+);
+SELECT is(
+    (SELECT schedule FROM cron.job WHERE jobname = 'process-sync-queue'),
+    '*/5 * * * *',
+    're-running the scheduler repairs a drifted schedule in place'
+);
+SELECT is(
+    (SELECT active FROM cron.job WHERE jobname = 'process-sync-queue'),
+    false,
+    're-running the scheduler keeps a paused job paused'
+);
 
--- Fixture (R-8 acceptance):
---   A connected strava, 3 pending incrementals (1d/2d/3d) -> newest stays pending
---   B disconnected fitbit, 1 pending                        -> failed (integration_not_connected)
---   C connected hevy, 1 pending incremental 30d old         -> superseded
---   D connected strava, 1 pending initial 30d old           -> stays pending
---   E no integration row at all, liftosaur pending           -> failed
---   F connected strava: initial 5d + newer incremental 1d   -> both stay pending;
---     an older duplicate initial 6d                          -> superseded
---   A completed row                                          -> untouched
+SELECT diag('database:sync-queue-client-insert-guard');
+
 INSERT INTO auth.users (id, email)
-VALUES
-    ('31313131-0000-4000-8000-00000000000a'::uuid, 'scheduler-a@example.test'),
-    ('31313131-0000-4000-8000-00000000000b'::uuid, 'scheduler-b@example.test'),
-    ('31313131-0000-4000-8000-00000000000c'::uuid, 'scheduler-c@example.test'),
-    ('31313131-0000-4000-8000-00000000000d'::uuid, 'scheduler-d@example.test'),
-    ('31313131-0000-4000-8000-00000000000e'::uuid, 'scheduler-e@example.test'),
-    ('31313131-0000-4000-8000-00000000000f'::uuid, 'scheduler-f@example.test')
+VALUES ('31313131-0000-4000-8000-0000000000f0'::uuid, 'scheduler-guard@example.test')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.user_integrations (user_id, provider, status)
-VALUES
-    ('31313131-0000-4000-8000-00000000000a', 'strava', 'connected'),
-    ('31313131-0000-4000-8000-00000000000b', 'fitbit', 'disconnected'),
-    ('31313131-0000-4000-8000-00000000000c', 'hevy', 'connected'),
-    ('31313131-0000-4000-8000-00000000000d', 'strava', 'connected'),
-    ('31313131-0000-4000-8000-00000000000f', 'strava', 'connected');
-
-INSERT INTO public.sync_queue (id, user_id, provider, sync_type, status, created_at)
-VALUES
-    ('31310000-0000-4000-8000-0000000000a1', '31313131-0000-4000-8000-00000000000a', 'strava', 'incremental', 'pending', now() - interval '1 day'),
-    ('31310000-0000-4000-8000-0000000000a2', '31313131-0000-4000-8000-00000000000a', 'strava', 'incremental', 'pending', now() - interval '2 days'),
-    ('31310000-0000-4000-8000-0000000000a3', '31313131-0000-4000-8000-00000000000a', 'strava', 'incremental', 'pending', now() - interval '3 days'),
-    ('31310000-0000-4000-8000-0000000000a4', '31313131-0000-4000-8000-00000000000a', 'strava', 'incremental', 'completed', now() - interval '40 days'),
-    ('31310000-0000-4000-8000-0000000000b1', '31313131-0000-4000-8000-00000000000b', 'fitbit', 'incremental', 'pending', now() - interval '1 day'),
-    ('31310000-0000-4000-8000-0000000000c1', '31313131-0000-4000-8000-00000000000c', 'hevy', 'incremental', 'pending', now() - interval '30 days'),
-    ('31310000-0000-4000-8000-0000000000d1', '31313131-0000-4000-8000-00000000000d', 'strava', 'initial', 'pending', now() - interval '30 days'),
-    ('31310000-0000-4000-8000-0000000000e1', '31313131-0000-4000-8000-00000000000e', 'liftosaur', 'incremental', 'pending', now() - interval '1 day'),
-    ('31310000-0000-4000-8000-0000000000f1', '31313131-0000-4000-8000-00000000000f', 'strava', 'initial', 'pending', now() - interval '5 days'),
-    ('31310000-0000-4000-8000-0000000000f2', '31313131-0000-4000-8000-00000000000f', 'strava', 'incremental', 'pending', now() - interval '1 day'),
-    ('31310000-0000-4000-8000-0000000000f3', '31313131-0000-4000-8000-00000000000f', 'strava', 'initial', 'pending', now() - interval '6 days');
-
-SELECT is(
-    private.triage_sync_queue_backlog(),
-    '{"not_connected": 2, "duplicates": 3, "stale": 1}'::jsonb,
-    'triage reports 2 not connected, 3 duplicates, 1 stale'
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"31313131-0000-4000-8000-0000000000f0","role":"authenticated"}',
+    true
 );
 
-SELECT set_eq(
-    $$ SELECT id::text FROM public.sync_queue
-       WHERE user_id::text LIKE '31313131-%' AND status = 'pending' $$,
-    ARRAY[
-        '31310000-0000-4000-8000-0000000000a1',
-        '31310000-0000-4000-8000-0000000000d1',
-        '31310000-0000-4000-8000-0000000000f1',
-        '31310000-0000-4000-8000-0000000000f2'
-    ],
-    'pending: newest row per pair, a connected user''s old initial, and an initial kept next to a newer incremental'
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue
+         (id, user_id, provider, sync_type, status, created_at, started_at, retry_count, error_message)
+       VALUES ('31310000-0000-4000-8000-0000000000f0', '31313131-0000-4000-8000-0000000000f0',
+               'strava', 'manual', 'processing', '2000-01-01', now(), 7, 'x') $$,
+    'a client may queue a sync'
 );
-SELECT set_eq(
-    $$ SELECT id::text FROM public.sync_queue
-       WHERE user_id::text LIKE '31313131-%' AND status = 'failed'
-         AND error_message = 'integration_not_connected' AND completed_at IS NOT NULL $$,
-    ARRAY['31310000-0000-4000-8000-0000000000b1', '31310000-0000-4000-8000-0000000000e1'],
-    'rows for a disconnected or missing integration are failed with integration_not_connected'
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'incremental') $$,
+    '23505',
+    'sync_already_queued',
+    'a second non-initial row for the same provider is rejected (409)'
 );
-SELECT set_eq(
-    $$ SELECT id::text FROM public.sync_queue
-       WHERE user_id::text LIKE '31313131-%' AND status = 'superseded' AND completed_at IS NOT NULL $$,
-    ARRAY[
-        '31310000-0000-4000-8000-0000000000a2',
-        '31310000-0000-4000-8000-0000000000a3',
-        '31310000-0000-4000-8000-0000000000c1',
-        '31310000-0000-4000-8000-0000000000f3'
-    ],
-    'older duplicates (incl. an older duplicate initial) and the 30-day-old incremental are superseded'
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue (id, user_id, provider, sync_type)
+       VALUES ('31310000-0000-4000-8000-0000000000f1', '31313131-0000-4000-8000-0000000000f0',
+               'strava', 'initial') $$,
+    'an initial next to a queued incremental/manual is allowed (different class)'
+);
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'initial') $$,
+    '23505',
+    'sync_already_queued',
+    'a second initial for the same provider is rejected'
+);
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'hevy', 'manual') $$,
+    'another provider is independent'
+);
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'fitbit', 'everything') $$,
+    '22023',
+    NULL,
+    'an unknown sync_type is rejected'
+);
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SELECT is(
+    (SELECT row(status, retry_count, started_at IS NULL, error_message IS NULL,
+                created_at > now() - interval '1 minute')::text
+     FROM public.sync_queue WHERE id = '31310000-0000-4000-8000-0000000000f0'),
+    row('pending', 0, true, true, true)::text,
+    'client-supplied status, created_at, started_at, retry_count and error_message are overridden'
+);
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status, created_at)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'incremental', 'pending',
+               '2020-01-01') $$,
+    'service-side (postgres) inserts are not clamped or deduplicated'
 );
 SELECT is(
-    (SELECT status FROM public.sync_queue WHERE id = '31310000-0000-4000-8000-0000000000a4'),
-    'completed',
-    'a completed row is untouched'
-);
-SELECT is(
-    private.triage_sync_queue_backlog(),
-    '{"not_connected": 0, "duplicates": 0, "stale": 0}'::jsonb,
-    're-running the triage is a no-op'
+    (SELECT count(*)::int FROM public.sync_queue
+     WHERE user_id = '31313131-0000-4000-8000-0000000000f0'
+       AND created_at = '2020-01-01'::timestamptz),
+    1,
+    'a postgres insert keeps its created_at'
 );
 
 SELECT * FROM finish();

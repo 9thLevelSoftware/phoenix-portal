@@ -57,8 +57,13 @@ export function useDisconnectIntegration() {
 }
 
 /**
- * Trigger manual sync - inserts into sync_queue and invokes provider-specific Edge Function.
+ * Trigger manual sync - invokes the provider-specific Edge Function directly.
  * The Edge Function handles token refresh, API calls, and activity normalization.
+ *
+ * No sync_queue row is inserted: the scheduled process-sync-queue drains
+ * pending rows, so a row inserted here would be claimed by a cron pass while
+ * this direct call is still running and dispatched a second time (PR 31
+ * review R-1). This is the PR 52 plan for useManualSync, taken early.
  */
 export function useManualSync() {
 	const queryClient = useQueryClient();
@@ -77,45 +82,17 @@ export function useManualSync() {
 				);
 			}
 
-			// Insert into sync_queue with manual sync_type
-			const { data: queuedSync, error: queueError } = await supabase
-				.from("sync_queue")
-				.insert({
-					user_id: userId,
-					provider,
-					sync_type: "manual",
-					status: "pending",
-				})
-				.select("id")
-				.single();
-
-			if (queueError) throw queueError;
-
-			// Trigger the provider-specific sync Edge Function
 			const { error: invokeError } = await supabase.functions.invoke(
 				`${provider}-sync`,
 				{
 					body: {
 						user_id: userId,
 						sync_type: "manual",
-						queue_id: queuedSync.id,
 					},
 				},
 			);
 
-			if (invokeError) {
-				const { error: cleanupError } = await supabase
-					.from("sync_queue")
-					.update({
-						status: "failed",
-						error_message: invokeError.message,
-						completed_at: new Date().toISOString(),
-					})
-					.eq("id", queuedSync.id);
-				if (cleanupError)
-					console.error("[useManualSync] cleanup failed:", cleanupError);
-				throw invokeError;
-			}
+			if (invokeError) throw invokeError;
 		},
 		onSettled: async (_, __, { userId }) => {
 			await queryClient.invalidateQueries({
