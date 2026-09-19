@@ -16,12 +16,15 @@ on:
       - "supabase/seed.sql"
       - "supabase/config.toml"
       - "supabase/tests/**"
+      - "src/lib/database.types.ts"
+      - "scripts/gen-types.mjs"
       - ".github/workflows/migrations.yml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/**"
       - "supabase/tests/**"
+      - "src/lib/database.types.ts"
 
 permissions:
   contents: read
@@ -77,13 +80,30 @@ jobs:
             exit 1
           fi
 
-      # SECURITY DEFINER grant guard: fails if any definer function in public
-      # is executable by anon/authenticated outside the browser allow-list,
-      # or lacks a pinned search_path. The full pgTAP suite is enabled
-      # separately; this runs the guard file plus the PR 2 dashboard-capture
-      # file (acceptance for 20260920000200).
-      - name: pgTAP definer function grant guard and dashboard capture
-        run: supabase test db supabase/tests/database/definer_function_grants.test.sql supabase/tests/database/dashboard_capture.test.sql
+      # Full pgTAP suite (every file in supabase/tests/database/): definer
+      # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
+      # profile preferences. Locally: `npm run test:db`.
+      - name: pgTAP suite
+        run: supabase test db
+
+      # Generated-types drift check: src/lib/database.types.ts must equal the
+      # types generated from the schema the migrations just produced. A PR
+      # that changes the schema without regenerating types fails here.
+      # Fix: npx supabase@2.76.9 start && npx supabase@2.76.9 db reset
+      # --no-seed && npm run gen:types:local, then commit the file.
+      # scripts/gen-types.mjs pins the same CLI version as setup-cli above.
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies (Biome for type normalization)
+        run: npm ci --ignore-scripts
+
+      - name: Check database.types.ts matches migrated schema
+        env:
+          SUPABASE_BIN: supabase
+        run: npm run gen:types:check
 
       - name: Stop stack
         if: always()
