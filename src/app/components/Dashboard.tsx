@@ -40,12 +40,8 @@ import { useStreak } from "@/hooks/useStreak";
 import { fadeUp, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
-import {
-	convertWeight,
-	formatVolume,
-	formatWeight,
-	type WeightUnit,
-} from "@/lib/units";
+import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import {
 	formatWorkoutPhase,
 	isNonCombinedWorkoutPhase,
@@ -84,7 +80,7 @@ function deriveWeeklyVolume(
 	if (stats) {
 		for (const row of stats) {
 			const dayName = days[new Date(row.started_at).getDay()];
-			// total_volume is already the combined total in DB — no multiplier needed
+			// total_volume is per cable as stored (KD-8) — no multiplier
 			volumeByDay[dayName] += row.total_volume;
 		}
 	}
@@ -120,7 +116,8 @@ function formatPersonalRecordValue(
 	unit: WeightUnit,
 ): string {
 	if (record.unit === "kg") {
-		return formatWeight(record.value, unit);
+		// Records are per cable and carry no cable count (KD-8).
+		return formatLoad(record.value, null, unit);
 	}
 	return `${record.value} ${record.unit}`;
 }
