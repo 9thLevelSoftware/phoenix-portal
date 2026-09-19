@@ -12,6 +12,9 @@ const HOUR = 60 * 60 * 1000;
 interface DbState {
   lastSyncAt: string | null;
   activities: Array<Record<string, unknown>>;
+  status?: string;
+  errorMessage?: string | null;
+  upsertCalls?: number;
 }
 
 function createDbDouble(state: DbState) {
@@ -37,6 +40,12 @@ function createDbDouble(state: DbState) {
         if (pendingUpdate) {
           if ("last_sync_at" in pendingUpdate) {
             state.lastSyncAt = pendingUpdate.last_sync_at as string;
+          }
+          if ("status" in pendingUpdate) {
+            state.status = pendingUpdate.status as string;
+          }
+          if ("error_message" in pendingUpdate) {
+            state.errorMessage = pendingUpdate.error_message as string | null;
           }
           return { data: null, error: null };
         }
@@ -66,12 +75,20 @@ function createDbDouble(state: DbState) {
       pendingUpdate = values;
       return builder;
     };
-    builder.upsert = (row: Record<string, unknown>) => {
+    builder.upsert = (
+      row: Record<string, unknown>,
+      options?: { ignoreDuplicates?: boolean },
+    ) => {
       if (table === "external_activities") {
+        state.upsertCalls = (state.upsertCalls ?? 0) + 1;
         const index = state.activities.findIndex((existing) =>
           existing.external_id === row.external_id
         );
-        // ON CONFLICT DO UPDATE only sets the columns that were sent.
+        // ignoreDuplicates = ON CONFLICT DO NOTHING: the stored row is kept.
+        // Otherwise ON CONFLICT DO UPDATE only sets the columns that were sent.
+        if (index >= 0 && options?.ignoreDuplicates) {
+          return Promise.resolve({ data: null, error: null });
+        }
         if (index >= 0) {
           state.activities[index] = { ...state.activities[index], ...row };
         } else {
@@ -124,7 +141,7 @@ function installFakeLiftosaur(upstream: UpstreamRecord[]) {
     fake.requests.push(url);
     fake.firstRequestAt ??= Date.now();
     const startDate = url.searchParams.get("startDate");
-    const records = upstream
+    const matching = upstream
       .filter((record) =>
         startDate === null || record.date === undefined ||
         Date.parse(record.date) >= Date.parse(startDate)
@@ -133,8 +150,15 @@ function installFakeLiftosaur(upstream: UpstreamRecord[]) {
         id: record.id,
         text: `${record.date ? `${record.date} / ` : ""}program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`,
       }));
+    // Pages of `limit`, served in upstream order; the cursor is an offset.
+    const limit = Number(url.searchParams.get("limit") ?? "200");
+    const offset = Number(url.searchParams.get("cursor") ?? "0");
+    const records = matching.slice(offset, offset + limit);
+    const hasMore = offset + limit < matching.length;
     const response = new Response(
-      JSON.stringify({ data: { records, hasMore: false, nextCursor: null } }),
+      JSON.stringify({
+        data: { records, hasMore, nextCursor: hasMore ? offset + limit : null },
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
     // A small delay so "before the fetch" and "after the fetch" are
@@ -252,6 +276,110 @@ Deno.test("liftosaur-sync keeps the stored date of an undated record re-fetched 
     assertEquals(second.status, 200, await second.clone().text());
     assertEquals(state.activities.length, 1);
     assertEquals(state.activities[0].started_at, firstStartedAt);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+const DAY = 24 * HOUR;
+
+/** `count` records dated `stepMs` apart from `firstMs`, oldest first. */
+function datedRecords(count: number, firstMs: number, stepMs: number): UpstreamRecord[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: 1000 + i,
+    date: new Date(firstMs + i * stepMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
+  }));
+}
+
+Deno.test("liftosaur-sync: 11 pages -> retryable 502, watermark moves only to the last record read", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  // 2,200 records = 11 pages of 200; the run may read 10.
+  const upstream = datedRecords(2200, now - 199 * DAY, HOUR);
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    const response = await runSync(state, "incremental");
+    const body = await response.json();
+    assertEquals(response.status, 502, JSON.stringify(body));
+    assertEquals(body.truncated, true);
+    assertEquals(liftosaur.requests.length, 10);
+    assertEquals(state.activities.length, 2000);
+
+    // Not advanced to syncStartedAt (captured before the first request) ...
+    assert(
+      Date.parse(state.lastSyncAt!) < liftosaur.firstRequestAt!,
+      `last_sync_at ${state.lastSyncAt} must not reach the sync start time`,
+    );
+    // ... but to the newest record actually read (the 2,000th).
+    assertEquals(state.lastSyncAt, new Date(Date.parse(upstream[1999].date!)).toISOString());
+    assertEquals(state.status, "connected");
+    assert(String(state.errorMessage).includes("10-page budget"));
+
+    // The retry continues from there and completes the import.
+    const retry = await runSync(state, "incremental");
+    assertEquals(retry.status, 200, await retry.clone().text());
+    assertEquals(state.activities.length, 2200);
+    assertEquals(state.errorMessage, null);
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: 11 newest-first pages -> 500, watermark unchanged", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  const upstream = datedRecords(2200, now - 199 * DAY, HOUR).reverse();
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    const response = await runSync(state, "incremental");
+    const body = await response.json();
+    // A retry would re-read the same pages, so it must not be requested.
+    assertEquals(response.status, 500, JSON.stringify(body));
+    assertEquals(body.truncated, true);
+    assertEquals(state.lastSyncAt, lastSync);
+    assertEquals(state.status, "error");
+    assert(String(state.errorMessage).includes("cannot resume"));
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: a truncated initial sync fails without a retry but records its progress", async () => {
+  const now = Date.now();
+  const state: DbState = { lastSyncAt: null, activities: [] };
+  const upstream = datedRecords(2200, now - 199 * DAY, HOUR);
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    const response = await runSync(state, "initial");
+    // `initial` ignores the watermark, so a queue retry would repeat the
+    // same request; the next incremental sync resumes from the watermark.
+    assertEquals(response.status, 500, await response.clone().text());
+    assertEquals(state.lastSyncAt, new Date(Date.parse(upstream[1999].date!)).toISOString());
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: re-sync of an undated record leaves its stored date unchanged", async () => {
+  const storedAt = "2020-01-01T00:00:00.000Z";
+  const state: DbState = {
+    lastSyncAt: new Date(Date.now() - 6 * HOUR).toISOString(),
+    activities: [{
+      user_id: USER_ID,
+      provider: "liftosaur",
+      external_id: "liftosaur-9",
+      name: "old",
+      started_at: storedAt,
+    }],
+  };
+  const liftosaur = installFakeLiftosaur([{ id: 9 }]);
+  try {
+    const response = await runSync(state, "incremental");
+    assertEquals(response.status, 200, await response.clone().text());
+    assertEquals(state.activities.length, 1);
+    assertEquals(state.activities[0].started_at, storedAt);
   } finally {
     liftosaur.restore();
   }

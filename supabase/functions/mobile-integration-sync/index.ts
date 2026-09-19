@@ -4,8 +4,16 @@ import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import {
   createHevyPageFetcher,
   fetchHevyBackfill,
+  HEVY_MAX_PAGES,
   HevyAuthError,
 } from '../_shared/hevySync.ts';
+import {
+  createLiftosaurPageFetcher,
+  fetchLiftosaurHistory,
+  LIFTOSAUR_MAX_PAGES,
+  LiftosaurAuthError,
+  toLiftosaurActivityRow,
+} from '../_shared/liftosaurSync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
@@ -14,6 +22,7 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * Loose Supabase client type for helper signatures. The bare
  * `ReturnType<typeof createClient>` collapses table payload types to `never`.
  */
+// deno-lint-ignore no-explicit-any
 type DbClient = SupabaseClient<any, any, any>;
 
 /**
@@ -35,12 +44,6 @@ type DbClient = SupabaseClient<any, any, any>;
  * Authorization: Bearer <GoTrue JWT>
  * Body: { provider: "hevy" | "liftosaur", action: "connect" | "sync" | "disconnect", apiKey?: string }
  */
-
-// =============================================================================
-// Provider API configuration
-// =============================================================================
-
-const LIFTOSAUR_API_BASE = 'https://www.liftosaur.com/api/v1';
 
 const ALLOWED_PROVIDERS = new Set(['hevy', 'liftosaur']);
 const ALLOWED_ACTIONS = new Set(['connect', 'sync', 'disconnect']);
@@ -85,23 +88,6 @@ interface HevyWorkout {
 }
 
 // =============================================================================
-// Liftosaur types
-// =============================================================================
-
-interface LiftosaurRecord {
-  id: number;
-  text: string;
-}
-
-interface LiftosaurHistoryResponse {
-  data: {
-    records: LiftosaurRecord[];
-    hasMore: boolean;
-    nextCursor: number | null;
-  };
-}
-
-// =============================================================================
 // Request body
 // =============================================================================
 
@@ -112,47 +98,34 @@ interface MobileIntegrationRequest {
 }
 
 // =============================================================================
-// Liftosaur text parser (mirrors liftosaur-sync)
-// =============================================================================
-
-function parseLiftoscriptMetadata(text: string): {
-  timestamp: string | null;
-  program: string | null;
-  dayName: string | null;
-  durationSeconds: number | null;
-} {
-  const tsMatch = text.match(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/
-  );
-  const timestamp = tsMatch?.[1] ?? null;
-
-  const programMatch = text.match(/program:\s*"([^"]+)"/);
-  const program = programMatch?.[1] ?? null;
-
-  const dayNameMatch = text.match(/dayName:\s*"([^"]+)"/);
-  const dayName = dayNameMatch?.[1] ?? null;
-
-  const durationMatch = text.match(/duration:\s*(\d+)s/);
-  const durationSeconds = durationMatch ? parseInt(durationMatch[1], 10) : null;
-
-  return { timestamp, program, dayName, durationSeconds };
-}
-
-// =============================================================================
 // Provider fetch logic
 // =============================================================================
+
+interface ProviderFetchResult {
+  activities: ActivityDto[];
+  /**
+   * External ids whose provider record has no parseable date. They are
+   * persisted insert-only so a re-sync never moves their stored date.
+   */
+  undatedIds: Set<string>;
+  /** True when the provider still had pages after the per-run page ceiling. */
+  truncated: boolean;
+  maxPages: number;
+}
 
 /**
  * Shares the paginator with hevy-sync (../_shared/hevySync.ts) so the mobile
  * and portal import paths cannot drift on page size or termination logic.
  * Only the returned DTO shape differs — mobile takes camelCase.
  */
-async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
+async function fetchHevyActivities(apiKey: string): Promise<ProviderFetchResult> {
   let allWorkouts: HevyWorkout[];
+  let truncated: boolean;
   try {
     const fetchPage = createHevyPageFetcher(apiKey);
     const result = await fetchHevyBackfill(fetchPage);
     allWorkouts = result.workouts as HevyWorkout[];
+    truncated = result.truncated;
   } catch (err) {
     if (err instanceof HevyAuthError) {
       throw new ApiKeyError(err.message);
@@ -160,7 +133,7 @@ async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
     throw err;
   }
 
-  return allWorkouts.map((w) => {
+  const activities = allWorkouts.map((w) => {
     const startTime = new Date(w.start_time);
     const endTime = new Date(w.end_time);
     const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
@@ -174,67 +147,47 @@ async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
       rawData: JSON.stringify(w),
     };
   });
+  return { activities, undatedIds: new Set(), truncated, maxPages: HEVY_MAX_PAGES };
 }
 
-async function fetchLiftosaurActivities(apiKey: string): Promise<ActivityDto[]> {
-  const allRecords: LiftosaurRecord[] = [];
-  let cursor: number | null = null;
-  let hasMore = true;
-  const MAX_PAGES = 10;
-  let page = 0;
-
-  while (hasMore && page < MAX_PAGES) {
-    const params = new URLSearchParams({ limit: '200' });
-    if (cursor !== null) {
-      params.set('cursor', cursor.toString());
+/** Shares the fetcher and row mapping with liftosaur-sync (../_shared/liftosaurSync.ts). */
+async function fetchLiftosaurActivities(apiKey: string): Promise<ProviderFetchResult> {
+  let result;
+  try {
+    result = await fetchLiftosaurHistory(createLiftosaurPageFetcher(apiKey));
+  } catch (err) {
+    if (err instanceof LiftosaurAuthError) {
+      throw new ApiKeyError(err.message);
     }
-
-    const response = await fetch(
-      `${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (response.status === 401 || response.status === 403) {
-      throw new ApiKeyError('Liftosaur API access denied. Verify your API key and Premium subscription.');
-    }
-    if (!response.ok) {
-      throw new Error(`Liftosaur API returned ${response.status}`);
-    }
-
-    const result: LiftosaurHistoryResponse = await response.json();
-    allRecords.push(...result.data.records);
-    hasMore = result.data.hasMore;
-    cursor = result.data.nextCursor;
-    page++;
+    throw err;
   }
 
-  return allRecords.map((record) => {
-    const meta = parseLiftoscriptMetadata(record.text);
-    const name = meta.dayName
-      ? meta.program
-        ? `${meta.program} — ${meta.dayName}`
-        : meta.dayName
-      : meta.program ?? `Workout #${record.id}`;
-
-    const startedAt = meta.timestamp
-      ? new Date(meta.timestamp).toISOString()
-      : new Date().toISOString();
-
+  // Undated records get the import time on first insert only (the column is
+  // NOT NULL); persistActivities writes them insert-only, so the stored date
+  // stays put on re-sync. The DTO echoes the attempted value, which for an
+  // already stored undated record can differ from the stored one.
+  const importedAt = new Date().toISOString();
+  const undatedIds = new Set<string>();
+  const activities = result.records.map((record) => {
+    const { undated, row } = toLiftosaurActivityRow('', record, importedAt);
+    const externalId = row.external_id as string;
+    if (undated) undatedIds.add(externalId);
     return {
-      externalId: `liftosaur-${record.id}`,
+      externalId,
       provider: 'liftosaur',
-      name,
+      name: row.name as string,
       activityType: 'strength',
-      startedAt,
-      durationSeconds: meta.durationSeconds ?? 0,
+      startedAt: row.started_at as string,
+      durationSeconds: (row.duration_seconds as number | null) ?? 0,
       rawData: JSON.stringify({ id: record.id, text: record.text }),
     };
   });
+  return {
+    activities,
+    undatedIds,
+    truncated: result.truncated,
+    maxPages: LIFTOSAUR_MAX_PAGES,
+  };
 }
 
 // Custom error for API key issues (distinguishes from other errors)
@@ -249,7 +202,39 @@ class ApiKeyError extends Error {
 // Handler
 // =============================================================================
 
-Deno.serve(async (req) => {
+export interface MobileIntegrationSyncAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
+  };
+}
+
+export interface MobileIntegrationSyncDependencies {
+  createAuthClient(authorization: string): MobileIntegrationSyncAuthClient;
+  createAdminClient(): DbClient;
+}
+
+function defaultDependencies(): MobileIntegrationSyncDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authorization } } }
+      ) as unknown as MobileIntegrationSyncAuthClient;
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+    },
+  };
+}
+
+async function mobileIntegrationSyncHandler(
+  req: Request,
+  deps: MobileIntegrationSyncDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -277,11 +262,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseAuth = deps.createAuthClient(authHeader);
 
     const {
       data: { user },
@@ -299,10 +280,7 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const supabase = deps.createAdminClient();
 
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-integration-sync',
@@ -417,62 +395,7 @@ Deno.serve(async (req) => {
           { onConflict: 'user_id,provider' }
         );
 
-      // Fetch activities from the provider
-      let activities: ActivityDto[];
-      try {
-        activities = provider === 'hevy'
-          ? await fetchHevyActivities(apiKey)
-          : await fetchLiftosaurActivities(apiKey);
-      } catch (fetchErr) {
-        const isApiKeyError = fetchErr instanceof ApiKeyError;
-        const errorMessage = (fetchErr as Error).message;
-
-        // Update integration status to error
-        await supabase
-          .from('user_integrations')
-          .update({
-            status: 'error',
-            error_message: errorMessage,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider);
-
-        return new Response(
-          JSON.stringify({ status: 'error', error: errorMessage }),
-          {
-            status: isApiKeyError ? 403 : 502,
-            headers: { ...cors, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-
-      if (activities.length > 0) {
-        const failedCount = await persistActivities(supabase, userId, provider, activities);
-        if (failedCount > 0) {
-          return await partialPersistFailureResponse(
-            supabase, userId, provider, failedCount, activities.length, cors,
-          );
-        }
-      }
-
-      // Update last sync timestamp
-      await supabase
-        .from('user_integrations')
-        .update({
-          last_sync_at: new Date().toISOString(),
-          status: 'connected',
-          error_message: null,
-        })
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      return new Response(
-        JSON.stringify({
-          status: 'connected',
-          activities,
-        }),
-        { headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return await importProviderActivities(supabase, userId, provider, apiKey, 'connected', cors);
     }
 
     // =========================================================================
@@ -513,61 +436,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch activities from the provider
-    let activities: ActivityDto[];
-    try {
-      activities = provider === 'hevy'
-        ? await fetchHevyActivities(storedApiKey)
-        : await fetchLiftosaurActivities(storedApiKey);
-    } catch (fetchErr) {
-      const isApiKeyError = fetchErr instanceof ApiKeyError;
-      const errorMessage = (fetchErr as Error).message;
-
-      await supabase
-        .from('user_integrations')
-        .update({
-          status: 'error',
-          error_message: errorMessage,
-        })
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      return new Response(
-        JSON.stringify({ status: 'error', error: errorMessage }),
-        {
-          status: isApiKeyError ? 403 : 502,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    if (activities.length > 0) {
-      const failedCount = await persistActivities(supabase, userId, provider, activities);
-      if (failedCount > 0) {
-        return await partialPersistFailureResponse(
-          supabase, userId, provider, failedCount, activities.length, cors,
-        );
-      }
-    }
-
-    // Update last sync timestamp
-    await supabase
-      .from('user_integrations')
-      .update({
-        last_sync_at: new Date().toISOString(),
-        status: 'connected',
-        error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', provider);
-
-    return new Response(
-      JSON.stringify({
-        status: 'synced',
-        activities,
-      }),
-      { headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
+    return await importProviderActivities(supabase, userId, provider, storedApiKey, 'synced', cors);
   } catch (err) {
     console.error('mobile-integration-sync error:', err);
     return new Response(
@@ -575,15 +444,124 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+export function createMobileIntegrationSyncHandler(
+  deps: MobileIntegrationSyncDependencies = defaultDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => mobileIntegrationSyncHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createMobileIntegrationSyncHandler());
+}
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
 /**
+ * Fetch from the provider, persist, and build the response shared by the
+ * connect and sync actions. `last_sync_at` advances only when every activity
+ * was fetched AND persisted.
+ */
+async function importProviderActivities(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  apiKey: string,
+  successStatus: 'connected' | 'synced',
+  cors: Record<string, string>,
+): Promise<Response> {
+  let fetched: ProviderFetchResult;
+  try {
+    fetched = provider === 'hevy'
+      ? await fetchHevyActivities(apiKey)
+      : await fetchLiftosaurActivities(apiKey);
+  } catch (fetchErr) {
+    const isApiKeyError = fetchErr instanceof ApiKeyError;
+    const errorMessage = (fetchErr as Error).message;
+
+    await supabase
+      .from('user_integrations')
+      .update({
+        status: 'error',
+        error_message: errorMessage,
+      })
+      .eq('user_id', userId)
+      .eq('provider', provider);
+
+    return new Response(
+      JSON.stringify({ status: 'error', error: errorMessage }),
+      {
+        status: isApiKeyError ? 403 : 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
+  const { activities, undatedIds, truncated, maxPages } = fetched;
+
+  if (activities.length > 0) {
+    const failedCount = await persistActivities(supabase, userId, provider, activities, undatedIds);
+    if (failedCount > 0) {
+      return await partialPersistFailureResponse(
+        supabase, userId, provider, failedCount, activities.length, cors,
+      );
+    }
+  }
+
+  // The provider still had pages after the per-run ceiling. What was read is
+  // stored, but the import is incomplete: report it as an error (visible on the
+  // integration card and to the mobile caller) and do NOT advance last_sync_at.
+  if (truncated) {
+    const truncMessage =
+      `${provider} history exceeded the ${maxPages}-page budget; ` +
+      `${activities.length} activities stored, the rest were not imported`;
+    console.warn(`mobile-integration-sync: ${truncMessage}`);
+    await supabase
+      .from('user_integrations')
+      .update({ status: 'error', error_message: truncMessage })
+      .eq('user_id', userId)
+      .eq('provider', provider);
+
+    return new Response(
+      JSON.stringify({
+        status: 'error',
+        error: truncMessage,
+        truncated: true,
+        imported: activities.length,
+      }),
+      { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Update last sync timestamp
+  await supabase
+    .from('user_integrations')
+    .update({
+      last_sync_at: new Date().toISOString(),
+      status: 'connected',
+      error_message: null,
+    })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({
+      status: successStatus,
+      activities,
+    }),
+    { headers: { ...cors, 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
  * Persist normalized activities to external_activities table.
  * Maps ActivityDto camelCase fields to snake_case columns.
+ *
+ * Activities in `undatedIds` are written insert-only (ignoreDuplicates), so an
+ * already stored record keeps its original started_at.
  *
  * Returns the number of activities that failed to persist so callers can avoid
  * advancing `last_sync_at` past data that was never written (which would skip
@@ -593,7 +571,8 @@ async function persistActivities(
   supabase: DbClient,
   userId: string,
   provider: string,
-  activities: ActivityDto[]
+  activities: ActivityDto[],
+  undatedIds: ReadonlySet<string>,
 ): Promise<number> {
   let failedCount = 0;
   for (const activity of activities) {
@@ -618,7 +597,10 @@ async function persistActivities(
             : null,
           synced_at: new Date().toISOString(),
         },
-        { onConflict: 'user_id,provider,external_id' }
+        {
+          onConflict: 'user_id,provider,external_id',
+          ignoreDuplicates: undatedIds.has(activity.externalId),
+        }
       );
 
     if (error) {
