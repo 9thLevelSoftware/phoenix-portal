@@ -161,11 +161,12 @@ function buildRecommendation(
 		};
 	}
 
+	// exercise_progress loads are per cable (KD-8), so the step is per cable.
 	const nextLoad = convertWeight(latest.max_weight_kg + 2.5, unit);
 	return {
 		kind: "load",
-		label: `Add ${unit === "lbs" ? "5 lb" : "2.5 kg"}`,
-		description: `Recent trend supports testing about ${round(nextLoad, unit === "lbs" ? 0 : 1)} ${unit} next time.`,
+		label: `Add ${unit === "lbs" ? "5 lb" : "2.5 kg"} per cable`,
+		description: `Recent trend supports testing about ${round(nextLoad, unit === "lbs" ? 0 : 1)} ${unit} per cable next time.`,
 	};
 }
 
