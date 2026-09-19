@@ -451,6 +451,7 @@ async function mobileIntegrationSyncHandler(
             // Drop any in-progress liftosaur-sync backfill so a reconnect
             // starts fresh instead of resuming a stale chain.
             backfill_before: null,
+            backfill_after: null,
             backfill_started_at: null,
           })
           .eq('user_id', userId)
@@ -784,11 +785,22 @@ async function persistActivities(
 
   for (const activity of activities) {
     if (!undated.has(activity.externalId)) continue;
-    // The row exists now: ON CONFLICT DO UPDATE of everything but started_at.
-    const { started_at: _startedAt, ...refresh } = rowFor(activity);
+    // A plain UPDATE of everything but started_at. (An upsert without
+    // started_at is rejected: Postgres checks NOT NULL on the proposed INSERT
+    // row before ON CONFLICT, even when the row already exists.)
+    const {
+      started_at: _startedAt,
+      user_id: _userId,
+      provider: _provider,
+      external_id: _externalId,
+      ...changes
+    } = rowFor(activity);
     const { error } = await supabase
       .from('external_activities')
-      .upsert(refresh, { onConflict: 'user_id,provider,external_id' });
+      .update(changes)
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .eq('external_id', activity.externalId);
     if (error) {
       failedCount++;
       console.error(`Failed to update activity ${activity.externalId}:`, error.message);

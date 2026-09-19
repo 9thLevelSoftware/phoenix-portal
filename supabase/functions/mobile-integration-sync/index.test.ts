@@ -1,4 +1,6 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { localIntegrationEnvironment } from '../_shared/localIntegrationEnvironment.ts';
 import { createMobileIntegrationSyncHandler } from './index.ts';
 
 // Handler tests with in-process doubles: an in-memory Supabase client and fake
@@ -32,8 +34,17 @@ function createDbDouble(state: DbState) {
   const from = (table: string) => {
     let pendingUpdate: Record<string, unknown> | null = null;
     let inFilter: unknown[] | null = null;
+    const filters: Record<string, unknown> = {};
 
     const resolve = () => {
+      if (table === 'external_activities' && pendingUpdate) {
+        const row = state.activities.find((existing) =>
+          existing.external_id === filters.external_id &&
+          existing.user_id === filters.user_id
+        );
+        if (row) Object.assign(row, pendingUpdate);
+        return { data: null, error: null };
+      }
       if (table === 'subscriptions') {
         return {
           data: { tier: 'FLAME', status: 'active', current_period_end: '2099-01-01T00:00:00.000Z' },
@@ -63,9 +74,13 @@ function createDbDouble(state: DbState) {
     };
 
     const builder: Record<string, unknown> = {};
-    for (const method of ['select', 'eq', 'order', 'limit', 'delete']) {
+    for (const method of ['select', 'order', 'limit', 'delete']) {
       builder[method] = () => builder;
     }
+    builder.eq = (column: string, value: unknown) => {
+      filters[column] = value;
+      return builder;
+    };
     builder.in = (_column: string, values: unknown[]) => {
       inFilter = values;
       return builder;
@@ -79,6 +94,12 @@ function createDbDouble(state: DbState) {
       options?: { ignoreDuplicates?: boolean },
     ) => {
       if (table === 'external_activities') {
+        // Like Postgres: NOT NULL is checked on the proposed INSERT row before
+        // ON CONFLICT, so an upsert without started_at fails even for an
+        // existing row.
+        if (!('started_at' in row)) {
+          return Promise.resolve({ data: null, error: { code: '23502', message: 'null value in column started_at' } });
+        }
         const index = state.activities.findIndex((existing) =>
           existing.external_id === row.external_id
         );
@@ -480,4 +501,125 @@ Deno.test('mobile-integration-sync: a token getUser() rejects is 401 before any 
   );
   assertEquals(response.status, 401);
   assertEquals(state.adminClientsCreated, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Real-SQL (local stack only; run by `npm run test:edge:integration`).
+// ---------------------------------------------------------------------------
+
+/** Real service-role client with only the subscription lookup stubbed (FLAME). */
+// deno-lint-ignore no-explicit-any
+function withActiveFlameSubscription(admin: any) {
+  return {
+    from: (table: string) =>
+      table === 'subscriptions'
+        ? {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { tier: 'FLAME', status: 'active', current_period_end: '2099-01-01T00:00:00.000Z' },
+                  error: null,
+                }),
+            }),
+          }),
+        }
+        : admin.from(table),
+    rpc: (...args: unknown[]) => admin.rpc(...args),
+  };
+}
+
+Deno.test({
+  name:
+    'integration: mobile-integration-sync re-sync of an undated Liftosaur record applies the edit and keeps the stored date',
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const env = localIntegrationEnvironment!;
+    const admin = createClient(env.url, env.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const created = await admin.auth.admin.createUser({
+      email: `pr50-mobile-${crypto.randomUUID()}@example.invalid`,
+      email_confirm: true,
+    });
+    if (created.error || !created.data.user) throw new Error('user fixture failed');
+    const userId = created.data.user.id;
+
+    const originalFetch = globalThis.fetch;
+    let dayName = 'Before';
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+      );
+      if (url.hostname === 'www.liftosaur.com') {
+        return Promise.resolve(json({
+          data: {
+            records: [{ id: 888, text: `program: "P" / dayName: "${dayName}"` }],
+            hasMore: false,
+            nextCursor: null,
+          },
+        }));
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const token = await admin.from('oauth_tokens').insert({
+        user_id: userId,
+        provider: 'liftosaur',
+        api_key: 'provider-key',
+      });
+      if (token.error) throw new Error(`token fixture failed: ${token.error.message}`);
+
+      const handler = createMobileIntegrationSyncHandler({
+        createAuthClient: () => ({
+          auth: { getUser: () => Promise.resolve({ data: { user: { id: userId } } }) },
+        }),
+        // deno-lint-ignore no-explicit-any
+        createAdminClient: () => withActiveFlameSubscription(admin) as any,
+      });
+      const sync = async () => {
+        const response = await handler(
+          new Request('http://localhost/functions/v1/mobile-integration-sync', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer user-jwt', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: 'liftosaur', action: 'sync' }),
+          }),
+        );
+        return { status: response.status, body: await response.json() };
+      };
+      const readRow = async () => {
+        const row = await admin.from('external_activities')
+          .select('name, started_at')
+          .eq('user_id', userId)
+          .eq('provider', 'liftosaur')
+          .eq('external_id', 'liftosaur-888')
+          .single();
+        if (row.error) throw new Error(`row read failed: ${row.error.message}`);
+        return row.data as { name: string; started_at: string };
+      };
+
+      const first = await sync();
+      assertEquals(first.status, 200, JSON.stringify(first.body));
+      const stored = await readRow();
+      assertEquals(stored.name, 'P — Before');
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      dayName = 'After';
+      const second = await sync();
+      assertEquals(second.status, 200, JSON.stringify(second.body));
+      const updated = await readRow();
+      assertEquals(updated.name, 'P — After');
+      assertEquals(updated.started_at, stored.started_at);
+      assertEquals(
+        Date.parse(second.body.activities[0].startedAt),
+        Date.parse(stored.started_at),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      // Log rather than throw: a throw in finally would mask the test's own failure.
+      if (deleted.error) console.error('user fixture cleanup failed:', deleted.error.message);
+    }
+  },
 });

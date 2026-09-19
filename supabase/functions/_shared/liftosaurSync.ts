@@ -259,9 +259,10 @@ export interface LiftosaurActivityRow {
 }
 
 /**
- * An undated row without `started_at`. After the insert-only write, upserting
- * this (every row now exists, so ON CONFLICT DO UPDATE of the columns sent)
- * applies edits to name/duration/raw_data while the stored date stays put.
+ * An undated row without `started_at`. After the insert-only write, callers
+ * apply this with a plain UPDATE (never an upsert: Postgres checks NOT NULL on
+ * the proposed INSERT row before ON CONFLICT), so edits to
+ * name/duration/raw_data land while the stored date stays put.
  */
 export function withoutStartedAt(
   row: Record<string, unknown>,

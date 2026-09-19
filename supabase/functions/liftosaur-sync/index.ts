@@ -193,7 +193,7 @@ async function liftosaurSyncHandler(
 		// plus any in-progress backfill (see below).
 		const { data: integration } = await supabase
 			.from("user_integrations")
-			.select("last_sync_at, backfill_before, backfill_started_at")
+			.select("last_sync_at, backfill_before, backfill_after, backfill_started_at")
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur")
 			.maybeSingle();
@@ -201,6 +201,8 @@ async function liftosaurSyncHandler(
 		const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
 		const backfillBefore =
 			(integration?.backfill_before as string | null) ?? null;
+		const backfillAfter =
+			(integration?.backfill_after as string | null) ?? null;
 		const backfillStartedAt =
 			(integration?.backfill_started_at as string | null) ?? null;
 		// `startDate` filters on workout date, but the watermark is wall-clock
@@ -234,6 +236,11 @@ async function liftosaurSyncHandler(
 			backfillBefore !== null &&
 			backfillStartedAt !== null;
 		const chainStartedAt = inBackfill ? backfillStartedAt! : syncStartedAt;
+		// A chain keeps the lower bound it started with, stored as
+		// `backfill_after`: an `initial` (reconnect) chain has none, so its
+		// incremental follow-ups still read the full history below the old
+		// watermark instead of stopping at last_sync_at − lookback.
+		const chainAfter = inBackfill ? backfillAfter : incrementalSince;
 
 		// Fetch workout history from Liftosaur API with pagination (shared with
 		// mobile-integration-sync).
@@ -242,7 +249,7 @@ async function liftosaurSyncHandler(
 			fetched = await fetchLiftosaurHistory(
 				createLiftosaurPageFetcher(storedApiKey),
 				{
-					startDate: incrementalSince,
+					startDate: chainAfter,
 					endDate: inBackfill ? backfillBefore : null,
 				},
 			);
@@ -303,7 +310,7 @@ async function liftosaurSyncHandler(
 		// started_at (the column is NOT NULL), so its first import stamps the
 		// import time. It is written insert-only (ignoreDuplicates: ON CONFLICT
 		// DO NOTHING), so a re-sync never moves its stored date; its other
-		// columns are then re-applied without started_at so edits still land.
+		// columns are then re-applied with an UPDATE so edits still land.
 		const importedAt = new Date().toISOString();
 
 		let importedCount = 0;
@@ -333,11 +340,16 @@ async function liftosaurSyncHandler(
 		}
 		if (failedCount === 0) {
 			for (const row of undatedRows) {
-				// Every undated row exists now, so this is ON CONFLICT DO UPDATE of
-				// the columns sent — everything except started_at.
+				// A plain UPDATE of everything except started_at. (An upsert without
+				// started_at is rejected: Postgres checks NOT NULL on the proposed
+				// INSERT row before ON CONFLICT, even when the row exists.)
+				const { user_id: _u, provider: _p, external_id: externalId, ...changes } = row;
 				const { error: refreshError } = await supabase
 					.from("external_activities")
-					.upsert(row, { onConflict: "user_id,provider,external_id" });
+					.update(changes)
+					.eq("user_id", userId)
+					.eq("provider", "liftosaur")
+					.eq("external_id", externalId as string);
 				if (refreshError) {
 					failedCount++;
 					console.error(`Failed to update Liftosaur record ${row.external_id}:`, refreshError);
@@ -372,6 +384,7 @@ async function liftosaurSyncHandler(
 				inBackfill,
 				backfillBefore,
 				chainStartedAt,
+				chainAfter,
 				incrementalSince,
 				syncType: sync_type,
 			});
@@ -385,6 +398,7 @@ async function liftosaurSyncHandler(
 			.update({
 				last_sync_at: chainStartedAt,
 				backfill_before: null,
+				backfill_after: null,
 				backfill_started_at: null,
 				status: "connected",
 				error_message: null,
@@ -436,6 +450,8 @@ interface TruncationContext {
 	inBackfill: boolean;
 	backfillBefore: string | null;
 	chainStartedAt: string;
+	/** The chain's lower bound (startDate); null = full history. */
+	chainAfter: string | null;
 	incrementalSince: string | null;
 	syncType: string | undefined;
 }
@@ -479,6 +495,7 @@ async function handleTruncatedFetch(ctx: TruncationContext): Promise<Response> {
 				"this run; older records are imported by the next run.";
 			await updateIntegration({
 				backfill_before: nextBefore,
+				backfill_after: ctx.chainAfter,
 				backfill_started_at: ctx.chainStartedAt,
 				status: "connected",
 				error_message: progressMessage,

@@ -1,4 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { createLiftosaurSyncHandler } from "./index.ts";
 
 // Handler tests with in-process doubles: an in-memory Supabase client and a
@@ -21,6 +23,7 @@ interface QueueRow {
 interface DbState {
   lastSyncAt: string | null;
   backfillBefore?: string | null;
+  backfillAfter?: string | null;
   backfillStartedAt?: string | null;
   activities: Array<Record<string, unknown>>;
   status?: string;
@@ -33,8 +36,17 @@ function createDbDouble(state: DbState) {
   state.queue ??= [];
   const from = (table: string) => {
     let pendingUpdate: Record<string, unknown> | null = null;
+    const filters: Record<string, unknown> = {};
 
     const resolve = () => {
+      if (table === "external_activities" && pendingUpdate) {
+        const row = state.activities.find((existing) =>
+          existing.external_id === filters.external_id &&
+          existing.user_id === filters.user_id
+        );
+        if (row) Object.assign(row, pendingUpdate);
+        return { data: null, error: null };
+      }
       if (table === "subscriptions") {
         return {
           data: {
@@ -53,6 +65,7 @@ function createDbDouble(state: DbState) {
           const u = pendingUpdate;
           if ("last_sync_at" in u) state.lastSyncAt = u.last_sync_at as string;
           if ("backfill_before" in u) state.backfillBefore = u.backfill_before as string | null;
+          if ("backfill_after" in u) state.backfillAfter = u.backfill_after as string | null;
           if ("backfill_started_at" in u) {
             state.backfillStartedAt = u.backfill_started_at as string | null;
           }
@@ -64,6 +77,7 @@ function createDbDouble(state: DbState) {
           data: {
             last_sync_at: state.lastSyncAt,
             backfill_before: state.backfillBefore ?? null,
+            backfill_after: state.backfillAfter ?? null,
             backfill_started_at: state.backfillStartedAt ?? null,
           },
           error: null,
@@ -86,9 +100,13 @@ function createDbDouble(state: DbState) {
     };
 
     const builder: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "order", "limit"]) {
+    for (const method of ["select", "order", "limit"]) {
       builder[method] = () => builder;
     }
+    builder.eq = (column: string, value: unknown) => {
+      filters[column] = value;
+      return builder;
+    };
     builder.update = (values: Record<string, unknown>) => {
       pendingUpdate = values;
       return builder;
@@ -107,6 +125,15 @@ function createDbDouble(state: DbState) {
       options?: { ignoreDuplicates?: boolean },
     ) => {
       if (table === "external_activities") {
+        // Like Postgres: NOT NULL is checked on the proposed INSERT row before
+        // ON CONFLICT, so an upsert without started_at fails even when the
+        // row already exists.
+        if (!("started_at" in row)) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "23502", message: "null value in column started_at" },
+          });
+        }
         const index = state.activities.findIndex((existing) =>
           existing.external_id === row.external_id
         );
@@ -610,4 +637,185 @@ Deno.test("liftosaur-sync: an initial sync (reconnect) starts a fresh import ins
   } finally {
     liftosaur.restore();
   }
+});
+
+Deno.test("liftosaur-sync: a reconnect with an old watermark imports history older than the watermark", async () => {
+  const now = Date.now();
+  // Truncated before this PR: the watermark is recent, the old history was never read.
+  const oldWatermark = new Date(now - 5 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: oldWatermark, activities: [] };
+  const upstream = datedRecords(2200, now - 150 * DAY, HOUR);
+  const liftosaur = installFakeLiftosaur(upstream);
+  try {
+    const first = await runSync(state, "initial");
+    const firstBody = await first.json();
+    assertEquals(first.status, 200, JSON.stringify(firstBody));
+    assertEquals(firstBody.continuing, true);
+    assertEquals(state.backfillAfter ?? null, null); // full-history chain
+    assertEquals(state.lastSyncAt, oldWatermark);
+
+    // The queued follow-up is `incremental`; it must still reach below the watermark.
+    const second = await runSync(state, "incremental");
+    assertEquals(second.status, 200, await second.clone().text());
+    assertEquals(liftosaur.requests[10].searchParams.has("startDate"), false);
+    assertEquals(state.activities.length, 2200);
+    const oldest = Math.min(...state.activities.map((row) => Date.parse(row.started_at as string)));
+    assert(oldest < Date.parse(oldWatermark) - 72 * HOUR);
+    assertEquals(state.backfillBefore, null);
+    assert(Date.parse(state.lastSyncAt!) > Date.parse(oldWatermark));
+  } finally {
+    liftosaur.restore();
+  }
+});
+
+Deno.test("liftosaur-sync: an incremental chain keeps its own lower bound across runs", async () => {
+  const now = Date.now();
+  const lastSync = new Date(now - 200 * DAY).toISOString();
+  const state: DbState = { lastSyncAt: lastSync, activities: [] };
+  const liftosaur = installFakeLiftosaur(datedRecords(2200, now - 199 * DAY, HOUR));
+  try {
+    await runSync(state, "incremental");
+    const expectedAfter = new Date(Date.parse(lastSync) - 72 * HOUR).toISOString();
+    assertEquals(state.backfillAfter, expectedAfter);
+    await runSync(state, "incremental");
+    assertEquals(liftosaur.requests[10].searchParams.get("startDate"), expectedAfter);
+    assertEquals(state.backfillAfter, null);
+  } finally {
+    liftosaur.restore();
+  }
+});
+// ---------------------------------------------------------------------------
+// Real-SQL (local stack only; run by `npm run test:edge:integration`).
+// ---------------------------------------------------------------------------
+
+/**
+ * The real service-role client, with only the subscription lookup stubbed to
+ * an active FLAME plan: the SQL under test is external_activities /
+ * user_integrations, not billing.
+ */
+// deno-lint-ignore no-explicit-any
+function withActiveFlameSubscription(admin: any) {
+  return {
+    from: (table: string) =>
+      table === "subscriptions"
+        ? {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: {
+                    tier: "FLAME",
+                    status: "active",
+                    current_period_end: "2099-01-01T00:00:00.000Z",
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        }
+        : admin.from(table),
+    rpc: (...args: unknown[]) => admin.rpc(...args),
+  };
+}
+
+Deno.test({
+  name:
+    "integration: liftosaur-sync re-sync of an undated record applies the edit and keeps the stored date",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const env = localIntegrationEnvironment!;
+    const admin = createClient(env.url, env.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const created = await admin.auth.admin.createUser({
+      email: `pr50-liftosaur-${crypto.randomUUID()}@example.invalid`,
+      email_confirm: true,
+    });
+    if (created.error || !created.data.user) throw new Error("user fixture failed");
+    const userId = created.data.user.id;
+
+    const originalFetch = globalThis.fetch;
+    let dayName = "Before";
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      );
+      if (url.hostname === "www.liftosaur.com") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                records: [{ id: 777, text: `program: "Test" / dayName: "${dayName}"` }],
+                hasMore: false,
+                nextCursor: null,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const token = await admin.from("oauth_tokens").insert({
+        user_id: userId,
+        provider: "liftosaur",
+        api_key: "liftosaur-key",
+      });
+      if (token.error) throw new Error(`token fixture failed: ${token.error.message}`);
+      const integration = await admin.from("user_integrations").insert({
+        user_id: userId,
+        provider: "liftosaur",
+        status: "connected",
+      });
+      if (integration.error) {
+        throw new Error(`integration fixture failed: ${integration.error.message}`);
+      }
+
+      const handler = createLiftosaurSyncHandler({
+        createAuthClient: () => ({
+          auth: { getUser: () => Promise.resolve({ data: { user: { id: userId } } }) },
+        }),
+        // deno-lint-ignore no-explicit-any
+        createAdminClient: () => withActiveFlameSubscription(admin) as any,
+      });
+      const sync = () =>
+        handler(
+          new Request("http://localhost/functions/v1/liftosaur-sync", {
+            method: "POST",
+            headers: { Authorization: "Bearer user-jwt", "Content-Type": "application/json" },
+            body: JSON.stringify({ sync_type: "incremental" }),
+          }),
+        );
+      const readRow = async () => {
+        const row = await admin.from("external_activities")
+          .select("name, started_at")
+          .eq("user_id", userId)
+          .eq("provider", "liftosaur")
+          .eq("external_id", "liftosaur-777")
+          .single();
+        if (row.error) throw new Error(`row read failed: ${row.error.message}`);
+        return row.data as { name: string; started_at: string };
+      };
+
+      const first = await sync();
+      assertEquals(first.status, 200, await first.clone().text());
+      const stored = await readRow();
+      assertEquals(stored.name, "Test — Before");
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      dayName = "After";
+      const second = await sync();
+      assertEquals(second.status, 200, await second.clone().text());
+      const updated = await readRow();
+      assertEquals(updated.name, "Test — After");
+      assertEquals(updated.started_at, stored.started_at);
+    } finally {
+      globalThis.fetch = originalFetch;
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      // Log rather than throw: a throw in finally would mask the test's own failure.
+      if (deleted.error) console.error("user fixture cleanup failed:", deleted.error.message);
+    }
+  },
 });
