@@ -415,4 +415,238 @@ SELECT pg_temp.assert_sqlstate(
     'deletion_requests freeze rejects requested_at change'
 );
 
+SELECT diag('database:trust-plane-self-reported-stats');
+
+SELECT is_empty(
+    $sql$
+        SELECT tablename::text || ' ' || cmd
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('gamification_stats', 'rpg_attributes')
+          AND cmd IN ('INSERT', 'UPDATE', 'ALL')
+    $sql$,
+    'gamification_stats and rpg_attributes have no client write policy'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('gamification_stats', 'rpg_attributes')
+          AND cmd = 'SELECT'
+    ),
+    2,
+    'gamification_stats and rpg_attributes keep their owner SELECT policy'
+);
+
+SELECT ok(
+    pg_get_triggerdef(
+        (
+            SELECT oid FROM pg_trigger
+            WHERE tgrelid = 'public.user_goals'::regclass
+              AND tgname = 'enforce_goal_limit'
+        )
+    ) LIKE '%BEFORE INSERT OR UPDATE OF status ON public.user_goals%',
+    'enforce_goal_limit fires BEFORE INSERT OR UPDATE OF status'
+);
+
+-- Fixtures as postgres: an archived goal for the FREE user (a non-active
+-- INSERT is not capped), and an EMBER-owned stats row.
+INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+VALUES (
+    '33333333-0001-4333-8333-333333333333'::uuid,
+    '33333333-3333-4333-8333-333333333333'::uuid,
+    'frequency',
+    3,
+    'workouts',
+    'archived'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.gamification_stats (user_id)
+VALUES ('44444444-4444-4444-8444-444444444444'::uuid)
+ON CONFLICT (user_id) DO NOTHING;
+
+INSERT INTO public.rpg_attributes (user_id)
+VALUES ('44444444-4444-4444-8444-444444444444'::uuid)
+ON CONFLICT (user_id) DO NOTHING;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"44444444-4444-4444-8444-444444444444","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.workout_sessions
+           SET total_volume = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE workout_sessions.total_volume'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.workout_sessions
+           SET duration_seconds = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE workout_sessions.duration_seconds'
+);
+
+SELECT results_eq(
+    $sql$
+        WITH updated AS (
+            UPDATE public.workout_sessions
+               SET notes = 'pgtap note'
+             WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+            RETURNING notes
+        )
+        SELECT count(*)::integer, min(notes) FROM updated
+    $sql$,
+    $values$ VALUES (1, 'pgtap note'::text) $values$,
+    'EMBER JWT can UPDATE workout_sessions.notes on its own session'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.gamification_stats (user_id, total_volume_kg)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 999999)
+        ON CONFLICT (user_id) DO NOTHING
+    $sql$,
+    '42501',
+    'authenticated cannot INSERT gamification_stats'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rpg_attributes (user_id)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid)
+        ON CONFLICT (user_id) DO NOTHING
+    $sql$,
+    '42501',
+    'authenticated cannot INSERT rpg_attributes'
+);
+
+SELECT is_empty(
+    $sql$
+        UPDATE public.gamification_stats
+           SET total_volume_kg = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+        RETURNING user_id
+    $sql$,
+    'authenticated UPDATE of own gamification_stats matches no row'
+);
+
+SELECT is_empty(
+    $sql$
+        UPDATE public.rpg_attributes
+           SET level = 99
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+        RETURNING user_id
+    $sql$,
+    'authenticated UPDATE of own rpg_attributes matches no row'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT count(*)::integer
+        FROM public.gamification_stats
+        WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    $values$ VALUES (1) $values$,
+    'owner can still SELECT own gamification_stats'
+);
+
+SELECT diag('database:trust-plane-goal-cap-reactivation');
+
+-- EMBER cap is 3 active goals. An archived goal is inserted uncapped.
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+        VALUES
+            ('44444444-0001-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'active'),
+            ('44444444-0002-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'active'),
+            ('44444444-0003-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'active'),
+            ('44444444-0004-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'archived')
+    $sql$,
+    'EMBER JWT can hold 3 active goals plus an archived one'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET target_value = 4
+         WHERE id = '44444444-0001-4444-8444-444444444444'::uuid
+    $sql$,
+    'editing an already-active goal at the cap is allowed'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0002-4444-8444-444444444444'::uuid
+    $sql$,
+    'rewriting status on an already-active goal at the cap is allowed'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0004-4444-8444-444444444444'::uuid
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'EMBER JWT cannot un-archive a fourth active goal'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'archived'
+         WHERE id = '44444444-0003-4444-8444-444444444444'::uuid
+    $sql$,
+    'archiving an active goal is allowed'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0004-4444-8444-444444444444'::uuid
+    $sql$,
+    'un-archiving is allowed again once below the cap'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '33333333-0001-4333-8333-333333333333'::uuid
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'FREE JWT cannot re-activate an archived goal'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
 SELECT * FROM finish();
