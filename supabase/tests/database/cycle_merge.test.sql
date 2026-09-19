@@ -93,7 +93,7 @@ INSERT INTO public.training_cycles (
     -- c1: portal-authored config, portal edit at .1234
     ('18181818-0000-4000-8000-0000000000c1'::uuid, '18181818-0000-4000-8000-000000000001'::uuid,
      'Portal name', '', 8, 4, 0, 'draft',
-     '{"frequencyCycles":"1","portalOnly":true}', '{"week":4}',
+     '{"frequencyCycles":"1","portalOnly":"yes"}', '{"week":4}',
      '2026-01-10 00:00:00.1234+00', '2026-01-10 00:00:00.1234+00',
      '2026-01-10 00:00:00.1234+00'),
     -- c2: never portal-edited (no-op / legacy cases)
@@ -211,8 +211,8 @@ SELECT results_eq(
     $sql$ SELECT name, workout_days, duration_weeks, deload_settings, progression_settings
           FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000c1' $sql$,
     $values$ VALUES ('Portal name'::text, 4, 8, '{"week":4}'::jsonb,
-                     '{"frequencyCycles":"3","portalOnly":true}'::jsonb) $values$,
-    'stale: name and counts kept, derived duration kept, deload kept, progression merged'
+                     '{"frequencyCycles":"1","portalOnly":"yes"}'::jsonb) $values$,
+    'stale: name and counts kept, derived duration kept, deload kept, progression untouched (PR 19 R-10)'
 );
 SELECT results_eq(
     $sql$ SELECT day_number, routine_id, rest_type FROM public.cycle_days
@@ -254,8 +254,8 @@ SELECT results_eq(
     $sql$ SELECT name, workout_days, duration_weeks, deload_settings, progression_settings
           FROM public.training_cycles WHERE id = '18181818-0000-4000-8000-0000000000c1' $sql$,
     $values$ VALUES ('Phone name'::text, 3, 8, '{"week":4}'::jsonb,
-                     '{"portalOnly":true}'::jsonb) $values$,
-    'current: structure applied, null deload kept, null progression clears the mobile keys only'
+                     '{"frequencyCycles":"1","portalOnly":"yes"}'::jsonb) $values$,
+    'current: structure applied, null deload kept, null progression keeps the stored keys (PR 19 R-10)'
 );
 SELECT results_eq(
     $sql$ SELECT day_number, routine_id, rest_type FROM public.cycle_days
@@ -574,13 +574,13 @@ SELECT lives_ok(
            "days":[{"day_number":1,"day_type":"workout"}]}]',
         false)
     $sql$,
-    'mobile removes its progression and sets a new template'
+    'mobile pushes a null progression and sets a new template'
 );
 SELECT results_eq(
     $sql$ SELECT progression_settings, template_id FROM public.training_cycles
           WHERE id = '18181818-0000-4000-8000-0000000000d2' $sql$,
-    $values$ VALUES ('{"portalKey":"keep"}'::jsonb, 'tpl2'::text) $values$,
-    'R-4: a null progression clears every mobile key; R-9: a non-null template_id replaces'
+    $values$ VALUES ('{"frequencyCycles":"2","portalKey":"keep"}'::jsonb, 'tpl2'::text) $values$,
+    'PR 19 R-10: a null progression keeps the stored mobile keys; R-9: a non-null template_id replaces'
 );
 
 -- R-7 / R-10: the real portal write paths, as the authenticated role.
@@ -741,7 +741,7 @@ SELECT results_eq(
     'a portal rename does not freeze duration (phone growth applies); a portal-set duration survives the derived default'
 );
 
--- A null progression where only mobile keys were stored leaves NULL, not '{}'.
+-- PR 19 R-10: a null progression keeps stored mobile-only keys.
 SELECT lives_ok(
     $sql$
       SELECT * FROM public.merge_training_cycles_from_push(
@@ -751,13 +751,13 @@ SELECT lives_ok(
            "progression_settings":null,"days":[]}]',
         false)
     $sql$,
-    'phone removes its progression'
+    'phone pushes a null progression'
 );
 SELECT is(
     (SELECT progression_settings FROM public.training_cycles
      WHERE id = '18181818-0000-4000-8000-0000000000e3'),
-    NULL,
-    'a null progression over mobile-only keys stores NULL, not {}'
+    '{"frequencyCycles":"2","echoLevelIncrease":"true"}'::jsonb,
+    'a null progression over mobile-only keys keeps them (PR 19 R-10)'
 );
 
 SELECT * FROM finish();

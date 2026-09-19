@@ -4384,9 +4384,11 @@ Deno.test({
       const merged = await storedCycle(fixture, cycleId);
       assertEquals(merged.duration_weeks, 8);
       assertEquals(merged.deload_settings, { week: 4, volumePercent: 60 });
+      // The portal-only key survives; the PR 19 normalize trigger stores
+      // every value as a string for mobile's Map<String, String> decode.
       assertEquals(merged.progression_settings, {
         frequencyCycles: "3",
-        portalAutoRegulate: true,
+        portalAutoRegulate: "true",
       });
       assertEquals(merged.portal_edited_at, portalAuthored.portal_edited_at);
       const days = await storedDays(fixture, cycleId);
@@ -4487,7 +4489,8 @@ Deno.test({
       const afterPortal = await storedCycle(fixture, cycleId);
 
       // The phone pushes its old structure with the old base, plus a
-      // progression change (config still merges).
+      // progression change. Stale, so progression is left alone too
+      // (PR 19 R-10: a stale push must not revert portal progression).
       const response = await pushOk(handler, mobileCyclePush(
         cycleId,
         "Seeded cycle",
@@ -4500,7 +4503,7 @@ Deno.test({
 
       const merged = await storedCycle(fixture, cycleId);
       assertEquals(merged.name, "Renamed on portal");
-      assertEquals(merged.progression_settings, { frequencyCycles: "2" });
+      assertEquals(merged.progression_settings, afterPortal.progression_settings);
       assertEquals(merged.portal_edited_at, afterPortal.portal_edited_at);
       const days = await storedDays(fixture, cycleId);
       assertEquals(days.map((d) => d.day_number), [1, 2, 3, 4, 5]);
