@@ -87,22 +87,34 @@ function getWeeklyMetric(weekStart: string): { metric: string; label: string } {
   return WEEKLY_METRICS[metricIndex];
 }
 
-function getWeekBounds(weekStart?: string): { start: string; end: string } {
-  const startDate = weekStart ? new Date(weekStart) : getMonday(new Date());
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 6);
-  endDate.setHours(23, 59, 59, 999);
-
-  return {
-    start: startDate.toISOString().split('T')[0],
-    end: endDate.toISOString().split('T')[0],
-  };
+/**
+ * Snap a `YYYY-MM-DD` to the NEAREST Monday (UTC ISO week start): Sunday goes
+ * forward one day, Tuesday to Thursday go back, Friday and Saturday go forward.
+ * Older SPA builds sent the browser-local Monday shifted by the UTC offset
+ * (a Sunday east of UTC, a Tuesday west of UTC), always within one day of the
+ * intended Monday, so rounding to the nearest Monday recovers it.
+ */
+export function nearestUtcMonday(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+  const shift = dow === 0 ? 1 : dow <= 4 ? 1 - dow : 8 - dow;
+  d.setUTCDate(d.getUTCDate() + shift);
+  return d.toISOString().slice(0, 10);
 }
 
-function getMonday(date: Date): Date {
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(date.setDate(diff));
+function currentUtcMonday(now: Date = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+// Week bounds, rotation, event lookup, id and the snapshot period all come
+// from the same snapped Monday, so metadata and data cannot disagree.
+function getWeekBounds(weekStart?: string): { start: string; end: string } {
+  const start = weekStart ? nearestUtcMonday(weekStart) : currentUtcMonday();
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 6);
+  return { start, end: endDate.toISOString().slice(0, 10) };
 }
 
 // Reasonable historical/future window for weekly leaderboards. Requests outside
@@ -159,24 +171,23 @@ function calculatePercentile(rank: number, total: number): number {
 const ALL_TIME = 'all_time';
 const TOP_LIMIT = 100;
 
+// excludeZero: before the snapshot, the global PR-count and mastery lists came
+// from RPCs that return only users with a value above zero. The other global
+// lists, and every weekly list, always included zero-valued participants. A
+// user's own rank (user rankings) still counts zeros, tied at "users with a
+// value + 1", as before.
 const GLOBAL_METRICS = [
-  { key: 'totalVolume', metric: 'total_volume_kg' },
-  { key: 'workoutCount', metric: 'total_workouts' },
-  { key: 'longestStreak', metric: 'longest_streak' },
-  { key: 'currentStreak', metric: 'current_streak' },
-  { key: 'prCount', metric: 'pr_count' },
-  { key: 'exerciseMastery', metric: 'exercise_mastery' },
+  { key: 'totalVolume', metric: 'total_volume_kg', excludeZero: false },
+  { key: 'workoutCount', metric: 'total_workouts', excludeZero: false },
+  { key: 'longestStreak', metric: 'longest_streak', excludeZero: false },
+  { key: 'currentStreak', metric: 'current_streak', excludeZero: false },
+  { key: 'prCount', metric: 'pr_count', excludeZero: true },
+  { key: 'exerciseMastery', metric: 'exercise_mastery', excludeZero: true },
 ] as const;
 
 // Weekly metrics snapshotted per ISO week (period = the week's Monday).
 // current_streak is not a per-week value; it reads the all-time snapshot.
 const WEEK_PERIOD_METRICS = new Set(['total_volume_kg', 'total_workouts', 'pr_count']);
-
-function utcIsoWeekMonday(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
-}
 
 interface SnapshotRow {
   user_id: string;
@@ -210,13 +221,16 @@ async function readTopEntries(
   metric: string,
   period: string,
   totalUsers: number,
+  options: { excludeZero?: boolean } = {},
 ): Promise<LeaderboardEntry[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('leaderboard_snapshots')
     .select('user_id, value, rank, profiles!inner(display_name, avatar_url, leaderboard_participation)')
     .eq('metric', metric)
     .eq('period', period)
-    .eq('profiles.leaderboard_participation', true)
+    .eq('profiles.leaderboard_participation', true);
+  if (options.excludeZero) query = query.gt('value', 0);
+  const { data, error } = await query
     .order('rank', { ascending: true })
     .order('user_id', { ascending: true })
     .range(0, TOP_LIMIT - 1);
@@ -417,7 +431,9 @@ async function computeGlobalRankings(supabase: SupabaseAnyClient): Promise<Globa
   const totalUsers = await countSnapshotUsers(supabase, 'total_workouts', ALL_TIME);
 
   const lists = await Promise.all(
-    GLOBAL_METRICS.map(({ metric }) => readTopEntries(supabase, metric, ALL_TIME, totalUsers)),
+    GLOBAL_METRICS.map(({ metric, excludeZero }) =>
+      readTopEntries(supabase, metric, ALL_TIME, totalUsers, { excludeZero })
+    ),
   );
 
   const result = {} as GlobalLeaderboard;
@@ -479,9 +495,7 @@ async function computeWeeklyRankings(
 
   // Weekly snapshots are keyed by the UTC ISO-week Monday. A week the refresh
   // has not computed (future, or older than the 12 weeks kept) has no rows.
-  // The SPA derives weekStart in the browser's local time, so near a day
-  // boundary it may not be a UTC Monday; snap it to its UTC ISO-week Monday.
-  const period = WEEK_PERIOD_METRICS.has(metricConfig.metric) ? utcIsoWeekMonday(start) : ALL_TIME;
+  const period = WEEK_PERIOD_METRICS.has(metricConfig.metric) ? start : ALL_TIME;
   const totalUsers = await countSnapshotUsers(supabase, metricConfig.metric, period);
   const entries = totalUsers === 0
     ? []

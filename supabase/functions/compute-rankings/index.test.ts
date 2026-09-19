@@ -3,6 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   type ComputeRankingsDependencies,
   createComputeRankingsHandler,
+  nearestUtcMonday,
 } from "./index.ts";
 
 // The service client is a real supabase-js client whose fetch is a fake
@@ -127,12 +128,18 @@ function createHarness(options: HarnessOptions = {}) {
       const metric = eqParam(params, "metric");
       const period = eqParam(params, "period");
       const user = eqParam(params, "user_id");
-      assertEquals(params.get("profiles.leaderboard_participation"), "eq.true");
+      // PostgREST semantics: an embedded filter excludes the parent row only
+      // with `!inner`; a plain embed just nulls the embedded object.
+      const innerParticipation =
+        (params.get("select") ?? "").includes("profiles!inner(") &&
+        params.get("profiles.leaderboard_participation") === "eq.true";
+      const valueFilter = params.get("value");
       let rows = snapshot.filter((row) =>
         (metric === null || row.metric === metric) &&
         (period === null || row.period === period) &&
         (user === null || row.user_id === user) &&
-        !optedOut.has(row.user_id)
+        (valueFilter !== "gt.0" || row.value > 0) &&
+        !(innerParticipation && optedOut.has(row.user_id))
       );
       rows = [...rows].sort((a, b) => a.rank - b.rank || a.user_id.localeCompare(b.user_id));
       const total = rows.length;
@@ -143,7 +150,7 @@ function createHarness(options: HarnessOptions = {}) {
         metric: row.metric,
         value: row.value,
         rank: row.rank,
-        profiles: {
+        profiles: optedOut.has(row.user_id) ? null : {
           display_name: `Athlete ${row.user_id.slice(-4)}`,
           avatar_url: null,
           leaderboard_participation: true,
@@ -377,4 +384,101 @@ Deno.test("an empty snapshot yields empty leaderboards", async () => {
   const body = await response.json();
   assertEquals(body.prCount, []);
   assertEquals(body.totalVolume, []);
+});
+
+Deno.test("nearestUtcMonday rounds to the nearest Monday", () => {
+  assertEquals(nearestUtcMonday("2026-09-13"), "2026-09-14"); // Sunday -> next
+  assertEquals(nearestUtcMonday("2026-09-14"), "2026-09-14"); // Monday
+  assertEquals(nearestUtcMonday("2026-09-15"), "2026-09-14"); // Tuesday -> back
+  assertEquals(nearestUtcMonday("2026-09-17"), "2026-09-14"); // Thursday -> back
+  assertEquals(nearestUtcMonday("2026-09-18"), "2026-09-21"); // Friday -> next
+  assertEquals(nearestUtcMonday("2026-09-19"), "2026-09-21"); // Saturday -> next
+  assertEquals(nearestUtcMonday("2026-12-27"), "2026-12-28"); // across a month
+});
+
+const VOLUME_EVENT = {
+  id: "evt-snap",
+  name: "Volume Week",
+  metric: "total_volume_kg",
+  metric_label: "Total Volume",
+  start_date: "2026-01-01",
+  end_date: "2099-01-01",
+};
+
+for (
+  const [label, weekStart, monday] of [
+    ["Sunday", "2026-09-13", "2026-09-14"],
+    ["Saturday", "2026-09-19", "2026-09-21"],
+    ["Monday", "2026-09-14", "2026-09-14"],
+  ] as const
+) {
+  Deno.test(`a ${label} weekStart (${weekStart}) reads the ${monday} snapshot with matching metadata`, async () => {
+    const { handler, requests } = createHarness({ event: VOLUME_EVENT });
+    const response = await handler(rankingRequest({ type: "weekly", weekStart }));
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.startDate, monday);
+    const end = new Date(`${monday}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 6);
+    assertEquals(body.endDate, end.toISOString().slice(0, 10));
+    const snapshotReads = requests.filter((r) => r.path === "leaderboard_snapshots");
+    assert(snapshotReads.length > 0);
+    for (const read of snapshotReads) {
+      assertEquals(new URL(read.url).searchParams.get("period"), `eq.${monday}`);
+    }
+    const eventRead = requests.find((r) => r.path === "leaderboard_events");
+    assert(eventRead);
+    assertEquals(new URL(eventRead.url).searchParams.get("end_date"), `gte.${monday}`);
+  });
+}
+
+Deno.test("global lists hide a user who opted out after the last refresh", async () => {
+  const optedOutUser = userId(1); // rank 1 on every metric in the fixture
+  const { handler, requests } = createHarness({ optedOut: new Set([optedOutUser]) });
+  const response = await handler(rankingRequest({ type: "global" }));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  for (const list of Object.values(body) as Array<Array<{ userId: string }>>) {
+    assert(!list.some((entry) => entry.userId === optedOutUser));
+  }
+  for (const read of requests.filter((r) => r.path === "leaderboard_snapshots")) {
+    assert(
+      (new URL(read.url).searchParams.get("select") ?? "").includes("profiles!inner("),
+      `snapshot read without an inner participation embed: ${read.url}`,
+    );
+  }
+});
+
+Deno.test("global PR-count and mastery lists exclude zero values; other lists keep them", async () => {
+  // 3 participants: two with a value, the viewer at zero on every metric.
+  const snapshot: SnapshotFixtureRow[] = [];
+  for (
+    const metric of [
+      "total_volume_kg",
+      "total_workouts",
+      "longest_streak",
+      "current_streak",
+      "pr_count",
+      "exercise_mastery",
+    ]
+  ) {
+    snapshot.push(
+      { metric, period: "all_time", user_id: userId(1), value: 5, rank: 1 },
+      { metric, period: "all_time", user_id: userId(2), value: 3, rank: 2 },
+      { metric, period: "all_time", user_id: VIEWER_ID, value: 0, rank: 3 },
+    );
+  }
+  const { handler } = createHarness({ snapshot });
+  const global = await (await handler(rankingRequest({ type: "global" }))).json();
+  assertEquals(global.prCount.map((e: { userId: string }) => e.userId), [userId(1), userId(2)]);
+  assertEquals(global.exerciseMastery.length, 2);
+  assertEquals(global.totalVolume.length, 3);
+  assertEquals(global.currentStreak.length, 3);
+
+  // The zero-valued viewer's own rank still follows the N+1 tie rule.
+  const mine = await (await handler(rankingRequest({ type: "user", userId: VIEWER_ID }))).json();
+  const prCount = mine.find((r: { metric: string }) => r.metric === "prCount");
+  assertEquals(prCount.rank, 3);
+  assertEquals(prCount.value, 0);
+  assertEquals(prCount.totalUsers, 3);
 });

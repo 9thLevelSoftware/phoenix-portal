@@ -3,7 +3,8 @@
 -- A tombstoned personal record is excluded from every PR rank: the snapshot
 -- written by refresh_leaderboard_snapshots() and the get_pr_count_rankings /
 -- get_user_pr_rank RPCs. Also covers weekly per-cable volume, mastery,
--- non-participants, grants and the snapshot's RLS.
+-- non-participants, previous-week rebuild, 12-period retention, grants
+-- (service_role only), the opt-out trigger and the pg_cron job.
 
 BEGIN;
 
@@ -19,6 +20,11 @@ SELECT ok(
     (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.leaderboard_snapshots'::regclass),
     'leaderboard_snapshots has RLS enabled'
 );
+SELECT is_empty(
+    $$ SELECT policyname FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'leaderboard_snapshots' $$,
+    'leaderboard_snapshots has no policies (service_role only)'
+);
 SELECT ok(
     (SELECT prosecdef FROM pg_proc WHERE oid = 'public.refresh_leaderboard_snapshots()'::regprocedure),
     'refresh_leaderboard_snapshots is SECURITY DEFINER'
@@ -31,31 +37,71 @@ SELECT is(has_function_privilege('service_role', 'public.refresh_leaderboard_sna
     'service_role can run refresh_leaderboard_snapshots');
 SELECT is(has_function_privilege('authenticated', 'public.remove_leaderboard_snapshots_on_opt_out()', 'EXECUTE'), false,
     'authenticated cannot call the opt-out trigger function');
+SELECT is(has_function_privilege('service_role', 'private.ensure_leaderboard_refresh_job()', 'EXECUTE'), false,
+    'service_role cannot call the cron scheduling helper');
 SELECT is(has_table_privilege('anon', 'public.leaderboard_snapshots', 'SELECT'), false,
     'anon cannot read leaderboard_snapshots');
+SELECT is(has_table_privilege('authenticated', 'public.leaderboard_snapshots', 'SELECT'), false,
+    'authenticated cannot read leaderboard_snapshots');
 SELECT is(has_table_privilege('authenticated', 'public.leaderboard_snapshots', 'INSERT'), false,
     'authenticated cannot write leaderboard_snapshots');
+SELECT is(has_table_privilege('service_role', 'public.leaderboard_snapshots', 'SELECT'), true,
+    'service_role can read leaderboard_snapshots');
+SELECT ok(
+    pg_get_functiondef('public.remove_leaderboard_snapshots_on_opt_out()'::regprocedure)
+      ~ 'pg_advisory_xact_lock\(hashtext\(''public\.refresh_leaderboard_snapshots''\)\)[\s\S]*DELETE FROM public\.leaderboard_snapshots',
+    'opt-out trigger takes the refresh advisory lock before deleting (serializes with a running refresh)'
+);
 
-CREATE OR REPLACE FUNCTION pg_temp.cron_job_present() RETURNS boolean
+-- pg_cron job. The stock local/CI stack ships pg_cron but does not install
+-- it, so install it here (rolled back with this transaction) and run the
+-- migration's scheduling helper; the assertion is never vacuous where
+-- pg_cron is available. Where the extension is installed before migrations
+-- (as in prod), the migration itself must already have created the job.
+CREATE OR REPLACE FUNCTION pg_temp.cron_mode() RETURNS text
+LANGUAGE plpgsql
+AS $fn$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        RETURN 'installed';
+    ELSIF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
+        CREATE EXTENSION pg_cron;
+        PERFORM private.ensure_leaderboard_refresh_job();
+        RETURN 'installed-by-test';
+    END IF;
+    RETURN 'unavailable';
+END
+$fn$;
+
+CREATE OR REPLACE FUNCTION pg_temp.leaderboard_job_count() RETURNS integer
 LANGUAGE plpgsql
 AS $fn$
 DECLARE
     v_count integer;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-        RETURN true;
-    END IF;
     EXECUTE $q$
         SELECT count(*) FROM cron.job
         WHERE jobname = 'refresh-leaderboard-snapshots'
           AND schedule = '*/15 * * * *'
           AND command = 'SELECT public.refresh_leaderboard_snapshots()'
     $q$ INTO v_count;
-    RETURN v_count = 1;
+    RETURN v_count;
 END
 $fn$;
 
-SELECT ok(pg_temp.cron_job_present(), 'refresh-leaderboard-snapshots is scheduled every 15 minutes (when pg_cron is installed)');
+CREATE TEMP TABLE cron_state ON COMMIT DROP AS SELECT pg_temp.cron_mode() AS mode;
+SELECT diag('pg_cron: ' || mode) FROM cron_state;
+
+SELECT CASE WHEN (SELECT mode FROM cron_state) = 'unavailable'
+    THEN skip('pg_cron is not available in this Postgres build', 2)
+    ELSE collect_tap(
+        is(pg_temp.leaderboard_job_count(), 1,
+           'refresh-leaderboard-snapshots is scheduled every 15 minutes'),
+        is((SELECT private.ensure_leaderboard_refresh_job()::text || '/' || pg_temp.leaderboard_job_count()::text),
+           'true/1',
+           'scheduling is idempotent (re-run keeps one job)')
+    )
+END;
 
 SELECT diag('database:leaderboard-behaviour');
 
@@ -79,6 +125,18 @@ UPDATE public.profiles SET leaderboard_participation = false;
 UPDATE public.profiles SET leaderboard_participation = true
 WHERE id IN ('a1111111-1111-4111-8111-111111111111', 'b2222222-2222-4222-8222-222222222222');
 
+CREATE OR REPLACE FUNCTION pg_temp.this_week() RETURNS date
+LANGUAGE sql
+AS $fn$ SELECT (date_trunc('week', now() AT TIME ZONE 'UTC'))::date $fn$;
+
+-- Middle of the current / previous UTC ISO week.
+CREATE OR REPLACE FUNCTION pg_temp.in_week(p_offset_weeks int) RETURNS timestamptz
+LANGUAGE sql
+AS $fn$
+    SELECT ((pg_temp.this_week() + 7 * p_offset_weeks)::timestamp AT TIME ZONE 'UTC')
+           + INTERVAL '3 days 12 hours'
+$fn$;
+
 INSERT INTO public.personal_records (user_id, exercise_name, value, achieved_at, deleted_at)
 VALUES
     ('a1111111-1111-4111-8111-111111111111', 'Squat', 100, now(), NULL),
@@ -98,7 +156,7 @@ VALUES
     ('b0000000-0000-4000-8000-000000000001', 'b2222222-2222-4222-8222-222222222222', now(), 50),
     ('b0000000-0000-4000-8000-000000000002', 'b2222222-2222-4222-8222-222222222222', now() - INTERVAL '30 days', 1000);
 
--- Mastery: B does "Deadlift" in 10 distinct sessions (older than this week).
+-- Mastery: B does "Deadlift" in 10 distinct sessions (older than two weeks).
 INSERT INTO public.workout_sessions (id, user_id, started_at, total_volume)
 SELECT ('b1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
        'b2222222-2222-4222-8222-222222222222'::uuid,
@@ -111,6 +169,14 @@ SELECT ('b1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
        'b2222222-2222-4222-8222-222222222222'::uuid,
        'Deadlift'
 FROM generate_series(1, 10) AS g;
+
+-- History rows the refresh must keep untouched (12 periods: current + 11
+-- previous) or prune (older).
+INSERT INTO public.leaderboard_snapshots (metric, period, user_id, value, rank)
+VALUES
+    ('total_volume_kg', (pg_temp.this_week() - 14)::text, 'a1111111-1111-4111-8111-111111111111', 999, 1),
+    ('total_volume_kg', (pg_temp.this_week() - 77)::text, 'a1111111-1111-4111-8111-111111111111', 777, 1),
+    ('total_volume_kg', (pg_temp.this_week() - 84)::text, 'a1111111-1111-4111-8111-111111111111', 888, 1);
 
 SELECT lives_ok(
     'SELECT public.refresh_leaderboard_snapshots()',
@@ -131,10 +197,6 @@ AS $fn$
     WHERE s.metric = p_metric AND s.period = p_period AND s.user_id = p_user
 $fn$;
 
-CREATE OR REPLACE FUNCTION pg_temp.this_week() RETURNS text
-LANGUAGE sql
-AS $fn$ SELECT (date_trunc('week', now() AT TIME ZONE 'UTC'))::date::text $fn$;
-
 SELECT results_eq(
     $$ SELECT value, rank FROM pg_temp.snap('pr_count', 'all_time', 'b2222222-2222-4222-8222-222222222222') $$,
     $$ VALUES (2::numeric, 1::bigint) $$,
@@ -146,7 +208,7 @@ SELECT results_eq(
     'snapshot: A''s two tombstoned PRs are excluded from pr_count and rank'
 );
 SELECT results_eq(
-    $$ SELECT value, rank FROM pg_temp.snap('pr_count', pg_temp.this_week(), 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ SELECT value, rank FROM pg_temp.snap('pr_count', pg_temp.this_week()::text, 'a1111111-1111-4111-8111-111111111111') $$,
     $$ VALUES (1::numeric, 2::bigint) $$,
     'snapshot: tombstoned PRs are excluded from the weekly pr_count'
 );
@@ -163,14 +225,20 @@ SELECT is(
     'snapshot: one row per participant per metric (zeros included)'
 );
 SELECT results_eq(
-    $$ SELECT value, rank FROM pg_temp.snap('total_volume_kg', pg_temp.this_week(), 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ SELECT value, rank FROM pg_temp.snap('total_volume_kg', pg_temp.this_week()::text, 'a1111111-1111-4111-8111-111111111111') $$,
     $$ VALUES (100::numeric, 1::bigint) $$,
     'snapshot: weekly volume sums this week''s stored per-cable volume'
 );
 SELECT results_eq(
-    $$ SELECT value, rank FROM pg_temp.snap('total_volume_kg', pg_temp.this_week(), 'b2222222-2222-4222-8222-222222222222') $$,
+    $$ SELECT value, rank FROM pg_temp.snap('total_volume_kg', pg_temp.this_week()::text, 'b2222222-2222-4222-8222-222222222222') $$,
     $$ VALUES (50::numeric, 2::bigint) $$,
     'snapshot: sessions outside the week are not counted'
+);
+SELECT is(
+    (SELECT count(*) FROM public.leaderboard_snapshots
+     WHERE period = (pg_temp.this_week() - 7)::text AND metric = 'total_volume_kg'),
+    2::bigint,
+    'snapshot: the previous week is rebuilt too (a row per participant)'
 );
 SELECT results_eq(
     $$ SELECT value, rank FROM pg_temp.snap('exercise_mastery', 'all_time', 'b2222222-2222-4222-8222-222222222222') $$,
@@ -181,6 +249,53 @@ SELECT results_eq(
     $$ SELECT value, rank FROM pg_temp.snap('exercise_mastery', 'all_time', 'a1111111-1111-4111-8111-111111111111') $$,
     $$ VALUES (0::numeric, 2::bigint) $$,
     'snapshot: zero-valued participants tie below everyone with a value'
+);
+
+-- Retention: exactly 12 weekly periods are kept; older weeks are preserved
+-- as written (not rebuilt), and anything older is pruned.
+SELECT results_eq(
+    $$ SELECT value FROM pg_temp.snap('total_volume_kg', (pg_temp.this_week() - 14)::text, 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ VALUES (999::numeric) $$,
+    'retention: a week two back is preserved untouched'
+);
+SELECT results_eq(
+    $$ SELECT value FROM pg_temp.snap('total_volume_kg', (pg_temp.this_week() - 77)::text, 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ VALUES (777::numeric) $$,
+    'retention: the 12th period (current + 11 previous) is kept'
+);
+SELECT is_empty(
+    $$ SELECT 1 FROM public.leaderboard_snapshots WHERE period = (pg_temp.this_week() - 84)::text $$,
+    'retention: a 13th-oldest week is pruned'
+);
+SELECT ok(
+    (SELECT count(DISTINCT period) FROM public.leaderboard_snapshots WHERE period <> 'all_time') <= 12,
+    'retention: at most 12 weekly periods remain'
+);
+
+-- Late sync and later tombstone for the week just closed: the previous week
+-- is recomputed by the next refresh.
+INSERT INTO public.workout_sessions (id, user_id, started_at, total_volume)
+VALUES ('a0000000-0000-4000-8000-000000000002', 'a1111111-1111-4111-8111-111111111111', pg_temp.in_week(-1), 40);
+INSERT INTO public.personal_records (id, user_id, exercise_name, value, achieved_at)
+VALUES ('ad000000-0000-4000-8000-000000000001', 'a1111111-1111-4111-8111-111111111111', 'Press', 40, pg_temp.in_week(-1));
+SELECT public.refresh_leaderboard_snapshots();
+SELECT results_eq(
+    $$ SELECT value FROM pg_temp.snap('total_volume_kg', (pg_temp.this_week() - 7)::text, 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ VALUES (40::numeric) $$,
+    'previous week: a late-synced session lands in the week just closed'
+);
+SELECT results_eq(
+    $$ SELECT value FROM pg_temp.snap('pr_count', (pg_temp.this_week() - 7)::text, 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ VALUES (1::numeric) $$,
+    'previous week: a late-synced PR counts'
+);
+UPDATE public.personal_records SET deleted_at = now()
+WHERE id = 'ad000000-0000-4000-8000-000000000001';
+SELECT public.refresh_leaderboard_snapshots();
+SELECT results_eq(
+    $$ SELECT value FROM pg_temp.snap('pr_count', (pg_temp.this_week() - 7)::text, 'a1111111-1111-4111-8111-111111111111') $$,
+    $$ VALUES (0::numeric) $$,
+    'previous week: a PR tombstoned after the week closed stops counting'
 );
 
 SELECT results_eq(
@@ -195,29 +310,21 @@ SELECT results_eq(
     'get_user_pr_rank excludes tombstoned PRs'
 );
 
--- Opting out hides the user's rows from readers at once.
-INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
-VALUES ('a1111111-1111-4111-8111-111111111111'::uuid, 'FLAME', 'active', now() + INTERVAL '30 days')
-ON CONFLICT (user_id) DO UPDATE
-SET tier = EXCLUDED.tier, status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end;
-
+-- Browser roles cannot read the snapshot directly.
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims',
     '{"sub":"a1111111-1111-4111-8111-111111111111","role":"authenticated"}', true);
-SELECT is(
-    (SELECT count(DISTINCT user_id) FROM public.leaderboard_snapshots),
-    2::bigint,
-    'RLS: a FLAME user reads every participant''s rows'
+SELECT throws_ok(
+    'SELECT count(*) FROM public.leaderboard_snapshots',
+    '42501',
+    NULL,
+    'authenticated cannot SELECT leaderboard_snapshots'
 );
 
+-- B opts out through their own (RLS-bound) profile update; the trigger
+-- removes B's rows at once.
 SELECT set_config('request.jwt.claims',
     '{"sub":"b2222222-2222-4222-8222-222222222222","role":"authenticated"}', true);
-SELECT is(
-    (SELECT count(*) FROM public.leaderboard_snapshots),
-    0::bigint,
-    'RLS: a user below FLAME reads nothing'
-);
--- B opts out through their own (RLS-bound) profile update.
 UPDATE public.profiles SET leaderboard_participation = false
 WHERE id = 'b2222222-2222-4222-8222-222222222222';
 RESET ROLE;
@@ -228,11 +335,24 @@ SELECT is(
     0::bigint,
     'opt-out deletes the user''s snapshot rows before the next refresh'
 );
+SELECT ok(
+    (SELECT count(*) FROM public.leaderboard_snapshots
+     WHERE user_id = 'a1111111-1111-4111-8111-111111111111') > 0,
+    'opt-out leaves other participants'' rows'
+);
+
+-- The refresh's final participation re-check removes rows of a user whose
+-- opt-out bypassed the trigger (e.g. participation cleared in bulk with
+-- triggers disabled): simulate with a stale row in a retained week the
+-- refresh does not rebuild.
+INSERT INTO public.leaderboard_snapshots (metric, period, user_id, value, rank)
+VALUES ('total_workouts', (pg_temp.this_week() - 14)::text, 'c3333333-3333-4333-8333-333333333333', 1, 1);
+SELECT public.refresh_leaderboard_snapshots();
 SELECT is(
     (SELECT count(*) FROM public.leaderboard_snapshots
-     WHERE user_id = 'a1111111-1111-4111-8111-111111111111'),
-    9::bigint,
-    'opt-out leaves other participants'' rows (6 all-time + 3 weekly)'
+     WHERE user_id IN ('b2222222-2222-4222-8222-222222222222', 'c3333333-3333-4333-8333-333333333333')),
+    0::bigint,
+    'refresh leaves no rows for non-participants in any period'
 );
 
 SELECT * FROM finish();
