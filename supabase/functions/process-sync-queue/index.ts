@@ -92,19 +92,42 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return diff === 0;
 }
 
-function isServiceRoleRequest(req: Request): boolean {
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+type EnvReader = (key: string) => string | undefined;
+
+export interface ProcessSyncQueueDependencies {
+  /** Environment lookup (Deno.env.get in production). */
+  env: EnvReader;
+  /** Service-role client factory. */
+  createAdminClient: (url: string, serviceRoleKey: string) => DbClient;
+  /** Used to call the provider `${provider}-sync` functions. */
+  fetch: typeof fetch;
+}
+
+function defaultProcessSyncQueueDependencies(): ProcessSyncQueueDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createAdminClient: (url, key) => createClient(url, key),
+    fetch: (input, init) => fetch(input, init),
+  };
+}
+
+function isServiceRoleRequest(req: Request, env: EnvReader): boolean {
+  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
   if (!serviceRoleKey) return false;
   const authHeader = req.headers.get('Authorization') ?? '';
   return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
 }
 
-function hasValidCronSecret(req: Request): boolean {
+function hasValidCronSecret(req: Request, env: EnvReader): boolean {
   const readSecret = (key: string): string | undefined => {
-    const value = Deno.env.get(key)?.trim();
+    const value = env(key)?.trim();
     return value ? value : undefined;
   };
+  // CRON_SECRET is the name Operator Action 7 sets from the Vault secret
+  // `edge_cron_secret` that private.invoke_edge_function sends (KD-10). The
+  // older per-function names stay accepted as fallbacks.
   const expectedSecret =
+    readSecret('CRON_SECRET') ??
     readSecret('PROCESS_SYNC_QUEUE_SECRET') ??
     readSecret('CRON_SYNC_QUEUE_SECRET');
   if (!expectedSecret) return false;
@@ -112,23 +135,37 @@ function hasValidCronSecret(req: Request): boolean {
   return timingSafeEqualString(expectedSecret, provided);
 }
 
-Deno.serve(async (req) => {
+export function createProcessSyncQueueHandler(
+  dependencies: ProcessSyncQueueDependencies = defaultProcessSyncQueueDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => processSyncQueue(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createProcessSyncQueueHandler());
+}
+
+async function processSyncQueue(
+  req: Request,
+  deps: ProcessSyncQueueDependencies,
+): Promise<Response> {
+  const { env } = deps;
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
   }
 
-  if (!isServiceRoleRequest(req) && !hasValidCronSecret(req)) {
+  if (!isServiceRoleRequest(req, env) && !hasValidCronSecret(req, env)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = deps.createAdminClient(
+    env('SUPABASE_URL')!,
+    env('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
   const results = { processed: 0, failed: 0, skipped: 0 };
@@ -316,6 +353,7 @@ Deno.serve(async (req) => {
         // Call provider-specific sync function with exponential backoff on transient errors
         await backOff(
           () => callSyncFunction(
+            deps,
             task.provider,
             task.user_id,
             task.sync_type ?? 'incremental',
@@ -385,12 +423,13 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify(results), {
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
-});
+}
 
 /**
  * Call the provider-specific sync Edge Function.
  */
 async function callSyncFunction(
+  deps: ProcessSyncQueueDependencies,
   provider: string,
   userId: string,
   syncType: string,
@@ -405,12 +444,12 @@ async function callSyncFunction(
   }
 
   const functionName = `${provider}-sync`;
-  const response = await fetch(
-    `${Deno.env.get('SUPABASE_URL')}/functions/v1/${functionName}`,
+  const response = await deps.fetch(
+    `${deps.env('SUPABASE_URL')}/functions/v1/${functionName}`,
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Authorization': `Bearer ${deps.env('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ user_id: userId, sync_type: syncType, queue_id: queueId }),
