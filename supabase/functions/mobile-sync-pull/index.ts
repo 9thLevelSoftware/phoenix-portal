@@ -1262,6 +1262,9 @@ async function mobileSyncPullHandler(
             characterClass: rpgAttributes.character_class,
             level: Math.round(Number(rpgAttributes.level ?? 1)),
             experiencePoints: Math.round(Number(rpgAttributes.experience_points ?? 0)),
+            // The conflict key a rejected device must beat. Additive response
+            // key; old builds ignore it (R-8).
+            lastWorkoutAt: rpgAttributes.last_workout_at,
             updatedAt: rpgAttributes.updated_at,
           }
         : null;
@@ -1275,19 +1278,37 @@ async function mobileSyncPullHandler(
         .maybeSingle();
       if (gamificationError) return readFailure('gamification stats', gamificationError, cors);
 
-      gamificationDto = gamificationStats
-        ? {
-            id: gamificationStats.id,
-            userId: gamificationStats.user_id,
-            totalWorkouts: gamificationStats.total_workouts,
-            totalReps: gamificationStats.total_reps,
-            totalVolumeKg: gamificationStats.total_volume_kg,
-            longestStreak: gamificationStats.longest_streak,
-            currentStreak: gamificationStats.current_streak,
-            totalTimeSeconds: gamificationStats.total_time_seconds,
-            updatedAt: gamificationStats.updated_at,
-          }
-        : null;
+      // The device gets back the DEVICE-REPORTED shadow columns, never the
+      // server-derived ones (20260920002500, review round 1 R-10). The
+      // installed app merges this row with an unconditional server-wins
+      // INSERT OR REPLACE — no max(), no gate — and the server's definitions
+      // differ from the phone's (grouped portal sessions vs the phone's own
+      // profile-scoped count; per-cable volume vs the machine total), so
+      // serving derived values here would rewrite lifetime stats and badge
+      // progress on every installed build. The derived columns are for the
+      // portal's Profile screen and the leaderboards.
+      //
+      // `device_total_workouts IS NULL` means nothing was ever device-
+      // reported for this account, so there is nothing to tell the phone:
+      // emit null, which mobile's `?.let` leaves the local row alone for
+      // (as it did before this change, when no stats row existed at all).
+      gamificationDto =
+        gamificationStats && gamificationStats.device_total_workouts !== null
+          ? {
+              id: gamificationStats.id,
+              userId: gamificationStats.user_id,
+              totalWorkouts: gamificationStats.device_total_workouts,
+              totalReps: gamificationStats.device_total_reps,
+              totalVolumeKg: gamificationStats.device_total_volume_kg,
+              longestStreak: gamificationStats.device_longest_streak,
+              currentStreak: gamificationStats.device_current_streak,
+              totalTimeSeconds: gamificationStats.device_total_time_seconds,
+              // The conflict key the device must beat to have a write
+              // accepted. Additive response key; old builds ignore it (R-8).
+              lastWorkoutAt: gamificationStats.last_workout_at,
+              updatedAt: gamificationStats.updated_at,
+            }
+          : null;
 
       // Local profiles (always included on final page)
       const { data: profilesData, error: profilesError } = await supabase

@@ -668,6 +668,12 @@ export type Database = {
 				Row: {
 					best_streak: number;
 					current_streak: number;
+					device_current_streak: number | null;
+					device_longest_streak: number | null;
+					device_total_reps: number | null;
+					device_total_time_seconds: number | null;
+					device_total_volume_kg: number | null;
+					device_total_workouts: number | null;
 					id: string;
 					last_workout_at: string | null;
 					longest_streak: number;
@@ -682,6 +688,12 @@ export type Database = {
 				Insert: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
 					last_workout_at?: string | null;
 					longest_streak?: number;
@@ -696,6 +708,12 @@ export type Database = {
 				Update: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
 					last_workout_at?: string | null;
 					longest_streak?: number;
@@ -2625,6 +2643,18 @@ export type Database = {
 					allowed: boolean;
 					remaining: number;
 					retry_after_seconds: number;
+				}[];
+			};
+			derive_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: {
+					current_streak: number;
+					longest_streak: number;
+					pr_count: number;
+					total_reps: number;
+					total_time_seconds: number;
+					total_volume_kg: number;
+					total_workouts: number;
 				}[];
 			};
 			detect_plateaus: {
