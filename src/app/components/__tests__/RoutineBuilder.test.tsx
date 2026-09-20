@@ -705,6 +705,30 @@ describe("RoutineBuilder", () => {
 		);
 	});
 
+	it("sends the stored exercise id back so the row survives the edit", async () => {
+		// Mobile keys per-exercise rack and scaling defaults by
+		// routine_exercises.id. If the builder drops the id, the update RPC
+		// mints a new one and those defaults are silently reset.
+		mockStoredRoutine("ECHO");
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(
+			await screen.findByRole("button", { name: /save routine/i }),
+		);
+
+		expect(mockUpdateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				exercises: [
+					expect.objectContaining({
+						id: "33333333-3333-4333-8333-333333333333",
+					}),
+				],
+			}),
+			expect.any(Object),
+		);
+	});
+
 	it("reads legacy portal settings as the machine default and hex colours as names", async () => {
 		mockStoredRoutine("ECHO", {
 			eccentric_load: "light",
