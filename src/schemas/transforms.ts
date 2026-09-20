@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 // Per-cable to total weight conversion
 // The trainer has dual cables; DB stores per-cable, portal shows total
@@ -255,7 +256,9 @@ export const routineExerciseSchema = z.object({
 	weight: weightTransform,
 	rest_seconds: z.number(),
 	duration_seconds: z.number().nullable().optional(),
-	mode: z.string(),
+	// Stored as wire names; legacy display names / aliases normalize to wire.
+	// Unknown values pass through so one odd row can't blank the routine list.
+	mode: z.string().transform((mode) => toWireMode(mode) ?? mode),
 	order_index: z.number(),
 	superset_id: z.string().nullable().optional(),
 	superset_color: z.string().nullable().optional(),

@@ -13,14 +13,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	createNestedSessionFixture,
-	createRepSummaryFixture,
-	createSessionFixturesForAllModes,
-	type NestedSessionFixture,
-	VELOCITY_ZONES,
-	WORKOUT_MODES,
-} from "../fixtures";
+import { WORKOUT_MODES } from "../fixtures";
 import {
 	callPullEndpoint,
 	callPushEndpoint,
@@ -36,17 +29,12 @@ import {
 	type SessionDto,
 	type SetDto,
 } from "../helpers/edge-function-harness";
-import {
-	getAllMockSessions,
-	getMockSession,
-	resetMockStore,
-} from "../helpers/mock-edge-functions";
+import { resetMockStore } from "../helpers/mock-edge-functions";
 
 // Configure longer timeout for integration tests
 vi.setConfig({ testTimeout: 30000 });
 
 describe("Workout Round-Trip Tests", () => {
-	const testUserId = "test-user-" + Date.now();
 	let testUser: { id: string; email: string; accessToken: string };
 
 	beforeEach(async () => {

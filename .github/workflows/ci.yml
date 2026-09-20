@@ -10,8 +10,11 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale PR runs, but never cancel post-merge CI on main: every main
+  # commit gets its own group (keyed by SHA), so neither an in-progress nor a
+  # pending main run can be replaced by a newer one.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   dependency-audit:
@@ -90,6 +93,10 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: true
+      - name: Offline/PWA smoke (production build + vite preview)
+        run: npm run test:e2e:pwa
+        env:
+          CI: true
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
@@ -112,6 +119,7 @@ jobs:
           VITE_SUPABASE_URL: "https://placeholder.supabase.co"
           VITE_SUPABASE_ANON_KEY: "placeholder-anon-key"
       - run: npm run assert:no-sourcemaps
+      - run: npm run assert:bundle-budget
       # TODO: Add post-deploy smoke test (curl production URL for HTTP 200)
       # A real Cloudflare Pages deploy step should be followed by a smoke test
       # that verifies the deployed URL returns HTTP 200, catching any env-var

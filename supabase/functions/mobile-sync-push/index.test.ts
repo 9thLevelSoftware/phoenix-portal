@@ -16,6 +16,7 @@ import {
   createMobileSyncPushHandler,
   localProfilesPushChangesRows,
 } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 interface ByteGoldens {
   version: number;
@@ -45,7 +46,10 @@ const VALID_AUTH_RESULT = {
 };
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
   return Array.from(
     new Uint8Array(digest),
     (byte) => byte.toString(16).padStart(2, "0"),
@@ -353,7 +357,7 @@ function rawRequest(
   return new Request("http://localhost/functions/v1/mobile-sync-push", {
     method: "POST",
     headers,
-    body,
+    body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
   });
 }
 
@@ -411,6 +415,7 @@ function streamingRawRequest(
 function permissiveQuery(
   table: string,
   onWrite: (method: string) => void,
+  onCall: (method: string, args: unknown[]) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
@@ -438,6 +443,7 @@ function permissiveQuery(
   ];
   for (const method of chainMethods) {
     query[method] = (..._args: unknown[]) => {
+      onCall(method, _args);
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method);
@@ -477,6 +483,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -494,8 +501,10 @@ function makeHarness(
     fromError?: unknown;
     httpSendBehavior?: () => Promise<unknown>;
     rpcBehavior?: RpcBehavior;
+    sessionHierarchyResult?: { data: unknown; error: unknown };
     personalRecordsResult?: { data: unknown; error: unknown };
     localProfilesResult?: { data: unknown; error: unknown };
+    preferenceProfilesResult?: { data: unknown; error: unknown };
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -505,6 +514,7 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }> = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -529,10 +539,14 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
+      }, (method, args) => {
+        adminQueryCalls.push({ table, method, args });
       }, table === "personal_records"
         ? options.personalRecordsResult
         : table === "local_profiles"
         ? options.localProfilesResult
+        : table === "local_profile_preferences"
+        ? options.preferenceProfilesResult
         : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
@@ -544,7 +558,28 @@ function makeHarness(
           error: null,
         };
       }
+      if (name === "upsert_workout_sessions_with_components") {
+        if (options.sessionHierarchyResult) return options.sessionHierarchyResult;
+        return {
+          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
+            id: row.id,
+            accepted: true,
+            server_updated_at: row.updated_at ?? null,
+          })),
+          error: null,
+        };
+      }
       if (options.rpcBehavior) return await options.rpcBehavior(name, args);
+      if (name === "upsert_training_cycles_with_days_lww") {
+        return {
+          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
+            id: row.id,
+            accepted: true,
+            server_updated_at: row.updated_at ?? null,
+          })),
+          error: null,
+        };
+      }
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
         return {
@@ -626,6 +661,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminQueryCalls,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -703,6 +739,400 @@ Deno.test("shared profile preference contract module is a required production se
   const moduleName = "../_shared/" + "profilePreferenceContract.ts";
   const contract = await import(new URL(moduleName, import.meta.url).href);
   assert(Object.keys(contract).length > 0);
+});
+
+Deno.test("reliability operations commit ownership then deletion and acknowledge exact mutation ids", async () => {
+  const transferId = "40000000-0000-4000-8000-000000000001";
+  const deletionId = "40000000-0000-4000-8000-000000000002";
+  const sessionId = "40000000-0000-4000-8000-000000000003";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "transfer_profile_ownership") {
+        return { data: [{ mutation_id: transferId }], error: null };
+      }
+      if (name === "apply_workout_deletions") {
+        return { data: [{ mutation_id: deletionId }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    ownershipTransfers: [{
+      mutationId: transferId,
+      sourceProfileId: null,
+      targetProfileId: "default",
+      workoutSessionIds: [sessionId],
+      routineIds: [],
+      cycleIds: [],
+      personalRecordIds: [],
+    }],
+    workoutDeletions: [{
+      mutationId: deletionId,
+      scope: "WORKOUT",
+      portalSessionId: sessionId,
+      componentSessionId: null,
+      deletedAt: "2026-09-20T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedOwnershipTransferIds, [transferId]);
+  assertEquals(body.acknowledgedWorkoutDeletionIds, [deletionId]);
+  const transferIndex = harness.operationEvents.indexOf("rpc:transfer_profile_ownership");
+  const deletionIndex = harness.operationEvents.indexOf("rpc:apply_workout_deletions");
+  assert(transferIndex >= 0);
+  assert(deletionIndex > transferIndex);
+  const deletionCall = harness.adminRpcCalls.find((call) =>
+    call.name === "apply_workout_deletions"
+  );
+  assertEquals(deletionCall?.args.p_request_profile_id, "default");
+});
+
+Deno.test("deleted profile route remains immutable when allProfiles cleanup clears active writes", async () => {
+  const deletedProfileId = "40000000-0000-4000-8000-0000000000a1";
+  const deletionId = "40000000-0000-4000-8000-0000000000a2";
+  const portalSessionId = "40000000-0000-4000-8000-0000000000a3";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "apply_workout_deletions") {
+        return { data: [{ mutation_id: deletionId }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: deletedProfileId,
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    workoutDeletions: [{
+      mutationId: deletionId,
+      scope: "WORKOUT",
+      portalSessionId,
+      componentSessionId: null,
+      deletedAt: "2026-09-20T12:00:00.000Z",
+    }],
+  }));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const deletionCall = harness.adminRpcCalls.find((call) =>
+    call.name === "apply_workout_deletions"
+  );
+  assertEquals(deletionCall?.args.p_request_profile_id, deletedProfileId);
+});
+
+Deno.test("omitted recovery source preferences survive recovery and the next ordinary sync", async () => {
+  const sourceProfileId = "40000000-0000-4000-8000-0000000000b1";
+  const harness = makeHarness(undefined, {
+    preferenceProfilesResult: {
+      data: [{ local_profile_id: sourceProfileId }],
+      error: null,
+    },
+  });
+  const base = {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+  };
+  const recovery = await harness.handler(requestFromBody({
+    ...base,
+    ownershipTransfers: [{
+      mutationId: "40000000-0000-4000-8000-0000000000b2",
+      sourceProfileId,
+      targetProfileId: "default",
+      workoutSessionIds: ["40000000-0000-4000-8000-0000000000b3"],
+      routineIds: [],
+      cycleIds: [],
+      personalRecordIds: [],
+    }],
+  }));
+  assertEquals(recovery.status, 200, JSON.stringify(await json(recovery)));
+
+  const ordinary = await harness.handler(requestFromBody(base));
+  assertEquals(ordinary.status, 200, JSON.stringify(await json(ordinary)));
+
+  const cleanupFilters = harness.adminQueryCalls.filter((call) =>
+    call.table === "local_profiles" && call.method === "not"
+  );
+  assertEquals(cleanupFilters.length, 2);
+  for (const filter of cleanupFilters) {
+    assertEquals(filter.args.slice(0, 2), ["id", "in"]);
+    assert(String(filter.args[2]).includes('"default"'));
+    assert(String(filter.args[2]).includes(`"${sourceProfileId}"`));
+  }
+});
+
+Deno.test("cycles always use the LWW parent gate before writing children", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "upsert_training_cycles_with_days_lww") {
+        return {
+          data: [{
+            id: CYCLE_ID,
+            accepted: false,
+            server_updated_at: "2026-09-20T13:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const body = validNestedRelationshipBody();
+  body.sessions = [];
+  body.routines = [];
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  assertEquals((await response.clone().json()).acknowledgedCycleIds, []);
+  assert(harness.adminRpcCalls.some((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  ));
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
+  );
+});
+
+Deno.test("session parent gate and component replacement use one atomic RPC", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const harness = makeHarness(undefined, {
+    sessionHierarchyResult: {
+      data: [{
+        id: SESSION_ID,
+        accepted: false,
+        server_updated_at: "2026-09-20T13:00:00.000Z",
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(responseBody.sessionsInserted, 0);
+  assertEquals(responseBody.exercisesInserted, 0);
+  assertEquals(responseBody.acknowledgedWorkoutSessionIds, []);
+  const sessionRejections = (responseBody.rejections as {
+    sessions: unknown[];
+  }).sessions;
+  assertEquals(sessionRejections, [{
+    id: SESSION_ID,
+    serverUpdatedAt: "2026-09-20T13:00:00.000Z",
+  }]);
+  const hierarchyCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_workout_sessions_with_components"
+  );
+  assertEquals(hierarchyCalls.length, 1);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "replace_session_components"),
+    [],
+  );
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "exercise_progress"),
+    [],
+  );
+});
+
+Deno.test("accepted workout and cycle parents return exact committed receipts", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  cycle.progressionSettingsPresent = true;
+  delete cycle.progressionSettings;
+  cycle.progressStatePresent = true;
+  cycle.progressState = {
+    currentDayNumber: 2,
+    lastCompletedDate: 1_789_948_800_000,
+    cycleStartDate: 1_789_862_400_000,
+    lastAdvancedAt: 1_789_952_400_000,
+    completedDays: [1],
+    missedDays: [],
+    rotationCount: 3,
+  };
+  const day = (cycle.days as Array<Record<string, unknown>>)[0];
+  day.echoLevelPresent = true;
+  day.echoLevel = "HIGH";
+  day.eccentricLoadPercentPresent = true;
+  day.eccentricLoadPercent = 125;
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(responseBody.acknowledgedWorkoutSessionIds, [SESSION_ID]);
+  assertEquals(responseBody.acknowledgedCycleIds, [CYCLE_ID]);
+  const cycleCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
+  const dayRows = cycleCall?.args.p_days as Array<Record<string, unknown>>;
+  assertEquals(parentRows[0].progression_settings_present, true);
+  assertEquals(parentRows[0].progression_settings, null);
+  assertEquals(parentRows[0].progress_state_present, true);
+  assertEquals(parentRows[0].progress_state, cycle.progressState);
+  assertEquals(dayRows[0].echo_level_present, true);
+  assertEquals(dayRows[0].echo_level, "HIGH");
+  assertEquals(dayRows[0].eccentric_load_percent_present, true);
+  assertEquals(dayRows[0].eccentric_load_percent, 125);
+});
+
+Deno.test("legacy non-null progression settings remain authoritative without a presence bit", async () => {
+  const body = validNestedRelationshipBody();
+  body.sessions = [];
+  body.routines = [];
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  cycle.progressionSettings = JSON.stringify({ type: "wave", amount: 3 });
+  delete cycle.progressionSettingsPresent;
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const cycleCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(parentRows[0].progression_settings, { type: "wave", amount: 3 });
+  assertEquals("progression_settings_present" in parentRows[0], false);
+
+  delete cycle.progressionSettings;
+  const missingHarness = makeHarness();
+  const missingResponse = await missingHarness.handler(requestFromBody(body));
+  const missingResponseBody = await json(missingResponse);
+  assertEquals(missingResponse.status, 200, JSON.stringify(missingResponseBody));
+  const missingCall = missingHarness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const missingRows = missingCall?.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(missingRows[0].progression_settings, null);
+  assertEquals("progression_settings_present" in missingRows[0], false);
+});
+
+Deno.test("component tombstone filters only the named exercise under a grouped parent", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const session = (body.sessions as Array<{
+    id: string;
+    exercises: Array<{
+      id: string;
+      sessionId: string;
+      name: string;
+      sets: unknown[];
+      [key: string]: unknown;
+    }>;
+  }>)[0];
+  const blocked = session.exercises[0];
+  const siblingId = "51000000-0000-4000-8000-000000000002";
+  session.exercises.push({
+    ...blocked,
+    id: siblingId,
+    sessionId: session.id,
+    name: "Sibling component",
+    sets: [],
+  });
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "get_blocked_workout_component_ids") {
+        return { data: [{ component_id: blocked.id }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+
+  const hierarchyCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_workout_sessions_with_components"
+  );
+  assertEquals(hierarchyCall?.args.p_component_ids, [siblingId]);
+  assertEquals(
+    (hierarchyCall?.args.p_exercises as Array<{ id: string }>).map((row) => row.id),
+    [siblingId],
+  );
+  const componentProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_component_ids"
+  );
+  assertEquals(componentProbe?.args.p_components, [
+    { id: blocked.id, portalSessionId: session.id },
+    { id: siblingId, portalSessionId: session.id },
+  ]);
+});
+
+Deno.test("grouped workout tombstone probes use portalSessionId not the local session id", async () => {
+  const localSessionId = "51000000-0000-4000-8000-000000000010";
+  const portalSessionId = "51000000-0000-4000-8000-000000000011";
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const session = (body.sessions as Array<{
+    id: string;
+    routineSessionId?: string | null;
+    exercises: Array<{ id: string; sessionId: string }>;
+  }>)[0];
+  session.id = localSessionId;
+  session.routineSessionId = portalSessionId;
+  for (const exercise of session.exercises) {
+    exercise.sessionId = localSessionId;
+  }
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+  const sessionProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_session_ids"
+  );
+  assertEquals(sessionProbe?.args.p_sessions, [
+    { id: localSessionId, portalSessionId },
+  ]);
+  const componentProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_component_ids"
+  );
+  assertEquals(componentProbe?.args.p_components, [
+    { id: EXERCISE_ID, portalSessionId },
+  ]);
+});
+
+Deno.test("clocked cycle deletions return exact accepted ids and legacy ids never hard-delete", async () => {
+  const deletedId = "30000000-0000-4000-8000-000000000011";
+  const legacyId = "30000000-0000-4000-8000-000000000012";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "delete_training_cycles_lww") {
+        return {
+          data: [{ id: deletedId, accepted: true, server_updated_at: "2026-09-20T12:00:00Z" }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [legacyId],
+    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T12:00:00Z" }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
+  assert(harness.adminRpcCalls.some((call) => call.name === "delete_training_cycles_lww"));
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
 });
 
 Deno.test("byte golden metadata and raw lexemes remain exact", () => {
@@ -2057,6 +2487,29 @@ for (
         totalTimeSeconds: 60,
       },
     }],
+    ["clocked cycle tombstone", {
+      deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T12:00:00.000Z" }],
+    }],
+    ["ownership transfer", {
+      ownershipTransfers: [{
+        mutationId: "40000000-0000-4000-8000-0000000000c1",
+        sourceProfileId: null,
+        targetProfileId: "default",
+        workoutSessionIds: [SESSION_ID],
+        routineIds: [],
+        cycleIds: [],
+        personalRecordIds: [],
+      }],
+    }],
+    ["workout deletion", {
+      workoutDeletions: [{
+        mutationId: "40000000-0000-4000-8000-0000000000c2",
+        scope: "WORKOUT",
+        portalSessionId: SESSION_ID,
+        componentSessionId: null,
+        deletedAt: "2026-09-20T12:00:00.000Z",
+      }],
+    }],
   ] as const
 ) {
   Deno.test(`uncounted ${label} write still broadcasts once`, async () => {
@@ -2471,6 +2924,11 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     externalActivitiesUpserted: 0,
     externalActivityIds: [],
     externalActivityKeys: [],
+    acknowledgedWorkoutSessionIds: [],
+    acknowledgedCycleIds: [],
+    acknowledgedWorkoutDeletionIds: [],
+    acknowledgedOwnershipTransferIds: [],
+    acknowledgedDeletedCycleIds: [],
     rejections: {
       sessions: [],
       routines: [],
@@ -2831,21 +3289,6 @@ for (const testCase of malformedRpcCases) {
     assertEquals(harness.loggerCalls, [[{ name: testCase.expectedName }]]);
   });
 }
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
-
-const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
-  const url = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  return url && anonKey && serviceRoleKey
-    ? { url, anonKey, serviceRoleKey }
-    : null;
-})();
 
 interface LocalIntegrationFixture {
   admin: SupabaseClient;
@@ -3343,12 +3786,12 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
 
   assertEquals(offset, 729);
   const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "replace_session_children"
+    call.name === "upsert_workout_sessions_with_components"
   );
   assertEquals(replaceCalls.length, 3);
   assertEquals(
-    replaceCalls[0].args.p_session_ids,
-    allSessions.slice(0, 243).map((session) => session.id),
+    replaceCalls[0].args.p_component_ids,
+    allSessions.slice(0, 243).flatMap((session) => session.exercises.map((exercise) => exercise.id)),
   );
   const secondBatchExercises = replaceCalls[1].args.p_exercises as Array<Record<string, unknown>>;
   assertEquals(secondBatchExercises.length, 243);
