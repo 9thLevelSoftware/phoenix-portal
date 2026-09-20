@@ -860,8 +860,12 @@ If the guard fails on a ref you believe is live, override the denylist via
 hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
 (see `public/_headers`).
 
-To regenerate `src/lib/database.types.ts` against a live project ref,
-set `SUPABASE_PROJECT_REF` in `.env` and run:
+The committed `src/lib/database.types.ts` is generated from the migrated
+local schema (`npm run gen:types:local`) and CI (`gen:types:check` in
+`.github/workflows/migrations.yml`) rejects anything else. To inspect the
+types of a live project instead (diagnostics only, do not commit the result
+while prod differs from the migrations), set `SUPABASE_PROJECT_REF` in `.env`
+and run:
 
 ```bash
 npm run gen:types
