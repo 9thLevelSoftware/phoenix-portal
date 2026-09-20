@@ -51,6 +51,98 @@ export async function oauthInitiateError(
 	return new OAuthInitiateError(message, response.status);
 }
 
+/**
+ * Providers whose authorization-code grant `complete-oauth` can finish.
+ * Garmin is OAuth 1.0a (no `code`), so it is deliberately absent — keep this in
+ * step with `COMPLETABLE_PROVIDERS` in supabase/functions/complete-oauth.
+ */
+export const COMPLETABLE_OAUTH_PROVIDERS = ["strava", "fitbit"] as const;
+export type CompletableOAuthProvider =
+	(typeof COMPLETABLE_OAUTH_PROVIDERS)[number];
+
+export function isCompletableOAuthProvider(
+	value: unknown,
+): value is CompletableOAuthProvider {
+	return (COMPLETABLE_OAUTH_PROVIDERS as readonly unknown[]).includes(value);
+}
+
+/**
+ * Error raised when `complete-oauth` refuses to finish a connection. `status`
+ * is what `isTierDenied()` reads for the 402 the FLAME gate returns; `code` is
+ * the machine-readable slug the Edge Function sends (`state_mismatch`,
+ * `already_linked`, …) so the caller can pick a message without parsing prose.
+ */
+export class OAuthCompletionError extends Error {
+	readonly status: number;
+	readonly code: string;
+
+	constructor(message: string, status: number, code: string) {
+		super(message);
+		this.name = "OAuthCompletionError";
+		this.status = status;
+		this.code = code;
+	}
+}
+
+/**
+ * Finish a provider connection inside the caller's own session (KD-13).
+ *
+ * The `code` and `state` are sent in the POST body, never in a URL, so they
+ * cannot reach browser history, a `Referer` header or an access log. Nothing
+ * here logs them, and a failure carries only the server's slug.
+ */
+export async function completeOAuthConnection(
+	accessToken: string,
+	params: {
+		provider: CompletableOAuthProvider;
+		code: string;
+		state: string;
+	},
+): Promise<void> {
+	const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+	if (!supabaseUrl) {
+		throw new OAuthCompletionError(
+			"Supabase is not configured for OAuth.",
+			0,
+			"not_configured",
+		);
+	}
+
+	const response = await fetch(`${supabaseUrl}/functions/v1/complete-oauth`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			provider: params.provider,
+			code: params.code,
+			state: params.state,
+		}),
+	});
+
+	if (response.ok) return;
+
+	let code = "connection_failed";
+	let message = "";
+	try {
+		const parsed: unknown = JSON.parse(await response.text());
+		if (typeof parsed === "object" && parsed !== null) {
+			const fields = parsed as { error?: unknown; message?: unknown };
+			if (typeof fields.error === "string" && fields.error) code = fields.error;
+			if (typeof fields.message === "string") message = fields.message;
+		}
+	} catch {
+		// Not JSON — keep the generic slug rather than surfacing an HTML page.
+	}
+
+	throw new OAuthCompletionError(
+		message || "Could not finish connecting this account.",
+		response.status,
+		code,
+	);
+}
+
 interface OAuthRedirectValidationOptions {
 	supabaseUrl?: string;
 }

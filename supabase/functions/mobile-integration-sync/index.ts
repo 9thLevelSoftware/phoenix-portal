@@ -9,6 +9,11 @@ import {
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  defaultProviderRevokeDependencies,
+  type ProviderRevokeDependencies,
+  revokeAndDisconnect,
+} from '../_shared/providerRevoke.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -249,7 +254,50 @@ class ApiKeyError extends Error {
 // Handler
 // =============================================================================
 
-Deno.serve(async (req) => {
+interface MobileIntegrationAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
+  };
+}
+
+export interface MobileIntegrationSyncDependencies {
+  /** Client acting as the caller (their JWT), used only to identify them. */
+  createAuthClient(authorization: string): MobileIntegrationAuthClient;
+  /** Service-role client for DB operations (bypasses RLS). */
+  createAdminClient(): DbClient;
+  /** Provider revoke HTTP + credentials; injected so tests never hit a provider. */
+  revoke: ProviderRevokeDependencies;
+}
+
+function defaultMobileIntegrationSyncDependencies(): MobileIntegrationSyncDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authorization } } }
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+    },
+    revoke: defaultProviderRevokeDependencies(),
+  };
+}
+
+export function createMobileIntegrationSyncHandler(
+  deps: MobileIntegrationSyncDependencies = defaultMobileIntegrationSyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => mobileIntegrationSyncHandler(req, deps);
+}
+
+async function mobileIntegrationSyncHandler(
+  req: Request,
+  deps: MobileIntegrationSyncDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -277,15 +325,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
     const {
       data: { user },
-    } = await supabaseAuth.auth.getUser();
+    } = await deps.createAuthClient(authHeader).auth.getUser();
 
     if (!user) {
       return new Response(
@@ -299,10 +341,7 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const supabase = deps.createAdminClient();
 
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-integration-sync',
@@ -345,22 +384,18 @@ Deno.serve(async (req) => {
     // 4. Handle DISCONNECT
     // =========================================================================
     if (action === 'disconnect') {
-      await Promise.all([
-        supabase
-          .from('oauth_tokens')
-          .delete()
-          .eq('user_id', userId)
-          .eq('provider', provider),
-        supabase
-          .from('user_integrations')
-          .update({
-            status: 'disconnected',
-            connected_at: null,
-            error_message: null,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider),
-      ]);
+      // Same path as the portal's disconnect-integration (FP-5): revoke (a
+      // no-op for these API-key providers), then disconnect_integration
+      // deletes the key, resets the integration and cancels queued syncs in
+      // one transaction. Stays ahead of the subscription gate so a lapsed
+      // user can always disconnect.
+      const result = await revokeAndDisconnect(supabase, userId, provider, deps.revoke);
+      if (!result.ok) {
+        return new Response(
+          JSON.stringify({ status: 'error', error: 'Failed to disconnect integration. Please try again.' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return new Response(
         JSON.stringify({ status: 'disconnected' }),
@@ -575,7 +610,11 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(createMobileIntegrationSyncHandler());
+}
 
 // =============================================================================
 // Helpers

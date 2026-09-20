@@ -16,7 +16,6 @@ import {
 } from "./helpers/edge-function-harness";
 import {
 	getAnonClient,
-	getServiceClient,
 	isLocalEnvironment,
 } from "./helpers/supabase-test-client";
 
@@ -188,8 +187,6 @@ export function setupSyncTests(): void {
  * Per-test isolation helpers
  */
 export function setupTestIsolation(): void {
-	const testUser: TestUser | null = null;
-
 	beforeEach(async () => {
 		// Create fresh test user for each test if needed
 		// Tests can use createTrackedTestUser() instead if they need specific control

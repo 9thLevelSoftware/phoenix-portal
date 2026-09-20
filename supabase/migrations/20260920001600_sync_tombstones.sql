@@ -10,6 +10,9 @@
 --   (`deletedRoutineIds` / `deletedCycleIds`).
 -- * mobile-sync-push refuses to re-create a tombstoned id (`skippedDeleted`).
 --
+-- The FK removes existing tombstones when an account is deleted. The trigger
+-- skips users whose auth.users row is already gone, so the cascade adds no new
+-- tombstones while routines and cycles are being removed.
 -- No FK to auth.users: the trigger can fire while an account deletion cascades.
 -- The trigger skips users whose auth.users row is already gone, so the cascade
 -- adds no tombstones. Tombstones recorded while the account was live are
@@ -27,12 +30,40 @@ ALTER TABLE public.routines
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS public.sync_tombstones (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   user_id UUID NOT NULL,
   entity TEXT NOT NULL CHECK (entity IN ('routine', 'cycle')),
   entity_id UUID NOT NULL,
   deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, entity, entity_id)
 );
+
+-- CREATE TABLE IF NOT EXISTS does not retrofit constraints when this migration
+-- is re-applied to a preview/prod table created by an earlier revision. Remove
+-- already orphaned tombstones, then install the same cascade explicitly.
+DELETE FROM public.sync_tombstones t
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = t.user_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+    WHERE c.conrelid = 'public.sync_tombstones'::regclass
+      AND c.contype = 'f'
+      AND c.confrelid = 'auth.users'::regclass
+      AND c.confdeltype = 'c'
+      AND a.attname = 'user_id'
+      AND array_length(c.conkey, 1) = 1
+  ) THEN
+    ALTER TABLE public.sync_tombstones
+      ADD CONSTRAINT sync_tombstones_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+  END IF;
+END
+$$;
 
 -- "Tombstones since lastSync" lookups.
 CREATE INDEX IF NOT EXISTS sync_tombstones_user_entity_deleted_at_idx

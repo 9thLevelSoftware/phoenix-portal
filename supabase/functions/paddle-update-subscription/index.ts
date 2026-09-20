@@ -22,6 +22,7 @@ import {
   PAYMENT_PAST_DUE_HTTP_STATUS,
   paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
+import { billingAction } from "../_shared/billingAction.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -131,6 +132,124 @@ async function paddleUpdateSubscriptionHandler(
       windowSeconds: 60,
     }, cors);
     if (!rateCheck.allowed) return rateCheck.response!;
+
+    // Look up user's current subscription FIRST: the billing action decides
+    // whether a plan selection is needed at all (update_payment and refresh
+    // carry none).
+    const { data: sub, error: subError } = await supabaseAdmin
+      .from("subscriptions")
+      .select("paddle_subscription_id, price_id, tier, status, current_period_end, cancel_at_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (subError) {
+      console.error("Error fetching subscription:", subError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch subscription" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Paddle API config, needed by both the update-payment route and the
+    // plan change below.
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    const baseUrl = paddleEnv === "sandbox"
+      ? "https://sandbox-api.paddle.com"
+      : "https://api.paddle.com";
+    const apiKey = deps.env.get("PADDLE_API_KEY");
+
+    if (!apiKey) {
+      console.error("PADDLE_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "Billing service not configured" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    // One shared predicate (R-11): `checkout_required` is returned exactly
+    // when paddle-checkout-custom-data would sign a new checkout, so no state
+    // can be told to check out and then be refused the checkout.
+    const action = billingAction(sub, deps.now());
+    if (action.action === "checkout") {
+      return new Response(
+        JSON.stringify(checkoutRequiredResponseBody(action.reason)),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (action.action === "refresh") {
+      // A live subscription whose stored state has lapsed (e.g. the renewal
+      // webhook is late). Ask Paddle for the truth instead of selling the
+      // user a second subscription (F-022).
+      return new Response(
+        JSON.stringify({
+          action: "refresh",
+          code: "refresh_required",
+          message: "Refreshing your plan…",
+          reason: action.reason,
+        }),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (!sub || !action.paddleSubscriptionId) {
+      // Unreachable: manage/refresh both require a stored subscription id.
+      throw new Error("billing action proceeded without a subscription row");
+    }
+    const currentPaddleSubscriptionId = action.paddleSubscriptionId;
+
+    if (action.needsPaymentUpdate) {
+      // past_due keeps full access (user decision, R-33). Paddle refuses item
+      // changes while a subscription is past due, so hand the client the
+      // transaction that updates the card instead.
+      const transactionResponse = await deps.fetch(
+        `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}/update-payment-method-transaction`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (!transactionResponse.ok) {
+        const transactionError = await transactionResponse.text();
+        console.error(
+          "Paddle update-payment-method transaction failed:",
+          transactionResponse.status,
+          transactionError,
+        );
+        return new Response(
+          JSON.stringify({
+            error: "Failed to start a payment update",
+            code: "paddle_update_payment_failed",
+          }),
+          { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+      let transactionBody: Record<string, unknown> | null = null;
+      try {
+        transactionBody = await transactionResponse.json();
+      } catch {
+        transactionBody = null;
+      }
+      const transactionId =
+        (transactionBody?.data as { id?: unknown } | undefined)?.id;
+      if (typeof transactionId !== "string" || transactionId.length === 0) {
+        console.error("Paddle update-payment-method response missing data.id");
+        return new Response(
+          JSON.stringify({ error: "Invalid Paddle response" }),
+          { status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: "update_payment",
+          transactionId,
+          message:
+            "Your last payment failed — update your card to keep your plan.",
+        }),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
 
     // Parse request body
     let body: Record<string, unknown>;
@@ -295,6 +414,7 @@ async function paddleUpdateSubscriptionHandler(
 
     const paddleResponse = await deps.fetch(
       `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
+      `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "PATCH",
         headers: {

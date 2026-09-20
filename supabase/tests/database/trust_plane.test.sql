@@ -62,10 +62,21 @@ SELECT ok(
         SELECT with_check
         FROM pg_policies
         WHERE schemaname = 'public'
-          AND tablename = 'workout_sessions'
-          AND policyname = 'Users can insert own sessions'
+          AND tablename = 'routines'
+          AND policyname = 'Users can insert own routines'
     ) LIKE '%user_has_min_tier%',
-    'workout_sessions INSERT WITH CHECK requires EMBER'
+    'routines INSERT WITH CHECK requires EMBER'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT tablename::text || ' ' || policyname::text
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('workout_sessions', 'personal_records')
+          AND cmd IN ('INSERT', 'ALL')
+    $sql$,
+    'workout_sessions and personal_records have no client INSERT policy'
 );
 
 SELECT ok(
@@ -276,14 +287,14 @@ SELECT set_config(
 
 SELECT pg_temp.assert_sqlstate(
     $sql$
-        INSERT INTO public.workout_sessions (user_id, name)
+        INSERT INTO public.routines (user_id, name)
         VALUES (
             '33333333-3333-4333-8333-333333333333'::uuid,
             'unpaid cloud write'
         )
     $sql$,
     '42501',
-    'FREE JWT cannot INSERT workout_sessions'
+    'FREE JWT cannot INSERT routines'
 );
 
 SELECT pg_temp.assert_exception(
@@ -406,13 +417,13 @@ SELECT set_config(
 
 SELECT lives_ok(
     $sql$
-        INSERT INTO public.workout_sessions (user_id, name)
+        INSERT INTO public.routines (user_id, name)
         VALUES (
             '44444444-4444-4444-8444-444444444444'::uuid,
             'ember cloud write'
         )
     $sql$,
-    'EMBER JWT can INSERT workout_sessions'
+    'EMBER JWT can INSERT routines'
 );
 
 RESET ROLE;
@@ -427,14 +438,14 @@ SELECT set_config(
 
 SELECT pg_temp.assert_sqlstate(
     $sql$
-        INSERT INTO public.workout_sessions (user_id, name)
+        INSERT INTO public.routines (user_id, name)
         VALUES (
             '77777777-7777-4777-8777-777777777777'::uuid,
             'expired period write'
         )
     $sql$,
     '42501',
-    'expired current_period_end cannot INSERT workout_sessions'
+    'expired current_period_end cannot INSERT routines'
 );
 
 RESET ROLE;
@@ -520,6 +531,140 @@ VALUES
         'executed'
     );
 SET LOCAL session_replication_role = origin;
+SELECT diag('database:trust-plane-leaderboard-inputs-catalog');
+
+SELECT is_empty(
+    $sql$
+        SELECT tablename::text || ' ' || cmd
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('gamification_stats', 'rpg_attributes')
+          AND cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+    $sql$,
+    'gamification_stats and rpg_attributes have no client write policy'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename IN ('gamification_stats', 'rpg_attributes')
+          AND cmd = 'SELECT'
+    ),
+    2,
+    'gamification_stats and rpg_attributes keep their owner SELECT policy'
+);
+
+-- Grant-level backstop, independent of policy names.
+SELECT is_empty(
+    $sql$
+        SELECT grantee.role || ' ' || t.relname || ' ' || priv.name
+        FROM (VALUES ('anon'), ('authenticated')) AS grantee(role)
+        CROSS JOIN (VALUES
+            ('gamification_stats'), ('rpg_attributes'),
+            ('workout_sessions'), ('personal_records')
+        ) AS t(relname)
+        CROSS JOIN (VALUES ('INSERT'), ('UPDATE')) AS priv(name)
+        WHERE has_table_privilege(
+            grantee.role, format('public.%I', t.relname), priv.name
+        )
+    $sql$,
+    'anon/authenticated hold no table-level INSERT/UPDATE on leaderboard inputs'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT grantee.role || ' ' || t.relname
+        FROM (VALUES ('anon'), ('authenticated')) AS grantee(role)
+        CROSS JOIN (VALUES ('gamification_stats'), ('rpg_attributes')) AS t(relname)
+        WHERE has_table_privilege(
+            grantee.role, format('public.%I', t.relname), 'DELETE'
+        )
+    $sql$,
+    'anon/authenticated hold no DELETE on the stats tables'
+);
+
+SELECT ok(
+    has_column_privilege('authenticated', 'public.workout_sessions', 'notes', 'UPDATE'),
+    'authenticated can UPDATE workout_sessions.notes'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT a.attname::text
+        FROM pg_attribute a
+        WHERE a.attrelid = 'public.workout_sessions'::regclass
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND a.attname <> 'notes'
+          AND has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE')
+    $sql$,
+    'authenticated can UPDATE no workout_sessions column other than notes'
+);
+
+SELECT is(
+    has_any_column_privilege('anon', 'public.workout_sessions', 'UPDATE'),
+    false,
+    'anon cannot UPDATE any workout_sessions column'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT format('%s %s', r.role, p.oid::regprocedure)
+        FROM pg_proc p
+        CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role)
+        WHERE p.pronamespace = 'public'::regnamespace
+          AND p.proname LIKE 'upsert\_%\_lww'
+          AND has_function_privilege(r.role, p.oid, 'EXECUTE')
+    $sql$,
+    'anon/authenticated cannot EXECUTE any upsert_*_lww RPC'
+);
+
+SELECT is(
+    (
+        SELECT bool_and(has_function_privilege('service_role', p.oid, 'EXECUTE'))
+           AND count(*) >= 6
+        FROM pg_proc p
+        WHERE p.pronamespace = 'public'::regnamespace
+          AND p.proname LIKE 'upsert\_%\_lww'
+    ),
+    true,
+    'service_role keeps EXECUTE on every upsert_*_lww RPC'
+);
+
+SELECT ok(
+    pg_get_triggerdef(
+        (
+            SELECT oid FROM pg_trigger
+            WHERE tgrelid = 'public.user_goals'::regclass
+              AND tgname = 'enforce_goal_limit'
+        )
+    ) LIKE '%BEFORE INSERT OR UPDATE OF status ON public.user_goals%',
+    'enforce_goal_limit fires BEFORE INSERT OR UPDATE OF status'
+);
+
+SELECT diag('database:trust-plane-leaderboard-inputs-client');
+
+-- EMBER-owned fixtures, written as postgres (the server path).
+INSERT INTO public.workout_sessions (id, user_id, name, total_volume)
+VALUES (
+    '44444444-5555-4444-8444-444444444444'::uuid,
+    '44444444-4444-4444-8444-444444444444'::uuid,
+    'synced session',
+    100
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.rpg_attributes (user_id)
+VALUES ('44444444-4444-4444-8444-444444444444'::uuid)
+ON CONFLICT (user_id) DO NOTHING;
+
+CREATE TEMP TABLE stats_before ON COMMIT DROP AS
+SELECT total_workouts, total_volume_kg, pr_count
+FROM public.gamification_stats
+WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid;
+GRANT SELECT ON stats_before TO authenticated;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config(
@@ -577,6 +722,148 @@ SELECT pg_temp.assert_sqlstate(
     $sql$,
     '42501',
     'authenticated cannot write the re-request audit columns'
+    '{"sub":"44444444-4444-4444-8444-444444444444","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+        VALUES (
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'fabricated session',
+            1000000000,
+            1000000000,
+            now()
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT workout_sessions'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.personal_records (user_id, exercise_name, value)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 'Squat', 1000000)
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT personal_records'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        SELECT public.upsert_workout_session_lww(
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-6666-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'total_volume', 1000000000,
+                'updated_at', now()
+            ))
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot call upsert_workout_session_lww'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        SELECT public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'total_volume_kg', 1000000000,
+                'updated_at', now()
+            ))
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot call upsert_gamification_stats_lww'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.workout_sessions
+           SET total_volume = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE workout_sessions.total_volume'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.workout_sessions
+           SET duration_seconds = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE workout_sessions.duration_seconds'
+);
+
+-- Same shape PostgREST sends for useSaveSessionNotes:
+-- .update({ notes }).eq('id', ...).eq('user_id', ...).select('id').
+SELECT results_eq(
+    $sql$
+        WITH updated AS (
+            UPDATE public.workout_sessions
+               SET notes = 'pgtap note'
+             WHERE id = '44444444-5555-4444-8444-444444444444'::uuid
+               AND user_id = '44444444-4444-4444-8444-444444444444'::uuid
+            RETURNING id, notes
+        )
+        SELECT count(*)::integer, min(notes) FROM updated
+    $sql$,
+    $values$ VALUES (1, 'pgtap note'::text) $values$,
+    'EMBER JWT can UPDATE workout_sessions.notes on its own session'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.gamification_stats (user_id, total_volume_kg)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 999999)
+        ON CONFLICT (user_id) DO NOTHING
+    $sql$,
+    '42501',
+    'authenticated cannot INSERT gamification_stats'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rpg_attributes (user_id)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid)
+        ON CONFLICT (user_id) DO NOTHING
+    $sql$,
+    '42501',
+    'authenticated cannot INSERT rpg_attributes'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.gamification_stats
+           SET total_volume_kg = 999999
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'authenticated cannot UPDATE gamification_stats'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.rpg_attributes
+           SET level = 99
+         WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'authenticated cannot UPDATE rpg_attributes'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, pr_count
+        FROM public.gamification_stats
+        WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid
+    $sql$,
+    $sql$ SELECT total_workouts, total_volume_kg, pr_count FROM stats_before $sql$,
+    'owner can SELECT own gamification_stats and the client attempts left it unchanged'
 );
 
 RESET ROLE;
@@ -595,6 +882,180 @@ UPDATE public.deletion_requests
        cancelled_at = now() - INTERVAL '35 days'
  WHERE user_id = 'c3200000-0000-4000-8000-000000000001'::uuid;
 SET LOCAL session_replication_role = origin;
+SELECT diag('database:trust-plane-leaderboard-inputs-service-role');
+
+SET LOCAL ROLE service_role;
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.workout_sessions (id, user_id, name, total_volume)
+        VALUES (
+            '44444444-7777-4444-8444-444444444444'::uuid,
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'push session',
+            10
+        )
+    $sql$,
+    'service_role can INSERT workout_sessions'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.workout_sessions
+           SET total_volume = 20, duration_seconds = 60
+         WHERE id = '44444444-7777-4444-8444-444444444444'::uuid
+    $sql$,
+    'service_role can UPDATE workout_sessions volume and duration'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.personal_records (user_id, exercise_name, value)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 'Push PR', 10)
+    $sql$,
+    'service_role can INSERT personal_records'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.gamification_stats (user_id, total_workouts)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 5)
+        ON CONFLICT (user_id) DO UPDATE SET total_workouts = EXCLUDED.total_workouts
+    $sql$,
+    'service_role can upsert gamification_stats'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.rpg_attributes (user_id, level)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 2)
+        ON CONFLICT (user_id) DO UPDATE SET level = EXCLUDED.level
+    $sql$,
+    'service_role can upsert rpg_attributes'
+);
+
+SELECT lives_ok(
+    $sql$
+        SELECT public.upsert_workout_session_lww(
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-7777-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'name', 'push session',
+                'total_volume', 30,
+                'updated_at', now() + INTERVAL '1 minute'
+            ))
+        )
+    $sql$,
+    'service_role can call upsert_workout_session_lww'
+);
+
+-- total_workouts and current_streak are server-derived from 20260920002500
+-- on: the RPC accepts the call but takes neither, while the device-reported
+-- shadow column does land.
+SELECT lives_ok(
+    $sql$
+        SELECT public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'total_workouts', 7,
+                'current_streak', 4,
+                'device_total_workouts', 7,
+                'last_workout_at', now() + INTERVAL '1 minute'
+            ))
+        )
+    $sql$,
+    'service_role can call upsert_gamification_stats_lww'
+);
+
+SELECT lives_ok(
+    $sql$
+        SELECT public.upsert_rpg_attributes_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'level', 3,
+                'last_workout_at', now() + INTERVAL '1 minute'
+            ))
+        )
+    $sql$,
+    'service_role can call upsert_rpg_attributes_lww'
+);
+
+RESET ROLE;
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            (SELECT total_volume FROM public.workout_sessions
+              WHERE id = '44444444-7777-4444-8444-444444444444'::uuid)::numeric,
+            (SELECT total_workouts FROM public.gamification_stats
+              WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid)::integer,
+            (SELECT level FROM public.rpg_attributes
+              WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid)::integer
+    $sql$,
+    $values$ VALUES (30::numeric, 5, 3) $values$,
+    'service_role LWW writes landed; the RPC leaves total_workouts at the stored 5 (it is not a device-writable column)'
+);
+
+SELECT is(
+    (SELECT device_total_workouts FROM public.gamification_stats
+      WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid),
+    7,
+    'the device-reported shadow column from the same LWW call landed'
+);
+
+SELECT diag('database:trust-plane-session-children');
+
+-- Session child tables feed exercise mastery (exercises) and per-session
+-- volume / reps / 1RM (sets, rep_summaries, rep_telemetry,
+-- exercise_progress). Only service_role push writes them.
+CREATE TEMP TABLE child_tables (relname text PRIMARY KEY) ON COMMIT DROP;
+INSERT INTO child_tables VALUES
+    ('exercises'), ('sets'), ('rep_summaries'), ('rep_telemetry'), ('exercise_progress');
+GRANT SELECT ON child_tables TO authenticated, service_role;
+
+SELECT is_empty(
+    $sql$
+        SELECT pol.tablename::text || ' ' || pol.policyname::text
+        FROM pg_policies pol
+        JOIN child_tables ct ON ct.relname = pol.tablename
+        WHERE pol.schemaname = 'public'
+          AND pol.cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+          AND pol.roles <> ARRAY['service_role']::name[]
+    $sql$,
+    'session child tables have no client write policy'
+);
+
+SELECT is_empty(
+    $sql$
+        SELECT grantee.role || ' ' || ct.relname || ' ' || priv.name
+        FROM (VALUES ('anon'), ('authenticated')) AS grantee(role)
+        CROSS JOIN child_tables ct
+        CROSS JOIN (VALUES ('INSERT'), ('UPDATE'), ('DELETE')) AS priv(name)
+        WHERE has_table_privilege(
+            grantee.role, format('public.%I', ct.relname), priv.name
+        )
+    $sql$,
+    'anon/authenticated hold no INSERT/UPDATE/DELETE on session child tables'
+);
+
+-- Server-side fixtures under the EMBER user's synced session.
+INSERT INTO public.exercises (id, session_id, name, user_id)
+VALUES (
+    '44444444-a001-4444-8444-444444444444'::uuid,
+    '44444444-5555-4444-8444-444444444444'::uuid,
+    'Row',
+    '44444444-4444-4444-8444-444444444444'::uuid
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.sets (id, exercise_id, set_number, user_id)
+VALUES (
+    '44444444-a002-4444-8444-444444444444'::uuid,
+    '44444444-a001-4444-8444-444444444444'::uuid,
+    1,
+    '44444444-4444-4444-8444-444444444444'::uuid
+)
+ON CONFLICT (id) DO NOTHING;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config(
@@ -629,6 +1090,220 @@ SELECT pg_temp.assert_exception(
     'P0001',
     'already_pending',
     'a request right after the re-request raises already_pending'
+    '{"sub":"44444444-4444-4444-8444-444444444444","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.exercises (session_id, name, user_id)
+        VALUES (
+            '44444444-5555-4444-8444-444444444444'::uuid,
+            'fabricated exercise',
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT exercises'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.sets (exercise_id, set_number, weight_kg, actual_reps, user_id)
+        VALUES (
+            '44444444-a001-4444-8444-444444444444'::uuid,
+            2,
+            1000,
+            100,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT sets'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rep_summaries (set_id, rep_number, user_id)
+        VALUES (
+            '44444444-a002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT rep_summaries'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.rep_telemetry (set_id, timestamp_ms, user_id)
+        VALUES (
+            '44444444-a002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT rep_telemetry'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        INSERT INTO public.exercise_progress (user_id, exercise_name, session_id)
+        VALUES (
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'Row',
+            '44444444-5555-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    '42501',
+    'EMBER JWT cannot INSERT exercise_progress'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        UPDATE public.sets
+           SET weight_kg = 1000
+         WHERE id = '44444444-a002-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot UPDATE sets'
+);
+
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        DELETE FROM public.exercises
+         WHERE id = '44444444-a001-4444-8444-444444444444'::uuid
+    $sql$,
+    '42501',
+    'EMBER JWT cannot DELETE exercises'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT count(*)::integer
+        FROM public.exercises
+        WHERE session_id = '44444444-5555-4444-8444-444444444444'::uuid
+    $sql$,
+    $values$ VALUES (1) $values$,
+    'owner can still SELECT own exercises'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.exercises (id, session_id, name, user_id)
+        VALUES (
+            '44444444-b001-4444-8444-444444444444'::uuid,
+            '44444444-7777-4444-8444-444444444444'::uuid,
+            'Push row',
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT exercises'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.sets (id, exercise_id, set_number, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            '44444444-b001-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT sets'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.rep_summaries (set_id, rep_number, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT rep_summaries'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.rep_telemetry (set_id, timestamp_ms, user_id)
+        VALUES (
+            '44444444-b002-4444-8444-444444444444'::uuid,
+            1,
+            '44444444-4444-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT rep_telemetry'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.exercise_progress (user_id, exercise_name, session_id)
+        VALUES (
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            'Push row',
+            '44444444-7777-4444-8444-444444444444'::uuid
+        )
+    $sql$,
+    'service_role can INSERT exercise_progress'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.sets
+           SET weight_kg = 50
+         WHERE id = '44444444-b002-4444-8444-444444444444'::uuid
+    $sql$,
+    'service_role can UPDATE sets'
+);
+
+SELECT lives_ok(
+    $sql$
+        SELECT public.replace_session_children(
+            '44444444-4444-4444-8444-444444444444'::uuid,
+            ARRAY['44444444-7777-4444-8444-444444444444'::uuid],
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c001-4444-8444-444444444444',
+                'session_id', '44444444-7777-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'name', 'Replaced row',
+                'muscle_group', 'Back',
+                'order_index', 0
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c002-4444-8444-444444444444',
+                'exercise_id', '44444444-c001-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'set_number', 1,
+                'actual_reps', 5,
+                'weight_kg', 40,
+                'is_pr', false
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c003-4444-8444-444444444444',
+                'set_id', '44444444-c002-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'rep_number', 1
+            )),
+            jsonb_build_array(jsonb_build_object(
+                'id', '44444444-c004-4444-8444-444444444444',
+                'set_id', '44444444-c002-4444-8444-444444444444',
+                'user_id', '44444444-4444-4444-8444-444444444444',
+                'timestamp_ms', 1
+            ))
+        )
+    $sql$,
+    'service_role can call replace_session_children'
 );
 
 RESET ROLE;
@@ -686,6 +1361,188 @@ SELECT pg_temp.assert_exception(
     '28000',
     'not_authenticated',
     'a request without auth.uid() raises not_authenticated'
+        SELECT
+            (SELECT count(*) FROM public.exercises
+              WHERE session_id = '44444444-7777-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.sets
+              WHERE id = '44444444-c002-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.rep_summaries
+              WHERE id = '44444444-c003-4444-8444-444444444444'::uuid)::integer,
+            (SELECT count(*) FROM public.rep_telemetry
+              WHERE id = '44444444-c004-4444-8444-444444444444'::uuid)::integer
+    $sql$,
+    $values$ VALUES (1, 1, 1, 1) $values$,
+    'replace_session_children replaced the session''s children'
+);
+
+SELECT diag('database:trust-plane-goal-cap');
+
+-- EMBER cap is 3 active goals. Every INSERT is checked; an UPDATE is checked
+-- only when the goal becomes active.
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"44444444-4444-4444-8444-444444444444","role":"authenticated"}',
+    true
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+        VALUES ('44444444-0004-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'archived')
+    $sql$,
+    'EMBER JWT can insert an archived goal below the cap'
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+        VALUES ('44444444-0005-4444-8444-444444444444'::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'completed')
+    $sql$,
+    'EMBER JWT can insert a completed goal below the cap'
+);
+
+SELECT lives_ok(
+    format(
+        $sql$
+            INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+            VALUES (%L::uuid, '44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'active')
+        $sql$,
+        goals.goal_id
+    ),
+    'EMBER JWT can insert active goal ' || goals.n
+)
+FROM (VALUES
+    (1, '44444444-0001-4444-8444-444444444444'),
+    (2, '44444444-0002-4444-8444-444444444444'),
+    (3, '44444444-0003-4444-8444-444444444444')
+) AS goals(n, goal_id)
+ORDER BY goals.n;
+
+-- The trigger took the per-user advisory lock for this transaction.
+SELECT ok(
+    EXISTS (
+        SELECT 1
+        FROM pg_locks l
+        CROSS JOIN LATERAL (
+            SELECT hashtextextended(
+                'user_goals:44444444-4444-4444-8444-444444444444', 0
+            ) AS k
+        ) lock_key
+        WHERE l.locktype = 'advisory'
+          AND l.pid = pg_backend_pid()
+          AND l.granted
+          AND l.objsubid = 1
+          AND l.classid = ((lock_key.k >> 32) & 4294967295)::bigint::oid
+          AND l.objid = (lock_key.k & 4294967295)::bigint::oid
+    ),
+    'check_goal_limit holds the per-user advisory transaction lock'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        INSERT INTO public.user_goals (user_id, goal_type, target_value, target_unit, status)
+        VALUES ('44444444-4444-4444-8444-444444444444'::uuid, 'frequency', 3, 'workouts', 'archived')
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'EMBER JWT at the cap cannot INSERT another goal, even archived'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET target_value = 4
+         WHERE id = '44444444-0001-4444-8444-444444444444'::uuid
+    $sql$,
+    'editing an already-active goal at the cap is allowed'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0002-4444-8444-444444444444'::uuid
+    $sql$,
+    'rewriting status on an already-active goal at the cap is allowed'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0004-4444-8444-444444444444'::uuid
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'EMBER JWT cannot un-archive a fourth active goal'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0005-4444-8444-444444444444'::uuid
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'EMBER JWT cannot move a completed goal back to active at the cap'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'archived'
+         WHERE id = '44444444-0003-4444-8444-444444444444'::uuid
+    $sql$,
+    'archiving an active goal is allowed'
+);
+
+SELECT lives_ok(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '44444444-0004-4444-8444-444444444444'::uuid
+    $sql$,
+    'un-archiving is allowed again once below the cap'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
+-- A lapsed subscriber: a goal created while paid, then the period ended.
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+VALUES (
+    '33333333-3333-4333-8333-333333333333'::uuid,
+    'EMBER',
+    'active',
+    now() + INTERVAL '30 days'
+)
+ON CONFLICT (user_id) DO UPDATE
+SET tier = EXCLUDED.tier,
+    status = EXCLUDED.status,
+    current_period_end = EXCLUDED.current_period_end;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+    true
+);
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.user_goals (id, user_id, goal_type, target_value, target_unit, status)
+        VALUES (
+            '33333333-0001-4333-8333-333333333333'::uuid,
+            '33333333-3333-4333-8333-333333333333'::uuid,
+            'frequency',
+            3,
+            'workouts',
+            'archived'
+        )
+    $sql$,
+    'paid JWT can insert an archived goal'
 );
 
 RESET ROLE;
@@ -913,5 +1770,49 @@ SELECT extensions.dblink_exec('pr32_a', $sql$
 $sql$);
 SELECT extensions.dblink_disconnect('pr32_b');
 SELECT extensions.dblink_disconnect('pr32_a');
+UPDATE public.subscriptions
+   SET current_period_end = now() - INTERVAL '1 day'
+ WHERE user_id = '33333333-3333-4333-8333-333333333333'::uuid;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"33333333-3333-4333-8333-333333333333","role":"authenticated"}',
+    true
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        UPDATE public.user_goals
+           SET status = 'active'
+         WHERE id = '33333333-0001-4333-8333-333333333333'::uuid
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'FREE (lapsed) JWT cannot re-activate an archived goal'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        INSERT INTO public.user_goals (user_id, goal_type, target_value, target_unit, status)
+        VALUES ('33333333-3333-4333-8333-333333333333'::uuid, 'frequency', 3, 'workouts', 'archived')
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'FREE JWT cannot INSERT a goal of any status (archived)'
+);
+
+SELECT pg_temp.assert_exception(
+    $sql$
+        INSERT INTO public.user_goals (user_id, goal_type, target_value, target_unit, status)
+        VALUES ('33333333-3333-4333-8333-333333333333'::uuid, 'frequency', 3, 'workouts', 'completed')
+    $sql$,
+    'P0001',
+    'Goal limit reached for your subscription tier',
+    'FREE JWT cannot INSERT a goal of any status (completed)'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
 
 SELECT * FROM finish();

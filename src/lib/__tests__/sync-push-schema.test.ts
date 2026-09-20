@@ -822,6 +822,122 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.cycles[0]?.templateId).toBe("template_531");
 		expect(parsed.cycles[1]?.templateId).toBeNull();
 	});
+
+	it("preserves the cycle progression settings presence bit", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			cycles: [
+				{
+					id: "32345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Cleared progression",
+					progressionSettingsPresent: true,
+					days: [],
+				},
+			],
+		});
+
+		expect(parsed.cycles[0]?.progressionSettingsPresent).toBe(true);
+		expect(parsed.cycles[0]?.progressionSettings).toBeUndefined();
+	});
+
+	it("parses durable workout deletions and ownership transfers additively", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			workoutDeletions: [
+				{
+					mutationId: "10000000-0000-4000-8000-000000000001",
+					scope: "COMPONENT",
+					portalSessionId: "10000000-0000-4000-8000-000000000002",
+					componentSessionId: "10000000-0000-4000-8000-000000000003",
+					deletedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+			ownershipTransfers: [
+				{
+					mutationId: "20000000-0000-4000-8000-000000000001",
+					sourceProfileId: null,
+					targetProfileId: "default",
+					workoutSessionIds: ["20000000-0000-4000-8000-000000000002"],
+					routineIds: [],
+					cycleIds: [],
+					personalRecordIds: [],
+				},
+			],
+			deletedCycles: [
+				{
+					id: "30000000-0000-4000-8000-000000000001",
+					updatedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+		});
+
+		expect(parsed.workoutDeletions).toHaveLength(1);
+		expect(parsed.ownershipTransfers[0]?.sourceProfileId).toBeNull();
+		expect(parsed.deletedCycles).toHaveLength(1);
+	});
+
+	it("defaults absent reliability operations to empty arrays for old clients", () => {
+		const parsed = pushPayloadSchema.parse({ deviceId: "d1", platform: "ios" });
+
+		expect(parsed.workoutDeletions).toEqual([]);
+		expect(parsed.ownershipTransfers).toEqual([]);
+		expect(parsed.deletedCycles).toEqual([]);
+	});
+
+	it("rejects a component deletion without its exact component id", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			workoutDeletions: [
+				{
+					mutationId: "10000000-0000-4000-8000-000000000001",
+					scope: "COMPONENT",
+					portalSessionId: "10000000-0000-4000-8000-000000000002",
+					deletedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects an ownership transfer without exact entity ids", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			ownershipTransfers: [
+				{
+					mutationId: "20000000-0000-4000-8000-000000000001",
+					sourceProfileId: "default",
+					targetProfileId: "30000000-0000-4000-8000-000000000001",
+					workoutSessionIds: [],
+					routineIds: [],
+					cycleIds: [],
+					personalRecordIds: [],
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects a cycle deletion without a usable edit timestamp", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			deletedCycles: [
+				{
+					id: "30000000-0000-4000-8000-000000000001",
+					updatedAt: "not-a-timestamp",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+	});
 });
 
 describe("formatPushPayloadError", () => {
