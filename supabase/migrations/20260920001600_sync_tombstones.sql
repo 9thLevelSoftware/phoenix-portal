@@ -33,6 +33,33 @@ CREATE TABLE IF NOT EXISTS public.sync_tombstones (
   PRIMARY KEY (user_id, entity, entity_id)
 );
 
+-- CREATE TABLE IF NOT EXISTS does not retrofit constraints when this migration
+-- is re-applied to a preview/prod table created by an earlier revision. Remove
+-- already orphaned tombstones, then install the same cascade explicitly.
+DELETE FROM public.sync_tombstones t
+WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = t.user_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+    WHERE c.conrelid = 'public.sync_tombstones'::regclass
+      AND c.contype = 'f'
+      AND c.confrelid = 'auth.users'::regclass
+      AND c.confdeltype = 'c'
+      AND a.attname = 'user_id'
+      AND array_length(c.conkey, 1) = 1
+  ) THEN
+    ALTER TABLE public.sync_tombstones
+      ADD CONSTRAINT sync_tombstones_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+  END IF;
+END
+$$;
+
 -- "Tombstones since lastSync" lookups.
 CREATE INDEX IF NOT EXISTS sync_tombstones_user_entity_deleted_at_idx
   ON public.sync_tombstones (user_id, entity, deleted_at);
