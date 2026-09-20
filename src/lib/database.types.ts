@@ -2700,6 +2700,40 @@ export type Database = {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
 			};
+			exercise_frequency: { Args: { p_profile_id?: string }; Returns: Json };
+			exercise_names: { Args: { p_profile_id?: string }; Returns: Json };
+			exercise_progress_series: {
+				Args: { p_exercise: string; p_limit?: number; p_profile_id?: string };
+				Returns: {
+					estimated_1rm_kg: number;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					max_reps: number;
+					max_weight_kg: number;
+					recorded_at: string;
+					session_id: string;
+					set_count: number;
+					total_volume_kg: number;
+					user_id: string;
+					velocity_estimated_1rm_kg: number | null;
+				}[];
+				SetofOptions: {
+					from: "*";
+					to: "exercise_progress";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
+			};
+			exercise_progress_series_many: {
+				Args: {
+					p_exercises?: string[];
+					p_limit_per_exercise?: number;
+					p_profile_id?: string;
+				};
+				Returns: Json;
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;

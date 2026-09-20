@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertCircle,
@@ -85,6 +85,7 @@ import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
+import { personalRecordsOptions } from "@/queries/records";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	buildPhaseMetricSummary,
@@ -663,6 +664,11 @@ export function Analytics() {
 		...progressionWorkbenchOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	// The workbench shares the Records tab's personal-record query, so the two
+	// together issue one request for records instead of one each.
+	const { data: personalRecords } = useInfiniteQuery(
+		personalRecordsOptions(userId, activeProfileId),
+	);
 	const {
 		data: dashboardFreshness,
 		isFetching: freshnessFetching,
@@ -1169,12 +1175,18 @@ export function Analytics() {
 		() =>
 			buildProgressionWorkbenchModel({
 				progressRows: progressionWorkbenchData?.progressRows ?? [],
-				records: progressionWorkbenchData?.records ?? [],
+				records: personalRecords ?? [],
 				selectedExercise: selectedProgressionExercise,
 				phaseFilter,
 				unit,
 			}),
-		[progressionWorkbenchData, selectedProgressionExercise, phaseFilter, unit],
+		[
+			progressionWorkbenchData,
+			personalRecords,
+			selectedProgressionExercise,
+			phaseFilter,
+			unit,
+		],
 	);
 
 	const analyticsFreshness = useMemo(() => {
@@ -1259,7 +1271,7 @@ export function Analytics() {
 		(strengthRaw?.length ?? 0) > 0 ||
 		(phaseStatsRaw?.length ?? 0) > 0 ||
 		(progressionWorkbenchData?.progressRows.length ?? 0) > 0 ||
-		(progressionWorkbenchData?.records.length ?? 0) > 0 ||
+		(personalRecords?.length ?? 0) > 0 ||
 		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
 		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;

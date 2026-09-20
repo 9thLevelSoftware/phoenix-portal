@@ -251,15 +251,10 @@
         "TS2556": 1
       },
       "src/queries/__tests__/progress.test.ts": {
-        "TS18048": 2,
-        "TS2454": 2,
         "TS2556": 1
       },
       "src/queries/__tests__/records.test.ts": {
-        "TS18048": 7,
-        "TS2345": 1,
-        "TS2556": 1,
-        "TS7006": 1
+        "TS2556": 1
       },
       "src/queries/__tests__/routines.test.ts": {
         "TS18048": 9,

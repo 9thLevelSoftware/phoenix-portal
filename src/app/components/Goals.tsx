@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Archive,
 	Award,
@@ -61,7 +61,7 @@ import {
 	useCreateGoal,
 	useUpdateGoal,
 } from "@/mutations/goals";
-import { goalsOptions } from "@/queries/goals";
+import { goalPrBestsOptions, goalsOptions } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
@@ -106,7 +106,7 @@ export function useGoalProgress(
 		workoutListOptions(user?.id ?? "", profileId),
 	);
 	const { data: records } = useQuery(
-		personalRecordsOptions(user?.id ?? "", profileId),
+		goalPrBestsOptions(user?.id ?? "", profileId),
 	);
 
 	return useMemo(() => {
@@ -315,10 +315,9 @@ export function Goals() {
 		isError,
 		refetch,
 	} = useQuery(goalsOptions(user?.id ?? ""));
-	const { data: records } = useQuery({
-		...personalRecordsOptions(user?.id ?? "", activeProfileId),
-		enabled: !!user?.id,
-	});
+	const { data: records } = useInfiniteQuery(
+		personalRecordsOptions(user?.id ?? "", activeProfileId),
+	);
 	const progressMap = useGoalProgress(activeProfileId);
 	const createGoal = useCreateGoal();
 	const updateGoal = useUpdateGoal();

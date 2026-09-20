@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -162,7 +162,9 @@ export function ExerciseDeepDive({
 		enabled: !!selectedExercise,
 	});
 
-	const { data: records } = useQuery(personalRecordsOptions(userId, profileId));
+	const { data: records } = useInfiniteQuery(
+		personalRecordsOptions(userId, profileId),
+	);
 
 	// ── Derived data ─────────────────────────────────────────────────────────
 	const filteredProgress = useMemo(
