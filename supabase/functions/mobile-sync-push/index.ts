@@ -448,7 +448,10 @@ interface SessionDto {
   workingReps: number | null;
 }
 
-function portalSessionIdOf(session: SessionDto): string {
+function portalSessionIdOf(session: {
+  id: string;
+  routineSessionId?: string | null;
+}): string {
   return session.routineSessionId ?? session.id;
 }
 

@@ -1082,7 +1082,7 @@ Deno.test("clocked cycle deletions return exact accepted ids and legacy ids neve
 
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
-  assertEquals(body.rejections?.cycles ?? [], []);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
   assert(harness.adminRpcCalls.some((call) => call.name === "delete_training_cycles_lww"));
   assertEquals(
     harness.adminWriteCalls.filter((call) =>
