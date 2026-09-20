@@ -450,12 +450,23 @@ describe("useToggleFavorite", () => {
 		vi.clearAllMocks();
 	});
 
+	/** `.update().eq("id").eq("user_id").select("id").maybeSingle()`. */
+	function mockFavoriteChain(outcome: {
+		data: { id: string } | null;
+		error: { message: string; code?: string } | null;
+	}) {
+		const maybeSingle = vi.fn(() => Promise.resolve(outcome));
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqSecond = vi.fn(() => ({ select }));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
+		return { select };
+	}
+
 	it("calls Supabase update with is_favorite and invalidates user-specific cache", async () => {
 		const { useToggleFavorite } = await import("../routines");
 
-		const eqSecond = vi.fn(() => Promise.resolve({ error: null }));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
+		const chain = mockFavoriteChain({ data: { id: "routine-1" }, error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -467,9 +478,58 @@ describe("useToggleFavorite", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("routines");
+		expect(chain.select).toHaveBeenCalledWith("id");
 		// Should invalidate all routines cache (prefix invalidation for profile filtering)
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.routines.all,
+		});
+	});
+
+	it("fails instead of silently doing nothing when the update matches no row", async () => {
+		// The routines UPDATE policy is owner AND FLAME. If the plan lapsed
+		// while the page was open, PostgREST answers success with an empty
+		// body and the UI would keep the star it just drew.
+		const { useToggleFavorite } = await import("../routines");
+
+		mockFavoriteChain({ data: null, error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useToggleFavorite(), { wrapper });
+
+		result.current.mutate({ routineId: "routine-1", isFavorite: true });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Routine not found, or you can no longer edit it.",
+		);
+	});
+
+	it("explains a server-side tier denial instead of failing silently", async () => {
+		const { useToggleFavorite } = await import("../routines");
+		const { TIER_DENIED_MESSAGE } = await import("@/lib/tierErrors");
+
+		mockFavoriteChain({
+			data: null,
+			error: {
+				code: "42501",
+				message: "new row violates row-level security policy",
+			},
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useToggleFavorite(), { wrapper });
+
+		result.current.mutate({ routineId: "routine-1", isFavorite: true });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(TIER_DENIED_MESSAGE);
+		// The route gate must re-evaluate, so billing status is refetched.
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.subscription.all,
 		});
 	});
 });

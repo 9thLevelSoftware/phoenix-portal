@@ -1,32 +1,23 @@
 import { format } from "date-fns";
 import JSZip from "jszip";
 import Papa from "papaparse";
-import {
-	type BodyMuscleFocusModel,
-	type BodyMuscleFocusRow,
-	buildBodyMuscleFocusModel,
+import type {
+	BodyMuscleFocusModel,
+	BodyMuscleFocusRow,
 } from "@/lib/body-muscle-analytics";
+import { loadBodyMuscleAnalytics } from "@/lib/body-muscle-analytics-loader";
 import { supabase } from "@/lib/supabase";
+import {
+	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
+} from "@/lib/supabasePaging";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { normalizeCableCount } from "@/lib/units/loadDisplay";
 
-const SUPABASE_PAGE_SIZE = 1000;
-const SUPABASE_FILTER_CHUNK_SIZE = 100;
+// Re-exported for existing callers; the helpers now live in supabasePaging.ts.
+export { fetchAllSupabasePages, fetchAllSupabasePagesForChunks };
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
-type SupabasePageResult<T> = {
-	data: T[] | null;
-	error: unknown;
-};
-type FetchSupabasePage<T> = (
-	from: number,
-	to: number,
-) => PromiseLike<SupabasePageResult<T>>;
-type FetchSupabaseChunkPage<T, V> = (
-	values: V[],
-	from: number,
-	to: number,
-) => PromiseLike<SupabasePageResult<T>>;
 
 export interface AnalyticsWorkoutExerciseSummaryRow {
 	date: string | Date;
@@ -488,6 +479,7 @@ export async function exportAnalyticsTablesZip(
 			exercises,
 			sets,
 		);
+		const { buildBodyMuscleFocusModel } = await loadBodyMuscleAnalytics();
 		const bodyFocusModel = buildBodyMuscleFocusModel(
 			buildBodyFocusRows(workouts, exercises, sets),
 		);

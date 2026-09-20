@@ -24,6 +24,8 @@ const E2E_PADDLE_PRICE_IDS = {
 
 export default defineConfig({
 	testDir: "./e2e",
+	// Offline/PWA smokes need a production build; see playwright.pwa.config.ts.
+	testIgnore: "**/*.pwa.spec.ts",
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,

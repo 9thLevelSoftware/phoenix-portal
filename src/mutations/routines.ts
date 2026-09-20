@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -13,6 +14,7 @@ import {
 	toSupersetColorName,
 	toWireMode,
 } from "../../supabase/functions/_shared/workoutModes.ts";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -198,6 +200,9 @@ export function useSaveRoutine() {
 	});
 }
 
+/** Sentinel for "the favourite UPDATE matched no row". */
+const ROUTINE_NOT_UPDATED = "Routine was not updated";
+
 export function useToggleFavorite() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -211,18 +216,40 @@ export function useToggleFavorite() {
 			isFavorite: boolean;
 		}) => {
 			if (!user) throw new Error("Must be logged in");
-			const { error } = await supabase
+			// `.select("id")` so a 0-row UPDATE is observable. The routines
+			// UPDATE policy is owner AND FLAME, so a user whose plan lapsed
+			// while this page was open matches no row and PostgREST returns
+			// success with an empty body — silently doing nothing.
+			const { data: updated, error } = await supabase
 				.from("routines")
 				.update({ is_favorite: isFavorite })
 				.eq("id", routineId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!updated) throw new Error(ROUTINE_NOT_UPDATED);
 			return { routineId, isFavorite };
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.routines.all,
 			});
+		},
+		onError: (error: Error) => {
+			console.error("[useToggleFavorite] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error(
+				error.message === ROUTINE_NOT_UPDATED
+					? "Routine not found, or you can no longer edit it."
+					: "Failed to update this routine. Please try again.",
+			);
 		},
 	});
 }

@@ -57,7 +57,7 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 
 ## Subscription Tiers
 
-Single matrix matching `src/lib/pricing.ts` and `src/app/routes/index.tsx`. Ember is not sold leaderboards.
+Single matrix matching `src/lib/pricing.ts` and `src/lib/tierMatrix.ts` (read by `src/app/routes/index.tsx`). Ember is not sold leaderboards.
 
 | Tier        | Monthly | Annual  | Access                                                                                          |
 | ----------- | ------- | ------- | ----------------------------------------------------------------------------------------------- |
@@ -65,6 +65,12 @@ Single matrix matching `src/lib/pricing.ts` and `src/app/routes/index.tsx`. Embe
 | **EMBER**   | $5      | $49/yr  | Cloud sync, dashboard, history, session detail, goals, recovery                                 |
 | **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations (Strava/Hevy/Liftosaur), leaderboards, challenges, compare, session replay |
 | **INFERNO** | $25     | $249/yr | Advanced biomechanics (force, VBT, ROM, SRA, form). Purchasable; inner INFERNO gates stay.      |
+
+Route gates read their tiers from `FEATURE_MIN_TIER` in `src/lib/tierMatrix.ts`. Route gates are UX only; what the server enforces is:
+
+- **EMBER (server-enforced):** cloud sync (`mobile-sync-push`, `mobile-sync-pull`) and browser writes to workout sessions, records and local profiles (RLS).
+- **FLAME (server-enforced):** browser INSERT/UPDATE on shared routines/cycles, votes, comments, saved items, follows, challenge participation, integrations, the sync queue, and portal routine/cycle authoring (`routines`, `routine_exercises`, `training_cycles`, `cycle_days`) via RLS; the `import_shared_routine` / `import_shared_cycle` RPCs; `initiate-oauth`, the integration sync Edge Functions and leaderboards (`compute-rankings`). Deleting what you published or joined (comments, shares, votes, follows, saved items, challenge participation) carries no tier check in RLS, and every portal mutation that removes one of those rows is a real `DELETE` — including comment removal, which is a hard delete with a row check, not a soft-delete `UPDATE`. So a downgrade never blocks removal, at the API or in the mutations. The community and challenge *screens* are still FLAME-gated, so a downgraded user has no portal page to remove from (follow-up: a withdraw-only view for lapsed plans). Routines and cycles pushed from the mobile app stay EMBER (service-role push).
+- **Browser-only gates:** analytics, compare, session replay and INFERNO biomechanics are computed from data the user can already read.
 
 Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program approval. Do not treat README as a Connect un-block.
 
@@ -81,7 +87,7 @@ Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program ap
 | **Animation**      | Motion (formerly Framer Motion, reduced-motion) |
 | **Validation**     | Zod 4                                          |
 | **Backend**        | Supabase (PostgreSQL, Auth, Realtime, Storage) |
-| **Edge Functions** | 22 Deno functions                              |
+| **Edge Functions** | Deno (`ls supabase/functions`; each has a `[functions.*]` block in `supabase/config.toml`) |
 | **Payments**       | Paddle (Merchant of Record)                    |
 | **Monitoring**     | Sentry (cookie-consent-gated)                  |
 | **Testing**        | Vitest 4, Playwright 1.58                      |
@@ -102,8 +108,21 @@ npm run build
 # Run tests
 npm test
 
-# Type checking
+# Sync tests (mocked Edge Functions)
+npm run test:sync
+
+# Edge Function type-check and Deno handler tests
+npm run check:edge-functions
+npm run test:edge
+
+# Type checking. NOTE: the root tsconfig.json is a solution file with
+# "files": [], so `tsc --noEmit` over it checks nothing and always passes.
+# Use `npx tsc -b --force` for real coverage (it reports a known backlog).
+# Type checking (all tsconfig projects; fails on errors not in typecheck-baseline.json)
 npm run typecheck
+
+# Re-record the pre-existing type errors after fixing some (review the diff)
+npm run typecheck:baseline
 
 # E2E tests
 npm run test:e2e
@@ -128,15 +147,23 @@ operating checklist.
 
 ### Environment Variables
 
-Copy `.env.example` to `.env.local`:
+Copy `.env.example` to `.env.local` and confirm every value in it — that file
+is the list, and it carries a comment per variable.
 
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_PADDLE_CLIENT_TOKEN=your-paddle-token
 VITE_PADDLE_ENVIRONMENT=sandbox
+VITE_SENTRY_DSN=
 # ... Paddle price IDs for each tier
 ```
+
+Only `VITE_`-prefixed values reach the browser bundle. Edge Function secrets
+(`PADDLE_API_KEY`, `CRON_SECRET`, `SYNC_LWW_ENABLED`, `SUPABASE_PUBLIC_URL`,
+`APP_URL`, the provider client secrets, …) are set in Supabase Dashboard →
+Edge Functions → Secrets. `CLAUDE.md` → "Environment Variables" explains what
+each one is for.
 
 ## Mobile Sync Architecture
 
@@ -151,8 +178,8 @@ Portal ← useRealtimeSync hook ← Channel sync:{userId}
 ```
 
 - **Push**: Workouts → `mobile-sync-push` Edge upsert (realtime broadcast on private `sync:{userId}` invalidates portal cache)
-- **Pull**: Routines, cycles, and other delta entities → Mobile SQLite. Cursor-based, **75** entities/page (max **300**). `rep_telemetry` is **not** pulled — session replay restores telemetry in the portal only.
-- **Conflict Resolution**: Default is **last-push-wins** (incoming push overwrites the server row). `SYNC_LWW_ENABLED` is a hosted flag; do not assume server-wins.
+- **Pull**: Parity-based — the device sends the ids it already holds and the server returns the rest, plus rows changed since `lastSync - 2 min`. Cursor-based, **75** entities/page (max **300**). There is no timestamp-only pull mode. `rep_telemetry` is **not** pulled — session replay restores telemetry in the portal only.
+- **Conflict Resolution**: `client_updated_at` is the last-write-wins key and `updated_at` is the server-owned pull cursor; they are not interchangeable. Sessions and routines are last-push-wins unless `SYNC_LWW_ENABLED` is set (a hosted, cold-start flag); training cycles always go through `merge_training_cycles_from_push`, which preserves portal-only configuration and refuses a stale structure. Routine and cycle deletes are tombstoned, so a stale device cannot resurrect them. See `CLAUDE.md` → "The mobile sync contract".
 
 ## Phoenix Theme
 

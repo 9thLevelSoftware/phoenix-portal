@@ -25,6 +25,7 @@ import {
 	toWireMode,
 	workoutModeLabel,
 } from "../../../supabase/functions/_shared/workoutModes.ts";
+import { workoutModeLabel } from "../../../supabase/functions/_shared/workoutModes.ts";
 
 export function formatExercisePrescription(
 	exercise: {
