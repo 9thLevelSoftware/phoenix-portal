@@ -1686,6 +1686,107 @@ Deno.test({
 Deno.test({
   name:
     "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const routineId = crypto.randomUUID();
+      const liveRoutineId = crypto.randomUUID();
+      const cycleId = crypto.randomUUID();
+      const routines = await fixture.admin.from("routines").insert([
+        { id: routineId, user_id: fixture.ownerId, name: "Deleted routine" },
+        { id: liveRoutineId, user_id: fixture.ownerId, name: "Live routine" },
+      ]);
+      if (routines.error) throw new Error("routine fixture failed");
+      const cycles = await fixture.admin.from("training_cycles").insert({
+        id: cycleId,
+        user_id: fixture.ownerId,
+        name: "Deleted cycle",
+      });
+      if (cycles.error) throw new Error("cycle fixture failed");
+      const pullStartedAt = Date.now() - 60_000;
+      const routineDelete = await fixture.admin.from("routines").delete().eq(
+        "id",
+        routineId,
+      );
+      if (routineDelete.error) throw new Error("routine delete failed");
+      const cycleDelete = await fixture.admin.from("training_cycles").delete()
+        .eq("id", cycleId);
+      if (cycleDelete.error) throw new Error("cycle delete failed");
+
+      const knownIds = {
+        sessionIds: [],
+        routineIds: [routineId, liveRoutineId],
+        cycleIds: [cycleId],
+        badgeIds: [],
+        personalRecordIds: [],
+      };
+      const ownerLogs: unknown[][] = [];
+      const ownerHandler = realPullHandler(fixture, fixture.ownerId, ownerLogs);
+
+      // Shipping client: lastSync 0 plus the ids it holds.
+      const first = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const firstBody = await json(first);
+      assertEquals(first.status, 200, JSON.stringify(firstBody));
+      assertEquals(firstBody.deletedRoutineIds, [routineId]);
+      assertEquals(firstBody.deletedCycleIds, [cycleId]);
+
+      // Later pages never repeat the lists.
+      const later = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+        cursor: validLaterCursor(),
+      }));
+      const laterBody = await json(later);
+      assertEquals(later.status, 200);
+      assertEquals(laterBody.deletedRoutineIds, []);
+      assertEquals(laterBody.deletedCycleIds, []);
+
+      // Real-lastSync client without known ids: tombstones since lastSync.
+      const since = await ownerHandler(requestFromBody({
+        deviceId: "test-device",
+        lastSync: pullStartedAt,
+        profileId: fixture.ownerProfileId,
+      }));
+      const sinceBody = await json(since);
+      assertEquals(since.status, 200, JSON.stringify(sinceBody));
+      assertEquals(sinceBody.deletedRoutineIds, [routineId]);
+      assertEquals(sinceBody.deletedCycleIds, [cycleId]);
+      assertEquals(ownerLogs, []);
+
+      // Another user naming the same ids learns nothing.
+      const otherHandler = realPullHandler(fixture, fixture.otherId, []);
+      const cross = await otherHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.otherProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const crossBody = await json(cross);
+      assertEquals(cross.status, 200);
+      assertEquals(crossBody.deletedRoutineIds, []);
+      assertEquals(crossBody.deletedCycleIds, []);
+    } finally {
+      const userIds = [fixture.ownerId, fixture.otherId];
+      await fixture.admin.from("routines").delete().in("user_id", userIds);
+      await deleteLocalPullFixtureRows(fixture.admin, userIds);
+      const tombstones = await fixture.admin.from("sync_tombstones").delete()
+        .in("user_id", userIds);
+      if (tombstones.error) throw new Error("tombstone cleanup failed");
+      await assertLocalPullFixtureClean(fixture);
+      const audit = await fixture.admin.from("sync_tombstones")
+        .select("user_id", { count: "exact", head: true })
+        .in("user_id", userIds);
+      if (audit.error) throw new Error("tombstone cleanup audit failed");
+      assertEquals(audit.count, 0);
+    }
+  },
+});
+
 // ─── lastSync request shapes against real SQL (PR 26) ──────────────────────
 // Every body below is the verbatim wire shape of the mobile client's
 // PortalSyncPullRequest (PortalApiClient.pullPortalPayload): kotlinx
@@ -1856,99 +1957,6 @@ Deno.test({
   fn: async () => {
     const fixture = await createLocalPullFixture();
     try {
-      const routineId = crypto.randomUUID();
-      const liveRoutineId = crypto.randomUUID();
-      const cycleId = crypto.randomUUID();
-      const routines = await fixture.admin.from("routines").insert([
-        { id: routineId, user_id: fixture.ownerId, name: "Deleted routine" },
-        { id: liveRoutineId, user_id: fixture.ownerId, name: "Live routine" },
-      ]);
-      if (routines.error) throw new Error("routine fixture failed");
-      const cycles = await fixture.admin.from("training_cycles").insert({
-        id: cycleId,
-        user_id: fixture.ownerId,
-        name: "Deleted cycle",
-      });
-      if (cycles.error) throw new Error("cycle fixture failed");
-      const pullStartedAt = Date.now() - 60_000;
-      const routineDelete = await fixture.admin.from("routines").delete().eq(
-        "id",
-        routineId,
-      );
-      if (routineDelete.error) throw new Error("routine delete failed");
-      const cycleDelete = await fixture.admin.from("training_cycles").delete()
-        .eq("id", cycleId);
-      if (cycleDelete.error) throw new Error("cycle delete failed");
-
-      const knownIds = {
-        sessionIds: [],
-        routineIds: [routineId, liveRoutineId],
-        cycleIds: [cycleId],
-        badgeIds: [],
-        personalRecordIds: [],
-      };
-      const ownerLogs: unknown[][] = [];
-      const ownerHandler = realPullHandler(fixture, fixture.ownerId, ownerLogs);
-
-      // Shipping client: lastSync 0 plus the ids it holds.
-      const first = await ownerHandler(requestFromBody({
-        ...validPullBody(),
-        profileId: fixture.ownerProfileId,
-        knownEntityIds: knownIds,
-      }));
-      const firstBody = await json(first);
-      assertEquals(first.status, 200, JSON.stringify(firstBody));
-      assertEquals(firstBody.deletedRoutineIds, [routineId]);
-      assertEquals(firstBody.deletedCycleIds, [cycleId]);
-
-      // Later pages never repeat the lists.
-      const later = await ownerHandler(requestFromBody({
-        ...validPullBody(),
-        profileId: fixture.ownerProfileId,
-        knownEntityIds: knownIds,
-        cursor: validLaterCursor(),
-      }));
-      const laterBody = await json(later);
-      assertEquals(later.status, 200);
-      assertEquals(laterBody.deletedRoutineIds, []);
-      assertEquals(laterBody.deletedCycleIds, []);
-
-      // Real-lastSync client without known ids: tombstones since lastSync.
-      const since = await ownerHandler(requestFromBody({
-        deviceId: "test-device",
-        lastSync: pullStartedAt,
-        profileId: fixture.ownerProfileId,
-      }));
-      const sinceBody = await json(since);
-      assertEquals(since.status, 200, JSON.stringify(sinceBody));
-      assertEquals(sinceBody.deletedRoutineIds, [routineId]);
-      assertEquals(sinceBody.deletedCycleIds, [cycleId]);
-      assertEquals(ownerLogs, []);
-
-      // Another user naming the same ids learns nothing.
-      const otherHandler = realPullHandler(fixture, fixture.otherId, []);
-      const cross = await otherHandler(requestFromBody({
-        ...validPullBody(),
-        profileId: fixture.otherProfileId,
-        knownEntityIds: knownIds,
-      }));
-      const crossBody = await json(cross);
-      assertEquals(cross.status, 200);
-      assertEquals(crossBody.deletedRoutineIds, []);
-      assertEquals(crossBody.deletedCycleIds, []);
-    } finally {
-      const userIds = [fixture.ownerId, fixture.otherId];
-      await fixture.admin.from("routines").delete().in("user_id", userIds);
-      await deleteLocalPullFixtureRows(fixture.admin, userIds);
-      const tombstones = await fixture.admin.from("sync_tombstones").delete()
-        .in("user_id", userIds);
-      if (tombstones.error) throw new Error("tombstone cleanup failed");
-      await assertLocalPullFixtureClean(fixture);
-      const audit = await fixture.admin.from("sync_tombstones")
-        .select("user_id", { count: "exact", head: true })
-        .in("user_id", userIds);
-      if (audit.error) throw new Error("tombstone cleanup audit failed");
-      assertEquals(audit.count, 0);
       const now = Date.now();
       const known = emptyKnown();
       for (const table of PARITY_TABLES) {

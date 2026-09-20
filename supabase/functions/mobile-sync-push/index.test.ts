@@ -536,16 +536,10 @@ function makeHarness(
         },
         table === "personal_records"
           ? options.personalRecordsResult
+          : table === "exercise_catalog" && options.catalogRows
+          ? { data: options.catalogRows, error: null }
           : options.tableResults?.[table],
       );
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : table === "exercise_catalog" && options.catalogRows
-        ? { data: options.catalogRows, error: null }
-        : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -6017,6 +6011,10 @@ Deno.test({
         ? [fixture.ownerId]
         : [fixture.ownerId, attackerId];
       await deleteTombstonePushFixture(fixture.admin, toDelete);
+    }
+  },
+});
+
 Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
   const harness = makeHarness(undefined, {
     catalogRows: [{
