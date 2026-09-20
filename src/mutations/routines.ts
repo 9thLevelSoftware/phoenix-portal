@@ -34,6 +34,14 @@ function normalizePerSetWeights(per: unknown): Json | null {
 }
 
 interface RoutineExerciseInput {
+	/**
+	 * The `routine_exercises.id` this exercise already has, when the routine is
+	 * being edited. Sent back on update so the row keeps its identity: mobile
+	 * keys per-exercise rack and scaling defaults by this id, and regenerating
+	 * it on every portal save silently resets them. Ignored on create — the
+	 * create RPC mints its own ids.
+	 */
+	id?: string | null;
 	name: string;
 	muscle_group: string;
 	exercise_id?: string | null;
@@ -62,8 +70,15 @@ interface RoutineExerciseInput {
 	drop_set_min_weight_kg?: number | null;
 }
 
-type RoutineExerciseInsert =
-	Database["public"]["Tables"]["routine_exercises"]["Insert"];
+/**
+ * A child element of a create/update RPC payload. `routine_id` is omitted:
+ * both RPCs set it themselves from the parent they just created or matched,
+ * and on create there is no id to send yet.
+ */
+type RoutineExerciseRow = Omit<
+	Database["public"]["Tables"]["routine_exercises"]["Insert"],
+	"routine_id"
+>;
 
 /**
  * Mobile only understands wire mode names (OLD_SCHOOL, ECHO, ...). Normalize
@@ -86,12 +101,17 @@ function requireWireMode(
 }
 
 export function toRoutineExerciseRows(
-	routineId: string,
 	exercises: RoutineExerciseInput[],
 	preservedModes: readonly string[] = [],
+	{ withIds = false }: { withIds?: boolean } = {},
+): RoutineExerciseRow[] {
+	routineId: string,
 ): RoutineExerciseInsert[] {
 	return exercises.map((ex, i) => ({
-		routine_id: routineId,
+		// Only on update, and only when the exercise already has a row: the
+		// create RPC ignores payload ids, so sending them there would be
+		// misleading noise.
+		...(withIds && ex.id ? { id: ex.id } : {}),
 		name: ex.name,
 		muscle_group: ex.muscle_group,
 		exercise_id: ex.exercise_id ?? null,
@@ -142,50 +162,39 @@ export function useSaveRoutine() {
 	return useMutation({
 		mutationFn: async (input: SaveRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to save routines");
+			// Atomic create via RPC: the routine row and its exercises are
+			// inserted in one transaction, so a rejected exercise can no longer
+			// leave an orphaned routine behind, and there is no best-effort
+			// compensating delete left to fail silently.
+			// `toRoutineExerciseRows` rejects an unknown mode, and it runs before
+			// the call, so nothing is written for one.
+			const exercises = toRoutineExerciseRows(input.exercises);
 			// Validate modes before the parent insert so an unknown mode can't
 			// leave an orphaned routine row behind.
 			for (const ex of input.exercises) requireWireMode(ex.mode);
 
-			// Create the routine row
-			const { data: routine, error: routineError } = await supabase
-				.from("routines")
-				.insert({
-					user_id: user.id,
-					local_profile_id: useProfileFilterStore.getState().activeProfileId,
-					name: input.name,
-					description: input.description ?? "",
-					exercise_count: input.exercises.length,
-					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
-					times_completed: 0,
-					is_favorite: false,
-					tags: [],
-				})
-				.select("id")
-				.single();
+			const { data: routineId, error } = await supabase.rpc(
+				"create_routine_with_exercises",
+				{
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_exercise_count: input.exercises.length,
+					p_estimated_duration: estimatedRoutineDurationSeconds(
+						input.exercises,
+					),
+					p_exercises: exercises as unknown as Json,
+					// NULL = the default profile. `routines.local_profile_id` carries
+					// a composite FK to local_profiles(user_id, id), so the only
+					// non-null value that can be stored is one of this user's own
+					// profile ids — which is what the filter store holds.
+					p_local_profile_id: useProfileFilterStore.getState().activeProfileId,
+				},
+			);
 
-			if (routineError) throw routineError;
+			if (error) throw error;
+			if (!routineId) throw new Error("Routine was not created");
 
-			// Insert exercises. If this fails, roll back the orphaned parent so we
-			// don't leave a routine whose exercise_count has no matching children.
-			if (input.exercises.length > 0) {
-				const routineExercises = toRoutineExerciseRows(
-					routine.id,
-					input.exercises,
-				);
-				const { error: exError } = await supabase
-					.from("routine_exercises")
-					.insert(routineExercises);
-				if (exError) {
-					await supabase
-						.from("routines")
-						.delete()
-						.eq("id", routine.id)
-						.eq("user_id", user.id);
-					throw exError;
-				}
-			}
-
-			return routine;
+			return { id: routineId };
 		},
 
 		onSuccess: () => {
@@ -195,6 +204,16 @@ export function useSaveRoutine() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveRoutine] failed:", error);
+			// Routine authoring is FLAME-only and enforced server-side, so a
+			// plan that lapsed while the builder was open fails here. "Try
+			// again" would be a lie; say what actually has to change.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save routine. Please try again.");
 		},
 	});
@@ -275,10 +294,18 @@ export function useUpdateRoutine() {
 					p_estimated_duration: estimatedRoutineDurationSeconds(
 						input.exercises,
 					),
+					// `withIds`: an exercise that already has a row sends its id
+					// back, so the row survives the save instead of being
+					// regenerated. Mobile keys per-exercise rack and scaling
+					// defaults by that id.
 					p_exercises: toRoutineExerciseRows(
-						input.routineId,
 						input.exercises,
 						input.preservedModes,
+						{ withIds: true },
+					).map((row) => ({
+						...row,
+						routine_id: input.routineId,
+					})) as unknown as Json,
 					) as unknown as Json,
 				},
 			);
@@ -302,6 +329,13 @@ export function useUpdateRoutine() {
 
 		onError: (error: Error) => {
 			console.error("[useUpdateRoutine] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to update routine. Please try again.");
 		},
 	});

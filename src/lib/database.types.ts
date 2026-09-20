@@ -3024,6 +3024,7 @@ export type Database = {
 				Returns: undefined;
 			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
+			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
 				Args: {
 					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];

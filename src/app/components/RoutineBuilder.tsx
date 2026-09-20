@@ -455,6 +455,13 @@ export function RoutineBuilder() {
 
 	const buildExercisePayload = () =>
 		exercises.map((ex, i) => ({
+			// For an exercise loaded from the routine this is its
+			// `routine_exercises.id`; for one added in this session it is a
+			// client-minted uuid the server will replace. The update mutation
+			// sends it so existing rows keep their identity (mobile keys
+			// per-exercise rack and scaling defaults by it); the create
+			// mutation drops it.
+			id: ex.id,
 			name: ex.name,
 			muscle_group: ex.muscleGroup,
 			exercise_id: ex.exerciseId ?? null,

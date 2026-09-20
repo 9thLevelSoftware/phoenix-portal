@@ -447,6 +447,7 @@ type TerminalResult =
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
+  terminalResult: TerminalResult = {
   terminalResult: TableResult = {
   terminalResult: TerminalResult = {
   onCall: (method: string, args: unknown[]) => void,
@@ -487,6 +488,10 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
+  const operations: QueryOperation[] = [];
+  for (const method of chainMethods) {
+    query[method] = (...args: unknown[]) => {
+      operations.push({ name: method, args });
   const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
@@ -502,6 +507,7 @@ function permissiveQuery(
         onProbe();
       }
       if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
         onWrite(method);
       onCall?.(method, args);
       operations.push({ name: method, args });
@@ -545,6 +551,14 @@ function permissiveQuery(
   return query;
 }
 
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type TerminalResult =
+  | { data: unknown; error: unknown; count?: number }
+  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 /** Every chained call made on one `from("exercise_catalog")` query. */
 interface CatalogQuery {
   calls: Array<{ method: string; args: unknown[] }>;
@@ -580,6 +594,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
   adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   ownershipProbeTables: string[];
@@ -650,6 +665,8 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
+    [];
   const adminWritePayloads: Array<
     { table: string; method: string; payload: unknown }
   > = [];
@@ -686,6 +703,7 @@ function makeHarness(
     from(table: string) {
       if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
+      return permissiveQuery(table, (method, args) => {
       const record: AdminQueryRecord = { table, calls: [] };
       adminQueries.push(record);
       const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
@@ -702,9 +720,11 @@ function makeHarness(
         : options.tableResults?.[table]);
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
+        adminWriteArgs.push({ table, method, args });
         operationEvents.push(`write:${table}:${method}`);
       }, table === "personal_records"
         ? options.personalRecordsResult
+        : options.tableResults?.[table]);
         : table === "exercise_catalog" && options.catalogRows
         ? { data: options.catalogRows, error: null }
         : undefined,
@@ -887,6 +907,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWriteArgs,
     adminWritePayloads,
     adminWriteArgs,
     ownershipProbeTables,
