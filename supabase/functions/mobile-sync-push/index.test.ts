@@ -423,7 +423,6 @@ function permissiveQuery(
     count: 0,
   },
   writeError?: (method: string) => unknown,
-  onCall?: (method: string, args: unknown[]) => void,
   onProbe: () => void = () => {},
   probeResult: unknown[] = [],
   onChain: (method: string, args: unknown[]) => void = () => {},
@@ -454,8 +453,6 @@ function permissiveQuery(
   ];
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
-      onCall?.(method, args);
-      if (method === "neq") ownershipProbe = true;
       onChain(method, args);
       if (method === "neq") {
         ownershipProbe = true;
@@ -471,7 +468,7 @@ function permissiveQuery(
   query.maybeSingle = () =>
     Promise.resolve(
       table === "subscriptions"
-        ? terminalResult
+        ? subscriptionResult
         : { data: null, error: null },
     );
   query.single = () => Promise.resolve({ data: null, error: null });
@@ -483,8 +480,6 @@ function permissiveQuery(
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
-        ? { data: [], error: null, count: 0 }
-      ownershipProbe
         ? { data: probeResult, error: null, count: probeResult.length }
         : resolveTerminal
         ? resolveTerminal()
@@ -582,34 +577,28 @@ function makeHarness(
       adminFromCalls.push(table);
       const record: AdminQueryRecord = { table, calls: [] };
       adminQueries.push(record);
+      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
+        ? { calls: [] }
+        : null;
+      if (catalogQuery) catalogQueries.push(catalogQuery);
       return permissiveQuery(
         table,
         (method) => {
           adminWriteCalls.push({ table, method });
           operationEvents.push(`write:${table}:${method}`);
         },
-        table === "subscriptions"
-          ? options.subscriptionResult ?? DEFAULT_SUBSCRIPTION_RESULT
-          : table === "personal_records"
+        table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
         (method) => options.writeErrors?.[`${table}:${method}`],
-        (method, args) => record.calls.push({ method, args }),
-      );
-      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
-        ? { calls: [] }
-        : null;
-      if (catalogQuery) catalogQueries.push(catalogQuery);
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        operationEvents.push(`write:${table}:${method}`);
-      },
-        table === "personal_records" ? options.personalRecordsResult : undefined,
         () => ownershipProbeTables.push(table),
         (options.foreignOwnedTables ?? []).includes(table)
           ? [{ id: "foreign-row" }]
           : [],
-        (method, args) => catalogQuery?.calls.push({ method, args }),
+        (method, args) => {
+          record.calls.push({ method, args });
+          catalogQuery?.calls.push({ method, args });
+        },
         catalogQuery && options.catalogBehavior
           ? () =>
             options.catalogBehavior!(catalogQuery) ??
