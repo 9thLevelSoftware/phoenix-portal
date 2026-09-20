@@ -3057,6 +3057,14 @@ async function mobileSyncPushHandler(
       );
       if (cycleOwnershipResp) return cycleOwnershipResp;
 
+      if (syncLwwEnabled) {
+        const rows = cycleRows.map((r) => ({
+          ...r,
+          updated_at: r.updated_at ?? new Date().toISOString(),
+        }));
+        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+          'upsert_training_cycle_lww',
+          { p_rows: rows },
       // KD-4 / R-24: decided here, after this push's own routine writes (7)
       // and deletes (7a). A day keeps its routine only when that routine
       // exists now: it was in this push and not tombstoned (a routine

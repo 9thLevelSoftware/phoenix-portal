@@ -12,6 +12,7 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
@@ -871,6 +872,8 @@ function makeHarness(
       return admin;
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
+    now: () => 1_784_167_200_000,
+    syncLwwEnabled: options.syncLwwEnabled,
     now: options.now ?? (() => 1_784_167_200_000),
     now: () => 1_784_167_200_000,
     syncLwwEnabled: options.syncLwwEnabled,
@@ -8023,6 +8026,43 @@ for (const bad of [0, 3, 1.5, "2", true]) {
     assertEquals(harness.adminConstructionCount.value, 0);
     assertEquals(harness.adminRpcCalls, []);
   });
+}
+
+Deno.test({
+  name:
+    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      const sessionId = crypto.randomUUID();
+      const singleCable = crypto.randomUUID();
+      const unknownCable = crypto.randomUUID();
+      const exercise = (
+        id: string,
+        name: string,
+        orderIndex: number,
+        extra: Record<string, unknown>,
+      ) => ({
+        id,
+        sessionId,
+        exerciseId: null,
+        name,
+        orderIndex,
+        ...extra,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: id,
   const replace = harness.adminRpcCalls.find((call) =>
     call.name === "replace_session_children"
   );
@@ -10048,6 +10088,86 @@ function catalogProbeSession(
           targetReps: 10,
           actualReps: 10,
           weightKg: 20,
+          workoutMode: "OLD_SCHOOL",
+          repSummaries: [],
+        }],
+      });
+      const body = {
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR28 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: [
+            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
+            // Today's mobile shape: no cableCount key.
+            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
+          ],
+        }],
+      };
+
+      const pushed = await makeRealSqlPushHandler(fixture)(
+        requestFromBody(body),
+      );
+      assertEquals(pushed.status, 200, await pushed.text());
+
+      const stored = await fixture.admin.from("exercises")
+        .select("id,cable_count")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedById = new Map(
+        (stored.data as Array<{ id: string; cable_count: number | null }>)
+          .map((row) => [row.id, row.cable_count]),
+      );
+      assertEquals(storedById.get(singleCable), 1);
+      assertEquals(storedById.get(unknownCable), null);
+
+      const pull = createMobileSyncPullHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          return fixture.admin;
+        },
+        logOperationalFailure: () => {},
+        now: () => Date.now(),
+      } as never);
+      const pulled = await pull(requestFromBody({
+        deviceId: "pr28-device",
+        lastSync: 0,
+        profileId: fixture.profileId,
+        pageSize: 75,
+        knownEntityIds: {
+          sessionIds: [],
+          routineIds: [],
+          cycleIds: [],
+          badgeIds: [],
+          personalRecordIds: [],
+        },
+      }));
+      const pulledBody = await json(pulled);
+      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
+      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
+        .find((row) => row.id === sessionId);
+      assert(session, "pushed session is pulled back");
+      assertEquals(
+        (session.exercises as Array<Record<string, unknown>>).map((row) => [
+          row.id,
+          row.cableCount,
+        ]),
+        [[singleCable, 1], [unknownCable, null]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
           isPr: false,
         }],
       };

@@ -273,6 +273,11 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
 - Broadcasts `sync_complete` on the private channel `sync:{userId}`.
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
+- Parity sync: sessions, routines, cycles, badges and PRs always go through the `*_excluding_ids` RPCs (rows not in `knownEntityIds`; sessions/routines/cycles also re-send known rows changed since `lastSync - 2 min`; empty known ids = whole profile; `lastSync: 0` = everything). Other `lastSync` filters also use `lastSync - 2 min`
+- Cursor-based pagination with 75 entities per page (max 300)
+- Entity order: sessions -> routines -> cycles -> badges -> stats
+- Uses composite cursor (updated_at, id) for stable ordering across pages
+- Child entities fetched based on parent presence, not their own timestamps
 - **Parity only — the legacy timestamp-mode pull is gone.** Sessions, routines,
   cycles, badges and PRs always go through the `*_excluding_ids` RPCs: rows not
   in `knownEntityIds`, plus (for sessions/routines/cycles) known rows changed

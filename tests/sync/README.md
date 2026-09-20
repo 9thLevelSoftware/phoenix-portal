@@ -1,6 +1,32 @@
-# Sync Test Suite
+# Sync harness/fixture smoke suite
 
-Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-push` and `mobile-sync-pull` Edge Functions.
+> **This is not the sync contract suite.** Everything under `tests/sync/`
+> (except `tests/sync/live/`) runs against the in-memory mock in
+> `helpers/mock-edge-functions.ts`. That mock has one global store keyed by
+> entity id: no user scoping, no profile scoping, no LWW, no per-row delta, no
+> cursor or pageSize handling, no tombstones, no tier gate, no rate limit, no
+> RLS. These tests prove that the **fixtures and the push/pull harness** carry
+> a payload of a given shape intact. They cannot prove a single server-side
+> sync invariant, whatever an individual case is named.
+>
+> The sync contract is proven by the **Deno handler suites**,
+> `supabase/functions/mobile-sync-push/index.test.ts` and
+> `supabase/functions/mobile-sync-pull/index.test.ts` (`npm run test:edge`),
+> and by the `integration: `-prefixed real-SQL cases in the same files
+> (`npm run test:edge:integration`, `.github/workflows/edge-integration.yml`).
+> When you need to cover a server behaviour, add it there — not here.
+>
+> Two rules for anything added to this directory:
+> 1. No assertion whose subject is a mock behaviour listed above.
+> 2. No case whose only assertion is `expect(result.success).toBe(true)`, and
+>    no bare `it.skip` (a skip here executes in no mode at all).
+>
+> See [BASELINE.md](./BASELINE.md) for the list of invariants this suite does
+> not prove.
+
+Harness and fixture smoke tests for mobile-to-portal sync payloads, shaped
+around the `mobile-sync-push` and `mobile-sync-pull` Edge Function wire
+formats.
 
 ## Quick Start
 
@@ -77,8 +103,17 @@ Mocks provide:
 - Deterministic behavior
 - No Supabase credentials required
 
-Mock limitations:
-- Simplified delta sync (no per-row timestamps)
+Mock limitations (the full list lives in the header of
+`helpers/mock-edge-functions.ts`):
+- No user scoping — the store has no user column and any non-empty bearer
+  token is accepted
+- No profile scoping — `profileId` is ignored on both push and pull
+- No LWW — `Map.set` makes the last push in *arrival order* win, which is not
+  what `upsert_*_lww` does
+- No per-row delta — a pull returns every stored row whenever
+  `lastPushTime > lastSync`
+- No cursor/pageSize handling, no tombstones, no tier gate, no rate limit,
+  no size caps, no weight transform, no telemetry
 - Gamification entities partially stored
 - No RLS policy testing
 

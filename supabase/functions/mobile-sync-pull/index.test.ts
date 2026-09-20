@@ -1133,7 +1133,13 @@ function timestampSortKey(value: string): string {
   return `${Number.isFinite(millis) ? millis : 0}:${frac}`;
 }
 
-function applyPersonalRecordCursor(
+/**
+ * Models the `(updated_at, id)` composite predicate that every
+ * `get_*_excluding_ids` RPC applies server-side. Sessions and personal records
+ * share `encodeCursor`/`decodeCursor` and `buildCursorCondition` in the
+ * handler, so the same helper drives both RPC doubles.
+ */
+function applyCompositeCursor(
   rows: Array<Record<string, unknown>>,
   args: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
@@ -1183,7 +1189,7 @@ Deno.test("identical-microsecond personal records produce a distinct nextCursor"
     rpcImpl: (name, args) => {
       if (name !== "get_personal_records_excluding_ids") return undefined;
       return {
-        data: applyPersonalRecordCursor(dataset, args),
+        data: applyCompositeCursor(dataset, args),
         error: null,
       };
     },
@@ -1221,6 +1227,69 @@ Deno.test("identical-microsecond personal records produce a distinct nextCursor"
     "nextCursor must advance when more identical-timestamp PRs remain",
   );
 });
+
+// Replaces the permanently-skipped mock case
+// `tests/sync/pull-pagination.test.ts` carried ("entities with identical
+// updated_at but different id are each returned exactly once when paginated
+// one-at-a-time"). That case never executed in any mode; this one runs in
+// `npm run test:edge` against the real handler.
+Deno.test("identical-timestamp sessions are each returned exactly once when paged one at a time", async () => {
+  const sharedUpdatedAt = "2026-08-01T00:00:00.000Z";
+  const ids = [
+    "00000000-0000-4000-8000-0000000000a1",
+    "00000000-0000-4000-8000-0000000000a2",
+    "00000000-0000-4000-8000-0000000000a3",
+  ];
+  const dataset = ids.map((id, index) => ({
+    ...sessionRpcRow(),
+    id,
+    name: `Collision ${index}`,
+    started_at: sharedUpdatedAt,
+    updated_at: sharedUpdatedAt,
+    exercise_count: 0,
+  }));
+
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name, args) => {
+      if (name !== "get_sessions_excluding_ids") return undefined;
+      return { data: applyCompositeCursor(dataset, args), error: null };
+    },
+  });
+
+  const collected: string[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < ids.length; page++) {
+    const response = await harness.handler(requestFromBody({
+      ...validPullBody(),
+      pageSize: 1,
+      ...(cursor === undefined ? {} : { cursor }),
+    }));
+    const body = await json(response);
+    assertEquals(response.status, 200, JSON.stringify(body));
+    const pageSessions = body.sessions as Array<{ id: string }>;
+    assertEquals(pageSessions.length, 1, `page ${page}`);
+    collected.push(pageSessions[0].id);
+    const next = body.nextCursor;
+    const isLastPage = page === ids.length - 1;
+    if (isLastPage) {
+      // Nothing left in any bucket, so the run ends rather than cursoring on.
+      assertEquals(body.hasMore, false);
+      break;
+    }
+    assertEquals(body.hasMore, true, `page ${page} must report more`);
+    assert(
+      typeof next === "string" && next.length > 0,
+      `page ${page} must carry a cursor for the remaining collisions`,
+    );
+    assert(next !== cursor, `page ${page} cursor must advance`);
+    cursor = next;
+  }
+
+  // Each id exactly once, in id-ASC order (the stable secondary sort).
+  assertEquals(collected, ids);
+  assertEquals(new Set(collected).size, ids.length);
+});
+
 
 Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {
   const harness = makeHarness(undefined, {
@@ -1916,6 +1985,172 @@ Deno.test({
   },
 });
 
+// ─── lastSync request shapes against real SQL (PR 26) ──────────────────────
+// Every body below is the verbatim wire shape of the mobile client's
+// PortalSyncPullRequest (PortalApiClient.pullPortalPayload): kotlinx
+// encodeDefaults=true keeps lastSync and the five known-id lists,
+// explicitNulls=false drops a null cursor, and SyncManager pages at 100.
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+type ParityTable = "workout_sessions" | "routines" | "training_cycles";
+const PARITY_TABLES: ParityTable[] = [
+  "workout_sessions",
+  "routines",
+  "training_cycles",
+];
+const RESPONSE_KEY: Record<ParityTable, string> = {
+  workout_sessions: "sessions",
+  routines: "routines",
+  training_cycles: "cycles",
+};
+
+function emptyKnown(): Record<ParityTable, string[]> {
+  return { workout_sessions: [], routines: [], training_cycles: [] };
+}
+
+function mobilePullBody(
+  lastSync: number,
+  profileId: string,
+  known: Record<ParityTable, string[]>,
+  personalRecordIds: string[] = [],
+): Record<string, unknown> {
+  return {
+    deviceId: "pr26-contract-device",
+    lastSync,
+    profileId,
+    pageSize: 100,
+    knownEntityIds: {
+      sessionIds: known.workout_sessions,
+      routineIds: known.routines,
+      cycleIds: known.training_cycles,
+      badgeIds: [],
+      personalRecordIds,
+    },
+  };
+}
+
+async function insertPersonalRecord(
+  fixture: LocalPullFixture,
+  options: {
+    localProfileId: string | null;
+    updatedAtMs: number;
+    deleted?: boolean;
+  },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const updatedAt = new Date(options.updatedAtMs).toISOString();
+  const inserted = await fixture.admin.from("personal_records").insert({
+    id,
+    user_id: fixture.ownerId,
+    exercise_name: `pr26 lift ${id}`,
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    local_profile_id: options.localProfileId,
+    updated_at: updatedAt,
+    deleted_at: options.deleted ? updatedAt : null,
+  });
+  if (inserted.error) {
+    throw new Error(`personal_records fixture insert failed: ${inserted.error.message}`);
+  }
+  return id;
+}
+
+function returnedPersonalRecords(
+  body: Record<string, unknown>,
+): Array<{ id: string; deletedAt: string | null }> {
+  const rows = body.personalRecords as Array<
+    { id: string; deletedAt: string | null }
+  >;
+  assert(Array.isArray(rows), "personalRecords");
+  return rows.map((row) => ({ id: row.id, deletedAt: row.deletedAt ?? null }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function insertParityRow(
+  fixture: LocalPullFixture,
+  table: ParityTable,
+  options: {
+    userId?: string;
+    localProfileId: string | null;
+    updatedAtMs: number;
+  },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const updatedAt = new Date(options.updatedAtMs).toISOString();
+  const row: Record<string, unknown> = {
+    id,
+    user_id: options.userId ?? fixture.ownerId,
+    name: `pr26 ${table}`,
+    updated_at: updatedAt,
+    local_profile_id: options.localProfileId,
+  };
+  // Keep the sessions started_at arm from leaking rows the test expects absent.
+  if (table === "workout_sessions") row.started_at = updatedAt;
+  const inserted = await fixture.admin.from(table).insert(row);
+  if (inserted.error) {
+    throw new Error(`${table} fixture insert failed: ${inserted.error.message}`);
+  }
+  return id;
+}
+
+/** A portal edit: a plain UPDATE, so the BEFORE UPDATE trigger stamps now(). */
+async function portalEdit(
+  fixture: LocalPullFixture,
+  table: ParityTable,
+  id: string,
+): Promise<void> {
+  const patch = table === "workout_sessions"
+    ? { notes: "edited on portal" }
+    : { description: "edited on portal" };
+  const updated = await fixture.admin.from(table).update(patch).eq("id", id);
+  if (updated.error) {
+    throw new Error(`${table} portal edit failed: ${updated.error.message}`);
+  }
+}
+
+async function ensureDefaultProfile(
+  fixture: LocalPullFixture,
+  userId: string,
+): Promise<void> {
+  const result = await fixture.admin.from("local_profiles").upsert({
+    user_id: userId,
+    id: "default",
+    name: "Default",
+    device_id: "server",
+  }, { onConflict: "user_id,id", ignoreDuplicates: true });
+  if (result.error) throw new Error("default profile fixture failed");
+}
+
+function returnedIds(
+  body: Record<string, unknown>,
+  table: ParityTable,
+): string[] {
+  const rows = body[RESPONSE_KEY[table]] as Array<{ id: string }>;
+  assert(Array.isArray(rows), RESPONSE_KEY[table]);
+  return rows.map((row) => row.id).sort();
+}
+
+async function pullOnce(
+  fixture: LocalPullFixture,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const logs: unknown[][] = [];
+  const response = await realPullHandler(fixture, fixture.ownerId, logs)(
+    requestFromBody(body),
+  );
+  const parsed = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(parsed));
+  assertEquals(parsed.hasMore, false);
+  assertEquals(logs, []);
+  return parsed;
+}
+
+Deno.test({
+  name:
+    "integration: shipping build shape (lastSync 0 + full known ids) returns every row",
 // Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
 // the real `subscriptions` table, service-role grants and RLS decide 402 vs
 // the data path. The fixture seeds both users with an active EMBER row.
@@ -1929,6 +2164,357 @@ Deno.test({
   fn: async () => {
     const fixture = await createLocalPullFixture();
     try {
+      const now = Date.now();
+      const known = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        known[table] = [
+          await insertParityRow(fixture, table, {
+            localProfileId: fixture.ownerProfileId,
+            updatedAtMs: now - 30 * DAY_MS,
+          }),
+          await insertParityRow(fixture, table, {
+            localProfileId: fixture.ownerProfileId,
+            updatedAtMs: now - HOUR_MS,
+          }),
+        ].sort();
+      }
+
+      // Today's behaviour, kept on purpose: with lastSync 0 every row is
+      // "stale", so even known rows come back (keeps #116 note edits flowing).
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(0, fixture.ownerProfileId, known),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), known[table], table);
+      }
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: real lastSync + known ids returns only new, portal-edited and overlap-window rows",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const lastSync = Date.now() - HOUR_MS;
+      const profile = fixture.ownerProfileId;
+      const known = emptyKnown();
+      const expected = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        const unchanged = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        const justOutsideOverlap = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - 3 * MINUTE_MS,
+        });
+        const insideOverlap = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - MINUTE_MS,
+        });
+        const portalEdited = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        await portalEdit(fixture, table, portalEdited);
+        const unknown = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        known[table] = [
+          unchanged,
+          justOutsideOverlap,
+          insideOverlap,
+          portalEdited,
+        ];
+        expected[table] = [insideOverlap, portalEdited, unknown].sort();
+      }
+      // Tombstones-since query: a known PR deleted 1 minute before lastSync
+      // is re-delivered as a tombstone; one deleted 3 minutes before is not,
+      // and a known active PR is not re-sent.
+      const knownActivePr = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - DAY_MS,
+      });
+      const tombstoneOutsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - 3 * MINUTE_MS,
+        deleted: true,
+      });
+      const tombstoneInsideOverlapAt = lastSync - MINUTE_MS;
+      const tombstoneInsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: tombstoneInsideOverlapAt,
+        deleted: true,
+      });
+
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(lastSync, profile, known, [
+          knownActivePr,
+          tombstoneOutsideOverlap,
+          tombstoneInsideOverlap,
+        ]),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), expected[table], table);
+      }
+      const personalRecords = returnedPersonalRecords(body);
+      assertEquals(personalRecords.map((row) => row.id), [
+        tombstoneInsideOverlap,
+      ]);
+      assert(personalRecords[0].deletedAt !== null);
+      assertEquals(
+        Date.parse(personalRecords[0].deletedAt as string),
+        tombstoneInsideOverlapAt,
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: real lastSync + empty known ids returns the whole default profile (sessions, routines, cycles, PRs) and nothing else",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      await ensureDefaultProfile(fixture, fixture.ownerId);
+      const lastSync = Date.now() - HOUR_MS;
+      const expected = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        const nullSinceLastSync = await insertParityRow(fixture, table, {
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        const defaultSinceLastSync = await insertParityRow(fixture, table, {
+          localProfileId: "default",
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        // A device holding no ids must receive its whole profile, not only
+        // rows since lastSync, or older rows would never reach it.
+        const defaultOld = await insertParityRow(fixture, table, {
+          localProfileId: "default",
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        // Must never appear under "default": another local profile's row, and
+        // another user's NULL-profile row.
+        await insertParityRow(fixture, table, {
+          localProfileId: fixture.ownerProfileId,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        await insertParityRow(fixture, table, {
+          userId: fixture.otherId,
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        expected[table] = [nullSinceLastSync, defaultSinceLastSync, defaultOld]
+          .sort();
+      }
+      // Personal records follow the same rules through their RPC: the whole
+      // default profile (old rows too), no other profile, no tombstones.
+      const expectedPrs = [
+        await insertPersonalRecord(fixture, {
+          localProfileId: "default",
+          updatedAtMs: lastSync - DAY_MS,
+        }),
+        await insertPersonalRecord(fixture, {
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        }),
+      ].sort();
+      await insertPersonalRecord(fixture, {
+        localProfileId: fixture.ownerProfileId,
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+      });
+      await insertPersonalRecord(fixture, {
+        localProfileId: "default",
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+        deleted: true,
+      });
+
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(lastSync, "default", emptyKnown()),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), expected[table], table);
+      }
+      assertEquals(
+        returnedPersonalRecords(body).map((row) => row.id),
+        expectedPrs,
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: 150-session page pulls every exercise and set across multi-chunk, multi-page child fetches",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      // 150 sessions → 2 session-id chunks (100 + 50). 12 exercises each:
+      // the 100-session chunk holds 1,200 exercise rows (> max_rows 1000), so
+      // it needs the PAGE+1 continuation. 1,800 exercises → 18 exercise-id
+      // chunks for sets, run 4 at a time.
+      const startedAt = Date.now() - DAY_MS;
+      const sessions = Array.from({ length: 150 }, (_, i) => ({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        name: `pr59 session ${i}`,
+        local_profile_id: fixture.ownerProfileId,
+        started_at: new Date(startedAt + i * 1000).toISOString(),
+      }));
+      const exercises = sessions.flatMap((session) =>
+        Array.from({ length: 12 }, (_, i) => ({
+          id: crypto.randomUUID(),
+          user_id: fixture.ownerId,
+          session_id: session.id,
+          name: `pr59 exercise ${i}`,
+          order_index: i,
+        }))
+      );
+      const sets = exercises.map((exercise) => ({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        exercise_id: exercise.id,
+        set_number: 1,
+      }));
+      const seed: Array<[string, Record<string, unknown>[]]> = [
+        ["workout_sessions", sessions],
+        ["exercises", exercises],
+        ["sets", sets],
+      ];
+      for (const [table, rows] of seed) {
+        for (let i = 0; i < rows.length; i += 500) {
+          const inserted = await fixture.admin.from(table).insert(
+            rows.slice(i, i + 500),
+          );
+          if (inserted.error) {
+            throw new Error(`${table} fixture insert failed: ${inserted.error.message}`);
+          }
+        }
+      }
+
+      const body = await pullOnce(fixture, {
+        ...mobilePullBody(0, fixture.ownerProfileId, emptyKnown()),
+        pageSize: 300,
+      });
+      const pulled = body.sessions as Array<{
+        id: string;
+        exercises: Array<{ id: string; sets: Array<{ id: string }> }>;
+      }>;
+      assertEquals(
+        pulled.map((s) => s.id).sort(),
+        sessions.map((s) => s.id).sort(),
+      );
+      const pulledExerciseIds = pulled.flatMap((s) => s.exercises.map((e) => e.id));
+      assertEquals(pulledExerciseIds.length, exercises.length);
+      assertEquals(
+        [...pulledExerciseIds].sort(),
+        exercises.map((e) => e.id).sort(),
+      );
+      for (const session of pulled) {
+        assertEquals(session.exercises.length, 12, session.id);
+      }
+      const pulledSetIds = pulled.flatMap((s) =>
+        s.exercises.flatMap((e) => e.sets.map((set) => set.id))
+      );
+      assertEquals(
+        [...pulledSetIds].sort(),
+        sets.map((s) => s.id).sort(),
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: parity pull RPCs take p_last_sync_at and are executable by service_role only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    assert(localIntegrationEnvironment);
+    const fixture = await createLocalPullFixture();
+    try {
+      const password = `pr26-${crypto.randomUUID()}`;
+      const updated = await fixture.admin.auth.admin.updateUserById(
+        fixture.ownerId,
+        { password },
+      );
+      if (updated.error) throw new Error("password fixture failed");
+      const clientOptions = {
+        auth: { persistSession: false, autoRefreshToken: false },
+      };
+      const anon = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const authenticated = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const email = (await fixture.admin.auth.admin.getUserById(fixture.ownerId))
+        .data.user?.email;
+      assert(email);
+      const signedIn = await authenticated.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signedIn.error) throw new Error("sign-in fixture failed");
+
+      for (const name of PARITY_RPCS) {
+        const args = {
+          p_user_id: fixture.ownerId,
+          p_known_ids: [],
+          p_profile_id: fixture.ownerProfileId,
+          p_last_sync_at: new Date().toISOString(),
+        };
+        const asService = await fixture.admin.rpc(name, args);
+        assertEquals(asService.error, null, `${name} as service_role`);
+        for (
+          const [role, client] of [
+            ["anon", anon],
+            ["authenticated", authenticated],
+          ] as const
+        ) {
+          const denied = await client.rpc(name, args);
+          assert(denied.error, `${name} must not be executable by ${role}`);
+          assertEquals(denied.error.code, "42501", `${name} as ${role}`);
+        }
+      }
+      await authenticated.auth.signOut();
       const ownerLogs: unknown[][] = [];
       const ownerRequest = () =>
         requestFromBody({

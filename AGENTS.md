@@ -39,6 +39,10 @@ Default before handoff:
 npm run verify:full
 ```
 
+Run `npm run test:sync` for sync, Edge Function, schema, DTO, or
+migration-adjacent work. For migrations, commit idempotent SQL files under
+`supabase/migrations/`; do not use the Supabase dashboard SQL editor for schema
+changes.
 Add, for the work it touches:
 
 ```bash
