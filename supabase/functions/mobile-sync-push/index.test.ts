@@ -1039,7 +1039,7 @@ Deno.test("grouped workout tombstone probes use portalSessionId not the local se
   session.id = localSessionId;
   session.routineSessionId = portalSessionId;
   for (const exercise of session.exercises) {
-    exercise.sessionId = portalSessionId;
+    exercise.sessionId = localSessionId;
   }
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(body));
