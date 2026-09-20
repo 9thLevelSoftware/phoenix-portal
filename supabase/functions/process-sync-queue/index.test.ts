@@ -79,20 +79,27 @@ Deno.test("process-sync-queue: missing x-cron-secret gives 401 and touches nothi
 
 Deno.test("process-sync-queue: wrong x-cron-secret gives 401", async () => {
   const h = harness(BASE_ENV);
-  const res = await h.handler(cronRequest({ "x-cron-secret": "not-the-secret" }));
+  const res = await h.handler(
+    cronRequest({ "x-cron-secret": "not-the-secret" }),
+  );
   assertEquals(res.status, 401);
   assertEquals(h.clientsCreated.value, 0);
 });
 
 Deno.test("process-sync-queue: no secret configured rejects even an empty header", async () => {
-  const h = harness({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY });
+  const h = harness({
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
+  });
   const res = await h.handler(cronRequest({ "x-cron-secret": "" }));
   assertEquals(res.status, 401);
 });
 
 Deno.test("process-sync-queue: a user JWT that is not the service role gives 401", async () => {
   const h = harness(BASE_ENV);
-  const res = await h.handler(cronRequest({ Authorization: "Bearer some-user-jwt" }));
+  const res = await h.handler(
+    cronRequest({ Authorization: "Bearer some-user-jwt" }),
+  );
   assertEquals(res.status, 401);
 });
 
@@ -102,7 +109,9 @@ Deno.test("process-sync-queue: the legacy PROCESS_SYNC_QUEUE_SECRET name is stil
     SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
     PROCESS_SYNC_QUEUE_SECRET: "legacy-secret",
   });
-  const res = await h.handler(cronRequest({ "x-cron-secret": "legacy-secret" }));
+  const res = await h.handler(
+    cronRequest({ "x-cron-secret": "legacy-secret" }),
+  );
   assertEquals(res.status, 200);
 });
 
@@ -154,7 +163,9 @@ Deno.test("process-sync-queue: a pending initial task is dispatched and complete
   assert(typeof task.completed_at === "string");
 
   // The request is charged against Strava's app-wide bucket.
-  const bucket = h.db.tables.rate_limit_tracking.find((r) => r.key === "strava");
+  const bucket = h.db.tables.rate_limit_tracking.find((r) =>
+    r.key === "strava"
+  );
   assertEquals(bucket?.user_id, null);
   assertEquals(bucket?.requests_this_window, 1);
 });
@@ -204,7 +215,12 @@ Deno.test("process-sync-queue: an initial and a newer incremental for one user a
   );
 });
 
-function pendingRow(id: string, syncType: string, createdAt: string, extra: Row = {}): Row {
+function pendingRow(
+  id: string,
+  syncType: string,
+  createdAt: string,
+  extra: Row = {},
+): Row {
   return {
     id,
     user_id: USER_ID,
@@ -279,23 +295,30 @@ Deno.test("process-sync-queue: a pending row is not claimed while the pair has a
   const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
   assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 1 });
   assertEquals(h.fetchCalls.length, 0);
-  assertEquals(h.db.tables.sync_queue.map((r) => r.status), ["processing", "pending"]);
+  assertEquals(h.db.tables.sync_queue.map((r) => r.status), [
+    "processing",
+    "pending",
+  ]);
 });
 
 Deno.test("process-sync-queue: the exact service-role bearer (no cron secret) is accepted", async () => {
   const h = harness(BASE_ENV);
-  const res = await h.handler(cronRequest({ Authorization: `Bearer ${SERVICE_ROLE_KEY}` }));
+  const res = await h.handler(
+    cronRequest({ Authorization: `Bearer ${SERVICE_ROLE_KEY}` }),
+  );
   assertEquals(res.status, 200);
   assertEquals(h.clientsCreated.value, 1);
 });
 
 Deno.test("process-sync-queue: a near-miss service-role bearer gives 401", async () => {
-  for (const authorization of [
-    `Bearer ${SERVICE_ROLE_KEY}x`,
-    `bearer ${SERVICE_ROLE_KEY}`,
-    SERVICE_ROLE_KEY,
-    `Bearer ${SERVICE_ROLE_KEY.slice(0, -1)}`,
-  ]) {
+  for (
+    const authorization of [
+      `Bearer ${SERVICE_ROLE_KEY}x`,
+      `bearer ${SERVICE_ROLE_KEY}`,
+      SERVICE_ROLE_KEY,
+      `Bearer ${SERVICE_ROLE_KEY.slice(0, -1)}`,
+    ]
+  ) {
     const h = harness(BASE_ENV);
     const res = await h.handler(cronRequest({ Authorization: authorization }));
     assertEquals(res.status, 401, authorization);
@@ -330,7 +353,10 @@ for (const provider of ["strava", "hevy", "liftosaur"]) {
     assertEquals(await res.json(), { processed: 1, failed: 0, skipped: 0 });
     // Reclaimed (one retry charged) and re-dispatched in the same pass.
     assertEquals(h.fetchCalls.length, 1);
-    assertEquals(h.fetchCalls[0].url, `${SUPABASE_URL}/functions/v1/${provider}-sync`);
+    assertEquals(
+      h.fetchCalls[0].url,
+      `${SUPABASE_URL}/functions/v1/${provider}-sync`,
+    );
     const [task] = h.db.tables.sync_queue;
     assertEquals(task.retry_count, 1);
     assertEquals(task.status, "completed");
@@ -366,7 +392,10 @@ for (const provider of ["fitbit", "garmin"]) {
     const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
     // garmin is rejected by callSyncFunction (webhook-driven), so it fails
     // after being reclaimed (a second retry charged); fitbit is dispatched.
-    assertEquals(h.db.tables.sync_queue[0].retry_count, provider === "garmin" ? 2 : 1);
+    assertEquals(
+      h.db.tables.sync_queue[0].retry_count,
+      provider === "garmin" ? 2 : 1,
+    );
     assertEquals(
       h.db.tables.sync_queue[0].status,
       provider === "garmin" ? "failed" : "completed",
@@ -433,43 +462,12 @@ Deno.test("process-sync-queue: a transport failure with no HTTP status gets its 
 Deno.test("process-sync-queue: garmin's local refusal is not reported as a provider 400", async () => {
   const h = harness(BASE_ENV, {
     sync_queue: [
-      { ...pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"), provider: "garmin" },
+      {
+        ...pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"),
+        provider: "garmin",
+      },
     ],
     subscriptions: [FLAME_SUBSCRIPTION],
-// ---------------------------------------------------------------------------
-// Dispatch budget derived from the provider quotas (PR 52)
-// ---------------------------------------------------------------------------
-
-Deno.test("process-sync-queue: the per-pass budget comes from each provider's quota", () => {
-  // Strava: 800 reads/day over 288 five-minute passes = 2 (its 15-minute
-  // window would allow 26; the tightest window wins).
-  assertEquals(tasksPerProvider("strava"), 2);
-  // Garmin: 40/hour app-wide = 3 per pass.
-  assertEquals(tasksPerProvider("garmin"), 3);
-  // User-scoped quotas say nothing about how many users may run per pass.
-  assertEquals(tasksPerProvider("fitbit"), 5);
-  assertEquals(tasksPerProvider("hevy"), 5);
-  assertEquals(tasksPerProvider("liftosaur"), 5);
-  // An unknown provider falls back to the wall-clock ceiling.
-  assertEquals(tasksPerProvider("nordic-track"), 5);
-});
-
-Deno.test("process-sync-queue: a pass dispatches no more strava tasks than the quota allows", async () => {
-  const users = [
-    "00000000-0000-4000-8000-00000000000a",
-    "00000000-0000-4000-8000-00000000000b",
-    "00000000-0000-4000-8000-00000000000c",
-  ];
-  const h = harness(BASE_ENV, {
-    sync_queue: users.map((user, i) => ({
-      ...pendingRow(
-        `00000000-0000-4000-8000-00000000001${i}`,
-        "incremental",
-        `2026-09-1${i + 1}T00:00:00.000Z`,
-      ),
-      user_id: user,
-    })),
-    subscriptions: users.map((user) => ({ ...FLAME_SUBSCRIPTION, user_id: user })),
     rate_limit_tracking: [],
   });
 
@@ -488,7 +486,8 @@ Deno.test("process-sync-queue: the pre-claim retry cap uses the same terminal sp
     sync_queue: [
       pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z", {
         retry_count: 10, // MAX_RETRIES: capped before the row is ever claimed.
-        error_message: "LEGACY-ROW-MARKER: a raw provider body from before PR 55",
+        error_message:
+          "LEGACY-ROW-MARKER: a raw provider body from before PR 55",
       }),
     ],
     subscriptions: [FLAME_SUBSCRIPTION],
@@ -526,12 +525,57 @@ Deno.test("process-sync-queue: the exhausted-retries message is a code, not the 
 
   const task = h.db.tables.sync_queue[0];
   assertEquals(task.status, "permanently_failed");
-  assertEquals(task.error_message, "max_retries_exceeded: provider_sync_http_502");
+  assertEquals(
+    task.error_message,
+    "max_retries_exceeded: provider_sync_http_502",
+  );
   assert(
     !String(task.error_message).includes("PROVIDER-BODY-MARKER"),
     `provider body leaked into error_message: ${task.error_message}`,
   );
 });
+
+// ---------------------------------------------------------------------------
+// Dispatch budget derived from the provider quotas (PR 52)
+// ---------------------------------------------------------------------------
+
+Deno.test("process-sync-queue: the per-pass budget comes from each provider's quota", () => {
+  // Strava: 800 reads/day over 288 five-minute passes = 2 (its 15-minute
+  // window would allow 26; the tightest window wins).
+  assertEquals(tasksPerProvider("strava"), 2);
+  // Garmin: 40/hour app-wide = 3 per pass.
+  assertEquals(tasksPerProvider("garmin"), 3);
+  // User-scoped quotas say nothing about how many users may run per pass.
+  assertEquals(tasksPerProvider("fitbit"), 5);
+  assertEquals(tasksPerProvider("hevy"), 5);
+  assertEquals(tasksPerProvider("liftosaur"), 5);
+  // An unknown provider falls back to the wall-clock ceiling.
+  assertEquals(tasksPerProvider("nordic-track"), 5);
+});
+
+Deno.test("process-sync-queue: a pass dispatches no more strava tasks than the quota allows", async () => {
+  const users = [
+    "00000000-0000-4000-8000-00000000000a",
+    "00000000-0000-4000-8000-00000000000b",
+    "00000000-0000-4000-8000-00000000000c",
+  ];
+  const h = harness(BASE_ENV, {
+    sync_queue: users.map((user, i) => ({
+      ...pendingRow(
+        `00000000-0000-4000-8000-00000000001${i}`,
+        "incremental",
+        `2026-09-1${i + 1}T00:00:00.000Z`,
+      ),
+      user_id: user,
+    })),
+    subscriptions: users.map((user) => ({
+      ...FLAME_SUBSCRIPTION,
+      user_id: user,
+    })),
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { processed: 2, failed: 0, skipped: 0 });
   assertEquals(h.fetchCalls.length, 2);
@@ -548,7 +592,9 @@ Deno.test("process-sync-queue: a row that left `processing` mid-run is not overw
     const h = harness(
       BASE_ENV,
       {
-        sync_queue: [pendingRow(TASK_ID, "incremental", "2026-09-19T00:00:00.000Z")],
+        sync_queue: [
+          pendingRow(TASK_ID, "incremental", "2026-09-19T00:00:00.000Z"),
+        ],
         subscriptions: [FLAME_SUBSCRIPTION],
         rate_limit_tracking: [],
       },
@@ -557,7 +603,9 @@ Deno.test("process-sync-queue: a row that left `processing` mid-run is not overw
         // pass reclaimed its expired lease, or a disconnect cancelled it.
         db!.tables.sync_queue[0].status = "cancelled";
         return new Response(
-          JSON.stringify(outcome === "success" ? { ok: true } : { error: "nope" }),
+          JSON.stringify(
+            outcome === "success" ? { ok: true } : { error: "nope" },
+          ),
           { status: outcome === "success" ? 200 : 500 },
         );
       },

@@ -79,7 +79,6 @@ function harness(db: FakeDb, recordCount: number, jwtUserId: string | null = nul
     // clock, so window arithmetic is deterministic.
     // deno-lint-ignore no-explicit-any
     createClient: () => fakeClient(db, jwtUserId, now) as any,
-    createClient: () => fakeClient(db, jwtUserId) as any,
     fetch: fakeLiftosaur(recordCount) as typeof fetch,
     now,
   });
@@ -213,20 +212,21 @@ Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async 
   assertEquals(limited.headers.get("Retry-After"), "900");
 });
 
-Deno.test("liftosaur-sync: saving an API key uses its own budget, so a typo cannot lock the user out", async () => {
+Deno.test("liftosaur-sync: saving an API key charges both credential and provider-read budgets", async () => {
   const db = new FakeDb(tables([]));
   const call = harness(db, 1, USER_ID);
 
-  for (const attempt of [1, 2, 3, 4]) {
+  for (const attempt of [1, 2, 3]) {
     const res = await call({ api_key: `key-attempt-${attempt}` });
     assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
   }
-  const buckets = db.rows("rate_limit_tracking");
-  assertEquals(buckets.length, 1);
-  assertEquals(buckets[0].key, "liftosaur-sync-connect");
-  assertEquals(buckets[0].requests_this_window, 4);
+  const limited = await call({ api_key: "valid-key-again" });
+  assertEquals(limited.status, 429);
 
-  const pull = await call({ sync_type: "manual" });
-  assertEquals(pull.status, 200, await pull.clone().text());
-  assertEquals(db.rows("rate_limit_tracking").length, 2);
+  const buckets = db.rows("rate_limit_tracking");
+  assertEquals(buckets.length, 2);
+  assertEquals(
+    buckets.map((row) => [row.key, row.requests_this_window]).sort(),
+    [["liftosaur-sync", 3], ["liftosaur-sync-connect", 4]],
+  );
 });

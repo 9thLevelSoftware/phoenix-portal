@@ -173,16 +173,24 @@ async function runHevySync(
     // id, so nobody can spend another user's budget; the queue path (service
     // role) is exempt and has its own budget under the `hevy` key.
     //
-    // A call carrying `api_key` is a credential WRITE — the only way to store
-    // a Hevy key — and goes to its own roomier bucket, so a user retrying a
-    // mistyped key cannot lock themselves out of saving the correct one.
+    // A call carrying `api_key` is both a credential write and a full sync. It
+    // spends the roomier connect bucket first, then the ordinary sync bucket;
+    // otherwise resending a valid key would bypass the provider-read limit.
     if (jwtUser) {
-      const rateCheck = await checkManualSyncRateLimit(
+      if (api_key) {
+        const credentialRateCheck = await checkManualSyncRateLimit(
+          supabase,
+          { provider: 'hevy', userId, credentialWrite: true },
+          cors,
+        );
+        if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
+      }
+      const syncRateCheck = await checkManualSyncRateLimit(
         supabase,
-        { provider: 'hevy', userId, credentialWrite: Boolean(api_key) },
+        { provider: 'hevy', userId },
         cors,
       );
-      if (!rateCheck.allowed) return rateCheck.response!;
+      if (!syncRateCheck.allowed) return syncRateCheck.response!;
     }
 
     // Renew the lease immediately: the processor claimed this row before it

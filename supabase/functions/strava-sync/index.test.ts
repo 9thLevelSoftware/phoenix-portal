@@ -757,22 +757,24 @@ Deno.test("strava-sync: a provider error body is never echoed to the caller", as
   assertEquals(integrationOf(h).error_message ?? null, null);
 });
 
-Deno.test("strava-sync: an unexpected throw returns a code, not the thrown message", async () => {
+Deno.test("strava-sync: an activities transport throw returns a retryable code, not the thrown message", async () => {
   const tables = baseTables(T0, HISTORY);
   const h = queueHarness(tables, () => {
-    // Stands in for a driver/runtime failure anywhere in the handler: the
-    // message class this catch-all used to hand straight back to the caller.
+    // Stands in for a DNS/TLS/runtime failure before Strava returns a response.
     throw new Error('DB-INTERNAL-MARKER: relation "external_activities" does not exist');
   });
 
   const res = await h.call({ sync_type: "incremental" });
-  assertEquals(res.status, 500);
+  assertEquals(res.status, 502);
   const text = await res.clone().text();
   assert(
     !text.includes("DB-INTERNAL-MARKER"),
     `thrown message leaked into the response: ${text}`,
   );
-  assertEquals(await res.json(), { error: "Strava sync failed", code: "internal_error" });
+  assertEquals(await res.json(), {
+    error: "Failed to fetch Strava activities",
+    code: "activities_fetch_failed",
+  });
 });
 
 Deno.test("strava-sync: a blank service-role key authenticates nothing", async () => {
