@@ -10,6 +10,7 @@ import {
 } from '../_shared/providerRateLimit.ts';
 import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { refreshStravaAccessToken, stravaTokenNeedsRefresh } from '../_shared/stravaToken.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
@@ -233,28 +234,15 @@ export function buildExternalActivityRow(
 }
 
 // ---------------------------------------------------------------------------
-// Token refresh
+// Token refresh (shared with the disconnect path: _shared/stravaToken.ts)
 // ---------------------------------------------------------------------------
 
-async function refreshAccessToken(
-  refreshToken: string
-): Promise<{ access_token: string; refresh_token: string; expires_at: number }> {
-  const response = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: Deno.env.get('STRAVA_CLIENT_ID'),
-      client_secret: Deno.env.get('STRAVA_CLIENT_SECRET'),
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    }),
+function refreshAccessToken(refreshToken: string) {
+  return refreshStravaAccessToken(refreshToken, {
+    fetch: (input, init) => fetch(input, init),
+    clientId: Deno.env.get('STRAVA_CLIENT_ID'),
+    clientSecret: Deno.env.get('STRAVA_CLIENT_SECRET'),
   });
-
-  if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.status} ${await response.text()}`);
-  }
-
-  return response.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -410,14 +398,11 @@ async function stravaSyncHandler(
 
     let accessToken = (await decryptOAuthSecret(tokens.access_token as string)) ?? '';
     let refreshToken = (await decryptOAuthSecret(tokens.refresh_token as string)) ?? '';
-    const tokenExpiresAt = tokens.token_expires_at
-      ? new Date(tokens.token_expires_at).getTime()
-      : 0;
 
     // ---------------------------------------------------------------
     // Refresh token if expired (with 60s buffer)
     // ---------------------------------------------------------------
-    if (Date.now() >= tokenExpiresAt - 60_000) {
+    if (stravaTokenNeedsRefresh(tokens.token_expires_at as string | null)) {
       console.log('Strava access token expired, refreshing...');
       const refreshed = await refreshAccessToken(refreshToken);
 
