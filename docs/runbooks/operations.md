@@ -1,6 +1,6 @@
 # Phoenix Portal Operational Runbook
 
-> Last updated: 2026-03-18
+> Last updated: 2026-09-20
 > Audience: On-call operators, backend engineers
 
 This document covers day-to-day operational troubleshooting for Phoenix Portal.
@@ -39,13 +39,18 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 **Key log messages:**
 
-| Log message                                     | Meaning                                           | Severity                                 |
-| ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
-| `Missing custom_data.user_id in Paddle event`   | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
-| `Unknown price ID mapped to FREE tier`          | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
-| `Error upserting subscription for <event_type>` | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
-| `Webhook signature too old`                     | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
-| `Unhandled event type: <type>`                  | Non-subscription event (normal)                   | NONE                                     |
+| Log message                                              | Meaning                                           | Severity                                 |
+| -------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
+| `Missing custom_data.user_id in Paddle event`            | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
+| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
+| `[BILLING_ALERT] Error applying subscription event for`  | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
+| `[BILLING_ALERT] Webhook signature too old:`             | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
+| `Unhandled event type: <type>`                           | Non-subscription event (normal)                   | NONE                                     |
+
+Every `[BILLING_ALERT]` string, what it means and what to do about it, is
+catalogued in
+**Section 7: Checking Edge Function Logs** of
+[billing-incident-response.md](billing-incident-response.md).
 
 ### Identify missed events in Paddle
 
@@ -71,13 +76,17 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 **If idempotency blocks the replay** (handler returns 200 with `duplicate: true` but state is still wrong):
 
 ```sql
--- Clear the idempotency marker to allow reprocessing
+-- Clear BOTH idempotency markers to allow reprocessing
 UPDATE subscriptions
-SET last_event_id = NULL
+SET last_event_id = NULL,
+    last_event_occurred_at = NULL
 WHERE user_id = '<uuid>';
 ```
 
-Then retry the notification.
+Clearing `last_event_id` alone is not enough: `apply_subscription_event` also
+refuses any event whose `occurred_at` is not strictly newer than the stored
+`last_event_occurred_at`, so the replay would be accepted with a 200 and write
+nothing. Clear both, then retry the notification.
 
 ### Financial reconciliation
 
@@ -338,12 +347,42 @@ After any rollback, check these surfaces:
 
 ## 5. Manual GDPR Deletion
 
+> Last verified against `8f7d3b8` (PR 35 `delete-account` / `_shared/accountPurge.ts`,
+> migration `20260920003500`).
+
 ### When to use
 
-Use this procedure only if the `delete-account` Edge Function fails **and**
-cannot be fixed quickly. The Edge Function is the preferred path because it
-handles storage cleanup and uses `auth.admin.deleteUser()` which CASCADE-deletes
-most user data automatically.
+Hand-deleting an account is the **last** resort. Work down this list:
+
+1. **Let the scheduled pass run it.** The hourly `delete-due-accounts` pg_cron
+   job calls `delete-account` with `{"mode":"process_due"}`. It claims up to
+   `PROCESS_DUE_BATCH_SIZE` = 10 due requests per run, reclaims any claim older
+   than `STUCK_CLAIM_MINUTES` = 15, and retries a failed purge on the next pass
+   — every step of `purgeUser` is idempotent. A request that just failed once
+   needs nothing from you.
+2. **Check the job is actually running.** The migration creates the job
+   **inactive** on first apply, so a request can sit due for ever with no alert
+   other than `[DELETION_ALERT] overdue`:
+   ```sql
+   SELECT jobid, jobname, schedule, active FROM cron.job
+   WHERE jobname = 'delete-due-accounts';
+
+   SELECT status, return_message, start_time FROM cron.job_run_details
+   WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'delete-due-accounts')
+   ORDER BY start_time DESC LIMIT 5;
+
+   -- Gateway/transport result of each invocation (200 = the pass ran).
+   SELECT id, status_code, timed_out, error_msg, created
+   FROM net._http_response ORDER BY created DESC LIMIT 20;
+   ```
+   A `401` means the Vault `edge_cron_secret` and the Edge `CRON_SECRET` differ,
+   or `verify_jwt` is still on for `delete-account`. Fix that rather than
+   deleting by hand.
+3. **Check the request is not parked for support.** `process_due` skips any row
+   with a non-null `needs_support_reason`. See
+   [Deletion alerts and the needs-support path](#deletion-alerts-and-the-needs-support-path)
+   below — clearing the reason usually re-arms the automatic purge.
+4. Only if all of the above are exhausted, follow the manual procedure.
 
 **Before proceeding:** Check Edge Function logs to understand why it failed.
 
@@ -355,6 +394,9 @@ Common failure reasons:
 - Rate limit hit (1 request/hour/user) -- wait and retry.
 - No pending deletion request -- check `deletion_requests` table.
 - Grace period not expired -- check `scheduled_for` timestamp.
+- `[DELETION_ALERT] needs_support billing_subscription_not_found` -- Paddle has
+  no record of a subscription the local row still calls live. Resolve the
+  billing question first; see Step 2 below.
 - Auth admin API failure -- proceed with manual deletion below.
 
 ### Step-by-step manual deletion
@@ -368,7 +410,7 @@ tables, but if that call is what failed, you need to delete data manually first.
 -- Save this output before deleting anything
 SELECT 'profiles' AS tbl, COUNT(*) FROM profiles WHERE id = '<uuid>'
 UNION ALL SELECT 'workout_sessions', COUNT(*) FROM workout_sessions WHERE user_id = '<uuid>'
-UNION ALL SELECT 'exercises', COUNT(*) FROM exercises WHERE workout_id IN (SELECT id FROM workout_sessions WHERE user_id = '<uuid>')
+UNION ALL SELECT 'exercises', COUNT(*) FROM exercises WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sets', COUNT(*) FROM sets WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_summaries', COUNT(*) FROM rep_summaries WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_telemetry', COUNT(*) FROM rep_telemetry WHERE user_id = '<uuid>'
@@ -377,7 +419,7 @@ UNION ALL SELECT 'exercise_progress', COUNT(*) FROM exercise_progress WHERE user
 UNION ALL SELECT 'routines', COUNT(*) FROM routines WHERE user_id = '<uuid>'
 UNION ALL SELECT 'routine_exercises', COUNT(*) FROM routine_exercises WHERE routine_id IN (SELECT id FROM routines WHERE user_id = '<uuid>')
 UNION ALL SELECT 'training_cycles', COUNT(*) FROM training_cycles WHERE user_id = '<uuid>'
-UNION ALL SELECT 'cycle_days', COUNT(*) FROM cycle_days WHERE training_cycle_id IN (SELECT id FROM training_cycles WHERE user_id = '<uuid>')
+UNION ALL SELECT 'cycle_days', COUNT(*) FROM cycle_days WHERE cycle_id IN (SELECT id FROM training_cycles WHERE user_id = '<uuid>')
 UNION ALL SELECT 'user_goals', COUNT(*) FROM user_goals WHERE user_id = '<uuid>'
 UNION ALL SELECT 'external_activities', COUNT(*) FROM external_activities WHERE user_id = '<uuid>'
 UNION ALL SELECT 'user_integrations', COUNT(*) FROM user_integrations WHERE user_id = '<uuid>'
@@ -397,10 +439,73 @@ UNION ALL SELECT 'content_reports', COUNT(*) FROM content_reports WHERE user_id 
 UNION ALL SELECT 'creator_follows', COUNT(*) FROM creator_follows WHERE user_id = '<uuid>'
 UNION ALL SELECT 'user_blocks', COUNT(*) FROM user_blocks WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_queue', COUNT(*) FROM sync_queue WHERE user_id = '<uuid>'
+UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>'
+UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
 UNION ALL SELECT 'deletion_requests', COUNT(*) FROM deletion_requests WHERE user_id = '<uuid>';
 ```
 
-**Step 2: Delete storage objects**
+**FK-less tables the CASCADE does not reach.** `purgeUser` deletes these
+explicitly (`EXPLICIT_PURGE_TARGETS` in
+`supabase/functions/_shared/accountPurge.ts`); a manual deletion has to do the
+same or the rows outlive the account. Some are prod-only (they have no
+migration in this repo yet), so a query against them errors on a local stack —
+that is expected, skip the ones that do not exist here:
+
+```sql
+-- Always present
+SELECT 'oauth_tokens' AS tbl, COUNT(*) FROM oauth_tokens WHERE user_id = '<uuid>'
+UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
+UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>';
+
+-- Prod-only (marked mayBeAbsent in EXPLICIT_PURGE_TARGETS): run one at a time
+-- and ignore "relation does not exist" on a database that lacks them.
+SELECT COUNT(*) FROM paddle_webhook_events WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM paddle_webhook_events
+ WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';  -- rows whose user_id was never filled in
+SELECT COUNT(*) FROM subscription_events WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM goal_snapshots WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM overload_suggestions WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM telemetry_analysis WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM wearable_daily_summaries WHERE user_id = '<uuid>';
+```
+
+This list is transcribed from `EXPLICIT_PURGE_TARGETS` on the branch this
+section was verified against. It is **not** machine-generated: if that array
+gains a table, this block goes stale silently. Re-read the array before
+trusting it.
+
+**Step 2: Settle billing in Paddle before you delete anything**
+
+`purgeUser` cancels the user's Paddle subscription **first**, from Paddle's
+live status (never from `subscriptions.status`, which can be stale), and aborts
+the whole purge if it cannot. Do the same by hand: Step 4 deletes the
+`subscriptions` row, which is the only local record of the Paddle ids — once it
+is gone you cannot find the subscription to cancel, and the user keeps being
+billed.
+
+```sql
+SELECT user_id, tier, status, paddle_customer_id, paddle_subscription_id
+FROM subscriptions WHERE user_id = '<uuid>';
+```
+
+- `paddle_subscription_id IS NULL` -- nothing to cancel, continue.
+- Otherwise open **Paddle Dashboard > Subscriptions**, find that id, and read
+  its **live** status there.
+  - Already `canceled` -- continue.
+  - Anything else (including `paused`) -- cancel it in Paddle now, immediately,
+    not at period end. **This is irreversible**; a cancelled Paddle
+    subscription cannot be un-cancelled, only replaced by a new checkout.
+  - Paddle returns 404 for the id -- this is the
+    `[DELETION_ALERT] needs_support billing_subscription_not_found` case. Do
+    **not** continue unless the local row is already `canceled` or `expired`.
+    A 404 on a non-terminal local row means the portal and Paddle disagree
+    about a live subscription, and deleting the account would destroy the only
+    link to it. Resolve that first (see
+    [billing-incident-response.md](billing-incident-response.md) §3).
+
+Record the ids you saw here before continuing — they are gone after Step 4.
+
+**Step 3: Delete storage objects**
 
 ```bash
 # List and remove avatar files for the user
@@ -420,7 +525,7 @@ WHERE bucket_id = 'avatars'
   AND name LIKE '<uuid>/%';
 ```
 
-**Step 3: Delete dependent data (leaf tables first)**
+**Step 4: Delete dependent data (leaf tables first)**
 
 ```sql
 -- Telemetry and rep data (deepest nesting)
@@ -477,14 +582,35 @@ DELETE FROM training_cycles WHERE user_id = '<uuid>';
 DELETE FROM user_goals WHERE user_id = '<uuid>';
 DELETE FROM subscriptions WHERE user_id = '<uuid>';
 DELETE FROM profiles WHERE id = '<uuid>';
-
--- Deletion tracking
-UPDATE deletion_requests
-SET status = 'executed', executed_at = NOW()
-WHERE user_id = '<uuid>';
 ```
 
-**Step 4: Delete the Supabase Auth user**
+Then the FK-less tables from Step 1 that the CASCADE never reaches. Skip any
+that do not exist on this database:
+
+```sql
+DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
+DELETE FROM sync_tombstones WHERE user_id = '<uuid>';
+DELETE FROM rate_limit_tracking WHERE user_id = '<uuid>';
+DELETE FROM subscription_events WHERE user_id = '<uuid>';          -- prod-only
+DELETE FROM paddle_webhook_events WHERE user_id = '<uuid>';        -- prod-only
+DELETE FROM paddle_webhook_events                                  -- prod-only
+ WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';
+DELETE FROM goal_snapshots WHERE user_id = '<uuid>';               -- prod-only
+DELETE FROM overload_suggestions WHERE user_id = '<uuid>';         -- prod-only
+DELETE FROM telemetry_analysis WHERE user_id = '<uuid>';           -- prod-only
+DELETE FROM wearable_daily_summaries WHERE user_id = '<uuid>';     -- prod-only
+```
+
+**Do NOT touch `deletion_requests` here.** Its `user_id` is
+`ON DELETE CASCADE`, so the row disappears by itself when Step 5 deletes the
+auth user — that is the signal the erasure actually completed. Writing
+`status = 'executed'` by hand builds the exact dead end this design removed:
+nothing in the code writes `'executed'` any more (migration `20260920003500`
+even flips legacy `'executed'` rows back to `'pending'`), and a request marked
+`'executed'` while the account still exists can no longer be retried by
+`process_due`, cancelled by the user, or re-requested. Leave the row alone.
+
+**Step 5: Delete the Supabase Auth user**
 
 ```bash
 # Via Supabase Dashboard: Authentication > Users > find user > delete
@@ -494,10 +620,32 @@ curl -X DELETE "https://<project-ref>.supabase.co/auth/v1/admin/users/<uuid>" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}"
 ```
 
-**Step 5: Verify nothing was missed**
+**Step 6: Verify nothing was missed**
 
-Re-run the footprint query from Step 1. All counts should be 0 (except
-`deletion_requests` which should show 1 with `status = 'executed'`).
+Re-run the footprint query from Step 1. **Every count should be 0, including
+`deletion_requests`.**
+
+A surviving `deletion_requests` row is not a receipt — it is a failure signal.
+`deletion_requests.user_id` is `ON DELETE CASCADE` (`20260301_deletion_support.sql`),
+so the row can only still be there if the `auth.users` row is still there.
+Go back to Step 5 and confirm the auth user is actually gone.
+
+Once it is, the row is gone with it and there is nothing to update. If the
+account genuinely cannot be deleted through the admin API, leave the request
+`status = 'pending'` and mark it for support instead of closing it:
+
+```sql
+-- Park it: process_due skips rows with a reason, the user still sees and can
+-- cancel the request, and the hourly pass alerts on it under
+-- [DELETION_ALERT] needs_support_overdue rather than the generic overdue tag.
+UPDATE public.deletion_requests
+SET needs_support_reason = 'request_survived_purge'
+WHERE user_id = '<uuid>' AND status = 'pending';
+```
+
+This is also the state `delete-account` itself leaves behind when a purge
+reports success but the request row is still present — see the alert catalogue
+below.
 
 ```sql
 -- Quick verification: any remaining references to this user?
@@ -514,6 +662,69 @@ Also verify the auth user is gone:
 SELECT id, email FROM auth.users WHERE id = '<uuid>';
 -- Should return 0 rows
 ```
+
+### Deletion alerts and the needs-support path
+
+Every string below is logged verbatim by `delete-account` or
+`_shared/accountPurge.ts`, so it can be grepped in the Edge Function logs:
+
+```bash
+supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 200 \
+  | grep DELETION_ALERT
+```
+
+`process_due`'s HTTP response body (persisted by pg_net in
+`net._http_response`) deliberately carries **counts only** — no user ids — so
+the ids for every alert below live in the Edge logs and nowhere else.
+
+| Alert string                                      | What happened                                                                                                                              | What the operator does                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[DELETION_ALERT] reclaimed_stuck_claim`          | A request sat in `executing` for more than `STUCK_CLAIM_MINUTES` (15) — a previous run died mid-purge. This pass took the claim over.        | Nothing, once. The purge is idempotent and re-runs immediately. Repeated reclaims of the same user mean the purge is crashing: read the logs.   |
+| `[DELETION_ALERT] overdue`                        | A `pending`/`executing` request is more than `OVERDUE_ALERT_DAYS` (2) past its `scheduled_for`, with no support reason.                     | The scheduler is not draining. Check the cron job's `active` flag and `net._http_response` (see "When to use" above) before anything manual.     |
+| `[DELETION_ALERT] needs_support <reason>`         | A purge stopped for a reason only a human can resolve; the row is back to `pending` with `needs_support_reason` set, and `process_due` now skips it. | Resolve the named reason, then clear the column (below).                                                                            |
+| `[DELETION_ALERT] needs_support_overdue <reason>` | The same row is now 2+ days overdue and still parked. Separate tag so a parked row does not drown the generic `overdue` alert every hour.    | It has been waiting for a human for two days. Work it.                                                                                         |
+| `[DELETION_ALERT] request_survived_purge`         | The purge reported success but the request row is still there — so the auth user was NOT deleted. Parked `pending` + this reason.            | Treat as a live account. Finish the erasure (this section), then clear the reason or let the row cascade away.                                  |
+| `[DELETION_ALERT] claim_revert_failed`            | Releasing a claim back to `pending` failed. The row may be stuck in `executing`.                                                            | It self-heals: the next pass reclaims anything `executing` older than 15 minutes. Investigate if it repeats.                                    |
+| `[DELETION_ALERT] account deleted with residual rows` | The auth user is gone, but the post-delete pass could not clear some FK-less tables. `residual_tables` names them.                      | Nothing immediately — the hourly residue sweep retries. Check those tables are empty for that user a few hours later.                           |
+| `[DELETION_ALERT] post_delete_purge_failed`       | Same class, logged from `purgeUser` itself.                                                                                                 | As above.                                                                                                                                      |
+| `[DELETION_ALERT] residue_sweep_skipped_tables`   | `sweep_deleted_account_residue` could not touch a table (missing table or missing `user_id` column — schema drift). `skipped` names each.    | Residue is silently surviving in those tables. Fix the drift, or clear them by hand with the Step 4 queries.                                    |
+| `[DELETION_ALERT] residue_sweep_failed`           | The sweep RPC itself errored, or an avatar folder could not be removed.                                                                    | Check the error; the sweep runs again next hour.                                                                                               |
+| `[DELETION_ALERT] overdue_check_failed`           | The overdue query errored, so **this pass produced no overdue alerts at all**.                                                             | Absence of `overdue` alerts after this one proves nothing. Run the overdue query below by hand.                                                 |
+| `[DELETION_ALERT] avatar_cleanup_failed`          | Avatar objects for a deleted user could not be removed. The `avatars` bucket is public, so those images stay publicly fetchable.            | **Act on this one.** Delete the objects by hand (Step 3's `storage.objects` query) — the residue sweep retries the folder, but do not wait.     |
+| `[DELETION_ALERT] process_due_failed`             | The whole hourly pass threw.                                                                                                               | Nothing was processed this hour. Read the error; the next pass retries everything.                                                             |
+
+There is no `claim_finish_failed` string in the code — that outcome is folded
+into `claim_revert_failed`. Do not grep for it.
+
+**Read-only overdue / parked query.** This is the same predicate
+`process_due`'s alert step uses:
+
+```sql
+SELECT user_id, status, scheduled_for, claimed_at, needs_support_reason, last_attempt_at
+FROM public.deletion_requests
+WHERE status IN ('pending', 'executing')
+  AND (scheduled_for < now() - interval '2 days'
+       OR needs_support_reason IS NOT NULL);
+```
+
+**Clearing `needs_support_reason`.** Two reasons are written today:
+
+- `billing_subscription_not_found` — Paddle returned 404 for a subscription the
+  local row does not consider terminal. Settle it in Paddle first (Step 2).
+- `request_survived_purge` — see above.
+
+Once resolved, hand the request back to the scheduler:
+
+```sql
+UPDATE public.deletion_requests
+SET needs_support_reason = NULL
+WHERE user_id = '<uuid>';
+```
+
+That single statement re-arms an irreversible deletion: the row becomes
+eligible again and the next hourly pass (within the hour, oldest
+`last_attempt_at` first) will purge the account permanently. Only run it once
+the reason genuinely no longer applies.
 
 ---
 
@@ -860,8 +1071,12 @@ If the guard fails on a ref you believe is live, override the denylist via
 hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
 (see `public/_headers`).
 
-To regenerate `src/lib/database.types.ts` against a live project ref,
-set `SUPABASE_PROJECT_REF` in `.env` and run:
+The committed `src/lib/database.types.ts` is generated from the migrated
+local schema (`npm run gen:types:local`) and CI (`gen:types:check` in
+`.github/workflows/migrations.yml`) rejects anything else. To inspect the
+types of a live project instead (diagnostics only, do not commit the result
+while prod differs from the migrations), set `SUPABASE_PROJECT_REF` in `.env`
+and run:
 
 ```bash
 npm run gen:types

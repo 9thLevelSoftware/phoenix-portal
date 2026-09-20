@@ -1,11 +1,17 @@
 export type PaddleSubscriptionPatchDecision =
   | { action: 'already_current' }
-  | { action: 'uncancel'; body: { scheduled_change: null } }
+  | {
+    action: 'uncancel';
+    body: { scheduled_change: null; on_payment_failure: 'prevent_change' };
+  }
   | {
     action: 'switch';
     body: {
       items: Array<{ price_id: string; quantity: number }>;
       proration_billing_mode: 'prorated_immediately';
+      // Explicit, not Paddle's implicit default: if the prorated charge fails,
+      // Paddle rejects the change instead of applying it unpaid.
+      on_payment_failure: 'prevent_change';
       scheduled_change?: null;
     };
   };
@@ -70,7 +76,10 @@ export function buildPaddleSubscriptionPatch(
 ): PaddleSubscriptionPatchDecision {
   if (currentPriceId === newPriceId) {
     return cancelAtPeriodEnd
-      ? { action: 'uncancel', body: { scheduled_change: null } }
+      ? {
+        action: 'uncancel',
+        body: { scheduled_change: null, on_payment_failure: 'prevent_change' },
+      }
       : { action: 'already_current' };
   }
 
@@ -79,6 +88,7 @@ export function buildPaddleSubscriptionPatch(
     body: {
       items: buildSwitchItems(currentItems, currentPriceId, newPriceId),
       proration_billing_mode: 'prorated_immediately',
+      on_payment_failure: 'prevent_change',
       ...(cancelAtPeriodEnd ? { scheduled_change: null } : {}),
     },
   };
@@ -96,4 +106,52 @@ export function checkoutRequiredResponseBody(reason: string): {
     message: 'Open checkout to start a new subscription.',
     reason,
   };
+}
+
+export type PaddleCancelRequest =
+  | { allowed: false }
+  | {
+    allowed: true;
+    effectiveFrom: 'next_billing_period' | 'immediately';
+    /**
+     * The shape the cancellation takes locally. Documentation and test
+     * material only: paddle-cancel-subscription stores Paddle's own cancel
+     * response through `apply_subscription_event` rather than patching the
+     * row it read, because a renewal that landed in between must not be
+     * re-written under a newer clock (PR 45). Do not reintroduce a direct
+     * patch from this.
+     */
+    localPatch:
+      | { cancel_at_period_end: true }
+      | { status: 'canceled'; cancel_at_period_end: false };
+  };
+
+/**
+ * Decide how paddle-cancel-subscription cancels a subscription.
+ *
+ * - active / trialing: cancel at the end of the billing period (Paddle
+ *   `next_billing_period`), keeping access until then.
+ * - past_due: the user keeps access during Paddle's retry window and may
+ *   leave. A scheduled cancel is the wrong model while payment is
+ *   outstanding, so cancel immediately.
+ * - anything else: nothing to cancel.
+ */
+export function resolvePaddleCancelRequest(
+  status: string | null | undefined,
+): PaddleCancelRequest {
+  if (status === 'active' || status === 'trialing') {
+    return {
+      allowed: true,
+      effectiveFrom: 'next_billing_period',
+      localPatch: { cancel_at_period_end: true },
+    };
+  }
+  if (status === 'past_due') {
+    return {
+      allowed: true,
+      effectiveFrom: 'immediately',
+      localPatch: { status: 'canceled', cancel_at_period_end: false },
+    };
+  }
+  return { allowed: false };
 }

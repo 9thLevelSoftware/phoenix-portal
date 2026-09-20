@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+	AlertTriangle,
 	ArrowDown,
 	ArrowUp,
 	Check,
@@ -37,8 +38,14 @@ import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
-import { openCheckout } from "@/lib/paddle-client";
+import { cancelSuccessMessage } from "@/lib/paddle";
+import {
+	CheckoutSigningError,
+	openCheckout,
+	openUpdatePaymentMethodCheckout,
+} from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
+import { getEffectiveSubscriptionTier } from "@/lib/subscription-entitlement";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
@@ -74,8 +81,10 @@ interface PlanChangeIntent {
 
 interface UpdateSubscriptionResponse {
 	success?: boolean;
-	action?: "switch" | "uncancel";
-	code?: "checkout_required";
+	action?: "switch" | "uncancel" | "update_payment" | "refresh";
+	code?: "checkout_required" | "refresh_required";
+	/** Paddle transaction that updates the card (action: "update_payment"). */
+	transactionId?: string;
 	error?: string;
 	message?: string;
 	subscription?: {
@@ -224,6 +233,10 @@ function normalizeSubscriptionPayload(
 	};
 }
 
+/**
+ * Checkout-landed check: the refreshed row is on the purchased plan and the
+ * shared entitlement predicate grants that tier.
+ */
 function isFreshPaidSubscription(
 	subscription: ReturnType<typeof normalizeSubscriptionPayload>,
 	target: { tier: SubscriptionTier; priceId: string },
@@ -235,13 +248,14 @@ function isFreshPaidSubscription(
 	) {
 		return false;
 	}
-	if (subscription.status !== "active" && subscription.status !== "trialing") {
-		return false;
-	}
-	if (!subscription.currentPeriodEnd) return false;
-
-	const periodEndMs = Date.parse(subscription.currentPeriodEnd);
-	return Number.isFinite(periodEndMs) && periodEndMs > Date.now();
+	return (
+		getEffectiveSubscriptionTier(
+			subscription.tier,
+			subscription.status,
+			subscription.currentPeriodEnd,
+			{ cancelAtPeriodEnd: subscription.cancelAtPeriodEnd },
+		) === target.tier
+	);
 }
 
 export function PricingPlans() {
@@ -251,10 +265,13 @@ export function PricingPlans() {
 		isLoading: subscriptionLoading,
 		isError: subscriptionError,
 		refetch: refetchSubscription,
+		status: subscriptionStatus,
 		cancelAtPeriodEnd,
 		currentPeriodEnd,
 		isEntitled,
 		isStale,
+		billingAction: currentBillingAction,
+		needsPaymentUpdate,
 	} = useSubscription();
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
@@ -266,22 +283,30 @@ export function PricingPlans() {
 		useState<PlanChangeIntent | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
+	const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
 	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
 		string | null
 	>(null);
+	// "running" only while a refresh is actually in flight. Once it settles
+	// without repairing the row the CTA must offer a retry rather than a
+	// spinner that never stops (review R-6/R-9).
+	const [refreshState, setRefreshState] = useState<
+		"idle" | "running" | "settled"
+	>("idle");
 
 	useEffect(() => {
 		if (
 			!user ||
 			subscriptionLoading ||
 			subscriptionError ||
-			!isStale ||
+			!(isStale || currentBillingAction === "refresh") ||
 			refreshAttemptedForUser === user.id
 		) {
 			return;
 		}
 
 		setRefreshAttemptedForUser(user.id);
+		setRefreshState("running");
 		void supabase.functions
 			.invoke("paddle-refresh-subscription")
 			.then(({ error }) => {
@@ -290,6 +315,7 @@ export function PricingPlans() {
 				}
 			})
 			.finally(() => {
+				setRefreshState("settled");
 				void queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
@@ -299,6 +325,7 @@ export function PricingPlans() {
 		subscriptionLoading,
 		subscriptionError,
 		isStale,
+		currentBillingAction,
 		refreshAttemptedForUser,
 		queryClient,
 	]);
@@ -307,6 +334,20 @@ export function PricingPlans() {
 		tier: SubscriptionTier,
 		explicitPriceId?: string,
 	) => {
+		// One shared predicate (R-11): a new checkout is only ever opened for
+		// the `checkout` action. Every other state already has a live Paddle
+		// subscription, and paddle-checkout-custom-data refuses to sign one —
+		// so opening it here would only produce a failed checkout, or a
+		// second subscription (F-022).
+		if (currentBillingAction !== "checkout") {
+			toast.error(
+				needsPaymentUpdate
+					? "Your last payment failed — update your card to keep your plan."
+					: "You already have a subscription. Manage it instead of subscribing again.",
+			);
+			return;
+		}
+
 		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
@@ -386,6 +427,19 @@ export function PricingPlans() {
 				},
 			});
 		} catch (error) {
+			// A 409 `existing_subscription` means the stored row moved on since
+			// this CTA rendered (the server predicate is the authority). Re-read
+			// it so the button corrects itself instead of offering Subscribe
+			// again (review R-14).
+			if (
+				error instanceof CheckoutSigningError &&
+				error.code === "existing_subscription" &&
+				user
+			) {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
 			const message =
 				error instanceof Error
 					? error.message
@@ -399,18 +453,16 @@ export function PricingPlans() {
 	const handleCancel = async () => {
 		setIsCanceling(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-cancel-subscription",
-			);
+			const { data, error } = await supabase.functions.invoke<{
+				canceledImmediately?: boolean;
+			}>("paddle-cancel-subscription");
 
 			if (error) {
 				toast.error(error.message || "Failed to cancel subscription");
 				return;
 			}
 
-			toast.success(
-				"Subscription canceled. You'll retain access until the end of your billing period.",
-			);
+			toast.success(cancelSuccessMessage(data));
 
 			if (user) {
 				void queryClient.invalidateQueries({
@@ -422,6 +474,88 @@ export function PricingPlans() {
 		} finally {
 			setIsCanceling(false);
 			setConfirmCancel(false);
+		}
+	};
+
+	/**
+	 * Ask Paddle for the current state and re-read the row. Reports the
+	 * OUTCOME — a pre-emptive "success" toast in front of a call that can fail
+	 * tells the user their plan was refreshed when it was not (review R-9).
+	 */
+	const refreshFromPaddle = async () => {
+		setRefreshState("running");
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-refresh-subscription",
+			);
+			if (error) {
+				console.warn("Failed to refresh subscription", error);
+				toast.error(
+					"Couldn't reach billing to refresh your plan. Please try again.",
+				);
+				return false;
+			}
+			toast.success("Plan refreshed.");
+			return true;
+		} finally {
+			setRefreshState("settled");
+			if (user) {
+				await queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
+		}
+	};
+
+	/**
+	 * Open the Paddle transaction that updates the card on the EXISTING
+	 * subscription. Never a checkout: the user keeps the subscription they
+	 * are already being charged for (R-33).
+	 */
+	const openUpdateCard = async (transactionId: string | undefined) => {
+		if (!transactionId) {
+			toast.error("Couldn't start a payment update. Please try again.");
+			return;
+		}
+		try {
+			await openUpdatePaymentMethodCheckout({
+				transactionId,
+				onSuccess: () => {
+					toast.success("Payment updated. Finalizing your subscription...");
+					void refreshFromPaddle();
+				},
+			});
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Billing checkout is unavailable. Please try again.",
+			);
+		}
+	};
+
+	/** "Update payment" CTA for a past_due subscriber. */
+	const handleUpdatePayment = async () => {
+		setIsUpdatingPayment(true);
+		try {
+			const { data, error, response } =
+				await supabase.functions.invoke<UpdateSubscriptionResponse>(
+					"paddle-update-subscription",
+				);
+
+			if (error) {
+				toast.error(await getFunctionErrorMessage(error, response));
+				return;
+			}
+			if (data?.action === "refresh") {
+				await refreshFromPaddle();
+				return;
+			}
+			await openUpdateCard(data?.transactionId);
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setIsUpdatingPayment(false);
 		}
 	};
 
@@ -447,6 +581,21 @@ export function PricingPlans() {
 
 			if (data?.code === "checkout_required") {
 				await handleSubscribe(intent.tier, intent.priceId);
+				return;
+			}
+
+			if (data?.action === "update_payment") {
+				// Say why the plan change turned into something else, rather
+				// than silently opening a different overlay (review R-8).
+				toast.error(
+					"Your last payment failed — update your card before changing plan.",
+				);
+				await openUpdateCard(data.transactionId);
+				return;
+			}
+
+			if (data?.action === "refresh") {
+				await refreshFromPaddle();
 				return;
 			}
 
@@ -613,6 +762,37 @@ export function PricingPlans() {
 			);
 		}
 
+		// A live Paddle subscription whose stored state has lapsed: the portal
+		// is asking Paddle for the truth, not selling a second subscription.
+		if (currentBillingAction === "refresh") {
+			// Once the refresh has settled without repairing the row, offer a
+			// retry: a spinner that never stops leaves every CTA dead with no
+			// way forward (review R-6).
+			if (refreshState === "settled") {
+				return (
+					<div className="flex flex-col gap-2 w-full">
+						<Button
+							variant="outline"
+							className="w-full"
+							onClick={() => void refreshFromPaddle()}
+						>
+							<RefreshCw className="w-4 h-4 mr-2" />
+							Retry
+						</Button>
+						<p className="text-xs text-muted-foreground text-center">
+							We couldn't confirm your plan with billing.
+						</p>
+					</div>
+				);
+			}
+			return (
+				<Button variant="outline" className="w-full" disabled>
+					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+					Refreshing your plan…
+				</Button>
+			);
+		}
+
 		return (
 			<Button
 				className={`w-full ${tierConfig.buttonClass}`}
@@ -668,6 +848,33 @@ export function PricingPlans() {
 						</Badge>
 					)}
 				</div>
+
+				{needsPaymentUpdate && (
+					<div
+						className="max-w-3xl mx-auto mb-8 rounded-lg border border-warning/40 bg-warning/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+						data-testid="past-due-banner"
+						role="status"
+					>
+						<AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+						<p className="text-sm text-white flex-1">
+							Your last payment failed — update your card to keep your plan.
+						</p>
+						<Button
+							variant="outline"
+							onClick={() => void handleUpdatePayment()}
+							disabled={isUpdatingPayment}
+						>
+							{isUpdatingPayment ? (
+								<>
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+									Update payment
+								</>
+							) : (
+								"Update payment"
+							)}
+						</Button>
+					</div>
+				)}
 
 				{subscriptionError ? (
 					<div
@@ -838,12 +1045,18 @@ export function PricingPlans() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your subscription will remain active until the end of your current
-							billing period (
-							{currentPeriodEnd
-								? new Date(currentPeriodEnd).toLocaleDateString()
-								: "end of period"}
-							). After that, you'll be downgraded to the Free plan.
+							{subscriptionStatus === "past_due" ? (
+								"Your last payment failed, so canceling ends your paid access immediately and moves you to the Free plan."
+							) : (
+								<>
+									Your subscription will remain active until the end of your
+									current billing period (
+									{currentPeriodEnd
+										? new Date(currentPeriodEnd).toLocaleDateString()
+										: "end of period"}
+									). After that, you'll be downgraded to the Free plan.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

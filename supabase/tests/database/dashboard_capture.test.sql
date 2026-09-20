@@ -205,8 +205,11 @@ SELECT set_has(
     $sql$,
     $sql$
         VALUES
+            -- 'IGNORED' was added by 20260920004400 (PR 44): apply_subscription_event
+            -- records an event from an untracked subscription that it refused to
+            -- apply. The other three are prod's original audit-trigger operations.
             ('subscription_events'::text, 'subscription_events_operation_check'::text,
-             'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text])))'::text),
+             'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text, ''IGNORED''::text])))'::text),
             ('goal_snapshots', 'goal_snapshots_goal_id_fkey',
              'FOREIGN KEY (goal_id) REFERENCES user_goals(id) ON DELETE CASCADE'),
             ('wearable_daily_summaries', 'wearable_daily_summaries_user_id_summary_date_provider_key',
