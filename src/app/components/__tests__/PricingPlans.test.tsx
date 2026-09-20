@@ -15,6 +15,8 @@ const mockSubscription = vi.hoisted(() => ({
 		currentPeriodEnd: null as string | null,
 		cancelAtPeriodEnd: false,
 		isEntitled: false,
+		billingAction: "checkout" as "manage" | "refresh" | "checkout",
+		needsPaymentUpdate: false,
 		isStale: false,
 		isLoading: false,
 		isError: false,
@@ -27,6 +29,7 @@ const mockSubscription = vi.hoisted(() => ({
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockOpenCheckout = vi.hoisted(() => vi.fn());
+const mockOpenUpdatePaymentMethodCheckout = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => mockSubscription.current,
@@ -48,6 +51,7 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/paddle-client", () => ({
 	openCheckout: mockOpenCheckout,
+	openUpdatePaymentMethodCheckout: mockOpenUpdatePaymentMethodCheckout,
 }));
 
 const mockPricing = vi.hoisted(() => ({
@@ -103,6 +107,8 @@ function setSubscription(overrides: Partial<typeof mockSubscription.current>) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isEntitled: false,
+		billingAction: "checkout",
+		needsPaymentUpdate: false,
 		isStale: false,
 		isLoading: false,
 		isError: false,
@@ -119,13 +125,17 @@ describe("PricingPlans billing actions", () => {
 		vi.clearAllMocks();
 		mockInvoke.mockResolvedValue({ data: { success: true }, error: null });
 		mockOpenCheckout.mockResolvedValue(undefined);
+		mockOpenUpdatePaymentMethodCheckout.mockResolvedValue(undefined);
 		setSubscription({});
 		mockPricing.TIER_PRICING[2].paddleMonthlyPriceId = "pri_inferno_monthly";
 		mockPricing.TIER_PRICING[2].paddleAnnualPriceId = "pri_inferno_annual";
 		mockPricing.TIER_PRICING[2].comingSoon = false;
 	});
 
-	it("treats expired scheduled cancellations as subscribable and refreshes once", async () => {
+	it("refreshes an expired scheduled cancellation instead of selling a second subscription", async () => {
+		// A live Paddle subscription whose stored state has lapsed: the portal
+		// asks Paddle for the truth. Opening a checkout here would be refused
+		// by paddle-checkout-custom-data with 409 (F-022).
 		setSubscription({
 			tier: "FREE",
 			rawTier: "FLAME",
@@ -134,6 +144,7 @@ describe("PricingPlans billing actions", () => {
 			currentPeriodEnd: "2026-04-17T00:00:00Z",
 			cancelAtPeriodEnd: true,
 			isEntitled: false,
+			billingAction: "refresh",
 			isStale: true,
 		});
 
@@ -142,12 +153,46 @@ describe("PricingPlans billing actions", () => {
 		await waitFor(() => {
 			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
 		});
-		expect(screen.getAllByRole("button", { name: /subscribe/i }).length).toBe(
-			3,
-		);
+		expect(
+			screen.getAllByRole("button", { name: /refreshing your plan/i }).length,
+		).toBe(3);
+		expect(
+			screen.queryByRole("button", { name: /subscribe/i }),
+		).not.toBeInTheDocument();
+		expect(mockOpenCheckout).not.toHaveBeenCalled();
 		expect(
 			screen.queryByRole("button", { name: /keep plan/i }),
 		).not.toBeInTheDocument();
+	});
+
+	it("shows Refreshing your plan for an active subscription whose period ended", async () => {
+		// "active, period ended, renewal webhook late": the user has a live
+		// subscription, so no checkout may be opened.
+		setSubscription({
+			tier: "FREE",
+			rawTier: "FLAME",
+			status: "active",
+			priceId: "pri_flame_monthly",
+			currentPeriodEnd: "2026-04-17T00:00:00Z",
+			isEntitled: false,
+			billingAction: "refresh",
+			isStale: true,
+		});
+
+		renderWithProviders(<PricingPlans />);
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
+		});
+		expect(
+			screen.getAllByRole("button", { name: /refreshing your plan/i })[0],
+		).toBeDisabled();
+		expect(mockOpenCheckout).not.toHaveBeenCalled();
+		expect(
+			mockInvoke.mock.calls.some(
+				(call) => call[0] === "paddle-checkout-custom-data",
+			),
+		).toBe(false);
 	});
 
 	it("offers Keep plan for a future scheduled cancellation", async () => {
@@ -177,30 +222,63 @@ describe("PricingPlans billing actions", () => {
 		});
 	});
 
-	it("shows the update-payment message when a past_due plan change is refused", async () => {
+	const pastDueSubscription = {
+		tier: "FLAME" as SubscriptionTier,
+		rawTier: "FLAME" as SubscriptionTier,
+		status: "past_due",
+		priceId: "pri_flame_monthly",
+		currentPeriodEnd: "2026-05-07T00:00:00Z",
+		// past_due keeps full access during Paddle's retry window (R-33).
+		isEntitled: true,
+		billingAction: "manage" as const,
+		needsPaymentUpdate: true,
+		isPremium: true,
+		isFlame: true,
+	};
+
+	it("keeps a past_due user's access, banners the failed payment, and opens no checkout", async () => {
 		const user = userEvent.setup();
-		setSubscription({
-			tier: "FLAME",
-			rawTier: "FLAME",
-			status: "past_due",
-			priceId: "pri_flame_monthly",
-			currentPeriodEnd: "2026-05-07T00:00:00Z",
-			isEntitled: true,
-			isPremium: true,
-			isFlame: true,
-		});
+		setSubscription(pastDueSubscription);
 		mockInvoke.mockResolvedValue({
-			data: null,
-			error: new Error("Edge Function returned a non-2xx status code"),
-			response: new Response(
-				JSON.stringify({
-					error: "payment_past_due",
-					code: "payment_past_due",
-					message:
-						"Your last payment failed. Update your payment method before changing your plan.",
-				}),
-				{ status: 409 },
+			data: { action: "update_payment", transactionId: "txn_update_card" },
+			error: null,
+		});
+
+		renderWithProviders(<PricingPlans />);
+
+		// Full access: the paid tier is still the current plan.
+		expect(
+			screen.getByRole("button", { name: /current plan/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/your last payment failed — update your card to keep your plan/i,
 			),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /update payment/i }));
+
+		await waitFor(() => {
+			expect(mockOpenUpdatePaymentMethodCheckout).toHaveBeenCalledWith(
+				expect.objectContaining({ transactionId: "txn_update_card" }),
+			);
+		});
+		expect(mockInvoke).toHaveBeenCalledWith("paddle-update-subscription");
+		// Never a new subscription.
+		expect(mockOpenCheckout).not.toHaveBeenCalled();
+		expect(
+			mockInvoke.mock.calls.some(
+				(call) => call[0] === "paddle-checkout-custom-data",
+			),
+		).toBe(false);
+	});
+
+	it("opens the update-payment transaction when a past_due plan change is redirected", async () => {
+		const user = userEvent.setup();
+		setSubscription(pastDueSubscription);
+		mockInvoke.mockResolvedValue({
+			data: { action: "update_payment", transactionId: "txn_from_plan_change" },
+			error: null,
 		});
 
 		renderWithProviders(<PricingPlans />);
@@ -208,8 +286,8 @@ describe("PricingPlans billing actions", () => {
 		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
 
 		await waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Your last payment failed. Update your payment method before changing your plan.",
+			expect(mockOpenUpdatePaymentMethodCheckout).toHaveBeenCalledWith(
+				expect.objectContaining({ transactionId: "txn_from_plan_change" }),
 			);
 		});
 		expect(mockOpenCheckout).not.toHaveBeenCalled();
