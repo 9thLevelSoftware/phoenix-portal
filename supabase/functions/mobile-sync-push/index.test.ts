@@ -441,14 +441,11 @@ function permissiveQuery(
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       onCall?.(method, args);
-      if (method === "neq") ownershipProbe = true;
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method);
-        injectedWriteError = writeError?.(method) ?? injectedWriteError;
       operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
+        injectedWriteError = writeError?.(method) ?? injectedWriteError;
       }
       return query;
     };
@@ -475,8 +472,6 @@ function permissiveQuery(
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
-        ? { data: [], error: null, count: 0 }
-      ownershipProbe
         ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
         ? terminalResult(operations)
@@ -522,8 +517,6 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
-    /** Terminal result for non-write queries on a table (e.g. catalog rows). */
-    tableResults?: Record<string, { data: unknown; error: unknown }>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
     /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
@@ -560,8 +553,9 @@ function makeHarness(
       adminQueries.push(record);
       return permissiveQuery(
         table,
-        (method) => {
+        (method, args) => {
           adminWriteCalls.push({ table, method });
+          adminWriteArgs.push({ table, method, args });
           operationEvents.push(`write:${table}:${method}`);
         },
         table === "personal_records"
@@ -570,13 +564,6 @@ function makeHarness(
         (method) => options.writeErrors?.[`${table}:${method}`],
         (method, args) => record.calls.push({ method, args }),
       );
-      return permissiveQuery(table, (method, args) => {
-        adminWriteCalls.push({ table, method });
-        adminWriteArgs.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : options.tableResults?.[table]);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
