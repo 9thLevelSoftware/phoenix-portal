@@ -394,8 +394,14 @@ SELECT results_eq(
            "days":[{"day_number":1,"routine_id":"18181818-0000-4000-8000-0000000000a1","rest_type":"full"}]}]',
         false)
     $sql$,
-    $values$ VALUES (true, true, '2026-02-01 00:00:00+00'::timestamptz) $values$,
-    'a new cycle is inserted with the pushed updated_at'
+    $values$ VALUES (true, true, now()) $values$,
+    'a new cycle is inserted with the server clock as updated_at (NF-12, PR 21)'
+);
+SELECT is(
+    (SELECT client_updated_at FROM public.training_cycles
+     WHERE id = '18181818-0000-4000-8000-0000000000c6'),
+    '2026-02-01 00:00:00+00'::timestamptz,
+    'the pushed updated_at is stored as the LWW key (PR 21)'
 );
 SELECT results_eq(
     $sql$ SELECT c.user_id, d.day_number, d.routine_id, d.rest_type
