@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "limit"];
+	const methods = ["select", "eq", "gt", "order", "limit"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -32,6 +32,7 @@ const insightRow = {
 	title: "Volume is up 15%",
 	body: "Your training volume increased by 15% compared to last month.",
 	created_at: "2026-03-17T00:00:00Z",
+	expires_at: "2026-03-18T12:00:00Z",
 };
 
 // --- Tests ----------------------------------------------------------------
@@ -92,5 +93,26 @@ describe("insightsOptions", () => {
 		const opts = insightsOptions("user-1", "7d");
 		await opts.queryFn?.({} as never);
 		expect(fromFn).toHaveBeenCalledWith("user_insights");
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.eq).toHaveBeenCalledWith("period", "7d");
+	});
+
+	// KD-14: an expired batch must not reach the Analytics feed at all — the
+	// portal falls back to the browser rules instead of showing stale server
+	// text as if it were current.
+	it("excludes expired rows with expires_at > now", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { insightsOptions } = await import("../insights");
+		const before = Date.now();
+		await insightsOptions("user-1").queryFn?.({} as never);
+		const after = Date.now();
+
+		expect(chain.gt).toHaveBeenCalledTimes(1);
+		const [column, value] = chain.gt.mock.calls[0] as [string, string];
+		expect(column).toBe("expires_at");
+		const parsed = Date.parse(value);
+		expect(Number.isFinite(parsed)).toBe(true);
+		expect(parsed).toBeGreaterThanOrEqual(before - 1000);
+		expect(parsed).toBeLessThanOrEqual(after + 1000);
 	});
 });

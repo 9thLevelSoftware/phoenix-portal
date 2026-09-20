@@ -1,0 +1,398 @@
+{
+	"$comment": "Golden parity fixture for supabase/functions/_shared/insightRules.ts. Asserted from Deno (insightRules.test.ts) and Vitest (src/lib/__tests__/insights.test.ts). Regenerate deliberately when the rules change.",
+	"cases": [
+		{
+			"id": "balanced-progress-kg",
+			"unit": "kg",
+			"input": {
+				"currentVolume": 15000,
+				"previousVolume": 12000,
+				"muscleGroups": {
+					"Chest": 30,
+					"Back": 25,
+					"Legs": 8,
+					"Shoulders": 15,
+					"Arms": 14,
+					"Core": 8
+				},
+				"avgSessionsPerWeek": 4.2,
+				"currentStreak": 12,
+				"bestStreak": 21,
+				"recentPRs": [
+					{
+						"exercise": "Bench Press",
+						"displayName": "Bench Press Max Weight",
+						"recordType": "MAX_WEIGHT",
+						"value": 225,
+						"previousValue": 215
+					}
+				],
+				"plateauExercises": [
+					"Overhead Press"
+				],
+				"trainingLoadScore": 72
+			},
+			"expected": [
+				{
+					"id": "volume-up",
+					"type": "success",
+					"title": "Volume Trending Up",
+					"description": "Your training volume increased by 25% compared to the previous period.",
+					"recommendation": "Maintain this trajectory while monitoring recovery.",
+					"metric": {
+						"name": "Volume Change",
+						"value": 25,
+						"unit": "%",
+						"delta": 3000
+					}
+				},
+				{
+					"id": "muscle-imbalance-Legs",
+					"type": "warning",
+					"title": "Legs Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Legs is under-represented at 8%.",
+					"recommendation": "Add dedicated Legs work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Legs Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "muscle-imbalance-Core",
+					"type": "warning",
+					"title": "Core Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Core is under-represented at 8%.",
+					"recommendation": "Add dedicated Core work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Core Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "pr-bench-press-max-weight",
+					"type": "achievement",
+					"title": "New PR: Bench Press Max Weight",
+					"description": "You set a personal record on Bench Press Max Weight — 225 kg per cable (up 10 kg per cable from 215 kg per cable).",
+					"description": "You set a personal record on Bench Press Max Weight — 225 kg (up 10 kg from 215 kg).",
+					"metric": {
+						"name": "Bench Press Max Weight",
+						"value": 225,
+						"unit": "kg",
+						"delta": 10
+					}
+				},
+				{
+					"id": "plateau-overhead-press",
+					"type": "warning",
+					"title": "Plateau Detected: Overhead Press",
+					"description": "Your Overhead Press performance has stalled over recent sessions.",
+					"recommendation": "Try varying rep ranges, adding a deload week, or introducing a variation movement."
+				}
+			]
+		},
+		{
+			"id": "balanced-progress-lbs",
+			"unit": "lbs",
+			"input": {
+				"currentVolume": 15000,
+				"previousVolume": 12000,
+				"muscleGroups": {
+					"Chest": 30,
+					"Back": 25,
+					"Legs": 8,
+					"Shoulders": 15,
+					"Arms": 14,
+					"Core": 8
+				},
+				"avgSessionsPerWeek": 4.2,
+				"currentStreak": 12,
+				"bestStreak": 21,
+				"recentPRs": [
+					{
+						"exercise": "Bench Press",
+						"displayName": "Bench Press Max Weight",
+						"recordType": "MAX_WEIGHT",
+						"value": 225,
+						"previousValue": 215
+					}
+				],
+				"plateauExercises": [
+					"Overhead Press"
+				],
+				"trainingLoadScore": 72
+			},
+			"expected": [
+				{
+					"id": "volume-up",
+					"type": "success",
+					"title": "Volume Trending Up",
+					"description": "Your training volume increased by 25% compared to the previous period.",
+					"recommendation": "Maintain this trajectory while monitoring recovery.",
+					"metric": {
+						"name": "Volume Change",
+						"value": 25,
+						"unit": "%",
+						"delta": 3000
+					}
+				},
+				{
+					"id": "muscle-imbalance-Legs",
+					"type": "warning",
+					"title": "Legs Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Legs is under-represented at 8%.",
+					"recommendation": "Add dedicated Legs work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Legs Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "muscle-imbalance-Core",
+					"type": "warning",
+					"title": "Core Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Core is under-represented at 8%.",
+					"recommendation": "Add dedicated Core work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Core Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "pr-bench-press-max-weight",
+					"type": "achievement",
+					"title": "New PR: Bench Press Max Weight",
+					"description": "You set a personal record on Bench Press Max Weight — 496.0 lbs per cable (up 22.0 lbs per cable from 474.0 lbs per cable).",
+					"description": "You set a personal record on Bench Press Max Weight — 496.0 lbs (up 22.0 lbs from 474.0 lbs).",
+					"metric": {
+						"name": "Bench Press Max Weight",
+						"value": 496,
+						"unit": "lbs",
+						"delta": 22
+					}
+				},
+				{
+					"id": "plateau-overhead-press",
+					"type": "warning",
+					"title": "Plateau Detected: Overhead Press",
+					"description": "Your Overhead Press performance has stalled over recent sessions.",
+					"recommendation": "Try varying rep ranges, adding a deload week, or introducing a variation movement."
+				}
+			]
+		},
+		{
+			"id": "empty-history",
+			"unit": "kg",
+			"input": {
+				"currentVolume": 0,
+				"previousVolume": 0,
+				"muscleGroups": {},
+				"avgSessionsPerWeek": 0,
+				"currentStreak": 0,
+				"bestStreak": 0,
+				"recentPRs": [],
+				"plateauExercises": [],
+				"trainingLoadScore": 0
+			},
+			"expected": []
+		},
+		{
+			"id": "volume-drop-and-low-consistency",
+			"unit": "kg",
+			"input": {
+				"currentVolume": 8000,
+				"previousVolume": 12000,
+				"muscleGroups": {
+					"Chest": 30,
+					"Back": 25,
+					"Legs": 8,
+					"Shoulders": 15,
+					"Arms": 14,
+					"Core": 8
+				},
+				"avgSessionsPerWeek": 1.5,
+				"currentStreak": 12,
+				"bestStreak": 21,
+				"recentPRs": [],
+				"plateauExercises": [],
+				"trainingLoadScore": 72
+			},
+			"expected": [
+				{
+					"id": "volume-down",
+					"type": "warning",
+					"title": "Volume Trending Down",
+					"description": "Your training volume dropped by 33% compared to the previous period.",
+					"recommendation": "Check for schedule disruptions or signs of overtraining. Consider a structured deload.",
+					"metric": {
+						"name": "Volume Change",
+						"value": -33,
+						"unit": "%",
+						"delta": -4000
+					}
+				},
+				{
+					"id": "muscle-imbalance-Legs",
+					"type": "warning",
+					"title": "Legs Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Legs is under-represented at 8%.",
+					"recommendation": "Add dedicated Legs work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Legs Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "muscle-imbalance-Core",
+					"type": "warning",
+					"title": "Core Training Imbalance",
+					"description": "Chest training (30%) dominates your programme — Core is under-represented at 8%.",
+					"recommendation": "Add dedicated Core work to balance your programme and reduce injury risk.",
+					"metric": {
+						"name": "Core Volume Share",
+						"value": 8,
+						"unit": "%"
+					}
+				},
+				{
+					"id": "low-consistency",
+					"type": "warning",
+					"title": "Consistency Could Improve",
+					"description": "You're averaging 1.5 sessions per week. Consistent training frequency is key to long-term progress.",
+					"recommendation": "Aim for at least 3 sessions per week for meaningful adaptation.",
+					"metric": {
+						"name": "Avg Sessions / Week",
+						"value": 1.5,
+						"unit": "sessions"
+					}
+				}
+			]
+		},
+		{
+			"id": "streak-milestone-and-high-load",
+			"unit": "lbs",
+			"input": {
+				"currentVolume": 15000,
+				"previousVolume": 12000,
+				"muscleGroups": {
+					"Chest": 50,
+					"Back": 50
+				},
+				"avgSessionsPerWeek": 4.2,
+				"currentStreak": 14,
+				"bestStreak": 21,
+				"recentPRs": [],
+				"plateauExercises": [],
+				"trainingLoadScore": 85
+			},
+			"expected": [
+				{
+					"id": "volume-up",
+					"type": "success",
+					"title": "Volume Trending Up",
+					"description": "Your training volume increased by 25% compared to the previous period.",
+					"recommendation": "Maintain this trajectory while monitoring recovery.",
+					"metric": {
+						"name": "Volume Change",
+						"value": 25,
+						"unit": "%",
+						"delta": 3000
+					}
+				},
+				{
+					"id": "streak-14",
+					"type": "achievement",
+					"title": "14-Day Streak!",
+					"description": "You've trained consistently for 14 days in a row — keep the momentum going.",
+					"metric": {
+						"name": "Current Streak",
+						"value": 14,
+						"unit": "days"
+					}
+				},
+				{
+					"id": "high-training-load",
+					"type": "warning",
+					"title": "High Training Load",
+					"description": "Your training load score is 85 — above the recommended threshold.",
+					"recommendation": "Consider scheduling a deload week or reducing intensity to prevent overtraining and injury.",
+					"metric": {
+						"name": "Training Load Score",
+						"value": 85,
+						"unit": "pts"
+					}
+				}
+			]
+		},
+		{
+			"id": "volume-record-and-legacy-pr-shape",
+			"unit": "kg",
+			"input": {
+				"currentVolume": 15000,
+				"previousVolume": 12000,
+				"muscleGroups": {},
+				"avgSessionsPerWeek": 4.2,
+				"currentStreak": 12,
+				"bestStreak": 21,
+				"recentPRs": [
+					{
+						"exercise": "Deadlift",
+						"displayName": "Deadlift Eccentric Max Volume",
+						"recordType": "MAX_VOLUME",
+						"value": 12500,
+						"previousValue": 11000
+					},
+					{
+						"exercise": "Squat",
+						"value": 180
+					}
+				],
+				"plateauExercises": [],
+				"trainingLoadScore": 72
+			},
+			"expected": [
+				{
+					"id": "volume-up",
+					"type": "success",
+					"title": "Volume Trending Up",
+					"description": "Your training volume increased by 25% compared to the previous period.",
+					"recommendation": "Maintain this trajectory while monitoring recovery.",
+					"metric": {
+						"name": "Volume Change",
+						"value": 25,
+						"unit": "%",
+						"delta": 3000
+					}
+				},
+				{
+					"id": "pr-deadlift-eccentric-max-volume",
+					"type": "achievement",
+					"title": "New PR: Deadlift Eccentric Max Volume",
+					"description": "You set a personal record on Deadlift Eccentric Max Volume — 12.5K kg (up 1.5K kg from 11.0K kg).",
+					"metric": {
+						"name": "Deadlift Eccentric Max Volume",
+						"value": 12500,
+						"unit": "kg",
+						"delta": 1500
+					}
+				},
+				{
+					"id": "pr-squat",
+					"type": "achievement",
+					"title": "New PR: Squat",
+					"description": "You set a personal record on Squat — 180 kg per cable.",
+					"description": "You set a personal record on Squat — 180 kg.",
+					"metric": {
+						"name": "Squat",
+						"value": 180,
+						"unit": "kg"
+					}
+				}
+			]
+		}
+	]
+}

@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { exerciseProgressSchema } from "@/schemas/telemetry";
 import { renderWithProviders } from "@/test/test-utils";
 import { ExerciseDeepDive } from "../analytics/ExerciseDeepDive";
 
@@ -149,6 +150,31 @@ describe("ExerciseDeepDive", () => {
 		// Query mocks return [] by default so empty state should render
 		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
 		expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+	});
+
+	it("shows rep and velocity 1RM per cable as stored (never doubled)", async () => {
+		// Raw DB rows through the real schema, so a x2 in either the schema or
+		// the component fails this test.
+		mockQueryData.progress = [
+			exerciseProgressSchema.parse({
+				id: "00000000-0000-4000-8000-0000000000d1",
+				user_id: "00000000-0000-4000-8000-0000000000d2",
+				exercise_name: "Bench Press",
+				session_id: "00000000-0000-4000-8000-0000000000d3",
+				recorded_at: new Date().toISOString(),
+				max_weight_kg: 18,
+				total_volume_kg: 144,
+				estimated_1rm_kg: 20,
+				velocity_estimated_1rm_kg: 22,
+				max_reps: 8,
+				set_count: 1,
+			}),
+		];
+		renderWithProviders(<ExerciseDeepDive {...BASE_PROPS} />);
+		const stats = await screen.findByTestId("stats-row");
+		expect(await screen.findByText("20 kg per cable")).toBeInTheDocument();
+		expect(stats).toHaveTextContent("22 kg per cable");
+		expect(stats).not.toHaveTextContent(/40 kg|44 kg/);
 	});
 
 	it("renders without crashing with lbs unit", () => {

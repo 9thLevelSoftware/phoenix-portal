@@ -23,7 +23,12 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 				msg.includes("loading chunk") ||
 				msg.includes("loading css chunk");
 
-			if (isChunkError) {
+			// Offline, the chunk just isn't cached yet: a reload cannot help, so
+			// let the error boundary show the offline message instead.
+			const offline =
+				typeof navigator !== "undefined" && navigator.onLine === false;
+
+			if (isChunkError && !offline) {
 				const key = "phoenix-chunk-reload";
 				// sessionStorage can throw in private/blocked-storage contexts.
 				// Fall back to a best-effort reload so recovery still happens.
@@ -190,6 +195,8 @@ export function AppRoutes() {
 						    relays the provider's response here. A signed-out
 						    browser is sent to `/` by ProtectedRoute and the flow
 						    restarts; see IntegrationsCallback's header. */}
+						    the POST is even made. Dormant — nothing redirects
+						    here until PR 48 cuts the providers over. */}
 						<Route
 							path="/integrations/callback"
 							element={<IntegrationsCallback />}

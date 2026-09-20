@@ -9,6 +9,9 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * Live since PR 48: `strava-oauth` no longer exchanges anything, it relays the
  * provider's response to `/integrations/callback` in the portal, and that page
  * posts it here inside the user's own session.
+ * Complete OAuth Edge Function (KD-13, part 1 — DORMANT in this PR).
+ * The provider callbacks still exchange the code themselves; PR 48 does the
+ * cutover that points them at the portal route which calls this function.
  *
  * Request: `POST {provider, code, state}` with the user's Supabase JWT
  * (`verify_jwt = true` in supabase/config.toml).
@@ -42,6 +45,7 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * exist any more. The provider is launched or withdrawn by editing
  * `UNAVAILABLE_OAUTH_PROVIDERS` in `initiate-oauth`, not this list.
  */
+/** Providers whose authorization-code grant this endpoint can complete. */
 export const COMPLETABLE_PROVIDERS = ['strava', 'fitbit'] as const;
 export type CompletableProvider = (typeof COMPLETABLE_PROVIDERS)[number];
 

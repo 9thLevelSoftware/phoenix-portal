@@ -39,6 +39,7 @@ import {
 	useSubscription,
 } from "@/hooks/useSubscription";
 import { cancelSuccessMessage } from "@/lib/paddle";
+import { openCheckout } from "@/lib/paddle-client";
 import {
 	CheckoutSigningError,
 	openCheckout,
@@ -81,6 +82,8 @@ interface PlanChangeIntent {
 
 interface UpdateSubscriptionResponse {
 	success?: boolean;
+	action?: "switch" | "uncancel";
+	code?: "checkout_required" | "payment_past_due";
 	action?: "switch" | "uncancel" | "update_payment" | "refresh";
 	code?: "checkout_required" | "refresh_required";
 	/** Paddle transaction that updates the card (action: "update_payment"). */
@@ -183,6 +186,8 @@ function selectedPriceId(tierConfig: TierConfig, isAnnual: boolean): string {
 function tierName(tier: SubscriptionTier): string {
 	return TIER_PRICING.find((t) => t.tier === tier)?.name ?? tier;
 }
+
+const PENDING_ACTIVATION_POLL_MS = 20_000;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -293,6 +298,45 @@ export function PricingPlans() {
 	const [refreshState, setRefreshState] = useState<
 		"idle" | "running" | "settled"
 	>("idle");
+	// Set when post-checkout reconciliation exhausts its attempts before the
+	// webhook lands. Hidden (and then reset) once useSubscription — updated by
+	// the realtime `subscriptions` listener or the fallback poll below — shows
+	// the purchased plan as entitled. Scoped to the user who checked out.
+	const [pendingActivation, setPendingActivation] = useState<{
+		userId: string;
+		tier: SubscriptionTier;
+		priceId: string;
+	} | null>(null);
+	const pendingActivationActivated =
+		pendingActivation !== null &&
+		isEntitled &&
+		currentTier === pendingActivation.tier &&
+		currentPriceId === pendingActivation.priceId;
+	const activePendingActivation =
+		pendingActivation &&
+		pendingActivation.userId === user?.id &&
+		!pendingActivationActivated
+			? pendingActivation
+			: null;
+
+	useEffect(() => {
+		if (pendingActivation && !activePendingActivation) {
+			setPendingActivation(null);
+		}
+	}, [pendingActivation, activePendingActivation]);
+
+	// Fallback for a missed realtime event (backgrounded tab, socket
+	// reconnect): re-read the subscription row while activation is pending.
+	const pendingActivationUserId = activePendingActivation?.userId ?? null;
+	useEffect(() => {
+		if (!pendingActivationUserId) return;
+		const interval = setInterval(() => {
+			void queryClient.invalidateQueries({
+				queryKey: queryKeys.subscription.byUser(pendingActivationUserId),
+			});
+		}, PENDING_ACTIVATION_POLL_MS);
+		return () => clearInterval(interval);
+	}, [pendingActivationUserId, queryClient]);
 
 	useEffect(() => {
 		if (
@@ -407,8 +451,14 @@ export function PricingPlans() {
 					return;
 				}
 			}
+
+			// Payment went through but the webhook hasn't activated the plan yet.
+			// Say so instead of leaving the user on the upgrade wall in silence.
+			setPendingActivation({ userId: user.id, tier, priceId });
 		};
 
+		// A new checkout supersedes any earlier pending-activation notice.
+		setPendingActivation(null);
 		// Mark this checkout in-flight so the Subscribe button can disable and
 		// prevent repeated clicks opening multiple checkout attempts.
 		setBillingActionPriceId(priceId);
@@ -789,6 +839,11 @@ export function PricingPlans() {
 				<Button variant="outline" className="w-full" disabled>
 					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 					Refreshing your plan…
+		// Payment for this exact price was received but isn't active yet; a
+		// second checkout here would charge the user twice.
+		if (activePendingActivation?.priceId === priceId) {
+				<Button className={`w-full ${tierConfig.buttonClass}`} disabled>
+					Activating...
 				</Button>
 			);
 		}
@@ -873,6 +928,14 @@ export function PricingPlans() {
 								"Update payment"
 							)}
 						</Button>
+				{activePendingActivation && (
+						data-testid="checkout-activation-pending"
+						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
+						<span>
+							Payment received — activation can take a minute. This page updates
+							automatically.
+						</span>
 					</div>
 				)}
 

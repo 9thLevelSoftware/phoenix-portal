@@ -3,6 +3,9 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 
+const PUBLIC_SUPABASE_URL =
+  Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
+
 /**
  * Initiate OAuth Edge Function
  *
@@ -181,6 +184,11 @@ async function initiateOAuthHandler(
     if (!gate.allowed) return gate.response;
 
     const nowMs = dependencies.now();
+
+    // Integrations are a FLAME feature; enforce it before any OAuth state is
+    // created (402 below FLAME, 503 if the subscription lookup fails).
+    const gate = await requireSubscription(supabase, user.id, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
 
     // Clean up expired state tokens (prevents table bloat)
     await supabase

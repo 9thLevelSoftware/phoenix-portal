@@ -1,7 +1,8 @@
 // Canonical source for insight generation rules.
 // IMPORTANT: The Edge Function at supabase/functions/generate-insights/index.ts
 // duplicates these rules. Changes here must be synced there.
-import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
+import { convertWeight, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 
 export interface TrainingInsight {
 	id: string;
@@ -32,8 +33,12 @@ function roundWeightMetric(valueKg: number, unit: WeightUnit): number {
 }
 
 /**
- * Applies rule-based logic to an InsightInput and returns a list of
- * TrainingInsight objects. Pure function — no async, no side effects.
+ * Training-insight rules for the browser.
+ *
+ * There is exactly ONE rule engine (KD-14 / F-059): it lives in
+ * `supabase/functions/_shared/insightRules.ts` so the scheduled Edge Function
+ * and the browser fallback cannot drift. This module only re-exports it, so
+ * the SPA keeps importing `@/lib/insights`. Do not add rules here.
  */
 export function generateInsights(
 	input: InsightInput,
@@ -133,12 +138,13 @@ export function generateInsights(
 	for (const pr of input.recentPRs) {
 		const delta =
 			pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
-		const formattedValue = formatWeight(pr.value, unit);
+		// Personal records are per cable (KD-8).
+		const formattedValue = formatLoad(pr.value, null, unit);
 		const formattedDelta =
-			delta !== undefined ? formatWeight(delta, unit) : undefined;
+			delta !== undefined ? formatLoad(delta, null, unit) : undefined;
 		const formattedPrevious =
 			pr.previousValue !== undefined
-				? formatWeight(pr.previousValue, unit)
+				? formatLoad(pr.previousValue, null, unit)
 				: undefined;
 		insights.push({
 			id: `pr-${pr.exercise.toLowerCase().replace(/\s+/g, "-")}`,
@@ -203,3 +209,20 @@ export function generateInsights(
 
 	return insights;
 }
+export {
+	convertWeight,
+	formatPerCableWeight,
+	formatPersonalRecordName,
+	formatRecordType,
+	formatVolume,
+	formatWeight,
+	formatWorkoutPhase,
+	generateInsights,
+	type InsightInput,
+	KG_TO_LBS,
+	normalizeWeightUnit,
+	type RecentPersonalRecord,
+	roundWeightMetric,
+	type TrainingInsight,
+	type WeightUnit,
+} from "../../supabase/functions/_shared/insightRules.ts";

@@ -75,9 +75,17 @@ Important commands:
 - Install dependencies: `npm ci`
 - Standard validation: `npm run verify`
 - Full validation with E2E: `npm run verify:full`
-- Typecheck: `npm run typecheck`
+- Typecheck: `npm run typecheck` (note: the root `tsconfig.json` is a solution
+  file with `"files": []`, so this checks nothing and always passes — use
+  `npx tsc -b --force` for real coverage)
+- Typecheck: `npm run typecheck` (runs `tsc -p` over every tsconfig project and
+  fails on any error not recorded in `typecheck-baseline.json`; shrink the
+  baseline with `npm run typecheck:baseline` after fixing errors)
 - Unit and integration tests: `npm test`
 - Sync tests: `npm run test:sync`
+- Edge Function type-check and handler tests: `npm run check:edge-functions`,
+  `npm run test:edge`
+- pgTAP against a local stack: `npm run test:db`
 - E2E tests: `npm run test:e2e`
 - Production build: `npm run build`
 
@@ -166,8 +174,9 @@ Use this structure and keep it current:
 Default validation before handoff:
 - `npm run verify:full`
 
-Run `npm run test:sync` for sync, Edge Function, schema, DTO, or
-migration-adjacent changes. If E2E cannot run in the current environment,
+Run `npm run test:sync` for sync, schema or DTO changes, `npm run test:edge`
+for any change under `supabase/functions/`, and `npm run test:db` for
+migrations. If E2E cannot run in the current environment,
 record the exact blocker and do not move the issue to `Human Review` unless the
 issue is explicitly non-browser-visible and CI coverage is sufficient.
 
