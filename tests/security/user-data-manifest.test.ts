@@ -7,6 +7,9 @@
  *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
  *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
  *      strings or inside function bodies is not parsed.
+ *   2. src/lib/database.types.ts (generated from prod): tables whose Row has
+ *      `user_id`. This catches prod tables whose migration is only a stub
+ *      (e.g. 20260420210411_comprehensive_dashboard_drift_reconciliation.sql).
  *   2. src/lib/database.types.ts: tables whose Row has `user_id`. This used to
  *      catch prod tables whose migration is only a stub. Since PR 4 the file is
  *      generated from the MIGRATED local schema (`npm run gen:types:local`), so
@@ -137,13 +140,16 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
+		expect(owned.get("wearable_daily_summaries")).toBe(
+			"user_id in database.types.ts",
+		);
+		expect(owned.has("challenges")).toBe(false);
+		expect(owned.has("community_benchmarks")).toBe(false);
+		expect(owned.size).toBeGreaterThanOrEqual(45);
 		// Was "user_id in database.types.ts": PR 2 captured this table's DDL, so
 		// migration discovery now finds it first. The types-only discovery path
 		// is still exercised by any prod table whose migration is a stub.
 		expect(owned.has("wearable_daily_summaries")).toBe(true);
-		expect(owned.has("challenges")).toBe(false);
-		expect(owned.has("community_benchmarks")).toBe(false);
-		expect(owned.size).toBeGreaterThanOrEqual(45);
 		// Prod-only tables are declared explicitly below and are intentionally
 		// absent from the canonical clean-migration type snapshot.
 		expect(owned.has("wearable_daily_summaries")).toBe(false);
@@ -265,13 +271,13 @@ describe("user data manifest (R-31)", () => {
 		}
 	});
 
+	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
 	// PR 4 (7f87b880) regenerated src/lib/database.types.ts from the MIGRATED
 	// local schema, so it is no longer a record of prod's shape: the two rules
 	// this test used to run against it ("optional but not in prod types" and
 	// "exists in prod types only; add to optionalColumns") now only report the
 	// migration/prod drift that optionalColumns exists to tolerate. The prod
 	// oracle is the operator's own read (prod-evidence.md) — not this file.
-	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
 	it("exports exactly the migrated columns and keeps prod-only drift columns optional", () => {
 		const problems: string[] = [];
 		for (const entry of USER_DATA_MANIFEST) {
@@ -292,6 +298,10 @@ describe("user data manifest (R-31)", () => {
 					if (parsed.columns.has(column))
 						problems.push(
 							`${entry.table}.${column} is migrated; move to columns`,
+						);
+					if (!types?.has(column))
+						problems.push(
+							`${entry.table}.${column} optional but not in prod types`,
 						);
 					// database.types.ts is generated from a clean migrated schema, so
 					// production-only drift columns are expected to be absent from it.

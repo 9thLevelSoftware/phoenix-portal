@@ -252,6 +252,7 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
   assertEquals(response.status, 200);
   assertEquals(recorded.from, ["routines"]);
   assertEquals(recorded.ops, [
+    ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(",")]],
     ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","), { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["gt", ["id", "00000000-0000-4000-8000-000000000001"]],
@@ -271,6 +272,10 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
 });
 
 Deno.test("prod-only optional columns are dropped when the database lacks them", async () => {
+  const { handler, recorded } = doubleHandler([
+    { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
+    { data: [{ id: "r1" }], error: null },
+    { data: [], error: null },
   assert(GOAL_OPTIONAL.length > 0, "user_goals must still have an optional column");
   const { handler, recorded } = doubleHandler([
     {
@@ -298,6 +303,7 @@ Deno.test("prod-only optional columns are dropped when the database lacks them",
   assertEquals(selects, [
     [...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","),
     ROUTINE_COLUMNS.join(","),
+    "id", // next-page probe
   ]);
 });
 
@@ -306,6 +312,10 @@ Deno.test("rate-limited requests get 429 and no query", async () => {
   const response = await handler(request({ table: "routines" }));
   assertEquals(response.status, 429);
   assertEquals(recorded.from, []);
+  // Browsers can read the wait: in the body, and via the exposed header.
+  assertEquals(response.headers.get("Access-Control-Expose-Headers"), "Retry-After");
+  assertEquals(response.headers.get("Retry-After"), "60");
+  assertEquals((await response.json()).retryAfterSeconds, 60);
 });
 
 Deno.test("a rate-limit RPC failure fails closed with 503", async () => {
@@ -316,6 +326,10 @@ Deno.test("a rate-limit RPC failure fails closed with 503", async () => {
 });
 
 Deno.test("parent-owned tables scope through an inner join on the parent owner", async () => {
+  const { handler, recorded } = doubleHandler([
+    { data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }], error: null },
+    { data: [], error: null },
+  ]);
   const { handler, recorded } = doubleHandler({
     data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }],
     error: null,
@@ -325,6 +339,12 @@ Deno.test("parent-owned tables scope through an inner join on the parent owner",
   assertEquals(response.status, 200);
   const columns = getUserDataTable("routine_exercises")!.columns.join(",");
   assertEquals(recorded.ops.slice(0, 2), [
+    ["select", [`${columns},routines!routine_id!inner(user_id)`]],
+    ["eq", ["routines.user_id", USER_ID]],
+  ]);
+  // The probe is scoped through the same inner join.
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects[1], "id,routines!routine_id!inner(user_id)");
     ["select", [`${columns},routines!routine_id!inner(user_id)`, { count: "exact" }]],
     ["eq", ["routines.user_id", USER_ID]],
   ]);
@@ -347,6 +367,7 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
     cursor: { entity: "cycle", entity_id: "e1" },
   }));
   assertEquals(recorded.ops, [
+    ["select", ["user_id,entity,entity_id,deleted_at"]],
     ["select", ["user_id,entity,entity_id,deleted_at", { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["or", ['entity.gt."cycle",and(entity.eq."cycle",entity_id.gt."e1")']],
@@ -363,6 +384,24 @@ function idRows(n: number) {
   }));
 }
 
+Deno.test("nextCursor comes from a one-row probe after the last key, not the page length", async () => {
+  const probe = (rows: number) => ({ data: idRows(rows), error: null });
+
+  // More rows remain: cursor is the last key; the probe starts after it.
+  const more = doubleHandler([{ data: idRows(1000), error: null }, probe(1)]);
+  const moreBody = await (await more.handler(request({ table: "routines" }))).json();
+  assertEquals(moreBody.nextCursor, { id: "id-0999" });
+  const probeOps = more.recorded.ops.slice(more.recorded.ops.findLastIndex(([n]) => n === "select"));
+  assertEquals(probeOps, [
+    ["select", ["id"]],
+    ["eq", ["user_id", USER_ID]],
+    ["gt", ["id", "id-0999"]],
+    ["order", ["id", { ascending: true }]],
+    ["limit", [1]],
+  ]);
+
+  // Exactly 1000 rows: no trailing empty page.
+  const exact = doubleHandler([{ data: idRows(1000), error: null }, probe(0)]);
 Deno.test("nextCursor comes from the remaining-row count, not the page length", async () => {
   // More rows remain: cursor is the last key.
   const more = doubleHandler({ data: idRows(1000), error: null, count: 2500 });
@@ -376,6 +415,21 @@ Deno.test("nextCursor comes from the remaining-row count, not the page length", 
   assertEquals(exactBody.nextCursor, null);
 
   // max_rows below the requested limit (e.g. 500): still pages on.
+  const capped = doubleHandler([{ data: idRows(500), error: null }, probe(1)]);
+  const cappedBody = await (await capped.handler(request({ table: "routines" }))).json();
+  assertEquals(cappedBody.nextCursor, { id: "id-0499" });
+
+  // Empty table: no probe.
+  const empty = doubleHandler({ data: [], error: null });
+  assertEquals((await (await empty.handler(request({ table: "routines" }))).json()).nextCursor, null);
+  assertEquals(empty.recorded.ops.filter(([n]) => n === "select").length, 1);
+
+  // A failed probe fails the page.
+  const failed = doubleHandler([
+    { data: idRows(3), error: null },
+    { data: null, error: { code: "57014", message: "timeout" } },
+  ]);
+  assertEquals((await failed.handler(request({ table: "routines" }))).status, 500);
   const capped = doubleHandler({ data: idRows(500), error: null, count: 2500 });
   const cappedBody = await (await capped.handler(request({ table: "routines" }))).json();
   assertEquals(cappedBody.nextCursor, { id: "id-0499" });
@@ -822,6 +876,65 @@ Deno.test({
       }
     } finally {
       await destroyExportFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: the owner downloads a listed avatar through the authenticated storage API",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    assert(localIntegrationEnvironment);
+    const env = localIntegrationEnvironment;
+    const admin = createClient(env.url, env.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const suffix = crypto.randomUUID();
+    const password = `pw-${suffix}`;
+    const emails = ["owner", "other"].map((role) => `pr37-${role}-${suffix}@example.invalid`);
+    const userIds: string[] = [];
+    let objectPath: string | null = null;
+    try {
+      for (const email of emails) {
+        const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+        if (created.error || !created.data.user) throw new Error("user creation failed");
+        userIds.push(created.data.user.id);
+      }
+      const [ownerId, otherId] = userIds;
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+      objectPath = `${ownerId}/me.png`;
+      const uploaded = await admin.storage.from("avatars").upload(objectPath, bytes, {
+        contentType: "image/png",
+      });
+      if (uploaded.error) throw new Error(`upload failed: ${uploaded.error.message}`);
+
+      // The export endpoint lists it...
+      const listed = await (await realHandler({ admin, ownerId, otherId }, ownerId)(
+        request({ table: "storage_avatars" }),
+      )).json();
+      assertEquals(listed.rows.map((row: { path: string }) => row.path), [objectPath]);
+
+      // ...and the signed-in owner downloads it through the authenticated
+      // object route, as the SPA export does, under the owner SELECT policy
+      // (20260920007300_avatars_owner_select_policy.sql).
+      const signIn = async (email: string) => {
+        const client = createClient(env.url, env.anonKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw new Error(`sign-in failed: ${error.message}`);
+        return client;
+      };
+      const owner = await signIn(emails[0]);
+      const downloaded = await owner.storage.from("avatars").download(objectPath);
+      if (downloaded.error) throw new Error(`owner download failed: ${downloaded.error.message}`);
+      assertEquals(new Uint8Array(await downloaded.data.arrayBuffer()), bytes);
+      // No cross-user assertion: avatars is a public bucket (anyone can read
+      // an object by its public URL), so it is not a secrecy boundary.
+    } finally {
+      if (objectPath) await admin.storage.from("avatars").remove([objectPath]);
+      for (const id of userIds) await admin.auth.admin.deleteUser(id);
     }
   },
 });
