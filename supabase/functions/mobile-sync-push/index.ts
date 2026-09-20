@@ -579,6 +579,8 @@ interface RoutineExerciseDto {
   warmupSets: string | null;
   dropSetEnabled?: boolean | null;
   dropSetMinWeightKg?: number | null;
+  /** Absent = keep the stored duration (shipping builds never send it). */
+  durationSeconds?: number | null;
 }
 
 interface CustomExerciseDto {
@@ -2295,20 +2297,33 @@ async function mobileSyncPushHandler(
       // Merge drop-set columns per row. Omission/`null` must not write a null
       // floor over an existing enabled row, and every upsert object needs both
       // keys so defaultToNull cannot NULL a sibling row's omitted flag.
+      //
+      // duration_seconds follows the same rule: a row that omits
+      // durationSeconds keeps its stored value. When no row in the batch
+      // carries the field (every shipping mobile build), the column is left
+      // out of the upsert entirely, so it is never touched. When some rows
+      // carry it, the rows that don't are filled from the existing row.
+      const anyDurationSent = reSource.some((e) => e.durationSeconds !== undefined);
       const dropSetProbeIds = [...new Set(
-        reSource.filter((e) => needsDropSetExistingRow(e)).map((e) => e.id),
+        reSource
+          .filter((e) =>
+            needsDropSetExistingRow(e) ||
+            (anyDurationSent && e.durationSeconds === undefined)
+          )
+          .map((e) => e.id),
       )];
       const existingDropSets = new Map<string, {
         drop_set_enabled: boolean;
         drop_set_min_weight_kg: number | null;
       }>();
+      const existingDurations = new Map<string, number | null>();
       if (dropSetProbeIds.length > 0) {
         const chunkSize = 100;
         for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
           const { data: existingExercises, error: existingDropSetErr } = await supabase
             .from('routine_exercises')
-            .select('id, drop_set_enabled, drop_set_min_weight_kg')
+            .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
             .in('id', chunk);
           if (existingDropSetErr) {
             throw new Error(
@@ -2323,6 +2338,10 @@ async function mobileSyncPushHandler(
                 row.drop_set_min_weight_kg,
               ),
             });
+            existingDurations.set(
+              row.id,
+              typeof row.duration_seconds === 'number' ? row.duration_seconds : null,
+            );
           }
         }
       }
@@ -2362,6 +2381,13 @@ async function mobileSyncPushHandler(
           },
           existingDropSets.get(e.id) ?? null,
         ),
+        ...(anyDurationSent
+          ? {
+            duration_seconds: e.durationSeconds !== undefined
+              ? e.durationSeconds
+              : existingDurations.get(e.id) ?? null,
+          }
+          : {}),
       }));
 
       if (reRows.length > 0) {

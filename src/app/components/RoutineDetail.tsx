@@ -16,7 +16,14 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { formatWeight, type WeightUnit } from "@/lib/units";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
-import { workoutModeLabel } from "../../../supabase/functions/_shared/workoutModes.ts";
+import {
+	eccentricLoadLabel,
+	echoLevelLabel,
+	repCountTimingLabel,
+	supersetColorHex,
+	toWireMode,
+	workoutModeLabel,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
 
 function formatExercisePrescription(
 	exercise: {
@@ -47,6 +54,7 @@ function formatExercisePrescription(
 }
 
 function exerciseBadges(exercise: {
+	mode: string;
 	is_amrap?: boolean;
 	is_bodyweight?: boolean;
 	eccentric_load?: string | null;
@@ -56,15 +64,23 @@ function exerciseBadges(exercise: {
 	stop_at_position?: string | null;
 	drop_set_enabled?: boolean;
 }) {
+	// Eccentric load and echo level only apply in Echo mode on the phone.
+	const isEcho = toWireMode(exercise.mode) === "ECHO";
 	return [
 		exercise.is_amrap ? "AMRAP" : null,
 		exercise.is_bodyweight ? "Bodyweight" : null,
-		exercise.eccentric_load ? `Eccentric: ${exercise.eccentric_load}` : null,
-		exercise.echo_level ? `Echo: ${exercise.echo_level}` : null,
+		isEcho && exercise.eccentric_load
+			? `Eccentric: ${eccentricLoadLabel(exercise.eccentric_load)}`
+			: null,
+		isEcho && exercise.echo_level
+			? `Echo: ${echoLevelLabel(exercise.echo_level)}`
+			: null,
 		exercise.stall_detection ? "Stall Detection" : null,
 		exercise.drop_set_enabled ? "Drop set" : null,
-		exercise.rep_count_timing ? `Timing: ${exercise.rep_count_timing}` : null,
-		exercise.stop_at_position ? `Stop: ${exercise.stop_at_position}` : null,
+		exercise.rep_count_timing
+			? `Timing: ${repCountTimingLabel(exercise.rep_count_timing)}`
+			: null,
+		exercise.stop_at_position === "TOP" ? "Stop at top" : null,
 	].filter(Boolean) as string[];
 }
 
@@ -263,7 +279,7 @@ export function RoutineDetail() {
 							key={item.id}
 							className="rounded-xl border border-secondary bg-surface-2/50 p-4"
 							style={{
-								borderLeftColor: item.color ?? undefined,
+								borderLeftColor: supersetColorHex(item.color),
 								borderLeftWidth: 4,
 							}}
 						>

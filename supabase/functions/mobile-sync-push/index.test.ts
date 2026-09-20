@@ -423,6 +423,7 @@ function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
+  terminalResult: TerminalResult = {
     data: [],
     error: null,
     count: 0,
@@ -457,6 +458,7 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
+  const operations: QueryOperation[] = [];
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
@@ -472,6 +474,10 @@ function permissiveQuery(
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method);
         injectedWriteError = writeError?.(method) ?? injectedWriteError;
+      operations.push({ name: method, args });
+      if (method === "neq") ownershipProbe = true;
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
       }
       return query;
     };
@@ -496,6 +502,10 @@ function permissiveQuery(
         ? { data: probeResult, error: null, count: probeResult.length }
         : resolveTerminal
         ? resolveTerminal()
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(operations)
         : terminalResult,
     ).then(resolve, reject);
   return query;
@@ -527,6 +537,14 @@ function isCustomCatalogLookup(query: CatalogQuery): boolean {
     column === "is_custom" && value === true
   );
 }
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type TerminalResult =
+  | { data: unknown; error: unknown; count?: number }
+  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -539,6 +557,7 @@ interface PushHarness {
   adminWritePayloads: Array<{ table: string; method: string; args: unknown[] }>;
   ownershipProbeTables: string[];
   catalogQueries: CatalogQuery[];
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -575,6 +594,11 @@ function makeHarness(
     catalogBehavior?: (
       query: CatalogQuery,
     ) => { data: unknown; error: unknown } | undefined;
+    /**
+     * Terminal result for reads/writes on these tables (e.g. probes); a
+     * function receives the chained operations (select/in/... with args).
+     */
+    tableResults?: Record<string, TerminalResult>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -589,6 +613,8 @@ function makeHarness(
   > = [];
   const ownershipProbeTables: string[] = [];
   const catalogQueries: CatalogQuery[] = [];
+  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
+    [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -653,6 +679,12 @@ function makeHarness(
             options.catalogBehavior!(catalogQuery) ??
               { data: [], error: null, count: 0 }
           : undefined);
+        adminWriteCalls.push({ table, method });
+        adminWriteArgs.push({ table, method, args });
+        operationEvents.push(`write:${table}:${method}`);
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : options.tableResults?.[table]);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -748,6 +780,7 @@ function makeHarness(
     adminWritePayloads,
     ownershipProbeTables,
     catalogQueries,
+    adminWriteArgs,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -4828,3 +4861,195 @@ Deno.test({
     }
   },
 });
+// ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
+
+const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";
+
+/**
+ * A routine exercise exactly as the shipping mobile build serializes
+ * PortalRoutineExerciseSyncDto (Project-Phoenix-MP PortalSyncDtos.kt:213-249,
+ * PortalWireJson encodeDefaults=true / explicitNulls=false, values from
+ * PortalSyncAdapter.kt:570-620). It has no durationSeconds key.
+ */
+function currentMobileRoutineExercise(id: string): Record<string, unknown> {
+  return {
+    id,
+    routineId: ROUTINE_ID,
+    exerciseId: "Plank",
+    name: "Plank",
+    displayName: "Plank",
+    muscleGroup: "Core",
+    exerciseEquipment: "",
+    sets: 3,
+    reps: 10,
+    weight: 0.0,
+    restSeconds: 60,
+    mode: "ECHO",
+    orderIndex: 0,
+    perSetWeights: "[0.0,0.0,0.0]",
+    perSetRest: "[60,60,60]",
+    isAmrap: false,
+    isBodyweight: true,
+    repCountTiming: "TOP",
+    stopAtPosition: "TOP",
+    stallDetection: true,
+    eccentricLoad: "LOAD_100",
+    echoLevel: "HARDER",
+    perSetEchoLevels: '["HARDER","HARDER","HARDER"]',
+    warmupSets: "[]",
+    rackBehaviorOverrides: "{}",
+    dropSetEnabled: false,
+  };
+}
+
+function routinePushBody(
+  exercises: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: [{
+      id: ROUTINE_ID,
+      userId: VALID_USER_ID,
+      name: "Timed routine",
+      description: "",
+      exerciseCount: exercises.length,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises,
+    }],
+  };
+}
+
+function routineExerciseUpsertRows(
+  harness: PushHarness,
+): Array<Record<string, unknown>> {
+  const upserts = harness.adminWriteArgs.filter((call) =>
+    call.table === "routine_exercises" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  return upserts[0].args[0] as Array<Record<string, unknown>>;
+}
+
+Deno.test("current mobile routine exercise shape (no durationSeconds) is 200 and leaves duration untouched", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([
+      currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+    ])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.id, ROUTINE_EXERCISE_ID);
+  assertEquals(row.eccentric_load, "LOAD_100");
+  // The column is not in the upsert at all, so a stored duration survives.
+  assertEquals("duration_seconds" in row, false);
+});
+
+/**
+ * A routine_exercises stand-in that honours the probe's `.select(columns)`
+ * and `.in("id", ids)`: it returns only the requested rows, projected to the
+ * requested columns. Writes resolve empty.
+ */
+function storedRoutineExercises(
+  stored: Array<Record<string, unknown>>,
+): TerminalResult {
+  return (operations) => {
+    const select = operations.find((op) => op.name === "select");
+    const inIds = operations.find((op) => op.name === "in");
+    if (!select || !inIds) return { data: [], error: null };
+    const columns = String(select.args[0]).split(",").map((c) => c.trim());
+    const ids = inIds.args[1] as string[];
+    return {
+      data: stored
+        .filter((row) => ids.includes(row.id as string))
+        .map((row) =>
+          Object.fromEntries(
+            columns.filter((c) => c in row).map((c) => [c, row[c]]),
+          )
+        ),
+      error: null,
+    };
+  };
+}
+
+for (
+  const omitter of [
+    {
+      label: "current mobile shape (drop-set fields omitted)",
+      fields: {},
+    },
+    {
+      // needsDropSetExistingRow(e) is false here, so only the duration
+      // predicate decides whether this row is probed.
+      label: "explicit drop-set fields",
+      fields: { dropSetEnabled: false, dropSetMinWeightKg: null },
+    },
+  ]
+) {
+  Deno.test(`routine exercise without durationSeconds keeps its stored duration in a mixed batch: ${omitter.label}`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      tableResults: {
+        routine_exercises: storedRoutineExercises([{
+          id: ROUTINE_EXERCISE_ID,
+          drop_set_enabled: false,
+          drop_set_min_weight_kg: null,
+          duration_seconds: 45,
+        }]),
+      },
+    });
+    const timed = {
+      ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+      orderIndex: 1,
+      durationSeconds: 30,
+      dropSetEnabled: false,
+      dropSetMinWeightKg: null,
+    };
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([
+        { ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID), ...omitter.fields },
+        timed,
+      ])),
+    );
+
+    assertEquals(response.status, 200);
+    const rows = routineExerciseUpsertRows(harness);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    // Omitted: filled from the stored row, never NULLed by the batch key union.
+    assertEquals(byId.get(ROUTINE_EXERCISE_ID)?.duration_seconds, 45);
+    // Sent: stored as given.
+    assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+  });
+}
+
+Deno.test("routine exercise durationSeconds null clears the duration", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([{
+      ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+      durationSeconds: null,
+    }])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.duration_seconds, null);
+});
+
+for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
+  Deno.test(`routine exercise durationSeconds ${JSON.stringify(bad)} is rejected before privileges`, async () => {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([{
+        ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+        durationSeconds: bad,
+      }])),
+    );
+
+    assertEquals(response.status, 400);
+    assertNoPrivilegedActivity(harness);
+  });
+}

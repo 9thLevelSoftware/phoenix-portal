@@ -995,6 +995,9 @@ async function mobileSyncPullHandler(
             warmupSets: re.warmup_sets ?? null,
             dropSetEnabled: re.drop_set_enabled ?? false,
             dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
+            // Timed exercises (null = rep-based). A response key, so shipping
+            // mobile builds ignore it (PortalWireJson ignoreUnknownKeys).
+            durationSeconds: re.duration_seconds ?? null,
           })),
         };
       });
