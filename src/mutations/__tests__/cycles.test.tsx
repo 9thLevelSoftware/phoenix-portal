@@ -9,7 +9,6 @@ import { queryKeys } from "@/queries/keys";
 // ---------------------------------------------------------------------------
 
 const mockChain = {
-	insert: vi.fn(),
 	update: vi.fn(),
 	delete: vi.fn(),
 };
@@ -56,6 +55,9 @@ function createWrapper() {
 	};
 }
 
+/** Ids of rows that already exist, as the builder loads them. */
+const DAY_ID_A = "33333333-3333-4333-8333-333333333333";
+
 const baseCycleInput = {
 	name: "Strength Block",
 	description: "4-week strength block",
@@ -86,23 +88,10 @@ describe("useSaveCycle", () => {
 		vi.clearAllMocks();
 	});
 
-	it("inserts cycle and cycle_days into Supabase on success", async () => {
+	it("creates the cycle and its days in one atomic RPC call", async () => {
 		const { useSaveCycle } = await import("../cycles");
 
-		mockChain.insert.mockImplementation((rows: unknown) => {
-			if (Array.isArray(rows)) {
-				// cycle_days insert
-				return Promise.resolve({ error: null });
-			}
-			// training_cycles insert with .select().single()
-			return {
-				select: vi.fn(() => ({
-					single: vi
-						.fn()
-						.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
-				})),
-			};
-		});
+		rpc.mockResolvedValue({ data: "cycle-1", error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -113,8 +102,22 @@ describe("useSaveCycle", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(from).toHaveBeenCalledWith("training_cycles");
-		expect(from).toHaveBeenCalledWith("cycle_days");
+		// One transactional RPC, not a parent insert followed by a child insert
+		// and a best-effort compensating delete.
+		expect(rpc).toHaveBeenCalledTimes(1);
+		expect(rpc).toHaveBeenCalledWith(
+			"create_cycle_with_days",
+			expect.objectContaining({
+				p_name: "Strength Block",
+				p_duration_weeks: 4,
+				// NULL means the default profile. `local_profile_id` carries a
+				// composite FK to local_profiles(user_id, id), so a "default"
+				// sentinel string would be a foreign-key violation.
+				p_local_profile_id: null,
+			}),
+		);
+		expect(from).not.toHaveBeenCalled();
+		expect(result.current.data).toEqual({ id: "cycle-1" });
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle saved");
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.cycles.all,
@@ -124,20 +127,11 @@ describe("useSaveCycle", () => {
 	it("counts workout and rest days correctly", async () => {
 		const { useSaveCycle } = await import("../cycles");
 
-		let capturedInsertPayload: Record<string, unknown> | null = null;
+		let capturedArgs: Record<string, unknown> | null = null;
 
-		mockChain.insert.mockImplementation((rows: unknown) => {
-			if (!Array.isArray(rows)) {
-				capturedInsertPayload = rows as Record<string, unknown>;
-				return {
-					select: vi.fn(() => ({
-						single: vi
-							.fn()
-							.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
-					})),
-				};
-			}
-			return Promise.resolve({ error: null });
+		rpc.mockImplementation((_fn: string, args: Record<string, unknown>) => {
+			capturedArgs = args;
+			return Promise.resolve({ data: "cycle-1", error: null });
 		});
 
 		const { wrapper } = createWrapper();
@@ -147,25 +141,50 @@ describe("useSaveCycle", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(capturedInsertPayload).not.toBeNull();
-		expect(capturedInsertPayload?.workout_days).toBe(1);
-		expect(capturedInsertPayload?.rest_days).toBe(1);
+		expect(capturedArgs).not.toBeNull();
+		expect(capturedArgs?.p_workout_days).toBe(1);
+		expect(capturedArgs?.p_rest_days).toBe(1);
+	});
+
+	it("never sends client-minted day ids on create", async () => {
+		// The create RPC ignores payload ids (it has no parent that could own
+		// them yet), so sending any would be misleading.
+		const { useSaveCycle } = await import("../cycles");
+		let dayRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_days: Array<Record<string, unknown>> }) => {
+				dayRows = args.p_days;
+				return Promise.resolve({ data: "cycle-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveCycle(), { wrapper });
+
+		result.current.mutate({
+			...baseCycleInput,
+			days: baseCycleInput.days.map((day) => ({ ...day, id: DAY_ID_A })),
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(dayRows).toHaveLength(2);
+		for (const row of dayRows) {
+			expect(row).not.toHaveProperty("id");
+		}
 	});
 
 	it("shows user-friendly error on failure", async () => {
 		const { useSaveCycle } = await import("../cycles");
 
-		mockChain.insert.mockImplementation(() => ({
-			select: vi.fn(() => ({
-				single: vi.fn().mockResolvedValue({
-					data: null,
-					error: {
-						message: 'relation "training_cycles" violates RLS policy',
-						code: "42501",
-					},
-				}),
-			})),
-		}));
+		rpc.mockResolvedValue({
+			data: null,
+			error: {
+				message: 'new row for relation "training_cycles" violates constraint',
+				code: "23514",
+			},
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useSaveCycle(), { wrapper });
@@ -178,8 +197,37 @@ describe("useSaveCycle", () => {
 			"Failed to save training cycle. Please try again.",
 		);
 		expect(mockToast.error).not.toHaveBeenCalledWith(
-			expect.stringContaining("RLS policy"),
+			expect.stringContaining("violates constraint"),
 		);
+	});
+
+	it("explains a server-side tier denial instead of saying 'try again'", async () => {
+		// Cycle authoring is FLAME-only and enforced server-side, so a plan that
+		// lapsed while the builder was open lands here. Retrying can't help.
+		const { useSaveCycle } = await import("../cycles");
+		const { TIER_DENIED_MESSAGE } = await import("@/lib/tierErrors");
+
+		rpc.mockResolvedValue({
+			data: null,
+			error: {
+				code: "42501",
+				message: 'new row for relation "training_cycles" violates RLS policy',
+			},
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useSaveCycle(), { wrapper });
+
+		result.current.mutate(baseCycleInput);
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(TIER_DENIED_MESSAGE);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.subscription.all,
+		});
 	});
 });
 
@@ -215,12 +263,48 @@ describe("useUpdateCycle", () => {
 		});
 	});
 
+	it("sends existing day ids so the rows survive the edit", async () => {
+		// Before this, every save deleted and re-inserted cycle_days with fresh
+		// uuids, so any reference mobile held to a day was broken on every edit.
+		const { useUpdateCycle } = await import("../cycles");
+		let dayRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_days: Array<Record<string, unknown>> }) => {
+				dayRows = args.p_days;
+				return Promise.resolve({ data: "cycle-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateCycle(), { wrapper });
+
+		result.current.mutate({
+			...baseCycleInput,
+			cycleId: "cycle-1",
+			days: [
+				// Loaded from the cycle.
+				{ ...baseCycleInput.days[0], id: DAY_ID_A },
+				// Added in this editing session: the server mints its id.
+				baseCycleInput.days[1],
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(dayRows).toHaveLength(2);
+		expect(dayRows[0]?.id).toBe(DAY_ID_A);
+		expect(dayRows[1]).not.toHaveProperty("id");
+		// The RPC still needs to know which cycle the days belong to.
+		expect(dayRows[0]?.cycle_id).toBe("cycle-1");
+	});
+
 	it("shows user-friendly error on update failure", async () => {
 		const { useUpdateCycle } = await import("../cycles");
 
 		rpc.mockResolvedValue({
 			data: null,
-			error: { message: "permission denied for table", code: "42501" },
+			error: { message: "cycle_not_found_or_forbidden", code: "P0001" },
 		});
 
 		const { wrapper } = createWrapper();
@@ -233,6 +317,30 @@ describe("useUpdateCycle", () => {
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Failed to update training cycle. Please try again.",
 		);
+	});
+
+	it("explains a server-side tier denial instead of saying 'try again'", async () => {
+		const { useUpdateCycle } = await import("../cycles");
+		const { TIER_DENIED_MESSAGE } = await import("@/lib/tierErrors");
+
+		rpc.mockResolvedValue({
+			data: null,
+			error: { message: "permission denied for table", code: "42501" },
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useUpdateCycle(), { wrapper });
+
+		result.current.mutate({ ...baseCycleInput, cycleId: "cycle-1" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(TIER_DENIED_MESSAGE);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.subscription.all,
+		});
 	});
 });
 

@@ -2,11 +2,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface CycleDayInput {
+	/**
+	 * The `cycle_days.id` this day already has, when the cycle is being edited.
+	 * Sent back on update so the row keeps its identity instead of being
+	 * regenerated on every portal save. Ignored on create - the create RPC
+	 * mints its own ids.
+	 */
+	id?: string | null;
 	day_number: number;
 	day_type: string;
 	routine_id?: string | null;
@@ -30,6 +38,30 @@ interface DeloadSettings {
 	frequency: number;
 	intensity: number;
 	volume: number;
+}
+
+/**
+ * A child element of a create/update RPC payload. `cycle_id` is omitted: both
+ * RPCs set it themselves from the parent they just created or matched.
+ */
+function toCycleDayRows(
+	days: CycleDayInput[],
+	{ withIds = false }: { withIds?: boolean } = {},
+) {
+	return days.map((day) => ({
+		// Only on update, and only for a day that already has a row: the create
+		// RPC ignores payload ids, so sending them there would be misleading
+		// noise.
+		...(withIds && day.id ? { id: day.id } : {}),
+		day_number: day.day_number,
+		day_type: day.day_type,
+		routine_id: day.routine_id || null,
+		weight_adjustment: day.weight_adjustment,
+		rep_modifier: day.rep_modifier,
+		rest_override: day.rest_override ?? null,
+		notes: day.notes ?? null,
+		rest_type: day.rest_type ?? null,
+	}));
 }
 
 interface SaveCycleInput {
@@ -59,55 +91,36 @@ export function useSaveCycle() {
 			).length;
 			const restDays = input.days.filter((d) => d.day_type === "rest").length;
 
-			// Create the cycle row
-			const { data: cycle, error: cycleError } = await supabase
-				.from("training_cycles")
-				.insert({
-					user_id: user.id,
-					local_profile_id: useProfileFilterStore.getState().activeProfileId,
-					name: input.name,
-					description: input.description ?? "",
-					duration_weeks: input.duration_weeks,
-					current_week: 1,
-					status: "draft" as const,
-					workout_days: workoutDays,
-					rest_days: restDays,
-					started_at: input.started_at || null,
-					progression_settings: input.progression_settings ?? null,
-					deload_settings: input.deload_settings ?? null,
-				})
-				.select("id")
-				.single();
+			// Atomic create via RPC: the cycle row and its days are inserted in
+			// one transaction, so a rejected day can no longer leave a draft
+			// cycle with no schedule, and there is no best-effort compensating
+			// delete left to fail silently.
+			const { data: cycleId, error } = await supabase.rpc(
+				"create_cycle_with_days",
+				{
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_duration_weeks: input.duration_weeks,
+					p_workout_days: workoutDays,
+					p_rest_days: restDays,
+					p_started_at: input.started_at || null,
+					p_progression_settings: (input.progression_settings ??
+						null) as unknown as Json | null,
+					p_deload_settings: (input.deload_settings ??
+						null) as unknown as Json | null,
+					p_days: toCycleDayRows(input.days) as unknown as Json,
+					// NULL = the default profile. `training_cycles.local_profile_id`
+					// carries a composite FK to local_profiles(user_id, id), so the
+					// only non-null value that can be stored is one of this user's
+					// own profile ids, which is what the filter store holds.
+					p_local_profile_id: useProfileFilterStore.getState().activeProfileId,
+				},
+			);
 
-			if (cycleError) throw cycleError;
+			if (error) throw error;
+			if (!cycleId) throw new Error("Cycle was not created");
 
-			// Insert cycle days. If this fails, roll back the orphaned parent so we
-			// don't leave a draft cycle with no schedule.
-			if (input.days.length > 0) {
-				const { error: daysError } = await supabase.from("cycle_days").insert(
-					input.days.map((day) => ({
-						cycle_id: cycle.id,
-						day_number: day.day_number,
-						day_type: day.day_type,
-						routine_id: day.routine_id || null,
-						weight_adjustment: day.weight_adjustment,
-						rep_modifier: day.rep_modifier,
-						rest_override: day.rest_override ?? null,
-						notes: day.notes ?? null,
-						rest_type: day.rest_type ?? null,
-					})),
-				);
-				if (daysError) {
-					await supabase
-						.from("training_cycles")
-						.delete()
-						.eq("id", cycle.id)
-						.eq("user_id", user.id);
-					throw daysError;
-				}
-			}
-
-			return cycle;
+			return { id: cycleId };
 		},
 
 		onSuccess: () => {
@@ -117,6 +130,16 @@ export function useSaveCycle() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveCycle] failed:", error);
+			// Cycle authoring is FLAME-only and enforced server-side, so a plan
+			// that lapsed while the builder was open fails here. "Try again"
+			// would be a lie; say what actually has to change.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save training cycle. Please try again.");
 		},
 	});
@@ -135,16 +158,11 @@ export function useUpdateCycle() {
 			).length;
 			const restDays = input.days.filter((d) => d.day_type === "rest").length;
 
-			const days = input.days.map((day) => ({
+			// `withIds`: a day that already has a row sends its id back, so the
+			// row survives the save instead of being regenerated.
+			const days = toCycleDayRows(input.days, { withIds: true }).map((day) => ({
+				...day,
 				cycle_id: input.cycleId,
-				day_number: day.day_number,
-				day_type: day.day_type,
-				routine_id: day.routine_id || null,
-				weight_adjustment: day.weight_adjustment,
-				rep_modifier: day.rep_modifier,
-				rest_override: day.rest_override ?? null,
-				notes: day.notes ?? null,
-				rest_type: day.rest_type ?? null,
 			}));
 
 			// Atomic update via RPC: the parent update + cycle_days delete/replace
@@ -187,6 +205,13 @@ export function useUpdateCycle() {
 
 		onError: (error: Error) => {
 			console.error("[useUpdateCycle] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to update training cycle. Please try again.");
 		},
 	});
