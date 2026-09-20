@@ -1,5 +1,10 @@
 # Phase 0 -- Baseline Report
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated baseline of
+> `beta-readiness-review`. Do not read its dependency, test, or bundle numbers
+> as describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI.
+
 Generated: 2026-03-18
 
 ---

@@ -44,7 +44,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
+import { useBodyMuscleAnalytics } from "@/hooks/useBodyMuscleAnalytics";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
@@ -641,9 +641,17 @@ export function Analytics() {
 		() => computeWeeklyVolume(exerciseSessionData),
 		[exerciseSessionData],
 	);
+	// The body-muscle map is ~1.7 MB, so it is fetched only once the Body tab
+	// opens. The tab's own chunk loads in parallel and renders immediately;
+	// only its heatmap section waits for (or reports failure of) the map.
+	const { analytics: bodyMuscleAnalytics, failed: bodyMuscleMapFailed } =
+		useBodyMuscleAnalytics(activeTab === "body");
 	const bodyMuscleModel = useMemo(
-		() => buildBodyMuscleFocusModel(bodyIntelData ?? []),
-		[bodyIntelData],
+		() =>
+			bodyMuscleAnalytics
+				? bodyMuscleAnalytics.buildBodyMuscleFocusModel(bodyIntelData ?? [])
+				: null,
+		[bodyMuscleAnalytics, bodyIntelData],
 	);
 
 	// Group exercises by primary muscle group for ExerciseDeepDive
@@ -1473,6 +1481,7 @@ export function Analytics() {
 										mobileMusclData={mobileMusclData}
 										weeklyVolume={weeklyVolume}
 										bodyMuscleModel={bodyMuscleModel}
+										bodyMuscleMapFailed={bodyMuscleMapFailed}
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
@@ -1708,6 +1717,7 @@ export function Analytics() {
 											muscleDonutOption={muscleDonutOption}
 											muscleRadarData={muscleRadarData}
 											bodyMuscleModel={bodyMuscleModel}
+											bodyMuscleMapFailed={bodyMuscleMapFailed}
 											weeklyVolume={weeklyVolume}
 											totalSessions={totalSessions}
 											muscleRecoveries={muscleRecoveries}

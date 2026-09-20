@@ -108,8 +108,13 @@ npm run typecheck
 # E2E tests
 npm run test:e2e
 
-# Regenerate Supabase types
-npm run gen:types
+# Regenerate Supabase types from the migrated local DB (what CI checks)
+npm run supabase -- start
+npm run supabase -- db reset --no-seed
+npm run gen:types:local
+
+# Database tests (pgTAP) against the local stack
+npm run test:db
 ```
 
 ### Symphony Orchestration

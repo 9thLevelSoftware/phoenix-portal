@@ -57,7 +57,8 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Pagination:
  *   - When cursor is absent, starts from the beginning
  *   - When cursor is present, resumes from that position
- *   - Entity types are paged in order: sessions → routines → cycles → badges → stats → customExercises
+ *   - Entity order: sessions → routines → cycles → workoutDeletions → ownershipEvents
+ *     → badges → stats → externalActivities → personalRecords → customExercises
  *   - Response includes nextCursor and hasMore for client to loop
  *   - Client should loop until hasMore: false before updating lastSyncTimestamp
  *
@@ -166,6 +167,9 @@ function isParityMode(body: PullRequest): boolean {
 
 // ─── Pagination Configuration ───────────────────────────────────────
 
+/** Look-back applied to since-mode tombstone lookups (client-clock skew). */
+const TOMBSTONE_SINCE_OVERLAP_MS = 2 * 60 * 1000;
+
 const DEFAULT_PAGE_SIZE = 75;
 const MAX_PAGE_SIZE = 300;
 
@@ -183,8 +187,35 @@ const MAX_PAGE_SIZE = 300;
 const MAX_PARITY_IDS = 10_000;
 
 // Entity types in pagination order
-type EntityType = 'sessions' | 'routines' | 'cycles' | 'badges' | 'stats' | 'personalRecords' | 'customExercises';
-const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'badges', 'stats', 'personalRecords', 'customExercises'];
+type EntityType =
+  | 'sessions'
+  | 'routines'
+  | 'cycles'
+  | 'workoutDeletions'
+  | 'ownershipEvents'
+  | 'badges'
+  | 'stats'
+  | 'externalActivities'
+  | 'personalRecords'
+  | 'customExercises';
+const ENTITY_ORDER: EntityType[] = [
+  'sessions',
+  'routines',
+  'cycles',
+  'workoutDeletions',
+  'ownershipEvents',
+  'badges',
+  'stats',
+  'externalActivities',
+  'personalRecords',
+  'customExercises',
+];
+
+// External activities can carry large raw_data documents. Keep their legacy
+// 500-row response page while using the shared cursor to make every page
+// reachable. Fetching one extra row detects continuation without unbounded
+// materialization.
+const EXTERNAL_ACTIVITY_PAGE_SIZE = 500;
 
 interface DecodedCursor {
   type: EntityType;
@@ -632,6 +663,8 @@ async function mobileSyncPullHandler(
     let sessionDtos: Record<string, unknown>[] = [];
     let routineDtos: Record<string, unknown>[] = [];
     let cycleDtos: Record<string, unknown>[] = [];
+    let workoutDeletionDtos: Record<string, unknown>[] = [];
+    let ownershipEventDtos: Record<string, unknown>[] = [];
     let badgeDtos: Record<string, unknown>[] = [];
     let gamificationDto: Record<string, unknown> | null = null;
     let rpgDto: Record<string, unknown> | null = null;
@@ -642,7 +675,9 @@ async function mobileSyncPullHandler(
     let customExerciseDtos: Record<string, unknown>[] = [];
 
     // =========================================================================
-    // 4. Paginated fetch of entities in order: sessions → routines → cycles → badges → stats → customExercises
+    // 4. Paginated fetch of entities in order: sessions → routines → cycles →
+    //    workout deletions → ownership events → badges → stats →
+    //    external activities → personal records → custom exercises.
     //    We fetch pageSize+1 to detect hasMore, then trim to pageSize.
     // =========================================================================
 
@@ -848,11 +883,23 @@ async function mobileSyncPullHandler(
           workoutMode: ws.workout_mode,
           routineSessionId: ws.routine_session_id,
           notes: ws.notes ?? null,
-          // Phase 3.3 (audit item #1): server-canonical updatedAt for the
+          // Phase 3.3 (audit item #1): the canonical LWW key for the
           // mobile-side LWW pull merge gate. Mobile parses this via
           // kotlin.time.Instant in PortalPullAdapter and feeds it to
           // SyncRepository.mergeSessionsLww as the per-session timestamp.
-          updatedAt: ws.updated_at ?? null,
+          //
+          // KD-5 / review R-4: this is `client_updated_at` — the device
+          // clock for a mobile-authored version, now() for a portal edit —
+          // NOT the server write clock `updated_at`. Mobile stamps each
+          // session it pushes with its own currentTimeMillis() and then
+          // accepts a pulled row when incomingTs >= existingTs, so reporting
+          // the server clock made a device whose clock trails the DB
+          // overwrite its own just-pushed session with this lossy
+          // projection. The pull CURSOR and the ordering stay on
+          // `updated_at` (see the cursor built from `sessionsRaw` above), so
+          // delta pulls remain server-clock ordered. The fallback covers
+          // rows written before 20260920002100's backfill.
+          updatedAt: ws.client_updated_at ?? ws.updated_at ?? null,
           avgVelocityMps: ws.avg_velocity_mps,
           avgAsymmetryPct: ws.avg_asymmetry_pct,
           velocityLossPct: ws.velocity_loss_pct,
@@ -1034,18 +1081,21 @@ async function mobileSyncPullHandler(
             perSetWeights: re.per_set_weights != null ? JSON.stringify(re.per_set_weights) : null,
             perSetRest: re.per_set_rest != null ? JSON.stringify(re.per_set_rest) : null,
             perSetReps: re.per_set_reps != null ? JSON.stringify(re.per_set_reps) : null,
-            isAmrap: re.is_amrap,
+            isAmrap: re.is_amrap ?? false,
             isBodyweight: re.is_bodyweight ?? false,
             prPercentage: re.pr_percentage,
             repCountTiming: re.rep_count_timing,
             stopAtPosition: re.stop_at_position,
-            stallDetection: re.stall_detection,
+            stallDetection: re.stall_detection ?? true,
             eccentricLoad: re.eccentric_load,
             echoLevel: re.echo_level,
             perSetEchoLevels: re.per_set_echo_levels ?? null,
             warmupSets: re.warmup_sets ?? null,
             dropSetEnabled: re.drop_set_enabled ?? false,
             dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
+            // Timed exercises (null = rep-based). A response key, so shipping
+            // mobile builds ignore it (PortalWireJson ignoreUnknownKeys).
+            durationSeconds: re.duration_seconds ?? null,
           })),
         };
       });
@@ -1116,6 +1166,22 @@ async function mobileSyncPullHandler(
       const cycleIds = cyclesData.map((c: Record<string, unknown>) => c.id as string);
       let cycleDaysRaw: Record<string, unknown>[] = [];
       if (cycleIds.length > 0) {
+        // The established parity RPC has a fixed RETURNS TABLE signature from
+        // older deployments. Hydrate the additive JSON state by exact id so we
+        // can extend the wire without a destructive RPC signature replacement.
+        const { data: progressRows, error: progressError } = await supabase
+          .from('training_cycles')
+          .select('id,progress_state')
+          .eq('user_id', userId)
+          .in('id', cycleIds);
+        if (progressError) return readFailure('cycle progress state', progressError, cors);
+        const progressByCycleId = new Map(
+          (progressRows ?? []).map((row: Record<string, unknown>) => [row.id, row.progress_state]),
+        );
+        for (const cycle of cyclesData) {
+          cycle.progress_state = progressByCycleId.get(cycle.id) ?? null;
+        }
+
         const cdOrFailure = childRowsOrFailure(
           await fetchAllByParentIds(supabase, {
             table: 'cycle_days',
@@ -1152,9 +1218,17 @@ async function mobileSyncPullHandler(
           status: c.status,
           startedAt: c.started_at,
           lastUsedAt: c.last_used_at,
+          progressionSettingsPresent: true,
           progressionSettings: c.progression_settings != null ? JSON.stringify(c.progression_settings) : null,
           deloadSettings: c.deload_settings != null ? JSON.stringify(c.deload_settings) : null,
           templateId: c.template_id ?? null,
+          // KD-6: the server updated_at, verbatim (full precision ISO
+          // string). The device sends it back as baseUpdatedAt on push.
+          // New key; older builds ignore it.
+          updatedAt: c.updated_at != null ? String(c.updated_at) : null,
+          progressStatePresent: true,
+          progressState: c.progress_state ?? null,
+          updatedAt: c.updated_at ?? null,
           days: cDays.map((d) => ({
             id: d.id,
             cycleId: d.cycle_id,
@@ -1166,11 +1240,95 @@ async function mobileSyncPullHandler(
             restOverride: d.rest_override,
             restType: d.rest_type,
             notes: d.notes,
+            echoLevelPresent: true,
+            echoLevel: d.echo_level ?? null,
+            eccentricLoadPercentPresent: true,
+            eccentricLoadPercent: d.eccentric_load_percent ?? null,
           })),
         };
       });
 
       remainingPageSize -= cycleDtos.length;
+    }
+
+    // ─── PERMANENT WORKOUT DELETIONS ───────────────────────────────────────
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('workoutDeletions') && remainingPageSize > 0) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'workoutDeletions');
+      // Filter, order, and page by server commit time. Client-supplied
+      // deleted_at can predate another device's lastSync when an offline
+      // deletion is uploaded late; using it here would permanently hide the
+      // tombstone from that device. The wire DTO still exposes deleted_at.
+      let query = supabase
+        .from('workout_deletion_tombstones')
+        .select('mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at')
+        .eq('user_id', userId)
+        .gt('recorded_at', lastSyncISO)
+        .order('recorded_at', { ascending: true })
+        .order('mutation_id', { ascending: true })
+        .limit(remainingPageSize + 1);
+      if (cursorUpdatedAt && cursorId) {
+        query = query.or(
+          `recorded_at.gt.${cursorUpdatedAt},and(recorded_at.eq.${cursorUpdatedAt},mutation_id.gt.${cursorId})`,
+        );
+      }
+      const { data, error } = await query;
+      if (error) return readFailure('workout deletions', error, cors);
+      const rows = ((data ?? []) as Record<string, unknown>[]);
+      if (rows.length > remainingPageSize) {
+        hasMore = true;
+        const last = rows[remainingPageSize - 1];
+        nextCursor = encodeCursor('workoutDeletions', String(last.recorded_at), String(last.mutation_id));
+        rows.splice(remainingPageSize);
+      }
+      workoutDeletionDtos = rows.map((row) => ({
+        mutationId: row.mutation_id,
+        profileId: row.profile_id ?? null,
+        scope: row.scope,
+        portalSessionId: row.portal_session_id,
+        componentSessionId: row.component_session_id ?? null,
+        deletedAt: row.deleted_at,
+      }));
+      remainingPageSize -= workoutDeletionDtos.length;
+    }
+
+    // ─── IMMUTABLE ACCOUNT OWNERSHIP EVENTS ────────────────────────────────
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('ownershipEvents') && remainingPageSize > 0) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'ownershipEvents');
+      let query = supabase
+        .from('profile_ownership_events')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('transferred_at', lastSyncISO)
+        .order('transferred_at', { ascending: true })
+        .order('mutation_id', { ascending: true })
+        .limit(remainingPageSize + 1);
+      if (cursorUpdatedAt && cursorId) {
+        query = query.or(
+          `transferred_at.gt.${cursorUpdatedAt},and(transferred_at.eq.${cursorUpdatedAt},mutation_id.gt.${cursorId})`,
+        );
+      }
+      const { data, error } = await query;
+      if (error) return readFailure('ownership events', error, cors);
+      const rows = ((data ?? []) as Record<string, unknown>[]);
+      if (rows.length > remainingPageSize) {
+        hasMore = true;
+        const last = rows[remainingPageSize - 1];
+        nextCursor = encodeCursor('ownershipEvents', String(last.transferred_at), String(last.mutation_id));
+        rows.splice(remainingPageSize);
+      }
+      ownershipEventDtos = rows.map((row) => ({
+        mutationId: row.mutation_id,
+        sourceProfileId: row.source_profile_id ?? null,
+        targetProfileId: row.target_profile_id,
+        targetProfileName: row.target_profile_name,
+        targetProfileColorIndex: row.target_profile_color_index,
+        workoutSessionIds: row.workout_session_ids ?? [],
+        routineIds: row.routine_ids ?? [],
+        cycleIds: row.cycle_ids ?? [],
+        personalRecordIds: row.personal_record_ids ?? [],
+        transferredAt: row.transferred_at,
+      }));
+      remainingPageSize -= ownershipEventDtos.length;
     }
 
     // ─── BADGES ─────────────────────────────────────────────────────────────
@@ -1228,7 +1386,7 @@ async function mobileSyncPullHandler(
         badgeId: b.badge_id,
         badgeName: b.badge_name,
         badgeDescription: b.badge_description,
-        badgeTier: b.badge_tier,
+        badgeTier: b.badge_tier ?? 'bronze',
         earnedAt: b.earned_at,
       }));
 
@@ -1262,6 +1420,9 @@ async function mobileSyncPullHandler(
             characterClass: rpgAttributes.character_class,
             level: Math.round(Number(rpgAttributes.level ?? 1)),
             experiencePoints: Math.round(Number(rpgAttributes.experience_points ?? 0)),
+            // The conflict key a rejected device must beat. Additive response
+            // key; old builds ignore it (R-8).
+            lastWorkoutAt: rpgAttributes.last_workout_at,
             updatedAt: rpgAttributes.updated_at,
           }
         : null;
@@ -1275,19 +1436,71 @@ async function mobileSyncPullHandler(
         .maybeSingle();
       if (gamificationError) return readFailure('gamification stats', gamificationError, cors);
 
-      gamificationDto = gamificationStats
+      // The device gets back the DEVICE-REPORTED shadow columns, never the
+      // server-derived ones (20260920002500, review round 1 R-10). The
+      // installed app merges this row with an unconditional server-wins
+      // INSERT OR REPLACE — no max(), no gate — and the server's definitions
+      // differ from the phone's (grouped portal sessions vs the phone's own
+      // profile-scoped count; per-cable volume vs the machine total), so
+      // serving derived values here would rewrite lifetime stats and badge
+      // progress on every installed build. The derived columns are for the
+      // portal's Profile screen and the leaderboards.
+      //
+      // Three states, and the difference between the last two is what lets
+      // this function be deployed BEFORE the migration (see the deploy-order
+      // note in exec/operator-notes.md):
+      //   * key ABSENT (undefined) — the columns do not exist yet, i.e. this
+      //     build is running against a pre-20260920002500 database. The
+      //     canonical columns ARE the device-reported values there, because
+      //     nothing derives them yet, so fall back to them.
+      //   * key NULL — the columns exist and nothing was ever device-reported
+      //     for this account. Emit null; mobile's `?.let` then leaves the
+      //     local row alone, exactly as it did when no stats row existed.
+      //   * key present — serve the shadow value.
+      const deviceStatsMissing =
+        gamificationStats !== null &&
+        (gamificationStats as Record<string, unknown>).device_total_workouts ===
+          undefined;
+      const deviceStats = deviceStatsMissing
         ? {
-            id: gamificationStats.id,
-            userId: gamificationStats.user_id,
-            totalWorkouts: gamificationStats.total_workouts,
-            totalReps: gamificationStats.total_reps,
-            totalVolumeKg: gamificationStats.total_volume_kg,
-            longestStreak: gamificationStats.longest_streak,
-            currentStreak: gamificationStats.current_streak,
-            totalTimeSeconds: gamificationStats.total_time_seconds,
-            updatedAt: gamificationStats.updated_at,
-          }
-        : null;
+          device_total_workouts: gamificationStats.total_workouts,
+          device_total_reps: gamificationStats.total_reps,
+          device_total_volume_kg: gamificationStats.total_volume_kg,
+          device_total_time_seconds: gamificationStats.total_time_seconds,
+          device_current_streak: gamificationStats.current_streak,
+          device_longest_streak: gamificationStats.longest_streak,
+          // No last_workout_at column exists pre-migration, so the key is
+          // simply absent from the response rather than a fabricated null.
+          last_workout_at: undefined,
+        }
+        : gamificationStats;
+
+      gamificationDto =
+        gamificationStats && deviceStats &&
+          deviceStats.device_total_workouts !== null
+          ? {
+              id: gamificationStats.id,
+              userId: gamificationStats.user_id,
+              // Served verbatim. mobile-sync-push always sends all six
+              // shadow keys together, so they are non-null as a group; a
+              // partially-populated row is only reachable from a
+              // hand-written service-role call. Deliberately NOT `?? 0`: a
+              // fabricated zero here would be indistinguishable from a real
+              // reported zero, which is the confusion the whole shadow-column
+              // design exists to avoid.
+              totalWorkouts: deviceStats.device_total_workouts,
+              totalReps: deviceStats.device_total_reps,
+              totalVolumeKg: deviceStats.device_total_volume_kg,
+              longestStreak: deviceStats.device_longest_streak,
+              currentStreak: deviceStats.device_current_streak,
+              totalTimeSeconds: deviceStats.device_total_time_seconds,
+              // The conflict key the device must beat to have a write
+              // accepted. Additive response key; mobile's PortalWireJson sets
+              // ignoreUnknownKeys, so old builds drop it (R-8).
+              lastWorkoutAt: deviceStats.last_workout_at,
+              updatedAt: gamificationStats.updated_at,
+            }
+          : null;
 
       // Local profiles (always included on final page)
       const { data: profilesData, error: profilesError } = await supabase
@@ -1302,36 +1515,67 @@ async function mobileSyncPullHandler(
         colorIndex: p.color_index,
       }));
 
-      // External activities (EMBER+ enforced at handler start)
-      // fix(M-25): cap at 500 rows to bound memory — external activities carry
-      // large rawData JSON payloads; without a limit a user importing years of
-      // Strava history could exhaust Edge Function memory in a single response.
-      const { data: externalActivitiesRaw, error: externalActivitiesError } = await supabase
+    }
+
+    // ─── EXTERNAL ACTIVITIES ─────────────────────────────────────────────────────
+    // EMBER+ is enforced at handler start. This collection intentionally keeps
+    // its historical 500-row page independently of the general entity page
+    // budget, but now participates in the opaque keyset cursor sequence.
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('externalActivities')) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'externalActivities');
+      let externalActivitiesQuery = supabase
         .from('external_activities')
         .select('*')
         .eq('user_id', userId)
         .gt('synced_at', lastSyncISO)
         .order('synced_at', { ascending: true })
-        .limit(500);
+        .order('id', { ascending: true })
+        .limit(EXTERNAL_ACTIVITY_PAGE_SIZE + 1);
+
+      if (cursorUpdatedAt && cursorId) {
+        externalActivitiesQuery = externalActivitiesQuery.or(
+          `synced_at.gt.${cursorUpdatedAt},and(synced_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`,
+        );
+      }
+
+      const { data, error: externalActivitiesError } = await externalActivitiesQuery;
       if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
 
-      // Our 500-row cap (not silent max_rows). Signal when the page is full.
-      externalActivitiesHasMore = (externalActivitiesRaw ?? []).length === 500;
+      const externalActivitiesRaw = ((data ?? []) as Record<string, unknown>[]);
+      if (externalActivitiesRaw.length > EXTERNAL_ACTIVITY_PAGE_SIZE) {
+        hasMore = true;
+        externalActivitiesHasMore = true;
+        const lastActivity = externalActivitiesRaw[EXTERNAL_ACTIVITY_PAGE_SIZE - 1];
+        nextCursor = encodeCursor(
+          'externalActivities',
+          String(lastActivity.synced_at),
+          String(lastActivity.id),
+        );
+        externalActivitiesRaw.splice(EXTERNAL_ACTIVITY_PAGE_SIZE);
+      }
 
-      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+      // Mobile's ExternalActivitySyncDto (PortalSyncDtos.kt) requires a
+      // non-null `syncedAt` and declares `activityType` / `durationSeconds`
+      // as non-nullable with defaults. PortalWireJson does not coerce JSON
+      // null into defaults, so a missing/null value for any of these fails
+      // decoding of the WHOLE pull response. The DB columns are nullable
+      // (synced_at has only DEFAULT NOW(); updated_at and started_at are
+      // NOT NULL), so always emit concrete values here.
+      externalActivityDtos = externalActivitiesRaw.map((a: Record<string, unknown>) => ({
         id: a.id,
         externalId: a.external_id,
         provider: a.provider,
         name: a.name,
-        activityType: a.activity_type,
+        activityType: a.activity_type ?? 'strength',
         startedAt: a.started_at,
-        durationSeconds: a.duration_seconds,
+        durationSeconds: a.duration_seconds ?? 0,
         distanceMeters: a.distance_meters,
         calories: a.calories,
         avgHeartRate: a.avg_heart_rate,
         maxHeartRate: a.max_heart_rate,
         elevationGainMeters: a.elevation_gain_meters,
         rawData: a.raw_data != null ? JSON.stringify(a.raw_data) : null,
+        syncedAt: a.synced_at ?? a.updated_at ?? a.started_at,
       }));
     }
 
@@ -1506,6 +1750,71 @@ async function mobileSyncPullHandler(
     }
 
     // =========================================================================
+    // 6b. Routine/cycle deletes (KD-4), first page only.
+    //     Routines and cycles are hard-deleted; a trigger records each delete
+    //     in sync_tombstones. The device learns of a delete through the ids it
+    //     says it holds (tombstoned ∩ knownEntityIds), which works for the
+    //     shipping client that always sends lastSync=0. A client that sends no
+    //     known ids but a real lastSync gets the tombstones recorded since
+    //     then. New response keys; older builds ignore them.
+    //
+    //     Since-mode compares the server clock (deleted_at) with the client's
+    //     lastSync, so it looks back TOMBSTONE_SINCE_OVERLAP_MS further (the
+    //     same 2-minute overlap R-14 / PR 26 applies to the stale arm). A
+    //     delete may be reported twice; deleting locally is idempotent.
+    //     Residual risk: a device whose clock runs more than the overlap
+    //     ahead of the server (or that stores a local time instead of the
+    //     server syncTime) can miss a delete in since-mode. Known-ids mode,
+    //     which the shipping client uses, has no clock dependency.
+    //     Reported ids may include ones the device never held (e.g. a portal
+    //     create-rollback delete); clients treat them as "delete if present".
+    // =========================================================================
+    let deletedRoutineIds: string[] = [];
+    let deletedCycleIds: string[] = [];
+    if (cursor === null) {
+      const lastSyncMs = body.lastSync ?? 0;
+      const tombstonesSinceISO = lastSyncMs > 0
+        ? new Date(Math.max(0, lastSyncMs - TOMBSTONE_SINCE_OVERLAP_MS)).toISOString()
+        : null;
+      const fetchTombstonedIds = async (
+        entity: 'routine' | 'cycle',
+        knownIds: string[],
+      ): Promise<{ ids: string[] } | { error: { code?: string; message?: string } }> => {
+        let args: { p_ids: string[] | null; p_since: string | null };
+        if (knownIds.length > 0) args = { p_ids: knownIds, p_since: null };
+        else if (tombstonesSinceISO !== null) args = { p_ids: null, p_since: tombstonesSinceISO };
+        else return { ids: [] };
+        const { data, error } = await supabase.rpc('get_sync_tombstones', {
+          p_user_id: userId,
+          p_entity: entity,
+          ...args,
+        });
+        if (error) return { error };
+        const ids = new Set<string>();
+        for (const row of (Array.isArray(data) ? data : []) as Array<{ entity_id?: unknown }>) {
+          if (typeof row.entity_id === 'string') ids.add(row.entity_id);
+        }
+        return { ids: [...ids] };
+      };
+      const routineTombstones = await fetchTombstonedIds(
+        'routine',
+        uuidParityIds(body.knownEntityIds?.routineIds),
+      );
+      if ('error' in routineTombstones) {
+        return readFailure('routine tombstones', routineTombstones.error, cors);
+      }
+      const cycleTombstones = await fetchTombstonedIds(
+        'cycle',
+        uuidParityIds(body.knownEntityIds?.cycleIds),
+      );
+      if ('error' in cycleTombstones) {
+        return readFailure('cycle tombstones', cycleTombstones.error, cors);
+      }
+      deletedRoutineIds = routineTombstones.ids;
+      deletedCycleIds = cycleTombstones.ids;
+    }
+
+    // =========================================================================
     // 7. Return paginated response with cursor metadata
     // =========================================================================
     const response = {
@@ -1517,6 +1826,8 @@ async function mobileSyncPullHandler(
       sessions: sessionDtos,
       routines: routineDtos,
       cycles: cycleDtos,
+      workoutDeletions: workoutDeletionDtos,
+      ownershipEvents: ownershipEventDtos,
       personalRecords: personalRecordDtos,
       rpgAttributes: rpgDto,
       badges: badgeDtos,
@@ -1525,6 +1836,8 @@ async function mobileSyncPullHandler(
       externalActivities: externalActivityDtos,
       externalActivitiesHasMore,
       customExercises: customExerciseDtos,
+      deletedRoutineIds,
+      deletedCycleIds,
       ...(profilePreferenceSections === undefined
         ? {}
         : { profilePreferenceSections }),
