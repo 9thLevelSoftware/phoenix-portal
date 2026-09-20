@@ -22,7 +22,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(48);
+SELECT plan(54);
 
 SELECT diag('database:gamification-derivation-catalog');
 
@@ -71,12 +71,13 @@ SELECT is(
         'public.derive_gamification_stats(uuid)',
         'public.recompute_gamification_stats(uuid)',
         'public.recompute_all_gamification_stats()',
+        'public.seed_device_gamification_stats()',
         'public.recompute_gamification_stats_after_change()',
         'public.upsert_gamification_stats_lww(jsonb)',
         'public.upsert_rpg_attributes_lww(jsonb)'
      ]) AS sig WHERE to_regprocedure(sig) IS NOT NULL),
-    6,
-    'all six gamification function signatures resolve'
+    7,
+    'all seven gamification function signatures resolve'
 );
 
 SELECT is_empty(
@@ -86,6 +87,7 @@ SELECT is_empty(
             'public.derive_gamification_stats(uuid)',
             'public.recompute_gamification_stats(uuid)',
             'public.recompute_all_gamification_stats()',
+            'public.seed_device_gamification_stats()',
             'public.recompute_gamification_stats_after_change()',
             'public.upsert_gamification_stats_lww(jsonb)',
             'public.upsert_rpg_attributes_lww(jsonb)'
@@ -117,14 +119,16 @@ INSERT INTO auth.users (id, email)
 VALUES
     ('e5e5e5e5-0000-4000-8000-000000000005'::uuid, 'derived-a@example.test'),
     ('f6f6f6f6-0000-4000-8000-000000000006'::uuid, 'derived-b@example.test'),
-    ('a7a7a7a7-0000-4000-8000-000000000007'::uuid, 'derived-c@example.test')
+    ('a7a7a7a7-0000-4000-8000-000000000007'::uuid, 'derived-c@example.test'),
+    ('b8b8b8b8-0000-4000-8000-000000000008'::uuid, 'derived-d@example.test')
 ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 DELETE FROM public.gamification_stats
 WHERE user_id IN (
     'e5e5e5e5-0000-4000-8000-000000000005'::uuid,
     'f6f6f6f6-0000-4000-8000-000000000006'::uuid,
-    'a7a7a7a7-0000-4000-8000-000000000007'::uuid
+    'a7a7a7a7-0000-4000-8000-000000000007'::uuid,
+    'b8b8b8b8-0000-4000-8000-000000000008'::uuid
 );
 
 -- Device A: 100 sessions with one set of 10 reps each, 25 kg per cable
@@ -174,7 +178,12 @@ SELECT lives_ok(
                 'device_total_time_seconds', 6000,
                 'device_current_streak', 9,
                 'device_longest_streak', 30,
-                'last_workout_at', now()
+                -- NOT now(): now() is the transaction timestamp, so a stored
+                -- key of now() is indistinguishable from a fresh server clock
+                -- and every assertion about WHICH value is returned becomes
+                -- vacuous (the tests reviewer proved two reverting mutants
+                -- green against the earlier version of this file).
+                'last_workout_at', now() - INTERVAL '1 day'
             ))
         )
     $sql$,
@@ -328,6 +337,51 @@ SELECT is(
     'the recompute rewrites a corrupted derived column'
 );
 
+-- R-8 / R-15: a rejection reports the STORED conflict key, not a fresh
+-- server clock, so the device knows what it has to beat. This sits BEFORE
+-- the far-future/honest-push block on purpose: those pushes reset the stored
+-- key to now(), and then "the stored key" and "a fresh clock" are the same
+-- transaction timestamp and the assertion proves nothing (REOPENED by the
+-- tests reviewer against the earlier layout).
+SELECT results_eq(
+    $sql$
+        SELECT server_updated_at = (SELECT gs.last_workout_at FROM public.gamification_stats gs
+                                     WHERE gs.user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid)
+           AND server_updated_at < now()
+        FROM public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', 'e5e5e5e5-0000-4000-8000-000000000005',
+                'device_total_workouts', 1,
+                'last_workout_at', now() - INTERVAL '30 days'
+            ))
+        )
+    $sql$,
+    $values$ VALUES (TRUE) $values$,
+    'a REJECTED write returns the stored last_workout_at, not a fresh server clock'
+);
+
+-- The accept path returns the same thing: the key now stored, which the
+-- device can compare against what it sent. Nothing pinned this before.
+SELECT results_eq(
+    $sql$
+        SELECT accepted, server_updated_at = (now() - INTERVAL '12 hours')
+        FROM public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', 'e5e5e5e5-0000-4000-8000-000000000005',
+                'device_total_workouts', 317,
+                'device_total_reps', 1000,
+                'device_total_volume_kg', 5000,
+                'device_total_time_seconds', 6000,
+                'device_current_streak', 9,
+                'device_longest_streak', 30,
+                'last_workout_at', now() - INTERVAL '12 hours'
+            ))
+        )
+    $sql$,
+    $values$ VALUES (TRUE, TRUE) $values$,
+    'an ACCEPTED write returns the key it just stored, not a fresh server clock'
+);
+
 -- R-2 / R-24: a far-future key must be clamped, or it would pin every
 -- device-reported column against all later honest pushes forever.
 SELECT results_eq(
@@ -371,24 +425,6 @@ SELECT is(
       WHERE gs.user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid),
     320,
     'the honest push wins; the 2099 device is not locked in'
-);
-
--- R-8 / R-15: a rejection reports the STORED conflict key, not a fresh
--- server clock, so the device knows what it has to beat.
-SELECT results_eq(
-    $sql$
-        SELECT server_updated_at = (SELECT gs.last_workout_at FROM public.gamification_stats gs
-                                     WHERE gs.user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid)
-        FROM public.upsert_gamification_stats_lww(
-            jsonb_build_array(jsonb_build_object(
-                'user_id', 'e5e5e5e5-0000-4000-8000-000000000005',
-                'device_total_workouts', 1,
-                'last_workout_at', now() - INTERVAL '30 days'
-            ))
-        )
-    $sql$,
-    $values$ VALUES (TRUE) $values$,
-    'a rejection returns the stored last_workout_at as server_updated_at'
 );
 
 -- Deleting a session lowers the derived totals AND the derived streaks
@@ -575,9 +611,53 @@ SELECT results_eq(
         FROM public.gamification_stats
         WHERE user_id = 'f6f6f6f6-0000-4000-8000-000000000006'::uuid
     $sql$,
-    $values$ VALUES (4, 0, 0::numeric, 0, 4, 4) $values$,
+    $values$ VALUES (4, NULL::integer, NULL::numeric, NULL::integer, 4, 4) $values$,
     'an old-shape payload leaves every device_* shadow column untouched'
 );
+
+-- Same window, the OTHER arm (general-2 verification, round 1): an old-shape
+-- payload against a user with NO stats row CREATES one. If the VALUES list
+-- used COALESCE(rec.device_x, 0) the new row would carry six zeroes, and the
+-- pull would serve those zeroes to the phone instead of the null that tells
+-- it to keep its own numbers — the same harm as the ON CONFLICT arm, on a
+-- different path. A write that reports nothing must store nothing.
+DELETE FROM public.gamification_stats
+ WHERE user_id = 'a7a7a7a7-0000-4000-8000-000000000007'::uuid;
+
+SELECT results_eq(
+    $sql$
+        SELECT accepted
+        FROM public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', 'a7a7a7a7-0000-4000-8000-000000000007',
+                'total_workouts', 3,
+                'total_reps', 30,
+                'total_volume_kg', 75,
+                'total_time_seconds', 180,
+                'longest_streak', 20,
+                'current_streak', 5,
+                'updated_at', now()
+            ))
+        )
+    $sql$,
+    $values$ VALUES (TRUE) $values$,
+    'an old-shape payload creating a brand-new stats row is accepted'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT device_total_workouts, device_total_reps, device_total_volume_kg,
+               device_total_time_seconds, device_current_streak, device_longest_streak
+        FROM public.gamification_stats
+        WHERE user_id = 'a7a7a7a7-0000-4000-8000-000000000007'::uuid
+    $sql$,
+    $values$ VALUES (NULL::integer, NULL::integer, NULL::numeric,
+                     NULL::integer, NULL::integer, NULL::integer) $values$,
+    'the row it creates carries NULL shadow columns, not zeroes (the pull then emits null)'
+);
+
+DELETE FROM public.gamification_stats
+ WHERE user_id = 'a7a7a7a7-0000-4000-8000-000000000007'::uuid;
 
 SELECT diag('database:gamification-derivation-no-insert');
 
@@ -598,6 +678,60 @@ SELECT is_empty(
     $sql$,
     'the recompute never INSERTs a stats row (it would pull back as zeroes)'
 );
+
+SELECT diag('database:gamification-derivation-seed');
+
+-- The device_* seed (20260920002500) maps six columns one-to-one. It runs
+-- once, at migration time, against a database with no rows, so nothing about
+-- it is exercised by a clean apply — and a seed that SWAPS two of the six is
+-- silent, keeps every other test green, and delivers the R-10 critical to
+-- the whole fleet on the first pull. An operational check cannot catch it
+-- either: 20260920002501 overwrites the canonical counters immediately
+-- afterwards, so `device_x = total_x` is comparable to nothing by the time
+-- the operator looks. Hence the mapping lives in a function and is asserted
+-- here against a pre-migration-shaped row (canonical values set, all six
+-- shadow columns NULL), with six DISTINCT values so a swap cannot hide.
+INSERT INTO public.gamification_stats (
+    user_id, total_workouts, total_reps, total_volume_kg, total_time_seconds,
+    pr_count, current_streak, longest_streak, best_streak
+)
+VALUES ('b8b8b8b8-0000-4000-8000-000000000008'::uuid,
+        11, 22, 33, 44, 0, 55, 66, 66);
+
+SELECT ok(
+    public.seed_device_gamification_stats() >= 1,
+    'seed_device_gamification_stats reports the rows it touched'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT device_total_workouts, device_total_reps, device_total_volume_kg,
+               device_total_time_seconds, device_current_streak, device_longest_streak
+        FROM public.gamification_stats
+        WHERE user_id = 'b8b8b8b8-0000-4000-8000-000000000008'::uuid
+    $sql$,
+    $values$ VALUES (11, 22, 33::numeric, 44, 55, 66) $values$,
+    'the seed maps each canonical counter to its own shadow column (no swaps)'
+);
+
+-- Re-running it is a no-op: the WHERE clause only matches rows that still
+-- have no shadow values, so a second apply cannot overwrite what a device
+-- reported in the meantime.
+UPDATE public.gamification_stats
+   SET total_workouts = 999
+ WHERE user_id = 'b8b8b8b8-0000-4000-8000-000000000008'::uuid;
+
+SELECT public.seed_device_gamification_stats();
+
+SELECT is(
+    (SELECT device_total_workouts FROM public.gamification_stats
+      WHERE user_id = 'b8b8b8b8-0000-4000-8000-000000000008'::uuid),
+    11,
+    're-running the seed leaves an already-seeded row alone'
+);
+
+DELETE FROM public.gamification_stats
+ WHERE user_id = 'b8b8b8b8-0000-4000-8000-000000000008'::uuid;
 
 SELECT diag('database:gamification-derivation-backfill');
 

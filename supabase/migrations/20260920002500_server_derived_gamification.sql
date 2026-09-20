@@ -173,18 +173,71 @@ COMMENT ON COLUMN public.gamification_stats.best_streak IS
 -- reported (they were written verbatim by the old upsert), so copying them
 -- into the shadow columns before 20260920002501 recomputes means the first
 -- pull after this change hands every installed phone back exactly the numbers
--- it already had. Safe to re-run: every row written after this point gets its
--- shadow columns from upsert_gamification_stats_lww (never NULL), and
--- recompute_gamification_stats never INSERTs, so `IS NULL` can only ever match
--- a row that predates this migration.
-UPDATE public.gamification_stats
-   SET device_total_workouts     = total_workouts,
-       device_total_reps         = total_reps,
-       device_total_volume_kg    = total_volume_kg,
-       device_total_time_seconds = total_time_seconds,
-       device_current_streak     = current_streak,
-       device_longest_streak     = longest_streak
- WHERE device_total_workouts IS NULL;
+-- it already had. Safe to re-run: the DO-block below is a one-shot guarded on
+-- "no row carries a shadow value yet", so a second apply cannot copy
+-- (by-then derived) canonical values into a row created after the first one.
+-- The column-to-column mapping is a FUNCTION, not an inline UPDATE, for the
+-- same reason the backfill loop is (R-19): an inline seed runs once, at
+-- migration time, against a database with no rows, so nothing can test it —
+-- and a seed that swaps two of the six columns is silent, passes every test,
+-- and delivers the R-10 regression to the whole fleet on the first pull. An
+-- operational check cannot catch it either, because 20260920002501 overwrites
+-- the canonical counters immediately afterwards, so `device_x = total_x` is
+-- comparable to nothing by the time the operator looks.
+-- gamification_stats.test.sql seeds a pre-migration-shaped row and calls this.
+CREATE OR REPLACE FUNCTION public.seed_device_gamification_stats()
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count bigint;
+BEGIN
+  UPDATE public.gamification_stats
+     SET device_total_workouts     = total_workouts,
+         device_total_reps         = total_reps,
+         device_total_volume_kg    = total_volume_kg,
+         device_total_time_seconds = total_time_seconds,
+         device_current_streak     = current_streak,
+         device_longest_streak     = longest_streak
+   WHERE device_total_workouts IS NULL;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.seed_device_gamification_stats() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.seed_device_gamification_stats() FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.seed_device_gamification_stats() TO service_role;
+
+COMMENT ON FUNCTION public.seed_device_gamification_stats() IS
+  'Copies the pre-migration canonical counters into the device_* shadow '
+  'columns for every row that has none yet, and returns how many rows it '
+  'touched. Run once by 20260920002500 behind a one-shot guard.';
+
+DO $$
+DECLARE
+  v_seeded bigint;
+BEGIN
+  -- One-shot, globally: if ANY row already carries a shadow value, this seed
+  -- has run before (or the new Edge is already live) and re-running it would
+  -- be wrong. A row created AFTER the seed by an old-shape write has NULL
+  -- shadow columns too, but by then its canonical columns hold DERIVED
+  -- values, so copying them across would hand the phone the server's numbers
+  -- — the very thing the shadow columns exist to prevent.
+  IF EXISTS (
+    SELECT 1 FROM public.gamification_stats
+     WHERE device_total_workouts IS NOT NULL
+  ) THEN
+    RAISE NOTICE 'device_* shadow columns already seeded; skipping';
+    RETURN;
+  END IF;
+
+  v_seeded := public.seed_device_gamification_stats();
+  RAISE NOTICE 'seeded device_* shadow columns on % gamification_stats rows', v_seeded;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 2. derive_gamification_stats — the single definition of every derived value
@@ -576,12 +629,18 @@ BEGIN
       last_workout_at, updated_at
     ) VALUES (
       rec.user_id,
-      COALESCE(rec.device_total_workouts, 0),
-      COALESCE(rec.device_total_reps, 0),
-      COALESCE(rec.device_total_volume_kg, 0),
-      COALESCE(rec.device_total_time_seconds, 0),
-      COALESCE(rec.device_current_streak, 0),
-      COALESCE(rec.device_longest_streak, 0),
+      -- NOT COALESCE(..., 0): same reason as the ON CONFLICT arm below. An
+      -- old-shape payload (canonical keys, no device_*) against a user with
+      -- NO stats row would otherwise CREATE the row with all six shadow
+      -- columns at 0, and the pull would serve those zeroes to the phone
+      -- instead of the null that tells it to keep its own numbers. A write
+      -- that reports nothing must store nothing.
+      rec.device_total_workouts,
+      rec.device_total_reps,
+      rec.device_total_volume_kg,
+      rec.device_total_time_seconds,
+      rec.device_current_streak,
+      rec.device_longest_streak,
       v_incoming,
       now()
     )

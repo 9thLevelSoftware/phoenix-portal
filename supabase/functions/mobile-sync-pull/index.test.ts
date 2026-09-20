@@ -1681,3 +1681,57 @@ Deno.test("pull emits null when the columns exist but nothing was device-reporte
   assertEquals(response.status, 200);
   assertEquals(body.gamificationStats, null);
 });
+
+// ---------------------------------------------------------------------------
+// R-10 (critical) guard that runs in the DEFAULT job. The real-SQL
+// "integration:" test above is gated on the local stack, and this branch has
+// no test:edge:integration script and no edge-integration.yml — PR 5's prefix
+// selector only picks it up at the verify merge — so without this the run's
+// most important fix is unguarded in the job CI actually runs today.
+// ---------------------------------------------------------------------------
+Deno.test("pull serves the device shadow stats, never the derived columns", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          // What the server derived from the rows it stores.
+          total_workouts: 1,
+          total_reps: 10,
+          total_volume_kg: 42,
+          total_time_seconds: 120,
+          longest_streak: 1,
+          current_streak: 0,
+          // What the phone reported. These are what it must get back.
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 317,
+    totalReps: 1000,
+    totalVolumeKg: 5000,
+    longestStreak: 30,
+    currentStreak: 9,
+    totalTimeSeconds: 6000,
+    lastWorkoutAt: "2026-07-10T10:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});

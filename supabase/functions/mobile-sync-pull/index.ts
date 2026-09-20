@@ -1323,6 +1323,13 @@ async function mobileSyncPullHandler(
           ? {
               id: gamificationStats.id,
               userId: gamificationStats.user_id,
+              // Served verbatim. mobile-sync-push always sends all six
+              // shadow keys together, so they are non-null as a group; a
+              // partially-populated row is only reachable from a
+              // hand-written service-role call. Deliberately NOT `?? 0`: a
+              // fabricated zero here would be indistinguishable from a real
+              // reported zero, which is the confusion the whole shadow-column
+              // design exists to avoid.
               totalWorkouts: deviceStats.device_total_workouts,
               totalReps: deviceStats.device_total_reps,
               totalVolumeKg: deviceStats.device_total_volume_kg,

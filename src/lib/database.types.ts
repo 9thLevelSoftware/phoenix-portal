@@ -3067,6 +3067,7 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
+			seed_device_gamification_stats: { Args: never; Returns: number };
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;
