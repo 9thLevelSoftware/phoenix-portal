@@ -5,15 +5,13 @@ import {
   fakeClient,
   type Row,
   syncQueueOneActiveIndex,
+  syncQueueOneProcessingIndex,
 } from "../_shared/testing/fakeSupabase.ts";
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
-import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
 
-const SERVICE_ROLE_KEY = "test-service-role-key";
-const USER_ID = "00000000-0000-4000-8000-000000000001";
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-19T12:00:00.000Z");
 const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
@@ -241,7 +239,10 @@ function queueHarness(
 ) {
   // With migration 20260920005200's `sync_queue_one_active` in force, so a
   // duplicate browser sync is rejected here exactly as Postgres rejects it.
-  const db = options.db ?? new FakeDb(tables, [syncQueueOneActiveIndex]);
+  const db = options.db ?? new FakeDb(
+    tables,
+    [syncQueueOneActiveIndex, syncQueueOneProcessingIndex],
+  );
   const upserts: Array<{ table: string; rows: number }> = [];
   const heartbeats: string[] = [];
   const fetchUrls: string[] = [];
@@ -519,6 +520,22 @@ Deno.test("strava-sync: an activity repeated across pages does not fail its chun
   assertEquals(h.db.rows("external_activities").length, HISTORY.length + 201);
 });
 
+Deno.test("strava-sync: a rejected activities request is retryable and keeps the queue row open", async () => {
+  const tables = baseTables(T0, HISTORY);
+  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  const h = queueHarness(tables, () => {
+    throw new DOMException("timed out", "TimeoutError");
+  });
+
+  const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
+
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).code, "activities_fetch_failed");
+  assertEquals(integrationOf(h).status, "connected");
+  assertEquals(integrationOf(h).last_sync_at, T0);
+  assertEquals(h.db.rows("sync_queue")[0].status, "processing");
+});
+
 Deno.test("strava-sync: a failed chunk counts its rows, withholds the watermark and leaves the task open", async () => {
   const many: StravaActivity[] = Array.from({ length: 250 }, (_, i) => ({
     ...activity(3000 + i, 6),
@@ -588,7 +605,10 @@ Deno.test("strava-sync: a browser (JWT) run creates, leases and completes a queu
 Deno.test("strava-sync: two concurrent browser syncs create one row; the loser gets 409", async () => {
   const tables = baseTables(T0, HISTORY);
   tables.sync_queue = [];
-  const db = new FakeDb(tables, [syncQueueOneActiveIndex]);
+  const db = new FakeDb(
+    tables,
+    [syncQueueOneActiveIndex, syncQueueOneProcessingIndex],
+  );
   const first = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
     jwtUserId: USER_ID,
     db,
@@ -615,8 +635,9 @@ Deno.test("strava-sync: two concurrent browser syncs create one row; the loser g
 
 Deno.test("strava-sync: a browser sync while a queued task is live is refused with 409", async () => {
   const tables = baseTables(T0, HISTORY);
-  // process-sync-queue is running this user's incremental right now.
-  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  // process-sync-queue is running this user's initial import right now. The
+  // manual row is the other class, but provider execution is still serialized.
+  tables.sync_queue = [queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)];
   const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
     jwtUserId: USER_ID,
   });

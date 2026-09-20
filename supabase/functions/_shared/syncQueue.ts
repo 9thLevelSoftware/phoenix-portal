@@ -17,10 +17,11 @@ import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
  * "all pending rows" for the user — a second queued task (e.g. a kept
  * `initial` next to a newer incremental) must still run.
  *
- * The migration 20260920005200 unique index `sync_queue_one_active` allows one
- * active row per (user_id, provider, initial-or-not), so a second concurrent
- * browser sync loses the insert race with SQLSTATE 23505 and is answered with
- * HTTP 409 `sync_already_queued`.
+ * Migration 20260920005200 allows one active row per (user_id, provider,
+ * initial-or-not), and its `sync_queue_one_processing` index allows only one
+ * executing row per provider across both classes. A concurrent browser or
+ * queue run loses the processing-row race with SQLSTATE 23505 and is retried
+ * later (queue) or answered with HTTP 409 `sync_already_queued` (browser).
  */
 
 // deno-lint-ignore no-explicit-any
@@ -92,9 +93,9 @@ export interface CreateSyncQueueEntryResult {
  * run is the worker, and a `pending` row would be claimed by the next cron
  * pass and dispatched a second time (PR 31 review R-1).
  *
- * Returns `{ conflict: true }` when `sync_queue_one_active` rejects the
- * insert — another sync of the same kind is already queued or running for
- * this (user, provider). Any other insert failure yields no row: the sync
+ * Returns `{ conflict: true }` when either queue index rejects the insert —
+ * another sync of the same kind is queued, or any class is already running
+ * for this (user, provider). Any other insert failure yields no row: the sync
  * still runs, it just holds no lease (the pre-PR-52 behaviour).
  */
 export async function createSyncQueueEntry(

@@ -927,10 +927,16 @@ up by `jobname`, call `cron.schedule` when it is absent, and
 `cron.alter_job(schedule := …, command := …)` when the stored schedule or
 command has drifted. They keep the same `jobid`.
 
-**None of them ever changes `active`, in either direction.** A re-apply repairs
-a drifted schedule or command; it never activates a job you paused, and never
-pauses a job that is running. For `generate-insights` a re-apply also preserves
-the batch cursor in `private.insights_batch_state`.
+`process-sync-queue` and `delete-due-accounts` are created inactive so their
+compatible Edge handlers can deploy first. After creation, re-applying any of
+these migrations preserves the stored `active` flag: it repairs a drifted
+schedule or command without undoing an operator pause or activation. For
+`generate-insights` a re-apply also preserves the batch cursor in
+`private.insights_batch_state`.
+
+`20260920005210` also pauses an existing `process-sync-queue` job once when the
+owned-row provider handlers are first deployed. Its private release-gate marker
+means re-applying that migration after activation leaves the job active.
 
 `20260920000200` is different: it only schedules a job when no job of that name
 exists, and never alters an existing one.
@@ -939,7 +945,7 @@ exists, and never alters an existing one.
 
 | Job name (`cron.job.jobname`)    | Cadence                            | What it runs                                                                                              | Migration                                             | Cron secret | Created active?                        |
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- | -------------------------------------- |
-| `process-sync-queue`             | `*/5 * * * *` (every 5 min)        | Edge `process-sync-queue` via `private.invoke_edge_function('process-sync-queue', '{}')`                   | `20260920003100_scheduler_and_sync_queue_cron.sql`    | shared      | Yes                                    |
+| `process-sync-queue`             | `*/5 * * * *` (every 5 min)        | Edge `process-sync-queue` via `private.invoke_edge_function('process-sync-queue', '{}')`                   | `20260920003100_scheduler_and_sync_queue_cron.sql`; existing jobs paused once by `20260920005210_pause_sync_queue_for_owned_handlers.sql` | shared      | **No -- activate after the provider handlers deploy** |
 | `cron-job-run-details-retention` | `41 3 * * *` (daily 03:41)         | SQL: `DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'`                        | `20260920003100_scheduler_and_sync_queue_cron.sql`    | --          | Yes                                    |
 | `delete-due-accounts`            | `17 * * * *` (hourly at :17)       | Edge `delete-account` with body `{"mode":"process_due"}`                                                   | `20260920003500_due_deletion_cron.sql`                | shared      | **No -- INACTIVE by design ([§10.2](#102-activating-delete-due-accounts-irreversible))** |
 | `refresh-leaderboard-snapshots`  | `*/15 * * * *` (every 15 min)      | SQL: `SELECT public.refresh_leaderboard_snapshots()`                                                       | `20260920005600_leaderboard_snapshots.sql`            | --          | Yes                                    |
@@ -964,7 +970,7 @@ holds -- the values above are what was captured on 2026-09-18.
 
 | Job                   | Must be true before it can work                                                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `process-sync-queue`  | `verify_jwt = false` for `process-sync-queue` in `supabase/config.toml` (already the case), plus the shared secret.                                        |
+| `process-sync-queue`  | Deploy `process-sync-queue`, Strava, Fitbit, Hevy and Liftosaur handlers from this release, set the shared secret, then activate the initially paused job with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = 'process-sync-queue'), active := true);`. `verify_jwt = false` is already set for the queue handler. |
 | `delete-due-accounts` | Apply `20260920003500` **then** deploy the `delete-account` Edge Function -- the new handler writes `status='executing'` and `claimed_at`, which the old CHECK rejects. PR 35 also sets `verify_jwt = false` for `delete-account`; without it the gateway 401s pg_net. |
 | `generate-insights`   | `20260920000800_entitlement_grace_window.sql` (defines `subscription_tier_for`) must be in prod **before** `20260920006400`, which calls it. PR 64 sets `verify_jwt = false` for `generate-insights`. Migration-first and Edge-first are both safe: migration-first logs gateway 401s in `net._http_response` until the Edge lands; Edge-first means no job exists yet and the user path still works. |
 

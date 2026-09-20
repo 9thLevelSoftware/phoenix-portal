@@ -3,7 +3,15 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import { completeSyncQueueEntry } from '../_shared/syncQueue.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+} from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
@@ -221,7 +229,7 @@ async function upsertFitbitRateLimitRow(
  *
  * Called by the sync queue processor or manually via integration management UI.
  */
-Deno.serve(async (req) => {
+async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -272,11 +280,7 @@ Deno.serve(async (req) => {
 
     const sync_type = body.sync_type ?? 'incremental';
     const calledByQueueProcessor = !jwtUser;
-    // Only the queue path owns a row here. fitbit-sync has no injectable
-    // dependencies yet, so unlike strava/hevy/liftosaur a browser-initiated
-    // run does not create (and cannot be tested against) a row of its own —
-    // see the PR 52 follow-ups.
-    const ownedQueueId =
+    let ownedQueueId =
       calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
 
     const supabase = createClient(
@@ -287,6 +291,19 @@ Deno.serve(async (req) => {
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'fitbit',
+        syncType: sync_type,
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // Get user's Fitbit tokens from oauth_tokens (server-only table)
     const { data: tokenData, error: tokenFetchError } = await supabase
@@ -347,6 +364,8 @@ Deno.serve(async (req) => {
           'Authorization': `Bearer ${tokens.access_token}`,
         },
       });
+
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId);
 
       if (!activitiesResponse.ok) {
         const errorBody = await activitiesResponse.text();
@@ -446,4 +465,17 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
-});
+}
+
+export function createFitbitSyncHandler(): (req: Request) => Promise<Response> {
+  return async (req) => {
+    const owned = noOwnedQueueRow();
+    const response = await runFitbitSync(req, owned);
+    if (!response.ok) await releaseOwnedQueueRow(owned);
+    return response;
+  };
+}
+
+if (import.meta.main) {
+  Deno.serve(createFitbitSyncHandler());
+}

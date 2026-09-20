@@ -34,6 +34,11 @@
 -- the same key (both statuses are inside the predicate), and completing or
 -- failing a row drops it out of the index entirely.
 --
+-- A second partial unique index covers only `processing` rows and omits the
+-- initial/non-initial class. The queue may retain one pending row of each
+-- class, but only one worker may execute for a user/provider at a time. This
+-- serializes rotating OAuth refresh tokens across queue and browser runs.
+--
 -- Operator, read-only count (run BEFORE applying; this is the same query the
 -- migration RAISEs as a NOTICE, without the write):
 --
@@ -132,6 +137,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS sync_queue_one_active
 COMMENT ON INDEX public.sync_queue_one_active IS
   'One active (pending/processing) sync_queue row per (user_id, provider, initial-or-not). A duplicate insert raises 23505, which the provider sync functions return as 409 sync_already_queued.';
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.sync_queue q
+    WHERE q.status = 'processing'
+    GROUP BY q.user_id, q.provider
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'multiple processing sync_queue rows exist for one user/provider; pause the scheduler and let one finish before reapplying'
+      USING ERRCODE = '42P17';
+  END IF;
+END
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS sync_queue_one_processing
+  ON public.sync_queue (user_id, provider)
+  WHERE status = 'processing';
+
+COMMENT ON INDEX public.sync_queue_one_processing IS
+  'At most one executing sync per user/provider, across initial and non-initial work, so rotating OAuth refresh tokens are serialized.';
+
 -- ---------------------------------------------------------------------------
 -- 4. PR 31's client-insert guard, plus the provider allow-list it was missing
 --    (PR 31 security round 2 leftover). Unchanged otherwise; its duplicate
@@ -221,6 +248,22 @@ BEGIN
       AND i.indpred IS NOT NULL
   ) THEN
     RAISE EXCEPTION 'sync_queue_one_active is missing, not unique, or not partial'
+      USING ERRCODE = '42P17';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indexrelid
+    JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public'
+      AND t.relname = 'sync_queue'
+      AND c.relname = 'sync_queue_one_processing'
+      AND i.indisunique
+      AND i.indpred IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'sync_queue_one_processing is missing, not unique, or not partial'
       USING ERRCODE = '42P17';
   END IF;
 

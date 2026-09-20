@@ -43,6 +43,15 @@ SELECT ok(
       LIKE '%(user_id, provider, ((COALESCE(sync_type, ''incremental''::text) = ''initial''::text)))%',
     'the index key is (user_id, provider, initial-or-not), with NULL sync_type as non-initial'
 );
+SELECT has_index('public', 'sync_queue', 'sync_queue_one_processing',
+    'sync_queue has the one-processing index');
+SELECT ok(
+    (SELECT i.indisunique AND i.indpred IS NOT NULL
+     FROM pg_index i
+     JOIN pg_class c ON c.oid = i.indexrelid
+     WHERE c.relname = 'sync_queue_one_processing'),
+    'sync_queue_one_processing is a partial UNIQUE index'
+);
 
 INSERT INTO auth.users (id, email)
 SELECT ('52525252-0000-4000-8000-00000000000' || u)::uuid, 'dedupe-' || u || '@example.test'
@@ -85,6 +94,13 @@ SELECT throws_ok(
     NULL,
     'a second initial for the same pair is rejected'
 );
+SELECT throws_ok(
+    $$ UPDATE public.sync_queue SET status = 'processing'
+       WHERE id = '52520000-0000-4000-8000-0000000000a2' $$,
+    '23505',
+    NULL,
+    'initial and non-initial rows cannot execute concurrently'
+);
 SELECT lives_ok(
     $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
        VALUES ('52525252-0000-4000-8000-000000000001', 'hevy', 'manual', 'processing') $$,
@@ -96,16 +112,11 @@ SELECT lives_ok(
     'another user is independent'
 );
 
--- Claiming and reclaiming keep the same index key.
-SELECT lives_ok(
-    $$ UPDATE public.sync_queue SET status = 'processing'
-       WHERE id = '52520000-0000-4000-8000-0000000000a2' $$,
-    'claiming a pending row (pending -> processing) does not trip the index'
-);
+-- Reclaiming keeps the class index key while leaving the processing-only one.
 SELECT lives_ok(
     $$ UPDATE public.sync_queue SET status = 'pending'
-       WHERE id = '52520000-0000-4000-8000-0000000000a2' $$,
-    'reclaiming a row (processing -> pending) does not trip the index either'
+       WHERE id = '52520000-0000-4000-8000-0000000000a1' $$,
+    'reclaiming a row (processing -> pending) leaves both indexes clean'
 );
 
 -- Terminal rows leave the index.

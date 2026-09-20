@@ -57,6 +57,14 @@ export const syncQueueOneActiveIndex: FakeUniqueIndex = {
   },
 };
 
+/** One worker per user/provider, even when pending rows use different classes. */
+export const syncQueueOneProcessingIndex: FakeUniqueIndex = {
+  name: 'sync_queue_one_processing',
+  table: 'sync_queue',
+  key: (row) =>
+    row.status === 'processing' ? `${row.user_id}|${row.provider}` : null,
+};
+
 function compare(a: unknown, b: unknown): number {
   if (typeof a === 'string' && typeof b === 'string') {
     const da = Date.parse(a);

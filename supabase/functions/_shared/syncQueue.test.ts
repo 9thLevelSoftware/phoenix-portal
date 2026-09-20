@@ -8,7 +8,12 @@ import {
   releaseOwnedQueueRow,
   SYNC_RUN_FAILED,
 } from "./syncQueue.ts";
-import { FakeDb, type Row, syncQueueOneActiveIndex } from "./testing/fakeSupabase.ts";
+import {
+  FakeDb,
+  type Row,
+  syncQueueOneActiveIndex,
+  syncQueueOneProcessingIndex,
+} from "./testing/fakeSupabase.ts";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
@@ -38,9 +43,12 @@ const client = (db: FakeDb) => db as any;
 
 const statuses = (db: FakeDb) => db.rows("sync_queue").map((r) => r.status as string);
 
-/** A queue with the `sync_queue_one_active` unique index in force. */
+/** A queue with both migration 20260920005200 unique indexes in force. */
 const queueDb = (rows: Row[]) =>
-  new FakeDb({ sync_queue: rows }, [syncQueueOneActiveIndex]);
+  new FakeDb(
+    { sync_queue: rows },
+    [syncQueueOneActiveIndex, syncQueueOneProcessingIndex],
+  );
 
 Deno.test("syncQueue: a queue_id call completes only that row, even with a sibling in the same status", async () => {
   const db = new FakeDb({
@@ -172,6 +180,26 @@ Deno.test("syncQueue: a second row of the same kind conflicts and is not inserte
     assertEquals(created.queueId, null, existingStatus);
     assertEquals(db.rows("sync_queue").length, 1, existingStatus);
   }
+});
+
+Deno.test("syncQueue: a processing row of the other class serializes provider execution", async () => {
+  const db = queueDb([
+    row(ROW_A, {
+      status: "processing",
+      sync_type: "initial",
+      created_at: "2026-09-18T00:00:00.000Z",
+    }),
+  ]);
+
+  const created = await createSyncQueueEntry(client(db), {
+    userId: USER_ID,
+    provider: "strava",
+    syncType: "manual",
+    now: NOW,
+  });
+
+  assertEquals(created, { queueId: null, conflict: true });
+  assertEquals(db.rows("sync_queue").length, 1);
 });
 
 Deno.test("syncQueue: an initial, another provider or a finished row does not block a new row", async () => {

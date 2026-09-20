@@ -513,10 +513,11 @@ async function runStravaSync(
         // vocabulary. Never the response body.
         console.error(`[STRAVA_REFRESH] ${describeRefreshFailure(refreshError)}`);
 
-        // A lost rotation race looks exactly like a revoked grant: the other
-        // run has already exchanged (and thereby revoked) the token this run
-        // read. Downgrade only while the rejected token is still the stored
-        // one; otherwise the grant is alive and this run simply lost.
+        // Migration 20260920005200 serializes all processing rows for this
+        // user/provider, including browser runs. The re-read below remains a
+        // rolling-deploy defense: an older handler that did not own a row may
+        // still have exchanged the token before the index-aware release lands.
+        // Downgrade only while the rejected token is still the stored one.
         const revoked = isRevokedGrant(refreshError)
           && await storedRefreshTokenMatches(supabase, userId, refreshToken);
 
@@ -668,13 +669,28 @@ async function runStravaSync(
       const params = new URLSearchParams(baseParams);
       params.set('page', String(page));
 
-      const activitiesResponse = await deps.fetch(
-        `https://www.strava.com/api/v3/athlete/activities?${params}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
-        }
-      );
+      let activitiesResponse: Response;
+      try {
+        activitiesResponse = await deps.fetch(
+          `https://www.strava.com/api/v3/athlete/activities?${params}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+          }
+        );
+      } catch {
+        // AbortSignal timeouts, DNS failures and connection resets are
+        // transient provider failures. 502 is in process-sync-queue's retry
+        // set; a 500 would terminally fail the task.
+        console.error('Strava activities request failed before a response');
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Strava activities',
+            code: 'activities_fetch_failed',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       // Record what Strava reports about our quota on every response, success
       // or failure — a 429 is exactly when this information matters most.

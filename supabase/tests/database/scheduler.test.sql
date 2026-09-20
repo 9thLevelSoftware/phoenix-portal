@@ -43,6 +43,13 @@ SELECT ok(
 );
 SELECT has_trigger('public', 'sync_queue', 'sync_queue_guard_client_insert',
     'sync_queue has the client-insert guard trigger');
+SELECT has_table('private', 'scheduler_release_gates',
+    'the scheduler release-gate marker table exists');
+SELECT results_eq(
+    $$ SELECT jobname FROM private.scheduler_release_gates $$,
+    $$ VALUES ('process-sync-queue-owned-row-v1'::text) $$,
+    'the owned-row handler deployment gate was recorded exactly once'
+);
 
 -- R-14: the migration's own statements run the triage, drop it, and only
 -- then schedule the jobs.
@@ -96,6 +103,12 @@ SELECT ok(
     AND NOT has_schema_privilege('authenticated', 'private', 'USAGE')
     AND NOT has_schema_privilege('service_role', 'private', 'USAGE'),
     'schema private stays closed to anon, authenticated and service_role'
+);
+SELECT ok(
+    NOT has_table_privilege('anon', 'private.scheduler_release_gates', 'SELECT')
+    AND NOT has_table_privilege('authenticated', 'private.scheduler_release_gates', 'SELECT')
+    AND NOT has_table_privilege('service_role', 'private.scheduler_release_gates', 'SELECT'),
+    'scheduler release gates are owner-only'
 );
 
 SET LOCAL ROLE authenticated;
@@ -261,9 +274,6 @@ SELECT diag('database:scheduler-cron-jobs');
 -- this transaction; this fails loudly if the image cannot, so the job
 -- assertions below always execute.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
-SELECT lives_ok(
-    $$ SELECT private.schedule_sync_queue_jobs() $$,
-    'schedule_sync_queue_jobs runs with pg_cron installed'
 SELECT cron.schedule(
     'sync-tombstones-retention',
     '23 3 * * *',
@@ -285,16 +295,6 @@ SELECT set_eq(
     $$ VALUES
         ('process-sync-queue', '*/5 * * * *',
          'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
-        ('sync-tombstones-retention', '23 3 * * *',
-         'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
-        ('cron-job-run-details-retention', '41 3 * * *',
-         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
-    $$,
-    'the three scheduler jobs exist with the expected schedule and command'
-);
-SELECT is(
-    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
-    3,
         ('cron-job-run-details-retention', '41 3 * * *',
          'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     $$,
@@ -305,11 +305,16 @@ SELECT is(
     2,
     'each scheduler job exists exactly once'
 );
+SELECT is(
+    (SELECT active FROM cron.job WHERE jobname = 'process-sync-queue'),
+    false,
+    'process-sync-queue is created inactive until compatible handlers deploy'
+);
 
 CREATE TEMP TABLE scheduler_jobids AS SELECT jobname, jobid FROM pg_temp.scheduler_jobs();
 SELECT cron.alter_job(
     (SELECT jobid FROM cron.job WHERE jobname = 'process-sync-queue'),
-    schedule := '0 * * * *', active := false
+    schedule := '0 * * * *', active := true
 );
 SELECT private.schedule_sync_queue_jobs();
 SELECT set_eq(
@@ -324,8 +329,8 @@ SELECT is(
 );
 SELECT is(
     (SELECT active FROM cron.job WHERE jobname = 'process-sync-queue'),
-    false,
-    're-running the scheduler keeps a paused job paused'
+    true,
+    're-running the scheduler keeps an operator-activated job active'
 );
 
 SELECT diag('database:sync-queue-client-insert-guard');

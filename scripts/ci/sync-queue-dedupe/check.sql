@@ -74,6 +74,19 @@ BEGIN
     RAISE EXCEPTION 'sync_queue_one_active is missing, not unique, or not partial';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indexrelid
+    JOIN pg_class t ON t.oid = i.indrelid
+    WHERE t.relname = 'sync_queue'
+      AND c.relname = 'sync_queue_one_processing'
+      AND i.indisunique
+      AND i.indpred IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'sync_queue_one_processing is missing, not unique, or not partial';
+  END IF;
+
   -- The index actually refuses a duplicate (23505 -> HTTP 409 in the provider
   -- sync functions). Rolled back so the fixture is unchanged.
   BEGIN
