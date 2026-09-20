@@ -1,4 +1,4 @@
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import {
@@ -23,13 +23,48 @@ import {
   paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 
-// Service-role client for DB queries (bypasses RLS)
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
+/** Anything with `get(key)`, e.g. `Deno.env`. */
+export interface EnvReader {
+  get(key: string): string | undefined;
+}
 
-Deno.serve(async (req) => {
+export interface PaddleUpdateSubscriptionHandlerDependencies {
+  /** User-scoped client used only for `auth.getUser()`. */
+  createAuthClient(authorization: string): Pick<SupabaseClient, "auth">;
+  /** Service-role client for DB queries (bypasses RLS). */
+  createAdminClient(): SupabaseClient;
+  /** Paddle API fetch. */
+  fetch: typeof fetch;
+  env: EnvReader;
+  now(): Date;
+}
+
+function defaultPaddleUpdateSubscriptionHandlerDependencies(): PaddleUpdateSubscriptionHandlerDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authorization } } },
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+    },
+    fetch: (input, init) => fetch(input, init),
+    env: Deno.env,
+    now: () => new Date(),
+  };
+}
+
+async function paddleUpdateSubscriptionHandler(
+  req: Request,
+  deps: PaddleUpdateSubscriptionHandlerDependencies,
+): Promise<Response> {
+  const supabaseAdmin = deps.createAdminClient();
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -45,7 +80,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!paddlePriceIdsConfigured(Deno.env)) {
+    if (!paddlePriceIdsConfigured(deps.env)) {
       console.error(
         "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
       );
@@ -55,7 +90,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const duplicatePriceIds = findCrossTierDuplicatePriceIds(Deno.env);
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(deps.env);
     if (duplicatePriceIds.length > 0) {
       console.error(
         "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
@@ -67,7 +102,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const ALLOWED_PRICE_IDS = getAllAllowedPriceIds(Deno.env);
+    const ALLOWED_PRICE_IDS = getAllAllowedPriceIds(deps.env);
 
     // Authenticate the user via their JWT
     const authHeader = req.headers.get("Authorization");
@@ -77,11 +112,7 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabase = deps.createAuthClient(authHeader);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -118,7 +149,7 @@ Deno.serve(async (req) => {
       ? getConfiguredPriceIdForTierInterval(
         requestedTier,
         requestedBillingInterval,
-        Deno.env,
+        deps.env,
       )
       : null;
     const newPriceId = serverResolvedPriceId ||
@@ -166,7 +197,7 @@ Deno.serve(async (req) => {
 
     // Validate subscription state. past_due keeps access but cannot change
     // plan until the payment method is updated (see decidePlanChangeGate).
-    const gate = decidePlanChangeGate(sub);
+    const gate = decidePlanChangeGate(sub, deps.now());
     if (gate.action === "checkout_required") {
       return new Response(
         JSON.stringify(checkoutRequiredResponseBody(gate.reason)),
@@ -188,11 +219,11 @@ Deno.serve(async (req) => {
     }
 
     // Call Paddle API to update the subscription
-    const paddleEnv = Deno.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
     const baseUrl = paddleEnv === "sandbox"
       ? "https://sandbox-api.paddle.com"
       : "https://api.paddle.com";
-    const apiKey = Deno.env.get("PADDLE_API_KEY");
+    const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {
       console.error("PADDLE_API_KEY is not set");
@@ -207,7 +238,7 @@ Deno.serve(async (req) => {
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
     // current item state rather than a possibly-stale local price_id.
-    const currentSubResponse = await fetch(
+    const currentSubResponse = await deps.fetch(
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "GET",
@@ -262,7 +293,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const paddleResponse = await fetch(
+    const paddleResponse = await deps.fetch(
       `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
       {
         method: "PATCH",
@@ -320,7 +351,7 @@ Deno.serve(async (req) => {
 
     const updatedPriceId =
       resolveBasePlanPriceId(updatedSubscription, ALLOWED_PRICE_IDS) || newPriceId;
-    let updatedTier = mapPriceIdToTier(updatedPriceId, Deno.env);
+    let updatedTier = mapPriceIdToTier(updatedPriceId, deps.env);
     if (updatedPriceId && updatedTier === "FREE") {
       const existingTier = sub.tier as string | undefined;
       if (existingTier && existingTier !== "FREE" && existingTier !== "free") {
@@ -379,4 +410,14 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
-});
+}
+
+export function createPaddleUpdateSubscriptionHandler(
+  deps: PaddleUpdateSubscriptionHandlerDependencies = defaultPaddleUpdateSubscriptionHandlerDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => paddleUpdateSubscriptionHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createPaddleUpdateSubscriptionHandler());
+}

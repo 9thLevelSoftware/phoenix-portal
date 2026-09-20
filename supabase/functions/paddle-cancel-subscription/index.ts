@@ -1,15 +1,50 @@
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
 
-// Service-role client for DB queries (bypasses RLS)
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
+/** Anything with `get(key)`, e.g. `Deno.env`. */
+export interface EnvReader {
+  get(key: string): string | undefined;
+}
 
-Deno.serve(async (req) => {
+export interface PaddleCancelSubscriptionHandlerDependencies {
+  /** User-scoped client used only for `auth.getUser()`. */
+  createAuthClient(authorization: string): Pick<SupabaseClient, "auth">;
+  /** Service-role client for DB queries (bypasses RLS). */
+  createAdminClient(): SupabaseClient;
+  /** Paddle API fetch. */
+  fetch: typeof fetch;
+  env: EnvReader;
+  now(): Date;
+}
+
+function defaultPaddleCancelSubscriptionHandlerDependencies(): PaddleCancelSubscriptionHandlerDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authorization } } },
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+    },
+    fetch: (input, init) => fetch(input, init),
+    env: Deno.env,
+    now: () => new Date(),
+  };
+}
+
+async function paddleCancelSubscriptionHandler(
+  req: Request,
+  deps: PaddleCancelSubscriptionHandlerDependencies,
+): Promise<Response> {
+  const supabaseAdmin = deps.createAdminClient();
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -33,11 +68,7 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabase = deps.createAuthClient(authHeader);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -91,11 +122,11 @@ Deno.serve(async (req) => {
     }
 
     // Call Paddle API to cancel the subscription
-    const paddleEnv = Deno.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
     const baseUrl = paddleEnv === "sandbox"
       ? "https://sandbox-api.paddle.com"
       : "https://api.paddle.com";
-    const apiKey = Deno.env.get("PADDLE_API_KEY");
+    const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {
       console.error("PADDLE_API_KEY is not set");
@@ -105,7 +136,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const paddleResponse = await fetch(
+    const paddleResponse = await deps.fetch(
       `${baseUrl}/subscriptions/${sub.paddle_subscription_id}/cancel`,
       {
         method: "POST",
@@ -137,7 +168,7 @@ Deno.serve(async (req) => {
       .from("subscriptions")
       .update({
         ...cancelRequest.localPatch,
-        updated_at: new Date().toISOString(),
+        updated_at: deps.now().toISOString(),
       })
       .eq("user_id", user.id);
 
@@ -165,4 +196,14 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
-});
+}
+
+export function createPaddleCancelSubscriptionHandler(
+  deps: PaddleCancelSubscriptionHandlerDependencies = defaultPaddleCancelSubscriptionHandlerDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => paddleCancelSubscriptionHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createPaddleCancelSubscriptionHandler());
+}
