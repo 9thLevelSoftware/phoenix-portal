@@ -412,6 +412,35 @@ async function runLiftosaurSync(
 			);
 		}
 
+		// The page cap is a safety bound, not a successful end-of-history signal.
+		// Persisting these first pages and advancing last_sync_at would make every
+		// unread older record unreachable to later incremental syncs. Fail before
+		// any activity write or watermark update so the queue can retry safely.
+		if (hasMore) {
+			const pageLimitMessage =
+				`Liftosaur history still has more records after ${MAX_PAGES} pages`;
+			console.error(pageLimitMessage);
+			await supabase
+				.from("user_integrations")
+				.update({
+					status: "error",
+					error_message: "Liftosaur history exceeds the safe sync page limit",
+				})
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+			return new Response(
+				JSON.stringify({
+					error: "Liftosaur history sync is incomplete",
+					code: "history_page_limit_exceeded",
+				}),
+				{
+					status: 502,
+					headers: { ...cors, "Content-Type": "application/json" },
+				},
+			);
+		}
+
 		// Normalize and upsert records to external_activities
 
 		// Capture the sync invocation time once. Records whose Liftoscript text

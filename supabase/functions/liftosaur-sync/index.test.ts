@@ -144,6 +144,28 @@ Deno.test("liftosaur-sync: the queue lease is renewed on entry, per page and per
   assertEquals(row.started_at, new Date(NOW).toISOString());
 });
 
+Deno.test("liftosaur-sync: a capped initial history fails without persisting, completing, or advancing its watermark", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]));
+  const heartbeats = countHeartbeats(db);
+
+  // Eleven pages at 200/page. The handler may fetch only the first ten, but
+  // must not treat that truncated prefix as a completed initial import.
+  const res = await harness(db, 2001)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502);
+  assertEquals(await res.json(), {
+    error: "Liftosaur history sync is incomplete",
+    code: "history_page_limit_exceeded",
+  });
+  assertEquals(heartbeats.value, 1 + 10);
+  assertEquals(db.rows("external_activities").length, 0);
+
+  const [queue] = db.rows("sync_queue");
+  assertEquals(queue.status, "processing");
+  assertEquals(queue.completed_at, null);
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, null);
+});
+
 Deno.test("liftosaur-sync: a run without queue_id holds no lease", async () => {
   const db = new FakeDb(tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]));
   const heartbeats = countHeartbeats(db);
