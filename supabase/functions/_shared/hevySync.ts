@@ -129,11 +129,27 @@ export function createHevyPageFetcher(
         'Hevy API access denied. Verify your API key and Hevy PRO subscription.',
       );
     }
+    if (response.status === 429) {
+      throw new HevyRateLimitError();
+    }
     if (!response.ok) {
       throw new Error(`Hevy API returned ${response.status}`);
     }
-    return await response.json();
+    try {
+      return await response.json();
+    } catch {
+      // Never let provider body text (e.g. an HTML error page) reach the caller.
+      throw new Error('Hevy API returned an unreadable response');
+    }
   };
+}
+
+/** Raised for a Hevy 429 so paged callers can stop and resume later. */
+export class HevyRateLimitError extends Error {
+  constructor() {
+    super('Hevy API rate limit reached');
+    this.name = 'HevyRateLimitError';
+  }
 }
 
 /**
@@ -169,18 +185,32 @@ export function foldWorkoutEvents(events: readonly HevyWorkoutEvent[]): {
 export async function fetchHevyBackfill(
   fetchPage: HevyPageFetcher,
   maxPages: number = HEVY_MAX_PAGES,
-): Promise<HevyFetchResult> {
+  options: { startPage?: number; stopOnRateLimit?: boolean } = {},
+): Promise<HevyFetchResult & { nextPage: number; rateLimited: boolean }> {
   const workouts: HevyWorkout[] = [];
-  let page = 1;
-  let pageCount = 1;
+  const startPage = options.startPage ?? 1;
+  let page = startPage;
+  let pageCount = startPage;
+  let rateLimited = false;
 
-  while (page <= pageCount && page <= maxPages) {
+  while (page <= pageCount && page < startPage + maxPages) {
     const params = new URLSearchParams({
       page: String(page),
       pageSize: String(HEVY_PAGE_SIZE),
     });
 
-    const data = (await fetchPage('/workouts', params)) as HevyPaginatedWorkouts;
+    let data: HevyPaginatedWorkouts;
+    try {
+      data = (await fetchPage('/workouts', params)) as HevyPaginatedWorkouts;
+    } catch (err) {
+      // A paged caller (mobile) can stop here and resume from `page` later
+      // instead of discarding what it already read.
+      if (options.stopOnRateLimit && err instanceof HevyRateLimitError) {
+        rateLimited = true;
+        break;
+      }
+      throw err;
+    }
     workouts.push(...(data?.workouts ?? []));
     pageCount = data?.page_count ?? 1;
     page++;
@@ -189,8 +219,11 @@ export async function fetchHevyBackfill(
   return {
     workouts,
     deletedIds: [],
-    truncated: page <= pageCount,
+    truncated: rateLimited || page <= pageCount,
     latestEventAt: null,
+    /** First page not yet read; the resume point for a truncated fetch. */
+    nextPage: page,
+    rateLimited,
   };
 }
 
