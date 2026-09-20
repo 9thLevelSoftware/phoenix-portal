@@ -417,6 +417,7 @@ SELECT pg_temp.assert_exception(
 -- still works for an entitled caller. Importing is FLAME since
 -- 20260920000900 (tier_matrix.test.sql covers the EMBER denial), so A is
 -- FLAME for these two calls and back to EMBER afterwards.
+-- still works for an entitled FLAME caller.
 RESET ROLE;
 UPDATE public.subscriptions
 SET tier = 'FLAME'
@@ -441,6 +442,7 @@ SELECT lives_ok(
     'FLAME user can still import_shared_cycle'
 );
 
+-- A tier helper evaluated inside an RLS policy as authenticated.
 RESET ROLE;
 UPDATE public.subscriptions
 SET tier = 'EMBER'
