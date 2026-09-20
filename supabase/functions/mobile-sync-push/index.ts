@@ -849,9 +849,62 @@ async function readBoundedRequestBody(
   return { kind: 'ok', bytes };
 }
 
+const CATALOG_LOOKUP_COLUMNS = 'id, name, display_name, aliases, user_id, is_custom, archived';
+const PUBLIC_CATALOG_TTL_MS = 10 * 60 * 1000;
+
+/** Isolate-memory cache of the public (is_custom = false) exercise catalog. */
+interface PublicCatalogCache {
+  rows: CatalogLookupRow[] | null;
+  fetchedAt: number;
+}
+
+async function fetchCatalogLookupPages(
+  fetchPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<CatalogLookupRow[]> {
+  const pageSize = 1000;
+  const rows: CatalogLookupRow[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await fetchPage(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(`exercise_catalog lookup failed: ${error.message}`);
+    }
+    const batch = catalogLookupFromUnknown(data);
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getPublicCatalogRows(
+  supabase: SupabaseClient,
+  cache: PublicCatalogCache,
+  nowMs: number,
+): Promise<CatalogLookupRow[]> {
+  const age = nowMs - cache.fetchedAt;
+  if (cache.rows !== null && age >= 0 && age < PUBLIC_CATALOG_TTL_MS) {
+    return cache.rows;
+  }
+  // Only a complete, successful fetch is cached; errors propagate uncached.
+  const rows = await fetchCatalogLookupPages((from, to) =>
+    supabase
+      .from('exercise_catalog')
+      .select(CATALOG_LOOKUP_COLUMNS)
+      .eq('is_custom', false)
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
+  cache.rows = rows;
+  cache.fetchedAt = nowMs;
+  return rows;
+}
+
 async function mobileSyncPushHandler(
   req: Request,
   dependencies: MobileSyncPushHandlerDependencies,
+  publicCatalogCache: PublicCatalogCache,
 ): Promise<Response> {
   const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
   const cors = getCorsHeaders(req);
@@ -1114,7 +1167,6 @@ async function mobileSyncPushHandler(
       r.exercises.map((e) => e.id),
     );
     const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
-    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
     const allPersonalRecordIds = (payload.personalRecords ?? [])
       .map((pr) => pr.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
@@ -1252,31 +1304,22 @@ async function mobileSyncPushHandler(
       }
     }
 
-    async function fetchAccessibleCatalogRows(
-      client: typeof supabase,
-      ownerId: string,
-    ): Promise<CatalogLookupRow[]> {
-      const pageSize = 1000;
-      const rows: CatalogLookupRow[] = [];
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await client
-          .from('exercise_catalog')
-          .select('id, name, display_name, aliases, user_id, is_custom, archived')
-          .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
-          .order('id', { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (error) {
-          throw new Error(`exercise_catalog lookup failed: ${error.message}`);
-        }
-        const batch = catalogLookupFromUnknown(data);
-        rows.push(...batch);
-        if (batch.length < pageSize) break;
-      }
-      return rows;
-    }
-
+    // Public library rows are cached per isolate (PUBLIC_CATALOG_TTL_MS); the
+    // caller's custom rows are read on every push, after the upsert above.
+    // Public rows precede custom rows, so a public name wins a name collision.
     const catalogIndexes = buildCatalogIndexes(
-      await fetchAccessibleCatalogRows(supabase, userId),
+      [
+        ...(await getPublicCatalogRows(supabase, publicCatalogCache, dependencies.now())),
+        ...(await fetchCatalogLookupPages((from, to) =>
+          supabase
+            .from('exercise_catalog')
+            .select(CATALOG_LOOKUP_COLUMNS)
+            .eq('is_custom', true)
+            .eq('user_id', userId)
+            .order('id', { ascending: true })
+            .range(from, to)
+        )),
+      ],
       userId,
     );
     const catalogResolution = resolveCatalogExerciseIds(catalogIndexes, [
@@ -1671,16 +1714,9 @@ async function mobileSyncPushHandler(
     );
     if (reBlocked) return reBlocked;
 
-    const cdBlocked = await assertChildRowsOwnedViaParent(
-      supabase,
-      'cycle_days',
-      'cycle_id',
-      'training_cycles',
-      allCycleDayIds,
-      userId,
-      cors,
-    );
-    if (cdBlocked) return cdBlocked;
+    // cycle_days ids are not probed: the day upsert never writes `id` (it
+    // conflicts on (cycle_id, day_number)), and every day's cycleId must equal
+    // its payload parent cycle, whose id is covered by directOwnerChecks.
 
     // Telemetry, phase stats and cycle days may reference parent rows from
     // previous pushes, not this payload. Validate those cross-payload parent
@@ -1968,17 +2004,7 @@ async function mobileSyncPushHandler(
         client_updated_at: s.updatedAt ?? pushReceivedAt,
       }));
 
-      // Cross-user takeover defense (from main beta audit hardening): always
-      // verify every primary key is either absent or owned by the caller
-      // before the service-role upsert touches it.
-      const sessionOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'workout_sessions',
-        sessionRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (sessionOwnershipResp) return sessionOwnershipResp;
+      // Ownership of every session id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
         // Phase 3.2: route through the LWW RPC so the server rejects stale
@@ -2070,19 +2096,8 @@ async function mobileSyncPushHandler(
       // case-sensitive JS Set check while PostgreSQL treats them as equal.
       const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
 
-      // Ownership pre-check: reject any incoming id already owned by a different
-      // user before the atomic replace deletes/re-inserts. The actual write
-      // happens in the replace_session_children RPC below.
-      if (dedupedExerciseRows.length > 0) {
-        const exerciseOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'exercises',
-          dedupedExerciseRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (exerciseOwnershipResp) return exerciseOwnershipResp;
-      }
+      // Ownership of these ids (a subset of allExerciseIds) was verified once
+      // in directOwnerChecks, before the replace_session_children RPC below.
 
       // --- 4c. Build set rows ---
       // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
@@ -2113,16 +2128,7 @@ async function mobileSyncPushHandler(
 
       const dedupedSetRows = deduplicateByKey(setRows, (r) => r.id);
 
-      if (dedupedSetRows.length > 0) {
-        const setOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'sets',
-          dedupedSetRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (setOwnershipResp) return setOwnershipResp;
-      }
+      // Ownership (subset of allSetIds) was verified once in directOwnerChecks.
 
       // --- 4d. Build rep_summary rows ---
       const repRows = payload.sessions
@@ -2154,16 +2160,8 @@ async function mobileSyncPushHandler(
 
       const dedupedRepRows = deduplicateByKey(repRows, (r) => r.id);
 
-      if (dedupedRepRows.length > 0) {
-        const repOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'rep_summaries',
-          dedupedRepRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (repOwnershipResp) return repOwnershipResp;
-      }
+      // Ownership (subset of allRepSummaryIds) was verified once in
+      // directOwnerChecks.
 
       // --- 4e. Build rep_telemetry rows (GAP 1: force curves) ---
       // NOTE: ownership for rep_telemetry.id is already verified in the
@@ -2608,14 +2606,7 @@ async function mobileSyncPushHandler(
         client_updated_at: r.updatedAt ?? pushReceivedAt,
       }));
 
-      const routineOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'routines',
-        routineRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (routineOwnershipResp) return routineOwnershipResp;
+      // Ownership of every routine id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
       if (syncLwwEnabled) {
@@ -2765,6 +2756,18 @@ async function mobileSyncPushHandler(
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
           : [];
 
+        // Keep IDs in the RPC POST body. A PostgREST `.not('id', 'in', ...)`
+        // query puts every UUID in the URL and deterministically fails for
+        // large routines. An empty array intentionally deletes every child.
+        const { error: orphanErr } = await supabase.rpc(
+          'cleanup_routine_exercise_orphans',
+          {
+            p_user_id: userId,
+            p_routine_id: routineId,
+            p_keep_ids: idsForRoutine,
+          },
+        );
+        if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         if (idsForRoutine.length > 0) {
           // Delete exercises in this routine that are NOT in the payload
           const { error: orphanErr } = await supabase
@@ -2912,6 +2915,7 @@ async function mobileSyncPushHandler(
         updated_at: c.updatedAt ?? null,
       }));
 
+      // Ownership of every cycle id was verified once in directOwnerChecks.
       const cycleOwnershipResp = await assertRowsOwnedByUser(
         supabase,
         'training_cycles',
@@ -3345,12 +3349,16 @@ async function mobileSyncPushHandler(
       if (assessRows.length > 0) {
         const { data: insertedAssess, error: aErr } = await supabase
           .from('vbt_assessments')
+          .insert(newAssess.map(({ clientId: _clientId, ...row }) => row));
+        if (aErr) {
+          console.warn('vbt_assessments insert warning:', aErr.message);
+          failed.assessments.push(...newAssess.map((r) => r.clientId));
+        } else assessmentsInserted = newAssess.length;
           .upsert(
             assessRows.map(({ clientId: _clientId, ...row }) => row),
             { onConflict: 'user_id,exercise_id,created_at', ignoreDuplicates: true },
           )
           .select('id');
-        if (aErr) {
           console.warn('vbt_assessments upsert warning:', aErr.message);
           failed.assessments.push(...assessRows.map((r) => r.clientId));
         } else assessmentsInserted = insertedAssess?.length ?? 0;
@@ -3723,7 +3731,9 @@ export async function broadcastSyncComplete(
 export function createMobileSyncPushHandler(
   dependencies: MobileSyncPushHandlerDependencies = defaultMobileSyncPushDependencies(),
 ): (req: Request) => Promise<Response> {
-  return (req) => mobileSyncPushHandler(req, dependencies);
+  // One handler per isolate in production, so this is isolate memory.
+  const publicCatalogCache: PublicCatalogCache = { rows: null, fetchedAt: 0 };
+  return (req) => mobileSyncPushHandler(req, dependencies, publicCatalogCache);
 }
 
 if (import.meta.main) {
