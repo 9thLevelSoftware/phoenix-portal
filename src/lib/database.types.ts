@@ -1156,8 +1156,11 @@ export type Database = {
 					avatar_url: string | null;
 					challenge_updates: boolean;
 					created_at: string | null;
+					digest_frequency: string | null;
+					digest_last_sent_at: string | null;
 					display_name: string | null;
 					email_digests: boolean;
+					feature_flags: Json | null;
 					id: string;
 					leaderboard_participation: boolean;
 					profile_visible: boolean;
@@ -1172,8 +1175,11 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
+					digest_frequency?: string | null;
+					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
+					feature_flags?: Json | null;
 					id: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -1188,8 +1194,11 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
+					digest_frequency?: string | null;
+					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
+					feature_flags?: Json | null;
 					id?: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -1354,7 +1363,7 @@ export type Database = {
 					muscle_group: string;
 					name: string;
 					order_index: number;
-					per_set_echo_levels: string | null;
+					per_set_echo_levels: Json | null;
 					per_set_reps: Json | null;
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
@@ -1387,7 +1396,7 @@ export type Database = {
 					muscle_group?: string;
 					name: string;
 					order_index?: number;
-					per_set_echo_levels?: string | null;
+					per_set_echo_levels?: Json | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1420,7 +1429,7 @@ export type Database = {
 					muscle_group?: string;
 					name?: string;
 					order_index?: number;
-					per_set_echo_levels?: string | null;
+					per_set_echo_levels?: Json | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1457,7 +1466,7 @@ export type Database = {
 			};
 			routines: {
 				Row: {
-					created_at: string | null;
+					created_at: string;
 					description: string;
 					estimated_duration: number;
 					exercise_count: number;
@@ -1468,11 +1477,11 @@ export type Database = {
 					name: string;
 					tags: string[] | null;
 					times_completed: number;
-					updated_at: string | null;
+					updated_at: string;
 					user_id: string;
 				};
 				Insert: {
-					created_at?: string | null;
+					created_at?: string;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1483,11 +1492,11 @@ export type Database = {
 					name: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string | null;
+					updated_at?: string;
 					user_id: string;
 				};
 				Update: {
-					created_at?: string | null;
+					created_at?: string;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1498,7 +1507,7 @@ export type Database = {
 					name?: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string | null;
+					updated_at?: string;
 					user_id?: string;
 				};
 				Relationships: [
@@ -2086,7 +2095,7 @@ export type Database = {
 					started_at: string | null;
 					status: string;
 					template_id: string | null;
-					updated_at: string | null;
+					updated_at: string;
 					user_id: string;
 					workout_days: number;
 				};
@@ -2104,7 +2113,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string | null;
+					updated_at?: string;
 					user_id: string;
 					workout_days?: number;
 				};
@@ -2122,7 +2131,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string | null;
+					updated_at?: string;
 					user_id?: string;
 					workout_days?: number;
 				};
@@ -2166,6 +2175,7 @@ export type Database = {
 					exercise_name: string | null;
 					goal_type: string;
 					id: string;
+					last_snapshot_at: string | null;
 					period: string;
 					predicted_completion_date: string | null;
 					status: string;
@@ -2182,6 +2192,7 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type: string;
 					id?: string;
+					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
@@ -2198,6 +2209,7 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type?: string;
 					id?: string;
+					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
