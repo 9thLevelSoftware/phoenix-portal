@@ -3,6 +3,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
  * Loose Supabase client type for helper signatures. Annotating helpers with the
@@ -389,6 +390,9 @@ Deno.serve(async (req) => {
     // Refresh token if needed
     const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted);
 
+    // Captured before fetching: the next incremental window starts here.
+    const syncStartedAt = new Date().toISOString();
+
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
     const afterDate = sync_type === 'initial' || !integration?.last_sync_at
@@ -472,11 +476,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update last_sync_at
+    // Update last_sync_at. An `initial` against an existing watermark fetched
+    // the last 90 days, not necessarily everything since last_sync_at, so it
+    // leaves the watermark alone (no window may be skipped; see
+    // _shared/syncWatermark.ts).
+    const watermark = nextWatermark({
+      syncType: sync_type,
+      previous: (integration?.last_sync_at as string | null) ?? null,
+      contiguousUpTo: syncStartedAt,
+    });
     await supabase
       .from('user_integrations')
       .update({
-        last_sync_at: new Date().toISOString(),
+        ...(watermark ? { last_sync_at: watermark } : {}),
         status: 'connected',
         error_message: null,
       })

@@ -16,14 +16,18 @@ import {
  *
  * This spec covers (A) request and the (C) confirm-to-delete flow, which
  * is the destructive path the audit calls out as safety-critical. We use
- * Playwright route interception to mock the deletion_requests table and
- * the delete-account Edge Function so we don't actually delete anything.
+ * Playwright route interception to mock the deletion_requests table, the
+ * request_account_deletion RPC and the delete-account Edge Function so we
+ * don't actually delete anything.
  *
  * Protections asserted:
  *   - "Delete My Account" button opens a confirmation dialog (not a
  *     one-click purge).
  *   - Cancelling the dialog leaves state unchanged.
- *   - Confirming triggers the deletion-requests insert.
+ *   - Confirming calls the request_account_deletion RPC (never a direct
+ *     deletion_requests insert).
+ *   - A claimed ("executing") request shows a read-only in-progress card
+ *     with no delete or cancel button.
  *   - Grace-expired path: "Delete Now" requires a SECOND confirmation.
  *   - After successful delete-account, the app signs out and redirects
  *     to "/".
@@ -31,18 +35,46 @@ import {
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 
+/**
+ * How long to let the page settle before asserting that NO direct
+ * deletion_requests insert was sent. See the use site for why this is a fixed
+ * window rather than `waitForLoadState("networkidle")`.
+ */
+const INSERT_SETTLE_MS = 1000;
+
 type DeletionRow = {
 	id: string;
 	user_id: string;
 	requested_at: string;
 	scheduled_for: string;
-	status: "pending" | "cancelled" | "executed";
+	status: "pending" | "executing" | "cancelled" | "executed";
 } | null;
+
+/**
+ * Evaluate a PostgREST `status=` filter against a row's status, so the mock
+ * answers the query the client really sent (`eq.pending` vs
+ * `in.(pending,executing)`) instead of hard-coding one shape.
+ */
+function matchesStatusFilter(status: string, filter: string | null): boolean {
+	if (!filter) return true;
+	if (filter.startsWith("eq.")) return status === filter.slice(3);
+	if (filter.startsWith("in.(") && filter.endsWith(")")) {
+		return filter
+			.slice(4, -1)
+			.split(",")
+			.map((value) => value.trim().replace(/^"|"$/g, ""))
+			.includes(status);
+	}
+	throw new Error(`Unsupported status filter in deletion mock: ${filter}`);
+}
 
 interface DeletionMockState {
 	deletionRequest: DeletionRow;
 	deleteAccountCalls: number;
 	signOutCalls: number;
+	/** POSTs to /rest/v1/rpc/request_account_deletion. */
+	rpcCalls: number;
+	/** Direct POSTs to /rest/v1/deletion_requests (must stay 0). */
 	insertCalls: number;
 }
 
@@ -62,6 +94,7 @@ async function installDeletionMock(
 		deletionRequest: initial,
 		deleteAccountCalls: 0,
 		signOutCalls: 0,
+		rpcCalls: 0,
 		insertCalls: 0,
 	};
 
@@ -91,34 +124,58 @@ async function installDeletionMock(
 			return;
 		}
 
+		if (
+			pathname === "/rest/v1/rpc/request_account_deletion" &&
+			method === "POST"
+		) {
+			state.rpcCalls++;
+			const now = new Date();
+			const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+			state.deletionRequest = {
+				id: "deletion-1",
+				user_id: USER_ID,
+				requested_at: now.toISOString(),
+				scheduled_for: thirtyDays.toISOString(),
+				status: "pending",
+			};
+			// Non-SETOF composite return: PostgREST sends a single object.
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(state.deletionRequest),
+			});
+			return;
+		}
+
 		if (pathname === "/rest/v1/deletion_requests") {
 			if (method === "GET") {
+				// Apply the request's own status filter rather than assuming one,
+				// so the spec sees what the client actually asked PostgREST for.
+				const row =
+					state.deletionRequest &&
+					matchesStatusFilter(
+						state.deletionRequest.status,
+						url.searchParams.get("status"),
+					)
+						? state.deletionRequest
+						: null;
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify(
-						state.deletionRequest && state.deletionRequest.status === "pending"
-							? state.deletionRequest
-							: null,
-					),
+					body: JSON.stringify(row),
 				});
 				return;
 			}
 			if (method === "POST") {
+				// authenticated has no INSERT grant (20260920003300).
 				state.insertCalls++;
-				const now = new Date();
-				const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-				state.deletionRequest = {
-					id: "deletion-1",
-					user_id: USER_ID,
-					requested_at: now.toISOString(),
-					scheduled_for: thirtyDays.toISOString(),
-					status: "pending",
-				};
 				await route.fulfill({
-					status: 201,
+					status: 403,
 					contentType: "application/json",
-					body: JSON.stringify(state.deletionRequest),
+					body: JSON.stringify({
+						code: "42501",
+						message: "permission denied for table deletion_requests",
+					}),
 				});
 				return;
 			}
@@ -177,7 +234,11 @@ test.describe("Account deletion flow", () => {
 		await expect(alert).toBeVisible();
 		await expect(alert.getByText(/Are you sure\?/i)).toBeVisible();
 
-		// No insert yet — just confirmed the dialog exists
+		// The dialog's wording is PR 35's (KD-11); this spec asserts only the
+		// request contract, so the two suites cannot pin conflicting copy.
+
+		// No request yet — just confirmed the dialog exists
+		expect(state.rpcCalls).toBe(0);
 		expect(state.insertCalls).toBe(0);
 	});
 
@@ -195,11 +256,12 @@ test.describe("Account deletion flow", () => {
 		await alert.getByRole("button", { name: /^Cancel$/ }).click();
 
 		await expect(alert).toBeHidden();
+		expect(state.rpcCalls).toBe(0);
 		expect(state.insertCalls).toBe(0);
 		expect(state.deleteAccountCalls).toBe(0);
 	});
 
-	test("State A: confirming schedules deletion via deletion_requests insert", async ({
+	test("State A: confirming schedules deletion via request_account_deletion", async ({
 		page,
 	}) => {
 		const state = await installDeletionMock(page, null);
@@ -214,9 +276,59 @@ test.describe("Account deletion flow", () => {
 			.getByRole("button", { name: /Yes, Delete My Account/i })
 			.click();
 
-		// Insert was sent; row is now pending
-		await expect.poll(() => state.insertCalls).toBeGreaterThanOrEqual(1);
+		// The RPC was called; row is now pending and the UI shows State B
+		await expect.poll(() => state.rpcCalls).toBeGreaterThanOrEqual(1);
+		// Target the State B card heading specifically: the success toast text
+		// ("Account deletion scheduled…") also matches this phrase, and a bare
+		// getByText is a strict-mode violation whenever both are mounted.
+		await expect(
+			page.getByRole("heading", { name: /Deletion Scheduled/i }),
+		).toBeVisible();
+		// Bounded settle before asserting a negative. Deliberately NOT
+		// `waitForLoadState("networkidle")`: that is a 500ms-quiet heuristic
+		// that returns immediately when nothing happens to be in flight, so it
+		// is no barrier at all for a request issued at this moment (measured:
+		// it returned in <=1ms with a probe request paused inside its route
+		// handler). A fixed window is crude but it is a real barrier — the
+		// route handler counts an insert synchronously on interception, so
+		// anything the success path dispatches has landed by now.
+		await page.waitForTimeout(INSERT_SETTLE_MS);
+		expect(state.insertCalls).toBe(0); // No direct table insert
 		expect(state.deleteAccountCalls).toBe(0); // No immediate purge
+	});
+
+	test("executing request shows a read-only in-progress card", async ({
+		page,
+	}) => {
+		// process_due (PR 35) claimed the row: the purge is running, the row is
+		// past its scheduled_for, and neither cancelling nor re-requesting can
+		// work any more.
+		const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+		const state = await installDeletionMock(page, {
+			id: "deletion-1",
+			user_id: USER_ID,
+			requested_at: past,
+			scheduled_for: past,
+			status: "executing",
+		});
+		await openDangerZone(page);
+
+		await expect(page.getByText(/Deletion In Progress/i)).toBeVisible({
+			timeout: 10000,
+		});
+		// Never State A ("your account is safe") and never State C's buttons.
+		await expect(
+			page.getByRole("button", { name: /Delete My Account/i }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: /Delete Now/i }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: /Cancel Deletion/i }),
+		).toHaveCount(0);
+		expect(state.rpcCalls).toBe(0);
+		expect(state.insertCalls).toBe(0);
+		expect(state.deleteAccountCalls).toBe(0);
 	});
 
 	test("State C: grace-expired path requires a second confirmation", async ({

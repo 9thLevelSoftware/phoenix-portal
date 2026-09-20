@@ -3,6 +3,11 @@ import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { dailyRateLimitKey } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  type EnvReader,
+  hasValidCronSecret,
+  timingSafeEqualString,
+} from '../_shared/cronSecret.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -12,8 +17,16 @@ type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Scheduled sync queue processor.
- * Called by Supabase cron or external scheduler every 5 minutes.
+ * Called by pg_cron (job `process-sync-queue`, every 5 minutes, through
+ * private.invoke_edge_function) with the x-cron-secret header.
  * Processes pending sync tasks with rate limit checking and exponential backoff.
+ *
+ * Per (user_id, provider) the processor runs at most one task at a time:
+ * a pending row is not claimed while another row for the same pair is
+ * `processing` (in this or an overlapping pass, within the lease), nor after
+ * an earlier row for the pair failed retryably in this pass. Rows are taken
+ * oldest-first, so a kept `initial` runs before a newer incremental/manual
+ * row, and the newer row only runs in the same pass if the initial completed.
  */
 
 const MAX_RETRIES = 10;
@@ -21,7 +34,14 @@ const MAX_RETRIES = 10;
 // A task that has sat in `processing` longer than this lease is assumed to have
 // crashed mid-run (the worker died before marking it completed/failed) and is
 // reclaimed back to `pending` so it can be retried.
-const PROCESSING_LEASE_MS = 5 * 60 * 1000;
+//
+// It must comfortably exceed the longest a live task can run: a pass runs up
+// to the Edge wall-clock limit (400 s on paid plans) and the cron fires every
+// 5 minutes, so passes can overlap. A lease at or below that would let the
+// next pass reclaim and re-dispatch a row whose sync is still running. The
+// cost of a long lease is that a genuinely crashed row waits this long before
+// it is retried.
+export const PROCESSING_LEASE_MS = 30 * 60 * 1000;
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
@@ -83,52 +103,65 @@ const DAILY_RATE_LIMITS: Record<string, { requests: number; windowMs: number }> 
   strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 }, // reserve 20% of 1,000
 };
 
-function timingSafeEqualString(a: string, b: string): boolean {
-  const ea = new TextEncoder().encode(a);
-  const eb = new TextEncoder().encode(b);
-  if (ea.length !== eb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
-  return diff === 0;
+// CRON_SECRET (Operator Action 7) is read first by the shared helper; these
+// older per-function names stay accepted as fallbacks.
+const LEGACY_CRON_SECRET_NAMES = ['PROCESS_SYNC_QUEUE_SECRET', 'CRON_SYNC_QUEUE_SECRET'];
+
+export interface ProcessSyncQueueDependencies {
+  /** Environment lookup (Deno.env.get in production). */
+  env: EnvReader;
+  /** Service-role client factory. */
+  createAdminClient: (url: string, serviceRoleKey: string) => DbClient;
+  /** Used to call the provider `${provider}-sync` functions. */
+  fetch: typeof fetch;
 }
 
-function isServiceRoleRequest(req: Request): boolean {
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+function defaultProcessSyncQueueDependencies(): ProcessSyncQueueDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createAdminClient: (url, key) => createClient(url, key),
+    fetch: (input, init) => fetch(input, init),
+  };
+}
+
+function isServiceRoleRequest(req: Request, env: EnvReader): boolean {
+  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
   if (!serviceRoleKey) return false;
   const authHeader = req.headers.get('Authorization') ?? '';
   return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
 }
 
-function hasValidCronSecret(req: Request): boolean {
-  const readSecret = (key: string): string | undefined => {
-    const value = Deno.env.get(key)?.trim();
-    return value ? value : undefined;
-  };
-  const expectedSecret =
-    readSecret('PROCESS_SYNC_QUEUE_SECRET') ??
-    readSecret('CRON_SYNC_QUEUE_SECRET');
-  if (!expectedSecret) return false;
-  const provided = req.headers.get('x-cron-secret') ?? '';
-  return timingSafeEqualString(expectedSecret, provided);
+export function createProcessSyncQueueHandler(
+  dependencies: ProcessSyncQueueDependencies = defaultProcessSyncQueueDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => processSyncQueue(req, dependencies);
 }
 
-Deno.serve(async (req) => {
+if (import.meta.main) {
+  Deno.serve(createProcessSyncQueueHandler());
+}
+
+async function processSyncQueue(
+  req: Request,
+  deps: ProcessSyncQueueDependencies,
+): Promise<Response> {
+  const { env } = deps;
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
   }
 
-  if (!isServiceRoleRequest(req) && !hasValidCronSecret(req)) {
+  if (!isServiceRoleRequest(req, env) && !hasValidCronSecret(req, env, LEGACY_CRON_SECRET_NAMES)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = deps.createAdminClient(
+    env('SUPABASE_URL')!,
+    env('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
   const results = { processed: 0, failed: 0, skipped: 0 };
@@ -240,6 +273,19 @@ Deno.serve(async (req) => {
 
     let claimedThisProvider = 0;
 
+    // Serialize per (user_id, provider). Users with a row still `processing`
+    // for this provider (a live task from this or an overlapping pass; stale
+    // ones were reclaimed above) are skipped, as are users whose earlier row
+    // failed retryably in this pass.
+    const { data: processingRows } = await supabase
+      .from('sync_queue')
+      .select('user_id')
+      .eq('provider', provider)
+      .eq('status', 'processing');
+    const busyUsers = new Set<string>(
+      (processingRows ?? []).map((r: { user_id: string }) => r.user_id),
+    );
+
     for (const task of tasks ?? []) {
       // Honour the per-provider dispatch budget regardless of how many
       // candidates were read above.
@@ -257,6 +303,11 @@ Deno.serve(async (req) => {
           .eq('id', task.id);
         console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
         results.failed++;
+        continue;
+      }
+
+      if (busyUsers.has(task.user_id)) {
+        results.skipped++;
         continue;
       }
 
@@ -291,6 +342,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!claimed) {
+        busyUsers.add(task.user_id);
         // Another concurrent invocation already claimed this task — skip it.
         continue;
       }
@@ -316,6 +368,7 @@ Deno.serve(async (req) => {
         // Call provider-specific sync function with exponential backoff on transient errors
         await backOff(
           () => callSyncFunction(
+            deps,
             task.provider,
             task.user_id,
             task.sync_type ?? 'incremental',
@@ -362,6 +415,8 @@ Deno.serve(async (req) => {
             console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
           } else {
             nextStatus = 'pending';
+            // Keep this user's newer rows for the pair until the retry runs.
+            busyUsers.add(task.user_id);
           }
         } else {
           nextStatus = 'failed';
@@ -385,12 +440,13 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify(results), {
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
-});
+}
 
 /**
  * Call the provider-specific sync Edge Function.
  */
 async function callSyncFunction(
+  deps: ProcessSyncQueueDependencies,
   provider: string,
   userId: string,
   syncType: string,
@@ -405,12 +461,12 @@ async function callSyncFunction(
   }
 
   const functionName = `${provider}-sync`;
-  const response = await fetch(
-    `${Deno.env.get('SUPABASE_URL')}/functions/v1/${functionName}`,
+  const response = await deps.fetch(
+    `${deps.env('SUPABASE_URL')}/functions/v1/${functionName}`,
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Authorization': `Bearer ${deps.env('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ user_id: userId, sync_type: syncType, queue_id: queueId }),
