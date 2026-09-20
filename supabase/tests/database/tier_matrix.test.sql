@@ -1,6 +1,9 @@
--- Server-side FLAME tier matrix (20260920000900_flame_write_policies.sql).
+-- Server-side tier matrix: FLAME writes
+-- (20260920000900_flame_write_policies.sql, sections 1-5) and INFERNO reads
+-- (20260920003800_inferno_read_policies.sql, section 6).
 --
--- E is EMBER, F is FLAME, X is a FREE creator that E and F follow / block.
+-- E is EMBER, F is FLAME, I is INFERNO (section 6 only), D is a past_due
+-- FLAME subscriber, X is a FREE creator that E and F follow / block.
 -- For every FLAME-gated table:
 --   * the INSERT / UPDATE policies use the (select ...) initPlan form for
 --     both auth.uid() and user_has_min_tier('FLAME') (checked in pg_policies);
