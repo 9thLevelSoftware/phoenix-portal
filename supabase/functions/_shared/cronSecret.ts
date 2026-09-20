@@ -32,5 +32,5 @@ export function hasValidCronSecret(
   }
   if (!expected) return false;
   const provided = req.headers.get('x-cron-secret') ?? '';
-  return timingSafeEqualString(expected, provided);
+  return timingSafeEqualString({ expected, provided });
 }

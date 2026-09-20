@@ -61,7 +61,8 @@ function fakeLiftosaur(count: number) {
   };
 }
 
-function harness(db: FakeDb, recordCount: number) {
+function harness(db: FakeDb, recordCount: number, jwtUserId: string | null = null) {
+  const now = () => new Date(NOW);
   const handler = createLiftosaurSyncHandler({
     env: (key) =>
       ({
@@ -69,10 +70,12 @@ function harness(db: FakeDb, recordCount: number) {
         SUPABASE_ANON_KEY: "anon",
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
       } as Record<string, string>)[key],
+    // The rate-limit RPC double runs on the handler's clock, not the wall
+    // clock, so window arithmetic is deterministic.
     // deno-lint-ignore no-explicit-any
-    createClient: () => fakeClient(db) as any,
+    createClient: () => fakeClient(db, jwtUserId, now) as any,
     fetch: fakeLiftosaur(recordCount) as typeof fetch,
-    now: () => new Date(NOW),
+    now,
   });
   return (body: Record<string, unknown>) =>
     handler(
@@ -80,7 +83,7 @@ function harness(db: FakeDb, recordCount: number) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          Authorization: jwtUserId ? "Bearer user-jwt" : `Bearer ${SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
@@ -161,4 +164,41 @@ Deno.test("liftosaur-sync: a run that names another user's queue row completes n
   assertEquals(res.status, 200);
   assertEquals(db.rows("sync_queue")[0].status, "processing");
   assertEquals(db.rows("sync_queue")[0].started_at, CLAIMED_AT);
+});
+
+Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
+
+  for (const attempt of [1, 2, 3]) {
+    const res = await call({ sync_type: "manual" });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  // The key literal is per-provider: a wrong one would silently share or split
+  // a bucket and stay invisible until someone read rate_limit_tracking.
+  assertEquals(db.rows("rate_limit_tracking").length, 1);
+  assertEquals(db.rows("rate_limit_tracking")[0].key, "liftosaur-sync");
+  assertEquals(db.rows("rate_limit_tracking")[0].requests_this_window, 3);
+
+  const limited = await call({ sync_type: "manual" });
+  assertEquals(limited.status, 429);
+  assertEquals(limited.headers.get("Retry-After"), "900");
+});
+
+Deno.test("liftosaur-sync: saving an API key uses its own budget, so a typo cannot lock the user out", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
+
+  for (const attempt of [1, 2, 3, 4]) {
+    const res = await call({ api_key: `key-attempt-${attempt}` });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  const buckets = db.rows("rate_limit_tracking");
+  assertEquals(buckets.length, 1);
+  assertEquals(buckets[0].key, "liftosaur-sync-connect");
+  assertEquals(buckets[0].requests_this_window, 4);
+
+  const pull = await call({ sync_type: "manual" });
+  assertEquals(pull.status, 200, await pull.clone().text());
+  assertEquals(db.rows("rate_limit_tracking").length, 2);
 });

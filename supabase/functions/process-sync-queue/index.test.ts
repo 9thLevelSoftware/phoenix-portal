@@ -406,6 +406,71 @@ Deno.test("process-sync-queue: a provider error body never reaches sync_queue.er
   );
 });
 
+Deno.test("process-sync-queue: a transport failure with no HTTP status gets its own code", async () => {
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z")],
+      subscriptions: [FLAME_SUBSCRIPTION],
+      rate_limit_tracking: [],
+    },
+    // No `status` on the thrown error: not retryable, and exactly the case
+    // where err.message is raw runtime/driver text.
+    () => {
+      throw new Error("error sending request: PROVIDER-BODY-MARKER");
+    },
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "failed");
+  assertEquals(task.error_message, "provider_sync_failed");
+});
+
+Deno.test("process-sync-queue: garmin's local refusal is not reported as a provider 400", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      { ...pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"), provider: "garmin" },
+    ],
+    subscriptions: [FLAME_SUBSCRIPTION],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  await res.body?.cancel();
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "failed");
+  // No provider was called, so `provider_sync_http_400` would be a lie.
+  assertEquals(task.error_message, "garmin_not_queueable");
+  assertEquals(h.fetchCalls.length, 0);
+});
+
+Deno.test("process-sync-queue: the pre-claim retry cap uses the same terminal spelling", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z", {
+        retry_count: 10, // MAX_RETRIES: capped before the row is ever claimed.
+        error_message: "LEGACY-ROW-MARKER: a raw provider body from before PR 55",
+      }),
+    ],
+    subscriptions: [FLAME_SUBSCRIPTION],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "permanently_failed");
+  // One spelling for the terminal state, and a legacy raw body is replaced
+  // rather than re-wrapped.
+  assertEquals(task.error_message, "max_retries_exceeded");
+  assertEquals(h.fetchCalls.length, 0);
+});
+
 Deno.test("process-sync-queue: the exhausted-retries message is a code, not the provider body", async () => {
   const h = harness(
     BASE_ENV,

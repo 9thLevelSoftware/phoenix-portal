@@ -8,15 +8,11 @@ import {
   recordStravaUsage,
   type StravaRateLimitSnapshot,
 } from '../_shared/providerRateLimit.ts';
-import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { completeSyncQueueEntry, heartbeatSyncQueueEntry } from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
-
-/** Manual (browser-initiated) syncs allowed per user per window. */
-const MANUAL_SYNC_MAX_REQUESTS = 3;
-const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -417,20 +413,19 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Manual syncs are browser-initiated and hit Strava's application-wide
-    // quota, so cap them per user. Keyed on the JWT-verified id: an
-    // unauthenticated caller never reaches this point, so nobody can spend
+    // Cap browser-initiated invocations per user: they hit Strava's
+    // application-wide read quota. Keyed on the JWT-verified id, so an
+    // unauthenticated caller never reaches this point and nobody can spend
     // another user's budget. The queue path (service role) is deliberately
-    // exempt — process-sync-queue has its own per-provider budget, and this
-    // bucket (`strava-sync`) is a different row from the one it accounts to
-    // (`strava`).
+    // exempt — process-sync-queue has its own per-provider budget, tracked
+    // under the separate `strava` key. See _shared/manualSyncRateLimit.ts for
+    // what the bucket does and does not count.
     if (jwtUser) {
-      const rateCheck = await checkRateLimit(supabase, {
-        key: 'strava-sync',
-        userId,
-        maxRequests: MANUAL_SYNC_MAX_REQUESTS,
-        windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
-      }, cors);
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'strava', userId },
+        cors,
+      );
       if (!rateCheck.allowed) return rateCheck.response!;
     }
 

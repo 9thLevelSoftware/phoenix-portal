@@ -2,7 +2,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
-import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { checkManualSyncRateLimit } from "../_shared/manualSyncRateLimit.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 import {
 	completeSyncQueueEntry,
@@ -10,10 +10,6 @@ import {
 	heartbeatSyncQueueEntry,
 } from "../_shared/syncQueue.ts";
 import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
-
-/** Manual (browser-initiated) syncs allowed per user per window. */
-const MANUAL_SYNC_MAX_REQUESTS = 3;
-const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Liftosaur Sync Edge Function
@@ -195,20 +191,17 @@ async function liftosaurSync(
 			deps.env("SUPABASE_SERVICE_ROLE_KEY")!
 		);
 
-		// Manual syncs are browser-initiated and spend Liftosaur API budget, so
-		// cap them per user. Keyed on the JWT-verified id: an unauthenticated
-		// caller never reaches this point, so nobody can spend another user's
-		// budget. The queue path (service role) is exempt — process-sync-queue has
-		// its own per-provider budget, tracked under the separate `liftosaur` key.
+		// Cap browser-initiated invocations per user. Keyed on the JWT-verified
+		// id, so nobody can spend another user's budget; the queue path (service
+		// role) is exempt and has its own budget under the `liftosaur` key.
+		//
+		// A call carrying `api_key` is a credential WRITE — the only way to store
+		// a Liftosaur key — and goes to its own roomier bucket, so a user retrying
+		// a mistyped key cannot lock themselves out of saving the correct one.
 		if (jwtUser) {
-			const rateCheck = await checkRateLimit(
+			const rateCheck = await checkManualSyncRateLimit(
 				supabase,
-				{
-					key: "liftosaur-sync",
-					userId,
-					maxRequests: MANUAL_SYNC_MAX_REQUESTS,
-					windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
-				},
+				{ provider: "liftosaur", userId, credentialWrite: Boolean(api_key) },
 				cors,
 			);
 			if (!rateCheck.allowed) return rateCheck.response!;
@@ -371,21 +364,28 @@ async function liftosaurSync(
 				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 			}
 		} catch (fetchError) {
+			// The thrown error is logged above and goes no further. The fetch+parse
+			// is wrapped as a whole, so besides our own fixed "Liftosaur API
+			// returned N" it can be a V8 JSON parse message quoting the provider's
+			// body, or a transport/TLS internal.
+			// `user_integrations.error_message` is rendered by ProviderCard and the
+			// response body is copied into `sync_queue.error_message` by the
+			// processor, so both get fixed text.
 			console.error("Liftosaur API fetch error:", fetchError);
-			const fetchMessage = errorMessage(fetchError);
 
 			await supabase
 				.from("user_integrations")
 				.update({
 					status: "error",
-					error_message: `Sync failed: ${fetchMessage}`,
+					error_message: "Liftosaur sync failed; will retry",
 				})
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
 			return new Response(
 				JSON.stringify({
-					error: `Liftosaur API error: ${fetchMessage}`,
+					error: "Liftosaur API error",
+					code: "provider_fetch_failed",
 				}),
 				{
 					status: 502,
@@ -506,10 +506,16 @@ async function liftosaurSync(
 			}
 		);
 	} catch (err) {
+		// `errorMessage` is a deliberate passthrough of `.message`, which for a
+		// driver error carries constraint/column/relation names and for a parse
+		// failure carries a slice of the provider's body. Log it, return a code.
 		console.error("Liftosaur sync error:", err);
-		return new Response(JSON.stringify({ error: errorMessage(err) }), {
-			status: 500,
-			headers: { ...cors, "Content-Type": "application/json" },
-		});
+		return new Response(
+			JSON.stringify({ error: "Liftosaur sync failed", code: "internal_error" }),
+			{
+				status: 500,
+				headers: { ...cors, "Content-Type": "application/json" },
+			}
+		);
 	}
 }

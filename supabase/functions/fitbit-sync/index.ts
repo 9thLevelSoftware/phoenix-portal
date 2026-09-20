@@ -2,14 +2,10 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
-import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
-
-/** Manual (browser-initiated) syncs allowed per user per window. */
-const MANUAL_SYNC_MAX_REQUESTS = 3;
-const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Loose Supabase client type for helper signatures. Annotating helpers with the
@@ -363,18 +359,15 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Manual syncs are browser-initiated and spend Fitbit API budget, so cap
-    // them per user. Keyed on the JWT-verified id: an unauthenticated caller
-    // never reaches this point, so nobody can spend another user's budget.
-    // The queue path (service role) is exempt — process-sync-queue has its own
-    // per-provider budget, tracked under the separate `fitbit` key.
+    // Cap browser-initiated invocations per user. Keyed on the JWT-verified
+    // id, so nobody can spend another user's budget; the queue path (service
+    // role) is exempt and has its own budget under the `fitbit` key.
     if (jwtUser) {
-      const rateCheck = await checkRateLimit(supabase, {
-        key: 'fitbit-sync',
-        userId,
-        maxRequests: MANUAL_SYNC_MAX_REQUESTS,
-        windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
-      }, cors);
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'fitbit', userId },
+        cors,
+      );
       if (!rateCheck.allowed) return rateCheck.response!;
     }
 
@@ -536,9 +529,12 @@ Deno.serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
+    // `errorMessage` is a deliberate passthrough of `.message`, which for a
+    // driver error carries constraint/column/relation names and for a parse
+    // failure carries a slice of the provider's body. Log it, return a code.
     console.error('Fitbit sync error:', err);
     return new Response(
-      JSON.stringify({ error: errorMessage(err) }),
+      JSON.stringify({ error: 'Fitbit sync failed', code: 'internal_error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }

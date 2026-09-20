@@ -4,13 +4,20 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { dailyRateLimitKey } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { type EnvReader, hasValidCronSecret } from '../_shared/cronSecret.ts';
-import { timingSafeEqualString } from '../_shared/timingSafe.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
  * `ReturnType<typeof createClient>` collapses table payload types to `never`.
  */
 type DbClient = SupabaseClient<any, any, any>;
+
+/**
+ * What `callSyncFunction` throws. `status` is the provider sync function's
+ * HTTP status (absent for a transport-level throw); `failureCode` overrides
+ * the derived code for failures the processor raises itself.
+ */
+type SyncFunctionError = Error & { status?: number; failureCode?: string };
 
 /**
  * Scheduled sync queue processor.
@@ -135,10 +142,10 @@ function defaultProcessSyncQueueDependencies(): ProcessSyncQueueDependencies {
 }
 
 function isServiceRoleRequest(req: Request, env: EnvReader): boolean {
-  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
-  if (!serviceRoleKey) return false;
-  const authHeader = req.headers.get('Authorization') ?? '';
-  return timingSafeEqualString(`Bearer ${serviceRoleKey}`, authHeader);
+  return isServiceRoleBearer(
+    req.headers.get('Authorization'),
+    env('SUPABASE_SERVICE_ROLE_KEY'),
+  );
 }
 
 export function createProcessSyncQueueHandler(
@@ -308,11 +315,18 @@ async function processSyncQueue(
           .from('sync_queue')
           .update({
             status: 'permanently_failed',
-            error_message: `Max retries (${MAX_RETRIES}) exceeded. Last error: ${task.error_message ?? 'unknown'}`,
+            // Same terminal state as the catch block below, so the same
+            // spelling — anything grouping this column sees one format. The
+            // previous value is deliberately not re-wrapped: a legacy row may
+            // still hold a raw provider body, and it is in the log line below.
+            error_message: 'max_retries_exceeded',
             completed_at: new Date().toISOString(),
           })
           .eq('id', task.id);
-        console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
+        console.warn(
+          `[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries;`,
+          `last error: ${task.error_message ?? 'unknown'}`,
+        );
         results.failed++;
         continue;
       }
@@ -411,7 +425,7 @@ async function processSyncQueue(
 
         results.processed++;
       } catch (error) {
-        const err = error as Error & { status?: number };
+        const err = error as SyncFunctionError;
         const nextRetryCount = (task.retry_count ?? 0) + 1;
 
         // SQ-03: Re-queue on retryable statuses (429, 502, 503, 504), mark failed otherwise
@@ -426,9 +440,10 @@ async function processSyncQueue(
           `status=${err.status ?? 'none'}`,
           err.message,
         );
-        const failureCode = err.status === undefined
-          ? 'provider_sync_failed'
-          : `provider_sync_http_${err.status}`;
+        const failureCode = err.failureCode ??
+          (err.status === undefined
+            ? 'provider_sync_failed'
+            : `provider_sync_http_${err.status}`);
         let errorMessage = failureCode;
 
         if (err.status !== undefined && RETRYABLE_STATUSES.includes(err.status)) {
@@ -476,10 +491,13 @@ async function callSyncFunction(
   queueId: string,
 ) {
   if (provider === 'garmin') {
+    // A local refusal, not a provider response: carry an explicit code so the
+    // queue row says why instead of claiming an upstream 400.
     const error = new Error(
       'Garmin sync is webhook-driven and cannot be queued manually.'
-    ) as Error & { status: number };
+    ) as SyncFunctionError;
     error.status = 400;
+    error.failureCode = 'garmin_not_queueable';
     throw error;
   }
 

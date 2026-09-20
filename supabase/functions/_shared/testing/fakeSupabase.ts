@@ -140,6 +140,15 @@ export class FakeQuery implements PromiseLike<Result> {
  * Mirrors the SQL: first request in a window inserts, an expired window resets
  * to 1, a full window returns allowed=false with a ceil()'d retry-after of at
  * least 1 second, otherwise the counter increments.
+ *
+ * Two deliberate omissions, neither observable through `checkRateLimit`:
+ *  - the SQL's four `RAISE EXCEPTION` argument checks (blank key, null user,
+ *    max < 1, window < 1) — `_shared/rateLimit.ts` pre-validates exactly those
+ *    four and 503s first, so they are unreachable. A PR that relaxes that
+ *    pre-validation must add them here, or this double will quietly accept
+ *    what the real function rejects.
+ *  - the `provider = COALESCE(provider, p_key)` backfill on the reset and
+ *    increment paths — nothing reads `provider` off these rows.
  */
 function checkRateLimitRpc(db: FakeDb, args: Row, now: Date): Result {
   const key = args.p_key as string;

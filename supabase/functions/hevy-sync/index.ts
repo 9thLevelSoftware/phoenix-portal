@@ -12,7 +12,7 @@ import {
   type HevyWorkout,
 } from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
-import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
@@ -20,10 +20,6 @@ import {
   heartbeatSyncQueueEntry,
 } from '../_shared/syncQueue.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
-
-/** Manual (browser-initiated) syncs allowed per user per window. */
-const MANUAL_SYNC_MAX_REQUESTS = 3;
-const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Hevy Sync Edge Function
@@ -145,18 +141,19 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Manual syncs are browser-initiated and spend Hevy API budget, so cap
-    // them per user. Keyed on the JWT-verified id: an unauthenticated caller
-    // never reaches this point, so nobody can spend another user's budget.
-    // The queue path (service role) is exempt — process-sync-queue has its own
-    // per-provider budget, tracked under the separate `hevy` key.
+    // Cap browser-initiated invocations per user. Keyed on the JWT-verified
+    // id, so nobody can spend another user's budget; the queue path (service
+    // role) is exempt and has its own budget under the `hevy` key.
+    //
+    // A call carrying `api_key` is a credential WRITE — the only way to store
+    // a Hevy key — and goes to its own roomier bucket, so a user retrying a
+    // mistyped key cannot lock themselves out of saving the correct one.
     if (jwtUser) {
-      const rateCheck = await checkRateLimit(supabase, {
-        key: 'hevy-sync',
-        userId,
-        maxRequests: MANUAL_SYNC_MAX_REQUESTS,
-        windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
-      }, cors);
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'hevy', userId, credentialWrite: Boolean(api_key) },
+        cors,
+      );
       if (!rateCheck.allowed) return rateCheck.response!;
     }
 
@@ -272,8 +269,6 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       latestEventAt = result.latestEventAt;
     } catch (fetchError) {
       console.error('Hevy API fetch error:', fetchError);
-      const fetchMessage = errorMessage(fetchError);
-
       if (fetchError instanceof HevyAuthError) {
         // API key invalid or Hevy PRO required
         await supabase
@@ -286,22 +281,32 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
           .eq('provider', 'hevy');
 
         return new Response(
-          JSON.stringify({ error: fetchMessage, requires_pro: true }),
+          JSON.stringify({
+            error: 'API key invalid or Hevy PRO subscription required',
+            code: 'provider_auth_failed',
+            requires_pro: true,
+          }),
           { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
 
+      // The thrown error is logged above and goes no further. The fetch+parse is
+      // wrapped as a whole, so besides our own fixed "Hevy API returned N" it
+      // can be a V8 JSON parse message quoting the provider's body, or a
+      // transport/TLS internal. `user_integrations.error_message` is rendered
+      // by ProviderCard and the response body is copied into
+      // `sync_queue.error_message` by the processor, so both get fixed text.
       await supabase
         .from('user_integrations')
         .update({
           status: 'error',
-          error_message: `Sync failed: ${fetchMessage}`,
+          error_message: 'Hevy sync failed; will retry',
         })
         .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
-        JSON.stringify({ error: `Hevy API error: ${fetchMessage}` }),
+        JSON.stringify({ error: 'Hevy API error', code: 'provider_fetch_failed' }),
         {
           status: 502,
           headers: { ...cors, 'Content-Type': 'application/json' },
@@ -487,9 +492,12 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       }
     );
   } catch (err) {
+    // `errorMessage` is a deliberate passthrough of `.message`, which for a
+    // driver error carries constraint/column/relation names and for a parse
+    // failure carries a slice of the provider's body. Log it, return a code.
     console.error('Hevy sync error:', err);
     return new Response(
-      JSON.stringify({ error: errorMessage(err) }),
+      JSON.stringify({ error: 'Hevy sync failed', code: 'internal_error' }),
       {
         status: 500,
         headers: { ...cors, 'Content-Type': 'application/json' },

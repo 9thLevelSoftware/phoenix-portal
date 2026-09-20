@@ -212,6 +212,8 @@ interface QueueHarnessOptions {
   failChunk?: number;
   /** Environment overrides (e.g. a missing STRAVA_CLIENT_SECRET). */
   env?: Record<string, string>;
+  /** Override the Authorization header (e.g. a blank service-role bearer). */
+  authorization?: string;
 }
 
 /**
@@ -296,9 +298,8 @@ function queueHarness(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: options.jwtUserId
-            ? "Bearer user-jwt"
-            : `Bearer ${SERVICE_ROLE_KEY}`,
+          Authorization: options.authorization ??
+            (options.jwtUserId ? "Bearer user-jwt" : `Bearer ${SERVICE_ROLE_KEY}`),
         },
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
@@ -652,4 +653,45 @@ Deno.test("strava-sync: a provider error body is never echoed to the caller", as
   });
   // Nothing from the body reached the browser-readable integration card.
   assertEquals(integrationOf(h).error_message ?? null, null);
+});
+
+Deno.test("strava-sync: an unexpected throw returns a code, not the thrown message", async () => {
+  const tables = baseTables(T0, HISTORY);
+  const h = queueHarness(tables, () => {
+    // Stands in for a driver/runtime failure anywhere in the handler: the
+    // message class this catch-all used to hand straight back to the caller.
+    throw new Error('DB-INTERNAL-MARKER: relation "external_activities" does not exist');
+  });
+
+  const res = await h.call({ sync_type: "incremental" });
+  assertEquals(res.status, 500);
+  const text = await res.clone().text();
+  assert(
+    !text.includes("DB-INTERNAL-MARKER"),
+    `thrown message leaked into the response: ${text}`,
+  );
+  assertEquals(await res.json(), { error: "Strava sync failed", code: "internal_error" });
+});
+
+Deno.test("strava-sync: a blank service-role key authenticates nothing", async () => {
+  // Regression guard on the reachable behaviour, NOT a discriminator between
+  // isServiceRoleBearer and the `authHeader === \`Bearer ${key ?? ''}\`` form
+  // it replaced. Those two are value-identical for every input that can reach
+  // the handler: the only input that separates them is the literal header
+  // "Bearer " (trailing space), and `Headers` normalises trailing whitespace
+  // away, so `headers.get('Authorization')` can never return it. What this
+  // does pin is that a deployment with the secret missing refuses every
+  // bearer it is offered rather than accepting some degenerate one.
+  const tables = baseTables(T0, HISTORY);
+  for (const authorization of ["Bearer ", "Bearer", "Bearer undefined", "Bearer null"]) {
+    const h = queueHarness(tables, () => json([]), {
+      env: { SUPABASE_SERVICE_ROLE_KEY: "" },
+      authorization,
+    });
+
+    const res = await h.call({ sync_type: "incremental" });
+    assertEquals(res.status, 401, `${authorization}: ${await res.clone().text()}`);
+    assertEquals(await res.json(), { error: "Not authenticated" });
+    assertEquals(h.fetchUrls, []);
+  }
 });
