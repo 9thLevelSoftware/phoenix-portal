@@ -1569,12 +1569,6 @@ Deno.test({
 Deno.test({
   name:
     "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
-// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
-// the real `subscriptions` table, service-role grants and RLS decide 402 vs
-// the data path. The fixture seeds both users with an active EMBER row.
-Deno.test({
-  name:
-    "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalPullFixture();
@@ -1672,6 +1666,20 @@ Deno.test({
         .in("user_id", userIds);
       if (audit.error) throw new Error("tombstone cleanup audit failed");
       assertEquals(audit.count, 0);
+    }
+  },
+});
+
+// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
+// the real `subscriptions` table, service-role grants and RLS decide 402 vs
+// the data path. The fixture seeds both users with an active EMBER row.
+Deno.test({
+  name:
+    "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
       const ownerLogs: unknown[][] = [];
       const ownerRequest = () =>
         requestFromBody({
