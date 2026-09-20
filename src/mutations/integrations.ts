@@ -133,12 +133,13 @@ export function useManualSync() {
 /*
  * There is deliberately no "connect integration" mutation here. Connecting is
  * never a browser table write:
- *  - OAuth providers (Strava, Fitbit, Garmin) go through `initiate-oauth` and
- *    the `<provider>-oauth` callback, which write `user_integrations` and any
- *    `sync_queue` row as the service role;
+ *  - OAuth providers go through `initiate-oauth` and the `<provider>-oauth`
+ *    callback, which writes `user_integrations` as the service role, and
+ *    queues the initial import too for Strava and Fitbit (garmin-oauth queues
+ *    nothing — it is webhook-driven, so there is nothing to pull);
  *  - API-key providers (Hevy, Liftosaur) go through `<provider>-sync` with an
  *    `api_key` in the body, which stores the key in `oauth_tokens` (a
  *    server-only table) — never in the client-readable `user_integrations`.
- * The removed `useConnectIntegration` had no caller (it was the F-10 /
- * NF-23 hook) and was the last browser writer of either table.
+ * The connect mutation removed here (F-10 / NF-23) had no caller and was the
+ * last browser writer of either table.
  */
