@@ -2185,6 +2185,94 @@ Deno.test({
 
 Deno.test({
   name:
+    "integration: 150-session page pulls every exercise and set across multi-chunk, multi-page child fetches",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      // 150 sessions → 2 session-id chunks (100 + 50). 12 exercises each:
+      // the 100-session chunk holds 1,200 exercise rows (> max_rows 1000), so
+      // it needs the PAGE+1 continuation. 1,800 exercises → 18 exercise-id
+      // chunks for sets, run 4 at a time.
+      const startedAt = Date.now() - DAY_MS;
+      const sessions = Array.from({ length: 150 }, (_, i) => ({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        name: `pr59 session ${i}`,
+        local_profile_id: fixture.ownerProfileId,
+        started_at: new Date(startedAt + i * 1000).toISOString(),
+      }));
+      const exercises = sessions.flatMap((session) =>
+        Array.from({ length: 12 }, (_, i) => ({
+          id: crypto.randomUUID(),
+          user_id: fixture.ownerId,
+          session_id: session.id,
+          name: `pr59 exercise ${i}`,
+          order_index: i,
+        }))
+      );
+      const sets = exercises.map((exercise) => ({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        exercise_id: exercise.id,
+        set_number: 1,
+      }));
+      const seed: Array<[string, Record<string, unknown>[]]> = [
+        ["workout_sessions", sessions],
+        ["exercises", exercises],
+        ["sets", sets],
+      ];
+      for (const [table, rows] of seed) {
+        for (let i = 0; i < rows.length; i += 500) {
+          const inserted = await fixture.admin.from(table).insert(
+            rows.slice(i, i + 500),
+          );
+          if (inserted.error) {
+            throw new Error(`${table} fixture insert failed: ${inserted.error.message}`);
+          }
+        }
+      }
+
+      const body = await pullOnce(fixture, {
+        ...mobilePullBody(0, fixture.ownerProfileId, emptyKnown()),
+        pageSize: 300,
+      });
+      const pulled = body.sessions as Array<{
+        id: string;
+        exercises: Array<{ id: string; sets: Array<{ id: string }> }>;
+      }>;
+      assertEquals(
+        pulled.map((s) => s.id).sort(),
+        sessions.map((s) => s.id).sort(),
+      );
+      const pulledExerciseIds = pulled.flatMap((s) => s.exercises.map((e) => e.id));
+      assertEquals(pulledExerciseIds.length, exercises.length);
+      assertEquals(
+        [...pulledExerciseIds].sort(),
+        exercises.map((e) => e.id).sort(),
+      );
+      for (const session of pulled) {
+        assertEquals(session.exercises.length, 12, session.id);
+      }
+      const pulledSetIds = pulled.flatMap((s) =>
+        s.exercises.flatMap((e) => e.sets.map((set) => set.id))
+      );
+      assertEquals(
+        [...pulledSetIds].sort(),
+        sets.map((s) => s.id).sort(),
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
     "integration: parity pull RPCs take p_last_sync_at and are executable by service_role only",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
