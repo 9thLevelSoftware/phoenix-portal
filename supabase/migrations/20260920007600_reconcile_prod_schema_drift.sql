@@ -170,6 +170,11 @@ $$;
 --     needs ownership only (ALL would need superuser) and names no trigger, so
 --     a later rename cannot break it. The whole migration is one transaction,
 --     so an error between DISABLE and ENABLE rolls the trigger state back.
+--     Assumption: every user trigger on these two tables is a plain
+--     CREATE TRIGGER (tgenabled = 'O'). ENABLE TRIGGER USER restores exactly
+--     that, so a trigger created ENABLE ALWAYS / ENABLE REPLICA would be
+--     silently downgraded here. None exists today (grep the migrations for
+--     ENABLE ALWAYS / ENABLE REPLICA); add one and revisit this block.
 DO $$
 DECLARE
   v_created_nullable boolean;

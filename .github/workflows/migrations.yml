@@ -149,7 +149,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DB_URL="$(supabase status -o json | jq -r '.DB_URL')"
+          # `supabase status` may print deprecation warnings alongside the
+          # JSON; fall back to the default [db].port (config.toml sets none).
+          DB_URL="$(supabase status -o json 2>/dev/null | jq -r '.DB_URL // empty')"
+          [ -n "$DB_URL" ] || DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
           export DB_URL
           bash scripts/migration-gating/run.sh
 
