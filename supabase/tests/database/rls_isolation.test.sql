@@ -1023,7 +1023,7 @@ SELECT is(
     'A still does not hold INFERNO after the attempts'
     public.user_has_min_tier('FLAME'),
     false,
-    'A still does not hold FLAME after the attempts'
+    'A still does not hold INFERNO after the attempts'
 );
 
 RESET ROLE;

@@ -81,9 +81,12 @@
 --      cron.alter_job in place if schedule/command differ, keeping jobid and
 --      the active flag; PR 2's pattern):
 --        - process-sync-queue              */5 * * * *
---        - sync-tombstones-retention       daily, tombstones > 180 days
 --        - cron-job-run-details-retention  daily, run history > 7 days
 --          (prod has no purge; the 5-minute job adds 288 rows/day)
+--      Any legacy sync-tombstones-retention job is unscheduled because stale
+--      clients need durable deletion evidence; account deletion cascades the
+--      user's tombstones.
+--        - sync-tombstones-retention       daily, tombstones > 180 days
 --      Skipped with a NOTICE where pg_cron is not installed (local/CI apply;
 --      prod has it). scheduler.test.sql installs pg_cron in its own
 --      transaction and asserts the jobs, so CI exercises this path.
@@ -452,6 +455,18 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     RAISE NOTICE 'pg_cron not installed; skip scheduling process-sync-queue and retention jobs';
     RETURN;
+  END IF;
+
+  -- Tombstones are durable deletion evidence. Age-based cleanup lets a stale
+  -- offline client recreate deleted routines or cycles on its next push. They
+  -- are removed by the auth.users ON DELETE CASCADE instead.
+  SELECT jobid INTO v_jobid
+  FROM cron.job
+  WHERE jobname = 'sync-tombstones-retention'
+  ORDER BY jobid
+  LIMIT 1;
+  IF v_jobid IS NOT NULL THEN
+    PERFORM cron.unschedule(v_jobid);
   END IF;
 
   FOR j IN

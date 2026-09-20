@@ -263,7 +263,11 @@ jobs:
               print(version)
           PY
           ) | tr -d '\r' | sort -u > remote_migrations.txt
+          if [ ! -s remote_migrations.txt ]; then
+            # A parser failure, not a drift result: do not tell anyone to db push.
             echo "::error::Could not parse any applied migration versions from 'supabase migration list --linked' (the CLI table format may have changed). This is not a drift result: do NOT run db push; fix the parser, then re-run."
+            exit 1
+          fi
 
           echo "Local migrations: $(wc -l < local_migrations.txt | tr -d ' ')"
           echo "Applied in prod:  $(wc -l < remote_migrations.txt | tr -d ' ')"

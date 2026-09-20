@@ -493,6 +493,8 @@ function permissiveQuery(
       if (method === "eq") eqFilters[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
       onChain(method, args);
       if (method === "neq") {
         ownershipProbe = true;

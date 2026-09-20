@@ -2,6 +2,7 @@
  * Minimal in-memory stand-in for a supabase-js client, for Edge handler tests
  * (no network, no live secrets). Supports the PostgREST builder subset the
  * sync handlers use: select / insert / update / upsert(onConflict), eq / is /
+ * lt, order / limit, single / maybeSingle, and awaiting the builder.
  * lt / lte / gt / gte / in, order / limit, single / maybeSingle, awaiting the
  * builder, and `rpc()` against registered stubs.
  */
@@ -10,11 +11,11 @@ export type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
 type Result = { data: unknown; error: { message: string } | null };
 
+export class FakeDb {
+  tables: Record<string, Row[]>;
 /** Stub for one RPC: return `{data}` or `{error}`; may throw to simulate a crash. */
 export type RpcHandler = (args: Row) => Result;
 
-export class FakeDb {
-  tables: Record<string, Row[]>;
   /** Registered `rpc(name, args)` stubs. An unregistered name errors. */
   rpcHandlers: Record<string, RpcHandler> = {};
   /** Every rpc call in order, so tests can assert one call per user. */
