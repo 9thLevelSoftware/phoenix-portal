@@ -37,8 +37,10 @@ import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
+import { cancelSuccessMessage } from "@/lib/paddle";
 import { openCheckout } from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
+import { getEffectiveSubscriptionTier } from "@/lib/subscription-entitlement";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
@@ -75,7 +77,7 @@ interface PlanChangeIntent {
 interface UpdateSubscriptionResponse {
 	success?: boolean;
 	action?: "switch" | "uncancel";
-	code?: "checkout_required";
+	code?: "checkout_required" | "payment_past_due";
 	error?: string;
 	message?: string;
 	subscription?: {
@@ -226,6 +228,10 @@ function normalizeSubscriptionPayload(
 	};
 }
 
+/**
+ * Checkout-landed check: the refreshed row is on the purchased plan and the
+ * shared entitlement predicate grants that tier.
+ */
 function isFreshPaidSubscription(
 	subscription: ReturnType<typeof normalizeSubscriptionPayload>,
 	target: { tier: SubscriptionTier; priceId: string },
@@ -237,13 +243,14 @@ function isFreshPaidSubscription(
 	) {
 		return false;
 	}
-	if (subscription.status !== "active" && subscription.status !== "trialing") {
-		return false;
-	}
-	if (!subscription.currentPeriodEnd) return false;
-
-	const periodEndMs = Date.parse(subscription.currentPeriodEnd);
-	return Number.isFinite(periodEndMs) && periodEndMs > Date.now();
+	return (
+		getEffectiveSubscriptionTier(
+			subscription.tier,
+			subscription.status,
+			subscription.currentPeriodEnd,
+			{ cancelAtPeriodEnd: subscription.cancelAtPeriodEnd },
+		) === target.tier
+	);
 }
 
 export function PricingPlans() {
@@ -253,6 +260,7 @@ export function PricingPlans() {
 		isLoading: subscriptionLoading,
 		isError: subscriptionError,
 		refetch: refetchSubscription,
+		status: subscriptionStatus,
 		cancelAtPeriodEnd,
 		currentPeriodEnd,
 		isEntitled,
@@ -446,18 +454,16 @@ export function PricingPlans() {
 	const handleCancel = async () => {
 		setIsCanceling(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-cancel-subscription",
-			);
+			const { data, error } = await supabase.functions.invoke<{
+				canceledImmediately?: boolean;
+			}>("paddle-cancel-subscription");
 
 			if (error) {
 				toast.error(error.message || "Failed to cancel subscription");
 				return;
 			}
 
-			toast.success(
-				"Subscription canceled. You'll retain access until the end of your billing period.",
-			);
+			toast.success(cancelSuccessMessage(data));
 
 			if (user) {
 				void queryClient.invalidateQueries({
@@ -910,12 +916,18 @@ export function PricingPlans() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your subscription will remain active until the end of your current
-							billing period (
-							{currentPeriodEnd
-								? new Date(currentPeriodEnd).toLocaleDateString()
-								: "end of period"}
-							). After that, you'll be downgraded to the Free plan.
+							{subscriptionStatus === "past_due" ? (
+								"Your last payment failed, so canceling ends your paid access immediately and moves you to the Free plan."
+							) : (
+								<>
+									Your subscription will remain active until the end of your
+									current billing period (
+									{currentPeriodEnd
+										? new Date(currentPeriodEnd).toLocaleDateString()
+										: "end of period"}
+									). After that, you'll be downgraded to the Free plan.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

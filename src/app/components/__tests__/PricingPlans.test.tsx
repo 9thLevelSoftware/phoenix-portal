@@ -2,6 +2,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
 import { PricingPlans } from "../PricingPlans";
@@ -176,6 +178,82 @@ describe("PricingPlans billing actions", () => {
 				billing_interval: "monthly",
 				price_id: "pri_flame_monthly",
 			},
+		});
+	});
+
+	it("shows the update-payment message when a past_due plan change is refused", async () => {
+		const user = userEvent.setup();
+		setSubscription({
+			tier: "FLAME",
+			rawTier: "FLAME",
+			status: "past_due",
+			priceId: "pri_flame_monthly",
+			currentPeriodEnd: "2026-05-07T00:00:00Z",
+			isEntitled: true,
+			isPremium: true,
+			isFlame: true,
+		});
+		mockInvoke.mockResolvedValue({
+			data: null,
+			error: new Error("Edge Function returned a non-2xx status code"),
+			response: new Response(
+				JSON.stringify({
+					error: "payment_past_due",
+					code: "payment_past_due",
+					message:
+						"Your last payment failed. Update your payment method before changing your plan.",
+				}),
+				{ status: 409 },
+			),
+		});
+
+		renderWithProviders(<PricingPlans />);
+		await user.click(screen.getByRole("button", { name: /downgrade/i }));
+		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
+
+		await waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Your last payment failed. Update your payment method before changing your plan.",
+			);
+		});
+		expect(mockOpenCheckout).not.toHaveBeenCalled();
+	});
+
+	it("lets a past_due user cancel and reports immediate cancellation", async () => {
+		const user = userEvent.setup();
+		setSubscription({
+			tier: "FLAME",
+			rawTier: "FLAME",
+			status: "past_due",
+			priceId: "pri_flame_monthly",
+			currentPeriodEnd: "2026-05-07T00:00:00Z",
+			isEntitled: true,
+			isPremium: true,
+			isFlame: true,
+		});
+		mockInvoke.mockResolvedValue({
+			data: {
+				success: true,
+				cancelAtPeriodEnd: false,
+				canceledImmediately: true,
+			},
+			error: null,
+		});
+
+		renderWithProviders(<PricingPlans />);
+		await user.click(
+			screen.getByRole("button", { name: /cancel subscription/i }),
+		);
+		expect(
+			screen.getByText(/canceling ends your paid access immediately/i),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /yes, cancel/i }));
+
+		expect(mockInvoke).toHaveBeenCalledWith("paddle-cancel-subscription");
+		await waitFor(() => {
+			expect(toast.success).toHaveBeenCalledWith(
+				"Subscription canceled. Your paid access has ended.",
+			);
 		});
 	});
 
