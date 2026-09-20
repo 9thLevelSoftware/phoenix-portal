@@ -77,8 +77,9 @@ describe("body muscle mapping", () => {
 			0,
 		);
 
-		expect(model.totalVolumeKg).toBe(4000);
-		expect(Math.round(allocatedVolume)).toBe(4000);
+		// Per cable as stored (KD-8).
+		expect(model.totalVolumeKg).toBe(2000);
+		expect(Math.round(allocatedVolume)).toBe(2000);
 		expect(Math.round(allocatedReps)).toBe(20);
 		expect(model.muscleById["chest-upper-left"]?.exercises[0]).toMatchObject({
 			exerciseName: "Bench Press",

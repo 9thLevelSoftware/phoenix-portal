@@ -16,12 +16,8 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { PHOENIX } from "@/lib/colors";
-import {
-	convertWeight,
-	formatVolume,
-	formatWeight,
-	type WeightUnit,
-} from "@/lib/units";
+import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { weeklySummaryOptions } from "@/queries/progress";
 import type { ExerciseProgress } from "@/schemas/telemetry";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -550,8 +546,8 @@ export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
 										{pr.exercise}{" "}
 										<span className="text-success">
 											{pr.isFirstPR
-												? `${formatWeight(pr.improvement, unit)} (first!)`
-												: `+${formatWeight(pr.improvement, unit)}`}
+												? `${formatLoad(pr.improvement, null, unit)} (first!)`
+												: `+${formatLoad(pr.improvement, null, unit)}`}
 										</span>
 									</div>
 								))}
@@ -642,7 +638,7 @@ export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
 										<span className="text-white text-sm">Most improved: </span>
 										<span className="text-success text-sm font-medium">
 											{summary.mostImprovedExercise} (+
-											{formatWeight(summary.mostImprovedAmount, unit)})
+											{formatLoad(summary.mostImprovedAmount, null, unit)})
 										</span>
 									</div>
 								</div>

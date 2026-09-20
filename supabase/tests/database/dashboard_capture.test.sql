@@ -214,6 +214,8 @@ SELECT set_has(
     $sql$,
     $sql$
         VALUES
+            ('subscription_events'::text, 'subscription_events_operation_check'::text,
+             'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text])))'::text),
             -- 'IGNORED' was added by 20260920004400 (PR 44): apply_subscription_event
             -- records an event from an untracked subscription that it refused to
             -- apply. The other three are prod's original audit-trigger operations.

@@ -147,6 +147,11 @@ const Integrations = lazyWithReload(() =>
 		default: m.Integrations,
 	})),
 );
+const IntegrationsCallback = lazyWithReload(() =>
+	import("@/app/components/IntegrationsCallback").then((m) => ({
+		default: m.IntegrationsCallback,
+	})),
+);
 const ComparisonView = lazyWithReload(() =>
 	import("@/app/components/ComparisonView").then((m) => ({
 		default: m.ComparisonView,
@@ -182,6 +187,20 @@ export function AppRoutes() {
 						{/* Ungated — accessible to all authenticated users */}
 						<Route path="/profile" element={<Profile />} />
 						<Route path="/pricing" element={<PricingPlans />} />
+						{/* OAuth completion landing (KD-13). Authenticated but
+						    deliberately NOT behind the FLAME route gate: the tier
+						    is re-checked server-side by `complete-oauth`, and a
+						    stale client tier must not swallow the callback before
+						    the POST is even made. Live since PR 48 — `strava-oauth`
+						    relays the provider's response here. A signed-out
+						    browser is sent to `/` by ProtectedRoute and the flow
+						    restarts; see IntegrationsCallback's header. */}
+						    the POST is even made. Dormant — nothing redirects
+						    here until PR 48 cuts the providers over. */}
+						<Route
+							path="/integrations/callback"
+							element={<IntegrationsCallback />}
+						/>
 
 						{/* Gated routes — tiers come from FEATURE_MIN_TIER (src/lib/tierMatrix.ts) */}
 						<Route

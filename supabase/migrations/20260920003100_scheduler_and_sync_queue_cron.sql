@@ -81,12 +81,12 @@
 --      cron.alter_job in place if schedule/command differ, keeping jobid and
 --      the active flag; PR 2's pattern):
 --        - process-sync-queue              */5 * * * *
+--        - sync-tombstones-retention       daily, tombstones > 180 days
 --        - cron-job-run-details-retention  daily, run history > 7 days
 --          (prod has no purge; the 5-minute job adds 288 rows/day)
 --      Any legacy sync-tombstones-retention job is unscheduled because stale
 --      clients need durable deletion evidence; account deletion cascades the
 --      user's tombstones.
---        - sync-tombstones-retention       daily, tombstones > 180 days
 --      Skipped with a NOTICE where pg_cron is not installed (local/CI apply;
 --      prod has it). scheduler.test.sql installs pg_cron in its own
 --      transaction and asserts the jobs, so CI exercises this path.

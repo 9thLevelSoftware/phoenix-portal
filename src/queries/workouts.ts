@@ -17,7 +17,7 @@ import {
 
 /**
  * Paginated workout session list for a user.
- * Returns Zod-transformed WorkoutSession[] (weights doubled, dates as Date, duration as minutes).
+ * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration as minutes).
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
@@ -169,7 +169,7 @@ export function dashboardStatsOptions(
 
 /**
  * Most recent personal records for the dashboard PR widget.
- * Returns Zod-transformed PersonalRecord[] (weights doubled, dates as Date).
+ * Returns Zod-transformed PersonalRecord[] (per-cable weights, dates as Date).
  */
 export function recentPRsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({

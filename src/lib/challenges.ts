@@ -7,7 +7,8 @@ export function formatChallengeValue(
 	targetUnit?: string | null,
 ): string {
 	if (challengeType === "volume") {
-		return formatVolume(value, unit);
+		// Volume challenges count total load (per cable x cables used; KD-8).
+		return `${formatVolume(value, unit)} total`;
 	}
 	return `${value.toLocaleString()}${targetUnit ? ` ${targetUnit}` : ""}`;
 }

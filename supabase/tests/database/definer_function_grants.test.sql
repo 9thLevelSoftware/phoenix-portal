@@ -252,7 +252,12 @@ VALUES (
     'b2b2b2b2-0000-4000-8000-000000000002'::uuid,
     'b2b2b2b2-1111-4000-8000-000000000002'::uuid,
     'B shared routine',
-    '[{"name": "Row", "sets": 3, "reps": 8, "order_index": 0}]'::jsonb
+    -- per_set_echo_levels is a JSON *string* on the wire (mobile ships
+    -- z.string()), so the snapshot carries one here too: it pins what
+    -- import_shared_routine lands in the column now that 20260920007600 made
+    -- it jsonb. Before that change the same import stored the doubly escaped
+    -- text literal "[\"LEVEL_1\"]".
+    '[{"name": "Row", "sets": 3, "reps": 8, "order_index": 0, "per_set_echo_levels": "[\"LEVEL_1\"]"}]'::jsonb
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -453,6 +458,7 @@ SET tier = 'EMBER'
 WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
 SET LOCAL ROLE authenticated;
 
+-- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
     $sql$
     'EMBER user can still import_shared_cycle'
@@ -493,6 +499,18 @@ SELECT results_eq(
     $sql$,
     $values$ VALUES ('Row'::text) $values$,
     'import_shared_routine copied the snapshot exercises into the caller''s routine'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT jsonb_typeof(re.per_set_echo_levels), re.per_set_echo_levels #>> '{}'
+        FROM public.routine_exercises re
+        JOIN public.routines r ON r.id = re.routine_id
+        WHERE r.user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid
+          AND r.name = 'B shared routine'
+    $sql$,
+    $values$ VALUES ('string'::text, '["LEVEL_1"]'::text) $values$,
+    'import_shared_routine stores per_set_echo_levels as a jsonb string scalar, the shape mobile sends'
 );
 
 SELECT results_eq(

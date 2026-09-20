@@ -13,7 +13,8 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { useAuth } from "@/app/hooks/useAuth";
-import { formatWeight, type WeightUnit } from "@/lib/units";
+import type { WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 import {
@@ -26,7 +27,7 @@ import {
 } from "../../../supabase/functions/_shared/workoutModes.ts";
 import { workoutModeLabel } from "../../../supabase/functions/_shared/workoutModes.ts";
 
-function formatExercisePrescription(
+export function formatExercisePrescription(
 	exercise: {
 		sets: number;
 		reps: number;
@@ -41,7 +42,8 @@ function formatExercisePrescription(
 ) {
 	const loadLabel = exercise.is_bodyweight
 		? "Bodyweight"
-		: formatWeight(exercise.weight, unit);
+		: // Routine weights are per cable; routines carry no cable count (KD-8).
+			formatLoad(exercise.weight, null, unit);
 
 	if (exercise.duration_seconds) {
 		return `${exercise.sets} sets • ${exercise.duration_seconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
