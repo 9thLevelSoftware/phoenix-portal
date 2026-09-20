@@ -2679,6 +2679,18 @@ export type Database = {
 					isSetofReturn: true;
 				};
 			};
+			exercise_progress_series_many: {
+				Args: {
+					p_exercises?: string[];
+					p_limit_per_exercise?: number;
+					p_profile_id?: string;
+				};
+				Returns: {
+					exercise_name: string;
+					latest_recorded_at: string;
+					rows: Json;
+				}[];
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;
@@ -3073,7 +3085,7 @@ export type Database = {
 				};
 			};
 			profile_workout_stats: {
-				Args: { p_profile_id?: string };
+				Args: { p_profile_id?: string; p_tz?: string };
 				Returns: {
 					best_streak: number;
 					pr_count: number;
@@ -3107,7 +3119,7 @@ export type Database = {
 				Returns: number;
 			};
 			session_volume_buckets: {
-				Args: { p_period?: string; p_profile_id?: string };
+				Args: { p_period?: string; p_profile_id?: string; p_tz?: string };
 				Returns: {
 					sessions: number;
 					total_duration_seconds: number;
