@@ -12,12 +12,27 @@ const mockAuth = vi.hoisted(() => ({
 	}),
 }));
 
+const emptyInfiniteResult = () => ({
+	data: undefined as unknown[] | undefined,
+	isPending: true,
+	isError: false,
+	error: null as unknown,
+	refetch: () => Promise.resolve(),
+	fetchNextPage: () => Promise.resolve(),
+	hasNextPage: false,
+	isFetchingNextPage: false,
+});
+
 const mockQuery = vi.hoisted(() => ({
 	result: {
 		data: undefined as unknown[] | undefined,
 		isPending: true,
 		isError: false,
+		error: null as unknown,
 		refetch: () => Promise.resolve(),
+		fetchNextPage: () => Promise.resolve(),
+		hasNextPage: false,
+		isFetchingNextPage: false,
 	},
 }));
 
@@ -27,26 +42,20 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-query")>();
 	return {
 		...actual,
-		useQuery: () => mockQuery.result,
+		useInfiniteQuery: () => mockQuery.result,
 	};
 });
 
 describe("RecordsTab", () => {
 	beforeEach(() => {
-		mockQuery.result = {
-			data: undefined,
-			isPending: true,
-			isError: false,
-			refetch: () => Promise.resolve(),
-		};
+		mockQuery.result = emptyInfiniteResult();
 	});
 
 	it("shows an error, not the athlete-empty copy, when records fail to load", () => {
 		mockQuery.result = {
-			data: undefined,
+			...emptyInfiniteResult(),
 			isPending: false,
 			isError: true,
-			refetch: () => Promise.resolve(),
 		};
 		renderWithProviders(<RecordsTab unit="kg" />);
 		expect(
@@ -60,10 +69,9 @@ describe("RecordsTab", () => {
 
 	it("shows the empty state only after a successful zero-row fetch", () => {
 		mockQuery.result = {
+			...emptyInfiniteResult(),
 			data: [],
 			isPending: false,
-			isError: false,
-			refetch: () => Promise.resolve(),
 		};
 		renderWithProviders(<RecordsTab unit="kg" />);
 		expect(screen.getByText(/no personal records yet/i)).toBeInTheDocument();
